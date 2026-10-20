@@ -20,53 +20,17 @@ from setup_nimony import ROOT, cache_directory
 # Share directory-discovered suite identities with selection, cumulative reports and provenance.
 from verification_inventory import UNIT_SOURCES, UNIT_SUITES, ARC_SUITES
 from native_requirements import NATIVE_REQUIREMENTS, UNIT_LINKS
+from native_fixture_contracts import FIXTURE_CONTRACTS
 # Keep the runtime-fixture helper available to existing launcher consumers.
 from native_fixtures import unit_runtime_fixtures
 UNIT_ROOT = ROOT/'tests/unit/codec'
-# Fixture targets may be files or directories; each entry lists every byte source that must match its pin.
-GUARANTEE_FIXTURE = ROOT/'tests/fixtures/guarantee-report.bin'
-BLOCK_FIXTURES = ROOT/'tests/fixtures/block-tiny'
-UNIT_FIXTURES = {
-    'guarantees': ('RAGNAROK_GUARANTEE_FIXTURE', GUARANTEE_FIXTURE, (
-        (GUARANTEE_FIXTURE, '8f13efdbca5aa7c5158c7cc62c71e5a9ed6ab2e22032d46946f4a304c55688fc'),)),
-    'block': ('RAGNAROK_BLOCK_FIXTURES', BLOCK_FIXTURES, (
-        (BLOCK_FIXTURES/'tickets.bin', '69d59e7ec8933d92a202d7a439b05f5f69ae3c0a4bf00bc08bf68dcaa256bde3'),
-        (BLOCK_FIXTURES/'preimages.bin', '874f3bed57dab9927170d5344b8489ad0662d5ee0c22a58ca25a362415cc8c90'),
-        (BLOCK_FIXTURES/'guarantees.bin', '4e5b4574b56bf0f0f974db8f4486fd14219f9d5f5a95c4743100bf5ed75ec690'),
-        (BLOCK_FIXTURES/'assurances.bin', '5438827a87cfd20f1eaccd8d20858a69af88df2459172a37e6aa9d9639c506e3'),
-        (BLOCK_FIXTURES/'disputes.bin', '83e526e84c919fb1efb020bee185c9f63c3692e004d13820546473ed59e31b21'),
-        (BLOCK_FIXTURES/'header.bin', 'c4f4658a9c04bca5d249c7ca5f14845bd012311213f6bb24076dcdddbb268fa2'),
-    )),
-}
 
-# Freeze the independent register oracle and upstream witnesses before native replay.
-PVM_REGISTERS = ROOT/'tests/fixtures/pvm-registers.bin'
-UNIT_FIXTURES['pvm_registers'] = ('RAGNAROK_PVM_REGISTERS', PVM_REGISTERS,
-    ((PVM_REGISTERS, '1abf6f399808dad7ed612200443342717de0e6b75c66eb232ecb4b8c3a2c5d2b'),))
 
-# Shared independent report bytes retain availability and queued-report fixture identity.
-STATE_REPORT = ROOT/'tests/fixtures/state-report.bin'
-for case in ('state_availability', 'state_availability_private', 'state_workqueues',
-             'state_workqueues_private', 'accumulation_activity', 'accumulation_authorization',
-             'accumulation_chain', 'accumulation_completion', 'accumulation_consensus', 'accumulation_driver', 'accumulation_execution',
-             'accumulation_finalization',
-             'accumulation_history', 'accumulation_later_runner',
-             'accumulation_outputs', 'accumulation_preimages', 'accumulation_block_publication',
-             'accumulation_continuation', 'accumulation_continuation_execution',
-             'accumulation_continuation_inputs',
-             'accumulation_continuation_invocation', 'accumulation_ready', 'accumulation_recent',
-             'accumulation_reentry',
-             'accumulation_reentry_cycle', 'accumulation_reentry_execution',
-             'accumulation_reentry_outputs', 'accumulation_runner',
-             'accumulation_state', 'accumulation_statistics', 'accumulation_times',
-             'accumulation_validators', 'application_block_input', 'application_candidate', 'application_chain', 'application_handoff', 'application_seed', 'application_services', 'chain_state_snapshot', 'rpc_accumulation'):
-    # Every consumer verifies the same exact source bytes before its native assertions execute.
-    UNIT_FIXTURES[case] = ('RAGNAROK_STATE_REPORT', STATE_REPORT, ((STATE_REPORT, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371'),))
-
-# Composition receives the same sixteen independently authored chapter values as the original trial.
-COMPOSITION_FIXTURE = ROOT/'tests/fixtures/composition-chapters.txt'
-UNIT_FIXTURES['state_composition_private'] = ('RAGNAROK_COMPOSITION_FIXTURE', COMPOSITION_FIXTURE,
-    ((COMPOSITION_FIXTURE, '3d45577099002c493cb7dc6fa4b3ee2f7ebfa389952a0c4cae3c7c382db7265b'),))
+# Resolve static dependencies declared by this suite; fixture identities are discovered beside data.
+def unit_static_fixtures(name):
+    """Return all checked-in contracts requested by one discovered native suite."""
+    return tuple(FIXTURE_CONTRACTS[identity]
+                 for identity in NATIVE_REQUIREMENTS[name].get('fixtures', []))
 
 
 # Resolve a discovered suite directly from its source path, independently of linking metadata.
@@ -189,7 +153,7 @@ def unit_environment(compiler, name=None, base=None, fixtures=None, suites=None)
     directory = unit_evidence_directory(compiler)
     directory.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ if base is None else base)
-    manifest = {**UNIT_FIXTURES, **(fixtures or {})}
+    manifest = fixtures or {}
     selected = tuple(suites) if suites is not None else UNIT_SUITES if name is None else (name,)
     if (not set(selected) <= set(UNIT_SUITES) or len(selected) != len(set(selected))
             or (name is not None and selected != (name,))):
@@ -202,9 +166,12 @@ def unit_environment(compiler, name=None, base=None, fixtures=None, suites=None)
         if NATIVE_REQUIREMENTS[case]['prepared'] and case not in manifest:
             # Inherited paths cannot replace newly prepared native transport/integration fixtures.
             raise ValueError('Missing prepared native unit fixtures: '+case)
+        contracts = unit_static_fixtures(case)
         if case in manifest:
+            # Generated providers keep their existing scope, checksum and environment contracts.
+            contracts += (manifest[case],)
+        for variable, target, required in contracts:
             # Refuse missing or changed fixture bytes before any native test can produce a success marker.
-            variable, target, required = manifest[case]
             for path, expected in required:
                 # A valid directory member cannot hide another missing or changed child input.
                 if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
@@ -232,7 +199,7 @@ def unit_evidence(compiler, name):
 
 # Flatten fixture groups into the exact input files consumed and hashed by cumulative verification.
 def unit_fixture_sources():
-    return [path for _, _, required in UNIT_FIXTURES.values() for path, _ in required]
+    return sorted({path for _, _, required in FIXTURE_CONTRACTS.values() for path, _ in required})
 
 
 # Group only dependency-free codecs; linked, networking and resource profiles remain separate.
@@ -357,7 +324,7 @@ def main():
         libraries, certificates, _ = prepare_libraries(folder, record, required=profile['libraries'])
         fixtures = {}
         if profile['prepared']:
-            # Checked-in static fixtures still come from UNIT_FIXTURES; generate only declared fresh inputs.
+            # Checked-in static fixtures come from discovered contracts; generate only declared fresh inputs.
             fixtures, _ = prepare_selected_fixture(folder, arguments.suite, certificates, record)
         run_units(compiler, libraries, fixtures, arguments.suite)
         return

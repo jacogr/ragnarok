@@ -10,6 +10,7 @@ import json
 import re
 from pathlib import Path
 from verification_inventory import UNIT_SOURCES, UNIT_SUITES, unique_object
+from native_fixture_contracts import FIXTURE_CONTRACTS
 
 
 # Require complete, typed records so misspelled fields cannot silently weaken a native profile.
@@ -26,7 +27,7 @@ def validate_requirements(records):
     }
     for name, record in records.items():
         # Every suite explicitly declares its source family, linking and fresh-fixture requirements.
-        if not isinstance(record, dict) or set(record) != fields:
+        if not isinstance(record, dict) or set(record)-{'fixtures'} != fields:
             raise ValueError('Invalid native requirement fields: '+name)
         if record['directory'] not in ('codec', 'state', 'crypto', 'quic') or type(record['prepared']) is not bool:
             raise ValueError('Invalid native source or fixture requirement: '+name)
@@ -38,6 +39,16 @@ def validate_requirements(records):
             values = record[field]
             if not isinstance(values, list) or any(not isinstance(value, str) or value not in choices for value in values) or len(values) != len(set(values)):
                 raise ValueError('Invalid native '+field+': '+name)
+        fixtures = record.get('fixtures', [])
+        if (not isinstance(fixtures, list)
+                or any(not isinstance(value, str) or value not in FIXTURE_CONTRACTS for value in fixtures)
+                or fixtures != sorted(set(fixtures))):
+            # Missing optional fields mean no static input; misspelled or duplicate dependencies fail preflight.
+            raise ValueError('Invalid native fixtures: '+name)
+        variables = [FIXTURE_CONTRACTS[value][0] for value in fixtures]
+        if len(variables) != len(set(variables)):
+            # Two static contracts cannot compete to supply one environment variable within a suite.
+            raise ValueError('Conflicting native fixture environments: '+name)
         primary = record['libraries'][-1] if record['libraries'] else None
         if record['directory'] == 'codec' and primary:
             # The shared codec directory invocation has no per-file native linking profile.

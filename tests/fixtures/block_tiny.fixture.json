@@ -1,0 +1,12 @@
+{
+  "environment": "RAGNAROK_BLOCK_FIXTURES",
+  "files": {
+    "block-tiny/assurances.bin": "5438827a87cfd20f1eaccd8d20858a69af88df2459172a37e6aa9d9639c506e3",
+    "block-tiny/disputes.bin": "83e526e84c919fb1efb020bee185c9f63c3692e004d13820546473ed59e31b21",
+    "block-tiny/guarantees.bin": "4e5b4574b56bf0f0f974db8f4486fd14219f9d5f5a95c4743100bf5ed75ec690",
+    "block-tiny/header.bin": "c4f4658a9c04bca5d249c7ca5f14845bd012311213f6bb24076dcdddbb268fa2",
+    "block-tiny/preimages.bin": "874f3bed57dab9927170d5344b8489ad0662d5ee0c22a58ca25a362415cc8c90",
+    "block-tiny/tickets.bin": "69d59e7ec8933d92a202d7a439b05f5f69ae3c0a4bf00bc08bf68dcaa256bde3"
+  },
+  "target": "block-tiny"
+}

@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_GUARANTEE_FIXTURE",
+  "files": {
+    "guarantee-report.bin": "8f13efdbca5aa7c5158c7cc62c71e5a9ed6ab2e22032d46946f4a304c55688fc"
+  },
+  "target": "guarantee-report.bin"
+}

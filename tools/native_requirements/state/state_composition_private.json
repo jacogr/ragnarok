@@ -1,6 +1,9 @@
 {
   "defines": [],
   "directory": "state",
+  "fixtures": [
+    "composition_chapters"
+  ],
   "includes": [
     "crypto"
   ],
