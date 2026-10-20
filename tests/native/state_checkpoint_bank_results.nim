@@ -47,6 +47,9 @@ proc main() =
       if mode == "refused":
         discard bank.restore(snapshot.commitment.root, policy(), ByteLimit(
             0)).value # Ceiling failure exposes no partial state.
+      elif mode == "initialize-refused":
+        discard bank.initialize(snapshot, ByteLimit(
+            1000)).value # Existing head cannot yield a successful second bootstrap.
       elif mode == "head-reason":
         discard bank.selectedHead().headError # Success has no failed metadata diagnostic.
       elif mode == "state-reason":

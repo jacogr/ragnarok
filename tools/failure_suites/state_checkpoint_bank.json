@@ -66,6 +66,17 @@
         "reason": "closed"
       },
       "name": "state-checkpoint-bank-closed"
+    },
+    {
+      "arguments": [
+        "initialize-refused"
+      ],
+      "description": "Checkpoint bank bootstrap existing-head extraction",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "initialize-refused"
+      },
+      "name": "state-checkpoint-bank-initialize-refused"
     }
   ],
   "crypto_library": "crypto",
