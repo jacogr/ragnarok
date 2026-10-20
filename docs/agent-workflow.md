@@ -11,15 +11,21 @@ Protocol, ownership and result contracts in `AGENTS.md` remain mandatory.
   Consult [Nimony compatibility](nimony-compatibility.md) for previously observed differences.
 - Search named production modules first with `rg`; exclude `vendor/` and `build/` unless investigating
   those trees. Read relevant sections and batch independent reads. Expand only when evidence points
-  elsewhere; load skills and supporting references only when their instructions apply.
+  elsewhere; load skills and supporting references only when their instructions apply. Reuse guidance
+  already read for the current scope; reread when it changes or new work makes another rule relevant.
+- Bound tool output at its source: select needed fields and summarize large results inside the
+  command before returning them. Keep full evidence under `build/` instead of printing whole logs.
+- Start performance investigations with a bounded representative benchmark using matching inputs
+  and build profiles. Broaden when results are inconclusive or do not cover the affected workload.
 - Prefer small patches with inspectable diffs. Use a transformation script when its scope is clear
   and verify every transformed pattern before compilation.
 - Resolve compiler/API failures with the smallest relevant probe or check before rerunning a large
   suite. Finish with the affected Make suites and consumer checks; a probe does not replace them.
 - Reuse a passing result while its covered source, dependencies and build configuration remain
   unchanged. Explain why a new change or failure requires broader verification.
-- Keep a compact working record of scope, decisions, modified files, passed checks and unresolved
-  failures. Show concise verdicts and actionable error excerpts; retain full logs and exit status.
+- Keep a compact working record of scope, authorization, branch/PR, decisions, modified files,
+  verification results, unresolved failures and next action. Show concise verdicts and actionable
+  error excerpts; retain full logs and exit status.
 
 ## Resume existing work
 
@@ -42,15 +48,17 @@ gh pr create --base master --title 'type(scope): summary' --body-file build/pr-b
 ```
 
 A missing `.stack` means membership is unverified. CI observations must match the exact latest
-head; pending checks are not a failure or a pass. Wait between queries; do not watch/poll unless
-requested. PR creation must be followed by attaching its URL to the calling task.
+head; pending checks are not a failure or a pass. Query status when it determines the next action;
+wait between queries and do not watch/poll unless requested. PR creation must be followed by
+attaching its URL to the calling task.
 
 PR creation, pushes and rebases do not request CI. Keep local verification appropriate to the diff;
 request remote checks only when asked or when the maintainer has authorized that verification.
 Use `ci:unit` for native units/corpora, Python tooling and source compilation, `ci:e2e` for
 end-to-end networking alone, or `ci:full` for every CI group. Add the label to the selected PR
-(normally the stack tip); remove and reapply it for a fresh request after later commits. Existing labels do not trigger checks on new commits. See
-[requesting CI](testing.md#requesting-ci). Master pushes retain automatic full verification.
+(normally the stack tip); remove and reapply it for a fresh request after later commits. Existing
+labels do not trigger checks on new commits. See [requesting CI](testing.md#requesting-ci). Master
+pushes retain automatic full verification.
 
 ## Native stacks
 
@@ -94,6 +102,8 @@ blanket ours/theirs resolutions. This helper does not apply to native stacks.
 - Implementation changes: selected native suite plus affected consumers/guards.
 - Registry changes: inventory and relevant provenance/tooling tests.
 - Documentation/comments: relevant formatting/link checks, no native rebuild.
+- Workflow-only changes: affected CI safeguards and workflow lint; broaden for failures or behavior
+  those checks do not cover.
 - Identical-tree history changes: tree-equality evidence and prior test results, no repeated suites.
 - Cross-cutting harness/build changes: affected harness tests and representative execution paths.
 
