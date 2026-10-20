@@ -4,10 +4,12 @@
 ## Default/refused completion results contain no candidate or unselected failed phase.
 
 import std/cmdline
-import ../../src/state/[accumulation_completion, accumulation_driver]
+import ../../src/state/[accumulation_completion, accumulation_driver, accumulation_finalization]
 
 let argument = paramStr(1)
 let outcome = if argument == "default": default(AccumulationCompletionResult)
+  elif argument == "composition": prepareAccumulationComposition(default(PreparedFinalAccumulation),
+      default(AccumulationCompositionLimits))
   else: prepareStoppedAccumulation(default(StoppedAccumulation), default(
       AccumulationCompletionLimits))
 case argument

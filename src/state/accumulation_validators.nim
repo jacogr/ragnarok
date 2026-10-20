@@ -143,7 +143,7 @@ proc prepareAccumulationValidators*(source: PreparedAccumulationTimes,
   if retained.error != AccumulationTimesError.None:
     fail(AccumulationValidatorsError.InvalidSource) # A detached projection or mutable stage cannot supply block provenance.
   let finalized = retained.value.statisticsSource.value
-  let queue = finalized.finalAccumulationOutputs.value.outputsSource.value.executionRound.value.roundBlockQueue.value
+  let queue = finalized.finalAccumulationQueue.value
   let admission = queue.accumulationAdmission.value
   let stage = admission.reportBlockStage.value
   let profile = stage.blockTransitionProfile

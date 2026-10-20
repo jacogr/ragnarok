@@ -5,7 +5,9 @@
 ## Retains terminal provenance, earlier service effects and fresh C(16); whole-block publication remains separate.
 
 import ../codec/[work_digest, state_trie]
-import ./[accumulation_outputs, accumulation_operands, accumulation_continuation_execution,
+import ./[accumulation_driver, accumulation_outputs, accumulation_execution, accumulation_round,
+  accumulation_queue, report_admission, block_transition, block_admission, accumulation_operands,
+  accumulation_continuation_execution,
   accumulation_continuation_inputs, accumulation_continuation, accumulation_reentry, store]
 
 type
@@ -88,6 +90,36 @@ proc finalAccumulationState*(plan: PreparedFinalAccumulation):
   AccumulationFinalizationResult[StateStoreSnapshot](
     status: AccumulationFinalizationError.None, completed: data.state)
 
+proc finalAccumulationQueue*(plan: PreparedFinalAccumulation):
+    AccumulationFinalizationResult[BlockAccumulationQueue] =
+  ## Retain the exact initial queue owner behind this finalized successor; defaults expose no fabricated provenance.
+  let data = plan.data
+  if data == nil:
+    return AccumulationFinalizationResult[BlockAccumulationQueue](
+        status: AccumulationFinalizationError.Uninitialized)
+  AccumulationFinalizationResult[BlockAccumulationQueue](status: AccumulationFinalizationError.None,
+    completed: data.outputs.outputsSource.value.executionRound.value.roundBlockQueue.value)
+
+proc finalAccumulationAdmission*(plan: PreparedFinalAccumulation):
+    AccumulationFinalizationResult[AdmittedReports] =
+  ## Retain authenticated block/profile authority from the successor's own execution graph, never a caller replacement.
+  let queue = plan.finalAccumulationQueue
+  if queue.error != AccumulationFinalizationError.None:
+    return AccumulationFinalizationResult[AdmittedReports](
+        status: queue.error) # No default admission can authorize state composition.
+  AccumulationFinalizationResult[AdmittedReports](status: AccumulationFinalizationError.None,
+    completed: queue.value.accumulationAdmission.value)
+
+proc finalAccumulationParent*(plan: PreparedFinalAccumulation):
+    AccumulationFinalizationResult[StateStoreSnapshot] =
+  ## Retain the exact original admitted complete-map parent for final publication's physical owner check.
+  let admission = plan.finalAccumulationAdmission
+  if admission.error != AccumulationFinalizationError.None:
+    return AccumulationFinalizationResult[StateStoreSnapshot](
+        status: admission.error) # Equal roots or detached maps never substitute a source.
+  AccumulationFinalizationResult[StateStoreSnapshot](status: AccumulationFinalizationError.None,
+    completed: admission.value.reportBlockStage.value.value.admitted.admittedState)
+
 # Only genuine stopped sources call this helper with their exact prior and bounded collected outputs.
 proc finalize(prior: StateStoreSnapshot, collected: AccumulationOutputsResult[
     PreparedAccumulationOutputs], processed: AccumulationReportPrefix, pending: int,
@@ -141,3 +173,19 @@ proc prepareFinalAccumulation*(source: CompletedAccumulationReentry,
       status: AccumulationFinalizationError.NotStopped) # Even an exhausted suffix needs a certified stopped entry.
   finalize(source.executionReentry.value.reentryState.value,
     prepareAccumulationOutputs(source, limits), round.completedPrefix, round.pendingReports, round.budget)
+
+
+proc prepareFinalAccumulation*(source: StoppedAccumulation,
+    limits: AccumulationOutputHistoryLimits): AccumulationFinalizationResult[
+        PreparedFinalAccumulation] =
+  ## Execution finalizes its genuine stopped variant once; state composition need not inspect driver alternatives.
+  case source.stoppedKind
+  of StoppedAccumulationKind.Continuation:
+    prepareFinalAccumulation(source.stoppedContinuation,
+        limits) # Preserve actual stopped first-continuation provenance.
+  of StoppedAccumulationKind.Reentry:
+    prepareFinalAccumulation(source.stoppedReentry,
+        limits) # Preserve the retained bounded repeated execution history.
+  else:
+    AccumulationFinalizationResult[PreparedFinalAccumulation](
+        status: AccumulationFinalizationError.InvalidSource) # Default cannot certify an empty stopped history.

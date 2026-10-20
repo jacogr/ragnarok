@@ -10,7 +10,13 @@ and [the driver](accumulation-driver.md). No equations, domains, codecs, pins or
 transition algorithms change.
 
 ## Contract
-
++
++The [shared successor boundary](pvm-state-successor.md) makes
++`prepareAccumulationComposition(PreparedFinalAccumulation, AccumulationCompositionLimits)`
++the canonical state-only entry. `AccumulationCompletionLimits` groups execution
++`finalization` and state `composition` policies. The stopped convenience entry
++finalizes once on the execution side and delegates to the same state implementation.
++
 `prepareStoppedAccumulation` accepts only StoppedAccumulation and
 AccumulationCompletionLimits. Select the existing continuation/reentry finalization overload
 using the stopped kind. Run, in order, output finalization, accumulated history, ready queues,

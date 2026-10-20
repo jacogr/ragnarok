@@ -5,9 +5,10 @@
 ## Real designate/bless executions prove original-delegator roster selection, bounded work and atomic whole-map publication.
 
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_batch, accumulation_effects, accumulation_dispatch,
+import ../../../src/state/[accumulation_batch, accumulation_context, accumulation_effects,
+  accumulation_dispatch,
   accumulation_outcome, store]
-import ../../../src/codec/[bounded, composite, header, state_accounts, state_layout, state_trie]
+import ../../../src/codec/[bounded, composite, header, state_accounts, state_layout, state_safrole, state_trie]
 import ../../../src/chain/parameters
 import ../../../src/pvm/machine
 import ../../support/[accumulation_batch_context, pvm_accumulation_context,
@@ -148,6 +149,16 @@ proc check(count, original: int, ending: Ending, handoff = false, reverse = fals
   for entry in entries:
     assert published.lookup(entry.key).value.bytes == entry.value, "literal complete-map entry"
   assert sameStateSnapshot(source.state.snapshot.value, prior), "source aliases retain their prior version"
+  if finalCount != original:
+    var next = source
+    next.state = forkStateStore(published).value # Capture the real published successor without replacing its original input owner.
+    let resumed = run(next, 0, original)
+    assert resumed.error == AccumulationDispatchError.None, "successor staging count does not replace the active profile"
+    let captured = resumed.effects.effectsSource.value.initialContext(
+        AccumulationDimension.Regular).value
+    assert captured.contextStaging.value.validatorCount.value ==
+        finalCount # Both growth and shrinkage survive genuine next-invocation capture.
+
   failHash(3)
   assert applyAccumulationBatch(caller, plan).error == AccumulationBatchError.StaleState
   assert hashCalls() == 0

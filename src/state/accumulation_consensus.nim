@@ -88,7 +88,7 @@ proc prepareAccumulationConsensus*(source: PreparedAccumulationAuthorization,
   if retained.error != AccumulationAuthorizationError.None:
     fail(AccumulationConsensusError.InvalidSource) # Defaults cannot supply an authenticated empty source.
   let finalized = retained.value.accumulationPreimagesSource.value.accumulationActivitySource.value.accumulationValidatorsSource.value.accumulationTimesStatistics.value.statisticsSource.value
-  let admission = finalized.finalAccumulationOutputs.value.outputsSource.value.executionRound.value.roundBlockQueue.value.accumulationAdmission.value
+  let admission = finalized.finalAccumulationAdmission.value
   let stage = admission.reportBlockStage.value.value
   let assignments = admission.reportAssignments.value
   let assignedBytes = assignments.reportAssignmentByteLength.value

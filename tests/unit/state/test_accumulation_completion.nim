@@ -31,9 +31,9 @@ proc root(source: PreparedAccumulationValidators): CompletedBlockAccumulation =
 proc manualAuthorization(source: PreparedAccumulationValidators,
     limits: AccumulationCompletionLimits): PreparedAccumulationAuthorization =
   ## Existing fixture built all earlier phases independently; compose only the remaining old public APIs.
-  let activity = prepareAccumulationActivity(source, limits.activity).value
-  let preimages = prepareAccumulationPreimages(activity, limits.preimages).value
-  prepareAccumulationAuthorization(preimages, limits.authorization).value
+  let activity = prepareAccumulationActivity(source, limits.composition.activity).value
+  let preimages = prepareAccumulationPreimages(activity, limits.composition.preimages).value
+  prepareAccumulationAuthorization(preimages, limits.composition.authorization).value
 
 proc manualAuthorization(source: StoppedAccumulation,
     limits: AccumulationCompletionLimits): PreparedAccumulationAuthorization =
@@ -41,11 +41,11 @@ proc manualAuthorization(source: StoppedAccumulation,
   let finalized = if source.stoppedKind == StoppedAccumulationKind.Continuation:
     prepareFinalAccumulation(source.stoppedContinuation, limits.finalization).value
   else: prepareFinalAccumulation(source.stoppedReentry, limits.finalization).value
-  let history = prepareAccumulationHistory(finalized, limits.history).value
-  let ready = prepareAccumulationReady(history, limits.ready).value
-  let recent = prepareAccumulationRecent(ready, limits.recent).value
-  let times = prepareAccumulationTimes(recent, limits.times).value
-  let validators = prepareAccumulationValidators(times, limits.validators).value
+  let history = prepareAccumulationHistory(finalized, limits.composition.history).value
+  let ready = prepareAccumulationReady(history, limits.composition.ready).value
+  let recent = prepareAccumulationRecent(ready, limits.composition.recent).value
+  let times = prepareAccumulationTimes(recent, limits.composition.times).value
+  let validators = prepareAccumulationValidators(times, limits.composition.validators).value
   manualAuthorization(validators, limits)
 
 proc original(source: CompletedBlockAccumulation): StateStoreSnapshot =
@@ -55,10 +55,22 @@ proc original(source: CompletedBlockAccumulation): StateStoreSnapshot =
 proc compare(stopped: StoppedAccumulation, expected: PreparedAccumulationConsensus,
     parent: StateStoreSnapshot, limits: AccumulationCompletionLimits): PreparedAccumulationConsensus =
   ## Complete root parity also checks compatibility with unchanged exact-parent, zero-hash publication.
-  let prepared = prepareStoppedAccumulation(stopped, limits)
+  let finalized = prepareFinalAccumulation(stopped, limits.finalization).value
+  failHash(1)
+  assert sameStateSnapshot(finalized.finalAccumulationParent.value, parent)
+  assert sameStateSnapshot(finalized.finalAccumulationAdmission.value.reportBlockStage.value.value.admitted.admittedState, parent)
+  assert sameStateSnapshot(finalized.finalAccumulationQueue.value.accumulationAdmission.value.reportBlockStage.value.value.admitted.admittedState, parent)
+  assert hashCalls() == 0 # Original block authority access is immutable and performs no reconstruction.
+  failHash(0)
+  let prepared = prepareAccumulationComposition(finalized, limits.composition)
+  let directHashes = hashCalls()
   assert prepared.error == AccumulationCompletionError.None, $prepared.error
   let actual = prepared.value.accumulationConsensusState.value
   let oracle = expected.accumulationConsensusState.value
+  failHash(0)
+  let wrapped = prepareStoppedAccumulation(stopped, limits).value.accumulationConsensusState.value
+  assert hashCalls() > directHashes, "direct state composition does not repeat C(16) finalization"
+  assert array[32, byte](wrapped.commitment.root) == array[32, byte](actual.commitment.root)
   assert array[32, byte](actual.commitment.root) == array[32, byte](oracle.commitment.root)
   assert prepared.value.accumulationConsensusInfo.value.chapters == 7
   var state = forkStateStore(parent).value
@@ -84,7 +96,7 @@ proc scenario(base: OwnedReport, guarantees = 0, available = false, blobs = fals
   assert stopped.stoppedKind == StoppedAccumulationKind.Continuation
   let limits = completionLimits()
   let expected = prepareAccumulationConsensus(manualAuthorization(fixture.source, limits),
-      limits.consensus).value
+      limits.composition.consensus).value
   compare(stopped, expected, parent, limits)
 
 proc yieldProgram(): seq[byte] =
@@ -112,7 +124,9 @@ proc checkStagingPublication(base: OwnedReport) =
   let initial = runBlockAccumulation(fixture.round, runnerParameters(), execution)
   assert initial.error == AccumulationRunnerError.None
   let stopped = driveAccumulation(initial.value, runnerParameters(), completionDriverLimits()).value
-  let composed = prepareStoppedAccumulation(stopped, completionLimits())
+  let limits = completionLimits()
+  let finalized = prepareFinalAccumulation(stopped, limits.finalization).value
+  let composed = prepareAccumulationComposition(finalized, limits.composition)
   assert composed.error == AccumulationCompletionError.None
   var expected = newSeq[byte](2017)
   expected[0] = 6
@@ -151,6 +165,19 @@ proc main() {.raises.} =
   let parent = original(initial)
   let stopped = driveAccumulation(initial, runnerParameters(), completionDriverLimits()).value
   let missing = default(StoppedAccumulation)
+  failHash(1)
+  assert prepareAccumulationComposition(default(PreparedFinalAccumulation),
+      limits.composition).error == AccumulationCompletionError.InvalidSource
+  assert default(PreparedFinalAccumulation).finalAccumulationQueue.error ==
+      AccumulationFinalizationError.Uninitialized
+  assert default(PreparedFinalAccumulation).finalAccumulationAdmission.error ==
+      AccumulationFinalizationError.Uninitialized
+  assert default(PreparedFinalAccumulation).finalAccumulationParent.error ==
+      AccumulationFinalizationError.Uninitialized
+  let invalidFinalized = prepareFinalAccumulation(default(StoppedAccumulation), limits.finalization)
+  assert invalidFinalized.error == AccumulationFinalizationError.InvalidSource
+  assert hashCalls() == 0 # No default source can trigger finalization, state work or an authenticated parent extraction.
+  failHash(0)
   let rejected = prepareStoppedAccumulation(missing, limits)
   assert rejected.error ==
       AccumulationCompletionError.InvalidSource
@@ -161,39 +188,39 @@ proc main() {.raises.} =
   assert prepareStoppedAccumulation(stopped, short).finalizationFailure.outputError ==
       AccumulationOutputsError.LimitExceeded
   short = limits
-  short.history.reports = ElementLimit(0)
+  short.composition.history.reports = ElementLimit(0)
   assert prepareStoppedAccumulation(stopped, short).historyFailure.error ==
       AccumulationHistoryError.LimitExceeded
   short = limits
-  short.ready.items = ElementLimit(0)
+  short.composition.ready.items = ElementLimit(0)
   assert prepareStoppedAccumulation(stopped, short).readyFailure.error ==
       AccumulationReadyError.LimitExceeded
   short = limits
-  short.recent.headerBytes = ByteLimit(0)
+  short.composition.recent.headerBytes = ByteLimit(0)
   assert prepareStoppedAccumulation(stopped, short).recentFailure.error ==
       AccumulationRecentError.LimitExceeded
   short = limits
-  short.times.statistics.rounds = ElementLimit(0)
+  short.composition.times.statistics.rounds = ElementLimit(0)
   assert prepareStoppedAccumulation(stopped, short).timesFailure.statisticsError ==
       AccumulationStatisticsError.LimitExceeded
   short = limits
-  short.validators.chapterBytes = ByteLimit(0)
+  short.composition.validators.chapterBytes = ByteLimit(0)
   assert prepareStoppedAccumulation(stopped, short).validatorsFailure.error ==
       AccumulationValidatorsError.LimitExceeded
   short = limits
-  short.activity.componentBytes = ByteLimit(0)
+  short.composition.activity.componentBytes = ByteLimit(0)
   assert prepareStoppedAccumulation(stopped, short).activityFailure.error ==
       AccumulationActivityError.LimitExceeded
   short = limits
-  short.preimages.items = ElementLimit(0)
+  short.composition.preimages.items = ElementLimit(0)
   assert prepareStoppedAccumulation(stopped, short).preimagesFailure.error ==
       AccumulationPreimageError.LimitExceeded
   short = limits
-  short.authorization.inputBytes = ByteLimit(0)
+  short.composition.authorization.inputBytes = ByteLimit(0)
   assert prepareStoppedAccumulation(stopped, short).authorizationFailure.error ==
       AccumulationAuthorizationError.LimitExceeded
   short = limits
-  short.consensus.chapterBytes = ByteLimit(0)
+  short.composition.consensus.chapterBytes = ByteLimit(0)
   assert prepareStoppedAccumulation(stopped, short).consensusFailure.error ==
       AccumulationConsensusError.LimitExceeded
   let capped = activityFixture(base, storeWrites = 6)
@@ -221,23 +248,38 @@ proc main() {.raises.} =
   let repeatedStop = driveAccumulation(repeatedRoot, runnerParameters(), completionDriverLimits()).value
   assert repeatedStop.stoppedKind == StoppedAccumulationKind.Reentry
   let repeatedExpected = prepareAccumulationConsensus(manualAuthorization(repeatedStop, limits),
-      limits.consensus).value
+      limits.composition.consensus).value
   discard compare(repeatedStop, repeatedExpected, original(repeatedRoot), limits)
   let yielded = reentryFixture(base, firstProgram = yieldProgram(), secondProgram = yieldProgram(),
       extra = @[activityParentEntry()])
   let yieldedRoot = yielded.source.reentrySource.value.executionContinuation.value.continuationPlan.value.continuationSource.value
   let yieldedStop = driveAccumulation(yieldedRoot, runnerParameters(), completionDriverLimits()).value
   let yieldedExpected = prepareAccumulationConsensus(manualAuthorization(yieldedStop, limits),
-      limits.consensus).value
+      limits.composition.consensus).value
   discard compare(yieldedStop, yieldedExpected, original(yieldedRoot), limits)
+  var retainedFinal: PreparedFinalAccumulation
+  block:
+    let local = executionFixture(base, extra = @[activityParentEntry()])
+    let ran = runBlockAccumulation(local.round, runnerParameters(), runnerLimits()).value
+    let terminal = driveAccumulation(ran, runnerParameters(), completionDriverLimits()).value
+    retainedFinal = prepareFinalAccumulation(terminal,
+        limits.finalization).value # Final owner alone retains source authority and complete execution state.
+  let detached = prepareAccumulationComposition(retainedFinal, limits.composition).value
+  var target = forkStateStore(retainedFinal.finalAccumulationParent.value).value
+  failHash(1)
+  assert publishAccumulationState(target, detached).error == AccumulationPublicationError.None
+  assert hashCalls() == 0
+  failHash(0)
   var retained: PreparedAccumulationConsensus
   block:
     retained = scenario(base, guarantees = 2, blobs = true) # The final graph and complete map outlive every local driver/fixture handle.
   assert retained.accumulationConsensusInfo.value.chapters == 7
+  let reusable = prepareFinalAccumulation(stopped, limits.finalization).value
   let before = getOccupiedMem()
   for iteration in 0..<1000:
     # Earlier private phase owners and failed late compositions release their entire temporary complete-map graphs.
-    assert prepareStoppedAccumulation(stopped, limits).value.accumulationConsensusInfo.value.chapters == 7
+    assert prepareAccumulationComposition(reusable,
+        limits.composition).value.accumulationConsensusInfo.value.chapters == 7
     assert prepareStoppedAccumulation(cappedStop, limits).consensusFailure.stateError ==
         StateStoreError.LimitExceeded
   let after = getOccupiedMem()

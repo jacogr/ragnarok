@@ -21,3 +21,13 @@ and permit repair/retry without double charging. Complete single-step capability
 includes host suspension, and bounded iterative execution applies recursive exit rules;
 see [the execution contract](../../spec/pvm-execution.md). Standard initialization and
 host-function integration remain open.
+
+## Accumulation successor boundary
+
+Execution owns stopped continuation/reentry selection and the immutable
+`PreparedFinalAccumulation` successor, including selected effects, output/gas
+history, complete state and authenticated original block provenance. State's
+`prepareAccumulationComposition` consumes that owner and state-only policies;
+state owns history/statistics/authorization/consensus composition and exact-parent
+final publication. Neither side accepts a detached map as a replacement execution
+certificate. See [the shared boundary contract](../../spec/pvm-state-successor.md).

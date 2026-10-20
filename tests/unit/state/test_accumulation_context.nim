@@ -235,14 +235,38 @@ proc boundaries(): PreparedAccumulationContexts =
   other.queues.maxHashes = ElementLimit(240)
   other.totalBytes = ByteLimit(10000)
   assert prepareAccumulationContexts(ready, other).error == AccumulationContextError.MalformedState
-  # Isolate a valid six-record staging roster against a coherent nine-validator chain profile.
+  # A valid six-record staging roster is independent of the coherent nine-active-validator profile.
   var mismatched = components()
   mismatched[0] = authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80),
     newSeq[AuthorizerHash](80), newSeq[AuthorizerHash](80)], other.queues).value
   mismatched[2] = privilegeStateEntry(PrivilegeState(assigners: newSeq[ServiceIndex](3)),
     PrivilegeConfig(cores: CoreCount(3), maxBytes: ByteLimit(100), maxAlways: ElementLimit(1))).value
-  assert prepareAccumulationContexts(bootstrap(mismatched), other).error ==
-      AccumulationContextError.MalformedState
+  let sixStaging = prepareAccumulationContexts(bootstrap(mismatched), other)
+  assert sixStaging.error == AccumulationContextError.None
+  assert sixStaging.value.initialContext(AccumulationDimension.Regular).value.contextStaging.value.validatorCount.value == 6
+  # Conversely capture a nine-record successor while retaining the six-active-validator profile.
+  var grown = other
+  grown.validators = ValidatorCount(6)
+  grown.staging.validators = ElementLimit(9)
+  grown.staging.maxBytes = ByteLimit(3025)
+  grown.totalBytes = ByteLimit(10730) # Exact 7680-byte queues, 3025-byte C(7), and 25-byte C(12).
+  mismatched[1] = validatorEntry(ValidatorChapter.Staging, newSeq[StateValidator](9),
+      grown.staging).value
+  let invocation = bootstrap(mismatched)
+  failHash(1)
+  let nineStaging = prepareAccumulationContexts(invocation, grown)
+  assert nineStaging.error == AccumulationContextError.None
+  assert nineStaging.value.initialContext(AccumulationDimension.Regular).value.contextStaging.value.validatorCount.value == 9
+  for kind in 0..<3:
+    var short = grown
+    case kind
+    of 0: short.staging.validators = ElementLimit(
+        8) # Count ceiling still applies independently of active population.
+    of 1: short.staging.maxBytes = ByteLimit(3024) # Complete canonical C(7) byte ceiling.
+    else: short.totalBytes = ByteLimit(10729) # Aggregate source capture remains independently bounded.
+    assert prepareAccumulationContexts(invocation, short).error ==
+        AccumulationContextError.LimitExceeded
+  failHash(0) # Capture and every quota refusal perform no hashing, even with unequal valid populations.
   # Reject invalid/overlong roster counts even when the remaining fixed record bytes are present.
   for first in [0'u8, 5, 128]:
     var invalid = components()

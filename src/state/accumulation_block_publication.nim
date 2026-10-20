@@ -44,8 +44,7 @@ proc publishAccumulationState*(state: var StateStore, source: PreparedAccumulati
     return AccumulationPublicationResult(status: AccumulationPublicationError.StateFailure,
       stateReason: current.error) # Uninitialized targets remain untouched.
   let finalized = retained.value.accumulationAuthorizationSource.value.accumulationPreimagesSource.value.accumulationActivitySource.value.accumulationValidatorsSource.value.accumulationTimesStatistics.value.statisticsSource.value
-  let admission = finalized.finalAccumulationOutputs.value.outputsSource.value.executionRound.value.roundBlockQueue.value.accumulationAdmission.value
-  let parent = admission.reportBlockStage.value.value.admitted.admittedState
+  let parent = finalized.finalAccumulationParent.value
   if not sameStateSnapshot(current.value, parent):
     return AccumulationPublicationResult(status: AccumulationPublicationError.StaleState) # Equal roots, restored versions and replay do not replace exact owner identity.
   let candidate = source.accumulationConsensusState.value

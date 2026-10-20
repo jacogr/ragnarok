@@ -43,8 +43,9 @@ root. The invoking account was decoded by service preparation and is available t
 `contextSelf`; unrelated account payloads remain opaque and are not newly validated here.
 
 `contextQueues`, `contextStaging` and `contextPrivileges` expose existing immutable codec owners.
-The adapter requires exact whole-chapter consumption, coherent core cardinalities and the configured
-staging population. It checks each complete byte extent and their aggregate before copying any
+The adapter requires exact whole-chapter consumption and coherent core cardinalities. The configured
+validator population remains the active chain profile; C(7) independently accepts
+any valid GP valcount within the core domain and staging resource ceilings. It checks each complete byte extent and their aggregate before copying any
 chapter. Hash, validator and allowance traversal/allocation ceilings remain independently enforced
 by the component decoders. Oversized input, including suffix bytes, is a resource refusal when it
 exceeds policy; otherwise incomplete/invalid encodings and suffixes are malformed-state refusals.
@@ -70,7 +71,9 @@ BLS and metadata bytes against independent scalar patterns across 32 determinist
 checks every role/assigner/allowance, both initial dimensions, self/other accounts and unrelated
 preimages. Exact/one-below byte, aggregate, hash, validator and allowance policies are exercised.
 Missing chapters, final-byte truncation, trailing bytes, invalid/noncanonical roster counts and a
-valid roster with a different configured population all refuse without publishing partial state.
+invalid roster populations all refuse without publishing partial state. Valid staging/active
+population differences are accepted under the [shared successor contract](pvm-state-successor.md),
+including exact and one-below capture policies for six/nine-validator transitions.
 
 A genuinely signed authored block checks the complete parent root and chapter identity, decoded
 staging/queue/privilege views, candidate arguments and retained source certificate. Publishing a

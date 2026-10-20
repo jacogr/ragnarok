@@ -41,11 +41,10 @@ existing state driver/completion APIs instead of extending a parallel block
 coordinator. Do not broaden this layer into that convergence refactor.
 
 The signed state completion witness uses the existing six-validator profile.
-Batch publication supports six/nine-validator C(7) changes, but later invocation
-capture still checks an exact configured initial population, and the state runner
-binds that configuration to its admitted profile. Continuing across a staging
-population change needs explicit successor/profile adoption in the convergence
-contract; this increment does not claim that whole-driver path.
+The following [shared successor increment](pvm-state-successor.md) now permits
+valid C(7) count changes during later invocation capture while preserving the
+admitted active profile. Its witnesses capture genuine published six/nine-roster
+successors; complete cross-profile block/epoch parity remains separate.
 
 M1 framing remains complete; full state serialization and block parity remain open. Full/light separation is unchanged.
 

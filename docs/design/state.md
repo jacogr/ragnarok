@@ -113,3 +113,13 @@ semantics. No database backend or mode flag is implemented by the current storag
 partial state and proofs require a separate appropriate contract; hashing partial data through
 this complete-map calculator cannot establish the full state root. Codecs and Merklization
 primitives remain shared, with mode selection at the application boundary.
+
+## Accumulation successor boundary
+
+Execution owns stopped continuation/reentry selection and the immutable
+`PreparedFinalAccumulation` successor, including selected effects, output/gas
+history, complete state and authenticated original block provenance. State's
+`prepareAccumulationComposition` consumes that owner and state-only policies;
+state owns history/statistics/authorization/consensus composition and exact-parent
+final publication. Neither side accepts a detached map as a replacement execution
+certificate. See [the shared boundary contract](../../spec/pvm-state-successor.md).
