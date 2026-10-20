@@ -1,5 +1,8 @@
 # GitHub automation
 
+Keep this guide named `WORKFLOWS.md`: GitHub gives a README in `.github/` precedence over
+the root README on the repository landing page.
+
 [Project overview](../README.md) · [Testing guide](../docs/testing.md)
 
 [`workflows/ci.yml`](workflows/ci.yml) defines GitHub Actions verification and evidence collection.

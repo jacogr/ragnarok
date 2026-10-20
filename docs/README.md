@@ -12,6 +12,7 @@ feature contracts, pinned source identities and unresolved protocol interpretati
 | --- | --- |
 | [Development](development.md) | Supported hosts, setup, Make targets and local workflows |
 | [Testing](testing.md) | Verification groups, evidence and requesting CI |
+| [GitHub automation](../.github/WORKFLOWS.md) | Workflow jobs, triggers and retained evidence |
 | [Design](design.md) | Module boundaries and links to the pages in [`design/`](design/) |
 | [Implementation scope](design/scope.md) | Implemented foundations and remaining client work |
 | [Dependencies](dependencies.md) | Pinned upstream sources, provisioning and update policy |
