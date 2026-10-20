@@ -9,11 +9,14 @@ import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/quic/[block_download_loop, block_download_peers, block_download_stream]
 import ../../../src/app/[services, options, chain, candidate, handoff, block_download,
-    block_input, download_schedule]
+    block_input, download_schedule, preparation_worker]
 import ../../../src/codec/[bounded, block_codec, report_owned]
 import ../../../src/state/[store, accumulation_finalization, accumulation_completion]
 import ../../support/[application_candidate_context, accumulation_completion_context,
     block_download_transport, arc_evidence]
+
+proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
+  ## Yield only while a real preparation worker owns execution; simulated test deadlines remain explicit.
 
 proc peerKey(): DownloadPeerKey {.raises.} =
   ## The second responder has its own fresh certificate and exact expected public identity.
@@ -62,6 +65,8 @@ proc advance(dispatcher: var BlockDownloadLoop, servers: var DownloadResponders,
     if dispatcher.stage == target:
       reached = true
       break # The caller inspects the real state before permitting any later dispatcher turn.
+    if dispatcher.stage in [DownloadLoopStage.Preparing, DownloadLoopStage.Cancelling]:
+      discard pauseMicros(1000) # A bounded test turn yields while preserving the host-supplied monotonic clock.
   if not reached:
     stderr.writeLine("Unreached stage " & $int(target) & "; actual " & $int(dispatcher.stage) &
       "; requests " & $servers.requestCount(true)) # Preserve actionable evidence for checked-release failures.
@@ -115,6 +120,65 @@ proc transfer(frame: seq[byte], key: DownloadPeerKey, shutdown, lost, refuse: bo
       assert dispatcher.tick(DownloadLoopTick(2)) == DownloadLoopError.None, "transfer witness 23"
       assert sameStateSnapshot(after, owner.stateSnapshot.value),
           "transfer witness 24" # Terminal turns cannot prepare/adopt again.
+
+proc assertLease(owner: var Services, expected: bool) =
+  ## Observe the mutable borrowed Services after indirect dispatcher calls, without retaining stale caller-side flow facts.
+  assert owner.preparationActive == expected, "managed graph exclusion state"
+  assert owner.rpc.chainPaused == expected, "RPC follows the managed graph lease"
+
+proc preparing(frame: seq[byte], key: DownloadPeerKey, expire, shutdown: bool,
+    lost = false) {.raises.} =
+  ## A real retired stream lends its raw input once; network close polling and timeout cancellation retain ARC exclusion.
+  var owner = default(Services)
+  start(owner)
+  defer: owner.close()
+  let before = owner.stateSnapshot.value
+  var servers = default(DownloadResponders)
+  assert servers.openResponders(expected(owner), frame), "preparing responders"
+  defer: servers.close()
+  var dispatcher = default(BlockDownloadLoop)
+  defer: dispatcher.close() # Joined worker retirement precedes every captured canonical alias.
+  configured(dispatcher, owner, limits(1))
+  assert dispatcher.open(key, servers.port(true)) == DownloadPeerError.None
+  advance(dispatcher, servers, DownloadLoopStage.Preparing)
+  assertLease(owner, true)
+  assert owner.accumulationStage == AccumulationHandoffStage.Idle and not dispatcher.completed
+  if shutdown:
+    dispatcher.close() # No collection or adoption is needed to retire queued/running/Done execution safely.
+    assertLease(owner, false)
+    assert dispatcher.stage == DownloadLoopStage.Closed and not dispatcher.completed
+    assert sameStateSnapshot(before, owner.stateSnapshot.value), "close never adopts private worker output"
+    return
+  if lost:
+    owner.stopPreparation() # Deliberate violation of the exclusively borrowed producer's completion authority.
+    assert dispatcher.tick(DownloadLoopTick(1)) == DownloadLoopError.LostPreparation
+    assert dispatcher.stage == DownloadLoopStage.Failed and not dispatcher.completed
+    dispatcher.close()
+    assert sameStateSnapshot(before, owner.stateSnapshot.value), "lost worker ownership never certifies adoption"
+    return
+  if expire:
+    assert servers.unsolicited(), "send an independent native stream while input is leased"
+    assert not servers.resetObserved, "catalog has not polled/rejected the queued unsolicited stream"
+    assert dispatcher.tick(DownloadLoopTick(100)) == DownloadLoopError.None
+    assert dispatcher.stage == DownloadLoopStage.Cancelling
+    assertLease(owner, true)
+    for turn in 0..<8: assert servers.poll(), "flush actual reset response"
+    assert servers.resetObserved, "dispatcher rejected a real unrelated stream before releasing its worker lease"
+    assert not dispatcher.completed
+    assert dispatcher.tick(DownloadLoopTick(99)) == DownloadLoopError.ClockRegression
+    advance(dispatcher, servers, DownloadLoopStage.Waiting, 100)
+    assertLease(owner, false)
+    assert sameStateSnapshot(before, owner.stateSnapshot.value), "expired worker certificate cannot publish"
+    assert dispatcher.sessionFailure.downloadFailure.error == BlockDownloadError.Cancelled
+    assert dispatcher.tick(DownloadLoopTick(101)) == DownloadLoopError.None
+    assert dispatcher.stage == DownloadLoopStage.Exhausted and not dispatcher.completed
+  else:
+    advance(dispatcher, servers, DownloadLoopStage.Queued)
+    assertLease(owner, false)
+    assert sameStateSnapshot(before, owner.stateSnapshot.value), "collection only queues genuine success"
+    assert dispatcher.tick(DownloadLoopTick(1)) == DownloadLoopError.None
+    assert dispatcher.stage == DownloadLoopStage.Adopted and dispatcher.completed
+    assert not sameStateSnapshot(before, owner.stateSnapshot.value)
 
 proc empty(key: DownloadPeerKey) {.raises.} =
   ## Empty replies retain cooldown and total attempts while keeping the same healthy authenticated endpoint.
@@ -255,6 +319,10 @@ proc main() {.raises.} =
     frame.toOpenArray(4, frame.high)).error == FrameError.None, "main witness 1"
   writeFile("application-download-loop-chain.json", context.text)
   defer: discard posix.unlink("application-download-loop-chain.json")
+  preparing(frame, key, false, false, true)
+  preparing(frame, key, false, true)
+  preparing(frame, key, true, false)
+  preparing(frame, key, false, false)
   transfer(frame, key, true, false, false)
   transfer(frame, key, false, true, false)
   transfer(frame, key, false, false, true)

@@ -89,7 +89,7 @@ proc cycle(text: string) =
     "cycle failed parse"
 
 proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario) {.raises.} =
-  ## A forked responder owns its own TLS engines; the command remains single-threaded in the parent.
+  ## A forked responder owns its TLS engines; the parent command joins its preparation worker before every later fork.
   discard posix.unlink("download-startup-stop")
   var servers = default(DownloadResponders)
   let mode = if scenario == MissingFin: NoFin else: DownloadTransferMode.Healthy

@@ -5,14 +5,14 @@
 ## Keep this owner and its exclusively borrowed Services stable until explicit close retires callbacks.
 
 import ./[block_download_peers, block_download_session, block_download_stream]
-import ../app/[services, handoff, chain, candidate, block_input, block_download, download_schedule]
+import ../app/[services, handoff, chain, candidate, block_input, block_download, download_schedule, preparation_worker]
 import ../codec/[bounded, header]
 import ../chain/genesis
 import ../state/[accumulation_completion, store]
 
 type
   DownloadLoopTick* = distinct uint64 ## Monotonic host milliseconds shared by all dispatcher deadlines.
-  DownloadAttemptTimeout* = distinct uint64 ## Explicit total attempt duration, including handshake and pending native open.
+  DownloadAttemptTimeout* = distinct uint64 ## Total attempt duration includes handshake, native open and execution; cancellation waits for actual retirement.
   DownloadLoopLimits* = object ## Caller supplies every execution, reception, retry and adoption policy independently.
     schedule*: DownloadScheduleLimits
     input*: BlockInputLimits
@@ -21,10 +21,10 @@ type
     stream*: DownloadStreamLimits
     attemptTimeout*: DownloadAttemptTimeout
   DownloadLoopStage* {.pure.} = enum ## Adoption is terminal only after taking a successful canonical handoff result.
-    Uninitialized, Waiting, Receiving, Queued, Adopted, Exhausted, Failed, Closed
+    Uninitialized, Waiting, Receiving, Preparing, Cancelling, Queued, Adopted, Exhausted, Failed, Closed
   DownloadLoopError* {.pure.} = enum ## Ordinary wait/retry/budget completion are stages, while refusals preserve ownership.
     None, Uninitialized, Busy, InvalidPolicy, MissingState, ServicesBusy, ClockRegression,
-    SessionFailure, LostHandoff, Closed
+    SessionFailure, LostHandoff, LostPreparation, Closed
   BlockDownloadLoop* = object ## Fixed-address composite owns native callback targets and one scheduler/session lease.
     catalog: BlockDownloadPeers
     session: BlockDownloadSession
@@ -63,14 +63,16 @@ proc `=destroy`*(dispatcher: BlockDownloadLoop) =
 func stage*(dispatcher: BlockDownloadLoop): DownloadLoopStage =
   ## Inspect progress without exposing native owners or mutable session state.
   dispatcher.status
-func sessionFailure*(dispatcher: BlockDownloadLoop): DownloadSessionFailure =
+func sessionFailure*(dispatcher: BlockDownloadLoop): DownloadSessionFailure {.requires:
+    dispatcher.status notin [DownloadLoopStage.Preparing, DownloadLoopStage.Cancelling].} =
   ## Retain the latest selected admission/reception/preparation refusal for diagnostics, including retries.
   dispatcher.refusal
 func completed*(dispatcher: BlockDownloadLoop): bool =
   ## A retained adoption refusal also counts as an observed result, never as successful adoption.
   dispatcher.hasCompletion
 func adoption*(dispatcher: BlockDownloadLoop): ApplicationChainResult[BlockSnapshot] {.
-    requires: dispatcher.hasCompletion.} =
+    requires: dispatcher.hasCompletion and dispatcher.status notin [DownloadLoopStage.Preparing,
+        DownloadLoopStage.Cancelling].} =
   ## Copy only a real consumed Services result; its own success/failure guards remain authoritative.
   dispatcher.completion
 proc readyPeers*(dispatcher: BlockDownloadLoop): seq[DownloadPeerId] =
@@ -95,8 +97,10 @@ proc configure*(dispatcher: var BlockDownloadLoop, owner: var Services,
     if info.error != HeaderError.None or uint64(info.value.consumed) > remaining:
       return DownloadLoopError.InvalidPolicy # Guard extraction and subtraction before copying any history context.
     remaining -= uint64(info.value.consumed)
+  if owner.preparationActive: return DownloadLoopError.ServicesBusy # No canonical alias may escape another worker lease.
   if owner.stateSnapshot.error != StateStoreError.None: return DownloadLoopError.MissingState
-  if owner.accumulationStage != AccumulationHandoffStage.Idle: return DownloadLoopError.ServicesBusy
+  if not owner.preparationAvailable or owner.accumulationStage !=
+      AccumulationHandoffStage.Idle: return DownloadLoopError.ServicesBusy
   if dispatcher.session.configure(peers, limits.schedule, DownloadScheduleTick(uint64(now))) !=
       DownloadScheduleError.None: return DownloadLoopError.InvalidPolicy
   discard dispatcher.catalog.configure(limits.schedule.peers) # Matching positive <=16 policy was checked above.
@@ -151,13 +155,18 @@ proc retry(dispatcher: var BlockDownloadLoop, now: DownloadLoopTick): DownloadLo
   dispatcher.finish(DownloadAttemptOutcome.Retry, now)
 
 proc tick*(dispatcher: var BlockDownloadLoop, now: DownloadLoopTick): DownloadLoopError =
-  ## One turn polls each endpoint once, performs at most one preparation, and adopts only an earlier queued candidate.
+  ## One turn polls bounded endpoints, submits/collects at most one job and adopts only an earlier queued candidate.
   if dispatcher.status == DownloadLoopStage.Uninitialized: return DownloadLoopError.Uninitialized
   if dispatcher.status == DownloadLoopStage.Closed: return DownloadLoopError.Closed
   if uint64(now) < dispatcher.lastTick: return DownloadLoopError.ClockRegression
   let borrowed = dispatcher.owner
   if borrowed == nil: return DownloadLoopError.Uninitialized
   let owner: ptr Services = borrowed
+  if dispatcher.status in [DownloadLoopStage.Preparing, DownloadLoopStage.Cancelling] and not owner[].preparationActive:
+    dispatcher.status = DownloadLoopStage.Failed
+    return DownloadLoopError.LostPreparation # External take/stop cannot substitute for this producer's completion.
+  if dispatcher.status notin [DownloadLoopStage.Preparing, DownloadLoopStage.Cancelling] and owner[].preparationActive:
+    return DownloadLoopError.ServicesBusy # Never mutate aliases owned by an unexpected external producer.
   if dispatcher.status != DownloadLoopStage.Queued and owner[].accumulationStage !=
       AccumulationHandoffStage.Idle:
     return DownloadLoopError.ServicesBusy # Never process/consume another producer's pending or finished handoff.
@@ -175,6 +184,26 @@ proc tick*(dispatcher: var BlockDownloadLoop, now: DownloadLoopTick): DownloadLo
     return dispatcher.finish(outcome, now) # Actual refusal keeps the bounded retry plan alive.
   if dispatcher.status in [DownloadLoopStage.Adopted, DownloadLoopStage.Exhausted,
       DownloadLoopStage.Failed]: return DownloadLoopError.None # Terminal plans never select or prepare again.
+  if dispatcher.status in [DownloadLoopStage.Preparing, DownloadLoopStage.Cancelling]:
+    let token = dispatcher.current
+    if token == nil:
+      dispatcher.status = DownloadLoopStage.Failed
+      return DownloadLoopError.SessionFailure # Missing scheduler authority cannot authorize worker result consumption.
+    discard dispatcher.catalog.poll() # Retired input streams cannot callback into the leased graph; unrelated endpoint I/O continues.
+    if dispatcher.status == DownloadLoopStage.Preparing and uint64(now) - dispatcher.started >=
+        uint64(dispatcher.limits.attemptTimeout):
+      discard dispatcher.session.cancelPreparation(token, owner[])
+      dispatcher.status = DownloadLoopStage.Cancelling # Even a Done certificate is unwanted once this deadline is observed.
+      return DownloadLoopError.None # Keep lease and input intact until a later retirement turn.
+    if owner[].preparationPhase != PreparationPhase.Done: return DownloadLoopError.None
+    let completed = dispatcher.session.collectPreparation(token, owner[],
+        dispatcher.limits.composition)
+    if completed.error == DownloadSessionError.None:
+      dispatcher.status = DownloadLoopStage.Queued # Queue now; a later Services tick alone can adopt.
+    else:
+      dispatcher.refusal = completed.failure
+      return dispatcher.retry(now) # Collection already ended worker/RPC exclusion before raw/context retirement.
+    return DownloadLoopError.None
   let active = dispatcher.current
   if active != nil and uint64(now) - dispatcher.started >= uint64(dispatcher.limits.attemptTimeout):
     return dispatcher.retry(now) # Includes handshakes/pending opens and forces native retirement at the exact total deadline.
@@ -209,9 +238,9 @@ proc tick*(dispatcher: var BlockDownloadLoop, now: DownloadLoopTick): DownloadLo
   if dispatcher.catalog.busy or dispatcher.session.streamActive: return DownloadLoopError.None
   case dispatcher.session.stage
   of BlockDownloadStage.Ready:
-    let prepared = dispatcher.session.enqueue(token, owner[], dispatcher.limits.composition)
+    let prepared = dispatcher.session.beginPreparation(token, owner[])
     if prepared.error == DownloadSessionError.None:
-      dispatcher.status = DownloadLoopStage.Queued # Canonical state remains unchanged until a later tick.
+      dispatcher.status = DownloadLoopStage.Preparing # The current turn only submits; execution and adoption remain separate.
     else:
       dispatcher.refusal = prepared.failure
       return dispatcher.retry(now) # Preparation failures release private prefixes only after native retirement.
@@ -226,9 +255,14 @@ proc tick*(dispatcher: var BlockDownloadLoop, now: DownloadLoopTick): DownloadLo
   DownloadLoopError.None
 
 proc close*(dispatcher: var BlockDownloadLoop) =
-  ## Retire callbacks first, then cancel/take only this dispatcher's queued handoff before ending the Services borrow.
-  dispatcher.catalog.close()
+  ## Join execution before retiring callbacks/input, then settle only this dispatcher's handoff and end its Services borrow.
   let borrowed = dispatcher.owner
+  if borrowed != nil:
+    let owner: ptr Services = borrowed
+    owner[].stopPreparation() # Join before any native close callback or retained input/context owner can retire.
+    let active = dispatcher.current
+    if active != nil: discard dispatcher.session.retirePreparation(active, owner[])
+  dispatcher.catalog.close()
   if borrowed != nil and dispatcher.status == DownloadLoopStage.Queued:
     let owner: ptr Services = borrowed
     if owner[].accumulationStage == AccumulationHandoffStage.Pending:

@@ -41,7 +41,7 @@ application integration work. See [the handoff contract](../../spec/application-
 `app/download_command.nim` owns stable Services and dispatcher lifetimes for the explicit
 `download` command. `app/download_policy.nim` loads a bounded, complete versioned policy file;
 no gas, stage, retry or network budget is inferred. One pinned loopback peer may supply one
-child, with preparation outside callbacks and success only after actual deferred adoption.
+child, with asynchronous preparation outside callbacks and success only after actual deferred adoption.
 The [startup contract](../../spec/application-download-startup.md) records the command,
 configuration schema and remaining production boundaries.
 
@@ -50,8 +50,11 @@ input lease. Services manages that lease by pausing RPC before submission and gu
 access until collection or joined shutdown. UI and unrelated QUIC work remain available; RPC
 sockets and queues resume afterward. Existing external ARC aliases must remain untouched throughout
 the lease. The worker returns the existing opaque finalized certificate for explicit host adoption.
-The [managed lease contract](../../spec/application-preparation-lease.md) records this exclusion
-boundary; connecting it to the download dispatcher remains integration work.
+The download dispatcher enters Preparing only after native stream retirement, polls endpoints during
+execution, and retains cancelled input until collection or joined close. Successful collection queues
+only a genuine certificate for a later adoption turn. The [worker integration contract](../../spec/application-download-worker.md)
+records deadlines and remaining load/persistence work; the [managed lease](../../spec/application-preparation-lease.md)
+records the exclusion boundary.
 
 `telemetry/observer.nim` translates transport events to the exporter without CLI knowledge.
 Protocol component implementations, the browser program and component tests remain separate
