@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_PVM_REGISTERS",
+  "files": {
+    "pvm-registers.bin": "1abf6f399808dad7ed612200443342717de0e6b75c66eb232ecb4b8c3a2c5d2b"
+  },
+  "target": "pvm-registers.bin"
+}

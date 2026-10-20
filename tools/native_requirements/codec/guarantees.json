@@ -1,6 +1,9 @@
 {
   "defines": [],
   "directory": "codec",
+  "fixtures": [
+    "guarantee_report"
+  ],
   "includes": [],
   "libraries": [],
   "observers": [],

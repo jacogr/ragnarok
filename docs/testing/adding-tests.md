@@ -18,8 +18,15 @@ existing requirements; no central unit/link registration is needed. Keep indepen
 alphabetical and retain ordered link options. If the suite must produce ARC evidence, declare its
 report key in the source header with `# @@Verification={"arc": "example_arc_release"}`. The existing
 ARC helper and fresh-evidence checks remain required. Use a distinct report key such as
-`<suite>_arc_release`; preflight rejects keys that overlap runtime failure families. Fixtures use
-the feature adapters and shared preparation described in [infrastructure](infrastructure.md).
+`<suite>_arc_release`; preflight rejects keys that overlap runtime failure families.
+
+Static fixture dependencies belong in the same per-suite requirements file, for example
+`"fixtures": ["state_report"]`; omit the field when no static input is needed. Keep this list
+alphabetical and unique. Each ID is discovered from a `*.fixture.json` descriptor beside its
+input data under `tests/fixtures/`. A descriptor owns its environment variable, target and exact
+member SHA-256 pins; adding a fixture or consumer requires no runner registration. Generated
+fixtures continue to use the feature adapters and shared preparation described in
+[infrastructure](infrastructure.md).
 
 Compiler rejection sources belong under `tests/native/compile_fail/`, with one source-local header:
 

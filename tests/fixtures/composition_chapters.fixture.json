@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_COMPOSITION_FIXTURE",
+  "files": {
+    "composition-chapters.txt": "3d45577099002c493cb7dc6fa4b3ee2f7ebfa389952a0c4cae3c7c382db7265b"
+  },
+  "target": "composition-chapters.txt"
+}

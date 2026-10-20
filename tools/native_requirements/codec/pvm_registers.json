@@ -1,6 +1,9 @@
 {
   "defines": [],
   "directory": "codec",
+  "fixtures": [
+    "pvm_registers"
+  ],
   "includes": [],
   "libraries": [],
   "observers": [],

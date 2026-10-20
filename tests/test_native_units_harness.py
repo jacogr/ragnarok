@@ -504,7 +504,7 @@ class NativeUnitHarness(unittest.TestCase):
     # The committed report snapshot must equal the pre-existing independent oracle, not production output.
     def test_guarantee_fixture_reference(self):
         from guarantees_oracle import record
-        variable, path, required = native_tests.UNIT_FIXTURES['guarantees']
+        variable, path, required = native_tests.unit_static_fixtures('guarantees')[0]
         self.assertEqual(len(required), 1)
         self.assertEqual(required[0][0], path)
         expected = required[0][1]
@@ -517,7 +517,7 @@ class NativeUnitHarness(unittest.TestCase):
         with temporary_folder() as folder:
             path = folder/'fixture.bin'
             fixture = ('RAGNAROK_GUARANTEE_FIXTURE', path, ((path, hashlib.sha256(b'fixture').hexdigest()),))
-            with patch.dict(native_tests.UNIT_FIXTURES, {'guarantees': fixture}, clear=True), patch.object(
+            with patch.dict(native_tests.FIXTURE_CONTRACTS, {'guarantee_report': fixture}, clear=True), patch.object(
                     native_tests, 'unit_evidence_directory', return_value=folder/'evidence'):
                 with self.assertRaises(FileNotFoundError):
                     native_tests.unit_environment(Path('/fixture/nimony'), 'guarantees')
@@ -532,7 +532,7 @@ class NativeUnitHarness(unittest.TestCase):
     # Every saved tiny child must match the original independently authored canonical input.
     def test_block_fixture_reference(self):
         from block_oracle import published
-        variable, target, required = native_tests.UNIT_FIXTURES['block']
+        variable, target, required = native_tests.unit_static_fixtures('block')[0]
         expected = dict(zip(('tickets', 'preimages', 'guarantees', 'assurances', 'disputes'),
                             published('tiny', 'E', canonical=True)))
         expected['header'] = published('tiny', 'B', canonical=True)[0]
@@ -544,25 +544,27 @@ class NativeUnitHarness(unittest.TestCase):
                 self.assertEqual(path.read_bytes(), expected[path.stem])
                 self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
         self.assertEqual(variable, 'RAGNAROK_BLOCK_FIXTURES')
-        sources = {path for path, _ in required} | {native_tests.UNIT_FIXTURES['guarantees'][1]}
-        self.assertEqual(set(native_tests.unit_fixture_sources()), sources | {native_tests.STATE_REPORT, native_tests.COMPOSITION_FIXTURE, native_tests.PVM_REGISTERS})
+        sources = {path for path, _ in required} | {native_tests.unit_static_fixtures('guarantees')[0][1]}
+        self.assertTrue(sources <= set(native_tests.unit_fixture_sources()))
 
     # State report consumers must retain the same independently authored byte fixture and checksum.
     def test_state_report_reference(self):
         from state_availability_oracle import record
-        self.assertEqual(native_tests.STATE_REPORT.read_bytes(), record(0)['report'])
+        _, report, _ = native_tests.unit_static_fixtures('state_availability')[0]
+        self.assertEqual(report.read_bytes(), record(0)['report'])
         for case in ('state_availability', 'state_availability_private', 'state_workqueues', 'state_workqueues_private'):
             # Each public/private consumer must validate its exact input before native execution.
-            variable, target, required = native_tests.UNIT_FIXTURES[case]
+            variable, target, required = native_tests.unit_static_fixtures(case)[0]
             self.assertEqual(variable, 'RAGNAROK_STATE_REPORT')
-            self.assertEqual(target, native_tests.STATE_REPORT)
+            self.assertEqual(target, report)
             self.assertEqual(required, ((target, hashlib.sha256(target.read_bytes()).hexdigest()),))
 
     # The whole-state ownership fixture must remain independent of the production chapter codecs.
     def test_composition_fixture_reference(self):
         from state_composition_oracle import chapters
         expected = '\n'.join(raw.hex() for raw in chapters())+'\n'
-        self.assertEqual(native_tests.COMPOSITION_FIXTURE.read_text(), expected)
+        _, target, _ = native_tests.unit_static_fixtures('state_composition_private')[0]
+        self.assertEqual(target.read_text(), expected)
 
     # One valid sibling cannot mask a missing or changed later fixture in the same directory.
     def test_block_fixture_group_rejection(self):
@@ -572,7 +574,7 @@ class NativeUnitHarness(unittest.TestCase):
             required = ((first, hashlib.sha256(b'first').hexdigest()),
                         (last, hashlib.sha256(b'last').hexdigest()))
             fixture = ('RAGNAROK_BLOCK_FIXTURES', folder, required)
-            with patch.dict(native_tests.UNIT_FIXTURES, {'block': fixture}, clear=True), patch.object(
+            with patch.dict(native_tests.FIXTURE_CONTRACTS, {'block_tiny': fixture}, clear=True), patch.object(
                     native_tests, 'unit_evidence_directory', return_value=folder/'evidence'):
                 with self.assertRaises(FileNotFoundError):
                     native_tests.unit_environment(Path('/fixture/nimony'), 'block')

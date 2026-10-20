@@ -38,7 +38,9 @@ class NativeRequirementsHarness(unittest.TestCase):
                    ('directory', 'codec'), ('directory', 'crypto'), ('libraries', []), ('libraries', 'observer'),
                    ('includes', []), ('includes', ['crypto', 'crypto']),
                    ('observers', ['injected']), ('defines', ['unchecked']),
-                   ('observers', ['verify'])]
+                   ('observers', ['verify']), ('fixtures', 'state_report'),
+                   ('fixtures', ['missing']), ('fixtures', ['state_report', 'state_report']),
+                   ('fixtures', [None]), ('fixtures', [[]])]
         for field, value in changes:
             # The observer-only profile cannot use Rust call-site renaming without its library.
             records = deepcopy(NATIVE_REQUIREMENTS)

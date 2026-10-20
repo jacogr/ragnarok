@@ -1,5 +1,11 @@
 # Native unit fixtures
 
+Static native inputs have a neighboring `*.fixture.json` descriptor declaring their environment
+variable, target and exact member SHA-256 pins. Suite requirements reference the descriptor ID
+through `"fixtures": ["state_report"]`; the runner discovers contracts without a central fixture
+or consumer registry. See [test registration](../../docs/testing/adding-tests.md). Member paths
+are relative to the descriptor directory, and every listed file is required and checked before use.
+
 `guarantee-report.bin` is the exact 393-byte report previously generated for each guarantee
 selftest by `guarantees_oracle.record(0)['report']`. It is encoded by the independent Python
 report oracle, using its minimal report derived from the pinned full-profile published fixture.

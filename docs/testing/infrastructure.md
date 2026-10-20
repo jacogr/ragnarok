@@ -29,8 +29,8 @@ a generic compiler error for its intended rejection. Fixture sources and their l
 in guard and runtime provenance.
 
 `tools/native_requirements/<source-family>/<suite>.json` declares one suite's source directory,
-ordered libraries, headers, observer call-site renames, compiler defines and fresh-fixture
-requirement.
+ordered libraries, headers, observer call-site renames, compiler defines, fresh-fixture
+requirement and optional static `fixtures` dependencies.
 Source-family directories match `tests/unit/`; suite filenames match the discovered test identity.
 The loader discovers paths alphabetically, rejects duplicate suite identities, misplaced files,
 unordered independent fields and unknown settings, and requires exact discovered-source coverage
@@ -38,6 +38,15 @@ and source-family ownership. Library/include/observer arrays preserve their expl
 last library supplies the primary profile. Non-codec suites retain isolated execution, including
 those without native libraries. Codec directory batches retain their dependency-free profile.
 Metadata describes discovered suites; it does not select which source files execute.
+
+Static fixture contracts are discovered from `tests/fixtures/**/*.fixture.json` by
+`tools/native_fixture_contracts.py`. The descriptor filename supplies its ID; the file declares
+an environment variable, descriptor-relative target and explicit file-to-SHA-256 mapping.
+Required bytes remain in provenance even if deleted. Duplicate IDs/keys, unknown dependencies,
+invalid pins, escaping paths and conflicting per-suite environment assignments fail preflight.
+The runner resolves each suite's own dependencies and checks every pinned member before use;
+there is no central fixture-definition or consumer list. Generated-fixture providers retain
+their existing preparation and fresh-input requirements.
 
 Serial native suites reuse compiler intermediates only within the same source directory and
 exact ordered compiler/linker profile. The cache identity also includes native library and header

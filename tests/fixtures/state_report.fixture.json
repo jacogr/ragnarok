@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_STATE_REPORT",
+  "files": {
+    "state-report.bin": "3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371"
+  },
+  "target": "state-report.bin"
+}

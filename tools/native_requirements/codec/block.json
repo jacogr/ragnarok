@@ -1,6 +1,9 @@
 {
   "defines": [],
   "directory": "codec",
+  "fixtures": [
+    "block_tiny"
+  ],
   "includes": [],
   "libraries": [],
   "observers": [],
