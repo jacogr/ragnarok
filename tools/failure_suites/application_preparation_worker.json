@@ -1,0 +1,45 @@
+{
+  "build_name": "application-preparation-worker-results",
+  "cases": [
+    {
+      "arguments": [
+        "admission"
+      ],
+      "description": "Worker contract admission",
+      "diagnostic": "admission.status == None",
+      "identity": {
+        "reason": "admission"
+      },
+      "name": "application-preparation-worker-admission"
+    },
+    {
+      "arguments": [
+        "completion"
+      ],
+      "description": "Worker contract completion",
+      "diagnostic": "completion.status == Completed",
+      "identity": {
+        "reason": "completion"
+      },
+      "name": "application-preparation-worker-completion"
+    },
+    {
+      "arguments": [
+        "unclosed"
+      ],
+      "description": "Worker contract unclosed",
+      "diagnostic": "not worker.started",
+      "identity": {
+        "reason": "unclosed"
+      },
+      "name": "application-preparation-worker-unclosed"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_preparation_worker_results.nim"
+}

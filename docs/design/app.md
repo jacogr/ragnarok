@@ -45,6 +45,12 @@ child, with preparation outside callbacks and success only after actual deferred
 The [startup contract](../../spec/application-download-startup.md) records the command,
 configuration schema and remaining production boundaries.
 
+`app/preparation_worker.nim` provides one reusable native execution thread and one outstanding
+input lease. Plain ARC requires every alias of the captured chain/input graph to remain untouched
+until collection or joined shutdown. It returns the existing opaque finalized certificate for host
+adoption. Concurrent Services/RPC dispatcher integration still requires ownership isolation; see
+the [exclusive worker contract](../../spec/application-preparation-worker.md).
+
 `telemetry/observer.nim` translates transport events to the exporter without CLI knowledge.
 Protocol component implementations, the browser program and component tests remain separate
 modules. Process-level networking/collector checks launch the application; there is no legacy
