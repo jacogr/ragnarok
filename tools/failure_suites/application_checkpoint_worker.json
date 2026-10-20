@@ -1,0 +1,51 @@
+{
+  "build_name": "application-checkpoint-worker-results",
+  "cases": [
+    {
+      "arguments": [
+        "unclosed"
+      ],
+      "description": "Application checkpoint worker unclosed",
+      "diagnostic": "not worker.started",
+      "identity": {
+        "reason": "unclosed"
+      },
+      "name": "application-checkpoint-worker-unclosed"
+    },
+    {
+      "arguments": [
+        "moved"
+      ],
+      "description": "Application checkpoint worker moved",
+      "diagnostic": "not worker.started",
+      "identity": {
+        "reason": "moved"
+      },
+      "name": "application-checkpoint-worker-moved"
+    },
+    {
+      "arguments": [
+        "admission"
+      ],
+      "description": "Application checkpoint worker admission",
+      "diagnostic": "admission.status == None",
+      "identity": {
+        "reason": "admission"
+      },
+      "name": "application-checkpoint-worker-admission"
+    },
+    {
+      "arguments": [
+        "completion"
+      ],
+      "description": "Application checkpoint worker completion",
+      "diagnostic": "completion.status == Completed",
+      "identity": {
+        "reason": "completion"
+      },
+      "name": "application-checkpoint-worker-completion"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/application_checkpoint_worker_results.nim"
+}
