@@ -28,9 +28,10 @@ refusals, optimized result guards, compiler privacy/domain guards and 1000-cycle
 This owner authenticates extrinsic commitments only. It does not authenticate
 imports, trace, root freshness or package/root correspondence, and it cannot
 retroactively certify earlier refinement execution. Existing execution entry
-points retain their documented caller obligations. Next: bind authenticated
-imports to package manifests, then execute refinement using the original input
-owners, assemble auditable bundles and add erasure coding. State continues to
+points retain their documented caller obligations. Package-bound import ownership
+is specified in [pvm-import-inputs.md](pvm-import-inputs.md). Next: execute refinement
+using the original input owners and explicit root trust policy, assemble auditable
+bundles and add erasure coding. State continues to
 own block composition/publication. M1 framing is complete; full state
 serialization and whole-block parity remain open.
 
