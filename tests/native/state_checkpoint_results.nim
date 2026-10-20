@@ -5,10 +5,17 @@
 
 import std/[cmdline, assertions]
 import ../../src/state/[checkpoint, store]
-import ../../src/codec/bounded
+import ../../src/codec/[bounded, state_trie]
 
 let mode = paramStr(1)
-if mode == "decode-default":
+if mode == "root-refused":
+  let snapshot = newStateStore([], default(StateStoreLimits)).value.snapshot.value
+  let bytes = encodeFullCheckpoint(snapshot, ByteLimit(100)).value
+  var root = default(array[32, byte])
+  root[0] = 1
+  discard decodeFullCheckpoint(bytes, StateRoot(root), default(StateStoreLimits), ByteLimit(
+      100)).value # A valid foreign complete root has no payload authority.
+elif mode == "decode-default":
   let outcome = default(CheckpointResult[StateStore])
   discard outcome.value # Generic restored stores have the same guarded absence contract.
 elif mode == "decode-refused":

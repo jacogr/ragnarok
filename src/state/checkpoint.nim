@@ -156,3 +156,16 @@ proc decodeFullCheckpoint*(input: openArray[byte], limits: StateStoreLimits,
     if root[index] != input[CheckpointMagic.len + 8 + index]:
       return CheckpointResult[StateStore](status: CheckpointError.RootMismatch) # Only a fully recomputed complete-map root authorizes publication.
   CheckpointResult[StateStore](status: CheckpointError.None, completed: made.value)
+
+proc decodeFullCheckpoint*(input: openArray[byte], expected: StateRoot,
+    limits: StateStoreLimits, limit: ByteLimit): CheckpointResult[StateStore] =
+  ## Restore only the complete root independently trusted by the caller, never authority from this envelope alone.
+  let decoded = decodeFullCheckpoint(input, limits, limit)
+  if decoded.error != CheckpointError.None:
+    return decoded # Preserve exact structural, resource and internal-integrity refusals.
+  let actual = array[32, byte](decoded.value.snapshot.value.commitment.root)
+  let wanted = array[32, byte](expected)
+  for index in 0..<32:
+    if actual[index] != wanted[index]:
+      return CheckpointResult[StateStore](status: CheckpointError.RootMismatch) # An internally valid different map has no restoration authority.
+  decoded

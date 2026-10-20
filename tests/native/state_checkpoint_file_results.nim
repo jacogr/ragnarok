@@ -6,7 +6,7 @@
 import std/[cmdline, assertions, syncio]
 import std/posix/posix
 import ../../src/state/[checkpoint_file, checkpoint, store]
-import ../../src/codec/bounded
+import ../../src/codec/[bounded, state_trie]
 
 proc main() {.raises.} =
   ## Real files feed the same public loader used at startup; cleanup runs before exit on every path.
@@ -28,11 +28,18 @@ proc main() {.raises.} =
   else:
     let snapshot = newStateStore([], default(StateStoreLimits)).value.snapshot.value
     writeFile(path, encodeFullCheckpoint(snapshot, ByteLimit(100)).value)
-    if mode == "save-refused":
+    if mode == "root-refused":
+      var root = default(array[32, byte])
+      root[0] = 1
+      discard loadFullCheckpoint(path, StateRoot(root), default(StateStoreLimits), ByteLimit(
+          100)).value # An intact unauthorized file cannot expose a restored store.
+    elif mode == "save-refused":
       discard saveFullCheckpoint(path, snapshot, ByteLimit(
           0)).value # Encoding refusal cannot expose a published snapshot.
     elif mode == "positive":
       assert sameStateSnapshot(saveFullCheckpoint(path, snapshot, ByteLimit(100)).value, snapshot)
+      assert loadFullCheckpoint(path, snapshot.commitment.root, default(StateStoreLimits),
+          ByteLimit(100)).error == CheckpointFileError.None
       assert loadFullCheckpoint(path, default(StateStoreLimits), ByteLimit(
           100)).value.snapshot.error == StateStoreError.None
       writeFile(path, "invalid")

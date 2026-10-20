@@ -44,6 +44,17 @@
         "reason": "decode-refused"
       },
       "name": "state-checkpoint-decode-refused"
+    },
+    {
+      "arguments": [
+        "root-refused"
+      ],
+      "description": "Trusted checkpoint extraction refusal",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "root-refused"
+      },
+      "name": "state-checkpoint-root-refused"
     }
   ],
   "crypto_library": "crypto",

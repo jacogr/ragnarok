@@ -87,3 +87,19 @@ preflight rollback, missing parents, a real post-write rename refusal, retained
 owners and 1,000 file-plus-directory-sync publication ARC cycles. The small libc
 bindings compile against standard headers; compiler/runtime/dependency pins stay
 unchanged. System-call failure injection and recovery policy follow in later layers.
+
+## Independently trusted restoration roots
+
+The decode and file-load overloads accepting `StateRoot` require the recomputed
+complete root to match an independently trusted caller commitment. A different
+map with a perfectly valid internal envelope/root still returns `RootMismatch`
+without exposing its store. Ordinary structural/resource/I/O refusals keep their
+original reason. Existing overloads remain useful for internal integrity tooling;
+they do not authenticate a state source. The trusted root must not be derived
+from the same untrusted checkpoint. No assumption is made that a block header's
+parent-state-root is its own post-state root. Chain-head trust and canonical
+recovery require their own application binding.
+
+Native tests restore matching and empty roots, reject intact alternate maps,
+preserve failed-file/format/limit reasons, retain earlier restored owners across
+file replacement, and release 1,000 accepted/unauthorized map pairs under ARC.
