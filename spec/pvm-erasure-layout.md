@@ -32,6 +32,8 @@ contiguous chunk reconstruction/padding with actual executed bundles, exact budg
 invalid/default sources and indices, independent source/copy lifetimes, no hashing,
 optimized result guards, compiler privacy/nominal rejection and fresh ARC release.
 
+The scalar word transform continues in [pvm-erasure-words.md](pvm-erasure-words.md).
+
 Next: GF(2^16) Cantor-basis parity encoding and independent parity/recovery witnesses,
 then source-bound export/page erasure chunks and availability-root assembly. No
 parity, recovery, availability certificate or active-set equality is claimed here.
