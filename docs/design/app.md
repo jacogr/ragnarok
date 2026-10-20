@@ -33,7 +33,10 @@ canonical ownership on close/restart. Both executable peer shapes select this pa
 validated state options. `app/handoff.nim` retains one finalized candidate or one unacknowledged
 adoption outcome; both peer loops attempt at most one candidate per service tick before RPC/UI
 work. Producers acknowledge completion explicitly, and shutdown retires either alternative.
-Validated acquisition and execution scheduling remain application integration work. See [the handoff contract](../../spec/application-chain.md).
+`app/candidate.nim` prepares from an owned block through existing admission and PVM stages,
+using the retained head's parent/map/parameters and explicit stage policies, then queues only
+complete finalized success. Network acquisition and asynchronous execution scheduling remain
+application integration work. See [the handoff contract](../../spec/application-chain.md).
 
 `telemetry/observer.nim` translates transport events to the exporter without CLI knowledge.
 Protocol component implementations, the browser program and component tests remain separate
