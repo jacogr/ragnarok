@@ -47,6 +47,10 @@ stable unless architectural boundaries change.
 
 ## Writing and verification
 
+Use the [focused execution rules](docs/agent-workflow.md#focused-execution) when planning
+implementation work. For unfamiliar pinned APIs, consult the short
+[Nimony compatibility reference](docs/nimony-compatibility.md).
+
 - Document every type/function and every control-flow block/alternative, including tests/tooling.
   Explain purpose, checks, errors and ownership for the maintainer learning Nim.
 - Project-owned source/build files start with `Copyright (c) 2026 Ragnarök contributors` and

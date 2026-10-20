@@ -3,6 +3,24 @@
 Keep routine work small: inspect the diff, run affected checks, and return concise evidence.
 Protocol, ownership and result contracts in `AGENTS.md` remain mandatory.
 
+## Focused execution
+
+- Before integrating an unfamiliar compiler or stdlib API, check the pinned implementation and
+  compile a minimal example when support is uncertain. Use Make to provision the pinned tools;
+  keep temporary probes and logs under ignored `build/`, using the affected build's compiler flags.
+  Consult [Nimony compatibility](nimony-compatibility.md) for previously observed differences.
+- Search named production modules first with `rg`; exclude `vendor/` and `build/` unless investigating
+  those trees. Read relevant sections and batch independent reads. Expand only when evidence points
+  elsewhere; load skills and supporting references only when their instructions apply.
+- Prefer small patches with inspectable diffs. Use a transformation script when its scope is clear
+  and verify every transformed pattern before compilation.
+- Resolve compiler/API failures with the smallest relevant probe or check before rerunning a large
+  suite. Finish with the affected Make suites and consumer checks; a probe does not replace them.
+- Reuse a passing result while its covered source, dependencies and build configuration remain
+  unchanged. Explain why a new change or failure requires broader verification.
+- Keep a compact working record of scope, decisions, modified files, passed checks and unresolved
+  failures. Show concise verdicts and actionable error excerpts; retain full logs and exit status.
+
 ## Resume existing work
 
 Before broad source exploration, inspect the current branch, working-tree changes, recent commits,
