@@ -1,0 +1,132 @@
+{
+  "source": "tests/native/pvm_computed_guarantors.nim",
+  "build_name": "pvm-computed-guarantors",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-guarantors-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantors default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-guarantors-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantors source"
+    },
+    {
+      "identity": {
+        "origin": "config"
+      },
+      "arguments": [
+        "config"
+      ],
+      "name": "pvm-computed-guarantors-config",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantors config"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-computed-guarantors-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantors limit"
+    },
+    {
+      "identity": {
+        "origin": "slot"
+      },
+      "arguments": [
+        "slot"
+      ],
+      "name": "pvm-computed-guarantors-slot",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantors slot"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-computed-guarantors-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantors index"
+    },
+    {
+      "identity": {
+        "origin": "core"
+      },
+      "arguments": [
+        "core"
+      ],
+      "name": "pvm-computed-guarantors-core",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantors core"
+    },
+    {
+      "identity": {
+        "origin": "excluded"
+      },
+      "arguments": [
+        "excluded"
+      ],
+      "name": "pvm-computed-guarantors-excluded",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantors excluded"
+    },
+    {
+      "identity": {
+        "origin": "backend"
+      },
+      "arguments": [
+        "backend"
+      ],
+      "name": "pvm-computed-guarantors-backend",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantors backend"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-guarantors-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantors owner"
+    },
+    {
+      "identity": {
+        "origin": "query"
+      },
+      "arguments": [
+        "query"
+      ],
+      "name": "pvm-computed-guarantors-query",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed guarantors query"
+    }
+  ]
+}

@@ -10,7 +10,7 @@ import ../../src/state/[computed_transition, computed_profile, computed_lookup, 
   erasure_layout, erasure_words, auditable_bundle, extrinsic_inputs, import_inputs, import_justification]
 import ../../src/chain/[genesis, parameters]
 import ../../src/codec/[assurances, bounded, header, block_codec, work_package, work_report, composite,
-  state_safrole, state_layout, state_trie, state_availability, state_authorization]
+  state_safrole, state_layout, state_trie, state_availability, state_authorization, state_disputes]
 import ../../src/crypto/primitives
 import ../../src/bandersnatch/bandersnatch
 import ./[pvm_computed_transition, report_admission_context, pvm_input_refinement,
@@ -32,7 +32,8 @@ proc rosterLinks(execution: InputRefinement, shards: ErasureShards): ComputedRep
   let report = prepareComputedReport(available, ByteLimit(100000)).value
   let transcript = prepareComputedGuarantee(report, ByteLimit(100000)).value
   prepareComputedLinks(transcript, [], ElementLimit(0)).value
-proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16): ComputedRosterFixture =
+proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 65535'u16,
+    target = 0'u32, offender = false): ComputedRosterFixture =
   ## Re-author a three-core complete signed prefix; optional parent9 -> posterior6 is a real epoch transition.
   let base = transitionFixture(epoch = shrink)
   var cfg = transitionConfig()
@@ -81,6 +82,14 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16): ComputedRoste
       records[index].ed25519 = StateEdKey(array[32, byte](publicKey(key).value))
     let entry = validatorEntry(ValidatorChapter.Active, records, cfg.disputes.rosters).value
     writes.add(StateWrite(kind: StateWriteKind.Put, key: entry.key, value: entry.value))
+  if offender:
+    # An earlier block's real excluded identity enters C5 before signing; this block has no new offender marker.
+    var seed = default(array[32, byte])
+    seed[0] = 16
+    let excluded = importSeed(seed).value
+    let entry = disputeStateEntry(DisputeState(offenders: @[OffenderKey(array[32, byte](publicKey(
+        excluded).value))]), cfg.disputes.state).value
+    writes.add(StateWrite(kind: StateWriteKind.Put, key: entry.key, value: entry.value))
   assert original.apply(writes).error == StateStoreError.None, "original three-core map before signing"
   let snapshot = original.snapshot.value
   let root = array[32, byte](snapshot.commitment.root)
@@ -88,6 +97,9 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16): ComputedRoste
   var wire = newSeq[byte](blockInfo(base.context.candidate).value.consumed)
   assert encodeOwnedBlock(base.context.candidate, wire).error == FrameError.None
   for index in 0..<32: wire[32+index] = root[index] # Pinned header E32 parent precedes E32 prior-state root.
+  if target != 0:
+    # Change the authored E4 child slot before seal generation; caller selects matching existing marker shape.
+    for index in 0..<4: wire[96+index] = byte((target shr (8*index)) and 255)
   var scalar = default(array[32, byte])
   scalar[0] = 1
   let key = importScalar(scalar).value
@@ -106,6 +118,8 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16): ComputedRoste
   fixture.state = snapshot
   var params = fixture.parameters.encodeParameters
   params[24] = 3 # All original computation and configuration now use three configured cores.
+  params[84] = byte(rotation and 255)
+  params[85] = byte(rotation shr 8) # Original rotation control precedes computation and configured capture; default preserves prior fixture.
   fixture.parameters = decodeParameters(params).value
   let info = fixture.package.workPackageInfo.value
   let item = fixture.package.workItemAt(0).value.workItemInfo.value
