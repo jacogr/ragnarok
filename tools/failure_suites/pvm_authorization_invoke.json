@@ -1,0 +1,184 @@
+{
+  "source": "tests/native/pvm_authorization_invoke.nim",
+  "build_name": "pvm-authorization-invoke",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-authorization-invoke-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorization invoke default"
+    },
+    {
+      "identity": {
+        "origin": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "pvm-authorization-invoke-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorization invoke refused"
+    },
+    {
+      "identity": {
+        "origin": "lookup"
+      },
+      "arguments": [
+        "lookup"
+      ],
+      "name": "pvm-authorization-invoke-lookup",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorization invoke lookup"
+    },
+    {
+      "identity": {
+        "origin": "initialization"
+      },
+      "arguments": [
+        "initialization"
+      ],
+      "name": "pvm-authorization-invoke-initialization",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorization invoke initialization"
+    },
+    {
+      "identity": {
+        "origin": "fetch"
+      },
+      "arguments": [
+        "fetch"
+      ],
+      "name": "pvm-authorization-invoke-fetch",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorization invoke fetch"
+    },
+    {
+      "identity": {
+        "origin": "host"
+      },
+      "arguments": [
+        "host"
+      ],
+      "name": "pvm-authorization-invoke-host",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorization invoke host"
+    },
+    {
+      "identity": {
+        "origin": "engine"
+      },
+      "arguments": [
+        "engine"
+      ],
+      "name": "pvm-authorization-invoke-engine",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorization invoke engine"
+    },
+    {
+      "identity": {
+        "origin": "success-lookup"
+      },
+      "arguments": [
+        "success-lookup"
+      ],
+      "name": "pvm-authorization-invoke-success-lookup",
+      "diagnostic": "outcome.status == LookupFailure",
+      "description": "Authorization invoke success-lookup"
+    },
+    {
+      "identity": {
+        "origin": "success-initialization"
+      },
+      "arguments": [
+        "success-initialization"
+      ],
+      "name": "pvm-authorization-invoke-success-initialization",
+      "diagnostic": "outcome.status == InitializationFailure",
+      "description": "Authorization invoke success-initialization"
+    },
+    {
+      "identity": {
+        "origin": "success-fetch"
+      },
+      "arguments": [
+        "success-fetch"
+      ],
+      "name": "pvm-authorization-invoke-success-fetch",
+      "diagnostic": "outcome.status == FetchFailure",
+      "description": "Authorization invoke success-fetch"
+    },
+    {
+      "identity": {
+        "origin": "success-host"
+      },
+      "arguments": [
+        "success-host"
+      ],
+      "name": "pvm-authorization-invoke-success-host",
+      "diagnostic": "outcome.status == HostFailure",
+      "description": "Authorization invoke success-host"
+    },
+    {
+      "identity": {
+        "origin": "success-engine"
+      },
+      "arguments": [
+        "success-engine"
+      ],
+      "name": "pvm-authorization-invoke-success-engine",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Authorization invoke success-engine"
+    },
+    {
+      "identity": {
+        "origin": "wrong-host"
+      },
+      "arguments": [
+        "wrong-host"
+      ],
+      "name": "pvm-authorization-invoke-wrong-host",
+      "diagnostic": "outcome.status == HostFailure",
+      "description": "Authorization invoke wrong-host"
+    },
+    {
+      "identity": {
+        "origin": "wrong-engine"
+      },
+      "arguments": [
+        "wrong-engine"
+      ],
+      "name": "pvm-authorization-invoke-wrong-engine",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Authorization invoke wrong-engine"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-authorization-invoke-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorization invoke owner"
+    },
+    {
+      "identity": {
+        "origin": "trace"
+      },
+      "arguments": [
+        "trace"
+      ],
+      "name": "pvm-authorization-invoke-trace",
+      "diagnostic": "outcome.status == None",
+      "description": "Authorization invoke trace"
+    }
+  ]
+}
