@@ -36,10 +36,10 @@ ARC. Optimized failed-result guards, compiler privacy/domain rejection, selected
 native suite, inventory/provenance tests and pinned formatting.
 
 Package-bound extrinsic authentication is now specified in
-[pvm-extrinsic-inputs.md](pvm-extrinsic-inputs.md). Next: package-bound authenticated
-import input ownership, execution against those owned bytes, auditable bundle
-assembly and erasure coding. State
-retains block composition/publication. M1 framing is complete; full state
+[pvm-extrinsic-inputs.md](pvm-extrinsic-inputs.md), with package-bound import ownership
+in [pvm-import-inputs.md](pvm-import-inputs.md). Next: execution against those
+original owned bytes and explicit root trust policy, auditable bundle assembly and
+erasure coding. State retains block composition/publication. M1 framing is complete; full state
 serialization remains open.
 
 Local evidence: checked optimized macOS `pvm_import_justification` passes all

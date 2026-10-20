@@ -1,0 +1,96 @@
+{
+  "source": "tests/native/pvm_import_inputs.nim",
+  "build_name": "pvm-import-inputs",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-import-inputs-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Import inputs default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-import-inputs-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Import inputs source"
+    },
+    {
+      "identity": {
+        "origin": "import"
+      },
+      "arguments": [
+        "import"
+      ],
+      "name": "pvm-import-inputs-import",
+      "diagnostic": "outcome.status == None",
+      "description": "Import inputs import"
+    },
+    {
+      "identity": {
+        "origin": "root"
+      },
+      "arguments": [
+        "root"
+      ],
+      "name": "pvm-import-inputs-root",
+      "diagnostic": "outcome.status == None",
+      "description": "Import inputs root"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-import-inputs-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Import inputs limit"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-import-inputs-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Import inputs owner"
+    },
+    {
+      "identity": {
+        "origin": "lookup"
+      },
+      "arguments": [
+        "lookup"
+      ],
+      "name": "pvm-import-inputs-lookup",
+      "diagnostic": "outcome.status == None",
+      "description": "Import inputs lookup"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-import-inputs-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Import inputs index"
+    }
+  ]
+}
