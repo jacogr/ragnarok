@@ -22,7 +22,7 @@ from verification_inventory import UNIT_SOURCES, UNIT_SUITES, ARC_SUITES
 from native_requirements import NATIVE_REQUIREMENTS, UNIT_LINKS
 from native_fixture_contracts import FIXTURE_CONTRACTS
 # Keep the runtime-fixture helper available to existing launcher consumers.
-from native_fixtures import unit_runtime_fixtures
+from native_fixtures import PROVIDERS, unit_runtime_fixtures
 UNIT_ROOT = ROOT/'tests/unit/codec'
 
 
@@ -302,16 +302,7 @@ def main():
         'crypto_native': 'preparation',
         'bandersnatch_native': 'bandersnatch-preparation',
         'quic_native': 'quic-preparation',
-        'pvm_gas_fixture': 'pvm-gas-preparation',
-        'pvm_step_fixture': 'pvm-step-preparation',
-        'store_replay_fixture': 'store-preparation',
-        'authorization_stf_fixture': 'authorization-preparation',
-        'history_stf_fixture': 'history-preparation',
-        'signing_domain_fixture': 'signing-preparation',
-        'entropy_stf_fixture': 'entropy-preparation',
-        'ticket_stf_fixture': 'ticket-preparation',
-        'sealer_stf_fixture': 'sealer-preparation',
-        'validator_stf_fixture': 'validator-preparation',
+        **PROVIDERS.evidence_files(),
     }
     if arguments.suite is not None:
         # Selection is validated by argparse and may own fresh evidence without overwriting sibling observations.

@@ -48,6 +48,21 @@ The runner resolves each suite's own dependencies and checks every pinned member
 there is no central fixture-definition or consumer list. Generated-fixture providers retain
 their existing preparation and fresh-input requirements.
 
+Generated consumers declare a `provider` and optional `variant` in their existing requirements.
+`tools/native_fixture_providers.py` registers callables at their definitions in
+`tools/native_fixtures.py`. IDs derive from `unit_<id>_fixture`; raw functions return semantic
+variant contracts rather than lists of consuming suites. Preflight rejects unknown providers,
+unsupported variants and inconsistent `prepared` flags. Runtime binding derives the consumer map
+from those validated requirements.
+
+Provider metadata owns execution groups and unique numeric ranks, required certificate/CE inputs,
+and top-level evidence keys/filenames. Derived plans preserve root and nested execution order;
+the sealer aggregate retains its schedule fields and reverse-nested later evidence. Completed
+root stages publish evidence immediately, with the historical validator write explicitly deferred.
+The launcher derives generated-stage filenames from the same declarations. Native-library stages
+retain their three established filenames. Missing manifests, duplicate consumers, bad variant
+results and missing resources fail instead of reusing stale inputs.
+
 Serial native suites reuse compiler intermediates only within the same source directory and
 exact ordered compiler/linker profile. The cache identity also includes native library and header
 contents and the compiler installation. Observer renames and feature defines therefore remain

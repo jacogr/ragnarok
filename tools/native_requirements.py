@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 from verification_inventory import UNIT_SOURCES, UNIT_SUITES, unique_object
 from native_fixture_contracts import FIXTURE_CONTRACTS
+from native_fixtures import PROVIDERS
 
 
 # Require complete, typed records so misspelled fields cannot silently weaken a native profile.
@@ -27,7 +28,7 @@ def validate_requirements(records):
     }
     for name, record in records.items():
         # Every suite explicitly declares its source family, linking and fresh-fixture requirements.
-        if not isinstance(record, dict) or set(record)-{'fixtures'} != fields:
+        if not isinstance(record, dict) or set(record)-{'fixtures', 'provider', 'variant'} != fields:
             raise ValueError('Invalid native requirement fields: '+name)
         if record['directory'] not in ('codec', 'state', 'crypto', 'quic') or type(record['prepared']) is not bool:
             raise ValueError('Invalid native source or fixture requirement: '+name)
@@ -39,6 +40,16 @@ def validate_requirements(records):
             values = record[field]
             if not isinstance(values, list) or any(not isinstance(value, str) or value not in choices for value in values) or len(values) != len(set(values)):
                 raise ValueError('Invalid native '+field+': '+name)
+        provider = record.get('provider')
+        variant = record.get('variant', 'default')
+        if record['prepared']:
+            # Fresh inputs require one declared provider and a supported semantic variant before setup.
+            if (not isinstance(provider, str) or provider not in PROVIDERS.providers
+                    or not isinstance(variant, str)
+                    or variant not in PROVIDERS.providers[provider].variants):
+                raise ValueError('Invalid native fixture provider: '+name)
+        elif 'provider' in record or 'variant' in record:
+            raise ValueError('Unexpected native fixture provider: '+name)
         fixtures = record.get('fixtures', [])
         if (not isinstance(fixtures, list)
                 or any(not isinstance(value, str) or value not in FIXTURE_CONTRACTS for value in fixtures)

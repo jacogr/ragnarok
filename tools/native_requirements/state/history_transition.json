@@ -8,5 +8,6 @@
     "crypto"
   ],
   "observers": [],
-  "prepared": true
+  "prepared": true,
+  "provider": "history"
 }

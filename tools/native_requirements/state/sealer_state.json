@@ -15,5 +15,6 @@
     "setup_free",
     "ring_verify"
   ],
-  "prepared": true
+  "prepared": true,
+  "provider": "schedule"
 }

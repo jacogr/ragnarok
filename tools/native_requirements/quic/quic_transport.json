@@ -8,5 +8,6 @@
     "quic"
   ],
   "observers": [],
-  "prepared": true
+  "prepared": true,
+  "provider": "transport"
 }

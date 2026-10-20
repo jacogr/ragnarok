@@ -10,5 +10,6 @@
     "observer"
   ],
   "observers": [],
-  "prepared": true
+  "prepared": true,
+  "provider": "integration"
 }

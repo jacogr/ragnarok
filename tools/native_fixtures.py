@@ -4,59 +4,67 @@
 """Feature-owned native fixture preparation; independent oracles retain their byte contracts.
 
 Exposes unit_*_fixture adapters that return native-suite environment manifests and hashed
-evidence, plus unit_sealer_fixture aggregation and unit_runtime_fixtures for QUIC transport.
+evidence. PROVIDERS declarations own execution order, input resources and report metadata;
+unit_sealer_fixture and unit_runtime_fixtures retain aggregate preparation APIs.
 """
 import sys
 import hashlib
 from setup_nimony import ROOT
+from native_fixture_providers import PROVIDERS
 
 
 # Prepare independent schedule inputs and expose their hashes to the consuming native suites.
+@PROVIDERS.fixture(group='sealer', order=10)
 def unit_schedule_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from sealer_schedule_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_SEALER_SCHEDULE', path, ((path, evidence['fixture_sha256']),))
-    return {'sealer_schedule': fixture, 'sealer_state': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent markers inputs and expose their hashes to the consuming native suites.
+@PROVIDERS.fixture(group='sealer', order=20)
 def unit_markers_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from safrole_marker_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_SAFROLE_MARKERS', path, ((path, evidence['fixture_sha256']),))
-    return {'safrole_markers': fixture, 'marker_state': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent authentication inputs and expose their hashes to the consuming native suites.
+@PROVIDERS.fixture(group='sealer', order=30)
 def unit_authentication_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from safrole_authentication_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_SAFROLE_AUTHENTICATION', path, ((path, evidence['fixture_sha256']),))
-    return {'safrole_authentication': fixture, 'safrole_auth_state': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent transition inputs and expose their hashes to the consuming native suites.
+@PROVIDERS.fixture(group='sealer', order=40)
 def unit_transition_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from safrole_transition_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_SAFROLE_TRANSITION', path, ((path, evidence['fixture_sha256']),))
-    return {'safrole_transition': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent commitment inputs and expose their hashes to the consuming native suites.
+@PROVIDERS.fixture(group='sealer', order=50)
 def unit_commitment_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from block_admission_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_EXTRINSIC_COMMITMENT', path, ((path, evidence['fixture_sha256']),))
-    return {'extrinsic_commitment': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent admission inputs and expose their hashes to the consuming native suites.
+@PROVIDERS.fixture(group='sealer', order=150, variants=('default', 'report'))
 def unit_admission_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from block_admission_fixtures import prepare_admission
@@ -66,36 +74,40 @@ def unit_admission_fixture(folder):
     report_fixture = (None, {'RAGNAROK_BLOCK_ADMISSION': path, 'RAGNAROK_STATE_REPORT': template},
                       ((path, evidence['fixture_sha256']),
                        (template, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371')))
-    return {'block_admission': fixture, 'report_admission': report_fixture, 'report_transition': report_fixture}, evidence
+    return {'default': fixture, 'report': report_fixture}, evidence
 
 
 # Prepare pin-checked preimage STF account/statistics projections for the native transition suite.
+@PROVIDERS.fixture(group='sealer', order=60)
 def unit_preimage_transition_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from preimage_transition_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_PREIMAGE_TRANSITION', path, ((path, evidence['fixture_sha256']),))
-    return {'preimage_transition': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent incoming-credit balances, metadata and complete embedding-map root witnesses.
+@PROVIDERS.fixture(group='sealer', order=70)
 def unit_accumulation_credit_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from accumulation_credit_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_ACCUMULATION_CREDIT', path, ((path, evidence['fixture_sha256']),))
-    return {'accumulation_credit': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Supply the pinned signed-block template to native initial-context assertions without a new oracle.
+@PROVIDERS.fixture(group='sealer', order=80)
 def unit_accumulation_context_fixture(folder):
     template = ROOT/'tests/fixtures/state-report.bin'
     digest = '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371'
     fixture = ('RAGNAROK_STATE_REPORT', template, ((template, digest),))
-    return {'accumulation_context': fixture}, {'fixture_sha256': digest}
+    return {'default': fixture}, {'fixture_sha256': digest}
 
 
 # Pair independent queue expectations with the existing original report/block fixture contracts.
+@PROVIDERS.fixture(group='sealer', order=140)
 def unit_accumulation_queue_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from accumulation_queue_fixtures import prepare
@@ -104,10 +116,11 @@ def unit_accumulation_queue_fixture(folder):
     fixture = (None, {'RAGNAROK_ACCUMULATION_QUEUE': path, 'RAGNAROK_STATE_REPORT': template},
                ((path, evidence['fixture_sha256']),
                 (template, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371')))
-    return {'accumulation_queue': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare exact report-prefix operand expectations without invoking any production planner.
+@PROVIDERS.fixture(group='sealer', order=130)
 def unit_accumulation_operands_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from accumulation_operand_fixtures import prepare
@@ -116,19 +129,21 @@ def unit_accumulation_operands_fixture(folder):
     fixture = (None, {'RAGNAROK_ACCUMULATION_OPERANDS': path, 'RAGNAROK_STATE_REPORT': template},
                ((path, evidence['fixture_sha256']),
                 (template, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371')))
-    return {'accumulation_operands': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent invocation contexts while retaining the original report/prefix fixture identities.
+@PROVIDERS.fixture(group='sealer', order=120)
 def unit_accumulation_inputs_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from accumulation_input_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_ACCUMULATION_INPUTS', path, ((path, evidence['fixture_sha256']),))
-    return {'accumulation_inputs': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent initial-accseq gas prefixes, preserving signed-fixture template identity.
+@PROVIDERS.fixture(group='sealer', order=110)
 def unit_accumulation_round_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from accumulation_round_fixtures import prepare
@@ -137,10 +152,11 @@ def unit_accumulation_round_fixture(folder):
     fixture = (None, {'RAGNAROK_ACCUMULATION_ROUND': path, 'RAGNAROK_STATE_REPORT': template},
                ((path, evidence['fixture_sha256']),
                 (template, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371')))
-    return {'accumulation_round': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent service-code envelopes and preserve the original signed-report template hash.
+@PROVIDERS.fixture(group='sealer', order=100)
 def unit_accumulation_service_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from accumulation_service_fixtures import prepare
@@ -149,10 +165,11 @@ def unit_accumulation_service_fixture(folder):
     fixture = (None, {'RAGNAROK_ACCUMULATION_SERVICE': path, 'RAGNAROK_STATE_REPORT': template},
                ((path, evidence['fixture_sha256']),
                 (template, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371')))
-    return {'accumulation_service': fixture, 'accumulation_skip': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent compact invocation bytes, ID witnesses and the signed-report template identity.
+@PROVIDERS.fixture(group='sealer', order=90)
 def unit_accumulation_invocation_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from accumulation_invocation_fixtures import prepare
@@ -161,258 +178,253 @@ def unit_accumulation_invocation_fixture(folder):
     fixture = (None, {'RAGNAROK_ACCUMULATION_INVOCATION': path, 'RAGNAROK_STATE_REPORT': template},
                ((path, evidence['fixture_sha256']),
                 (template, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371')))
-    return {'accumulation_invocation': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent disputes inputs and expose their hashes to the consuming native suites.
+@PROVIDERS.fixture(group='sealer', order=160)
 def unit_disputes_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from disputes_transition_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_DISPUTES_TRANSITION', path, ((path, evidence['fixture_sha256']),))
-    return {'disputes_transition': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent availability inputs and expose their hashes to the consuming native suites.
+@PROVIDERS.fixture(group='sealer', order=170)
 def unit_availability_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from availability_transition_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_AVAILABILITY_TRANSITION', path, ((path, evidence['fixture_sha256']),))
-    return {'availability_transition': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare independent guarantor assignment inputs and retain the published fixture hash.
+@PROVIDERS.fixture(group='sealer', order=180)
 def unit_guarantors_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from guarantor_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_GUARANTORS', path, ((path, evidence['fixture_sha256']),))
-    return {'guarantor_assignments': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare unchanged credential projections independently from other report-state fixture families.
+@PROVIDERS.fixture(group='sealer', order=190)
 def unit_guarantee_credentials_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from guarantee_credential_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_GUARANTEE_CREDENTIALS', path, ((path, evidence['fixture_sha256']),))
-    return {'guarantee_credentials': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare original report-policy projections with native ownership of every verdict.
+@PROVIDERS.fixture(group='sealer', order=200)
 def unit_report_policy_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from report_policy_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_REPORT_POLICY', path, ((path, evidence['fixture_sha256']),))
-    return {'report_policy': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Transport original recent-anchor inputs without inventing unavailable external ancestor headers.
+@PROVIDERS.fixture(group='sealer', order=210)
 def unit_report_anchors_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from report_anchor_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_REPORT_ANCHORS', path, ((path, evidence['fixture_sha256']),))
-    return {'report_anchors': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Preserve the STF's summarized known set without manufacturing omitted pipeline chapters.
+@PROVIDERS.fixture(group='sealer', order=220)
 def unit_report_packages_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from report_package_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_REPORT_PACKAGES', path, ((path, evidence['fixture_sha256']),))
-    return {'report_packages': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Transport exact original report STF C(10) inputs and expected assignment candidates.
+@PROVIDERS.fixture(group='sealer', order=230)
 def unit_report_assignments_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from report_assignment_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_REPORT_ASSIGNMENTS', path, ((path, evidence['fixture_sha256']),))
-    return {'report_assignments': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Keep the historical preparation order and nested report schema for existing evidence consumers.
+@PROVIDERS.fixture(group='root', order=100,
+                   evidence=('sealer_stf_fixture', 'sealer-preparation'), aggregate=True)
 def unit_sealer_fixture(folder):
-    fixtures, evidence = unit_schedule_fixture(folder)
-    markers_fixtures, markers_evidence = unit_markers_fixture(folder)
-    fixtures.update(markers_fixtures)
-    authentication_fixtures, authentication_evidence = unit_authentication_fixture(folder)
-    fixtures.update(authentication_fixtures)
-    transition_fixtures, transition_evidence = unit_transition_fixture(folder)
-    fixtures.update(transition_fixtures)
-    commitment_fixtures, commitment_evidence = unit_commitment_fixture(folder)
-    fixtures.update(commitment_fixtures)
-    preimage_fixtures, preimage_evidence = unit_preimage_transition_fixture(folder)
-    fixtures.update(preimage_fixtures)
-    credit_fixtures, credit_evidence = unit_accumulation_credit_fixture(folder)
-    fixtures.update(credit_fixtures)
-    context_fixtures, context_evidence = unit_accumulation_context_fixture(folder)
-    fixtures.update(context_fixtures)
-    invocation_fixtures, invocation_evidence = unit_accumulation_invocation_fixture(folder)
-    fixtures.update(invocation_fixtures)
-    service_fixtures, service_evidence = unit_accumulation_service_fixture(folder)
-    fixtures.update(service_fixtures)
-    round_fixtures, round_evidence = unit_accumulation_round_fixture(folder)
-    fixtures.update(round_fixtures)
-    input_fixtures, input_evidence = unit_accumulation_inputs_fixture(folder)
-    fixtures.update(input_fixtures)
-    operand_fixtures, operand_evidence = unit_accumulation_operands_fixture(folder)
-    fixtures.update(operand_fixtures)
-    queue_fixtures, queue_evidence = unit_accumulation_queue_fixture(folder)
-    fixtures.update(queue_fixtures)
-    admission_fixtures, admission_evidence = unit_admission_fixture(folder)
-    fixtures.update(admission_fixtures)
-    disputes_fixtures, disputes_evidence = unit_disputes_fixture(folder)
-    fixtures.update(disputes_fixtures)
-    availability_fixtures, availability_evidence = unit_availability_fixture(folder)
-    fixtures.update(availability_fixtures)
-    guarantors_fixtures, guarantors_evidence = unit_guarantors_fixture(folder)
-    fixtures.update(guarantors_fixtures)
-    credential_fixtures, credential_evidence = unit_guarantee_credentials_fixture(folder)
-    fixtures.update(credential_fixtures)
-    policy_fixtures, policy_evidence = unit_report_policy_fixture(folder)
-    fixtures.update(policy_fixtures)
-    anchor_fixtures, anchor_evidence = unit_report_anchors_fixture(folder)
-    fixtures.update(anchor_fixtures)
-    package_fixtures, package_evidence = unit_report_packages_fixture(folder)
-    fixtures.update(package_fixtures)
-    assignment_fixtures, assignment_evidence = unit_report_assignments_fixture(folder)
-    fixtures.update(assignment_fixtures)
-    evidence['report_assignments'] = assignment_evidence
-    evidence['report_packages'] = package_evidence
-    evidence['report_anchors'] = anchor_evidence
-    evidence['report_policy'] = policy_evidence
-    evidence['guarantee_credentials'] = credential_evidence
-    evidence['guarantors'] = guarantors_evidence
-    evidence['availability'] = availability_evidence
-    evidence['disputes'] = disputes_evidence
-    evidence['admission'] = admission_evidence
-    evidence['accumulation_queue'] = queue_evidence
-    evidence['accumulation_operands'] = operand_evidence
-    evidence['accumulation_inputs'] = input_evidence
-    evidence['accumulation_round'] = round_evidence
-    evidence['accumulation_service'] = service_evidence
-    evidence['accumulation_invocation'] = invocation_evidence
-    evidence['accumulation_context'] = context_evidence
-    evidence['accumulation_credit'] = credit_evidence
-    evidence['preimage_transition'] = preimage_evidence
-    evidence['commitment'] = commitment_evidence
-    evidence['transition'] = transition_evidence
-    evidence['authentication'] = authentication_evidence
-    evidence['markers'] = markers_evidence
+    fixtures, rows = {}, []
+    for provider in PROVIDERS.plan('sealer'):
+        # Keep every feature's execution rank and reject one provider overwriting another's consumers.
+        fresh, observed = provider.prepare(folder)
+        if fixtures.keys() & fresh.keys():
+            raise ValueError('Duplicate nested fixture consumers: '+provider.name)
+        fixtures.update(fresh)
+        rows.append((provider.name, observed))
+    if not rows:
+        # A missing pipeline cannot produce empty successful sealer evidence.
+        raise ValueError('Empty sealer fixture plan')
+    # Historical evidence exposes schedule fields directly, then nests later features in reverse order.
+    evidence = dict(rows[0][1])
+    for name, observed in reversed(rows[1:]):
+        if name in evidence:
+            raise ValueError('Duplicate nested fixture evidence: '+name)
+        evidence[name] = observed
     return fixtures, evidence
 
 
+
 # Prepare published storage bytes once per invocation; native assertions own all store verdicts.
+@PROVIDERS.fixture(group='root', order=30, evidence=('store_replay_fixture', 'store-preparation'))
 def unit_store_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from state_store_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_STORE_REPLAY', path, ((path, evidence['fixture_sha256']),))
-    return {'state_store_replay': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Admission fixtures contain upstream proof/accumulator values, not a Python implementation of selection.
+@PROVIDERS.fixture(group='root', order=90, evidence=('ticket_stf_fixture', 'ticket-preparation'))
 def unit_ticket_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from ticket_admission_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_TICKET_ADMISSION', path, ((path, evidence['fixture_sha256']),))
-    return {'ticket_admission': fixture, 'ticket_state': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare exact published roster projections for the bounded planner's native assertions.
+@PROVIDERS.fixture(group='root', order=80,
+                   evidence=('validator_stf_fixture', 'validator-preparation'), deferred=True)
 def unit_validator_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from validator_rotation_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_VALIDATOR_STF', path, ((path, evidence['fixture_sha256']),))
-    return {'validator_rotation': fixture, 'validator_state': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare only the published entropy/time projections, keeping full Safrole execution outside this suite.
+@PROVIDERS.fixture(group='root', order=70, evidence=('entropy_stf_fixture', 'entropy-preparation'))
 def unit_entropy_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from entropy_transition_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_ENTROPY_STF', path, ((path, evidence['fixture_sha256']),))
-    return {'entropy_transition': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare public upstream credentials with independent OpenSSL positive/old-domain verdicts.
+@PROVIDERS.fixture(group='root', order=60,
+                   evidence=('signing_domain_fixture', 'signing-preparation'))
 def unit_signing_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from signing_domain_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_SIGNING_DOMAINS', path, ((path, evidence['fixture_sha256']),))
-    return {'signing_domains': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare published history cases and independent output-tree commitments for native assertions.
+@PROVIDERS.fixture(group='root', order=50, evidence=('history_stf_fixture', 'history-preparation'))
 def unit_history_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from history_transition_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_HISTORY_STF', path, ((path, evidence['fixture_sha256']),))
-    return {'history_transition': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
 # Prepare complete pinned authorization STF cases; the native suite executes and asserts the subsystem.
+@PROVIDERS.fixture(group='root', order=40,
+                   evidence=('authorization_stf_fixture', 'authorization-preparation'))
 def unit_authorization_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from authorization_transition_fixtures import prepare
     path, evidence = prepare(folder)
     fixture = ('RAGNAROK_AUTHORIZATION_STF', path, ((path, evidence['fixture_sha256']),))
-    return {'authorization_transition': fixture}, evidence
+    return {'default': fixture}, evidence
 
 
-# Describe freshly generated certificates and independent CE fixtures without committing private keys.
+# Fresh transport identities serve ordinary QUIC consumers without generating CE inputs.
+@PROVIDERS.fixture(group='runtime', order=10, inputs=('certificates',))
+def unit_transport_fixture(folder, certificates):
+    inputs = {'RAGNAROK_TEST_CERT': certificates/'a.cert.pem',
+              'RAGNAROK_TEST_KEY': certificates/'a.key.pem'}
+    files = tuple((path, hashlib.sha256(path.read_bytes()).hexdigest()) for path in inputs.values())
+    return {'default': (None, inputs, files)}, {'files': {str(path): digest for path, digest in files}}
+
+
+# The block requester additionally pins its independent signed-report template.
+@PROVIDERS.fixture(group='runtime', order=20, inputs=('certificates',))
+def unit_block_download_fixture(folder, certificates):
+    report = ROOT/'tests/fixtures/state-report.bin'
+    inputs = {'RAGNAROK_STATE_REPORT': report,
+              'RAGNAROK_TEST_CERT': certificates/'a.cert.pem',
+              'RAGNAROK_TEST_KEY': certificates/'a.key.pem'}
+    files = tuple((path, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371'
+                   if path == report else hashlib.sha256(path.read_bytes()).hexdigest())
+                  for path in inputs.values())
+    return {'default': (None, inputs, files)}, {'files': {str(path): digest for path, digest in files}}
+
+
+# Every CE child retains its original/reload byte identity, including later siblings.
+@PROVIDERS.fixture(group='runtime', order=30, inputs=('integration',))
+def unit_integration_fixture(folder, integration):
+    original, reload = integration
+    inputs = {'RAGNAROK_TEST_WIRES': original, 'RAGNAROK_TEST_RELOAD': reload}
+    files = tuple((directory/(str(index)+'.bin'),
+                   hashlib.sha256((directory/(str(index)+'.bin')).read_bytes()).hexdigest())
+                  for directory in (original, reload) for index in range(8))
+    return {'default': (None, inputs, files)}, {'files': {str(path): digest for path, digest in files}}
+
+
+# Retain the aggregate runtime API while discovering its consumers from their own requirements.
 def unit_runtime_fixtures(certificates, original, reload, suite=None):
-    if suite not in (None, 'application_block_download', 'quic_transport', 'quic_integration'):
-        # Unknown selections cannot silently produce an empty successful manifest.
-        raise ValueError('Unknown QUIC fixture suite: '+suite)
+    from native_requirements import NATIVE_REQUIREMENTS
+    providers = PROVIDERS.plan('runtime')
+    if suite is not None:
+        # A selected runtime consumer must declare a provider with the appropriate resource contract.
+        name = NATIVE_REQUIREMENTS.get(suite, {}).get('provider')
+        providers = [provider for provider in providers if provider.name == name]
+        if not providers:
+            raise ValueError('Unknown runtime fixture suite: '+suite)
     fixtures = {}
-    if suite in (None, 'quic_transport'):
-        # Hash fresh certificate inputs only for a consumer that needs transport setup.
-        transport = {'RAGNAROK_TEST_CERT': certificates/'a.cert.pem',
-                     'RAGNAROK_TEST_KEY': certificates/'a.key.pem'}
-        cert_files = tuple((path, hashlib.sha256(path.read_bytes()).hexdigest()) for path in transport.values())
-        fixtures['quic_transport'] = (None, transport, cert_files)
-    if suite in (None, 'application_block_download'):
-        # The block requester shares fresh transport identities and the pinned signed-block report input.
-        report = ROOT/'tests/fixtures/state-report.bin'
-        inputs = {'RAGNAROK_STATE_REPORT': report,
-                  'RAGNAROK_TEST_CERT': certificates/'a.cert.pem',
-                  'RAGNAROK_TEST_KEY': certificates/'a.key.pem'}
-        files = tuple((path, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371'
-                       if path == report else hashlib.sha256(path.read_bytes()).hexdigest())
-                      for path in inputs.values())
-        fixtures['application_block_download'] = (None, inputs, files)
-    if suite in (None, 'quic_integration'):
-        # Every CE child remains hashed and checked, including later original/reload siblings.
-        integration = {'RAGNAROK_TEST_WIRES': original, 'RAGNAROK_TEST_RELOAD': reload}
-        wires = tuple((folder/(str(index)+'.bin'), hashlib.sha256((folder/(str(index)+'.bin')).read_bytes()).hexdigest())
-                      for folder in (original, reload) for index in range(8))
-        fixtures['quic_integration'] = (None, integration, wires)
-    return fixtures
+    for provider in providers:
+        # Runtime registration preserves certificate-before-CE ordering without a suite-name branch table.
+        fresh, _ = provider.prepare(ROOT/'build', certificates=certificates, integration=(original, reload))
+        if fixtures.keys() & fresh.keys():
+            raise ValueError('Duplicate runtime fixture consumers: '+provider.name)
+        fixtures.update(fresh)
+    return fixtures if suite is None else {suite: fixtures[suite]}
 
 
 # Generate gas inputs under the caller's ignored build directory from pinned submodule witnesses.
+@PROVIDERS.fixture(group='root', order=20, evidence=('pvm_gas_fixture', 'pvm-gas-preparation'))
 def unit_pvm_gas_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from pvm_gas_reference import prepare
     path, evidence = prepare(folder)
-    return {'pvm_gas': ('RAGNAROK_PVM_GAS', path, ((path, evidence['fixture_sha256']),))}, evidence
+    return {'default': ('RAGNAROK_PVM_GAS', path, ((path, evidence['fixture_sha256']),))}, evidence
 
 
 # Generate composed stepping traces in build storage without adding checked-in binary copies.
+@PROVIDERS.fixture(group='root', order=10, evidence=('pvm_step_fixture', 'pvm-step-preparation'))
 def unit_pvm_step_fixture(folder):
     sys.path.insert(0, str(ROOT/'tests'))
     from pvm_step_reference import prepare
     path, evidence = prepare(folder)
-    return {'pvm_step': ('RAGNAROK_PVM_STEP', path, ((path, evidence['fixture_sha256']),))}, evidence
+    return {'default': ('RAGNAROK_PVM_STEP', path, ((path, evidence['fixture_sha256']),))}, evidence

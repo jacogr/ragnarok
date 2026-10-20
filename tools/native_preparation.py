@@ -9,11 +9,7 @@ shared native setup, plus dependency-scoped selected-suite and partition prepara
 import hashlib
 import sys
 from setup_nimony import ROOT
-from native_fixtures import (
-    unit_runtime_fixtures, unit_store_fixture, unit_authorization_fixture, unit_history_fixture,
-    unit_signing_fixture, unit_entropy_fixture, unit_validator_fixture, unit_ticket_fixture,
-    unit_sealer_fixture, unit_pvm_gas_fixture, unit_pvm_step_fixture,
-)
+from native_fixtures import PROVIDERS, unit_runtime_fixtures
 
 
 # Let standalone callers persist completed stages immediately, including before a later failure.
@@ -74,94 +70,41 @@ def prepare_integration(folder):
 # Assemble fresh feature manifests in the original order; reports retain their historical field names.
 def prepare_unit_fixtures(folder, certificates, wires, reload, record=None):
     fixtures = unit_runtime_fixtures(certificates, wires, reload)
-    evidence = {}
-    step, evidence['pvm_step_fixture'] = unit_pvm_step_fixture(folder)
-    fixtures.update(step)
-    record_evidence(record, 'pvm_step_fixture', evidence['pvm_step_fixture'])
-    gas, evidence['pvm_gas_fixture'] = unit_pvm_gas_fixture(folder)
-    fixtures.update(gas)
-    record_evidence(record, 'pvm_gas_fixture', evidence['pvm_gas_fixture'])
-    store, evidence['store_replay_fixture'] = unit_store_fixture(folder)
-    record_evidence(record, 'store_replay_fixture', evidence['store_replay_fixture'])
-    fixtures.update(store)
-    authorization, evidence['authorization_stf_fixture'] = unit_authorization_fixture(folder)
-    record_evidence(record, 'authorization_stf_fixture', evidence['authorization_stf_fixture'])
-    fixtures.update(authorization)
-    history, evidence['history_stf_fixture'] = unit_history_fixture(folder)
-    record_evidence(record, 'history_stf_fixture', evidence['history_stf_fixture'])
-    fixtures.update(history)
-    signing, evidence['signing_domain_fixture'] = unit_signing_fixture(folder)
-    record_evidence(record, 'signing_domain_fixture', evidence['signing_domain_fixture'])
-    fixtures.update(signing)
-    entropy, evidence['entropy_stf_fixture'] = unit_entropy_fixture(folder)
-    record_evidence(record, 'entropy_stf_fixture', evidence['entropy_stf_fixture'])
-    fixtures.update(entropy)
-    validator, evidence['validator_stf_fixture'] = unit_validator_fixture(folder)
-    ticket, evidence['ticket_stf_fixture'] = unit_ticket_fixture(folder)
-    record_evidence(record, 'ticket_stf_fixture', evidence['ticket_stf_fixture'])
-    fixtures.update(validator)
-    fixtures.update(ticket)
-    sealer, evidence['sealer_stf_fixture'] = unit_sealer_fixture(folder)
-    record_evidence(record, 'sealer_stf_fixture', evidence['sealer_stf_fixture'])
-    fixtures.update(sealer)
-    record_evidence(record, 'validator_stf_fixture', evidence['validator_stf_fixture'])
+    evidence, deferred = {}, []
+    for provider in PROVIDERS.plan('root'):
+        # Each completed stage publishes evidence before the next one, except explicitly deferred legacy writes.
+        fresh, observed = provider.prepare(folder)
+        if fixtures.keys() & fresh.keys():
+            raise ValueError('Duplicate native fixture consumers: '+provider.name)
+        fixtures.update(fresh)
+        key = provider.evidence[0]
+        evidence[key] = observed
+        if provider.deferred:
+            deferred.append((key, observed))
+        else:
+            record_evidence(record, key, observed)
+    for key, observed in deferred:
+        # The validator stage historically publishes its evidence after the nested sealer aggregate.
+        record_evidence(record, key, observed)
     return fixtures, evidence
 
 
-# Provider aliases describe actual sharing; coverage is checked independently against prepared suite profiles.
-SELECTED_FIXTURE_GROUPS = {
-    'accumulation_context': ('accumulation_context',),
-    'accumulation_credit': ('accumulation_credit',),
-    'accumulation_inputs': ('accumulation_inputs',),
-    'accumulation_invocation': ('accumulation_invocation',),
-    'accumulation_operands': ('accumulation_operands',),
-    'accumulation_queue': ('accumulation_queue',),
-    'accumulation_round': ('accumulation_round',),
-    'accumulation_service': ('accumulation_service', 'accumulation_skip'),
-    'admission': ('block_admission', 'report_admission', 'report_transition'),
-    'authentication': ('safrole_auth_state', 'safrole_authentication'),
-    'authorization': ('authorization_transition',),
-    'availability': ('availability_transition',),
-    'commitment': ('extrinsic_commitment',),
-    'disputes': ('disputes_transition',),
-    'entropy': ('entropy_transition',),
-    'guarantee_credentials': ('guarantee_credentials',),
-    'guarantors': ('guarantor_assignments',),
-    'history': ('history_transition',),
-    'markers': ('marker_state', 'safrole_markers'),
-    'preimage_transition': ('preimage_transition',),
-    'pvm_gas': ('pvm_gas',),
-    'pvm_step': ('pvm_step',),
-    'report_anchors': ('report_anchors',),
-    'report_assignments': ('report_assignments',),
-    'report_packages': ('report_packages',),
-    'report_policy': ('report_policy',),
-    'schedule': ('sealer_schedule', 'sealer_state'),
-    'signing': ('signing_domains',),
-    'store': ('state_store_replay',),
-    'ticket': ('ticket_admission', 'ticket_state'),
-    'transition': ('safrole_transition',),
-    'validator': ('validator_rotation', 'validator_state'),
-}
-
-
 # Run one existing feature provider, preserving its sibling manifests for batched selection.
-def _selected_fixture_provider(folder, suite, certificates):
-    if suite in ('application_block_download', 'quic_transport'):
-        # Certificate consumers need no CE preimage corpus or reload candidates.
-        fixtures = unit_runtime_fixtures(certificates, None, None, suite=suite)
-        evidence = {'files': {str(path): digest for path, digest in fixtures[suite][2]}}
-    elif suite == 'quic_integration':
-        # CE integration needs original/reload bytes only; no unused certificate/QUIC preparation.
-        wires, reload, evidence = prepare_integration(folder)
-        fixtures = unit_runtime_fixtures(None, wires, reload, suite=suite)
-    else:
-        # Resolve aliases explicitly and refuse an omitted provider rather than reuse stale generated input.
-        group = next((name for name, suites in SELECTED_FIXTURE_GROUPS.items() if suite in suites), None)
-        if group is None:
-            raise ValueError('No selected fixture provider: '+suite)
-        import native_fixtures
-        fixtures, evidence = getattr(native_fixtures, 'unit_'+group+'_fixture')(folder)
+def _selected_fixture_provider(folder, suite, certificates, integration=None):
+    from native_requirements import NATIVE_REQUIREMENTS
+    name = NATIVE_REQUIREMENTS.get(suite, {}).get('provider')
+    provider = PROVIDERS.providers.get(name)
+    if provider is None or not provider.variants:
+        raise ValueError('No selected fixture provider: '+suite)
+    generated = None
+    if 'integration' in provider.inputs and integration is None:
+        # Only consumers declaring CE inputs prepare the corpus; existing partition inputs are reused unchanged.
+        wires, reload, generated = prepare_integration(folder)
+        integration = (wires, reload)
+    fixtures, evidence = provider.prepare(folder, certificates=certificates, integration=integration)
+    if generated is not None:
+        # A fresh CE preparation retains its historical original/reload generation evidence.
+        evidence = generated
     if suite not in fixtures:
         # A provider returning a sibling fixture cannot satisfy the requested suite.
         raise ValueError('Missing selected fixture manifest: '+suite)
@@ -184,14 +127,12 @@ def prepare_partition_fixtures(folder, suites, certificates=None, integration=No
         # A preceding provider may already have produced this sibling's fresh hash contract.
         if suite in fixtures:
             continue
-        if suite == 'quic_integration' and integration is not None:
-            # The corpus-owning shard has already prepared these exact original/reload inputs.
-            wires, reload = integration
-            fresh = unit_runtime_fixtures(None, wires, reload, suite=suite)
-            observed = {'files': {str(path): digest for path, digest in fresh[suite][2]}}
-        else:
-            # Provider selection and independent expected values remain owned by the existing feature path.
+        if integration is None:
+            # Default selected calls retain their existing API and prepare only required resources.
             fresh, observed = _selected_fixture_provider(folder, suite, certificates)
+        else:
+            # The corpus-owning partition supplies its existing original/reload inputs to any declaring provider.
+            fresh, observed = _selected_fixture_provider(folder, suite, certificates, integration=integration)
         fixtures.update(fresh)
         evidence[suite] = observed
     missing = set(selected)-set(fixtures)

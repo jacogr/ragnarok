@@ -17,5 +17,6 @@
     "commit",
     "ring_verify"
   ],
-  "prepared": true
+  "prepared": true,
+  "provider": "accumulation_service"
 }
