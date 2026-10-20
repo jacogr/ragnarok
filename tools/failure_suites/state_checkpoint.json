@@ -1,0 +1,29 @@
+{
+  "build_name": "state-checkpoint-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Checkpoint extraction default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-checkpoint-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Checkpoint extraction refused",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "refused"
+      },
+      "name": "state-checkpoint-refused"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/state_checkpoint_results.nim"
+}
