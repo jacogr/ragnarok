@@ -1,8 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 refinement hosts 9/12/14 own immutable invocation-local inner-machine lifecycle and pages.
-## Exposes bounded empty-map capture, copied inspection and atomic lifecycle/page response-successor transitions.
+## GP 0.8.0 refinement hosts 9..12/14 own immutable inner-machine lifecycle, pages and memory transfers.
+## Exposes bounded empty-map capture, copied inspection and atomic lifecycle/page/transfer transitions.
 
 import ./[machine, program, step]
 
@@ -253,3 +253,92 @@ proc innerPagesResponse*(machines: InnerMachines, gas: MachineGas, registers: Re
       limits: data.limits))
   transition.response.registers[7] = RegisterValue(0)
   done()
+
+proc transferInner(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
+    memory: Memory, limit: MemoryByteLimit, peek: bool): InnerMachineResult[
+        InnerMachineTransition] =
+  ## Share Omega_P/O ordering while selecting opposite read/write endpoints in one private synchronous transition.
+  template fail(reason: InnerMachineError) =
+    return InnerMachineResult[InnerMachineTransition](status: reason)
+  let data = machines.data
+  if data == nil: fail(InnerMachineError.InvalidContext)
+  if memory.pageImage(PageIndex(0)).error != MachineError.None: fail(
+      InnerMachineError.InvalidMemory)
+  let size = uint64(registers[10])
+  let linear = if peek: 336'u64 else: 224'u64
+  let base = if peek: 377'u64 else: 297'u64
+  # The largest whole-domain price is <2^63; divide before multiplying the untrusted count.
+  let cost = base+(size div 1024)*linear+((size mod 1024)*linear+1023) div 1024
+  let credit = uint64(gas)
+  var transition = InnerMachineTransition(machines: machines,
+    response: HostResponse(action: HostAction.Continue, gas: MachineGas(0),
+      gasDeficit: GasDeficit(0), registers: registers, memory: memory))
+  template done() =
+    return InnerMachineResult[InnerMachineTransition](status: InnerMachineError.None,
+        completed: transition)
+  if credit < cost:
+    transition.response.action = HostAction.OutOfGas
+    transition.response.gasDeficit = GasDeficit(cost-credit)
+    done() # Underfunding changes no arguments, page bytes or map owners.
+  transition.response.gas = MachineGas(credit-cost)
+  let caller = MemoryAddress(uint64(registers[8]))
+  let inner = MemoryAddress(uint64(registers[9]))
+  let length = MemoryLength(size)
+  let checked = if peek: memory.writableRange(caller, length)
+    else: memory.readableRange(caller, length)
+  case checked.error
+  of MachineError.None:
+    discard # Whole caller permissions precede both inner lookup and local copy limits.
+  of MachineError.Fault, MachineError.InvalidRange:
+    transition.response.action = HostAction.Panic
+    done() # An inaccessible caller suffix cannot expose a successful prefix or WHO.
+  else:
+    fail(InnerMachineError.InvalidMemory)
+  let id = uint64(registers[7])
+  let found = machines.innerMachine(InnerMachineId(id))
+  if found.error == InnerMachineError.Missing:
+    transition.response.registers[7] = RegisterValue(high(uint64)-3)
+    done() # Only a fully accessible caller interval may reach WHO.
+  let source = found.value.memory
+  let permitted = if peek: source.readableRange(inner, length)
+    else: source.writableRange(inner, length)
+  case permitted.error
+  of MachineError.None:
+    discard # Preflight the complete inner interval before allocating/copying either endpoint.
+  of MachineError.Fault, MachineError.InvalidRange:
+    transition.response.registers[7] = RegisterValue(high(uint64)-2)
+    done() # OOB preserves caller and inner bytes, even on a partly accessible range.
+  else:
+    fail(InnerMachineError.InvalidContext)
+  if size > uint64(limit): fail(InnerMachineError.LimitExceeded) # A local refusal never impersonates panic/WHO/OOB.
+  let bytes = if peek: source.readBytes(inner, length, limit) else: memory.readBytes(caller, length, limit)
+  if bytes.error != MachineError.None: fail(InnerMachineError.InvalidContext) # Immutable preflights proved all ranges/caps.
+  let written = if peek: memory.writeBytes(caller, bytes.value, limit)
+    else: source.writeBytes(inner, bytes.value, limit)
+  if written.error != MachineError.None: fail(InnerMachineError.InvalidContext) # No partial successor is published on invariant failure.
+  if peek:
+    transition.response.memory = written.value # Peek changes only outer RAM; the invocation map remains the original owner.
+  else:
+    var slots = newSeqOfCap[InnerData](data.slots.len)
+    for slot in data.slots:
+      if slot.id == id:
+        var info = slot.info
+        info.memory = written.value
+        slots.add(InnerData(info: info, size: slot.size,
+            id: slot.id)) # Poke replaces only the selected RAM snapshot.
+      else:
+        slots.add(slot) # Unselected machines share their untouched immutable owners.
+    transition.machines = InnerMachines(data: MapData(slots: slots, bytes: data.bytes,
+        limits: data.limits))
+  transition.response.registers[7] = RegisterValue(0)
+  done()
+
+proc innerPeekResponse*(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
+    memory: Memory, limit: MemoryByteLimit): InnerMachineResult[InnerMachineTransition] =
+  ## Evaluate host 10, copying inner readable bytes to an immutable writable caller-memory successor.
+  transferInner(machines, gas, registers, memory, limit, true)
+
+proc innerPokeResponse*(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
+    memory: Memory, limit: MemoryByteLimit): InnerMachineResult[InnerMachineTransition] =
+  ## Evaluate host 11, copying caller readable bytes to the selected immutable writable inner RAM successor.
+  transferInner(machines, gas, registers, memory, limit, false)

@@ -42,7 +42,7 @@ Verification inventory, nineteen inventory/provenance Python tests and pinned
 formatting pass. These are local macOS results; exact-head Linux CI is independent.
 
 Host 12 now follows [the page-management contract](pvm-inner-pages.md).
-Hosts 10/11/13 (peek/poke/invoke) remain typed gates. No nested execution,
+Hosts 10/11 now follow [the transfer contract](pvm-inner-transfer.md); invoke remains gated. No nested execution,
 report construction, state composition or publication changes. Next: inner memory
 transfer/page management, then invoke and work-package report integration.
 M1 framing is complete; full state serialization and complete refinement remain open.

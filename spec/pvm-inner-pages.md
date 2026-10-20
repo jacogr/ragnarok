@@ -43,7 +43,7 @@ seven exact compiler privacy/nominal rejections, verification inventory,
 nineteen inventory/provenance Python tests and pinned formatting pass.
 These are local macOS results; exact-head Linux CI remains independent.
 
-Peek/poke and invoke remain typed gates. No report construction, state composition
+Peek/poke now follow [the transfer contract](pvm-inner-transfer.md). Invoke remains gated. No report construction, state composition
 or publication changes. Next: inner-memory transfers, then nested invoke and report
 integration. M1 framing is complete; full state serialization and complete refinement
 remain open.
