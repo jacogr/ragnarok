@@ -235,3 +235,23 @@ without releasing that lease. Done capacity and default-context refusal remain
 effective. Repeated aggregate close retains a distinctly Verify joined receipt,
 not a publication receipt; no restored canonical chain is installed. Verification
 requires no startup trust-policy decision and changes no PVM/backend implementation.
+
+## Verification process-exit evidence and batch boundary
+
+Eighteen child verification witnesses cross header/profile/map contexts with valid,
+wrong-context, wrong-context-before-tight-map-policy, tight-map, tight-byte and
+malformed-identity files. Actual Done receipts must retain Verify and the exact
+expected file/context/format/resource outcome before abrupt unacknowledged exit.
+Fresh parent lock admission and independent sufficient-policy validation agree;
+every original file byte remains unchanged and private-directory teardown detects
+unexpected temporaries. No live owner crosses fork or decoded map crosses threads;
+no cross-process ARC or power-loss claim is made.
+
+This batch provides explicit application context, complete single-file envelopes,
+detached publication/verification workers, retained joined receipts and Services
+lease/lifecycle integration using the existing StateStore. Automatic startup
+recovery and canonical/history adoption remain separate: an envelope cannot
+authenticate its own head or retained/finalized history. No storage/trie backend,
+PVM implementation, automatic retry or recovery trust policy is introduced. The
+documented M1 framing work remains complete; full T(state)/whole-block JAM parity
+is still open. Local focused native evidence is separate from Linux CI evidence.
