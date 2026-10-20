@@ -1,10 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 refinement hosts 9..12/14 own immutable inner-machine lifecycle, pages and memory transfers.
-## Exposes bounded empty-map capture, copied inspection and atomic lifecycle/page/transfer transitions.
+## GP 0.8.0 refinement hosts 9..14 own immutable inner-machine lifecycle, memory and bounded raw invocation.
+## Exposes bounded capture, copied inspection and atomic lifecycle/page/transfer/invocation transitions.
 
-import ./[machine, program, step]
+import ./[machine, program, step, gas]
 
 type
   InnerMachineId* = distinct uint64 ## Full guest register domain; identifiers outside 0..62 are absent.
@@ -16,8 +16,10 @@ type
     total*: InnerProgramLimit
     jumps*: JumpCountLimit
     pages*: PageLimit
+    steps*: ExecutionStepLimit ## Independent per-segment instruction policy; outer host-count policy bounds segment count.
+    cycles*: GasCycleLimit ## Per-block gas-analysis policy for the raw inner execution engine.
   InnerMachineError* {.pure.} = enum ## Local/default refusals expose no response or partially modified map.
-    Uninitialized, None, InvalidContext, InvalidMemory, LimitExceeded, Missing
+    Uninitialized, None, InvalidContext, InvalidMemory, LimitExceeded, Missing, ExecutionFailure
   InnerMachineInfo* = object ## Copied metadata and immutable child owners cannot rewrite the original map.
     program*: Program
     memory*: Memory
@@ -40,6 +42,8 @@ type
     case status: InnerMachineError
     of None:
       completed: T
+    of ExecutionFailure:
+      reason: StepError
     else:
       discard                     # Local failures retain neither scratch bytes nor a manufactured protocol result.
 
@@ -50,6 +54,10 @@ func value*[T](outcome: InnerMachineResult[T]): T
     {.requires: outcome.status == InnerMachineError.None.} =
   ## Extract only complete successful owners or transitions, including protocol-error responses.
   outcome.completed
+func executionError*[T](outcome: InnerMachineResult[T]): StepError
+    {.requires: outcome.status == InnerMachineError.ExecutionFailure.} =
+  ## Extract only a nested engine's exact local refusal, without fabricated frame or map progress.
+  outcome.reason
 proc captureInnerMachines*(limits: InnerMachineLimits): InnerMachines =
   ## Capture finite caller policies beside an explicitly empty map, with no guest slots implicitly present.
   InnerMachines(data: MapData(slots: @[], bytes: 0, limits: limits))
@@ -342,3 +350,114 @@ proc innerPokeResponse*(machines: InnerMachines, gas: MachineGas, registers: Reg
     memory: Memory, limit: MemoryByteLimit): InnerMachineResult[InnerMachineTransition] =
   ## Evaluate host 11, copying caller readable bytes to the selected immutable writable inner RAM successor.
   transferInner(machines, gas, registers, memory, limit, false)
+
+proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
+    memory: Memory): InnerMachineResult[InnerMachineTransition] =
+  ## Execute Omega_K on the retained program/RAM/PC/charged flag, stopping before any inner host dispatch.
+  template fail(reason: InnerMachineError) =
+    return InnerMachineResult[InnerMachineTransition](status: reason)
+  let data = machines.data
+  if data == nil: fail(InnerMachineError.InvalidContext)
+  if memory.pageImage(PageIndex(0)).error != MachineError.None: fail(
+      InnerMachineError.InvalidMemory)
+  let address = MemoryAddress(uint64(registers[8]))
+  let writable = memory.writableRange(address, MemoryLength(112))
+  var requested = 0'u64
+  var innerRegisters = default(RegisterFile)
+  case writable.error
+  of MachineError.None:
+    let bytes = memory.readBytes(address, MemoryLength(112), MemoryByteLimit(112)).value
+    for word in 0..<14:
+      var value = 0'u64
+      for octet in 0..<8: value = value or (uint64(bytes[word*8+octet]) shl (
+          octet*8)) # Fixed E8 little-endian words preserve high bits.
+      if word == 0: requested = value
+      else: innerRegisters[word-1] = RegisterValue(
+          value) # Thirteen copied guest registers cannot replace code or RAM owners.
+  of MachineError.Fault, MachineError.InvalidRange:
+    discard # Bad frames contribute zero requested gas; affordability still precedes protocol panic.
+  else:
+    fail(InnerMachineError.InvalidMemory)
+  let credit = uint64(gas)
+  var transition = InnerMachineTransition(machines: machines,
+    response: HostResponse(action: HostAction.Continue, gas: MachineGas(0),
+      gasDeficit: GasDeficit(0), registers: registers, memory: memory))
+  template done() =
+    return InnerMachineResult[InnerMachineTransition](status: InnerMachineError.None,
+        completed: transition)
+  if credit < 968 or requested > credit-968:
+    var debt = 0'u64
+    if requested > credit:
+      let difference = requested-credit
+      if difference > 0x8000000000000000'u64-968: fail(InnerMachineError.LimitExceeded)
+      debt = difference+968 # Prove canonical negative magnitude before addition; requested+968 may not fit uint64.
+    else:
+      debt = 968-(credit-requested) # Failed affordability proves the nonnegative difference is less than the base price.
+    transition.response.action = HostAction.OutOfGas
+    transition.response.gasDeficit = GasDeficit(debt)
+    done() # Underfunding returns original frame, arguments and map, even for missing IDs or bad frames.
+  let reserved = credit-968-requested
+  transition.response.gas = MachineGas(reserved)
+  if writable.error != MachineError.None:
+    transition.response.action = HostAction.Panic
+    done() # A fully charged invalid frame panics before identity lookup.
+  let id = uint64(registers[7])
+  let found = machines.innerMachine(InnerMachineId(id))
+  if found.error == InnerMachineError.Missing:
+    transition.response.registers[7] = RegisterValue(high(uint64)-3)
+    done() # WHO retains the frame and consumes the complete reservation without refund.
+  let source = found.value
+  let initial = captureTerminalMachine(source.program, source.memory,
+    MachineInfo(pc: source.pc, gas: MachineGas(requested), gasDeficit: GasDeficit(0),
+      blockCharged: source.blockCharged, registers: innerRegisters))
+  if initial.error != MachineError.None: fail(InnerMachineError.InvalidContext)
+  let evaluated = execute(initial.value, data.limits.steps, data.limits.cycles)
+  if evaluated.error != StepError.None:
+    return InnerMachineResult[InnerMachineTransition](status: InnerMachineError.ExecutionFailure,
+      reason: evaluated.error) # No tentative frame, nested state or refund escapes a local engine refusal.
+  let stopped = evaluated.value
+  let cpu = stopped.machine.machineInfo.value
+  if uint64(cpu.gasDeficit) != 0 or uint64(cpu.gas) > requested:
+    fail(InnerMachineError.InvalidContext) # Raw guest-only Psi cannot create host debt or increase its allowance.
+  var info = source
+  info.pc = cpu.pc
+  info.blockCharged = cpu.blockCharged
+  info.memory = stopped.machine.memoryOf.value
+  case stopped.exit
+  of StepExit.Halt:
+    transition.response.registers[7] = RegisterValue(0) # Recursive Psi already normalizes terminal PC to zero.
+  of StepExit.Panic:
+    transition.response.registers[7] = RegisterValue(1)
+  of StepExit.Fault:
+    transition.response.registers[7] = RegisterValue(2)
+    transition.response.registers[8] = RegisterValue(uint64(uint32(
+        stopped.faultPage))) # Preserve the physical aligned byte address.
+  of StepExit.Host:
+    transition.response.registers[7] = RegisterValue(3)
+    transition.response.registers[8] = RegisterValue(uint64(stopped.hostCall))
+    let item = instruction(source.program, cpu.pc).value
+    info.pc = CodeAddress(uint64(cpu.pc)+1+uint64(
+        item.skip)) # Valid owned code extent bounds this successor addition.
+  of StepExit.OutOfGas:
+    transition.response.registers[7] = RegisterValue(
+        4) # Preserve causing PC/charged flag and any unspent block credit.
+  else:
+    fail(InnerMachineError.InvalidContext)
+  var frame = default(array[112, byte])
+  for word in 0..<14:
+    let value = if word == 0: uint64(cpu.gas) else: uint64(cpu.registers[word-1])
+    for octet in 0..<8: frame[word*8+octet] = byte((value shr (octet*8)) and
+        255) # Encode all fourteen posterior E8 words.
+  let written = memory.writeBytes(address, frame, MemoryByteLimit(112))
+  if written.error != MachineError.None: fail(InnerMachineError.InvalidContext) # The immutable frame preflight proved the complete write.
+  var slots = newSeqOfCap[InnerData](data.slots.len)
+  for slot in data.slots:
+    if slot.id == id: slots.add(InnerData(info: info, size: slot.size,
+        id: slot.id)) # RAM/PC/flag share one completed segment certificate.
+    else: slots.add(slot) # Retain all other machines unchanged.
+  transition.machines = InnerMachines(data: MapData(slots: slots, bytes: data.bytes,
+      limits: data.limits))
+  transition.response.memory = written.value
+  transition.response.gas = MachineGas(reserved+uint64(
+      cpu.gas)) # cpu.gas<=requested proves refund cannot overflow or mint caller gas.
+  done()

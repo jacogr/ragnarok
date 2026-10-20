@@ -18,8 +18,8 @@ Execution always starts from the original immutable CPU and fresh empty exports.
 Host 0, 1, 2, 7 and 8 delegate to shared gas, adopted heap, fetch, historical lookup and
 export implementations. Extract heap logic from accumulation into one shared primitive
 without changing accumulation behavior. Hosts 9/14 now use the invocation-local
-[inner lifecycle](pvm-inner-lifecycle.md). Host 12 uses [inner pages](pvm-inner-pages.md). Hosts 10/11 use [inner transfers](pvm-inner-transfer.md). Host 13 refuses locally
-as UnsupportedHostCall, including underfunded calls. All other full-width identifiers use
+[inner lifecycle](pvm-inner-lifecycle.md). Host 12 uses [inner pages](pvm-inner-pages.md). Hosts 10/11 use [inner transfers](pvm-inner-transfer.md). Host 13 performs [bounded inner invocation](pvm-inner-invoke.md), retaining exact
+nested StepError refusals through the existing ExecutionFailure alternative. All other full-width identifiers use
 F's unknown fallback, including accumulation-only IDs, and assign WHAT even on OOG.
 
 Step/call/gas-analysis/copy/export budgets are independent local limits. Engine refusal
@@ -41,6 +41,6 @@ five compiler privacy/nominal rejections, verification inventory, 19 inventory/p
 Python tests and pinned formatting pass. These are local macOS results;
 exact-head Linux CI remains independent.
 
-Next: authenticate refinement code and construct the exact Psi_R bootstrap, then the
-inner-machine hosts. M1 framing is complete; full state serialization and complete
+Bootstrap, normalization and bounded inner hosts now have their own feature contracts.
+Next: work-package report integration. M1 framing is complete; full state serialization and complete
 refinement/whole-block parity remain open.
