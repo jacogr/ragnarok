@@ -1,0 +1,12 @@
+{
+  "source": "tests/native/validator_activity_results.nim",
+  "build_name": "validator-activity-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "validator-activity-default", "diagnostic": "outcome.status == None", "description": "Validator activity default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "validator-activity-refused", "diagnostic": "outcome.status == None", "description": "Validator activity refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "validator-activity-info", "diagnostic": "outcome.status == None", "description": "Validator activity info extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "validator-activity-source", "diagnostic": "outcome.status == None", "description": "Validator activity source extraction guard"},
+    {"identity": {"reason": "index"}, "arguments": ["index"], "name": "validator-activity-index", "diagnostic": "outcome.status == None", "description": "Validator activity index extraction guard"}
+  ]
+}
