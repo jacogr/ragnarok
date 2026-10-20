@@ -1,0 +1,62 @@
+{
+  "build_name": "application-checkpoint-transfer-results",
+  "cases": [
+    {
+      "arguments": [
+        "default-length"
+      ],
+      "description": "Prepared application checkpoint default-length",
+      "diagnostic": "prepared.status == None",
+      "identity": {
+        "reason": "default-length"
+      },
+      "name": "application-checkpoint-transfer-default-length"
+    },
+    {
+      "arguments": [
+        "default-identity"
+      ],
+      "description": "Prepared application checkpoint default-identity",
+      "diagnostic": "prepared.status == None",
+      "identity": {
+        "reason": "default-identity"
+      },
+      "name": "application-checkpoint-transfer-default-identity"
+    },
+    {
+      "arguments": [
+        "failed-length"
+      ],
+      "description": "Prepared application checkpoint failed-length",
+      "diagnostic": "prepared.status == None",
+      "identity": {
+        "reason": "failed-length"
+      },
+      "name": "application-checkpoint-transfer-failed-length"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Prepared application checkpoint reason",
+      "diagnostic": "prepared.status == IdentityFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "application-checkpoint-transfer-reason"
+    },
+    {
+      "arguments": [
+        "checkpoint-reason"
+      ],
+      "description": "Prepared application checkpoint checkpoint-reason",
+      "diagnostic": "prepared.status == CheckpointFailure",
+      "identity": {
+        "reason": "checkpoint-reason"
+      },
+      "name": "application-checkpoint-transfer-checkpoint-reason"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/application_checkpoint_transfer_results.nim"
+}
