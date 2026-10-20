@@ -4,7 +4,7 @@
 ## Capture one immutable refinement host environment and run its supported hosts with bounded execution.
 ## Caller supplies trusted initialized CPU/heap and authenticated input bytes; this is not a Psi_R certificate.
 
-import ../pvm/[machine, step, gas, host_gas, host_heap, host_fetch, refinement_exports]
+import ../pvm/[machine, step, gas, host_gas, host_heap, host_fetch, refinement_exports, inner_machines]
 import ../codec/[bounded, work_package, work_digest]
 import ../chain/parameters
 import ./[store, refinement_lookup]
@@ -47,6 +47,7 @@ type
     exports: RefinementExports
     copyLimit: MemoryByteLimit
     exportLimits: ExportLimits
+    machines: InnerMachines
 
 func error*[T](outcome: RefinementDispatchResult[T]): RefinementDispatchError =
   ## Inspect the alternative without writable tag access.
@@ -159,7 +160,19 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
       return hostSuccess[RefinementDispatchError](selected.response)
     hostFailure(if exported.error == RefinementExportError.LimitExceeded: RefinementDispatchError.LimitExceeded
       else: RefinementDispatchError.InvalidContext) # No partially appended output on local failure.
-  of 9..14:
+  of 9, 14:
+    let changed = if uint64(stopped.hostCall) == 9:
+      createInnerMachine(context.machines, cpu.gas, cpu.registers, memory)
+    else:
+      expungeInnerMachine(context.machines, cpu.gas, cpu.registers,
+          memory) # Both lifecycle calls use one invocation-local map.
+    if changed.error == InnerMachineError.None:
+      context.machines = changed.value.machines
+      return hostSuccess[RefinementDispatchError](
+          changed.value.response) # Response and immutable map move together.
+    hostFailure(if changed.error == InnerMachineError.LimitExceeded: RefinementDispatchError.LimitExceeded
+      else: RefinementDispatchError.InvalidContext) # A local capture refusal cannot become protocol HUH/FULL.
+  of 10..13:
     hostFailure(RefinementDispatchError.UnsupportedHostCall) # Known inner-machine hosts are not protocol-unknown identifiers.
   else:
     hostSuccess[RefinementDispatchError](unknownHostResponse(cpu.gas, cpu.registers,
@@ -167,14 +180,15 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
 
 proc executeRefinement*(prepared: PreparedRefinementExecution, copyLimit: MemoryByteLimit,
     exportLimits: ExportLimits, steps: ExecutionStepLimit, calls: HostCallLimit,
-    cycles: GasCycleLimit): RefinementDispatchResult[RefinementOutcome] =
+    cycles: GasCycleLimit, inner: InnerMachineLimits = default(InnerMachineLimits)):
+    RefinementDispatchResult[RefinementOutcome] =
   ## Replay the original immutable CPU with fresh exports; refuse atomically without exposing callback progress.
   let data = prepared.data
   if data == nil: return RefinementDispatchResult[RefinementOutcome](
       status: RefinementDispatchError.InvalidContext)
   let empty = captureRefinementExports(data.offset)
   var context = DispatchContext(source: data, exports: empty, copyLimit: copyLimit,
-      exportLimits: exportLimits)
+      exportLimits: exportLimits, machines: captureInnerMachines(inner))
   let evaluated = executeWithHost(data.machine, context, dispatch, steps, calls, cycles)
   case evaluated.error
   of HostExecutionError.None:

@@ -153,7 +153,7 @@ for selector in [1'u64, 2, 4, 6, 13]:
     else: @[51'u8, 52, 0, 0]
   assert bytes == expected, "captured fetch selection and immutable input bytes"
 # Known unsupported hosts retain a typed gate, while all unrelated IDs use F's WHAT branch, even on OOG.
-for id in 9'u8..14'u8:
+for id in 10'u8..13'u8:
   assert run(prepare(cpu([@[10'u8, id], @[50'u8, 0]], registers(), 0)).value).error ==
       RefinementDispatchError.UnsupportedHostCall
 for id in [3'u8, 6, 15, 27, 28, 127, 255]:
@@ -182,7 +182,7 @@ for kind, ending in [@[0'u8], @[10'u8, 8], @[52'u8, 0, 0, 0, 0, 1]]:
   let done = run(prepare(guest).value).value
   assert done.outcome.exit == [StepExit.Panic, StepExit.OutOfGas, StepExit.Fault][kind]
   assert uint64(done.exports.count) == 0
-let unsupported = cpu([immediate(7, 196608), immediate(8, 3), @[10'u8, 8], @[10'u8, 9], @[50'u8,
+let unsupported = cpu([immediate(7, 196608), immediate(8, 3), @[10'u8, 8], @[10'u8, 13], @[50'u8,
     0]], registers())
 assert run(prepare(unsupported).value).error == RefinementDispatchError.UnsupportedHostCall
 var uncharged = multi.machineInfo.value

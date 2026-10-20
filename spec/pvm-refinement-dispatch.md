@@ -17,8 +17,9 @@ eligibility/bootstrap certificate, BAD/BIG decision or full invocation wrapper.
 Execution always starts from the original immutable CPU and fresh empty exports.
 Host 0, 1, 2, 7 and 8 delegate to shared gas, adopted heap, fetch, historical lookup and
 export implementations. Extract heap logic from accumulation into one shared primitive
-without changing accumulation behavior. Known refinement hosts 9–14 refuse locally as
-UnsupportedHostCall, including underfunded calls. All other full-width identifiers use
+without changing accumulation behavior. Hosts 9/14 now use the invocation-local
+[inner lifecycle](pvm-inner-lifecycle.md). Known refinement hosts 10–13 refuse locally
+as UnsupportedHostCall, including underfunded calls. All other full-width identifiers use
 F's unknown fallback, including accumulation-only IDs, and assign WHAT even on OOG.
 
 Step/call/gas-analysis/copy/export budgets are independent local limits. Engine refusal
