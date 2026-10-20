@@ -92,3 +92,14 @@ shortcut. It is read-only recovery validation, not canonical adoption or a subst
 for caller-supplied trust. Tests cover wrong trust, independent byte/map ceilings,
 malformed selected data, cancellation, joined completion and repeated real verification.
 Host ARC evidence covers host receipts only, not native-thread allocator occupancy.
+
+## Published complete-map worker replay
+
+All fourteen independently pinned published mappings pass through one reusable
+native worker as detached buffers and fourteen acknowledged durable generations.
+Each generation is then verified against its independently published root and
+resource policy, and observed through the asynchronous metadata request. Repeated
+roots remain separate generations. A new locked bank restores the final map after
+joined shutdown and checks every original key/value, root and node count. Fixture
+pins/preparation are unchanged; no source complete-map graph crosses the worker
+boundary, no storage trie is adopted, and published block execution is not claimed.
