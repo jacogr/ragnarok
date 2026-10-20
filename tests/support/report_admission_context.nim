@@ -97,7 +97,7 @@ proc transcript(domain: string, seed: array[32, byte]): seq[byte] =
 
 ## Copy a template into an authored report whose recent/lookup tuples refer to the same actual parent chain.
 proc report(base: OwnedReport, core: int, root: state_trie.StateRoot, parentHash, lookupHash: array[
-    32, byte], mode: int, refinementGas = high(uint64)): OwnedReport =
+    32, byte], mode: int, refinementGas = high(uint64), refinement: seq[RefineLoad] = @[]): OwnedReport =
   let raw = reportBytes(reportFor(base, core, [10'u64]))
   var value = decodeReportBorrowed(raw, 2).value
   value.header.packageHash.bytes = default(array[32, byte])
@@ -110,6 +110,8 @@ proc report(base: OwnedReport, core: int, root: state_trie.StateRoot, parentHash
   value.header.lookupSlot = LookupSlot(0)
   value.header.lookupStateRoot.bytes = default(array[32, byte])
   value.digests[0].refine.gasUsed = Gas(refinementGas) # Optional bounded activity keeps multi-report aggregation inside its natural domain.
+  if refinement.len > core:
+    value.digests[0].refine = refinement[core] # Explicit per-core loads override the default before signing.
   value.prerequisiteCount = 0
   value.lookupCount = 0
   if mode == 3: value.header.stateRoot.bytes[0] = value.header.stateRoot.bytes[
@@ -142,10 +144,13 @@ type Context* = object
 proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000'u64,
     withDispute = false, withAvailable = false, extra: seq[StateEntry] = @[], accountCode: seq[
         byte] = @[], ready: ReadyRow = @[], preimageWire: seq[byte] = @[],
-            poolCopies = 1, refinementGas = high(uint64)): Context =
-  ## Author a signed slot-2 block, then run real disputes/Safrole/assurance processing before report checks.
+            poolCopies = 1, refinementGas = high(uint64),
+    historyPeaks: seq[HistoryPeak] = @[], targetSlot = 0'u32, withTicket = false,
+    shiftPending = false, guaranteeSlot = 0'u32, refinement: seq[RefineLoad] = @[],
+        parentPools: seq[AuthorizerRow] = @[], storeWrites = 1000'u64): Context =
+  ## Author a signed advancing block (slot 2 by default), then run real disputes/Safrole/assurance processing.
   ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
-  ## Optional ready rows enter the parent; explicit preimage wire enters the child extrinsic before commitment/signing.
+  ## Optional ready rows and belt peaks enter the parent; explicit preimage wire enters the child extrinsic before commitment/signing.
   let cfg = config()
   var ancient = default(header.Header)
   ancient.unsigned.epoch = absentEpoch()
@@ -169,6 +174,11 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
     let ed = importSeed(seed).value
     roster[i].ed25519 = StateEdKey(array[32, byte](publicKey(ed).value))
     roster[i].bandersnatch = StateBsKey(public)
+  var pending = roster
+  if shiftPending:
+    # Old active/previous positions remain unchanged while the next epoch receives shifted key identities.
+    pending = newSeq[StateValidator](roster.len)
+    for index in 0..<pending.len: pending[index] = roster[(index+1) mod roster.len]
   var schedule = newSeq[StateBsKey](12)
   for i in 0..<12: schedule[i] = StateBsKey(public) # Every authored fallback slot has the real seal key.
   # Preserve existing fixtures by default; optional code rebinding happens before any root or signature.
@@ -182,19 +192,41 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
     pools[i] = newSeq[AuthorizerHash](poolCopies)
     for ordinal in 0..<poolCopies: pools[i][ordinal] = ownedReportInfo(
         sample).value.authorizer # Both cores admit the same authenticated authorizer, with optional oldest-only removal witnesses.
+  if parentPools.len > 0: pools = parentPools # Explicit canonical pools enter the original signed parent.
   if mode == 1: pools[1] = @[] # Later report fails after the first valid policy record.
   entries[0] = authorizationEntry(AuthorizationKind.Pools, pools, cfg.policy.pools).value
   let history = HistoryState(blocks: @[HistoryBlock(header: HistoryHeaderHash(parentHash),
     state: default(HistoryStateRoot), superPeak: default(HistorySuperPeak), slot: HistorySlot(1),
-        packages: @[])], peaks: @[])
+        packages: @[])], peaks: historyPeaks)
   if mode != 9: entries.add(historyStateEntry(history,
       cfg.anchors.history).value) # Missing history must not be synthesized.
   if mode == 10: entries[^1].value.add(0) # An exact parent value cannot carry a suffix.
-  entries.add(safroleStateEntry(SafroleState(pending: roster, root: default(StateRingRoot),
+  var ringRoot = default(StateRingRoot)
+  var ticketWire = @[0'u8]
+  if withTicket:
+    # One genuine RingVRF proof shares the exact committed pending roster and zero parent entropy[2].
+    let setup = newSetup(6).value
+    var members = newSeq[byte](6*32)
+    for index in 0..<6:
+      for octet in 0..<32: members[index*32+octet] = public[octet]
+    ringRoot = StateRingRoot(array[144, byte](commitRing(setup, members).value))
+    var context = default(array[48, byte])
+    for index, octet in "jam_ticket_seal": context[index] = byte(octet)
+    let proof = signRing(setup, key, 0, members, context, []).value
+    var encodedTicket = newSeq[byte](786)
+    let writtenTicket = encodeTickets([Ticket(attempt: TicketAttempt(0),
+      proof: TicketProof(array[784, byte](proof)))], TicketLimit(3), encodedTicket)
+    assert writtenTicket.error == TicketError.None
+    encodedTicket.setLen(writtenTicket.written)
+    ticketWire = encodedTicket
+    close(setup) # Fixed proof/root own no borrowed setup memory.
+  entries.add(safroleStateEntry(SafroleState(pending: pending, root: ringRoot,
     schedule: keySchedule(schedule), accumulator: @[]), safrole().state).value)
   entries.add(entropyEntry(default(StateEntropy)))
   for chapter in [ValidatorChapter.Staging, ValidatorChapter.Active, ValidatorChapter.Previous]:
-    entries.add(validatorEntry(chapter, roster, cfg.credentials.assignments.roster).value) # Independent immutable roster entries.
+    entries.add(validatorEntry(chapter, (if chapter ==
+        ValidatorChapter.Staging: pending else: roster),
+      cfg.credentials.assignments.roster).value) # Independent immutable roster entries.
   entries.add(timeEntry(StateTime(1)))
   var judgments = DisputeState()
   var evidence = Disputes(culprits: @[])
@@ -236,16 +268,18 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   for entry in extra: entries.add(entry)
   var bounds = limits()
   bounds.writeValueBytes = ByteLimit(maxWriteBytes)
+  bounds.writes = ElementLimit(storeWrites) # Optional inherited batch limits enter the original store before any stage.
   let created = newStateStore(entries, bounds)
   assert created.error == StateStoreError.None, $created.error
   var state = created.value
   let root = state.snapshot.value.commitment.root
-  let target = if mode in [11, 12]: 6'u32 else: 2'u32
+  let target = if targetSlot != 0: targetSlot else: (if mode in [11, 12]: 6'u32 else: 2'u32)
   var children = newSeq[OwnedReport](reports)
   for i in 0..<reports: children[i] = report(selectedBase, i, root, parentHash, lookupHash,
-      mode, refinementGas) # Signed metadata includes corrected parent root and authored refinement work.
+      mode, refinementGas, refinement) # Signed metadata includes corrected parent root and authored refinement work.
   var guarantees = newSeq[Guarantee](reports)
-  let signed = certify(children, target, punished)
+  let signedSlot = if guaranteeSlot == 0: target else: guaranteeSlot
+  let signed = certify(children, signedSlot, punished)
   for i in 0..<reports: guarantees[i] = signed.verifiedGuaranteeAt(
       i).value # Real Ed25519 signatures, never observer successes.
   if mode == 8: guarantees[^1].credentials[0].signature = default(GuaranteeSignature) # Later invalid credential.
@@ -253,7 +287,7 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   let written = encodeGuarantees(guarantees, cfg.packages.availability.guarantee, encoded)
   assert written.error == GuaranteeError.None
   encoded.setLen(written.value)
-  var body = @[0'u8]
+  var body = ticketWire
   if preimageWire.len == 0:
     body.add(0'u8) # Preserve the original empty preimage extrinsic by default.
   else:
@@ -290,6 +324,13 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
   candidate.unsigned.extrinsics = ExtrinsicRoot(array[32, byte](extrinsicCommitment(extrinsic,
       frame().frame.maxBytes).value))
   candidate.unsigned.slot = HeaderSlot(target)
+  if target >= 12:
+    # With unchanged staging/pending rosters and zero parent entropy, this is the exact rotated marker.
+    var epochKeys = newSeq[EpochValidator](pending.len)
+    for index in 0..<epochKeys.len:
+      epochKeys[index] = EpochValidator(bandersnatch: HeaderBsKey(public),
+        ed25519: HeaderEdKey(array[32, byte](pending[index].ed25519)))
+    candidate.unsigned.epoch = presentEpoch(default(EpochEntropy), default(TicketsEntropy), epochKeys)
   if withDispute:
     candidate.unsigned.offenders = @[HeaderEdKey(array[32, byte](punished[
         0]))] # Signed literal marker matches this block's evidence.

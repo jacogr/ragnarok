@@ -1,0 +1,19 @@
+{
+  "source": "tests/native/accumulation_recent_results.nim",
+  "build_name": "accumulation-recent-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-recent-default", "diagnostic": "outcome.status == None", "description": "Accumulation recent default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-recent-refused", "diagnostic": "outcome.status == None", "description": "Accumulation recent refused extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-recent-source", "diagnostic": "outcome.status == None", "description": "Accumulation recent source extraction guard"},
+    {"identity": {"reason": "history"}, "arguments": ["history"], "name": "accumulation-recent-history", "diagnostic": "outcome.status == None", "description": "Accumulation recent history extraction guard"},
+    {"identity": {"reason": "root"}, "arguments": ["root"], "name": "accumulation-recent-root", "diagnostic": "outcome.status == None", "description": "Accumulation recent root extraction guard"},
+    {"identity": {"reason": "entry"}, "arguments": ["entry"], "name": "accumulation-recent-entry", "diagnostic": "outcome.status == None", "description": "Accumulation recent entry extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-recent-state", "diagnostic": "outcome.status == None", "description": "Accumulation recent state extraction guard"},
+    {"identity": {"reason": "wrong-header"}, "arguments": ["wrong-header"], "name": "accumulation-recent-wrong-header", "diagnostic": "outcome.status == HeaderFailure", "description": "Accumulation recent wrong-header extraction guard"},
+    {"identity": {"reason": "wrong-codec"}, "arguments": ["wrong-codec"], "name": "accumulation-recent-wrong-codec", "diagnostic": "outcome.status == CodecFailure", "description": "Accumulation recent wrong-codec extraction guard"},
+    {"identity": {"reason": "wrong-output"}, "arguments": ["wrong-output"], "name": "accumulation-recent-wrong-output", "diagnostic": "outcome.status == OutputFailure", "description": "Accumulation recent wrong-output extraction guard"},
+    {"identity": {"reason": "wrong-history"}, "arguments": ["wrong-history"], "name": "accumulation-recent-wrong-history", "diagnostic": "outcome.status == HistoryFailure", "description": "Accumulation recent wrong-history extraction guard"},
+    {"identity": {"reason": "wrong-state"}, "arguments": ["wrong-state"], "name": "accumulation-recent-wrong-state", "diagnostic": "outcome.status == StateFailure", "description": "Accumulation recent wrong-state extraction guard"}
+  ]
+}

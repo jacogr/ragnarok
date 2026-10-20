@@ -8,10 +8,10 @@ import ../../src/state/[accumulation_round, accumulation_inputs, accumulation_op
   accumulation_batch, accumulation_queue,
   report_admission,
   accumulation_service, accumulation_invocation, accumulation_machine, accumulation_dispatch,
-  accumulation_skip, accumulation_execution, store]
+  accumulation_skip, accumulation_execution, accumulation_effects, store]
 import ../../src/codec/[bounded, composite, header, report_owned, work_digest, state_accounts,
   state_service_values, state_privileges, state_workqueues, state_authorization, state_trie,
-  state_safrole, c2_records]
+  state_safrole, state_history, c2_records]
 import ../../src/crypto/primitives
 import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ./[report_context, report_admission_context, pvm_accumulation_context,
@@ -61,10 +61,16 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
     second = ExecutionEnding.Halt, empty = false, report = false, firstProgram: seq[byte] = @[],
     secondProgram: seq[byte] = @[], allowanceGas = 100000'u64,
     ready: ReadyRow = @[], extra: seq[StateEntry] = @[], secondBalance = 0'u64,
-    incomingReports = 0, preimageWire: seq[byte] = @[], assigner = 0'u32, manager = 0'u32,
-        poolCopies = 1, refinementGas = high(uint64)): ExecutionFixture =
+    incomingReports = 0, preimageWire: seq[byte] = @[], assigner = 0'u32,
+        poolCopies = 1, refinementGas = high(uint64),
+    historyPeaks: seq[HistoryPeak] = @[], targetSlot = 0'u32,
+    withTicket = false, shiftPending = false, guaranteeSlot = 0'u32, refinement: seq[
+        RefineLoad] = @[],
+    parentPools: seq[AuthorizerRow] = @[], authorizationQueue: seq[byte] = @[],
+    omitAuthorizationQueue = false, withDispute = false,
+    storeWrites = 1000'u64, manager = 0'u32): ExecutionFixture =
   ## Recompute parent commitments and real signatures after selecting code, optional complete preimages and free allowances.
-  ## Optional allowances, balances and ready rows enter the parent; incoming reports/preimages enter the genuinely signed child.
+  ## Optional allowances, balances, ready rows and belt peaks enter the parent; incoming reports/preimages enter the genuinely signed child.
   let firstCode = (if firstProgram.len == 0: code(first) else: firstProgram)
   let secondCode = (if secondProgram.len == 0: code(second) else: secondProgram)
   var allowances: seq[AlwaysAccumulate] = @[]
@@ -80,10 +86,12 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
   let privileges = privilegeStateEntry(PrivilegeState(manager: ServiceIndex(manager),
       assigners: assigners,
     always: allowances), executionRoundConfig().privileges).value
-  var entries = @[privileges,
-    authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80), newSeq[
-        AuthorizerHash](80)],
-      pvmContextConfig().queues).value]
+  var entries = @[privileges]
+  if not omitAuthorizationQueue:
+    let queues = authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80), newSeq[
+        AuthorizerHash](80)], pvmContextConfig().queues).value
+    entries.add(StateEntry(key: queues.key, value: (if authorizationQueue.len == 0:
+      queues.value else: authorizationQueue))) # Explicit malformed fixtures are committed honestly before the tested decoder stage.
   for ordinal, raw in [firstCode, secondCode]:
     let service = ServiceIndex(if ordinal == 0: 42 else: 99)
     let hash = array[32, byte](blake2b256(raw).value)
@@ -98,7 +106,10 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
     entries.add(entry) # Additional effect witnesses enter the genuine parent before its commitment/signatures.
   let context = authored(base, reports = incomingReports, withAvailable = report, extra = entries,
       accountCode = firstCode, ready = ready, preimageWire = preimageWire, poolCopies = poolCopies,
-      refinementGas = refinementGas)
+      refinementGas = refinementGas, historyPeaks = historyPeaks, targetSlot = targetSlot,
+    withTicket = withTicket, shiftPending = shiftPending, guaranteeSlot = guaranteeSlot,
+      refinement = refinement, parentPools = parentPools,
+    withDispute = withDispute, storeWrites = storeWrites)
   let queue = planBlockAccumulationQueue(planBlockReports(context.staged, context.older, config()).value,
     executionQueueConfig()).value
   ExecutionFixture(round: planBlockInitialAccumulation(queue, executionRoundConfig()).value,
@@ -115,7 +126,8 @@ proc executionService*(fixture: ExecutionFixture, index: uint64, slot = HeaderSl
 proc executionGuest*(fixture: ExecutionFixture, index: uint64, slot = HeaderSlot(
     2), wrongEntropy = false, parameters: Parameters = pvmParameters(),
     copyLimit = MemoryByteLimit(32), transferLimit = ElementLimit(0),
-    steps = ExecutionStepLimit(20), calls = HostCallLimit(4)): AccumulationDispatchResult =
+    steps = ExecutionStepLimit(20), calls = HostCallLimit(4),
+    provisions = default(AccumulationProvisionLimits)): AccumulationDispatchResult =
   ## Run the real PVM against one original service; no terminal or gas observation is forged.
   let service = prepareBlockAccumulationService(fixture.round, InvocationServiceIndex(index),
     AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024))).value
@@ -134,7 +146,7 @@ proc executionGuest*(fixture: ExecutionFixture, index: uint64, slot = HeaderSlot
   executeAccumulationMachine(prepared, parameters,
     FetchAccumulationLimits(items: ElementLimit(1), bytes: ByteLimit(512), operand: OperandLimits(
         maxBytes: ByteLimit(512))),
-    copyLimit, steps, calls, GasCycleLimit(1000), contexts,
+    copyLimit, steps, calls, GasCycleLimit(1000), contexts, provisions,
     transferLimit = transferLimit)
 
 proc executionSkip*(fixture: ExecutionFixture, index: uint64): SkippedAccumulation =

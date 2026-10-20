@@ -1,0 +1,16 @@
+{
+  "source": "tests/native/accumulation_validators_results.nim",
+  "build_name": "accumulation-validators-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-validators-default", "diagnostic": "outcome.status == None", "description": "Accumulation validators default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-validators-refused", "diagnostic": "outcome.status == None", "description": "Accumulation validators refused extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-validators-source", "diagnostic": "outcome.status == None", "description": "Accumulation validators source extraction guard"},
+    {"identity": {"reason": "observations"}, "arguments": ["observations"], "name": "accumulation-validators-observations", "diagnostic": "outcome.status == None", "description": "Accumulation validators observations extraction guard"},
+    {"identity": {"reason": "projection"}, "arguments": ["projection"], "name": "accumulation-validators-projection", "diagnostic": "outcome.status == None", "description": "Accumulation validators projection extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-validators-state", "diagnostic": "outcome.status == None", "description": "Accumulation validators state extraction guard"},
+    {"identity": {"reason": "wrong-roster"}, "arguments": ["wrong-roster"], "name": "accumulation-validators-wrong-roster", "diagnostic": "outcome.status == RosterFailure", "description": "Accumulation validators wrong-roster extraction guard"},
+    {"identity": {"reason": "wrong-activity"}, "arguments": ["wrong-activity"], "name": "accumulation-validators-wrong-activity", "diagnostic": "outcome.status == ActivityFailure", "description": "Accumulation validators wrong-activity extraction guard"},
+    {"identity": {"reason": "wrong-projection"}, "arguments": ["wrong-projection"], "name": "accumulation-validators-wrong-projection", "diagnostic": "outcome.status == ProjectionFailure", "description": "Accumulation validators wrong-projection extraction guard"}
+  ]
+}

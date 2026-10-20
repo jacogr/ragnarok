@@ -10,7 +10,7 @@ import ../../src/state/[accumulation_reentry, accumulation_reentry_invocation,
   accumulation_invocation, accumulation_dispatch, accumulation_skip, accumulation_effects,
   accumulation_machine, store]
 import ../../src/codec/[bounded, composite, report_owned, work_report, work_digest,
-  state_workqueues, state_layout, state_trie, c2_records]
+  state_workqueues, state_history, state_layout, state_trie, c2_records]
 import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ./[accumulation_execution_context, accumulation_continuation_execution_context,
   accumulation_batch_context, pvm_accumulation_provision, pvm_accumulation_context, report_context]
@@ -37,9 +37,9 @@ proc reentryFixture*(base: OwnedReport, first = ExecutionEnding.Halt, second = E
     firstGas = 1000'u64, secondGas = 1000'u64, provided = false, stopped = false,
     empty = false, tail: ReadyRow = @[], firstProgram: seq[byte] = @[],
     secondProgram: seq[byte] = @[], extra: seq[StateEntry] = @[], incomingReports = 0,
-    preimageWire: seq[byte] = @[]): ReentryFixture =
+    preimageWire: seq[byte] = @[], historyPeaks: seq[HistoryPeak] = @[]): ReentryFixture =
   ## Consume one report initially, reserve nearly all later gas in the second, then release the true two-service reentry suffix.
-  # Optional code preimages enter the parent; incoming reports/preimage wire enter the signed child; provided retains its guest.
+  # Optional code preimages and belt peaks enter the parent; incoming reports/preimage wire enter the signed child; provided retains its guest.
   let firstEnding = if provided: ExecutionEnding.Exhausted else: first
   var budget = 1000'u64
   for ending in [firstEnding, second]:
@@ -63,7 +63,7 @@ proc reentryFixture*(base: OwnedReport, first = ExecutionEnding.Halt, second = E
     entries.add(provisionRequest(99, @[81'u8]))
   var initial = executionFixture(base, first = firstEnding, second = second, empty = empty,
     ready = queue, firstProgram = code, secondProgram = secondProgram, extra = entries,
-    incomingReports = incomingReports, preimageWire = preimageWire)
+    incomingReports = incomingReports, preimageWire = preimageWire, historyPeaks = historyPeaks)
   var policy = executionRoundConfig()
   policy.blockGas = Gas(budget)
   initial.round = planBlockInitialAccumulation(initial.round.roundBlockQueue.value, policy).value

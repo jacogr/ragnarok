@@ -45,14 +45,18 @@ UNIT_FIXTURES['pvm_registers'] = ('RAGNAROK_PVM_REGISTERS', PVM_REGISTERS,
 # Shared independent report bytes retain availability and queued-report fixture identity.
 STATE_REPORT = ROOT/'tests/fixtures/state-report.bin'
 for case in ('state_availability', 'state_availability_private', 'state_workqueues',
-             'state_workqueues_private', 'accumulation_execution', 'accumulation_finalization',
-             'accumulation_history',
-             'accumulation_outputs',
+             'state_workqueues_private', 'accumulation_activity', 'accumulation_authorization',
+             'accumulation_completion', 'accumulation_consensus', 'accumulation_driver', 'accumulation_execution',
+             'accumulation_finalization',
+             'accumulation_history', 'accumulation_later_runner',
+             'accumulation_outputs', 'accumulation_preimages', 'accumulation_block_publication',
              'accumulation_continuation', 'accumulation_continuation_execution',
              'accumulation_continuation_inputs',
-             'accumulation_continuation_invocation', 'accumulation_reentry',
+             'accumulation_continuation_invocation', 'accumulation_ready', 'accumulation_recent',
+             'accumulation_reentry',
              'accumulation_reentry_cycle', 'accumulation_reentry_execution',
-             'accumulation_reentry_outputs', 'accumulation_statistics'):
+             'accumulation_reentry_outputs', 'accumulation_runner', 'accumulation_statistics', 'accumulation_times',
+             'accumulation_validators'):
     # Every consumer verifies the same exact source bytes before its native assertions execute.
     UNIT_FIXTURES[case] = ('RAGNAROK_STATE_REPORT', STATE_REPORT, ((STATE_REPORT, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371'),))
 

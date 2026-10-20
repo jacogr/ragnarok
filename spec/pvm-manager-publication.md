@@ -64,3 +64,11 @@ Observed local verification (macOS, pinned Nimony/ARC and native crypto):
 Full logs and selected guard evidence remain under
 `build/pvm-manager-publication/`. These are local results; exact-head Linux CI
 remains separate evidence. This increment does not complete block parity.
+
+After merging state integration master `6033e8cd`, the shared execution fixture
+retains master's state/history/authorization/store options and appends the manager
+option without shifting existing positional arguments. Fresh local
+`accumulation_statistics`, `accumulation_runner` and `accumulation_completion`
+suites passed, each with unchanged 1,000-cycle ARC occupancy. Pinned formatting,
+verification inventory and whitespace checks passed. Merge verification logs are
+`build/pvm-manager-publication/merge-*.log`; exact-head Linux CI remains separate.
