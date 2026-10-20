@@ -14,5 +14,6 @@ let result = if argument == "default": default(AccumulationContinuationResult[Pr
 case argument
 of "info": discard owner.continuationInfo.value # No fabricated prefix or budget.
 of "source": discard owner.continuationSource.value # No synthetic admitted execution.
+of "transfers": discard owner.continuationTransfers.value # No caller-substituted outgoing collection.
 of "index": discard owner.continuationReportAt(ContinuationReportIndex(0)).value # No default report owner.
 else: discard result.value # Both default and invalid-source results require selected success.

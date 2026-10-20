@@ -3,6 +3,7 @@
 
 ## Genuine signed initial rounds and tiny guest programs for complete execution gas accounting.
 
+import ../../src/chain/parameters
 import ../../src/state/[accumulation_round, accumulation_inputs, accumulation_operands,
   accumulation_batch, accumulation_queue,
   report_admission,
@@ -59,9 +60,9 @@ proc code(ending: ExecutionEnding): seq[byte] =
 proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
     second = ExecutionEnding.Halt, empty = false, report = false, firstProgram: seq[byte] = @[],
     secondProgram: seq[byte] = @[], allowanceGas = 100000'u64,
-    ready: ReadyRow = @[], extra: seq[StateEntry] = @[]): ExecutionFixture =
+    ready: ReadyRow = @[], extra: seq[StateEntry] = @[], secondBalance = 0'u64): ExecutionFixture =
   ## Recompute parent commitments and real signatures after selecting code, optional complete preimages and free allowances.
-  ## Optional allowance gas and ready rows enter the signed parent before the round is planned.
+  ## Optional allowance gas, sibling balance and ready rows enter the signed parent before the round is planned.
   let firstCode = (if firstProgram.len == 0: code(first) else: firstProgram)
   let secondCode = (if secondProgram.len == 0: code(second) else: secondProgram)
   var allowances: seq[AlwaysAccumulate] = @[]
@@ -81,8 +82,8 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
     let service = ServiceIndex(if ordinal == 0: 42 else: 99)
     let hash = array[32, byte](blake2b256(raw).value)
     if ordinal == 1:
-      entries.add(serviceMetadataEntry(service, ServiceMetadata(codeHash: CodeHash(hash)),
-          ByteLimit(89)).value)
+      entries.add(serviceMetadataEntry(service, ServiceMetadata(codeHash: CodeHash(hash),
+          balance: AccountBalance(secondBalance)), ByteLimit(89)).value)
     let ending = (if ordinal == 0: first else: second)
     if ending != ExecutionEnding.Missing:
       entries.add(servicePreimageEntry(service, ServicePreimageHash(hash), raw,
@@ -105,7 +106,9 @@ proc executionService*(fixture: ExecutionFixture, index: uint64, slot = HeaderSl
       preimageBytes: ByteLimit(1024))).value
 
 proc executionGuest*(fixture: ExecutionFixture, index: uint64, slot = HeaderSlot(
-    2), wrongEntropy = false): AccumulationDispatchResult =
+    2), wrongEntropy = false, parameters: Parameters = pvmParameters(),
+    copyLimit = MemoryByteLimit(32), transferLimit = ElementLimit(0),
+    steps = ExecutionStepLimit(20), calls = HostCallLimit(4)): AccumulationDispatchResult =
   ## Run the real PVM against one original service; no terminal or gas observation is forged.
   let service = prepareBlockAccumulationService(fixture.round, InvocationServiceIndex(index),
     AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024))).value
@@ -121,10 +124,11 @@ proc executionGuest*(fixture: ExecutionFixture, index: uint64, slot = HeaderSlot
     pages: PageLimit(5))).value
   var contexts = pvmContextConfig()
   contexts.privileges = executionRoundConfig().privileges
-  executeAccumulationMachine(prepared, pvmParameters(),
+  executeAccumulationMachine(prepared, parameters,
     FetchAccumulationLimits(items: ElementLimit(1), bytes: ByteLimit(512), operand: OperandLimits(
         maxBytes: ByteLimit(512))),
-    MemoryByteLimit(32), ExecutionStepLimit(20), HostCallLimit(4), GasCycleLimit(1000), contexts)
+    copyLimit, steps, calls, GasCycleLimit(1000), contexts,
+    transferLimit = transferLimit)
 
 proc executionSkip*(fixture: ExecutionFixture, index: uint64): SkippedAccumulation =
   ## Certify unavailable code with its retained post-transfer map and exact initial round source owners.

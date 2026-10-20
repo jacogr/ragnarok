@@ -2,28 +2,32 @@
 
 ## Scope and authority
 
-Plan the report-only recursive entry following a genuine `CompletedBlockAccumulation`. Authority
+Plan the initial recursive entry following a genuine `CompletedBlockAccumulation`. Authority
 remains GP 0.8.0 revision `07f041dabd073f9018b418e9ee72e79dd2185401`, accumulation.tex SHA-256
 `bc919b34266cee75577f5fb3282b55768d0d75b6b8fe15d2835a228be18e6a6f`, equation `accseq`:
 remaining reports begin after the completed initial prefix, recursive free allowances are empty,
-and the recursive budget subtracts actual service gas rather than declared reservations.
+and the recursive budget subtracts actual service gas rather than declared reservations,
+then restores paid outgoing gas before reserving it for the next round.
 Pins, domain bytes and the parked request-namespace question do not change.
 
-This bounded layer supports the currently empty selected outgoing-transfer sequence. Refuse a
-future nonempty selected sequence instead of silently omitting its gas or destinations. Bound
-executed-outcome inspection, remaining-report inspection and digest inspection independently.
+[Completed-round transfer binding](pvm-transfer-continuation.md) now collects selected outgoing
+records in numeric service order under explicit execution, transfer-count and memo-byte ceilings.
+Defaults still authorize no nonempty transfer sequence. Restore outgoing gas into the recursive
+budget and reserve it before selecting reports, leaving the report remainder equal to original
+budget minus actual gas. Transfer-only work dispatches even with zero gas and no reports. Bound
+remaining-report inspection and digest inspection independently.
 A rejected report consumes inspection work but contributes no selected prefix/gas; later cheaper
 or zero-cost reports cannot bypass it. Scan only the original admitted queue's unprocessed suffix,
 using remaining-budget subtraction before each candidate charge, including mathematical sums
 larger than the gas domain. No prior report payload is copied or rescanned.
 
 Retain the exact completed source and original queue; expose copied prefix/budget facts and
-immutable selected report handles through a nominal local ordinal. Preparation performs no guest
-execution, hashing, account application, input rebuilding or state publication. Defaults and
+immutable selected report handles through a nominal local ordinal. Preparation copies only bounded
+fixed transfers and performs no guest execution, hashing, account application, input rebuilding or
+state publication. Defaults and
 refusals contain no partially selected progress. The selected reports are a plan, not executed
-reports; actual later-round input/state binding, transfer integration, execution, output-set union
-and final block publication remain subsequent work. M1 framing remains complete; full state
-serialization and accumulation/block parity remain open.
+reports; later reentry transfer integration and final block publication remain subsequent work.
+M1 framing remains complete; full state serialization and accumulation/block parity remain open.
 
 ## Completion tests
 
@@ -38,15 +42,15 @@ consumer, Python provenance/reference tests, source-owned inventory and pinned f
 ## API and ownership
 
 `planAccumulationContinuation` takes an actual completed admitted initial round and independent
-outcome/report/digest inspection limits. It checks the terminal-selected outgoing transfer counts,
+outcome/report/digest inspection limits. It captures terminal-selected outgoing records under independent count/memo ceilings,
 retains the original priority projection, and starts after the source's completed report prefix.
-The recursive budget is retained original budget minus verified actual gas; allowances do not
-recur. Candidate report gas is subtracted from a temporary remainder and committed only after all
+The recursive budget is retained original budget minus verified actual gas plus selected outgoing
+gas; that outgoing gas is reserved before report selection. Allowances do not recur. Candidate report gas is subtracted from a temporary remainder and committed only after all
 its digests fit. Thus an unaffordable mathematical sum cannot wrap into an accepted report, and
 neither earlier digests of a rejected report nor later inexpensive reports alter the chosen prefix.
 
 `continuationInfo` copies the original completed prefix, pending count, selected suffix prefix,
-recursive budget, declared selected report gas and dispatch flag. Pending reports with no affordable
+recursive budget, selected outgoing count/gas, declared selected report gas and dispatch flag. Pending reports with no affordable
 head are a successful stopped plan, distinguishable from an initialized empty suffix and from a
 default owner. `continuationSource` retains the exact initial completion. `continuationReportAt`
 uses a nominal plan-local ordinal, checks full-width bounds before offset addition, and retains the
@@ -54,8 +58,8 @@ original immutable report owner without reconstructing or copying its payload. T
 is acyclic; failed/default result alternatives contain reasons alone, never partial progress.
 
 Inspection caps apply to work actually inspected, including rejected reports/digests, rather than
-all remaining reports. Already consumed reports are neither accessed nor charged again. No API
-accepts a replacement queue, budget, allowance dictionary or caller-authored gas observation.
+all remaining reports. Already consumed reports are neither accessed nor charged again. `continuationTransfers` retains the exact completed-round transfer owner. No API
+accepts a replacement queue, transfer array, budget, allowance dictionary or caller-authored gas observation.
 No posterior state or next-round invocation certificate is implied by report selection alone.
 
 ## Local verification
