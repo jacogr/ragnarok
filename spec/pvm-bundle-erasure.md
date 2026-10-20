@@ -38,6 +38,8 @@ aggregate byte and product limits, invalid/default sources and indices,
 copy/source/detached lifetime, zero hashes, compiler privacy/nominal guards,
 optimized result guards and fresh ARC release.
 
+Export/page encoding continues in [pvm-export-erasure.md](pvm-export-erasure.md).
+
 Next: source-bound export/page erasure chunks, then bundle chunk hashes and
 availability-root assembly. Production recovery and faster transforms remain
 separate. Root/state freshness and package-to-root trust integration remain open.
