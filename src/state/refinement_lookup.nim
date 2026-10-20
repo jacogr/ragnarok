@@ -18,6 +18,12 @@ type
     anchor: LookupSlot
   HistoricalLookupContext* = object ## Read-only host input; callers separately authenticate the state/anchor for refinement.
     data: nil LookupData
+  HistoricalPreimage* = object ## An optional immutable value; absence has no fabricated byte payload.
+    case selected: bool
+    of true:
+      stored: StateValue
+    of false:
+      discard # Includes the genuine absent alternative, independently of a present empty value.
   HistoricalLookupResult*[T] = object ## Default/refused alternatives have no accessible success payload.
     case status: HistoricalLookupError
     of None:
@@ -57,6 +63,57 @@ func available(history: RequestHistory, anchor: LookupSlot): bool =
   of RequestState.Reavailable:
     (uint32(history.originalFrom) <= time and time < uint32(history.removedAt)) or
       uint32(history.restoredAt) <= time
+
+func present*(preimage: HistoricalPreimage): bool =
+  ## Distinguish absence from an available zero-byte preimage.
+  preimage.selected
+func value*(preimage: HistoricalPreimage): StateValue {.requires: preimage.selected.} =
+  ## Retain immutable bytes only for the present alternative; copying remains separately bounded.
+  preimage.stored
+
+proc historicalPreimage*(context: HistoricalLookupContext, service: ServiceIndex,
+    hash: ServicePreimageHash): HistoricalLookupResult[HistoricalPreimage] =
+  ## Resolve the pinned account/history equation once for both guest lookup and code bootstrap.
+  ## No preimage copy or content rehash occurs here; callers authenticate supplied complete state separately.
+  template fail(reason: HistoricalLookupError) =
+    return HistoricalLookupResult[HistoricalPreimage](status: reason)
+  template absent() =
+    return HistoricalLookupResult[HistoricalPreimage](status: HistoricalLookupError.None,
+      completed: HistoricalPreimage(selected: false))
+  let data = context.data
+  if data == nil: fail(HistoricalLookupError.InvalidContext)
+  let account = data.state.lookup(chapterServiceKey(StateChapter(255), service))
+  if account.error == StateStoreError.MissingKey: absent()
+  if account.error != StateStoreError.None: fail(HistoricalLookupError.InvalidContext)
+  if account.value.byteLength != ServiceMetadataBytes:
+    fail(HistoricalLookupError.MalformedState) # Bound the fixed account copy before decoding.
+  if decodeServiceMetadata(account.value.bytes, ByteLimit(ServiceMetadataBytes)).error !=
+      ServiceMetadataError.None:
+    fail(HistoricalLookupError.MalformedState)
+  let preimageKey = servicePreimageKey(service, hash, ByteLimit(32))
+  if preimageKey.error != ServiceValueError.None: fail(HistoricalLookupError.BackendFailure)
+  let preimage = data.state.lookup(preimageKey.value)
+  if preimage.error == StateStoreError.MissingKey: absent()
+  if preimage.error != StateStoreError.None: fail(HistoricalLookupError.InvalidContext)
+  let size = uint64(preimage.value.byteLength)
+  if size > uint64(high(uint32)):
+    fail(HistoricalLookupError.LimitExceeded) # The existing request-key codec's E4 domain must never truncate an actual length.
+  let requestKey = serviceRequestKey(service, hash, RequestLength(uint32(size)), ByteLimit(32))
+  if requestKey.error != RequestError.None: fail(HistoricalLookupError.BackendFailure)
+  let request = data.state.lookup(requestKey.value)
+  if request.error == StateStoreError.MissingKey:
+    fail(HistoricalLookupError.MalformedState) # Every stored preimage requires its actual-length request by the account invariant.
+  if request.error != StateStoreError.None: fail(HistoricalLookupError.InvalidContext)
+  if request.value.byteLength > 13:
+    fail(HistoricalLookupError.MalformedState) # One canonical natural count and at most three E4 timeslots.
+  let bytes = request.value.bytes
+  let decoded = decodeRequestHistory(bytes, RequestHistoryConfig(items: ElementLimit(3),
+      maxBytes: ByteLimit(13)))
+  if decoded.error != RequestError.None: fail(HistoricalLookupError.MalformedState)
+  if decoded.value.consumed != bytes.len: fail(HistoricalLookupError.MalformedState)
+  if not available(decoded.value.history, data.anchor): absent()
+  HistoricalLookupResult[HistoricalPreimage](status: HistoricalLookupError.None,
+    completed: HistoricalPreimage(selected: true, stored: preimage.value))
 
 proc historicalLookupResponse*(context: HistoricalLookupContext, gas: MachineGas,
     registers: RegisterFile, memory: Memory, copyLimit: MemoryByteLimit):
@@ -101,43 +158,17 @@ proc historicalLookupResponse*(context: HistoricalLookupContext, gas: MachineGas
   if target != high(uint64):
     if target > uint64(high(uint32)): absent() # Refuse truncation into an unrelated existing service.
     service = ServiceIndex(uint32(target))
-  let account = data.state.lookup(chapterServiceKey(StateChapter(255), service))
-  if account.error == StateStoreError.MissingKey: absent()
-  if account.error != StateStoreError.None: fail(HistoricalLookupError.InvalidContext)
-  if account.value.byteLength != ServiceMetadataBytes:
-    fail(HistoricalLookupError.MalformedState) # Bound the fixed account copy before decoding.
-  if decodeServiceMetadata(account.value.bytes, ByteLimit(ServiceMetadataBytes)).error !=
-      ServiceMetadataError.None:
-    fail(HistoricalLookupError.MalformedState)
   var rawHash = default(array[32, byte])
   for index in 0..<32:
     rawHash[index] = input.value[index] # The successful fixed read proves every index.
-  let hash = ServicePreimageHash(rawHash)
-  let preimageKey = servicePreimageKey(service, hash, ByteLimit(32))
-  if preimageKey.error != ServiceValueError.None: fail(HistoricalLookupError.BackendFailure)
-  let preimage = data.state.lookup(preimageKey.value)
-  if preimage.error == StateStoreError.MissingKey: absent()
-  if preimage.error != StateStoreError.None: fail(HistoricalLookupError.InvalidContext)
-  let size = uint64(preimage.value.byteLength)
-  if size > uint64(high(uint32)):
-    fail(HistoricalLookupError.LimitExceeded) # The existing request-key codec's E4 domain must never truncate an actual length.
-  let requestKey = serviceRequestKey(service, hash, RequestLength(uint32(size)), ByteLimit(32))
-  if requestKey.error != RequestError.None: fail(HistoricalLookupError.BackendFailure)
-  let request = data.state.lookup(requestKey.value)
-  if request.error == StateStoreError.MissingKey:
-    fail(HistoricalLookupError.MalformedState) # Every stored preimage requires its actual-length request by the account invariant.
-  if request.error != StateStoreError.None: fail(HistoricalLookupError.InvalidContext)
-  if request.value.byteLength > 13:
-    fail(HistoricalLookupError.MalformedState) # One canonical natural count and at most three E4 timeslots.
-  let bytes = request.value.bytes
-  let decoded = decodeRequestHistory(bytes, RequestHistoryConfig(items: ElementLimit(3),
-      maxBytes: ByteLimit(13)))
-  if decoded.error != RequestError.None: fail(HistoricalLookupError.MalformedState)
-  if decoded.value.consumed != bytes.len: fail(HistoricalLookupError.MalformedState)
-  if not available(decoded.value.history, data.anchor): absent()
+  let resolved = historicalPreimage(context, service, ServicePreimageHash(rawHash))
+  if resolved.error != HistoricalLookupError.None: fail(resolved.error)
+  if not resolved.value.present: absent()
+  let preimage = resolved.value.value
+  let size = uint64(preimage.byteLength)
   let offset = min(uint64(registers[10]), size)
   let count = min(requested, size-offset) # Clipping proves subtraction and every later native coordinate.
-  let copied = preimage.value.copySlice(offset, count, ByteLimit(uint64(copyLimit)))
+  let copied = preimage.copySlice(offset, count, ByteLimit(uint64(copyLimit)))
   if copied.error == StateStoreError.LimitExceeded: fail(HistoricalLookupError.LimitExceeded)
   if copied.error != StateStoreError.None: fail(HistoricalLookupError.InvalidContext)
   let written = writeBytes(memory, MemoryAddress(uint64(registers[9])), copied.value, copyLimit)

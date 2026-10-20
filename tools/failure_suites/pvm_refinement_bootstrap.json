@@ -1,0 +1,96 @@
+{
+  "source": "tests/native/pvm_refinement_bootstrap_results.nim",
+  "build_name": "pvm-refinement-bootstrap-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-refinement-bootstrap-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement bootstrap default"
+    },
+    {
+      "identity": {
+        "origin": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "pvm-refinement-bootstrap-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement bootstrap refused"
+    },
+    {
+      "identity": {
+        "origin": "bad-machine"
+      },
+      "arguments": [
+        "bad-machine"
+      ],
+      "name": "pvm-refinement-bootstrap-bad-machine",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement bootstrap bad-machine"
+    },
+    {
+      "identity": {
+        "origin": "bad-arguments"
+      },
+      "arguments": [
+        "bad-arguments"
+      ],
+      "name": "pvm-refinement-bootstrap-bad-arguments",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement bootstrap bad-arguments"
+    },
+    {
+      "identity": {
+        "origin": "bad-hash"
+      },
+      "arguments": [
+        "bad-hash"
+      ],
+      "name": "pvm-refinement-bootstrap-bad-hash",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement bootstrap bad-hash"
+    },
+    {
+      "identity": {
+        "origin": "bad-hosts"
+      },
+      "arguments": [
+        "bad-hosts"
+      ],
+      "name": "pvm-refinement-bootstrap-bad-hosts",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement bootstrap bad-hosts"
+    },
+    {
+      "identity": {
+        "origin": "default-info"
+      },
+      "arguments": [
+        "default-info"
+      ],
+      "name": "pvm-refinement-bootstrap-default-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Refinement bootstrap default-info"
+    },
+    {
+      "identity": {
+        "origin": "absent-preimage"
+      },
+      "arguments": [
+        "absent-preimage"
+      ],
+      "name": "pvm-refinement-bootstrap-absent-preimage",
+      "diagnostic": "preimage.selected",
+      "description": "Refinement bootstrap absent-preimage"
+    }
+  ]
+}
