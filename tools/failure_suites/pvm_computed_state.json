@@ -1,0 +1,85 @@
+{
+  "source": "tests/native/pvm_computed_state.nim",
+  "build_name": "pvm-computed-state",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-state-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-state-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state source"
+    },
+    {
+      "identity": {
+        "origin": "admission"
+      },
+      "arguments": [
+        "admission"
+      ],
+      "name": "pvm-computed-state-admission",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state admission"
+    },
+    {
+      "identity": {
+        "origin": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "pvm-computed-state-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state state"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-state-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state owner"
+    },
+    {
+      "identity": {
+        "origin": "block"
+      },
+      "arguments": [
+        "block"
+      ],
+      "name": "pvm-computed-state-block",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state block"
+    },
+    {
+      "identity": {
+        "origin": "snapshot"
+      },
+      "arguments": [
+        "snapshot"
+      ],
+      "name": "pvm-computed-state-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state snapshot"
+    }
+  ]
+}

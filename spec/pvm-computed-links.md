@@ -39,8 +39,8 @@ retention, caller-list replacement, detached lifetime and 1000-cycle ARC release
 compiler privacy/nominal rejection and strict optimized result/accessor guards
 with genuine positive controls.
 
-Next: authenticate original execution state and anchor provenance before signing
-eligibility and guarantee publication. M1 framing is complete; full state
+Next: [exact execution-state binding](pvm-computed-state.md), then anchor provenance
+before signing eligibility and guarantee publication. M1 framing is complete; full state
 serialization and whole-block parity remain open.
 
 Local evidence: checked optimized macOS ARM64 `make unit SUITE=pvm_computed_links`
