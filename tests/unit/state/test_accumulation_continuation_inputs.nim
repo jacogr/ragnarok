@@ -59,9 +59,12 @@ proc main() {.raises.} =
   let base = decodeOwnedReport(wire, 2).value
   checkTransferContinuation(base) # Genuine transferred rounds exercise the new bound collection and input/gas path.
   let ready = @[queued(base, 64, 10), queued(base, 65, 11), queued(base, 66, 0)]
-  var fixture = executionFixture(base, first = ExecutionEnding.Panic,
-    second = ExecutionEnding.Panic,
-    allowanceGas = 208, ready = ready)
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.first = ExecutionEnding.Panic
+  executionOptions0.second = ExecutionEnding.Panic
+  executionOptions0.allowanceGas = 208
+  executionOptions0.signed.ready = ready
+  var fixture = executionFixture(base, executionOptions0)
   var roundConfig = executionRoundConfig()
   roundConfig.blockGas = Gas(426)
   fixture.round = planBlockInitialAccumulation(fixture.round.roundBlockQueue.value,
@@ -128,7 +131,9 @@ proc main() {.raises.} =
   assert prepareContinuationAccumulationService(defaultOwner, InvocationServiceIndex(0),
     default(AccumulationServiceConfig)).error == AccumulationContinuationInputError.Uninitialized
   # Initialized empty selections preserve exact no-op state while remaining distinct from defaults.
-  let emptyFixture = executionFixture(base, empty = true)
+  var executionOptions1 = executionFixtureConfig()
+  executionOptions1.empty = true
+  let emptyFixture = executionFixture(base, executionOptions1)
   let emptySource = completeBlockAccumulation(emptyFixture.round, [], [], executionLimits(0)).value
   let emptyPlan = planAccumulationContinuation(emptySource, default(
       AccumulationContinuationLimits)).value
@@ -140,8 +145,11 @@ proc main() {.raises.} =
   # Actual terminal provides change the successor map even though its incoming continuation inputs remain report-only.
   var code = @[0'u8]
   for octet in batchEnvelope(BatchEnding.Halt): code.add(octet)
-  var effects = executionFixture(base, ready = @[ready[0]], firstProgram = code,
-    extra = @[provisionRequest(42, @[73'u8]), provisionRequest(99, @[81'u8])])
+  var executionOptions2 = executionFixtureConfig()
+  executionOptions2.signed.ready = @[ready[0]]
+  executionOptions2.firstProgram = code
+  executionOptions2.signed.extra = @[provisionRequest(42, @[73'u8]), provisionRequest(99, @[81'u8])]
+  var effects = executionFixture(base, executionOptions2)
   var effectsConfig = executionRoundConfig()
   effectsConfig.blockGas = Gas(200000)
   effects.round = planBlockInitialAccumulation(effects.round.roundBlockQueue.value,

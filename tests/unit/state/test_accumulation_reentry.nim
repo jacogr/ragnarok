@@ -52,8 +52,12 @@ proc fixture(base: OwnedReport, provided = false, blocked = false, stopped = fal
     for octet in batchEnvelope(BatchEnding.Halt): code.add(
         octet) # First initial invocation has only one gas and cannot provide yet.
     extra = @[provisionRequest(42, @[73'u8]), provisionRequest(99, @[81'u8])]
-  var initial = executionFixture(base, ready = queue, firstProgram = code, extra = extra,
-    first = (if provided: ExecutionEnding.Exhausted else: ExecutionEnding.Halt))
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.signed.ready = queue
+  executionOptions0.firstProgram = code
+  executionOptions0.signed.extra = extra
+  executionOptions0.first = (if provided: ExecutionEnding.Exhausted else: ExecutionEnding.Halt)
+  var initial = executionFixture(base, executionOptions0)
   var config = executionRoundConfig()
   config.blockGas = Gas(if provided: 101001'u64 else: 201000'u64)
   initial.round = planBlockInitialAccumulation(initial.round.roundBlockQueue.value, config).value

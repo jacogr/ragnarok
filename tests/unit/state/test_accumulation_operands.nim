@@ -252,7 +252,9 @@ proc boundaries(source: AccumulationQueuePlan) =
 
 ## Genuine signed admission and availability feed the bound adapter; retained children survive source scope exit.
 proc boundCase(base: OwnedReport): OwnedOperand =
-  let context = authored(base, withAvailable = true)
+  var signedOptions0 = signedBlockFixtureConfig()
+  signedOptions0.withAvailable = true
+  let context = authored(base, signedOptions0)
   let admission = planBlockReports(context.staged, context.older, config()).value
   let bound = planBlockAccumulationQueue(admission, queueConfig()).value
   let root = context.original.snapshot.value.commitment.root

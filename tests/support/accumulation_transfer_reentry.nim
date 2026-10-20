@@ -124,10 +124,16 @@ proc fixture(base: OwnedReport, stop = TransferStop.Halt, checkpoint = false,
   let firstGas = (if large: high(uint64)-10000 elif zeroGas: 0'u64 else: 30000'u64)
   let secondGas = (if large: high(uint64)-20000 elif zeroGas: 0'u64 else: 10000'u64)
   let allowance = (if large: high(uint64)-1 else: 100000'u64)
-  var initial = executionFixture(base, first = ending, second = secondEnding,
-    firstProgram = code(42, 99, 0, firstGas), secondProgram = code(99, 77, 2, secondGas,
-        repeat = not large),
-    secondBalance = 20, extra = extra, ready = ready, allowanceGas = allowance)
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.first = ending
+  executionOptions0.second = secondEnding
+  executionOptions0.firstProgram = code(42, 99, 0, firstGas)
+  executionOptions0.secondProgram = code(99, 77, 2, secondGas, repeat = not large)
+  executionOptions0.secondBalance = 20
+  executionOptions0.signed.extra = extra
+  executionOptions0.signed.ready = ready
+  executionOptions0.allowanceGas = allowance
+  var initial = executionFixture(base, executionOptions0)
   var policy = executionRoundConfig()
   policy.blockGas = Gas(if large: high(uint64) elif lateOnly: 100000'u64 else: budget)
   initial.round = planBlockInitialAccumulation(initial.round.roundBlockQueue.value, policy).value

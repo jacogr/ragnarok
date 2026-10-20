@@ -185,8 +185,11 @@ proc checkValidatorSource*(base: OwnedReport) =
   let entry = activityStateEntry(initial, statisticsPolicy(2, 6, 6)).value
   var retained = PreparedValidatorActivity()
   for available in [false, true]:
-    let child = authored(base, withAvailable = available, extra = @[entry],
-        preimageWire = preimageWire())
+    var signedOptions0 = signedBlockFixtureConfig()
+    signedOptions0.withAvailable = available
+    signedOptions0.extra = @[entry]
+    signedOptions0.preimageWire = preimageWire()
+    let child = authored(base, signedOptions0)
     let source = planBlockReports(child.staged, child.older, config()).value
     let author = int(uint16(child.staged.value.admitted.admittedHeader.headerInfo.value.unsigned.author))
     let credentials = source.reportCredentials.value
@@ -260,7 +263,9 @@ proc checkValidatorSource*(base: OwnedReport) =
       if mode == 1: damaged.value.add(0) # Exact statistics chapters reject a suffix.
       else: damaged.value = @[0'u8] # Malformed counts are never a default empty state.
       entries.add(damaged)
-    let child = authored(base, extra = entries)
+    var signedOptions1 = signedBlockFixtureConfig()
+    signedOptions1.extra = entries
+    let child = authored(base, signedOptions1)
     let source = planBlockReports(child.staged, child.older, config()).value
     assert prepareValidatorActivity(source, validatorPolicy()).error == (if mode ==
         0: ValidatorActivityError.MissingState else: ValidatorActivityError.InvalidState)
@@ -269,7 +274,9 @@ proc checkValidatorSource*(base: OwnedReport) =
   var encoding = statisticsPolicy(2, 6, 6)
   encoding.maxServices = ElementLimit(1)
   let serviceEntry = activityStateEntry(oldServices, encoding).value
-  let servicesChild = authored(base, extra = @[serviceEntry])
+  var signedOptions2 = signedBlockFixtureConfig()
+  signedOptions2.extra = @[serviceEntry]
+  let servicesChild = authored(base, signedOptions2)
   let servicesSource = planBlockReports(servicesChild.staged, servicesChild.older, config()).value
   assert prepareValidatorActivity(servicesSource, validatorPolicy()).error ==
       ValidatorActivityError.LimitExceeded

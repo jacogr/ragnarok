@@ -5,9 +5,11 @@
 ## Actual finalized histories produce bounded accumulation-only service deltas, including skipped work-items.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[block_authorization, block_preimages, preimages, recent_history,
-  ready_reconciliation,
-  accumulation_publication,
+import ../../../src/state/[accumulation_completion, accumulation_block_publication,
+  accumulation_consensus,
+  accumulation_authorization, accumulation_preimages, accumulation_activity,
+  accumulation_validators, accumulation_times, accumulation_recent, accumulation_ready,
+  accumulation_history, accumulation_queue, preimages,
   block_activity,
   service_activity,
   accumulation_accounts,
@@ -16,12 +18,13 @@ import ../../../src/state/[block_authorization, block_preimages, preimages, rece
   accumulation_reentry, accumulation_continuation_execution, accumulation_continuation,
   accumulation_execution,
   accumulation_inputs, accumulation_service, accumulation_dispatch, accumulation_skip, store]
-import ../../../src/codec/[bounded, report_owned, state_outputs, state_statistics, state_trie]
+import ../../../src/codec/[bounded, report_owned, state_outputs, state_statistics, state_trie,
+    state_layout, state_workqueues, owned, composite]
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
   accumulation_continuation_execution_context, accumulation_account_timestamps,
-  service_activity_context, block_activity_context, accumulation_publication_context,
-  ready_reconciliation_context, recent_history_context, block_preimage_context,
-  block_authorization_context, arc_evidence]
+  service_activity_context, block_activity_context, accumulation_completion_context,
+  accumulation_ready_witnesses, accumulation_recent_witnesses, accumulation_preimage_witnesses,
+  accumulation_authorization_witnesses, report_context, arc_evidence]
 
 # Statistics must perform no hashes after genuine signing, execution and private finalization.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -77,6 +80,69 @@ proc checkRow(row: ServiceStatisticsEntry, service: uint32, count, gas: uint64) 
     let expected = if measure == ServiceMeasure.AccumulationCount: count else: 0'u64
     assert uint64(row.statistics.counters[measure]) ==
         expected # TransferCount and unrelated activity remain zero.
+
+proc checkCompositionPublication(source: PreparedAccumulationConsensus,
+    finalized: PreparedFinalAccumulation) =
+  ## Every migrated successful history/effect witness reaches the same exact-parent, zero-hash final publication.
+  let parent = finalized.finalAccumulationParent.value
+  let candidate = source.accumulationConsensusState.value
+  var caller = forkStateStore(parent).value
+  failHash(3)
+  let published = publishAccumulationState(caller, source)
+  assert published.error == AccumulationPublicationError.None
+  assert sameStateSnapshot(published.value, candidate)
+  assert sameStateSnapshot(caller.snapshot.value, candidate)
+  assert sameStateSnapshot(finalized.finalAccumulationParent.value, parent)
+  assert hashCalls() == 0
+  failHash(0)
+
+proc checkCompositionHistory(source: PreparedAccumulationConsensus, empty = false,
+    pending = false, yielded = false) =
+  ## Independent literal account/C(14)/C(15)/C(3) witnesses now inspect the single composition graph.
+  let activity = source.accumulationConsensusSource.value.accumulationAuthorizationSource.value.accumulationPreimagesSource.value
+  let times = activity.accumulationActivitySource.value.accumulationValidatorsSource.value
+  let recent = times.accumulationTimesSource.value
+  let ready = recent.accumulationRecentSource.value
+  let history = ready.accumulationReadySource.value
+  let finalized = history.accumulationHistorySource.value
+  let prior = finalized.finalAccumulationState.value
+  let posterior = source.accumulationConsensusState.value
+  let queue = finalized.finalAccumulationQueue.value.accumulationProjection.value
+  let processed = if empty: 0 elif pending: 1 else: 4
+  var ring = newSeq[byte](11)
+  ring.add(byte(processed))
+  for index in 0..<processed:
+    let hash = queue.accumulationAt(AccumulationIndex(uint64(
+        index))).value.ownedReportInfo.value.header.packageHash
+    assert hash.bytes[0] == byte(64+index)
+    for octet in hash.bytes: ring.add(octet) # Literal row framing around independently known package identities.
+  assert posterior.lookup(chapterKey(StateChapter(15))).value.bytes == ring
+  var expectedReady = newSeq[byte]()
+  if pending:
+    let old = decodeReadyState(prior.lookup(chapterKey(StateChapter(14))).value.bytes,
+      completionLimits().composition.ready.queues).value.snapshot
+    expectedReady.add(3'u8)
+    for index in 1..<4:
+      let report = old.readyItemAt(WorkQueueSlot(0), ReadyItemIndex(uint64(index))).value.report
+      for octet in reportBytes(report): expectedReady.add(octet)
+      expectedReady.add(0'u8) # Pending suffix stays in its original row.
+    for slot in 1..<12: expectedReady.add(0'u8)
+  else:
+    expectedReady = newSeq[byte](12) # Complete processing leaves no deferred reports.
+  assert posterior.lookup(chapterKey(StateChapter(14))).value.bytes == expectedReady
+  if not empty:
+    for service in [42'u32, 99'u32]:
+      let key = chapterServiceKey(StateChapter(255), ServiceIndex(service))
+      var bytes = prior.lookup(key).value.bytes
+      for index in 81..84: bytes[index] = (if index ==
+          81: 2'u8 else: 0'u8) # Literal E4 timestamp preserves all other metadata.
+      assert posterior.lookup(key).value.bytes == bytes
+  let checked = checkRecentHistory(ready, yielded)
+  assert checked.accumulationRecentEntry.value.value == posterior.lookup(chapterKey(StateChapter(
+      3))).value.bytes
+  assert sameStateSnapshot(finalized.finalAccumulationState.value, prior)
+  checkCompositionPublication(source, finalized)
+
 
 proc main() {.raises.} =
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
@@ -187,120 +253,75 @@ proc main() {.raises.} =
     detachedActivity = checkServiceActivity(stats, incoming = true)
   assert detachedActivity.serviceActivityInfo.value.services == 3
   assert detachedActivity.serviceActivitySource.value.statisticsInfo.value.reports == 4
-  var publishedRecent = default(PublishedRecentHistory)
-  var publishedReady = default(PublishedReadyReconciliation)
-  var publishedAccumulation = default(PublishedAccumulation)
-  var publishedActivity = default(PublishedBlockActivity)
   for empty in [true, false]:
-    let preimages = if empty: newSeq[byte]() else: activityPreimages()
+    # Retain component-level independent C(13) checks alongside canonical whole-composition witnesses.
     let fixture = reentryFixture(blockTemplate(base), empty = empty,
-      incomingReports = (if empty: 0 else: 1), preimageWire = preimages, extra = @[blockPrior()])
+      incomingReports = (if empty: 0 else: 1), extra = @[blockPrior()])
     let finalized = finished(fixture)
-    let limits = if empty: policy(rounds = 2, gasRows = 0, reports = 0, digests = 0, services = 0)
-      else: policy() # Empty and active histories retain their existing independently verified traversal bounds.
-    let stats = prepareAccumulationStatistics(finalized, limits).value
+    let component = reentryFixture(blockTemplate(base), empty = empty,
+      incomingReports = (if empty: 0 else: 1),
+      preimageWire = (if empty: newSeq[byte]() else: activityPreimages()), extra = @[blockPrior()])
+    let stats = prepareAccumulationStatistics(finished(component), policy()).value
     let services = prepareServiceActivity(stats, activityPolicy()).value
-    publishedActivity = checkBlockActivity(services, fixture.initial.entries, empty)
-    let activity = prepareBlockActivity(services, blockPolicy()).value
-    publishedAccumulation = checkAccumulationPublication(activity, fixture.initial.entries, empty)
-    publishedReady = checkReadySource(publishedAccumulation, fixture.initial.entries)
-    publishedRecent = checkRecentHistory(publishedReady, fixture.initial.entries)
-  assert publishedActivity.publishedActivitySource.value.blockActivityInfo.value.services == 3
-  assert publishedActivity.publishedActivityState.value.commitment.entries >
-      0 # Published owner alone retains the entire original graph.
-  assert publishedAccumulation.publishedAccumulationSource.value.accumulationPublicationInfo.value.accounts.services == 2
-  assert publishedAccumulation.publishedAccumulationState.value.commitment.entries >
-      0 # The combined owner retains its exact complete source graph.
+    discard checkBlockActivity(services, component.initial.entries,
+        empty) # Raw activity projection intentionally includes unsolicited provision records.
+    let composed = prepareAccumulationComposition(finalized, completionLimits().composition)
+    assert composed.error == AccumulationCompletionError.None, $composed.error
+    checkCompositionHistory(composed.value, empty = empty)
   block pending_ready_suffix:
     let fixture = reentryFixture(blockTemplate(base), stopped = true, extra = @[blockPrior()])
-    let finalized = finished(fixture)
-    let limits = policy(rounds = 2, gasRows = 2, reports = 1, digests = 1)
-    let stats = prepareAccumulationStatistics(finalized, limits).value
-    let activity = prepareBlockActivity(prepareServiceActivity(stats, activityPolicy()).value,
-        blockPolicy()).value
-    let batch = prepareAccumulationPublication(activity, publicationPolicy()).value
-    let coordinated = publishAccumulation(batch).value
-    publishedReady = checkReadySource(coordinated, fixture.initial.entries, pending = true)
-    publishedRecent = checkRecentHistory(publishedReady, fixture.initial.entries)
-  assert publishedReady.publishedReadySource.value.readyReconciliationInfo.value.reports == 3
-  assert publishedReady.publishedReadyState.value.commitment.entries >
-      0 # Detached queue owner retains the exact complete coordinated source graph.
+    let composed = prepareAccumulationComposition(finished(fixture), completionLimits().composition).value
+    checkCompositionHistory(composed, pending = true)
   block yielded_recent_outputs:
     let code = recentYieldProgram()
     let fixture = reentryFixture(blockTemplate(base), firstProgram = code, secondProgram = code,
       incomingReports = 1, extra = @[blockPrior()])
-    let outputPolicy = OutputLogConfig(items: ElementLimit(4), maxBytes: ByteLimit(145))
-    let finalized = finished(fixture, outputPolicy)
-    let stats = prepareAccumulationStatistics(finalized, policy()).value
-    let services = prepareServiceActivity(stats, activityPolicy()).value
-    let activity = prepareBlockActivity(services, blockPolicy()).value
-    let batch = prepareAccumulationPublication(activity, publicationPolicy()).value
-    let coordinated = publishAccumulation(batch).value
-    let queue = prepareReadyReconciliation(coordinated, readyPolicy()).value
-    let ready = publishReadyReconciliation(queue).value
-    publishedRecent = checkRecentHistory(ready, fixture.initial.entries, yielded = true)
-  assert publishedRecent.publishedRecentSource.value.recentHistoryInfo.value.outputs == 4
-  assert publishedRecent.publishedRecentState.value.commitment.entries >
-      0 # Detached recent owner retains its complete exact source graph.
-  var detachedPreimages = default(PublishedBlockPreimages)
+    let finalized = finished(fixture, OutputLogConfig(items: ElementLimit(4), maxBytes: ByteLimit(145)))
+    let composed = prepareAccumulationComposition(finalized, completionLimits().composition).value
+    checkCompositionHistory(composed, yielded = true)
   for mode in 0..<8:
-    # Empty, requested, already provided, unsolicited, duplicate and malformed original requests enter genuinely signed blocks.
+    # Invalid original requests remain genuinely signed inputs and are rejected by canonical state admission.
     let provided = mode == 2
     let empty = mode == 0
     var wire = if empty: newSeq[byte]() else: blockPreimageWire(provided)
     var requests = if empty or provided or mode == 3: newSeq[StateEntry]() else: preimageRequests()
-    if mode == 4: wire = @[2'u8, 42, 0, 0, 0, 0, 42, 0, 0, 0,
-        0] # Structural framing admits duplicate raw pairs; semantic admission must refuse.
-    if mode == 5: requests[2].value = @[0'u8, 1] # A valid prefix with trailing bytes is malformed, never outstanding.
-    if mode == 6: wire = @[2'u8, 42, 0, 0, 0, 2, 1, 2, 42, 0, 0, 0,
-        0] # Raw blob order must be increasing, never repaired by sorting.
-    if mode == 7: requests[2].value = @[1'u8, 1, 0, 0,
-        0] # A prior supplied timestamp cannot become a newly admitted submission.
+    if mode == 4: wire = @[2'u8, 42, 0, 0, 0, 0, 42, 0, 0, 0, 0] # Duplicate pair.
+    if mode == 5: requests[2].value = @[0'u8, 1] # Trailing request bytes.
+    if mode == 6: wire = @[2'u8, 42, 0, 0, 0, 2, 1, 2, 42, 0, 0, 0, 0] # Reversed order.
+    if mode == 7: requests[2].value = @[1'u8, 1, 0, 0, 0] # Already supplied request.
     requests.add(blockPrior())
     let fixture = reentryFixture(blockTemplate(base), empty = empty, provided = provided,
       preimageWire = wire, extra = requests)
     let finalized = finished(fixture)
-    let limits = if empty: policy(rounds = 2, gasRows = 0, reports = 0, digests = 0, services = 0)
-      else: policy()
-    let stats = prepareAccumulationStatistics(finalized, limits).value
-    let activity = prepareBlockActivity(prepareServiceActivity(stats, activityPolicy()).value,
-      blockPolicy()).value
-    let coordinated = publishAccumulation(prepareAccumulationPublication(activity,
-        publicationPolicy()).value).value
-    let ready = publishReadyReconciliation(prepareReadyReconciliation(coordinated, readyPolicy()).value).value
-    let recent = publishRecentHistory(prepareRecentHistory(ready, recentPolicy()).value).value
+    let composed = prepareAccumulationComposition(finalized, completionLimits().composition)
     if mode < 3:
-      detachedPreimages = checkBlockPreimages(recent, fixture.initial.entries, empty, provided)
+      assert composed.error == AccumulationCompletionError.None, $composed.error
+      checkBlockPreimages(composed.value.accumulationConsensusSource.value.accumulationAuthorizationSource.value,
+        empty, provided)
+      checkCompositionPublication(composed.value, finalized)
     else:
-      let refused = prepareBlockPreimages(recent, blockPreimagePolicy())
-      assert refused.error == BlockPreimageError.PreimageFailure
+      assert composed.error == AccumulationCompletionError.ActivityFailure
+      assert composed.activityFailure.error == AccumulationActivityError.PreimageFailure
       let expected = if mode == 3 or mode == 7: PreimageTransitionError.NotRequested
         elif mode == 4 or mode == 6: PreimageTransitionError.NotOrderedUnique else: PreimageTransitionError.MalformedState
-      assert refused.preimageError == expected
-  assert detachedPreimages.publishedPreimageSource.value.blockPreimageInfo.value.admission.items == 2
-  assert detachedPreimages.publishedPreimageState.value.commitment.entries >
-      0 # Published owner alone retains the complete original and posterior graph.
-  checkAssignPublication(base) # Explicit quotas now authorize selected global queue/assigner publication.
-  var detachedAuthorization = default(PublishedBlockAuthorization)
+      assert composed.activityFailure.preimageError == expected
+  checkAssignPublication(base)
+  var detachedAuthorization = default(PreparedAccumulationConsensus)
   for mode in 0..<6:
-    # Genuine empty/one/two-guarantee sources distinguish original uses, duplicate/full pools and retained posterior queues.
+    # Empty/one/two-guarantee sources preserve duplicate/full pools and genuine selected host effects.
     let guarantees = if mode == 0: 0 elif mode == 2: 2 else: 1
     let copies = if mode == 3: 3 elif mode == 4: 8 else: 1
     let fixture = authorizationFixture(base, guarantees, copies, empty = mode == 0,
-        assigned = mode == 4, managed = mode == 5)
-    let stats = prepareAccumulationStatistics(fixture.finalized, policy()).value
-    let activity = prepareBlockActivity(prepareServiceActivity(stats, activityPolicy()).value,
-      blockPolicy()).value
-    let coordinated = publishAccumulation(prepareAccumulationPublication(activity,
-      publicationPolicy()).value).value
-    let ready = publishReadyReconciliation(prepareReadyReconciliation(coordinated, readyPolicy()).value).value
-    let recent = publishRecentHistory(prepareRecentHistory(ready, recentPolicy()).value).value
-    let supplied = publishBlockPreimages(prepareBlockPreimages(recent, blockPreimagePolicy()).value).value
-    detachedAuthorization = checkBlockAuthorization(supplied, fixture.entries, guarantees, copies,
-        assigned = mode == 4, managed = mode == 5)
-  assert detachedAuthorization.publishedAuthorizationSource.value.blockAuthorizationInfo.value.guarantees == 1
-  assert detachedAuthorization.publishedAuthorizationState.value.commitment.entries >
-      0 # Published owner alone retains completed source context and the private successor.
+      assigned = mode == 4, managed = mode == 5)
+    let composed = prepareAccumulationComposition(fixture.finalized, completionLimits().composition)
+    assert composed.error == AccumulationCompletionError.None, $composed.error
+    detachedAuthorization = composed.value
+    checkCompositionPublication(composed.value, fixture.finalized)
+    checkBlockAuthorization(detachedAuthorization, guarantees, copies, assigned = mode == 4,
+        managed = mode == 5)
+  assert detachedAuthorization.accumulationConsensusSource.value.accumulationAuthorizationInfo.value.guarantees == 1
+  assert detachedAuthorization.accumulationConsensusState.value.commitment.entries >
+      0 # The final owner retains original authority after fixture scope ends.
   var detached: PreparedAccumulationStatistics
   block:
     let local = finished(reentryFixture(base))

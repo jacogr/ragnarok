@@ -303,8 +303,11 @@ proc boundCase(base: OwnedReport): BlockAccumulationContexts =
     ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(1))).value
   let entries = components(7)
   # The shared authored fixture already includes C(7), so only missing C(2)/C(12) are added.
-  let context = authored(base, withAvailable = true, extra = @[entries[0], entries[2], code],
-      accountCode = raw)
+  var signedOptions0 = signedBlockFixtureConfig()
+  signedOptions0.withAvailable = true
+  signedOptions0.extra = @[entries[0], entries[2], code]
+  signedOptions0.accountCode = raw
+  let context = authored(base, signedOptions0)
   let admitted = planBlockReports(context.staged, context.older, config()).value
   let queue = planBlockAccumulationQueue(admitted, queueConfig()).value
   let round = planBlockInitialAccumulation(queue, roundConfig()).value

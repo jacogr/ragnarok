@@ -1,5 +1,12 @@
 # Source-bound recent history C(3)
 
+Historical contract: this scoped adapter is superseded by
+[state-owned accumulation composition](pvm-state-consolidation.md). Its independent
+behavioral witnesses now exercise the canonical state path; the retired adapter's
+construction and publication APIs are no longer supported. The record below
+preserves the original scope and evidence.
+
+
 Use pinned GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 recent_history.tex correctlaststateroot/accoutbeltdef/recenthistorydef and the
 existing history/output-tree contracts, with vectors

@@ -71,12 +71,19 @@ proc source(base: OwnedReport, available = false, guarantees = 0, blobs = false,
     of 3: entry.value[0] = 5 # Wrong current population cannot define C(13) framing.
     else: discard # Canonical complete activity enters the parent unchanged.
     entries.add(entry)
-  let fixture = executionFixture(base, first = ExecutionEnding.Missing,
-    second = ExecutionEnding.Missing, empty = true, report = available,
-    incomingReports = guarantees,
-    extra = entries, preimageWire = (if blobs: preimageWire() else: @[]),
-    targetSlot = slot, withTicket = ticket, shiftPending = shiftPending,
-    guaranteeSlot = (if previousReports: 11'u32 else: 0'u32))
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.first = ExecutionEnding.Missing
+  executionOptions0.second = ExecutionEnding.Missing
+  executionOptions0.empty = true
+  executionOptions0.signed.withAvailable = available
+  executionOptions0.signed.reports = guarantees
+  executionOptions0.signed.extra = entries
+  executionOptions0.signed.preimageWire = (if blobs: preimageWire() else: @[])
+  executionOptions0.signed.targetSlot = slot
+  executionOptions0.signed.withTicket = ticket
+  executionOptions0.signed.shiftPending = shiftPending
+  executionOptions0.signed.guaranteeSlot = (if previousReports: 11'u32 else: 0'u32)
+  let fixture = executionFixture(base, executionOptions0)
   let initial = fixture.round
   var skips: seq[SkippedAccumulation] = @[]
   for index in 0..<initial.roundProjection.value.roundInputs.value.invocationServiceCount.value:

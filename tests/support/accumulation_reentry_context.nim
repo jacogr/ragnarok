@@ -61,9 +61,18 @@ proc reentryFixture*(base: OwnedReport, first = ExecutionEnding.Halt, second = E
         octet) # Initial one-gas OOG cannot reach provide; later execution can.
     entries.add(provisionRequest(42, @[73'u8]))
     entries.add(provisionRequest(99, @[81'u8]))
-  var initial = executionFixture(base, first = firstEnding, second = second, empty = empty,
-    ready = queue, firstProgram = code, secondProgram = secondProgram, extra = entries,
-    incomingReports = incomingReports, preimageWire = preimageWire, historyPeaks = historyPeaks)
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.first = firstEnding
+  executionOptions0.second = second
+  executionOptions0.empty = empty
+  executionOptions0.signed.ready = queue
+  executionOptions0.firstProgram = code
+  executionOptions0.secondProgram = secondProgram
+  executionOptions0.signed.extra = entries
+  executionOptions0.signed.reports = incomingReports
+  executionOptions0.signed.preimageWire = preimageWire
+  executionOptions0.signed.historyPeaks = historyPeaks
+  var initial = executionFixture(base, executionOptions0)
   var policy = executionRoundConfig()
   policy.blockGas = Gas(budget)
   initial.round = planBlockInitialAccumulation(initial.round.roundBlockQueue.value, policy).value

@@ -1,5 +1,12 @@
 # Execution-dependent ready queue C(14)
 
+Historical contract: this scoped adapter is superseded by
+[state-owned accumulation composition](pvm-state-consolidation.md). Its independent
+behavioral witnesses now exercise the canonical state path; the retired adapter's
+construction and publication APIs are no longer supported. The record below
+preserves the original scope and evidence.
+
+
 Use pinned GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 accumulation.tex History and Queuing (D/E/newly deferred reports) and the final
 ready/accumulated equations, with vectors `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.

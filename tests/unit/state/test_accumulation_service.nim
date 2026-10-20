@@ -184,8 +184,11 @@ proc boundCase(base: OwnedReport): InvocationInput =
   let privileges = privilegeStateEntry(PrivilegeState(assigners: newSeq[ServiceIndex](2), always: @[
     ]), roundConfig().privileges).value
   # Recompute signed report code identity and parent account metadata together for real policy admission.
-  let context = authored(base, withAvailable = true, extra = @[privileges, codeEntries[1]],
-      accountCode = raw)
+  var signedOptions0 = signedBlockFixtureConfig()
+  signedOptions0.withAvailable = true
+  signedOptions0.extra = @[privileges, codeEntries[1]]
+  signedOptions0.accountCode = raw
+  let context = authored(base, signedOptions0)
   let bound = planBlockAccumulationQueue(planBlockReports(context.staged, context.older, config(
     )).value, queueConfig()).value
   let round = planBlockInitialAccumulation(bound, roundConfig()).value

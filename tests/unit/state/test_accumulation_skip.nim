@@ -191,7 +191,11 @@ proc boundCase(base: OwnedReport): BlockSkippedAccumulation =
       extra.add(servicePreimageEntry(ServiceIndex(42), ServicePreimageHash(hash), raw,
         ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(
             100000))).value) # Mode zero intentionally has no code preimage.
-    let context = authored(base, withAvailable = true, extra = extra, accountCode = raw)
+    var signedOptions0 = signedBlockFixtureConfig()
+    signedOptions0.withAvailable = true
+    signedOptions0.extra = extra
+    signedOptions0.accountCode = raw
+    let context = authored(base, signedOptions0)
     let admitted = planBlockReports(context.staged, context.older, config()).value
     let queue = planBlockAccumulationQueue(admitted, queueConfig()).value
     let round = planBlockInitialAccumulation(queue, roundConfig()).value

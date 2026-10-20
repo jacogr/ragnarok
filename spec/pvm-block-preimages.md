@@ -1,5 +1,12 @@
 # Original-block preimage integration
 
+Historical contract: this scoped adapter is superseded by
+[state-owned accumulation composition](pvm-state-consolidation.md). Its independent
+behavioral witnesses now exercise the canonical state path; the retired adapter's
+construction and publication APIs are no longer supported. The record below
+preserves the original scope and evidence.
+
+
 Bind GP 0.8.0 `accumulation.tex` preimagesareordered/fnprovidable/fnprovide,
 revision `07f041dabd073f9018b418e9ee72e79dd2185401`, to the completed recent-history
 source. Preserve vectors `d3c089c9a1d5352ad353626d7a2db8589f137b2a` and the existing

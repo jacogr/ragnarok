@@ -217,7 +217,9 @@ proc boundaries(base: OwnedReport) =
 
 ## Genuine Ed25519 assurances feed exactly one old report through completed admission; no state writes/hashes occur.
 proc boundCase(base: OwnedReport): BlockAccumulationQueue =
-  let context = authored(base, withAvailable = true)
+  var signedOptions0 = signedBlockFixtureConfig()
+  signedOptions0.withAvailable = true
+  let context = authored(base, signedOptions0)
   assert context.staged.value.availability.availableReportCount == 1
   let admission = planBlockReports(context.staged, context.older, config())
   assert admission.error == ReportAdmissionError.None

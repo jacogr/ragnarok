@@ -38,7 +38,12 @@ proc continuationExecutionFixture*(base: OwnedReport, first = ExecutionEnding.Ha
   ## Consume the first report in the initial round; only actual unused gas admits the two-service suffix.
   let ready = if empty: newSeq[ReadyItem]() else:
     @[report(base, 64, [1000'u64]), report(base, 65, [firstGas, secondGas])]
-  var initial = executionFixture(base, first = first, second = second, ready = ready, empty = empty)
+  var executionOptions0 = executionFixtureConfig()
+  executionOptions0.first = first
+  executionOptions0.second = second
+  executionOptions0.signed.ready = ready
+  executionOptions0.empty = empty
+  var initial = executionFixture(base, executionOptions0)
   var policy = executionRoundConfig()
   var budget = 1000'u64
   for ending in [first, second]:
@@ -97,9 +102,11 @@ proc continuationProvidedFixture*(base: OwnedReport): ContinuationExecutionFixtu
   var code = @[0'u8]
   for octet in batchEnvelope(BatchEnding.Halt): code.add(
       octet) # Preserve the complete code preimage metadata prefix.
-  var initial = executionFixture(base, firstProgram = code,
-    ready = @[report(base, 64, [1000'u64]), report(base, 65, [1000'u64, 1000])],
-    extra = @[provisionRequest(42, @[73'u8]), provisionRequest(99, @[81'u8])])
+  var executionOptions1 = executionFixtureConfig()
+  executionOptions1.firstProgram = code
+  executionOptions1.signed.ready = @[report(base, 64, [1000'u64]), report(base, 65, [1000'u64, 1000])]
+  executionOptions1.signed.extra = @[provisionRequest(42, @[73'u8]), provisionRequest(99, @[81'u8])]
+  var initial = executionFixture(base, executionOptions1)
   var policy = executionRoundConfig()
   policy.blockGas = Gas(201000)
   initial.round = planBlockInitialAccumulation(initial.round.roundBlockQueue.value, policy).value
