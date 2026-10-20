@@ -318,3 +318,19 @@ The detached owner can later move to a bounded I/O worker without freezing all a
 of the live canonical complete map under plain ARC. No background worker is added here.
 Native witnesses cover source retirement, exact/short publication, moved/default/refused
 owners, unchanged published bytes and 1,000 prepare/move/release ARC cycles.
+
+## Prepared bank publication
+
+Bank initialization/advancement overloads borrow an exclusive `PreparedCheckpoint`
+through the synchronous call. Codec status and any narrower publication ceiling
+are checked before writes; the prepared scalar complete root supplies new head
+metadata. No original map is read, re-encoded or retained. The buffer stays usable
+for explicit synchronous retry, while moved-from/default/refused owners cannot write.
+
+Snapshot overloads now prepare bytes and delegate to this same transaction, preserving
+their original head/source error ordering, counters, locking, old-head resynchronization
+and stage/selector uncertainty distinctions. Worker offload can transfer the sole
+prepared owner; it need not borrow the canonical state graph. Native tests cover
+retired sources, exact/short ceilings, default/moved/closed owners, unchanged prior
+files and 1,000 prepared advance/restore ARC cycles. Existing snapshot bootstrap,
+advance and real kernel write rollback suites remain affected integration controls.

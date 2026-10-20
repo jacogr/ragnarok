@@ -7,7 +7,7 @@
 import std/posix/posix
 import ../lib/[atomic_file, atomic_file_writer]
 import ../codec/[bounded, state_trie]
-import ./[checkpoint_head, checkpoint, store]
+import ./[checkpoint_head, checkpoint, checkpoint_transfer, store]
 
 type
   CheckpointBank* = object ## Own the head lock and copied slot prefix; no raw child or destination escapes.
@@ -118,15 +118,17 @@ proc restore*(bank: var CheckpointBank, expected: StateRoot, limits: StateStoreL
         stateReason: restored.error)
   CheckpointBankResult[StateStore](status: CheckpointBankError.None, completed: restored.value)
 
-proc initialize*(bank: var CheckpointBank, snapshot: StateStoreSnapshot,
+proc initialize*(bank: var CheckpointBank, prepared: PreparedCheckpoint,
     limit: ByteLimit): CheckpointBankResult[CheckpointHead] =
   ## Explicitly bootstrap an absent selector: durably stage slot zero before publishing generation zero.
   if not bank.opened: return default(CheckpointBankResult[
       CheckpointHead]) # Inactive resources cannot touch the namespace.
-  let encoded = encodeFullCheckpoint(snapshot, limit)
-  if encoded.error != CheckpointError.None:
+  if prepared.error != CheckpointError.None:
     return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidCheckpoint,
-        stateReason: encoded.error) # Validate all complete-map bytes before writing any file.
+        stateReason: prepared.error) # Validate all complete-map bytes before writing any file.
+  if uint64(prepared.byteLength) > uint64(limit):
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidCheckpoint,
+      stateReason: CheckpointError.LimitExceeded) # A narrower publication ceiling cannot authorize I/O for already prepared bytes.
   var headPath = bank.prefix & ".head"
   var metadata = default(Stat)
   if posix.lstat(headPath.toCString(), metadata) == 0:
@@ -134,12 +136,12 @@ proc initialize*(bank: var CheckpointBank, snapshot: StateStoreSnapshot,
   if posix.errno() != ENOENT:
     return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.IoFailure) # Only true absence authorizes a new selector, never an unknown native failure.
   let head = newCheckpointHead(CheckpointGeneration(0), CheckpointSlot.First,
-      snapshot.commitment.root)
+      prepared.root)
   let selection = encodeCheckpointHead(head, ByteLimit(CheckpointHeadBytes))
   if selection.error != CheckpointHeadError.None:
     return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidHead,
         headReason: selection.error) # Backend failure cannot leave a newly staged slot.
-  let staged = replaceAtomicFile(bank.slotPath(CheckpointSlot.First), encoded.value, limit)
+  let staged = prepared.publish(bank.slotPath(CheckpointSlot.First), limit)
   if staged == AtomicFileError.PublishedUnsynced:
     return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.StagedUnsynced) # A possibly durable orphan is not a committed selector and cannot authorize success.
   if staged != AtomicFileError.None:
@@ -152,17 +154,19 @@ proc initialize*(bank: var CheckpointBank, snapshot: StateStoreSnapshot,
   CheckpointBankResult[CheckpointHead](status: CheckpointBankError.None, completed: head)
 
 proc advance*(bank: var CheckpointBank, expected: CheckpointHead,
-    snapshot: StateStoreSnapshot, limit: ByteLimit): CheckpointBankResult[CheckpointHead] =
+    prepared: PreparedCheckpoint, limit: ByteLimit): CheckpointBankResult[CheckpointHead] =
   ## Compare the exact expected selector, anchor its durability, then stage the inactive slot and publish its successor.
   if not bank.opened: return default(CheckpointBankResult[
       CheckpointHead]) # An inactive namespace authorizes no operation.
   if not expected.ready:
     return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidHead,
         headReason: CheckpointHeadError.Uninitialized)
-  let encoded = encodeFullCheckpoint(snapshot, limit)
-  if encoded.error != CheckpointError.None:
+  if prepared.error != CheckpointError.None:
     return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidCheckpoint,
-        stateReason: encoded.error) # Preflight the complete candidate before any write.
+        stateReason: prepared.error) # Preflight the complete candidate before any write.
+  if uint64(prepared.byteLength) > uint64(limit):
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidCheckpoint,
+      stateReason: CheckpointError.LimitExceeded) # A narrower publication ceiling cannot authorize I/O for already prepared bytes.
   let selected = bank.selectedHead()
   if selected.error == CheckpointBankError.InvalidHead:
     return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidHead,
@@ -173,7 +177,7 @@ proc advance*(bank: var CheckpointBank, expected: CheckpointHead,
   if uint64(current.generation) != uint64(expected.generation) or current.slot != expected.slot or
       array[32, byte](current.root) != array[32, byte](expected.root):
     return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.StaleHead) # Every selector field participates in the local compare-and-publish contract.
-  let successor = nextCheckpointHead(current, snapshot.commitment.root)
+  let successor = nextCheckpointHead(current, prepared.root)
   if successor.error != CheckpointHeadError.None:
     return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidHead,
         headReason: successor.error) # Exhaustion cannot wrap or overwrite an inactive slot.
@@ -186,7 +190,7 @@ proc advance*(bank: var CheckpointBank, expected: CheckpointHead,
   if anchored != AtomicFileError.None:
     return CheckpointBankResult[CheckpointHead](status: bankError(
         anchored)) # An older durable head must not reference data about to be overwritten after startup/uncertain publication.
-  let staged = replaceAtomicFile(bank.slotPath(head.slot), encoded.value, limit)
+  let staged = prepared.publish(bank.slotPath(head.slot), limit)
   if staged == AtomicFileError.PublishedUnsynced:
     return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.StagedUnsynced) # The old selector remains selected; uncertain inactive data is not a committed head.
   if staged != AtomicFileError.None:
@@ -197,3 +201,21 @@ proc advance*(bank: var CheckpointBank, expected: CheckpointHead,
     return CheckpointBankResult[CheckpointHead](status: bankError(
         committed)) # A visible-but-unsynced selector has no successful adoption payload.
   CheckpointBankResult[CheckpointHead](status: CheckpointBankError.None, completed: head)
+
+proc initialize*(bank: var CheckpointBank, snapshot: StateStoreSnapshot,
+    limit: ByteLimit): CheckpointBankResult[CheckpointHead] =
+  ## Synchronous compatibility wrapper prepares independent bytes before the shared ordered bootstrap boundary.
+  if not bank.opened: return default(CheckpointBankResult[
+      CheckpointHead]) # Preserve inactive-owner refusal before source computation.
+  let prepared = prepareFullCheckpoint(snapshot, limit)
+  bank.initialize(prepared, limit)
+proc advance*(bank: var CheckpointBank, expected: CheckpointHead,
+    snapshot: StateStoreSnapshot, limit: ByteLimit): CheckpointBankResult[CheckpointHead] =
+  ## Existing snapshot callers retain exact refusal ordering while all publication shares detached-buffer code.
+  if not bank.opened: return default(CheckpointBankResult[
+      CheckpointHead]) # Closed resources cannot serialize a candidate.
+  if not expected.ready:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidHead,
+      headReason: CheckpointHeadError.Uninitialized) # Default expectation remains a head failure before snapshot preparation.
+  let prepared = prepareFullCheckpoint(snapshot, limit)
+  bank.advance(expected, prepared, limit)
