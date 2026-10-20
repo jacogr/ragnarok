@@ -1,0 +1,84 @@
+{
+  "build_name": "state-checkpoint-head-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Checkpoint head extraction default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-checkpoint-head-default"
+    },
+    {
+      "arguments": [
+        "encode-refused"
+      ],
+      "description": "Checkpoint head extraction encode-refused",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "encode-refused"
+      },
+      "name": "state-checkpoint-head-encode-refused"
+    },
+    {
+      "arguments": [
+        "decode-refused"
+      ],
+      "description": "Checkpoint head extraction decode-refused",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "decode-refused"
+      },
+      "name": "state-checkpoint-head-decode-refused"
+    },
+    {
+      "arguments": [
+        "exhausted"
+      ],
+      "description": "Checkpoint head extraction exhausted",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "exhausted"
+      },
+      "name": "state-checkpoint-head-exhausted"
+    },
+    {
+      "arguments": [
+        "generation"
+      ],
+      "description": "Checkpoint head extraction generation",
+      "diagnostic": "head.initialized",
+      "identity": {
+        "reason": "generation"
+      },
+      "name": "state-checkpoint-head-generation"
+    },
+    {
+      "arguments": [
+        "slot"
+      ],
+      "description": "Checkpoint head extraction slot",
+      "diagnostic": "head.initialized",
+      "identity": {
+        "reason": "slot"
+      },
+      "name": "state-checkpoint-head-slot"
+    },
+    {
+      "arguments": [
+        "root"
+      ],
+      "description": "Checkpoint head extraction root",
+      "diagnostic": "head.initialized",
+      "identity": {
+        "reason": "root"
+      },
+      "name": "state-checkpoint-head-root"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/state_checkpoint_head_results.nim"
+}
