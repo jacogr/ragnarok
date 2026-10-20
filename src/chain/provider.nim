@@ -8,6 +8,7 @@
 
 import ./[genesis, reports]
 import ../codec/bounded
+from ../state/store import sameStateSnapshot
 
 const MaxRetainedBlocks* = 8 # Local retention policy; no protocol history or finality guarantee.
 
@@ -86,6 +87,25 @@ func parentOf*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
   if child.error != GenesisError.None:
     return unavailableGenesis() # A historical parent cannot be inferred for an unknown child.
   view.blockAt(child.value.parentHash)
+
+## Compare exact retained block state and complete parameters, without hashing or copying map payloads.
+func sameRetainedBlock(left, right: BlockSnapshot): bool =
+  array[32, byte](left.blockHash) == array[32, byte](right.blockHash) and
+    sameStateSnapshot(left.stateSnapshot, right.stateSnapshot) and left.sameParameters(right)
+
+func sameChainView*(left, right: ChainView): bool =
+  ## Require initialized identical ordered history and explicit finality; equal best roots alone do not match.
+  if left.snapshot.len == 0 or left.snapshot.len != right.snapshot.len:
+    return false # Defaults and different retained windows cannot authorize shared publication.
+  for index in 0..<left.snapshot.len:
+    if not sameRetainedBlock(left.snapshot[index].value, right.snapshot[index].value):
+      return false # Every retained block keeps its exact state version and chain profile.
+  if left.finalized.error != right.finalized.error:
+    return false # Missing and explicitly selected finality are distinct states.
+  if left.finalized.error == GenesisError.None:
+    if not sameRetainedBlock(left.finalized.value, right.finalized.value):
+      return false # Matching rolling history cannot silently overwrite a different finality selection.
+  true
 
 proc advanceView*(view: ChainView, child: BlockSnapshotResult): ViewAdvanceResult =
   ## Append a structurally checked direct child; preserve old views and evict only the oldest on success.
