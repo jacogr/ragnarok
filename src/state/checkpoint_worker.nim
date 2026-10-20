@@ -199,6 +199,35 @@ proc cancel*(worker: var CheckpointWorker, ticket: CheckpointTicket): bool =
   worker.cancelled = true
   worker.phase = CheckpointWorkerPhase.Done # Keep capacity occupied until explicit matching collection or joined close.
   true
+proc peek*(worker: var CheckpointWorker, ticket: CheckpointTicket): CheckpointCompletion =
+  ## Inspect only a matching Done receipt without releasing its private buffer or acknowledgement capacity.
+  if not worker.started: return default(CheckpointCompletion) # Closed/default owners have no observable receipt.
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  if not worker.matches(ticket) or worker.phase != CheckpointWorkerPhase.Done:
+    return default(CheckpointCompletion) # Foreign/stale/not-ready tickets expose no result.
+  if worker.cancelled: return CheckpointCompletion(status: CheckpointCompletionKind.Cancelled)
+  CheckpointCompletion(status: CheckpointCompletionKind.Completed, outcome: worker.outcome)
+proc retry*(worker: var CheckpointWorker, ticket: CheckpointTicket,
+    expected: CheckpointHead): CheckpointAdmission =
+  ## Restage only an exact stale-head refusal with the same sole buffer and explicit new expectation; uncertain/successful writes cannot retry implicitly.
+  if not worker.started: return CheckpointAdmission(status: CheckpointWorkerError.Closed)
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  if not worker.matches(ticket) or worker.phase != CheckpointWorkerPhase.Done or worker.cancelled:
+    return CheckpointAdmission(status: CheckpointWorkerError.NotReady) # Cancellation, foreign generations and active requests retain their exact state.
+  if worker.operation != CheckpointOperation.Advance or worker.outcome.error !=
+      CheckpointBankError.StaleHead:
+    return CheckpointAdmission(status: CheckpointWorkerError.NotReady) # Actual publication or I/O uncertainty requires explicit collection/reconciliation, never a duplicate hidden write.
+  if not expected.ready: return CheckpointAdmission(status: CheckpointWorkerError.InvalidHead)
+  if worker.next == high(uint64): return CheckpointAdmission(
+      status: CheckpointWorkerError.Exhausted) # A retry receives fresh nonwrapping ticket authority.
+  inc worker.next
+  worker.expected = expected
+  worker.outcome = default(CheckpointBankResult[CheckpointHead])
+  worker.phase = CheckpointWorkerPhase.Staged # Explicit begin remains required before any new I/O.
+  CheckpointAdmission(status: CheckpointWorkerError.None,
+    ticket: CheckpointTicket(owner: worker.identity, generation: worker.next))
 proc collect*(worker: var CheckpointWorker, ticket: CheckpointTicket): CheckpointCompletion =
   ## Collect only Done after all worker-local aliases retire, then release the sole buffer on its host allocator thread.
   if not worker.started: return default(CheckpointCompletion)

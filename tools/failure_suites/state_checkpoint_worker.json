@@ -66,6 +66,17 @@
         "reason": "cancelled-collected"
       },
       "name": "state-checkpoint-worker-cancelled-collected"
+    },
+    {
+      "arguments": [
+        "retry-refused"
+      ],
+      "description": "Checkpoint I/O worker refused retry admission extraction",
+      "diagnostic": "admission.status == None",
+      "identity": {
+        "reason": "retry-refused"
+      },
+      "name": "state-checkpoint-worker-retry-refused"
     }
   ],
   "crypto_library": "crypto",
