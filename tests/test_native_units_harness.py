@@ -319,8 +319,12 @@ class NativeUnitHarness(unittest.TestCase):
                             self.assertIn('--forward:--passL:'+str(libraries[profile].resolve()), args)
                             include = 'bandersnatch' if name == 'bandersnatch_owners' else 'quic' if profile == 'quic' else 'crypto'
                             self.assertIn('--forward:--passC:-I'+str(ROOT/'native'/include), args)
-                            other = libraries['crypto' if profile == 'observer' else 'observer']
-                            self.assertNotIn('--forward:--passL:'+str(other.resolve()), args)
+                            # Combined service suites intentionally select observed primitives and QUIC together.
+                            selected = native_tests.NATIVE_REQUIREMENTS[name]
+                            for library, path in libraries.items():
+                                self.assertEqual('--forward:--passL:'+str(path.resolve()) in args,
+                                                 library in selected['libraries'])
+
                         else:
                             self.assertFalse(any('--passC:-I' in arg for arg in args))
                         self.assertEqual('--forward:-d:integration' in args, name == 'quic_integration')
@@ -425,7 +429,7 @@ class NativeUnitHarness(unittest.TestCase):
     def test_runtime_fixture_required(self):
         with temporary_folder() as temporary:
             with patch.object(native_tests, 'unit_evidence_directory', return_value=temporary):
-                for name in ('pvm_step', 'pvm_gas', 'quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state',
+                for name in ('application_block_download', 'pvm_step', 'pvm_gas', 'quic_transport', 'quic_integration', 'state_store_replay', 'authorization_transition', 'history_transition', 'signing_domains', 'entropy_transition', 'validator_rotation', 'validator_state', 'ticket_admission', 'ticket_state',
                              'sealer_schedule', 'sealer_state', 'safrole_markers', 'marker_state',
                              'safrole_authentication', 'safrole_auth_state', 'safrole_transition',
                              'extrinsic_commitment', 'block_admission', 'disputes_transition',

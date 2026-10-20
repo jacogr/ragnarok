@@ -147,8 +147,8 @@ SELECTED_FIXTURE_GROUPS = {
 
 # Run one existing feature provider, preserving its sibling manifests for batched selection.
 def _selected_fixture_provider(folder, suite, certificates):
-    if suite == 'quic_transport':
-        # Transport needs certificates only; no CE corpus or reload candidates are generated.
+    if suite in ('application_block_download', 'quic_transport'):
+        # Certificate consumers need no CE preimage corpus or reload candidates.
         fixtures = unit_runtime_fixtures(certificates, None, None, suite=suite)
         evidence = {'files': {str(path): digest for path, digest in fixtures[suite][2]}}
     elif suite == 'quic_integration':

@@ -1,0 +1,23 @@
+{
+  "defines": [],
+  "directory": "state",
+  "includes": [
+    "crypto",
+    "bandersnatch",
+    "quic"
+  ],
+  "libraries": [
+    "bandersnatch_observer",
+    "bandersnatch",
+    "observer",
+    "quic"
+  ],
+  "observers": [
+    "verify",
+    "setup_new",
+    "setup_free",
+    "commit",
+    "ring_verify"
+  ],
+  "prepared": true
+}

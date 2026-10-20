@@ -141,7 +141,7 @@ class NativePreparationHarness(unittest.TestCase):
         actual = [suite for suites in native_preparation.SELECTED_FIXTURE_GROUPS.values() for suite in suites]
         expected = {suite for suite, profile in NATIVE_REQUIREMENTS.items() if profile['prepared']}
         self.assertEqual(len(actual), len(set(actual)))
-        self.assertEqual(set(actual) | {'quic_transport', 'quic_integration'}, expected)
+        self.assertEqual(set(actual) | {'application_block_download', 'quic_transport', 'quic_integration'}, expected)
         for group, suites in native_preparation.SELECTED_FIXTURE_GROUPS.items():
             for suite in suites:
                 # The chosen provider may share sibling fixtures but only the requested manifest escapes.
@@ -206,6 +206,13 @@ class NativePreparationHarness(unittest.TestCase):
             self.assertEqual(set(fixtures), {'quic_transport'})
             self.assertEqual(len(fixtures['quic_transport'][2]), 2)
             self.assertEqual(len(evidence['files']), 2)
+            # Block downloads require both fresh transport identities and the frozen independent report.
+            block, observed = native_preparation.prepare_selected_fixture(folder, 'application_block_download', folder)
+            self.assertEqual(set(block), {'application_block_download'})
+            self.assertEqual(len(block['application_block_download'][2]), 3)
+            self.assertEqual(set(block['application_block_download'][1]),
+                             {'RAGNAROK_TEST_CERT', 'RAGNAROK_TEST_KEY', 'RAGNAROK_STATE_REPORT'})
+            self.assertEqual(len(observed['files']), 3)
             original, reload = folder/'original', folder/'reload'
             original.mkdir(); reload.mkdir()
             for index in range(8):

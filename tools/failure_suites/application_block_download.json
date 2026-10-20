@@ -1,0 +1,77 @@
+{
+  "source": "tests/native/application_block_download_results.nim",
+  "build_name": "application-block-download-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "application-block-download-default",
+      "diagnostic": "outcome.successful",
+      "description": "Block download selected extraction guard default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "application-block-download-refused",
+      "diagnostic": "outcome.successful",
+      "description": "Block download selected extraction guard refused"
+    },
+    {
+      "identity": {
+        "reason": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "application-block-download-owner",
+      "diagnostic": "stage(download) == Failed",
+      "description": "Block download selected extraction guard owner"
+    },
+    {
+      "identity": {
+        "reason": "input"
+      },
+      "arguments": [
+        "input"
+      ],
+      "name": "application-block-download-input",
+      "diagnostic": "reason.status == InputFailure",
+      "description": "Block download selected extraction guard input"
+    },
+    {
+      "identity": {
+        "reason": "preparation"
+      },
+      "arguments": [
+        "preparation"
+      ],
+      "name": "application-block-download-preparation",
+      "diagnostic": "reason.status == PreparationFailure",
+      "description": "Block download selected extraction guard preparation"
+    },
+    {
+      "identity": {
+        "reason": "success-reason"
+      },
+      "arguments": [
+        "success-reason"
+      ],
+      "name": "application-block-download-success-reason",
+      "diagnostic": "not outcome.successful",
+      "description": "Block download selected extraction guard success-reason"
+    }
+  ]
+}
