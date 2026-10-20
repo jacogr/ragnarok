@@ -66,6 +66,28 @@
         "reason": "reason-success"
       },
       "name": "state-checkpoint-file-reason-success"
+    },
+    {
+      "arguments": [
+        "save-default"
+      ],
+      "description": "Checkpoint file extraction save-default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "save-default"
+      },
+      "name": "state-checkpoint-file-save-default"
+    },
+    {
+      "arguments": [
+        "save-refused"
+      ],
+      "description": "Checkpoint file extraction save-refused",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "save-refused"
+      },
+      "name": "state-checkpoint-file-save-refused"
     }
   ],
   "crypto_library": "crypto",
