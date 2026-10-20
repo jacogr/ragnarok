@@ -50,9 +50,11 @@ proc rosterTransitionConfig*(): BlockReportConfig =
 proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 65535'u16,
     target = 0'u32, offender = false, repeatReporter = false,
     additionalCores: openArray[uint64] = [], distinctPackages = false,
-        withReady = false, withRound = false): ComputedRosterFixture =
+        withReady = false, withRound = false, withExecution = false,
+            invalidEntry = false): ComputedRosterFixture =
   ## Re-author a three-core complete signed prefix; optional parent9 -> posterior6 is a real epoch transition.
-  let base = transitionFixture(epoch = shrink, withReady = withReady)
+  let base = transitionFixture(epoch = shrink, withReady = withReady, withExecution = withExecution,
+      invalidEntry = invalidEntry)
   let cfg = rosterTransitionConfig()
   var original = base.context.original
   let assignments = availabilityStateEntry(newSeq[AvailabilityAssignment](3),
@@ -75,6 +77,14 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
   var writes = @[StateWrite(kind: StateWriteKind.Put, key: assignments.key,
       value: assignments.value),
     StateWrite(kind: StateWriteKind.Put, key: poolEntry.key, value: poolEntry.value)]
+  if withExecution:
+    # Complete original fixed authorization queues enter the map before its root and every current computation.
+    var queues = newSeq[AuthorizerRow](3)
+    for index in 0..<3:
+      queues[index] = newSeq[AuthorizerHash](80) # Canonical queues allow zero identities and retain every fixed position.
+    let entry = authorizationEntry(AuthorizationKind.Queues, queues, AuthorizationConfig(
+      cores: CoreCount(3), maxHashes: ElementLimit(240), maxBytes: ByteLimit(7680))).value
+    writes.add(StateWrite(kind: StateWriteKind.Put, key: entry.key, value: entry.value))
   if withRound:
     # Commit canonical original privileges before root/signing/execution; completed sources are never patched afterward.
     let privileges = privilegeStateEntry(PrivilegeState(manager: ServiceIndex(42),
