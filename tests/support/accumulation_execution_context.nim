@@ -11,7 +11,7 @@ import ../../src/state/[accumulation_round, accumulation_inputs, accumulation_op
   accumulation_skip, accumulation_execution, store]
 import ../../src/codec/[bounded, composite, header, report_owned, work_digest, state_accounts,
   state_service_values, state_privileges, state_workqueues, state_authorization, state_trie,
-  state_safrole, c2_records]
+  state_safrole, state_history, c2_records]
 import ../../src/crypto/primitives
 import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ./[report_context, report_admission_context, pvm_accumulation_context,
@@ -62,9 +62,10 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
     secondProgram: seq[byte] = @[], allowanceGas = 100000'u64,
     ready: ReadyRow = @[], extra: seq[StateEntry] = @[], secondBalance = 0'u64,
     incomingReports = 0, preimageWire: seq[byte] = @[], assigner = 0'u32,
-        poolCopies = 1, refinementGas = high(uint64)): ExecutionFixture =
+        poolCopies = 1, refinementGas = high(uint64),
+    historyPeaks: seq[HistoryPeak] = @[]): ExecutionFixture =
   ## Recompute parent commitments and real signatures after selecting code, optional complete preimages and free allowances.
-  ## Optional allowances, balances and ready rows enter the parent; incoming reports/preimages enter the genuinely signed child.
+  ## Optional allowances, balances, ready rows and belt peaks enter the parent; incoming reports/preimages enter the genuinely signed child.
   let firstCode = (if firstProgram.len == 0: code(first) else: firstProgram)
   let secondCode = (if secondProgram.len == 0: code(second) else: secondProgram)
   var allowances: seq[AlwaysAccumulate] = @[]
@@ -97,7 +98,7 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
     entries.add(entry) # Additional effect witnesses enter the genuine parent before its commitment/signatures.
   let context = authored(base, reports = incomingReports, withAvailable = report, extra = entries,
       accountCode = firstCode, ready = ready, preimageWire = preimageWire, poolCopies = poolCopies,
-      refinementGas = refinementGas)
+      refinementGas = refinementGas, historyPeaks = historyPeaks)
   let queue = planBlockAccumulationQueue(planBlockReports(context.staged, context.older, config()).value,
     executionQueueConfig()).value
   ExecutionFixture(round: planBlockInitialAccumulation(queue, executionRoundConfig()).value,
