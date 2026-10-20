@@ -139,3 +139,18 @@ umask, independent owners, nonblocking forked-process contention,
 reacquisition, source-path mutation, anchored delegation, closed/default access,
 and 1,000 joined-host ownership ARC cycles. Publication uncertainty still reaches
 the caller through `PublishedUnsynced`; recovery policy follows separately.
+
+## Shared atomic byte publication
+
+`src/lib/atomic_file.nim` owns the common synchronous file-sync/rename/directory-sync
+sequence with an explicit byte ceiling and exhaustively typed outcomes. It writes
+exact raw bytes, including an empty file, without interpreting state, roots or
+control metadata. Borrowed input remains stable for the call. The checkpoint
+adapter still encodes complete state first and exposes its exact snapshot only
+after raw publication succeeds; every error maps without losing durability status.
+This permits generation/control metadata to share the same publication discipline
+without being embedded in a fabricated JAM state mapping.
+
+Native checks cover binary/empty exact writes, preflight and real rename rollback,
+all path/ceiling boundaries and 1,000 synchronized ARC cycles. Existing full-state
+publication and real kernel short-write controls remain required affected consumers.

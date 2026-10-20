@@ -7,7 +7,8 @@ update their feature contract rather than appending progress here.
 immutable snapshots and recompute roots through the existing Merklization implementation.
 `src/state/checkpoint.nim` encodes and verifies versioned local full-map checkpoints;
 `checkpoint_file.nim` bounds synchronous startup reads and publishes complete sibling files
-through POSIX file sync, atomic replacement and directory sync. See the
+through the bounded `src/lib/atomic_file.nim` byte-publication primitive: POSIX file sync,
+atomic replacement and directory sync. See the
 [checkpoint contract](../../spec/state-checkpoint.md). These are full-state snapshots,
 not light-state databases or authenticated chain-head recovery.
 
