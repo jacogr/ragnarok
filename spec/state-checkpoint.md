@@ -103,3 +103,16 @@ recovery require their own application binding.
 Native tests restore matching and empty roots, reject intact alternate maps,
 preserve failed-file/format/limit reasons, retain earlier restored owners across
 file replacement, and release 1,000 accepted/unauthorized map pairs under ARC.
+
+## Real kernel write-refusal controls
+
+A dedicated native suite forks seven isolated child writers and changes only each
+child's POSIX `RLIMIT_FSIZE`. Real zero/partial/final-byte write refusals must return
+`IoFailure`, remove their own temporary on the functioning test filesystem and
+preserve exact prior bytes/root. Exact and one-byte-ample ceilings must publish the
+new complete checkpoint normally. Child and joined-parent observations separately
+verify the authorized result. Setup, signal-policy and process failures are distinct
+failures, not accepted substitutes. No production sleeps, failure hooks or compiler
+changes are used. This witnesses ordinary write rollback, not power-loss recovery
+or simulated file/directory-sync failure. Forked-process cleanup is not presented
+as a cross-process ARC occupancy measurement.
