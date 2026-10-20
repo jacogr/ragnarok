@@ -33,3 +33,18 @@ envelope binding that context to existing complete checkpoint bytes. Application
 startup/shutdown and dispatcher work must remain explicit and nonblocking; no
 serialization occurs inside transport callbacks. M1 framing remains complete;
 full T(state), whole-block parity and light-state persistence remain open.
+
+## Canonical local identity encoding
+
+The fixed 238-byte local metadata encoding is RAGNAROK-APP-V1 plus LF, sealed
+block hash (32), posterior state root (32), E4 little-endian time, all 122 encoded
+parameter bytes, then Blake2b-256 of the preceding 206 bytes. The checksum detects
+corruption and does not authenticate a head. Decode accepts one exact version and
+extent, validates the full parameter tuple and exposes no metadata on failure.
+Decoded initialized metadata must still be compared with independent caller
+context; a checksum-valid attacker-chosen identity is not a recovery trust anchor.
+
+The native suite uses independently encoded hashlib bytes and existing RPC root/
+header goldens, every truncation/octet tamper, exact/short ceilings, valid-checksum
+context mismatch, invalid profiles and repeated owned-buffer release. No JAM wire
+encoding, chain identity, canonical adoption or storage backend changes.

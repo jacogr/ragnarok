@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_APPLICATION_CHECKPOINT_IDENTITY",
+  "files": {
+    "application-checkpoint-identity.bin": "f9ed931fd423568b316da69e4010a155fa4eea40b25c233e5568a9e69cc7afdf"
+  },
+  "target": "application-checkpoint-identity.bin"
+}
