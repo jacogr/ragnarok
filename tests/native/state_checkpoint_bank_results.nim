@@ -50,6 +50,10 @@ proc main() =
       elif mode == "initialize-refused":
         discard bank.initialize(snapshot, ByteLimit(
             1000)).value # Existing head cannot yield a successful second bootstrap.
+      elif mode == "advance-refused":
+        let stale = newCheckpointHead(CheckpointGeneration(1), head.slot, head.root)
+        discard bank.advance(stale, snapshot, ByteLimit(
+            1000)).value # Stale local metadata cannot extract a committed successor.
       elif mode == "head-reason":
         discard bank.selectedHead().headError # Success has no failed metadata diagnostic.
       elif mode == "state-reason":

@@ -77,6 +77,17 @@
         "reason": "initialize-refused"
       },
       "name": "state-checkpoint-bank-initialize-refused"
+    },
+    {
+      "arguments": [
+        "advance-refused"
+      ],
+      "description": "Checkpoint bank stale-head successor extraction",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "advance-refused"
+      },
+      "name": "state-checkpoint-bank-advance-refused"
     }
   ],
   "crypto_library": "crypto",

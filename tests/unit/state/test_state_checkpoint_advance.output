@@ -1,0 +1,1 @@
+PASS checkpoint advancement: exact expected head, durable selection and inactive-slot rollback
