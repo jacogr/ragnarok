@@ -14,7 +14,10 @@ not light-state databases or authenticated chain-head recovery.
 
 Snapshots can fork private complete-map working stores with inherited resource ceilings; branches share
 only immutable prior owners and publish independently.
-See [the storage contract](../../spec/state-store.md). Native replay verifies seven published pre/post mapping pairs; this is not state-transition
+The standalone [`storage/full_state_trie`](../../src/storage/README.md) provides immutable
+incremental full-map revisions with shared subtrees; integration into this store is a later increment.
+See [the trie contract](../../spec/full-state-trie.md) and
+[the storage contract](../../spec/state-store.md). Native replay verifies seven published pre/post mapping pairs; this is not state-transition
 execution.
 
 `src/state/authorization.nim` implements the first bounded non-PVM transition: authorization

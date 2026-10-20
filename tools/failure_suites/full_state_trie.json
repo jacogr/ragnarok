@@ -1,0 +1,98 @@
+{
+  "source": "tests/native/full_state_trie_results.nim",
+  "build_name": "full-state-trie-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "full-state-trie-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Full state trie result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "full-state-trie-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Full state trie result failed guard"
+    },
+    {
+      "identity": {
+        "member": "apply",
+        "origin": "failed"
+      },
+      "arguments": [
+        "apply",
+        "failed"
+      ],
+      "name": "full-state-trie-apply-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Full state trie apply failed guard"
+    },
+    {
+      "identity": {
+        "member": "lookup",
+        "origin": "failed"
+      },
+      "arguments": [
+        "lookup",
+        "failed"
+      ],
+      "name": "full-state-trie-lookup-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Full state trie lookup failed guard"
+    },
+    {
+      "identity": {
+        "member": "metadata",
+        "origin": "default"
+      },
+      "arguments": [
+        "metadata",
+        "default"
+      ],
+      "name": "full-state-trie-metadata-default",
+      "diagnostic": "not trie.data == nil",
+      "description": "Full state trie metadata default guard"
+    },
+    {
+      "identity": {
+        "member": "length",
+        "origin": "default"
+      },
+      "arguments": [
+        "length",
+        "default"
+      ],
+      "name": "full-state-trie-length-default",
+      "diagnostic": "not view.owner == nil",
+      "description": "Full state trie length default guard"
+    },
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "default"
+      },
+      "arguments": [
+        "bytes",
+        "default"
+      ],
+      "name": "full-state-trie-bytes-default",
+      "diagnostic": "not view.owner == nil",
+      "description": "Full state trie bytes default guard"
+    }
+  ]
+}
