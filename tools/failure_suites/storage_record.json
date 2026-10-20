@@ -1,0 +1,59 @@
+{
+  "source": "tests/native/storage_record_results.nim",
+  "build_name": "storage-record-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "default"
+      },
+      "arguments": [
+        "bytes",
+        "default"
+      ],
+      "name": "storage-record-bytes-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage record bytes default guard"
+    },
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "failed"
+      },
+      "arguments": [
+        "bytes",
+        "failed"
+      ],
+      "name": "storage-record-bytes-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage record bytes failed guard"
+    },
+    {
+      "identity": {
+        "member": "records",
+        "origin": "default"
+      },
+      "arguments": [
+        "records",
+        "default"
+      ],
+      "name": "storage-record-records-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage record records default guard"
+    },
+    {
+      "identity": {
+        "member": "records",
+        "origin": "failed"
+      },
+      "arguments": [
+        "records",
+        "failed"
+      ],
+      "name": "storage-record-records-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage record records failed guard"
+    }
+  ]
+}
