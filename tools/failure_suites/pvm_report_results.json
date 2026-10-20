@@ -1,0 +1,140 @@
+{
+  "source": "tests/native/pvm_report_results.nim",
+  "build_name": "pvm-report-results",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-report-results-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Report result default"
+    },
+    {
+      "identity": {
+        "origin": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "pvm-report-results-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Report result refused"
+    },
+    {
+      "identity": {
+        "origin": "preparation"
+      },
+      "arguments": [
+        "preparation"
+      ],
+      "name": "pvm-report-results-preparation",
+      "diagnostic": "outcome.status == None",
+      "description": "Report result preparation"
+    },
+    {
+      "identity": {
+        "origin": "invocation"
+      },
+      "arguments": [
+        "invocation"
+      ],
+      "name": "pvm-report-results-invocation",
+      "diagnostic": "outcome.status == None",
+      "description": "Report result invocation"
+    },
+    {
+      "identity": {
+        "origin": "success-bootstrap"
+      },
+      "arguments": [
+        "success-bootstrap"
+      ],
+      "name": "pvm-report-results-success-bootstrap",
+      "diagnostic": "outcome.status == BootstrapFailure",
+      "description": "Report result success-bootstrap"
+    },
+    {
+      "identity": {
+        "origin": "success-invocation"
+      },
+      "arguments": [
+        "success-invocation"
+      ],
+      "name": "pvm-report-results-success-invocation",
+      "diagnostic": "outcome.status == InvocationFailure",
+      "description": "Report result success-invocation"
+    },
+    {
+      "identity": {
+        "origin": "wrong-bootstrap"
+      },
+      "arguments": [
+        "wrong-bootstrap"
+      ],
+      "name": "pvm-report-results-wrong-bootstrap",
+      "diagnostic": "outcome.status == BootstrapFailure",
+      "description": "Report result wrong-bootstrap"
+    },
+    {
+      "identity": {
+        "origin": "wrong-invocation"
+      },
+      "arguments": [
+        "wrong-invocation"
+      ],
+      "name": "pvm-report-results-wrong-invocation",
+      "diagnostic": "outcome.status == InvocationFailure",
+      "description": "Report result wrong-invocation"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-report-results-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Report result owner"
+    },
+    {
+      "identity": {
+        "origin": "item"
+      },
+      "arguments": [
+        "item"
+      ],
+      "name": "pvm-report-results-item",
+      "diagnostic": "outcome.status == None",
+      "description": "Report result item"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-report-results-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Report result index"
+    },
+    {
+      "identity": {
+        "origin": "output"
+      },
+      "arguments": [
+        "output"
+      ],
+      "name": "pvm-report-results-output",
+      "diagnostic": "outcome.status == None",
+      "description": "Report result output"
+    }
+  ]
+}
