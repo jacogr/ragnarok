@@ -18,7 +18,7 @@ Execution always starts from the original immutable CPU and fresh empty exports.
 Host 0, 1, 2, 7 and 8 delegate to shared gas, adopted heap, fetch, historical lookup and
 export implementations. Extract heap logic from accumulation into one shared primitive
 without changing accumulation behavior. Hosts 9/14 now use the invocation-local
-[inner lifecycle](pvm-inner-lifecycle.md). Host 12 uses [inner pages](pvm-inner-pages.md). Known refinement hosts 10/11/13 refuse locally
+[inner lifecycle](pvm-inner-lifecycle.md). Host 12 uses [inner pages](pvm-inner-pages.md). Hosts 10/11 use [inner transfers](pvm-inner-transfer.md). Host 13 refuses locally
 as UnsupportedHostCall, including underfunded calls. All other full-width identifiers use
 F's unknown fallback, including accumulation-only IDs, and assign WHAT even on OOG.
 

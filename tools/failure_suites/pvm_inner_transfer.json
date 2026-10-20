@@ -1,0 +1,74 @@
+{
+  "source": "tests/native/pvm_inner_transfer_results.nim",
+  "build_name": "pvm-inner-transfer-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "peek-cap"
+      },
+      "arguments": [
+        "peek-cap"
+      ],
+      "name": "pvm-inner-transfer-peek-cap",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner transfer peek-cap"
+    },
+    {
+      "identity": {
+        "origin": "poke-cap"
+      },
+      "arguments": [
+        "poke-cap"
+      ],
+      "name": "pvm-inner-transfer-poke-cap",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner transfer poke-cap"
+    },
+    {
+      "identity": {
+        "origin": "peek-default"
+      },
+      "arguments": [
+        "peek-default"
+      ],
+      "name": "pvm-inner-transfer-peek-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner transfer peek-default"
+    },
+    {
+      "identity": {
+        "origin": "poke-default"
+      },
+      "arguments": [
+        "poke-default"
+      ],
+      "name": "pvm-inner-transfer-poke-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner transfer poke-default"
+    },
+    {
+      "identity": {
+        "origin": "peek-memory"
+      },
+      "arguments": [
+        "peek-memory"
+      ],
+      "name": "pvm-inner-transfer-peek-memory",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner transfer peek-memory"
+    },
+    {
+      "identity": {
+        "origin": "poke-memory"
+      },
+      "arguments": [
+        "poke-memory"
+      ],
+      "name": "pvm-inner-transfer-poke-memory",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner transfer poke-memory"
+    }
+  ]
+}

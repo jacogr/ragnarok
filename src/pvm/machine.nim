@@ -5,7 +5,8 @@
 ## immutable, acyclic ARC graphs. Updates return independent snapshots.
 ##
 ## Exposes immutable Memory/Machine snapshots, page capture/replacement, checked scalar
-## load/store, bounded host readBytes/writeBytes, programOf/memoryOf child access, copied state
+## load/store, bounded host readBytes/writeBytes, allocation-free readableRange/writableRange,
+## programOf/memoryOf child access, copied state
 ## updates, writable-page range counting/mapping, atomic zero/remap/free ranges and terminal-state capture.
 
 import ./program
@@ -387,6 +388,16 @@ proc inspectRange(memory: Memory, address: MemoryAddress, length: MemoryLength,
       return MachineResult[bool](status: MachineError.Fault, failedPage: PageAddress(uint32(page * 4096)))
     inc page
   MachineResult[bool](status: MachineError.None, completed: true)
+
+proc readableRange*(memory: Memory, address: MemoryAddress, length: MemoryLength): MachineResult[bool] =
+  ## Inspect a complete natural readable interval without allocating payload bytes or applying a caller copy budget.
+  ## The physical 4-GiB domain bounds scanning; empty intervals ignore the pointer but still validate the owner.
+  inspectRange(memory, address, length, MemoryByteLimit(0x100000000'u64), false)
+
+proc writableRange*(memory: Memory, address: MemoryAddress, length: MemoryLength): MachineResult[bool] =
+  ## Inspect a complete natural writable interval without mutation, preserving the first physical fault reason.
+  ## Host dispatchers can establish permission precedence before ID lookup and independent local copying policy.
+  inspectRange(memory, address, length, MemoryByteLimit(0x100000000'u64), true)
 
 proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
     limit: MemoryByteLimit): MachineResult[seq[byte]] =
