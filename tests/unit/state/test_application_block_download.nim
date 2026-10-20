@@ -193,7 +193,7 @@ proc network(owner: var Services, frame: seq[byte]) =
   var download = default(BlockDownload)
   let expected = expectedRequest(owner)
   let before = owner.stateSnapshot.value
-  for mode in [Oversized, PrematureClose, NoFin, Healthy]:
+  for mode in [Oversized, PrematureClose, NoFin, Deadline, ResetEvent, EmptyReply, Healthy]:
     let id = download.begin(owner, frame)
     failHash(1)
     exchangeBlock(download, id, expected, frame, mode)
@@ -220,7 +220,7 @@ proc network(owner: var Services, frame: seq[byte]) =
       assert hashCalls() == 0 and download.cancel(pending)
       failHash(0)
       assert owner.chainView.retainedCount == 2
-    elif mode in [Oversized, PrematureClose]:
+    elif mode in [EmptyReply, Oversized, PrematureClose]:
       assert download.cancel(id) # The failed native frame remains observable until explicit acknowledgement.
     else:
       assert download.stage == BlockDownloadStage.Idle # Explicit unfinished-response cancellation already retired input.

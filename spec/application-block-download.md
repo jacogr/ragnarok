@@ -73,8 +73,10 @@ full/Linux verification remains separately requested CI evidence.
 
 ## Remaining work
 
-The development proof-peer commands retain their existing workloads. Live block
-selection/retry scheduling, production session routing and execution workers remain
+The [native stream controller](application-download-stream.md) now supplies bounded
+read/write routing, callback identity checks and total transfer deadlines. The
+development proof-peer commands retain their existing workloads. Live block
+selection/retry scheduling, production command wiring and execution workers remain
 open. No consensus finalizability decision, block-serving policy, durable restart
 or full/light database mode is introduced. M1 framing is complete; full state
 serialization and JAM/STF parity remain open.
