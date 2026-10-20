@@ -258,8 +258,8 @@ proc cycle(chain: ApplicationChain, frame: seq[byte], complete: bool) =
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield during bounded asynchronous preparation polling without advancing simulated protocol clocks.
 
-proc asynchronous(frame: seq[byte]) {.raises.} =
-  ## Private raw reception cannot be cancelled, duplicated or reused while the managed worker borrows its input.
+proc asynchronous(frame: seq[byte], rounds: int = 2) {.raises.} =
+  ## Reuse one stable worker for signed completions/cancellations, then join before releasing its graph.
   var owner = default(Services)
   var options = default(Options)
   assert parseOptions(@["server", "--with-state", "--chain",
@@ -269,7 +269,10 @@ proc asynchronous(frame: seq[byte]) {.raises.} =
   defer: owner.close()
   let before = owner.stateSnapshot.value
   var download = default(BlockDownload)
-  for mode in 0..<3:
+  var previous = default(PreparationTicket)
+  for iteration in 0..rounds:
+    # Alternating completed jobs exercise reuse; the final outstanding job exercises joined retirement.
+    let mode = if iteration == rounds: 2 else: iteration mod 2
     let admitted = download.begin(owner, [], resources(frame.len), preparationLimits())
     assert admitted.error == BlockDownloadError.None
     let id = admitted.value
@@ -277,6 +280,8 @@ proc asynchronous(frame: seq[byte]) {.raises.} =
     assert download.requestFinished(id) == BlockDownloadError.None
     let submitted = download.beginPreparation(id, owner)
     assert submitted.error == BlockDownloadError.None
+    assert not owner.cancelPreparation(previous), "stale ticket cannot cancel a later raw job"
+    previous = submitted.value
     assert download.stage == BlockDownloadStage.Preparing and owner.preparationActive
     assert not download.cancel(id), "ordinary cancellation cannot free leased input"
     assert download.beginPreparation(id, owner).error == BlockDownloadError.NotReady
@@ -295,6 +300,8 @@ proc asynchronous(frame: seq[byte]) {.raises.} =
           break # Preserve the uncollected graph lease for exact cancellation or completion assertions.
         discard pauseMicros(1000)
       assert done, "bounded raw worker completion"
+      assert owner.preparationActive and owner.rpc.chainPaused, "Done retains graph exclusion"
+      assert not owner.preparationAvailable, "completed output still owns the only worker slot"
       if mode == 1:
         assert download.cancelPreparation(id, owner), "completed cancellation discards genuine execution output"
       let completed = download.collectPreparation(id, owner, completionLimits().composition)
@@ -307,6 +314,8 @@ proc asynchronous(frame: seq[byte]) {.raises.} =
         assert owner.accumulationStage == AccumulationHandoffStage.Pending
         assert owner.cancelAccumulation(), "test retires queued success without changing its seed"
     assert not owner.preparationActive and not owner.rpc.chainPaused
+    assert owner.preparationAvailable, "collection or join restores producer admission"
+    assert owner.accumulationStage == AccumulationHandoffStage.Idle
     assert sameStateSnapshot(before, owner.stateSnapshot.value)
 
 proc main() {.raises.} =
@@ -325,7 +334,8 @@ proc main() {.raises.} =
   var owner = default(Services)
   assert owner.start(options, "test")
   defer: owner.close()
-  asynchronous(frame)
+  asynchronous(frame) # Retain the focused three-mode lifecycle scenario.
+  asynchronous(frame, 100) # Fifty genuine certificates and fifty completed cancellations share one worker.
   fragments(owner, frame)
   framing(owner, frame)
   refusals(owner, context, frame)
@@ -341,6 +351,7 @@ proc main() {.raises.} =
   network(owner, frame)
   echo "Application block download passed"
   echo "ARC_RELEASE cycles=1000 unchanged"
+  echo "WORKER_REUSE cycles=100 passed"
 
 try:
   main() # Fixture/filesystem failures cannot produce a successful native-suite verdict.
