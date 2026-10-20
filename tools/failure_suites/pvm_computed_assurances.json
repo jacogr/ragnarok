@@ -1,0 +1,286 @@
+{
+  "source": "tests/native/pvm_computed_assurances.nim",
+  "build_name": "pvm-computed-assurances",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-assurances-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-assurances-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances source"
+    },
+    {
+      "identity": {
+        "origin": "profile"
+      },
+      "arguments": [
+        "profile"
+      ],
+      "name": "pvm-computed-assurances-profile",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances profile"
+    },
+    {
+      "identity": {
+        "origin": "count"
+      },
+      "arguments": [
+        "count"
+      ],
+      "name": "pvm-computed-assurances-count",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances count"
+    },
+    {
+      "identity": {
+        "origin": "bytes"
+      },
+      "arguments": [
+        "bytes"
+      ],
+      "name": "pvm-computed-assurances-bytes",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances bytes"
+    },
+    {
+      "identity": {
+        "origin": "transition"
+      },
+      "arguments": [
+        "transition"
+      ],
+      "name": "pvm-computed-assurances-transition",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances transition"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-assurances-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances owner"
+    },
+    {
+      "identity": {
+        "origin": "stage"
+      },
+      "arguments": [
+        "stage"
+      ],
+      "name": "pvm-computed-assurances-stage",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances stage"
+    },
+    {
+      "identity": {
+        "origin": "parameters"
+      },
+      "arguments": [
+        "parameters"
+      ],
+      "name": "pvm-computed-assurances-parameters",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances parameters"
+    },
+    {
+      "identity": {
+        "origin": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "pvm-computed-assurances-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances info"
+    },
+    {
+      "identity": {
+        "origin": "report"
+      },
+      "arguments": [
+        "report"
+      ],
+      "name": "pvm-computed-assurances-report",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances report"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-computed-assurances-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances index"
+    },
+    {
+      "identity": {
+        "origin": "quorum"
+      },
+      "arguments": [
+        "quorum"
+      ],
+      "name": "pvm-computed-assurances-quorum",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed assurances quorum"
+    },
+    {
+      "identity": {
+        "origin": "stateError-default"
+      },
+      "arguments": [
+        "stateError-default"
+      ],
+      "name": "pvm-computed-assurances-stateError-default",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Computed assurances stateError-default"
+    },
+    {
+      "identity": {
+        "origin": "stateError-success"
+      },
+      "arguments": [
+        "stateError-success"
+      ],
+      "name": "pvm-computed-assurances-stateError-success",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Computed assurances stateError-success"
+    },
+    {
+      "identity": {
+        "origin": "stateError-source"
+      },
+      "arguments": [
+        "stateError-source"
+      ],
+      "name": "pvm-computed-assurances-stateError-source",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Computed assurances stateError-source"
+    },
+    {
+      "identity": {
+        "origin": "stateError-other"
+      },
+      "arguments": [
+        "stateError-other"
+      ],
+      "name": "pvm-computed-assurances-stateError-other",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Computed assurances stateError-other"
+    },
+    {
+      "identity": {
+        "origin": "transitionFailure-default"
+      },
+      "arguments": [
+        "transitionFailure-default"
+      ],
+      "name": "pvm-computed-assurances-transitionFailure-default",
+      "diagnostic": "outcome.status == TransitionFailure",
+      "description": "Computed assurances transitionFailure-default"
+    },
+    {
+      "identity": {
+        "origin": "transitionFailure-success"
+      },
+      "arguments": [
+        "transitionFailure-success"
+      ],
+      "name": "pvm-computed-assurances-transitionFailure-success",
+      "diagnostic": "outcome.status == TransitionFailure",
+      "description": "Computed assurances transitionFailure-success"
+    },
+    {
+      "identity": {
+        "origin": "transitionFailure-source"
+      },
+      "arguments": [
+        "transitionFailure-source"
+      ],
+      "name": "pvm-computed-assurances-transitionFailure-source",
+      "diagnostic": "outcome.status == TransitionFailure",
+      "description": "Computed assurances transitionFailure-source"
+    },
+    {
+      "identity": {
+        "origin": "transitionFailure-other"
+      },
+      "arguments": [
+        "transitionFailure-other"
+      ],
+      "name": "pvm-computed-assurances-transitionFailure-other",
+      "diagnostic": "outcome.status == TransitionFailure",
+      "description": "Computed assurances transitionFailure-other"
+    },
+    {
+      "identity": {
+        "origin": "reportError-default"
+      },
+      "arguments": [
+        "reportError-default"
+      ],
+      "name": "pvm-computed-assurances-reportError-default",
+      "diagnostic": "outcome.status == ReportFailure",
+      "description": "Computed assurances reportError-default"
+    },
+    {
+      "identity": {
+        "origin": "reportError-success"
+      },
+      "arguments": [
+        "reportError-success"
+      ],
+      "name": "pvm-computed-assurances-reportError-success",
+      "diagnostic": "outcome.status == ReportFailure",
+      "description": "Computed assurances reportError-success"
+    },
+    {
+      "identity": {
+        "origin": "reportError-source"
+      },
+      "arguments": [
+        "reportError-source"
+      ],
+      "name": "pvm-computed-assurances-reportError-source",
+      "diagnostic": "outcome.status == ReportFailure",
+      "description": "Computed assurances reportError-source"
+    },
+    {
+      "identity": {
+        "origin": "reportError-other"
+      },
+      "arguments": [
+        "reportError-other"
+      ],
+      "name": "pvm-computed-assurances-reportError-other",
+      "diagnostic": "outcome.status == ReportFailure",
+      "description": "Computed assurances reportError-other"
+    }
+  ]
+}
