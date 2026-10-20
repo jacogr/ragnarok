@@ -96,16 +96,9 @@ proc slotPath(bank: CheckpointBank, slot: CheckpointSlot): string =
   ## Only the validated selector can choose one of two fixed sibling names.
   if slot == CheckpointSlot.First: bank.prefix & ".0" # First generation's complete-map file.
   else: bank.prefix & ".1" # The only other canonical slot; temporary filenames are never considered.
-proc restore*(bank: var CheckpointBank, expected: StateRoot, limits: StateStoreLimits,
-    limit: ByteLimit): CheckpointBankResult[StateStore] =
-  ## Fail closed through head selection, independent trust, exact slot I/O and complete-map root verification.
-  let selection = bank.selectedHead()
-  if selection.error == CheckpointBankError.InvalidHead:
-    return CheckpointBankResult[StateStore](status: CheckpointBankError.InvalidHead,
-        headReason: selection.headError)
-  if selection.error != CheckpointBankError.None:
-    return CheckpointBankResult[StateStore](status: selection.error) # No head means no fallback scan.
-  let head = selection.value
+proc restoreSelected(bank: var CheckpointBank, head: CheckpointHead, expected: StateRoot,
+    limits: StateStoreLimits, limit: ByteLimit): CheckpointBankResult[StateStore] =
+  ## Verify exactly the captured selector and its one complete map; this helper never scans or rereads a selector.
   if array[32, byte](head.root) != array[32, byte](expected):
     return CheckpointBankResult[StateStore](status: CheckpointBankError.RootMismatch) # A valid untrusted head cannot choose caller authority.
   let bytes = readBoundedFile(bank.slotPath(head.slot), limit)
@@ -117,6 +110,35 @@ proc restore*(bank: var CheckpointBank, expected: StateRoot, limits: StateStoreL
     return CheckpointBankResult[StateStore](status: CheckpointBankError.InvalidCheckpoint,
         stateReason: restored.error)
   CheckpointBankResult[StateStore](status: CheckpointBankError.None, completed: restored.value)
+
+proc restore*(bank: var CheckpointBank, expected: StateRoot, limits: StateStoreLimits,
+    limit: ByteLimit): CheckpointBankResult[StateStore] =
+  ## Fail closed through head selection, independent trust, exact slot I/O and complete-map root verification.
+  let selection = bank.selectedHead()
+  if selection.error == CheckpointBankError.InvalidHead:
+    return CheckpointBankResult[StateStore](status: CheckpointBankError.InvalidHead,
+        headReason: selection.headError)
+  if selection.error != CheckpointBankError.None:
+    return CheckpointBankResult[StateStore](status: selection.error) # No head means no fallback scan.
+  bank.restoreSelected(selection.value, expected, limits, limit)
+
+proc verify*(bank: var CheckpointBank, expected: StateRoot, limits: StateStoreLimits,
+    limit: ByteLimit): CheckpointBankResult[CheckpointHead] =
+  ## Verify selected state against independent caller trust, retiring the complete temporary graph before returning scalar metadata.
+  let selection = bank.selectedHead()
+  if selection.error == CheckpointBankError.InvalidHead:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidHead,
+      headReason: selection.headError) # Format evidence belongs only to its matching failure alternative.
+  if selection.error != CheckpointBankError.None:
+    return CheckpointBankResult[CheckpointHead](status: selection.error) # No metadata is granted for absent or inaccessible selectors.
+  let restored = bank.restoreSelected(selection.value, expected, limits, limit)
+  if restored.error == CheckpointBankError.InvalidCheckpoint:
+    return CheckpointBankResult[CheckpointHead](status: CheckpointBankError.InvalidCheckpoint,
+      stateReason: restored.checkpointError) # Preserve exact decoder/root/resource failures without exposing a map.
+  if restored.error != CheckpointBankError.None:
+    return CheckpointBankResult[CheckpointHead](status: restored.error) # Wrong trust, I/O and ceilings remain payload-free.
+  CheckpointBankResult[CheckpointHead](status: CheckpointBankError.None,
+    completed: selection.value)
 
 proc initialize*(bank: var CheckpointBank, prepared: PreparedCheckpoint,
     limit: ByteLimit): CheckpointBankResult[CheckpointHead] =

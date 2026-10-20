@@ -348,3 +348,16 @@ Tests use real FIFO/directory/regular-target and dangling symlink paths, ensure 
 refused inode/target is preserved, reacquire normal ownership after cleanup, and
 repeat 1,000 special-file refusal/release ARC cycles. Storage latency for real regular
 files is still synchronous; these flags do not promise a wall-clock I/O deadline.
+
+## Scalar verification of a selected checkpoint
+
+`CheckpointBank.verify(expectedRoot, limits, byteLimit)` reads one bounded selector
+and exactly its selected complete map. It applies the same independent-root,
+canonical decoding and store-policy checks as restoration, but returns only the
+captured head after all temporary bytes and complete-map owners retire locally.
+The caller supplies trust; local metadata is never its own authentication source.
+Both restore and verify share selected-map validation without rereading the head
+or scanning orphan slots. Failure preserves typed head/codec reasons and exposes
+no usable scalar receipt. Native witnesses cover exact selection, wrong trust,
+byte/map ceilings, malformed or missing selected data and repeated temporary map
+release, preserving exact on-disk bytes on read-only success/refusal.
