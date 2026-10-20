@@ -44,6 +44,17 @@
         "reason": "completion"
       },
       "name": "application-checkpoint-worker-completion"
+    },
+    {
+      "arguments": [
+        "operation"
+      ],
+      "description": "Application checkpoint operation default completion",
+      "diagnostic": "completion.status == Completed",
+      "identity": {
+        "reason": "operation"
+      },
+      "name": "application-checkpoint-worker-operation"
     }
   ],
   "crypto_library": "crypto",

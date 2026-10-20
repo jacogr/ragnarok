@@ -13,6 +13,9 @@ proc extractAdmission(admission: ApplicationCheckpointAdmission) =
 proc extractCompletion(completion: ApplicationCheckpointCompletion) =
   ## Only native operation completion carries a file outcome.
   discard completion.value
+proc inspectOperation(completion: ApplicationCheckpointCompletion) =
+  ## Only actual completion supplies the performed publication/verification kind.
+  discard completion.operation
 proc forgotten() {.raises.} =
   ## Start a genuine thread before witnessing required explicit joined destruction.
   var worker = default(ApplicationCheckpointWorker)
@@ -32,6 +35,9 @@ proc main() {.raises.} =
   elif mode == "admission":
     let absent = default(ApplicationCheckpointAdmission)
     extractAdmission(absent) # No default ticket authority exists.
+  elif mode == "operation":
+    let absent = default(ApplicationCheckpointCompletion)
+    inspectOperation(absent) # Default completion cannot claim a publication or verification.
   elif mode == "completion":
     let absent = default(ApplicationCheckpointCompletion)
     extractCompletion(absent) # Default completion has no publication receipt.
@@ -55,6 +61,8 @@ proc main() {.raises.} =
     worker.waitApplicationCheckpoint()
     let completed = worker.collect(admitted.value)
     extractCompletion(completed)
+    inspectOperation(completed)
+    assert completed.operation == ApplicationCheckpointOperation.Publish
     assert completed.value.error == ApplicationCheckpointFileError.None
     assert completed.value.value.ready
     assert worker.close().retirementError == ApplicationCheckpointFileError.None

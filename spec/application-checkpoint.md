@@ -211,3 +211,16 @@ durability. Native/context/format/resource failures remain precise payload-free
 results. Tests cover exact/short budgets, wrong/default trust, tight map policy,
 corruption, closed writers and 1,000 paired path/locked full verification cycles,
 plus strict refused-success access with a genuine verification control.
+
+## Native verification without map transfer
+
+Verification admission accepts only independently supplied fixed application
+context and explicit map/byte policy. It shares publication's one outstanding slot,
+nonwrapping namespace, staged cancellation and acknowledgement gates. Complete
+file bytes and restored maps allocate/retire entirely on the I/O thread; only fixed
+identity/result metadata returns to the host. Actual Completed receipts explicitly
+identify Publish or Verify, so successful validation cannot masquerade as durable
+publication. Joined session journals preserve that operation identity. Tests cross
+both operations, exact context/resource refusals, cancellation, joined receipts,
+backpressure and 1,000 host ticket/receipt cycles; verifier tests separately witness
+complete decoded graph release. No recovered chain is adopted automatically.
