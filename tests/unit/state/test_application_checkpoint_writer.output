@@ -1,0 +1,1 @@
+PASS application checkpoint writer: copied paths, exclusive ownership, bounded recovery and closed lifetimes

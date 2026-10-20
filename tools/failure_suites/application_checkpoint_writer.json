@@ -1,0 +1,40 @@
+{
+  "build_name": "application-checkpoint-writer-results",
+  "cases": [
+    {
+      "arguments": [
+        "unclosed"
+      ],
+      "description": "Application checkpoint writer unclosed",
+      "diagnostic": "not writer.active",
+      "identity": {
+        "reason": "unclosed"
+      },
+      "name": "application-checkpoint-writer-unclosed"
+    },
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Application checkpoint writer default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-checkpoint-writer-default"
+    },
+    {
+      "arguments": [
+        "closed"
+      ],
+      "description": "Application checkpoint writer closed",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "closed"
+      },
+      "name": "application-checkpoint-writer-closed"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/application_checkpoint_writer_results.nim"
+}

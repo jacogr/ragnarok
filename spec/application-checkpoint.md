@@ -98,3 +98,14 @@ Exact native/identity/checkpoint/context failures remain typed. These are startu
 offline APIs, not dispatcher callbacks or canonical chain adoption. Tests cover
 exact old-file preservation on refusal, mismatched trust, native paths, corruption
 and repeated complete recovery ownership release.
+
+## Exclusive cooperative application writer
+
+ApplicationCheckpointWriter privately owns the existing raw AtomicFileWriter;
+regular non-symlink lock admission, copied path ownership, immediate Busy and
+explicit close are inherited unchanged. The composite independently forbids copy/
+duplication and requires explicit retirement. Source and prepared publication,
+bounded recovery and independently supplied context share the same file adapter.
+No state graph is retained between operations. Tests cover copied paths, repeated
+open, contenders, exact recovery after close/reopen and 1,000 complete owner/read
+lifetimes, plus actual ARC copy rejection and private native-child access.
