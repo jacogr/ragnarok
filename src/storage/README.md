@@ -86,3 +86,8 @@ make unit SUITE=full_state_trie_replay
 revision or just records missing from an explicit base, with no extra hashing. See
 [the record contract](../../spec/storage-records.md). These storage-only APIs do not authorize
 state/checkpoint integration.
+
+`record_codec.nim` validates versioned physical batches. `node_repository.nim` provides atomic
+in-memory publication, immutable reads and independently trusted restoration to the standalone
+`FullStateTrie`. Restoration preserves caller-selected mutation limits and never constructs a
+`StateStore` or changes a canonical consumer. These are storage workstream APIs only.
