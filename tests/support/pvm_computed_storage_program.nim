@@ -11,7 +11,7 @@ import ./[pvm_refinement_outcome, pvm_input_refinement, pvm_extrinsic_inputs, pv
 type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection; defaults preserve every earlier zero-output witness.
   Disabled, Commit, Panic, Underfunded, CheckpointCommit, CheckpointPanic, OutOfGas,
     CheckpointOutOfGas,
-  FetchFirst, FetchSecond, FetchMissing
+  FetchFirst, FetchSecond, FetchMissing, FetchList
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   ## Jump from refinement entry0 to empty output; entry5 writes RO key11 using literal or genuinely fetched RW bytes.
@@ -19,10 +19,14 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   var body = @[refinementImmediate(7, 65536), refinementImmediate(8, 1),
     refinementImmediate(9, 196608), refinementImmediate(10, 3), @[10'u8, 5]]
   if mode in {ComputedStorageMode.FetchFirst, ComputedStorageMode.FetchSecond,
-      ComputedStorageMode.FetchMissing}:
+      ComputedStorageMode.FetchMissing, ComputedStorageMode.FetchList}:
     # Compact load_imm instructions keep the real dual-entry envelope below128 bytes; fetch skips the C.2 operand tag.
     body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 1], @[51'u8, 9, 3], @[51'u8, 10, 15]]
-    if mode == ComputedStorageMode.FetchMissing:
+    if mode == ComputedStorageMode.FetchList:
+      body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 0], @[51'u8, 9, 3], @[51'u8, 10, 14],
+        refinementImmediate(11, high(uint64)), refinementImmediate(12, high(
+            uint64))] # Complete-list fetch ignores both full-width item registers and starts at the count prefix.
+    elif mode == ComputedStorageMode.FetchMissing:
       body.add(refinementImmediate(11, high(uint64))) # Preserve all64 index bits; an absent record must not wrap to the first.
     else:
       let index = if mode == ComputedStorageMode.FetchSecond: 1'u8 else: 0'u8
