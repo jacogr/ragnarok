@@ -1,0 +1,19 @@
+{
+  "source": "tests/native/accumulation_completion_results.nim",
+  "build_name": "accumulation-completion-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-completion-default", "diagnostic": "outcome.status == None", "description": "Completion default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-completion-refused", "diagnostic": "outcome.status == None", "description": "Completion refused extraction guard"},
+    {"identity": {"reason": "finalization"}, "arguments": ["finalization"], "name": "accumulation-completion-finalization", "diagnostic": "outcome.status == FinalizationFailure", "description": "Completion finalization extraction guard"},
+    {"identity": {"reason": "history"}, "arguments": ["history"], "name": "accumulation-completion-history", "diagnostic": "outcome.status == HistoryFailure", "description": "Completion history extraction guard"},
+    {"identity": {"reason": "ready"}, "arguments": ["ready"], "name": "accumulation-completion-ready", "diagnostic": "outcome.status == ReadyFailure", "description": "Completion ready extraction guard"},
+    {"identity": {"reason": "recent"}, "arguments": ["recent"], "name": "accumulation-completion-recent", "diagnostic": "outcome.status == RecentFailure", "description": "Completion recent extraction guard"},
+    {"identity": {"reason": "times"}, "arguments": ["times"], "name": "accumulation-completion-times", "diagnostic": "outcome.status == TimesFailure", "description": "Completion times extraction guard"},
+    {"identity": {"reason": "validators"}, "arguments": ["validators"], "name": "accumulation-completion-validators", "diagnostic": "outcome.status == ValidatorsFailure", "description": "Completion validators extraction guard"},
+    {"identity": {"reason": "activity"}, "arguments": ["activity"], "name": "accumulation-completion-activity", "diagnostic": "outcome.status == ActivityFailure", "description": "Completion activity extraction guard"},
+    {"identity": {"reason": "preimages"}, "arguments": ["preimages"], "name": "accumulation-completion-preimages", "diagnostic": "outcome.status == PreimagesFailure", "description": "Completion preimages extraction guard"},
+    {"identity": {"reason": "authorization"}, "arguments": ["authorization"], "name": "accumulation-completion-authorization", "diagnostic": "outcome.status == AuthorizationFailure", "description": "Completion authorization extraction guard"},
+    {"identity": {"reason": "consensus"}, "arguments": ["consensus"], "name": "accumulation-completion-consensus", "diagnostic": "outcome.status == ConsensusFailure", "description": "Completion consensus extraction guard"}
+  ]
+}
