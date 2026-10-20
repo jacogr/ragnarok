@@ -33,7 +33,7 @@ proc rosterLinks(execution: InputRefinement, shards: ErasureShards): ComputedRep
   let transcript = prepareComputedGuarantee(report, ByteLimit(100000)).value
   prepareComputedLinks(transcript, [], ElementLimit(0)).value
 proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 65535'u16,
-    target = 0'u32, offender = false): ComputedRosterFixture =
+    target = 0'u32, offender = false, repeatReporter = false): ComputedRosterFixture =
   ## Re-author a three-core complete signed prefix; optional parent9 -> posterior6 is a real epoch transition.
   let base = transitionFixture(epoch = shrink)
   var cfg = transitionConfig()
@@ -67,19 +67,23 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
   var writes = @[StateWrite(kind: StateWriteKind.Put, key: assignments.key,
       value: assignments.value),
     StateWrite(kind: StateWriteKind.Put, key: poolEntry.key, value: poolEntry.value)]
-  if shrink:
-    # Extend only original C8 with three real additional Ed25519 identities; pending/staging remain six.
+  if shrink or repeatReporter:
+    # Optionally extend parent C8 or repeat one actual Ed identity before signing; pending/staging remain six.
     let raw = original.snapshot.value.lookup(chapterKey(StateChapter(8))).value.bytes
     let active = decodeStateValidators(raw, cfg.disputes.rosters).value.value
-    var records = newSeq[StateValidator](9)
+    var records = newSeq[StateValidator](if shrink: 9 else: 6)
     for index in 0..<6: records[index] = validatorAt(active, StateValidatorIndex(uint64(index))).value
-    for index in 6..<9:
+    for index in 6..<records.len:
       var seed = default(array[32, byte])
       seed[0] = byte(index+11)
       let key = importSeed(seed).value
       let originalRecord = records[index-6]
       records[index] = originalRecord
       records[index].ed25519 = StateEdKey(array[32, byte](publicKey(key).value))
+    if repeatReporter:
+      # Distinct current credential indices1/2 can legitimately refer to one real signing key.
+      let identity = records[1].ed25519
+      records[2].ed25519 = identity
     let entry = validatorEntry(ValidatorChapter.Active, records, cfg.disputes.rosters).value
     writes.add(StateWrite(kind: StateWriteKind.Put, key: entry.key, value: entry.value))
   if offender:
