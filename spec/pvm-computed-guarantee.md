@@ -32,8 +32,8 @@ real source preparation; source retention, fixed-copy isolation, detached lifeti
 and 1000-cycle ARC release; compiler privacy/source/policy nominal rejection;
 optimized default/failure/accessor guards with a genuine known-answer control.
 
-Next: authenticate root/state provenance before signing eligibility and guarantee
-publication. M1 framing is complete; full state serialization remains open.
+Next: [computed lookup correspondence](pvm-computed-links.md), then authenticated
+state/anchor provenance before signing eligibility and guarantee publication. M1 framing is complete; full state serialization remains open.
 
 Local evidence: `make unit SUITE=pvm_computed_guarantee` passes under checked
 optimized ARC/Clang on macOS ARM64. Five independent full-wire/hash witnesses
