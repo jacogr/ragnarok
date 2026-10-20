@@ -1,0 +1,151 @@
+{
+  "source": "tests/native/pvm_computed_lookup.nim",
+  "build_name": "pvm-computed-lookup",
+  "crypto_library": "observer",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-lookup-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-lookup-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup source"
+    },
+    {
+      "identity": {
+        "origin": "age"
+      },
+      "arguments": [
+        "age"
+      ],
+      "name": "pvm-computed-lookup-age",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup age"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-computed-lookup-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup limit"
+    },
+    {
+      "identity": {
+        "origin": "header"
+      },
+      "arguments": [
+        "header"
+      ],
+      "name": "pvm-computed-lookup-header",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup header"
+    },
+    {
+      "identity": {
+        "origin": "backend"
+      },
+      "arguments": [
+        "backend"
+      ],
+      "name": "pvm-computed-lookup-backend",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup backend"
+    },
+    {
+      "identity": {
+        "origin": "ancestry"
+      },
+      "arguments": [
+        "ancestry"
+      ],
+      "name": "pvm-computed-lookup-ancestry",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup ancestry"
+    },
+    {
+      "identity": {
+        "origin": "missing"
+      },
+      "arguments": [
+        "missing"
+      ],
+      "name": "pvm-computed-lookup-missing",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup missing"
+    },
+    {
+      "identity": {
+        "origin": "root"
+      },
+      "arguments": [
+        "root"
+      ],
+      "name": "pvm-computed-lookup-root",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup root"
+    },
+    {
+      "identity": {
+        "origin": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "pvm-computed-lookup-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup info"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-lookup-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup owner"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-computed-lookup-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup index"
+    },
+    {
+      "identity": {
+        "origin": "empty"
+      },
+      "arguments": [
+        "empty"
+      ],
+      "name": "pvm-computed-lookup-empty",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed lookup empty"
+    }
+  ]
+}
