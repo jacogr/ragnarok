@@ -59,6 +59,13 @@ proc reportAssignmentState*(plan: ReportAssignmentPlan): ReportAssignmentResult[
   ReportAssignmentResult[AvailabilitySnapshot](status: ReportAssignmentError.None,
       completed: data.candidate)
 
+proc reportAssignmentByteLength*(plan: ReportAssignmentPlan): ReportAssignmentResult[int] =
+  ## Inspect exact retained encoding extent before bounded callers request a copied entry; no encoding or hashing occurs.
+  let data = plan.data
+  if data == nil:
+    return ReportAssignmentResult[int](status: ReportAssignmentError.Uninitialized) # Defaults have no encoded chapter.
+  ReportAssignmentResult[int](status: ReportAssignmentError.None, completed: data.entry.value.len)
+
 proc reportAssignmentEntry*(plan: ReportAssignmentPlan): ReportAssignmentResult[StateEntry] =
   ## Copy exact proposed chapter bytes; mutating this ordinary value cannot alter the retained candidate.
   let data = plan.data
