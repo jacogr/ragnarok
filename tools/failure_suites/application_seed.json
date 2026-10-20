@@ -1,0 +1,11 @@
+{
+  "source": "tests/native/application_seed_results.nim",
+  "build_name": "application-seed-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "application-seed-default", "diagnostic": "outcome.status == None", "description": "Application seed default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "application-seed-refused", "diagnostic": "outcome.status == None", "description": "Application seed refused extraction guard"},
+    {"identity": {"reason": "parameters"}, "arguments": ["parameters"], "name": "application-seed-parameters", "diagnostic": "outcome.status == ParametersFailure", "description": "Application seed parameters extraction guard"},
+    {"identity": {"reason": "genesis"}, "arguments": ["genesis"], "name": "application-seed-genesis", "diagnostic": "outcome.status == GenesisFailure", "description": "Application seed genesis extraction guard"}
+  ]
+}

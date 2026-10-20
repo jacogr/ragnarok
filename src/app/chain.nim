@@ -4,16 +4,17 @@
 ## Application-owned complete state and selected history, independent of optional RPC transport lifetime.
 ## Explicit RPC publication joins only matching histories; copies form independent immutable-parent branches.
 
-import ../chain/[genesis, provider]
+import ../chain/[genesis, provider, parameters]
 import ../state/[store, accumulation_chain, accumulation_finalization, accumulation_completion]
 import ../rpc/server as rpc_server
+from ../rpc/protocol import configuredParameters, configuredGenesis
 
 type
   ApplicationChain* = object ## Private independently updateable handle pair; copies share only immutable prior state/history.
     state: StateStore
     view: ChainView
   ApplicationChainError* {.pure.} = enum ## Failed/default results retain only the selected reason, never partial application owners.
-    Uninitialized, None, MissingHead, StateFailure, ChainFailure, RpcFailure
+    Uninitialized, None, MissingHead, StateFailure, ChainFailure, RpcFailure, ParametersFailure, GenesisFailure
   ApplicationChainResult*[T] = object ## Guard constructor/application success separately from actual failed child stages.
     case status: ApplicationChainError
     of None:
@@ -24,6 +25,10 @@ type
       chainReason: AccumulationChainResult
     of RpcFailure:
       rpcReason: rpc_server.RpcAccumulationResult
+    of ParametersFailure:
+      parametersReason: ParameterError
+    of GenesisFailure:
+      genesisReason: GenesisError
     else:
       discard # Defaults and absent histories contain no usable state, chain or child.
 
@@ -47,6 +52,15 @@ func rpcFailure*[T](outcome: ApplicationChainResult[T]): rpc_server.RpcAccumulat
   ## Preserve only a failed enabled-listener publication, including stale-view and lifecycle refusal.
   outcome.rpcReason
 
+func parametersError*[T](outcome: ApplicationChainResult[T]): ParameterError {.inline,
+    requires: outcome.status == ApplicationChainError.ParametersFailure.} =
+  ## Preserve only the actual failed bounded parameter decode, with no partial configuration tuple.
+  outcome.parametersReason
+func genesisFailure*[T](outcome: ApplicationChainResult[T]): GenesisError {.inline,
+    requires: outcome.status == ApplicationChainError.GenesisFailure.} =
+  ## Distinguish an absent pair from an invalid configured genesis/policy without exposing candidate maps.
+  outcome.genesisReason
+
 func chainView*(chain: ApplicationChain): ChainView =
   ## Retain an immutable request/history view; default owners retain an explicitly uninitialized view.
   chain.view
@@ -66,6 +80,20 @@ proc initApplicationChain*(view: ChainView): ApplicationChainResult[ApplicationC
       stateReason: state.error) # No policy widening or partial owner escapes a refused fork.
   ApplicationChainResult[ApplicationChain](status: ApplicationChainError.None,
     completed: ApplicationChain(state: state.value, view: view))
+
+proc initApplicationChain*(text: string, limits: StateStoreLimits): ApplicationChainResult[
+    ApplicationChain] =
+  ## Initialize from bounded chainspec text with a mandatory caller policy; commit once and share the exact seed map.
+  ## Structural capture does not establish completeness, consensus validity, light-state verification or persistence.
+  let parameters = configuredParameters(text)
+  if not parameters.ok:
+    return ApplicationChainResult[ApplicationChain](status: ApplicationChainError.ParametersFailure,
+      parametersReason: parameters.error) # Bad/default parameters cannot authorize any genesis hash work.
+  let genesis = configuredGenesis(text, parameters.value, limits)
+  if genesis.error != GenesisError.None:
+    return ApplicationChainResult[ApplicationChain](status: ApplicationChainError.GenesisFailure,
+      genesisReason: genesis.error) # Missing/invalid pairs and refused policy/backend work expose no partial owner.
+  initApplicationChain(genesisView(genesis)) # Fork the captured version without a second trie commitment or policy replacement.
 
 proc applyAccumulation*(chain: var ApplicationChain, source: PreparedFinalAccumulation,
     limits: AccumulationCompositionLimits): ApplicationChainResult[BlockSnapshot] =
