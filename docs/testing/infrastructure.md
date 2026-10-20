@@ -95,6 +95,19 @@ isolation remain unchanged. Wrapping behavior, positive controls, conditional va
 and fixture-dependent case generation remain explicit in the runtime runner. Both the helper and
 case data are included in report provenance.
 
+Contract verification opts into compiler-intermediate reuse only for matching source directories,
+ordered compiler/linker profiles, native library/header contents and compiler installations.
+Each driver retains its own executable and every probe remains a separate process. A group-owned
+advisory lock protects shared build intermediates; other verification groups retain their existing
+per-build caches. Progress logs identify the active build and elapsed time.
+
+CI partitions the discovered ordinary contract families across two bounded jobs. Specialized
+controls execute once, in the final partition. Each partition requires its exact predeclared
+identities and diagnostic predicates; the stable contract check requires all partitions to pass.
+`FAILURE_SHARD=index/count make check-failures` selects the same scope locally; plain
+`make check-failures` remains complete. Ordinary partitions prepare only their declared native
+providers. Job and individual command timeouts are unchanged, and summaries identify their scope.
+
 Production and test adapters share `tools/build_crypto.py`, `tools/build_bandersnatch.py` and
 `tools/build_quic.py`. `tools/native_dependencies.py` owns pristine submodule checks and logged
 build commands. Production builds do not import test harnesses; independent equations, published

@@ -44,14 +44,22 @@ def summarize(report, kind):
             lines.append('| `'+key+'` | '+('Pass' if row['passed'] else 'Fail')+' | '+str(row.get('requests', 'vectors/threads'))+' |')
     elif kind == 'failures':
         # Runtime contracts own a separate inventory; compiler rejections belong to the guards job.
-        from failure_plans import FAILURE_COUNTS
-        lines = ['## Runtime failure and contract verification', '', '**Status: '+report['status']+'**', '',
+        from failure_plans import failure_partition
+        plans, specialized = failure_partition(report.get('failure_shard'))
+        scope = ''
+        if report.get('failure_shard') is not None:
+            # Subset evidence identifies its actual partition rather than claiming every contract family.
+            index, count = report['failure_shard']
+            scope = f' — shard {index}/{count}'
+        lines = ['## Runtime failure and contract verification'+scope, '', '**Status: '+report['status']+'**', '',
                  '| Group | Passed | Total |', '| --- | --- | --- |']
-        for key in FAILURE_COUNTS:
+        for key in plans:
             # Include failed rows and positive runtime controls rather than claiming every row is a rejection.
             rows = report[key]
             lines.append('| '+key+' | '+str(sum(row['passed'] for row in rows))+' | '+str(len(rows))+' |')
-        lines += ['', 'Store positive controls: '+('Pass' if report['store_controls']['passed'] else 'Fail')+'.']
+        if specialized:
+            # Positive controls belong only to the partition that actually executed them.
+            lines += ['', 'Store positive controls: '+('Pass' if report['store_controls']['passed'] else 'Fail')+'.']
     elif kind == 'guards':
         # Compiler rejections have their own verdict and inventory, never inferred from a unit result.
         lines = ['## Compiler rejection guards', '', '**Status: '+report['status']+'**', '',
