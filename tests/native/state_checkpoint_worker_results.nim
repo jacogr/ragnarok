@@ -55,7 +55,12 @@ proc main() {.raises.} =
     assert admitted.error == CheckpointWorkerError.None and worker.phase ==
         CheckpointWorkerPhase.Staged
     let ticket = admitted.value
-    if mode == "cancelled":
+    if mode == "cancelled-collected":
+      assert worker.cancel(ticket)
+      let cancelled = worker.collect(ticket)
+      assert cancelled.kind == CheckpointCompletionKind.Cancelled
+      extractCompletion(cancelled) # An acknowledged staged cancellation has no bank publication result.
+    elif mode == "cancelled":
       let shutdown = worker.close()
       assert shutdown.retirementError == CheckpointBankError.None
       assert shutdown.completion.kind == CheckpointCompletionKind.Cancelled

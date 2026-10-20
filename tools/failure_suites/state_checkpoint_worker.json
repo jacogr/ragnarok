@@ -55,6 +55,17 @@
         "reason": "moved"
       },
       "name": "state-checkpoint-worker-moved"
+    },
+    {
+      "arguments": [
+        "cancelled-collected"
+      ],
+      "description": "Checkpoint worker collected cancellation extraction",
+      "diagnostic": "completion.status == Completed",
+      "identity": {
+        "reason": "cancelled-collected"
+      },
+      "name": "state-checkpoint-worker-cancelled-collected"
     }
   ],
   "crypto_library": "crypto",

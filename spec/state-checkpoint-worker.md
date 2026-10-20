@@ -29,4 +29,19 @@ on the filesystem; shutdown joins rather than pretending a running write rolled
 back. Explicit close and independently checked composite noncopyability apply.
 
 This first layer does not integrate executable/Services startup or provide an
-explicit cancellation/retry API. Full/light storage contracts remain separate.
+explicit retry API. Full/light storage contracts remain separate.
+
+## Explicit staged cancellation
+
+`cancel(ticket)` accepts only the matching Staged slot, before dispatch can enter
+native I/O. It releases the sole prepared buffer and publishes a Cancelled Done
+receipt, retaining acknowledgement backpressure until matching collection or joined
+close. Foreign/stale/default/repeated cancellation has no effect. Running, executing
+and already completed publication all refuse cancellation; an actual disk result
+cannot be hidden or described as rolled back.
+
+Tests deterministically cancel staged requests, prove exact selector/data preservation
+and no inactive canonical file, reject foreign/stale tickets, retain Done capacity,
+then perform real publication after dispatch and require its actual completed receipt.
+One thousand cancellation cycles measure host buffer/ticket release. Joined close
+preserves a cancelled acknowledgement independently of native retirement errors.
