@@ -80,6 +80,10 @@ func sameParameters*(left, right: BlockSnapshot): bool {.requires: left.ready an
       return false # Every encoded fetch field participates, not only cores and epoch length.
   true
 
+func chainParameters*(value: BlockSnapshot): Parameters {.requires: value.ready.} =
+  ## Copy the exact captured protocol tuple so state/chain adoption cannot substitute a caller profile.
+  value.configuration
+
 func stateSnapshot*(value: BlockSnapshot): StateStoreSnapshot {.requires: value.ready.} =
   ## Retain the exact complete-map version for state application without rebuilding or loosening its policy.
   value.state
