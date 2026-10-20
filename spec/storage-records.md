@@ -151,3 +151,19 @@ ceilings and exact/ample controls. It separately verifies child poisoning, paren
 unchanged selected prefixes, exact trusted recovery, resumed publication/reopen, refusal to
 rollback complete frames and refusal to truncate complete checksum corruption. No live file owner
 crosses fork; no cross-process ARC or power-loss claim is made.
+
+## Bounded explicit revision retention
+
+`revision_retention.nim` owns an in-process bounded catalog of immutable repository views. Each
+successful retain creates an opaque exact slot token, even for repeated views; no generation-only
+lookup or foreign-token substitution is possible. Default views/tokens refuse. Capacity exhaustion
+refuses without eviction. Catalog copies share immutable slots and update independently; release
+removes only the selected catalog's ownership. Held views and tokens remain acyclic owners after
+release or close. Holding a token therefore also retains its revision until the caller drops it.
+
+This is explicit memory lifetime management, not chain finality, automatic pruning, disk node
+reclamation or durable pin metadata. Physical history remains append-only. Complete views from
+memory and file repositories use the same catalog without a state/checkpoint adapter.
+`storage_retention` checks exact/zero capacity, duplicate pins, foreign tokens, copied catalog
+independence, explicit close, retained restoration and 1,000 ARC release cycles. Runtime and
+privacy probes cover failed/default payloads, count preconditions and hidden owner/token storage.

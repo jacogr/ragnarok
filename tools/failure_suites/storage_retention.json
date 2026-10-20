@@ -1,0 +1,72 @@
+{
+  "source": "tests/native/storage_retention_results.nim",
+  "build_name": "storage-retention-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-retention-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage retention result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-retention-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage retention result failed guard"
+    },
+    {
+      "identity": {
+        "member": "lookup",
+        "origin": "default"
+      },
+      "arguments": [
+        "lookup",
+        "default"
+      ],
+      "name": "storage-retention-lookup-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage retention lookup default guard"
+    },
+    {
+      "identity": {
+        "member": "lookup",
+        "origin": "failed"
+      },
+      "arguments": [
+        "lookup",
+        "failed"
+      ],
+      "name": "storage-retention-lookup-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage retention lookup failed guard"
+    },
+    {
+      "identity": {
+        "member": "count",
+        "origin": "default"
+      },
+      "arguments": [
+        "count",
+        "default"
+      ],
+      "name": "storage-retention-count-default",
+      "diagnostic": "not catalog.head == nil",
+      "description": "Storage retention count default guard"
+    }
+  ]
+}

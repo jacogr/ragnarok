@@ -136,6 +136,9 @@ proc snapshot*(repository: NodeRepository): RepositoryResult[RepositoryView] =
   let head = repository.head
   if head == nil: return RepositoryResult[RepositoryView](status: RepositoryError.Uninitialized)
   RepositoryResult[RepositoryView](status: RepositoryError.None, completed: RepositoryView(data: head))
+func initialized*(view: RepositoryView): bool =
+  ## Test a read handle before another storage component accepts ownership of it.
+  view.data != nil
 proc commitment*(view: RepositoryView): StateTrieCommitment {.requires: view.data != nil.} =
   ## Return copied complete-map metadata, never mutable node storage.
   let data = view.data
