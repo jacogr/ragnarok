@@ -11,7 +11,8 @@ import ../codec/[bounded, state_trie]
 
 type
   CheckpointFileError* {.pure.} = enum ## I/O and format refusals cannot publish partial restored state.
-    Uninitialized, None, InvalidPath, IoFailure, LimitExceeded, InvalidCheckpoint, PublishedUnsynced
+    Uninitialized, None, InvalidPath, IoFailure, LimitExceeded, InvalidCheckpoint,
+      PublishedUnsynced, Busy
   CheckpointFileResult*[T] = object ## Only successful alternatives retain a completed owned payload.
     case status: CheckpointFileError
     of None:
@@ -35,7 +36,7 @@ func checkpointError*[T](outcome: CheckpointFileResult[T]): CheckpointError {.re
 
 proc readBounded(path: string, limit: ByteLimit): CheckpointFileResult[seq[byte]] =
   ## Read at most the ceiling plus one detection byte, without trusting file size or allocating it upfront.
-  if path.len == 0:
+  if path.len == 0 or path.len > high(int) - 16:
     return CheckpointFileResult[seq[byte]](status: CheckpointFileError.InvalidPath)
   for character in path:
     if character == char(0):
@@ -95,7 +96,7 @@ proc saveFullCheckpoint*(path: string, snapshot: StateStoreSnapshot,
     limit: ByteLimit): CheckpointFileResult[StateStoreSnapshot] =
   ## Encode before I/O; sync/close a unique sibling, rename, then sync the stable parent directory.
   ## Caller serializes writers and keeps the directory namespace/working directory stable for this call.
-  if path.len == 0:
+  if path.len == 0 or path.len > high(int) - 16:
     return CheckpointFileResult[StateStoreSnapshot](status: CheckpointFileError.InvalidPath)
   for character in path:
     if character == char(0):

@@ -116,3 +116,26 @@ failures, not accepted substitutes. No production sleeps, failure hooks or compi
 changes are used. This witnesses ordinary write rollback, not power-loss recovery
 or simulated file/directory-sync failure. Forked-process cleanup is not presented
 as a cross-process ARC occupancy measurement.
+
+## Explicit cooperative writer ownership
+
+`CheckpointWriter` owns an independent copied destination and one stable sibling
+`.lock` descriptor. Opening is nonblocking; actual lock contention returns `Busy`
+and other native failures return `IoFailure`. Live owners cannot change paths.
+Save/load delegation requires an active owner, and every owner-bound load requires
+an independently trusted complete root. No canonical state alias is retained
+between calls. One host thread serializes methods on each owner.
+
+Call `close` explicitly before destruction. Copy/duplication is forbidden. Close
+unlocks and closes once, disarming even on a reported retirement error; callers
+must handle such OS errors conservatively. Lock files remain in place across
+closes: deleting/replacing an in-use lock inode would bypass cooperative exclusion.
+Advisory locking requires all writers to respect this namespace; it does not
+protect against arbitrary filesystem mutation or grant canonical chain authority.
+Native path lengths are checked before suffix arithmetic, and NUL paths refuse.
+
+Tests exercise exact 0600 lock permissions under a controlled/restored process
+umask, independent owners, nonblocking forked-process contention,
+reacquisition, source-path mutation, anchored delegation, closed/default access,
+and 1,000 joined-host ownership ARC cycles. Publication uncertainty still reaches
+the caller through `PublishedUnsynced`; recovery policy follows separately.

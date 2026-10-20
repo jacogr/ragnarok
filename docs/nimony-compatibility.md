@@ -48,3 +48,14 @@ a compiling or passing assertion alone cannot demonstrate that checks are active
 After integration, run `make unit SUITE=<affected-suite>` and the relevant consumers. Record a new
 compatibility entry only for a demonstrated failure or inspected API difference that is likely to
 recur, with a working alternative and its evidence. Keep speculative limitations out of this table.
+
+## Variadic POSIX open on Darwin ARM64
+
+The pinned `std/posix` binding declares `open` with a fixed third `Mode`
+parameter. A real lock-file positive control on macOS ARM64 observed incorrect
+creation permissions and then `IoFailure` on reopen. The checkpoint owner binds
+`open` through `<fcntl.h>` with a C integer mode argument so Clang sees the actual
+variadic SDK declaration and applies its ABI. A controlled-umask native test
+requires exact 0600 permissions and subsequent contention/reacquisition. Keep
+the pinned compiler/stdlib unchanged; use the narrow maintained OS declaration
+for creation calls. Directory opens without creation flags do not use the mode.
