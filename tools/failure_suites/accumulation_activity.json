@@ -1,0 +1,19 @@
+{
+  "source": "tests/native/accumulation_activity_results.nim",
+  "build_name": "accumulation-activity-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-activity-default", "diagnostic": "outcome.status == None", "description": "Accumulation activity default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-activity-refused", "diagnostic": "outcome.status == None", "description": "Accumulation activity refused extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "accumulation-activity-source", "diagnostic": "outcome.status == None", "description": "Accumulation activity source extraction guard"},
+    {"identity": {"reason": "preimages"}, "arguments": ["preimages"], "name": "accumulation-activity-preimages", "diagnostic": "outcome.status == None", "description": "Accumulation activity preimages extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-activity-info", "diagnostic": "outcome.status == None", "description": "Accumulation activity info extraction guard"},
+    {"identity": {"reason": "snapshot"}, "arguments": ["snapshot"], "name": "accumulation-activity-snapshot", "diagnostic": "outcome.status == None", "description": "Accumulation activity snapshot extraction guard"},
+    {"identity": {"reason": "entry"}, "arguments": ["entry"], "name": "accumulation-activity-entry", "diagnostic": "outcome.status == None", "description": "Accumulation activity entry extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-activity-state", "diagnostic": "outcome.status == None", "description": "Accumulation activity state extraction guard"},
+    {"identity": {"reason": "wrong-preimage"}, "arguments": ["wrong-preimage"], "name": "accumulation-activity-wrong-preimage", "diagnostic": "outcome.status == PreimageFailure", "description": "Accumulation activity wrong-preimage extraction guard"},
+    {"identity": {"reason": "wrong-core"}, "arguments": ["wrong-core"], "name": "accumulation-activity-wrong-core", "diagnostic": "outcome.status == CoreFailure", "description": "Accumulation activity wrong-core extraction guard"},
+    {"identity": {"reason": "wrong-codec"}, "arguments": ["wrong-codec"], "name": "accumulation-activity-wrong-codec", "diagnostic": "outcome.status == CodecFailure", "description": "Accumulation activity wrong-codec extraction guard"},
+    {"identity": {"reason": "wrong-state"}, "arguments": ["wrong-state"], "name": "accumulation-activity-wrong-state", "diagnostic": "outcome.status == StateFailure", "description": "Accumulation activity wrong-state extraction guard"}
+  ]
+}

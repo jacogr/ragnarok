@@ -64,7 +64,8 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
     incomingReports = 0, preimageWire: seq[byte] = @[], assigner = 0'u32,
         poolCopies = 1, refinementGas = high(uint64),
     historyPeaks: seq[HistoryPeak] = @[], targetSlot = 0'u32,
-    withTicket = false, shiftPending = false, guaranteeSlot = 0'u32): ExecutionFixture =
+    withTicket = false, shiftPending = false, guaranteeSlot = 0'u32, refinement: seq[
+        RefineLoad] = @[]): ExecutionFixture =
   ## Recompute parent commitments and real signatures after selecting code, optional complete preimages and free allowances.
   ## Optional allowances, balances, ready rows and belt peaks enter the parent; incoming reports/preimages enter the genuinely signed child.
   let firstCode = (if firstProgram.len == 0: code(first) else: firstProgram)
@@ -100,7 +101,8 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
   let context = authored(base, reports = incomingReports, withAvailable = report, extra = entries,
       accountCode = firstCode, ready = ready, preimageWire = preimageWire, poolCopies = poolCopies,
       refinementGas = refinementGas, historyPeaks = historyPeaks, targetSlot = targetSlot,
-    withTicket = withTicket, shiftPending = shiftPending, guaranteeSlot = guaranteeSlot)
+    withTicket = withTicket, shiftPending = shiftPending, guaranteeSlot = guaranteeSlot,
+      refinement = refinement)
   let queue = planBlockAccumulationQueue(planBlockReports(context.staged, context.older, config()).value,
     executionQueueConfig()).value
   ExecutionFixture(round: planBlockInitialAccumulation(queue, executionRoundConfig()).value,
