@@ -1,0 +1,107 @@
+{
+  "source": "tests/native/pvm_export_erasure.nim",
+  "build_name": "pvm-export-erasure",
+  "crypto_library": "observer",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-export-erasure-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Export erasure default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-export-erasure-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Export erasure source"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-export-erasure-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Export erasure limit"
+    },
+    {
+      "identity": {
+        "origin": "commitment"
+      },
+      "arguments": [
+        "commitment"
+      ],
+      "name": "pvm-export-erasure-commitment",
+      "diagnostic": "outcome.status == None",
+      "description": "Export erasure commitment"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-export-erasure-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Export erasure index"
+    },
+    {
+      "identity": {
+        "origin": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "pvm-export-erasure-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Export erasure info"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-export-erasure-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Export erasure owner"
+    },
+    {
+      "identity": {
+        "origin": "tree"
+      },
+      "arguments": [
+        "tree"
+      ],
+      "name": "pvm-export-erasure-tree",
+      "diagnostic": "outcome.status == None",
+      "description": "Export erasure tree"
+    },
+    {
+      "identity": {
+        "origin": "chunk"
+      },
+      "arguments": [
+        "chunk"
+      ],
+      "name": "pvm-export-erasure-chunk",
+      "diagnostic": "outcome.status == None",
+      "description": "Export erasure chunk"
+    }
+  ]
+}
