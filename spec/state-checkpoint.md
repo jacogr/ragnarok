@@ -188,3 +188,19 @@ Raw ownership tests cover binary/empty control records, path mutation, contentio
 reopen, short-budget rollback and 1,000 ownership cycles. The state-facing owner
 suite retains real permissions, forked contention and its own 1,000 ARC cycles;
 privacy, lifecycle and actual lowering checks cover both resource types.
+
+## Local generation/head records
+
+`checkpoint_head.nim` defines exact `RAGNAROK-HEAD-V1\n`, uint64 little-endian
+generation, one-byte slot (0/1), complete root (32 bytes), then Blake2b-256 of all
+preceding bytes. The fixed extent is 89 bytes. This is local control metadata, not
+JAM state or a protocol timeslot. Unknown versions, other slots, prefixes, trailers
+and checksum failures expose no initialized metadata. The checksum detects accidental
+corruption; it does not authenticate chain authority or defend against replacement
+by another valid record. State restoration still requires an independently trusted root.
+
+Default heads remain uninitialized. Explicit constructors preserve nominal generation
+and root domains; successor construction changes slots and checks uint64 exhaustion
+before incrementing. Encoding checks the fixed byte ceiling before allocating. Native
+checks include a Python hashlib known-answer checksum, every prefix and every octet
+corrupted, zero/max generations, retained output and 1,000 ARC cycles.
