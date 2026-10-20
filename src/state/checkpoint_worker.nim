@@ -15,6 +15,8 @@ type
     Bootstrap, Advance
   CheckpointWorkerError* {.pure.} = enum ## Refused admission never consumes the caller's sole prepared owner.
     Uninitialized, None, Closed, Busy, NotReady, InvalidHead, LimitExceeded, Exhausted
+  CheckpointRequest {.pure.} = enum ## Internal read requests cannot be submitted through the buffer-publication API.
+    Bootstrap, Advance, ReadHead
   WorkerIdentity = ref object ## Host-only namespace is never accessed by the native I/O thread.
     marker: uint8
   CheckpointTicket* = object ## Identity plus nonwrapping local generation prevent foreign/stale completion access.
@@ -47,7 +49,7 @@ type
     identity: nil WorkerIdentity
     bank: CheckpointBank
     prepared: PreparedCheckpoint
-    operation: CheckpointOperation
+    operation: CheckpointRequest
     expected: CheckpointHead
     limit: ByteLimit
     outcome: CheckpointBankResult[CheckpointHead]
@@ -94,12 +96,14 @@ func retirementError*(shutdown: CheckpointShutdown): CheckpointBankError =
 proc execute(worker: ptr CheckpointWorker) =
   ## Entire filesystem/metadata activations retire before the thread publishes Done.
   case worker.operation
-  of CheckpointOperation.Bootstrap:
+  of CheckpointRequest.Bootstrap:
     worker.outcome = worker.bank.initialize(worker.prepared,
         worker.limit) # The source complete-map graph is absent from this worker.
-  of CheckpointOperation.Advance:
+  of CheckpointRequest.Advance:
     worker.outcome = worker.bank.advance(worker.expected, worker.prepared,
         worker.limit) # The bank rechecks/resynchronizes the actual visible selector.
+  of CheckpointRequest.ReadHead:
+    worker.outcome = worker.bank.selectedHead() # Checksummed metadata remains untrusted until independently verified.
 proc run(raw: pointer) =
   ## A condition-driven single thread performs only ordered bank I/O, with no canonical adoption or dispatcher callbacks.
   let worker = cast[ptr CheckpointWorker](raw)
@@ -126,7 +130,7 @@ proc start*(worker: var CheckpointWorker, prefix: string): CheckpointBankError {
   worker.cancelled = false
   worker.phase = CheckpointWorkerPhase.Idle
   worker.next = 0
-  worker.operation = CheckpointOperation.Bootstrap
+  worker.operation = CheckpointRequest.Bootstrap
   worker.expected = default(CheckpointHead)
   worker.limit = ByteLimit(0)
   worker.outcome = default(CheckpointBankResult[CheckpointHead])
@@ -167,9 +171,31 @@ proc stage*(worker: var CheckpointWorker, prepared: var PreparedCheckpoint,
   inc worker.next
   worker.prepared = move(prepared)
   worker.cancelled = false
-  worker.operation = operation
+  if operation == CheckpointOperation.Bootstrap:
+    worker.operation = CheckpointRequest.Bootstrap # Only explicitly supplied prepared bytes can authorize a bootstrap.
+  else:
+    worker.operation = CheckpointRequest.Advance # The public closed choice contains only the two publication operations.
   worker.expected = expected
   worker.limit = limit
+  worker.outcome = default(CheckpointBankResult[CheckpointHead])
+  worker.phase = CheckpointWorkerPhase.Staged
+  CheckpointAdmission(status: CheckpointWorkerError.None,
+    ticket: CheckpointTicket(owner: worker.identity, generation: worker.next))
+proc stageHead*(worker: var CheckpointWorker): CheckpointAdmission =
+  ## Stage one bounded selector read without touching the filesystem or borrowing a complete state graph.
+  if not worker.started: return CheckpointAdmission(status: CheckpointWorkerError.Closed)
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  if worker.phase != CheckpointWorkerPhase.Idle:
+    return CheckpointAdmission(status: CheckpointWorkerError.Busy) # Reads share publication acknowledgement backpressure.
+  if worker.next == high(uint64):
+    return CheckpointAdmission(status: CheckpointWorkerError.Exhausted) # No observation revives an earlier ticket after wraparound.
+  inc worker.next
+  worker.prepared = default(PreparedCheckpoint)
+  worker.cancelled = false
+  worker.operation = CheckpointRequest.ReadHead
+  worker.expected = default(CheckpointHead)
+  worker.limit = ByteLimit(0)
   worker.outcome = default(CheckpointBankResult[CheckpointHead])
   worker.phase = CheckpointWorkerPhase.Staged
   CheckpointAdmission(status: CheckpointWorkerError.None,
@@ -216,7 +242,7 @@ proc retry*(worker: var CheckpointWorker, ticket: CheckpointTicket,
   defer: release(worker.lock)
   if not worker.matches(ticket) or worker.phase != CheckpointWorkerPhase.Done or worker.cancelled:
     return CheckpointAdmission(status: CheckpointWorkerError.NotReady) # Cancellation, foreign generations and active requests retain their exact state.
-  if worker.operation != CheckpointOperation.Advance or worker.outcome.error !=
+  if worker.operation != CheckpointRequest.Advance or worker.outcome.error !=
       CheckpointBankError.StaleHead:
     return CheckpointAdmission(status: CheckpointWorkerError.NotReady) # Actual publication or I/O uncertainty requires explicit collection/reconciliation, never a duplicate hidden write.
   if not expected.ready: return CheckpointAdmission(status: CheckpointWorkerError.InvalidHead)

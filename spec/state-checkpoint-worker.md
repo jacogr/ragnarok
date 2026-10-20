@@ -61,3 +61,18 @@ No local selector comparison establishes chain-transition authority. Tests retai
 exact refusals across failed retry admission, invalidate all old tickets, cancel
 restaged work, preserve real success receipts and run 1,000 stale/read/retry/publish
 cycles with host-only ARC release evidence.
+
+## Asynchronous selector observation
+
+`stageHead()` admits a metadata-only request into the same single slot. Explicit
+begin, staged cancellation, ticket namespaces, Done backpressure and joined close
+apply unchanged. The native worker calls the bounded checksummed head reader;
+no filesystem call occurs in staging or scalar phase polling. Missing, malformed
+and oversized heads preserve typed failures. Observation cannot use stale-write
+retry, since it owns no prepared publication buffer.
+
+A successful observation establishes only local format/checksum validity. Its root
+is untrusted metadata and cannot supply independent chain or checkpoint authority.
+No complete map crosses the worker boundary. Native checks include real reads,
+exact scalar receipts, corrupt/oversized metadata, cancellation and repeated host
+receipt release.
