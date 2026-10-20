@@ -19,8 +19,8 @@ from corpus_catalog import CORPUS_NAMES, run_corpora
 from failure_checks import probe_failure, run_failure_suites
 from failure_plans import (FAILURE_PLANS, FAILURE_COUNTS, SPECIAL_CASES, SPECIAL_DRIVERS,
                            check_driver_modes)
-from native_tests import UNIT_SUITES, unit_batches, unit_work_directory, unit_command, unit_environment, unit_evidence, ARC_SUITES
-from native_preparation import prepare_libraries, prepare_integration, prepare_unit_fixtures
+from native_tests import UNIT_SUITES, unit_work_directory, unit_command, unit_environment, unit_evidence, unit_cache_lock, unit_partition, parse_unit_shard, ARC_SUITES
+from native_preparation import prepare_libraries, prepare_integration, prepare_unit_fixtures, prepare_partition_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/tests/runtime'
@@ -31,12 +31,19 @@ command, build = checks.command, checks.build
 
 # Require every native suite and independent corpus, without borrowing another job's verdict.
 def unit_passed(report):
+    try:
+        # Every shard has a source-derived exact scope; partial data cannot claim full verification.
+        batches, corpora = unit_partition(report.get('unit_shard'))
+    except ValueError:
+        return False
+    expected = {name for _, members, _ in batches for name in members}
+    expected_corpora = set(CORPUS_NAMES) if corpora else set()
     rows = report.get('suites', [])
     names = [row.get('name') for row in rows]
-    return (len(names) == len(UNIT_SUITES) and set(names) == set(UNIT_SUITES)
+    return (len(names) == len(expected) and set(names) == expected
             and all(row.get('passed') is True for row in rows)
-            and {key for key in report if key.endswith('_corpus')} == set(CORPUS_NAMES)
-            and all(report[name].get('passed') is True for name in CORPUS_NAMES)
+            and {key for key in report if key.endswith('_corpus')} == expected_corpora
+            and all(report[name].get('passed') is True for name in expected_corpora)
             and not set(FAILURE_COUNTS).intersection(report))
 
 
@@ -60,12 +67,22 @@ def failures_passed(report):
 
 
 # Execute ordinary Hastur suites and independent references with the existing fixture/linking contracts.
-def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires):
-    for batch, members, target in unit_batches():
+def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard=None):
+    with unit_cache_lock(compiler):
+        # A concurrent standalone run must not mutate the shared cache or retire active ARC evidence.
+        _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard)
+
+
+# Keep the complete execution order and corpus contracts within one compiler-cache lock.
+def _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard):
+    batches, corpora = unit_partition(shard)
+    for batch, members, target in batches:
         # Compatible codecs share one directory run; linked/resource profiles retain isolated runs.
+        print('RUN '+batch+' (Hastur)', flush=True)
         checked = command(unit_command(compiler, target, libraries), batch+'-hastur',
-                          unit_environment(compiler, target, fixtures=fixtures),
+                          unit_environment(compiler, target, fixtures=fixtures, suites=members),
                           cwd=unit_work_directory(compiler))
+        print(f'Completed {batch} in {checked["elapsed_seconds"]:.2f}s', flush=True)
         if checked['exit_code'] != 0:
             # A group failure is conservative for every member and retains Hastur's individual diagnostics.
             print(checked['output'], flush=True)
@@ -83,8 +100,9 @@ def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_w
                     row['evidence_error'] = str(error)
             report['suites'].append(row)
             announce(name+' (Hastur)', row['passed'])
-    # Feature calls retain the original order, including shared driver-build dependencies.
-    run_corpora(compiler, report, checks, libraries, quic_fixtures, integration_wires)
+    if corpora:
+        # Only the final shard owns corpora; shared driver dependencies retain their original order.
+        run_corpora(compiler, report, checks, libraries, quic_fixtures, integration_wires)
 
 
 # Execute strict crash/contract probes separately; compilation alone cannot prove these preconditions.
@@ -196,7 +214,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compiler', type=Path, required=True)
     parser.add_argument('--group', choices=('unit', 'failures'), default='unit')
+    parser.add_argument('--unit-shard', type=parse_unit_shard, default=os.environ.get('UNIT_SHARD'),
+                        help='Run one discovered unit partition, index/count (at most eight)')
     args = parser.parse_args()
+    if args.unit_shard is not None and args.group != 'unit':
+        # Runtime rejection probes retain their separate complete execution contract.
+        parser.error('--unit-shard applies only to the unit group')
     # Private reports, caches and logs allow the two workloads to run on independent CI runners.
     BUILD = ROOT/('build/tests/runtime' if args.group == 'unit' else 'build/tests/failures')
     checks = NativeChecks(BUILD)
@@ -210,6 +233,9 @@ def main():
     if args.group == 'unit':
         # Unit evidence owns suites/corpora only; runtime contracts have a different report.
         report['suites'] = []
+        if args.unit_shard is not None:
+            # Summaries must identify subset evidence rather than presenting it as the full suite.
+            report['unit_shard'] = args.unit_shard
     else:
         # Every runtime family must be populated by this invocation, including after a prior successful run.
         report.update({family: [] for family in FAILURE_COUNTS})
@@ -231,9 +257,24 @@ def main():
                               for path in sorted(set(sources))}
     # The existing native guarantee suite consumes an independently authored minimal report fixture.
     sys.path.insert(0, str(ROOT/'tests'))
-    libraries, quic_fixtures, native_evidence = prepare_libraries(BUILD)
+    selected_suites = None
+    needs_corpora = True
+    if args.group == 'unit' and args.unit_shard is not None:
+        # Provision only the union consumed by this partition; corpora retain their complete dependencies.
+        selected_batches, needs_corpora = unit_partition(args.unit_shard)
+        selected_suites = [name for _, members, _ in selected_batches for name in members]
+        from native_requirements import NATIVE_REQUIREMENTS
+        required = {library for name in selected_suites for library in NATIVE_REQUIREMENTS[name]['libraries']}
+        libraries, quic_fixtures, native_evidence = prepare_libraries(
+            BUILD, required=None if needs_corpora else required)
+    else:
+        # Complete local runs and the failure group preserve the established aggregate preparation path.
+        libraries, quic_fixtures, native_evidence = prepare_libraries(BUILD)
     report.update(native_evidence)
-    integration_wires, integration_reload, report['integration_fixtures'] = prepare_integration(BUILD)
+    integration_wires = integration_reload = None
+    if needs_corpora or args.group == 'failures':
+        # Only independent corpora/failure verification need unconditional CE preparation.
+        integration_wires, integration_reload, report['integration_fixtures'] = prepare_integration(BUILD)
     from state_availability_oracle import record as availability_record
     availability_fixture = BUILD/'availability-report.bin'
     availability_fixture.write_bytes(availability_record(0)['report'])
@@ -245,9 +286,17 @@ def main():
         # Expensive state replay/rotation fixtures belong only to the ordinary native suites.
         # Every ordinary suite now has one native runner path; omitted/extra identities are a migration failure.
         assert len(UNIT_SUITES) == len(set(UNIT_SUITES))
-        fixtures, fixture_evidence = prepare_unit_fixtures(BUILD, quic_fixtures, integration_wires, integration_reload)
-        report.update(fixture_evidence)
-        run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires)
+        if selected_suites is None:
+            # Unsharded verification retains all historical fixture evidence fields and preparation order.
+            fixtures, fixture_evidence = prepare_unit_fixtures(BUILD, quic_fixtures, integration_wires, integration_reload)
+            report.update(fixture_evidence)
+        else:
+            # Feature providers run once per needed group rather than preparing every suite in every shard.
+            integration = (integration_wires, integration_reload) if needs_corpora else None
+            fixtures, fixture_evidence = prepare_partition_fixtures(
+                BUILD, selected_suites, quic_fixtures, integration)
+            report['partition_fixture_preparation'] = fixture_evidence
+        run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, args.unit_shard)
         step_passed = unit_passed(report)
     else:
         # Contract checks keep their diagnostic predicates and positive controls unchanged.

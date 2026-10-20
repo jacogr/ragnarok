@@ -4,7 +4,7 @@
 """Shared native libraries and independent fixtures for both supported unit entry points.
 
 Exposes prepare_libraries, prepare_integration, prepare_unit_fixtures and record_evidence for
-shared native setup, plus dependency-scoped selected-suite preparation.
+shared native setup, plus dependency-scoped selected-suite and partition preparation.
 """
 import hashlib
 import sys
@@ -145,8 +145,8 @@ SELECTED_FIXTURE_GROUPS = {
 }
 
 
-# Prepare only one suite's existing independent fixture, keeping its complete manifest/hash contract.
-def prepare_selected_fixture(folder, suite, certificates=None, record=None):
+# Run one existing feature provider, preserving its sibling manifests for batched selection.
+def _selected_fixture_provider(folder, suite, certificates):
     if suite == 'quic_transport':
         # Transport needs certificates only; no CE corpus or reload candidates are generated.
         fixtures = unit_runtime_fixtures(certificates, None, None, suite=suite)
@@ -165,5 +165,37 @@ def prepare_selected_fixture(folder, suite, certificates=None, record=None):
     if suite not in fixtures:
         # A provider returning a sibling fixture cannot satisfy the requested suite.
         raise ValueError('Missing selected fixture manifest: '+suite)
+    return fixtures, evidence
+
+
+# Prepare only one suite's existing independent fixture, keeping its complete manifest/hash contract.
+def prepare_selected_fixture(folder, suite, certificates=None, record=None):
+    fixtures, evidence = _selected_fixture_provider(folder, suite, certificates)
     record_evidence(record, 'selected_unit_fixture', evidence)
     return {suite: fixtures[suite]}, evidence
+
+
+# Prepare each selected feature provider once, reusing its complete manifests for sibling suites.
+def prepare_partition_fixtures(folder, suites, certificates=None, integration=None):
+    from native_requirements import NATIVE_REQUIREMENTS
+    selected = [suite for suite in suites if NATIVE_REQUIREMENTS[suite]['prepared']]
+    fixtures, evidence = {}, {}
+    for suite in selected:
+        # A preceding provider may already have produced this sibling's fresh hash contract.
+        if suite in fixtures:
+            continue
+        if suite == 'quic_integration' and integration is not None:
+            # The corpus-owning shard has already prepared these exact original/reload inputs.
+            wires, reload = integration
+            fresh = unit_runtime_fixtures(None, wires, reload, suite=suite)
+            observed = {'files': {str(path): digest for path, digest in fresh[suite][2]}}
+        else:
+            # Provider selection and independent expected values remain owned by the existing feature path.
+            fresh, observed = _selected_fixture_provider(folder, suite, certificates)
+        fixtures.update(fresh)
+        evidence[suite] = observed
+    missing = set(selected)-set(fixtures)
+    if missing:
+        # A provider omission must fail before a suite can inherit old fixture environment variables.
+        raise ValueError('Missing partition fixture manifests: '+', '.join(sorted(missing)))
+    return {suite: fixtures[suite] for suite in selected}, evidence

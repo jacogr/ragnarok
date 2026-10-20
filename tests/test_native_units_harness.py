@@ -6,6 +6,7 @@
 Exposes NativeUnitHarness for unittest discovery; test methods exercise the stated contracts.
 """
 from pathlib import Path
+import fcntl
 import json
 import hashlib
 import io
@@ -48,6 +49,33 @@ class NativeUnitHarness(unittest.TestCase):
             self.assertEqual(members, (name,))
             self.assertEqual(target, name)
             self.assertIn(name, native_tests.UNIT_LINKS)
+
+    # Any supported shard count covers every discovered suite exactly once, without new registrations.
+    def test_partition_inventory(self):
+        for count in range(1, 9):
+            # Separate coverage and serial-load checks catch gaps, duplicates and accidentally duplicated corpora.
+            partitions = [native_tests.unit_partition((index, count)) for index in range(1, count+1)]
+            names = [name for batches, _ in partitions for _, members, _ in batches for name in members]
+            self.assertEqual(len(names), len(set(names)))
+            self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
+            self.assertEqual(sum(corpora for _, corpora in partitions), 1)
+            self.assertEqual(sum(batch[0] == 'codec' for batches, _ in partitions for batch in batches), 1)
+            lengths = [sum(target is not None for _, _, target in batches) for batches, _ in partitions]
+            self.assertLessEqual(max(lengths)-min(lengths), 1)
+        self.assertEqual(native_tests.unit_partition(), (native_tests.unit_batches(), True))
+        self.assertEqual(native_tests.unit_partition((1, 1)), native_tests.unit_partition())
+
+    # Empty, unbounded or malformed shard declarations cannot silently turn into partial verification.
+    def test_invalid_partitions(self):
+        for shard in [(0, 8), (9, 8), (1, 9), (1, 0), (True, 8), (1,), '1/8']:
+            # Report metadata is validated with the same bounds as the CLI.
+            with self.subTest(shard=shard), self.assertRaises(ValueError):
+                native_tests.unit_partition(shard)
+        for value in ['0/8', '1/9', '2/1', 'one/8', '1', '1/8/8']:
+            # Invalid CLI notation must fail before libraries or native tools are prepared.
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                native_tests.parse_unit_shard(value)
+        self.assertEqual(native_tests.parse_unit_shard('2/8'), (2, 8))
 
     # Worker limits affect only directory discovery; linked and networking cases stay serial.
     def test_bounded_codec_workers(self):
@@ -275,14 +303,14 @@ class NativeUnitHarness(unittest.TestCase):
             with self.assertRaisesRegex(FileNotFoundError, 'native unit library'):
                 native_tests.unit_command(folder/'nimony', 'state_trie', {'crypto': folder/'missing'})
 
-    # Host-specific linker flags and isolated caches must survive both production and instrumented profiles.
+    # Host-specific linker flags and profile caches must keep production and instrumented builds separate.
     def test_linked_host_profiles(self):
         with temporary_folder('hastur') as folder:
             libraries = native_libraries(folder)
             for system in ('Linux', 'Darwin'):
                 # No native build occurs here; compare the planned Linux and local linking profiles explicitly.
                 with patch.object(native_tests.platform, 'system', return_value=system):
-                    caches = set()
+                    caches = {}
                     for name, profile in native_tests.UNIT_LINKS.items():
                         # Each case must get exactly its selected ABI, preserving observer isolation from production roots.
                         args = native_tests.unit_command(folder/'nimony', name, libraries)
@@ -310,8 +338,67 @@ class NativeUnitHarness(unittest.TestCase):
                         self.assertIn('--forward:--passC:-flto', args)
                         self.assertIn('--forward:--passL:-flto', args)
                         self.assertEqual('--forward:--passL:-fuse-ld=lld' in args, system == 'Linux')
-                        caches.add(next(arg for arg in args if arg.startswith('--cachedir:')))
-                    self.assertEqual(len(caches), len(native_tests.UNIT_LINKS))
+                        record = native_tests.NATIVE_REQUIREMENTS[name]
+                        key = json.dumps({field: record[field] for field in
+                                          ('directory', 'defines', 'includes', 'libraries', 'observers')},
+                                         sort_keys=True)
+                        cache = next(arg for arg in args if arg.startswith('--cachedir:'))
+                        self.assertEqual(caches.setdefault(key, cache), cache)
+                    self.assertEqual(len(set(caches.values())), len(caches))
+                    self.assertLess(len(caches), len(native_tests.UNIT_LINKS))
+
+    # Sharing is restricted to identical ordered profiles and the same compiler installation.
+    def test_compatible_serial_cache_reuse(self):
+        with temporary_folder('hastur') as folder:
+            libraries = native_libraries(folder)
+            first = native_tests.unit_command(folder/'nimony', 'accumulation_assign_publication', libraries)
+            second = native_tests.unit_command(folder/'nimony', 'accumulation_complete_batch', libraries)
+            cache = lambda args: next(arg for arg in args if arg.startswith('--cachedir:'))
+            self.assertEqual(cache(first), cache(second))
+            self.assertNotEqual(first[-1], second[-1])
+            self.assertIn('--joined:off', second)
+            self.assertIn('--jobs:1', second)
+            self.assertNotEqual(cache(first), cache(native_tests.unit_command(folder/'nimony')))
+            other = folder/'other'
+            other.mkdir()
+            (other/'hastur').touch()
+            self.assertNotEqual(cache(first), cache(native_tests.unit_command(
+                other/'nimony', 'accumulation_assign_publication', libraries)))
+
+    # Exceptional exits release the cache lock; another process must not acquire it during a run.
+    def test_cache_lock_lifetime(self):
+        with temporary_folder() as folder, patch.object(native_tests, 'ROOT', folder):
+            compiler = folder/'bin/nimony'
+            path = native_tests.cache_directory(compiler, folder/'build/tests/native', 'unit').parent/'run.lock'
+            with self.assertRaisesRegex(RuntimeError, 'fixture failure'):
+                with native_tests.unit_cache_lock(compiler):
+                    # A separately opened descriptor observes the same inter-process exclusion.
+                    with path.open('a') as other:
+                        with self.assertRaises(BlockingIOError):
+                            fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    raise RuntimeError('fixture failure')
+            with path.open('a') as other:
+                # The failure path must leave the next standalone/cumulative run able to proceed.
+                fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(other, fcntl.LOCK_UN)
+
+    # A native rebuild or changed header cannot reuse an executable built against previous bytes.
+    def test_profile_cache_native_input_invalidation(self):
+        with temporary_folder('hastur') as folder:
+            libraries = native_libraries(folder)
+            header = folder/'native/crypto/bridge.h'
+            header.parent.mkdir(parents=True)
+            header.write_text('first header')
+            with patch.object(native_tests, 'ROOT', folder):
+                cache = lambda: next(arg for arg in native_tests.unit_command(
+                    folder/'nimony', 'accumulation_complete_batch', libraries)
+                    if arg.startswith('--cachedir:'))
+                first = cache()
+                libraries['observer'].write_bytes(b'changed native library')
+                second = cache()
+                self.assertNotEqual(first, second)
+                header.write_text('changed header')
+                self.assertNotEqual(second, cache())
 
     # A moved linked source needs its own golden; the pure directory's expectations cannot cover it.
     def test_linked_expected_output_required(self):
@@ -320,6 +407,19 @@ class NativeUnitHarness(unittest.TestCase):
             with patch.dict(native_tests.UNIT_SOURCES, {'state_trie': folder/'test_state_trie.nim'}):
                 with self.assertRaisesRegex(FileNotFoundError, 'expected output'):
                     native_tests.unit_command(folder/'nimony', 'state_trie', {'crypto': folder/'library'})
+
+    # A codec batch in a shard neither requires another partition's fixtures nor clears its observations.
+    def test_batch_environment_scope(self):
+        with temporary_folder() as folder, patch.object(native_tests, 'unit_evidence_directory', return_value=folder):
+            sibling = folder/'accumulation_context.json'
+            sibling.write_text('sibling observation')
+            environment = native_tests.unit_environment(Path('/fixture/nimony'), base={}, suites=('natural',))
+            self.assertEqual(environment, {'RAGNAROK_TEST_EVIDENCE': str(folder)})
+            self.assertEqual(sibling.read_text(), 'sibling observation')
+            with self.assertRaisesRegex(ValueError, 'environment scope'):
+                native_tests.unit_environment(Path('/fixture/nimony'), 'natural', suites=('bits',))
+            with self.assertRaisesRegex(ValueError, 'environment scope'):
+                native_tests.unit_environment(Path('/fixture/nimony'), suites=('natural', 'natural'))
 
     # Generated certificates/CE inputs must be explicitly prepared; inherited variables alone cannot satisfy them.
     def test_runtime_fixture_required(self):

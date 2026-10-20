@@ -6,6 +6,7 @@
 Exposes NimonyCISafeguards for unittest discovery; test methods exercise the stated contracts.
 """
 import io
+import re
 import hashlib
 import json
 from pathlib import Path
@@ -59,12 +60,33 @@ class NimonyCISafeguards(unittest.TestCase):
                        'check-telemetry-interop-ci'):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
             self.assertEqual(text.count('run: make '+target+'\n'), 1)
-        self.assertNotIn('needs:', text)
+        self.assertEqual(text.count('needs:'), 1)
+        self.assertIn('needs: unit', text)
         self.assertNotIn('run: make check\n', text)
         self.assertNotIn('mkdir', text)
         self.assertNotIn('nimony-trial', text)
         self.assertNotIn('tools/setup_nimony.py', text)
         self.assertNotIn('cargo fetch', text)
+
+    # The matrix covers every partition once, and the stable unit gate rejects every non-success result.
+    def test_ci_unit_partition_gate(self):
+        from native_tests import parse_unit_shard
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        values = json.loads('['+re.search(r'        shard: \[([^\n]+)\]', text).group(1)+']')
+        partitions = [parse_unit_shard(value) for value in values]
+        count = partitions[0][1]
+        self.assertEqual(partitions, [(index, count) for index in range(1, count+1)])
+        gate = text.split('  unit-status:\n', 1)[1].split('  failures:\n', 1)[0]
+        self.assertIn('name: Native unit and codec tests', gate)
+        self.assertIn('needs: unit', gate)
+        self.assertIn('if: always()', gate)
+        self.assertIn('SHARDS_RESULT: ${{ needs.unit.result }}', gate)
+        command = re.search(r'        run: ([^\n]+)', gate).group(1)
+        for result in ['success', 'failure', 'cancelled', 'skipped']:
+            # Exercise the actual aggregate command so a skipped/failed matrix cannot become green.
+            with self.subTest(result=result):
+                status = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
+                self.assertEqual(status == 0, result == 'success')
 
     # Every independent CI job must visibly reject incomplete inventories before provisioning its workload.
     def test_ci_inventory_preflight(self):

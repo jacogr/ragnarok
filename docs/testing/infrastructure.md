@@ -38,6 +38,25 @@ and source-family ownership. Library/include/observer arrays preserve their expl
 last library supplies the primary profile. Non-codec suites retain isolated execution, including
 those without native libraries. Codec directory batches retain their dependency-free profile.
 Metadata describes discovered suites; it does not select which source files execute.
+
+Serial native suites reuse compiler intermediates only within the same source directory and
+exact ordered compiler/linker profile. The cache identity also includes native library and header
+contents and the compiler installation. Observer renames and feature defines therefore remain
+isolated. Every main still compiles and runs in its own process; expected-output comparisons,
+per-suite ARC evidence retirement and fresh observations remain mandatory. The parallel codec
+pool uses a separate cache. A compiler-owned advisory lock serializes standalone and cumulative
+unit invocations through evidence validation, including exceptional exits. Cumulative runs log
+the active batch and its elapsed time.
+
+CI partitions the discovered batch plan across eight bounded jobs, keeping each job's
+linked/resource work sequential. Shards prepare only their selected native dependencies and
+fixture providers, reusing sibling manifests from each provider once. Codec discovery belongs only to the first
+partition and independent corpora only to the last; no tests or corpora are duplicated.
+`UNIT_SHARD=index/count make check-unit` selects the same source-derived scope locally; plain `make check-unit` remains complete. Each shard
+validates its exact expected identities and reports its scope, and a stable aggregate PR check
+requires every shard to succeed. The 30-minute job limits and individual command timeouts remain
+unchanged.
+
 `make check-inventory` loads these profiles before provisioning. New suites add their own file;
 no shared manifest entry or central provenance-path addition is needed.
 

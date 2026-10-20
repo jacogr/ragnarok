@@ -38,7 +38,7 @@ jobs:
     strategy: &os-strategy
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: &ci-os [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - &checkout
@@ -127,9 +127,16 @@ jobs:
             build/bandersnatch/cargo-features.log
 
   unit:
-    name: Native unit and codec tests
+    name: Unit shard ${{ matrix.shard }}
     timeout-minutes: 30
-    strategy: *os-strategy
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        os: *ci-os
+        shard: ["1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8"]
+    env:
+      UNIT_SHARD: ${{ matrix.shard }}
     runs-on: ${{ matrix.os }}
     steps:
       - *checkout
@@ -143,7 +150,7 @@ jobs:
         if: always()
         uses: *upload-artifact
         with:
-          name: ${{ matrix.os }}-unit-${{ github.run_attempt }}
+          name: ${{ matrix.os }}-unit-${{ strategy.job-index }}-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -154,6 +161,19 @@ jobs:
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
             build/quic/build.log
+
+  # Retain one stable PR gate; failed, cancelled or skipped shards must never look successful.
+  unit-status:
+    name: Native unit and codec tests
+    needs: unit
+    if: always()
+    strategy: *os-strategy
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Require every unit shard
+        env:
+          SHARDS_RESULT: ${{ needs.unit.result }}
+        run: test "$SHARDS_RESULT" = success
 
   failures:
     name: Runtime failure and contract tests
