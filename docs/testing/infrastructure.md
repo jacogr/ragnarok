@@ -148,8 +148,14 @@ rules for `src/`, `native/`, `tools/`, `tests/`, `spec/` and CI workflows, plus 
 `tests/fixtures/` and `vectors/`. The result is sorted and deduplicated before hashing. Build
 outputs, Python caches, hidden artifacts and Cargo target directories are excluded. The Makefile
 and existing required native fixture paths remain mandatory. Selected upstream documents/corpora
-retain precise paths; runtime-owned pinned vector expansions remain unchanged. Missing local files,
-escaping paths and incomplete evidence lists fail preflight; vendor provisioning remains separate.
+retain precise paths. JAM/Bandersnatch fixture membership comes from the existing
+`spec/pins.json` → `vectors.files` and `spec/bandersnatch-pins.json` → `fixture_files` tables.
+All declared entries join the shared expansion without additional runner filename lists or a
+vendor-directory sweep. Duplicate JSON keys, conflicting pins, malformed tables and escaping paths fail
+preflight. Missing local files and incomplete evidence lists also fail preflight; missing vendor
+bytes remain listed and must be present when runtime, E2E or guard reports hash their inputs.
+Vendor provisioning remains separate, and fixture-specific hash/revision checks retain ownership
+of the expected bytes.
 
 Run `make check-inventory` for a fast, Python-only preflight before opening a verification PR.
 It validates per-family fields, build profiles, source paths, case counts, diagnostics and global

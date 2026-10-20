@@ -274,12 +274,6 @@ def main():
     # Use the same source expansion as CI's omission check.
     from runtime_provenance import runtime_sources
     sources = runtime_sources()
-    # Hash every directly consumed proof/JAM fixture in addition to checking the pinned source trees.
-    sys.path.insert(0, str(ROOT/'tests'))
-    from test_bandersnatch import fixture_path
-    sources += [fixture_path(name) for name in ('ietf.json', 'ring.json', 'jam-tiny.json', 'jam-full.json', 'jam-padding.json')]
-    sources += [ROOT/f'vendor/jamtestvectors/codec/{profile}/work_result_{number}.{suffix}'
-                for profile in ('tiny', 'full') for number in (0, 1) for suffix in ('json', 'bin')]
     report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                               for path in sorted(set(sources))}
     # The existing native guarantee suite consumes an independently authored minimal report fixture.
