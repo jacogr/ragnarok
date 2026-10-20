@@ -12,20 +12,31 @@ type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection;
   Disabled, Commit, Panic, Underfunded, CheckpointCommit, CheckpointPanic, OutOfGas,
     CheckpointOutOfGas,
   FetchFirst, FetchSecond, FetchMissing, FetchList, FetchWideOffset, FetchWideIndex, FetchTail,
-    FetchDelete, FetchBranchPanic, FetchReadBack, FetchReadTail, ReadMissing
+    FetchDelete, FetchBranchPanic, FetchReadBack, FetchReadTail, ReadMissing, ReadCheckpointPanic
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   ## Jump from refinement entry0 to empty output; entry5 writes RO key11 using literal or genuinely fetched RW bytes.
   assert mode != ComputedStorageMode.Disabled
   var body = @[refinementImmediate(7, 65536), refinementImmediate(8, 1),
     refinementImmediate(9, 196608), refinementImmediate(10, 3), @[10'u8, 5]]
-  if mode == ComputedStorageMode.ReadMissing:
-    body = @[@[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 255],
-      @[51'u8, 10, 0], @[10'u8, 5], @[51'u8, 7, 255], @[51'u8, 8, 0, 0, 1],
-      @[51'u8, 9, 1], @[51'u8, 10, 255], @[51'u8, 11, 0], @[51'u8, 12, 3],
-      @[10'u8, 4], @[62'u8, 7, 3, 0, 3], @[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1],
-      @[51'u8, 9, 0, 0, 3], @[51'u8, 10, 11], @[10'u8,
-          5]] # Delete, read NONE into an ignored MAX destination, then persist its full word; compactFF sign-extends toMAX64.
+  if mode in {ComputedStorageMode.ReadMissing, ComputedStorageMode.ReadCheckpointPanic}:
+    let retainedDeletion = mode == ComputedStorageMode.ReadCheckpointPanic
+    body = @[]
+    if retainedDeletion:
+      body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 0], @[51'u8, 9, 1],
+        @[51'u8, 10, 14], @[10'u8, 2], @[52'u8, 6, 0, 0,
+            3]] # Fetch the actual count and preserve it in r6 across all later hosts.
+    for instruction in [@[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 255],
+        @[51'u8, 10, 0], @[10'u8, 5]]:
+      body.add(instruction) # Real deletion ignores the invalid value pointer; the assured parent genuinely contains the key.
+    if retainedDeletion:
+      body.add(@[10'u8, 18]) # Checkpoint the absent key before any regular restoration; r6 remains the actual fetched count.
+    let target = if retainedDeletion: 42'u8 else: 255'u8
+    for instruction in [@[51'u8, 7, target], @[51'u8, 8, 0, 0, 1], @[51'u8, 9, 1],
+        @[51'u8, 10, 255], @[51'u8, 11, 0], @[51'u8, 12, 3], @[10'u8, 4],
+        @[62'u8, 7, 3, 0, 3], @[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1],
+        @[51'u8, 9, 0, 0, 3], @[51'u8, 10, 11], @[10'u8, 5]]:
+      body.add(instruction) # Read current absence into an ignored MAX destination, then persist its full NONE word in regular state.
   if mode in {ComputedStorageMode.FetchFirst, ComputedStorageMode.FetchSecond,
       ComputedStorageMode.FetchMissing, ComputedStorageMode.FetchList,
       ComputedStorageMode.FetchWideOffset, ComputedStorageMode.FetchWideIndex,
@@ -101,11 +112,15 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
       refinementImmediate(9, 196609), refinementImmediate(10, 2), @[10'u8, 5]]:
       body.add(instruction) # Same raw key proves one provenance descriptor can retain multiple real mutations.
   if mode in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail,
-      ComputedStorageMode.ReadMissing}:
+      ComputedStorageMode.ReadMissing, ComputedStorageMode.ReadCheckpointPanic}:
     body.add(@[51'u8, 8, 0]) # Only the read-back and missing-read guests use compact empty-yield setup to keep the authored code below128 bytes.
   else:
     body.add(refinementImmediate(8, 0)) # Preserve every predecessor guest byte and its instruction boundaries.
-  if mode == ComputedStorageMode.FetchBranchPanic:
+  if mode == ComputedStorageMode.ReadCheckpointPanic:
+    body.add(@[81'u8, 22, 2, 6]) # Compare preserved r6 with two and branch forward past the historical regular halt.
+    body.add(@[50'u8, 0]) # One genuine input commits the actual regular restoration.
+    body.add(@[0'u8]) # Two genuine inputs select the retained checkpoint deletion after that restoration.
+  elif mode == ComputedStorageMode.FetchBranchPanic:
     body.add(@[81'u8, 27, 2, 6]) # Real equality branches forward by six bytes exactly when the count is two.
     body.add(@[50'u8, 0]) # Historical count one commits the write through the actual regular exit.
     body.add(@[0'u8]) # The assured count two selects initial exceptional state after attempting a different write.
