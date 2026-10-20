@@ -1,0 +1,16 @@
+{
+  "source": "tests/native/accumulation_runner_results.nim",
+  "build_name": "accumulation-runner-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-runner-default", "diagnostic": "outcome.status == None", "description": "Runner selected default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-runner-refused", "diagnostic": "outcome.status == None", "description": "Runner selected refused extraction guard"},
+    {"identity": {"reason": "service"}, "arguments": ["service"], "name": "accumulation-runner-service", "diagnostic": "outcome.status == ServiceFailure", "description": "Runner selected service extraction guard"},
+    {"identity": {"reason": "invocation"}, "arguments": ["invocation"], "name": "accumulation-runner-invocation", "diagnostic": "outcome.status == InvocationFailure", "description": "Runner selected invocation extraction guard"},
+    {"identity": {"reason": "context"}, "arguments": ["context"], "name": "accumulation-runner-context", "diagnostic": "outcome.status == ContextFailure", "description": "Runner selected context extraction guard"},
+    {"identity": {"reason": "machine"}, "arguments": ["machine"], "name": "accumulation-runner-machine", "diagnostic": "outcome.status == MachineFailure", "description": "Runner selected machine extraction guard"},
+    {"identity": {"reason": "skip"}, "arguments": ["skip"], "name": "accumulation-runner-skip", "diagnostic": "outcome.status == SkipFailure", "description": "Runner selected skip extraction guard"},
+    {"identity": {"reason": "dispatch"}, "arguments": ["dispatch"], "name": "accumulation-runner-dispatch", "diagnostic": "outcome.status == DispatchFailure", "description": "Runner selected dispatch extraction guard"},
+    {"identity": {"reason": "completion"}, "arguments": ["completion"], "name": "accumulation-runner-completion", "diagnostic": "outcome.status == CompletionFailure", "description": "Runner selected completion extraction guard"}
+  ]
+}
