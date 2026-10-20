@@ -11,20 +11,23 @@ import ../../src/app/[services, options, chain, candidate, handoff, block_downlo
 import ../../src/codec/[bounded, block_codec, report_owned]
 import ../../src/state/store
 import ../support/[application_candidate_context, accumulation_completion_context,
-  block_download_transport]
+  block_download_transport, application_running_context]
 
 const Rounds = 32 ## Fixed live workload size; no command-line reduction can satisfy the expected marker.
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield between bounded native turns without modifying the explicit protocol clock.
 
-proc limits(): DownloadLoopLimits =
+proc limits(running = false): DownloadLoopLimits =
   ## One request per connection and explicit finite network/execution budgets keep each round bounded.
-  DownloadLoopLimits(schedule: DownloadScheduleLimits(peers: ElementLimit(1), attempts: 1,
+  result = DownloadLoopLimits(schedule: DownloadScheduleLimits(peers: ElementLimit(1), attempts: 1,
     retryDelay: DownloadRetryDelay(10)), input: BlockInputLimits(blockBytes: ByteLimit(100000)),
     candidate: preparationLimits(), composition: completionLimits().composition,
     stream: DownloadStreamLimits(readBytes: ByteLimit(4096), writeBytes: ByteLimit(42),
       timeout: DownloadTimeout(50)), attemptTimeout: DownloadAttemptTimeout(100))
+
+  if running:
+    result.candidate = runningLimits() # Real committed loop code receives finite larger gas/step capacity.
 
 proc lease(owner: var Services, active: bool) =
   ## Observe mutable Services after indirect dispatcher calls without retaining stale compiler flow facts.
@@ -46,7 +49,7 @@ proc advance(dispatcher: var BlockDownloadLoop, servers: var DownloadResponders,
   assert reached, "expected live dispatcher stage"
 
 proc round(owner: var Services, expected: array[42, byte], frame: seq[byte],
-    key: DownloadPeerKey, cancel: bool) =
+    key: DownloadPeerKey, cancel: bool, running = false) =
   ## Fresh native endpoints share one stable canonical Services owner across the entire workload.
   let before = owner.stateSnapshot.value
   var servers = default(DownloadResponders)
@@ -54,7 +57,7 @@ proc round(owner: var Services, expected: array[42, byte], frame: seq[byte],
   defer: servers.close()
   var dispatcher = default(BlockDownloadLoop)
   defer: dispatcher.close() # Join before retained snapshots, responders or canonical aliases retire.
-  assert dispatcher.configure(owner, [DownloadPeerId(22)], [], limits(), DownloadLoopTick(0)) ==
+  assert dispatcher.configure(owner, [DownloadPeerId(22)], [], limits(running), DownloadLoopTick(0)) ==
     DownloadLoopError.None, "configure live round"
   assert dispatcher.openPeer(DownloadPeerId(22), key, servers.port(true),
     getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000") ==
@@ -63,18 +66,22 @@ proc round(owner: var Services, expected: array[42, byte], frame: seq[byte],
   lease(owner, true)
   assert servers.requestCount(false) == 0 and servers.requestCount(true) == 1, "exact authenticated request"
   let started = getMonoTime()
-  while owner.preparationPhase != PreparationPhase.Done:
+  let target = if running and cancel: PreparationPhase.Running else: PreparationPhase.Done
+  while owner.preparationPhase != target:
+    assert not (running and cancel and owner.preparationPhase == PreparationPhase.Done), "real running preparation must be observed"
     assert (getMonoTime() - started).inSeconds < 20, "actual signed execution completes"
     assert servers.poll(), "independent server polling during execution"
     owner.tick(0) # The host drives only permitted independent work while preparation owns the graph.
     discard pauseMicros(1000)
-  lease(owner, true) # Completed, uncollected work retains exclusion and capacity.
+  lease(owner, true) # Running or completed, uncollected work retains exclusion and capacity.
   if cancel:
     assert servers.unsolicited(), "actual unrelated server stream"
     for turn in 0..<32:
       assert servers.poll(), "flush paced unsolicited frames before client deadline stimulus"
       discard pauseMicros(1000) # Native QUIC pacing uses elapsed time independently of the explicit protocol tick.
     assert not servers.resetObserved, "reset not observed before catalog polling"
+    if running:
+      assert owner.preparationPhase == PreparationPhase.Running, "loop still running before deadline"
     assert dispatcher.tick(DownloadLoopTick(100)) == DownloadLoopError.None, "observe attempt deadline"
     assert dispatcher.stage == DownloadLoopStage.Cancelling, "deadline retains cancelling stage"
     lease(owner, true)
@@ -83,6 +90,8 @@ proc round(owner: var Services, expected: array[42, byte], frame: seq[byte],
       discard pauseMicros(1000) # Permit actual UDP delivery while the client lease remains uncollected.
 
     assert servers.resetObserved, "native rejection before releasing the worker lease"
+    if running:
+      assert owner.preparationPhase == PreparationPhase.Running, "native reset progressed during running cancellation"
     advance(dispatcher, servers, DownloadLoopStage.Waiting, 100)
     lease(owner, false)
     assert dispatcher.sessionFailure.downloadFailure.error == BlockDownloadError.Cancelled, "exact cancellation reason"
@@ -101,6 +110,29 @@ proc round(owner: var Services, expected: array[42, byte], frame: seq[byte],
   dispatcher.close()
   lease(owner, false)
   assert owner.preparationAvailable and owner.accumulationStage == AccumulationHandoffStage.Idle, "producer available after close"
+
+proc running(expectedKey: DownloadPeerKey, base: OwnedReport) {.raises.} =
+  ## A real signed gas-bounded loop keeps computation active through native progress and cancellation.
+  let context = runningFixture(base)
+  writeFile("download-running-chain.json", context.seed)
+  defer: discard posix.unlink("download-running-chain.json")
+  var selected = default(Options)
+  assert parseOptions(@["server", "--with-state", "--chain", "download-running-chain.json",
+    "--state-writes", "1000", "--state-write-bytes", "1000000"], selected), "running state options"
+  var owner = default(Services)
+  assert owner.start(selected, "running download"), "running canonical owner"
+  defer: owner.close()
+  var request = default(BlockDownload)
+  let admitted = request.begin(owner, [], limits(true).input, limits(true).candidate)
+  assert admitted.error == BlockDownloadError.None, "running request admission"
+  let expected = request.request(admitted.value).value
+  assert request.cancel(admitted.value), "running request retirement"
+  round(owner, expected, context.frame, expectedKey, true,
+      true) # Running cancellation retains the graph until genuine execution ends.
+  round(owner, expected, context.frame, expectedKey, false,
+      true) # Positive control must execute the same loop to gas exhaustion and adopt.
+  assertRunningGas(owner.stateSnapshot.value) # Inspect canonical gas only after joined cleanup has ended every lease.
+  echo "DOWNLOAD_RUNNING resets=1 cancelled=1 adopted=1"
 
 proc idle(gate: string, iteration: int) {.raises.} =
   ## Publish only after round-local transports, worker and snapshots retire; wait for the OS observer.
@@ -130,6 +162,7 @@ proc main() {.raises.} =
   assert pin.len == 32, "exact TLS public identity"
   var key = default(array[32, byte])
   for index in 0..<32: key[index] = byte(pin[index]) # Copy the exact fresh TLS identity before borrowing any graph.
+  running(DownloadPeerKey(key), decodeOwnedReport(report, 2).value)
   writeFile("download-load-chain.json", context.text)
   defer: discard posix.unlink("download-load-chain.json")
   var selected = default(Options)
