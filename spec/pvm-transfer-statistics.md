@@ -39,8 +39,9 @@ independent exact/short/full-width ceilings, retained identity/copied values,
 hash-free preparation and 1,000 ARC cycles. Preserve report-only regression,
 strict result/privacy/nominal contracts and canonical statistics codec behavior.
 
-This layer derives activity deltas; C(13) coordination, account last-accumulation
-updates and whole-block publication remain separate. M1 framing remains complete;
+This layer derives activity deltas. [Account timestamp preparation](pvm-accumulation-timestamps.md)
+now applies last-accumulation updates privately; C(13) coordination and whole-block
+publication remain separate. M1 framing remains complete;
 full state serialization and accumulation/block parity remain open.
 
 ## Local verification (2026-10-19)
@@ -80,7 +81,7 @@ the mixed fixture's account capacity for its three service groups. Detailed logs
 and results are retained under ignored `build/pvm-transfer-statistics*`. These are
 local macOS checks, separate from exact-head Linux CI.
 
-Next bounded work: update existing accounts' last-accumulation timestamps from
-the genuine statistics mapping on an actual private finalized state. Complete
-C(13) coordination and block publication remain separate. M1 framing remains
+[Account timestamp preparation](pvm-accumulation-timestamps.md) implements that
+next bounded phase from the genuine statistics mapping and actual finalized state.
+Complete C(13) coordination and block publication remain separate. M1 framing remains
 complete; full state serialization and accumulation/block parity remain open.
