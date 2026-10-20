@@ -1,0 +1,132 @@
+{
+  "source": "tests/native/pvm_computed_batch.nim",
+  "build_name": "pvm-computed-batch",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-batch-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed batch default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-batch-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed batch source"
+    },
+    {
+      "identity": {
+        "origin": "order"
+      },
+      "arguments": [
+        "order"
+      ],
+      "name": "pvm-computed-batch-order",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed batch order"
+    },
+    {
+      "identity": {
+        "origin": "wire"
+      },
+      "arguments": [
+        "wire"
+      ],
+      "name": "pvm-computed-batch-wire",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed batch wire"
+    },
+    {
+      "identity": {
+        "origin": "reporters"
+      },
+      "arguments": [
+        "reporters"
+      ],
+      "name": "pvm-computed-batch-reporters",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed batch reporters"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-computed-batch-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed batch index"
+    },
+    {
+      "identity": {
+        "origin": "key-index"
+      },
+      "arguments": [
+        "key-index"
+      ],
+      "name": "pvm-computed-batch-key-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed batch key-index"
+    },
+    {
+      "identity": {
+        "origin": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "pvm-computed-batch-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed batch info"
+    },
+    {
+      "identity": {
+        "origin": "bytes"
+      },
+      "arguments": [
+        "bytes"
+      ],
+      "name": "pvm-computed-batch-bytes",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed batch bytes"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-batch-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed batch owner"
+    },
+    {
+      "identity": {
+        "origin": "key"
+      },
+      "arguments": [
+        "key"
+      ],
+      "name": "pvm-computed-batch-key",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed batch key"
+    }
+  ]
+}
