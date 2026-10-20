@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# @@Verification={"arc": "application_handoff"}
+# @@Verification={"arc": "application_handoff_arc_release"}
 
 ## Single-candidate dispatcher adoption, retained outcomes and exact authority through public application/service APIs.
 

@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# @@Verification={"arc": "application_seed"}
+# @@Verification={"arc": "application_seed_arc_release"}
 
 ## Explicit configured seed policies, one-pass capture and genuine re-admission against the newly decoded owner.
 

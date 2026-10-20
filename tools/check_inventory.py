@@ -18,9 +18,14 @@ def validate_inventory():
     from failure_checks import FAILURE_SUITES
     from native_tests import unit_source
     from native_requirements import UNIT_LINKS
-    from verification_inventory import UNIT_SUITES
+    from verification_inventory import UNIT_SUITES, ARC_SUITES
+    from failure_plans import FAILURE_COUNTS
     from compiler_fixtures import COMPILER_FIXTURES
     from runtime_provenance import runtime_sources
+    collisions = set(ARC_SUITES.values()).intersection(FAILURE_COUNTS)
+    if collisions:
+        # Unit ARC observations must not masquerade as foreign runtime-contract results.
+        raise ValueError('ARC report keys overlap runtime failure families: '+', '.join(sorted(collisions)))
     runtime_sources()
     expected = {unit_source(name) for name in UNIT_SUITES}
     for source in expected:

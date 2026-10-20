@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# @@Verification={"arc": "chain_state_snapshot"}
+# @@Verification={"arc": "chain_state_snapshot_arc_release"}
 
 ## Verify applied-state chain capture preserves exact ownership, bounds and inherited store policies.
 

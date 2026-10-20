@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# @@Verification={"arc": "application_block_input"}
+# @@Verification={"arc": "application_block_input_arc_release"}
 
 ## Fragment ownership, generation isolation and exact selected-head preparation feed deferred canonical adoption.
 

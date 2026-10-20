@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# @@Verification={"arc": "accumulation_chain"}
+# @@Verification={"arc": "accumulation_chain_arc_release"}
 
 ## Signed end-to-end state/chain adoption, hash-free parent preflight and atomic late-refusal rollback.
 

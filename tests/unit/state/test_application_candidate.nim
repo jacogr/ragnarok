@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# @@Verification={"arc": "application_candidate"}
+# @@Verification={"arc": "application_candidate_arc_release"}
 
 ## Genuine owned-block preparation, selected-head execution and deferred application publication.
 
