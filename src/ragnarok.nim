@@ -10,7 +10,7 @@
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
-import ./app/options
+import ./app/[options, download_command]
 import ./version
 
 # CLI entry point returns through all normal ARC/native teardown before process exit.
@@ -29,12 +29,20 @@ proc main(): int =
     if options.argumentCount() == 1 and options.argument(1) == "--help":
       stdout.writeLine("Usage: ragnarok server|client PORT CERT KEY PEER ALPN TIMEOUT [MODE] [OPTIONS]")
       stdout.writeLine("       ragnarok mesh LOCAL_PORT REMOTE_PORT CERT KEY LOCAL_KEY PEER_KEY ALPN GATE [OPTIONS]")
+      stdout.writeLine("       ragnarok download PORT CERT KEY PEER ALPN TIMEOUT POLICY [OPTIONS]")
       stdout.writeLine("       ragnarok --version | --help")
       stdout.writeLine("Options: --with-telemetry --telemetry HOST:PORT --chain FILE")
       stdout.writeLine("         --with-rpc --rpc-port NUMBER --with-ui --ui-port NUMBER --dev-ui-dir DIRECTORY")
       stdout.writeLine("         --with-state --chain FILE --state-writes COUNT --state-write-bytes BYTES")
       stdout.writeLine("State limits are explicit unsigned budgets; supplied complete state is structurally checked.")
       return 0
+    if options.argumentCount() >= 1 and options.argument(1) == "download":
+      let outcome = runDownload(options)
+      if outcome == DownloadCommandResult.Adopted:
+        stdout.writeLine("DOWNLOAD_ADOPTED")
+        return 0 # Command owners have already retired callbacks and canonical Services.
+      stderr.writeLine("DOWNLOAD_FAILED " & $outcome)
+      return 2 # Invalid/unavailable/exhausted downloads never imply an adopted child.
     # Retained dual-role peers have a separate bounded CLI and preserve normal proof workloads.
     if options.argumentCount() >= 1 and options.argument(1) == "mesh":
       let baseline = getOccupiedMem()

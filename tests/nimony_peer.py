@@ -67,10 +67,22 @@ def controls(binary, fixtures):
               ('ui-selftest', ['--selftest', '--with-ui']),
               ('ui-dir-missing', [*base, '--with-ui', '--dev-ui-dir']),
               ('telemetry-enable-missing-config', [*base, '--with-telemetry'])]
+    download = ['download', '1', str(fixtures/'a.cert.pem'), str(fixtures/'a.key.pem'),
+                str(fixtures/'b.pub'), 'jamnp-s/1/00000000', '10', 'missing-download-policy.conf']
+    state = ['--with-state', '--chain', 'missing-download-chain.json',
+             '--state-writes', '1000', '--state-write-bytes', '1000000']
+    # The new command must reach policy preflight before missing Services inputs, and reject unwired activation.
+    cases += [('download-missing-state', download),
+              ('download-policy-preflight', [*download, *state]),
+              ('download-outgoing-telemetry', [*download, *state, '--with-telemetry',
+                                               '--telemetry', '127.0.0.1:1'])]
     rows = []
     for name, args in cases:
         result = subprocess.run([str(binary), *args], capture_output=True, text=True, timeout=4)
         # Fail closed after trusted parsing errors; exact diagnostics may differ from ordinary protocol rejection.
         assert result.returncode != 0 and 'READY' not in result.stdout and 'AUTH_OK' not in result.stdout, (name, result)
+        if name == 'download-policy-preflight':
+            # An exact typed failure proves entry dispatch reached the new command before opening Services.
+            assert result.returncode == 2 and 'DOWNLOAD_FAILED InvalidPolicy' in result.stderr, result
         rows.append(dict(name=name, exit_code=result.returncode, stdout=result.stdout, stderr=result.stderr))
     return dict(passed=True, cases=rows)
