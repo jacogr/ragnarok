@@ -26,6 +26,7 @@ proc `=destroy`*(writer: AtomicFileWriter) =
   requireClosed(writer)
   `=destroy`(writer.path)
 
+let noFollow {.importc: "O_NOFOLLOW", header: "<fcntl.h>".}: cint
 let exclusive {.importc: "LOCK_EX", header: "<sys/file.h>".}: cint
 let nonblocking {.importc: "LOCK_NB", header: "<sys/file.h>".}: cint
 let unlock {.importc: "LOCK_UN", header: "<sys/file.h>".}: cint
@@ -48,8 +49,13 @@ proc openAtomicFileWriter*(writer: var AtomicFileWriter, path: string): AtomicFi
   for character in path:
     if character == char(0): return AtomicFileError.InvalidPath # A C path cannot truncate the caller's intended identity.
   var lockPath = path & ".lock"
-  let descriptor = openLock(lockPath.toCString(), O_RDWR or O_CREAT or O_CLOEXEC, 0o600)
+  let descriptor = openLock(lockPath.toCString(), O_RDWR or O_CREAT or O_CLOEXEC or O_NONBLOCK or
+      noFollow, 0o600)
   if descriptor < 0: return AtomicFileError.IoFailure
+  var metadata = default(Stat)
+  if posix.fstat(descriptor, metadata) != 0 or not S_ISREG(metadata.st_mode):
+    discard posix.close(descriptor)
+    return AtomicFileError.IoFailure # Only a stable regular inode may arbitrate cooperative publication; FIFO/device locks cannot block or become live owners.
   if lock(descriptor, exclusive or nonblocking) != 0:
     let reason = posix.errno() # Closing must not overwrite the actual contention diagnostic.
     discard posix.close(descriptor)
