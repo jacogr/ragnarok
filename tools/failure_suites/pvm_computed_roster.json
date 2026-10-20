@@ -1,0 +1,110 @@
+{
+  "source": "tests/native/pvm_computed_roster.nim",
+  "build_name": "pvm-computed-roster",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-roster-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed roster default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-roster-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed roster source"
+    },
+    {
+      "identity": {
+        "origin": "bytes"
+      },
+      "arguments": [
+        "bytes"
+      ],
+      "name": "pvm-computed-roster-bytes",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed roster bytes"
+    },
+    {
+      "identity": {
+        "origin": "count"
+      },
+      "arguments": [
+        "count"
+      ],
+      "name": "pvm-computed-roster-count",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed roster count"
+    },
+    {
+      "identity": {
+        "origin": "core"
+      },
+      "arguments": [
+        "core"
+      ],
+      "name": "pvm-computed-roster-core",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed roster core"
+    },
+    {
+      "identity": {
+        "origin": "shards"
+      },
+      "arguments": [
+        "shards"
+      ],
+      "name": "pvm-computed-roster-shards",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed roster shards"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-roster-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed roster owner"
+    },
+    {
+      "identity": {
+        "origin": "active"
+      },
+      "arguments": [
+        "active"
+      ],
+      "name": "pvm-computed-roster-active",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed roster active"
+    },
+    {
+      "identity": {
+        "origin": "facts"
+      },
+      "arguments": [
+        "facts"
+      ],
+      "name": "pvm-computed-roster-facts",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed roster facts"
+    }
+  ]
+}
