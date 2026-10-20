@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded one-child command owns canonical Services and stable download callbacks through explicit teardown.
-## Startup accepts only explicit state/stage policies and one pinned loopback peer; no fixture or process-global inputs.
+## Startup accepts only explicit state/stage policies and a bounded pinned loopback peer list; no fixture or process-global inputs.
 
 import std/[syncio, monotimes, times]
 import std/posix/posix
@@ -39,32 +39,50 @@ proc identity(path: string, expected: var DownloadPeerKey): bool {.raises.} =
   true
 
 proc runDownload*(options: Options): DownloadCommandResult {.raises.} =
-  ## Open at most one endpoint; timeout/exhaustion/failure returns only after all callbacks and Services retire.
-  if not options.valid or options.argumentCount != 8 or options.argument(1) != "download" or
+  ## Open at most sixteen endpoints; timeout/exhaustion/failure returns only after all callbacks and Services retire.
+  if not options.valid or options.argumentCount < 8 or
+      options.argumentCount > 38 or (options.argumentCount - 8) mod 2 != 0 or options.argument(1) !=
+          "download" or
       not options.stateEnabled or options.telemetryEnabled:
     return DownloadCommandResult.InvalidOptions # This command cannot silently discard requested outgoing telemetry.
-  let port = number(options.argument(2), 65535)
   let timeout = number(options.argument(7), 120000)
-  if port == 0 or timeout == 0: return DownloadCommandResult.InvalidEndpoint
+  if timeout == 0: return DownloadCommandResult.InvalidEndpoint
   let policy = loadDownloadPolicy(options.argument(8))
   if policy.error != DownloadPolicyError.None: return DownloadCommandResult.InvalidPolicy
-  var key = default(DownloadPeerKey)
-  if not identity(options.argument(5), key): return DownloadCommandResult.InvalidIdentity
+  let limits = policy.value
+  let count = 1 + (options.argumentCount - 8) div 2
+  if uint64(count) > uint64(limits.schedule.peers): return DownloadCommandResult.InvalidPolicy
+  var ports = default(array[16, uint16])
+  var keys = default(array[16, DownloadPeerKey])
+  var peers: seq[DownloadPeerId] = @[]
+  for index in 0..<count:
+    # The original tuple supplies credentials shared by every additional PORT PEER pair.
+    let portArgument = if index == 0: 2 else: 9 + (index - 1) * 2
+    let peerArgument = if index == 0: 5 else: portArgument + 1
+    let port = number(options.argument(portArgument), 65535)
+    if port == 0: return DownloadCommandResult.InvalidEndpoint
+    ports[index] = uint16(port)
+    if not identity(options.argument(peerArgument), keys[index]):
+      return DownloadCommandResult.InvalidIdentity # No listener starts after a partially validated list.
+    for previous in 0..<index:
+      if keys[previous] == keys[index]: return DownloadCommandResult.InvalidIdentity # Aliases cannot multiply scheduler weight.
+      if ports[previous] == ports[index]: return DownloadCommandResult.InvalidEndpoint # One loopback endpoint has one configured principal.
+    peers.add(DownloadPeerId(uint64(index + 1))) # The shape cap proves IDs 1..16 and all argument arithmetic.
   var owner = default(Services)
   defer: owner.close() # Dispatcher teardown below must end every Services borrow first.
   if not owner.start(options, "download"): return DownloadCommandResult.StartupFailure
-  let limits = policy.value
   var preflight = default(BlockDownload)
   let admitted = preflight.begin(owner, [], limits.input, limits.candidate)
   if admitted.error != BlockDownloadError.None: return DownloadCommandResult.AdmissionFailure
   discard preflight.cancel(admitted.value) # Exact raw admission is checked before any outgoing TLS engine opens.
   var dispatcher = default(BlockDownloadLoop)
   defer: dispatcher.close() # Stable stack owner remains alive during native close callbacks on every exit.
-  if dispatcher.configure(owner, [DownloadPeerId(1)], [], limits, DownloadLoopTick(0)) !=
+  if dispatcher.configure(owner, peers, [], limits, DownloadLoopTick(0)) !=
       DownloadLoopError.None: return DownloadCommandResult.InvalidPolicy
-  if dispatcher.openPeer(DownloadPeerId(1), key, uint16(port), options.argument(3),
-      options.argument(4), options.argument(6)) != DownloadPeerError.None:
-    return DownloadCommandResult.TransportFailure
+  for index in 0..<count:
+    if dispatcher.openPeer(peers[index], keys[index], ports[index], options.argument(3),
+        options.argument(4), options.argument(6)) != DownloadPeerError.None:
+      return DownloadCommandResult.TransportFailure # Deferred close retires all earlier opened endpoints too.
   let started = getMonoTime()
   while true:
     let elapsed = (getMonoTime() - started).inMilliseconds

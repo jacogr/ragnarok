@@ -15,7 +15,7 @@ import ../../support/[application_candidate_context, accumulation_completion_con
   block_download_transport, arc_evidence]
 
 type Scenario = enum ## Each child process serves one explicitly selected wire outcome or identity pin.
-  Healthy, WrongKey, MissingFin, Empty, PreparationRefusal
+  Healthy, WrongKey, MissingFin, Empty, PreparationRefusal, Fallback
 
 proc policy(): DownloadLoopLimits =
   ## The fixture supplies every stage policy explicitly; command pauses require independent real-time budgets.
@@ -33,6 +33,63 @@ proc options(port: uint16, peer: string, timeout = "10000"): Options =
   ## Failed/default command parsing cannot retain a previous valid configuration.
   result = default(Options)
   assert parseOptions(arguments(port, peer, timeout), result), "valid startup options"
+proc peerOptions(port: uint16, peer: string, extra: openArray[string]): Options =
+  ## Additional positional pairs precede service controls, exactly as in the public CLI.
+  let base = arguments(port, peer, "10000")
+  var args: seq[string] = @[]
+  for index in 0..<8: args.add(base[index]) # Preserve the existing single-peer prefix.
+  for value in extra: args.add(value) # Malformed list shapes remain command-level refusals.
+  for index in 8..<base.len: args.add(base[index]) # Service controls always follow every positional pair.
+  result = default(Options)
+  assert parseOptions(args, result), "peer list option parsing"
+
+proc peerPreflight(peer: string) {.raises.} =
+  ## Refuse partial, aliased and oversized lists before touching canonical state or TLS.
+  var configured = policy()
+  configured.schedule.peers = ElementLimit(16)
+  writeFile("download-startup-policy.conf", encodeDownloadPolicy(configured))
+  assert runDownload(peerOptions(1, peer, ["2"])) == DownloadCommandResult.InvalidOptions,
+    "incomplete final pair"
+  for port in ["0", "01", "65536", "18446744073709551616", "-1", "x"]:
+    assert runDownload(peerOptions(1, peer, [port, peer])) == DownloadCommandResult.InvalidEndpoint,
+      "additional endpoint checked before native setup"
+  assert runDownload(peerOptions(1, peer, ["2", peer])) == DownloadCommandResult.InvalidIdentity,
+    "duplicate principal"
+  assert runDownload(peerOptions(1, peer, ["2", "missing-public-pin"])) ==
+      DownloadCommandResult.InvalidIdentity, "missing additional identity"
+  for width in [0, 31, 33]:
+    writeFile("download-startup-identity", repeat('x', width))
+    assert runDownload(peerOptions(1, peer, ["2", "download-startup-identity"])) ==
+        DownloadCommandResult.InvalidIdentity, "additional identity exact width"
+  let other = getEnv("RAGNAROK_TEST_PEER_A")
+  assert runDownload(peerOptions(1, peer, ["1", other])) == DownloadCommandResult.InvalidEndpoint,
+    "duplicate endpoint"
+  configured.schedule.peers = ElementLimit(1)
+  writeFile("download-startup-policy.conf", encodeDownloadPolicy(configured))
+  assert runDownload(peerOptions(1, peer, ["2", other])) == DownloadCommandResult.InvalidPolicy,
+    "explicit policy capacity"
+  configured.schedule.peers = ElementLimit(16)
+  writeFile("download-startup-policy.conf", encodeDownloadPolicy(configured))
+  var extra: seq[string] = @[]
+  defer:
+    for index in 2..17:
+      var path = "download-startup-pin-" & $index
+      discard posix.unlink(path.toCString()) # Every generated public pin retires even on refusal.
+  for index in 2..17:
+    let path = "download-startup-pin-" & $index
+    writeFile(path, repeat(char(index), 32))
+    extra.add(if index == 16: "65535" else: $index)
+    extra.add(path)
+    if index == 16:
+      # All sixteen valid distinct entries reach canonical startup; an invalid seed prevents outgoing setup.
+      let chain = readFile("download-startup-chain.json")
+      writeFile("download-startup-chain.json", "invalid")
+      assert runDownload(peerOptions(1, peer, extra)) == DownloadCommandResult.StartupFailure,
+        "sixteen peers pass atomic list preflight"
+      writeFile("download-startup-chain.json", chain)
+  assert runDownload(peerOptions(1, peer, extra)) == DownloadCommandResult.InvalidOptions,
+    "seventeenth peer refused before file or native work"
+
 proc pause() =
   ## Bounded child polling mirrors the production command's host pause without background threads.
   var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
@@ -94,8 +151,9 @@ proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario) 
   var servers = default(DownloadResponders)
   let mode = if scenario == MissingFin: NoFin else: DownloadTransferMode.Healthy
   let response = if scenario == Empty: @[0'u8, 0, 0, 0] else: frame
-  assert servers.openResponders(expected, response, mode), "real responder startup"
+  assert servers.openResponders(expected, response, mode, scenario == Fallback), "real responder startup"
   let port = servers.port(true)
+  let firstPort = servers.port(false)
   let child = posix.fork()
   assert int(child) >= 0, "responder process fork"
   if int(child) == 0:
@@ -104,8 +162,9 @@ proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario) 
       if not servers.poll(): posix.exitnow(3) # A native failure cannot become a successful command witness.
       pause()
     let count = servers.requestCount(true)
+    let firstCount = servers.requestCount(false)
     servers.close()
-    writeFile("download-startup-requests", $count)
+    writeFile("download-startup-requests", $firstCount & ":" & $count)
     posix.exitnow(0) # No copied parent ARC owner may run destructors after fork.
   servers.close() # Parent drops only its private post-fork engine/socket copies before dialing.
   var reaped = false
@@ -115,6 +174,9 @@ proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario) 
       var status = 0.cint
       discard posix.waitpid(child, status, 0) # Every parent failure path joins the bounded child.
   var configured = policy()
+  if scenario == Fallback:
+    configured.schedule.peers = ElementLimit(2)
+    configured.schedule.attempts = 2 # The empty first response must consume one genuine request before retry.
   if scenario in [WrongKey, MissingFin]:
     configured.stream.timeout = DownloadTimeout(50)
     configured.attemptTimeout = DownloadAttemptTimeout(
@@ -124,8 +186,11 @@ proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario) 
         0) # Raw admission succeeds; real guest preparation must refuse.
   writeFile("download-startup-policy.conf", encodeDownloadPolicy(configured))
   let peer = getEnv(if scenario == WrongKey: "RAGNAROK_TEST_PEER_A" else: "RAGNAROK_TEST_PEER_B")
-  let outcome = runDownload(options(port, peer))
-  let wanted = if scenario == Healthy: DownloadCommandResult.Adopted else: DownloadCommandResult.Exhausted
+  var selected = options(port, peer)
+  if scenario == Fallback:
+    selected = peerOptions(firstPort, getEnv("RAGNAROK_TEST_PEER_A"), [$port, peer])
+  let outcome = runDownload(selected)
+  let wanted = if scenario in [Healthy, Fallback]: DownloadCommandResult.Adopted else: DownloadCommandResult.Exhausted
   assert outcome == wanted, "actual command terminal outcome"
   writeFile("download-startup-stop", "stop")
   var status = 0.cint
@@ -133,7 +198,7 @@ proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario) 
   reaped = true
   assert WIFEXITED(status) and WEXITSTATUS(status) == 0, "responder successful exit"
   let requests = readFile("download-startup-requests")
-  assert requests == (if scenario == WrongKey: "0" else: "1"), "actual pinned target request count"
+  assert requests == (if scenario == WrongKey: "0:0" elif scenario == Fallback: "1:1" else: "0:1"), "actual pinned target request count"
 
 proc main() {.raises.} =
   ## Prepare a genuinely signed child/complete-map seed independently of the command's private canonical owner.
@@ -179,6 +244,7 @@ proc main() {.raises.} =
   for control in ["--with-telemetry", "--telemetry", "127.0.0.1:1"]:
     telemetry.add(control) # Append explicit controls without relying on unsupported sequence concatenation.
   assert not parseOptions(telemetry, selected), "unwired outgoing telemetry refused"
+  peerPreflight(peer)
   var owner = default(Services)
   var initial = default(Options)
   assert parseOptions(@["server", "--with-state", "--chain", "download-startup-chain.json",

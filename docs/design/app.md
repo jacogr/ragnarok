@@ -40,7 +40,7 @@ application integration work. See [the handoff contract](../../spec/application-
 
 `app/download_command.nim` owns stable Services and dispatcher lifetimes for the explicit
 `download` command. `app/download_policy.nim` loads a bounded, complete versioned policy file;
-no gas, stage, retry or network budget is inferred. One pinned loopback peer may supply one
+no gas, stage, retry or network budget is inferred. Up to sixteen explicitly pinned loopback peers may supply one
 child, with asynchronous preparation outside callbacks and success only after actual deferred adoption.
 The [startup contract](../../spec/application-download-startup.md) records the command,
 configuration schema and remaining production boundaries.
