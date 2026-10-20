@@ -39,8 +39,8 @@ under backend refusal; original/corrected/copy/detached lifetime, caller-state
 mutation isolation and 1000-cycle ARC release; compiler privacy/nominal guards
 and strict optimized result/accessor probes with genuine positive controls.
 
-Next: lookup-anchor age and linked-header ancestry/posterior-root checks against
-the same admitted chain endpoint, before signing eligibility and publication.
+Next: [source-bound lookup anchor](pvm-computed-lookup.md) age and linked-header
+ancestry/posterior-root checks against the same admitted endpoint, before signing eligibility.
 M1 framing is complete; full state serialization and whole-block parity remain open.
 
 Local evidence: checked optimized macOS ARM64 `make unit SUITE=pvm_computed_recent`
