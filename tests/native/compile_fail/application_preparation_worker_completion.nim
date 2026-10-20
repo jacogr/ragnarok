@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# @@Verification={"group": "privacy", "expected": "status"}
+
+## Private worker authority cannot be forged or retagged by callers.
+import ../../../src/app/preparation_worker
+let private = default(PreparationCompletion)
+discard private.status
