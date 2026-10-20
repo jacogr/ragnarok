@@ -109,3 +109,15 @@ bounded recovery and independently supplied context share the same file adapter.
 No state graph is retained between operations. Tests cover copied paths, repeated
 open, contenders, exact recovery after close/reopen and 1,000 complete owner/read
 lifetimes, plus actual ARC copy rejection and private native-child access.
+
+## Real whole-envelope write rollback
+
+Child-only kernel file-size ceilings exercise header-only, profile-only and map-
+only context changes. For each, zero/partial/one-byte-short writing must report
+actual IoFailure and preserve every old file byte. Exact/ample controls publish
+all new metadata and map bytes together. Independent child and joined-parent
+recovery agree with the expected context and reject the other context; producer
+limits cannot masquerade as native failure. No live writer/lock crosses fork.
+Private-directory removal witnesses temporary cleanup. These nine refusals and
+six controls cover process/kernel write behavior, not power loss or post-rename
+parent-directory synchronization failures.
