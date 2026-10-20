@@ -11,7 +11,8 @@ import ../../src/state/[computed_transition, computed_profile, computed_lookup, 
   erasure_layout, erasure_words, auditable_bundle, extrinsic_inputs, import_inputs, import_justification]
 import ../../src/chain/[genesis, parameters]
 import ../../src/codec/[assurances, bounded, header, block_codec, work_package, work_report, composite,
-  state_safrole, state_layout, state_trie, state_availability, state_authorization, state_disputes, state_privileges]
+  state_safrole, state_layout, state_trie, state_availability, state_authorization, state_disputes,
+  state_privileges, state_statistics]
 import ../../src/crypto/primitives
 import ../../src/bandersnatch/bandersnatch
 import ./[pvm_computed_transition, report_admission_context, pvm_input_refinement,
@@ -51,7 +52,7 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
     target = 0'u32, offender = false, repeatReporter = false,
     additionalCores: openArray[uint64] = [], distinctPackages = false,
         withReady = false, withRound = false, withExecution = false,
-            invalidEntry = false): ComputedRosterFixture =
+            invalidEntry = false, withComposition = false): ComputedRosterFixture =
   ## Re-author a three-core complete signed prefix; optional parent9 -> posterior6 is a real epoch transition.
   let base = transitionFixture(epoch = shrink, withReady = withReady, withExecution = withExecution,
       invalidEntry = invalidEntry)
@@ -77,6 +78,16 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
   var writes = @[StateWrite(kind: StateWriteKind.Put, key: assignments.key,
       value: assignments.value),
     StateWrite(kind: StateWriteKind.Put, key: poolEntry.key, value: poolEntry.value)]
+  if withComposition:
+    # Parent statistics are genuine original serialized input, before the final root, signing and current PVM work.
+    var activity = default(ActivityState)
+    activity.validators[StatisticsEpoch.Current] = newSeq[ValidatorActivity](6)
+    activity.validators[StatisticsEpoch.Previous] = newSeq[ValidatorActivity](6)
+    activity.cores = newSeq[CoreActivity](3)
+    let entry = activityStateEntry(activity, ActivityConfig(cores: CoreCount(3),
+      current: ValidatorCount(6), previous: ValidatorCount(6), maxServices: ElementLimit(4),
+      maxBytes: ByteLimit(4096))).value
+    writes.add(StateWrite(kind: StateWriteKind.Put, key: entry.key, value: entry.value))
   if withExecution:
     # Complete original fixed authorization queues enter the map before its root and every current computation.
     var queues = newSeq[AuthorizerRow](3)

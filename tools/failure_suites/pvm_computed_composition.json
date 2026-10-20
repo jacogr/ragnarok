@@ -1,0 +1,110 @@
+{
+  "source": "tests/native/pvm_computed_composition.nim",
+  "build_name": "pvm-computed-composition",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-composition-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed composition default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-composition-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed composition source"
+    },
+    {
+      "identity": {
+        "origin": "early"
+      },
+      "arguments": [
+        "early"
+      ],
+      "name": "pvm-computed-composition-early",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed composition early"
+    },
+    {
+      "identity": {
+        "origin": "late"
+      },
+      "arguments": [
+        "late"
+      ],
+      "name": "pvm-computed-composition-late",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed composition late"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-composition-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed composition owner"
+    },
+    {
+      "identity": {
+        "origin": "plan"
+      },
+      "arguments": [
+        "plan"
+      ],
+      "name": "pvm-computed-composition-plan",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed composition plan"
+    },
+    {
+      "identity": {
+        "origin": "reason-default"
+      },
+      "arguments": [
+        "reason-default"
+      ],
+      "name": "pvm-computed-composition-reason-default",
+      "diagnostic": "outcome.status == CompositionFailure",
+      "description": "Computed composition reason-default"
+    },
+    {
+      "identity": {
+        "origin": "reason-success"
+      },
+      "arguments": [
+        "reason-success"
+      ],
+      "name": "pvm-computed-composition-reason-success",
+      "diagnostic": "outcome.status == CompositionFailure",
+      "description": "Computed composition reason-success"
+    },
+    {
+      "identity": {
+        "origin": "reason-source"
+      },
+      "arguments": [
+        "reason-source"
+      ],
+      "name": "pvm-computed-composition-reason-source",
+      "diagnostic": "outcome.status == CompositionFailure",
+      "description": "Computed composition reason-source"
+    }
+  ]
+}

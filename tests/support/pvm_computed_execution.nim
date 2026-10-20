@@ -8,10 +8,10 @@ import ../../src/codec/[assurances, bounded, c2_records]
 import ./[pvm_computed_round, accumulation_runner_context, pvm_accumulation_context]
 
 proc computedExecutionFixture*(withReady = true, withExecution = true,
-    invalidEntry = false): ComputedAccumulationRound =
+    invalidEntry = false, withComposition = false): ComputedAccumulationRound =
   ## Author original code/queues before root/signing/computation, then derive the genuine selected round.
   let source = roundFixture(withReady = withReady, withExecution = withExecution,
-      invalidEntry = invalidEntry)
+      invalidEntry = invalidEntry, withComposition = withComposition)
   prepareComputedRound(source, computedRoundConfig(source)).value
 proc computedExecutionLimits*(): AccumulationRunnerLimits =
   ## Match authenticated three-core context while independently bounding service/input/engine capture.

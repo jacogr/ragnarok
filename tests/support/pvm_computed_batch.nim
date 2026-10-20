@@ -15,12 +15,13 @@ proc batchLimits*(): ComputedBatchLimits =
   ComputedBatchLimits(guarantees: ElementLimit(3), reporters: ElementLimit(9),
     bytes: ByteLimit(100000), headerBytes: ByteLimit(4096))
 proc batchEnvelopes*(repeatReporter = false, distinctPackages = false, withReady = false,
-    withRound = false, withExecution = false, invalidEntry = false): seq[
+    withRound = false, withExecution = false, invalidEntry = false, withComposition = false): seq[
         ComputedGuaranteeEnvelope] =
   ## Share the actual original map and posterior snapshot rather than rebuilding equal-root stand-ins.
   let fixture = rosterFixture(rotation = 4, repeatReporter = repeatReporter,
     additionalCores = [1'u64], distinctPackages = distinctPackages, withReady = withReady,
-        withRound = withRound, withExecution = withExecution, invalidEntry = invalidEntry)
+        withRound = withRound, withExecution = withExecution, invalidEntry = invalidEntry,
+            withComposition = withComposition)
   let sources = @[fixture.source, fixture.siblings[0]]
   result = newSeq[ComputedGuaranteeEnvelope](sources.len)
   for i, source in sources:
