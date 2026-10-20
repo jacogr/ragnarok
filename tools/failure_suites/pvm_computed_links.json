@@ -1,0 +1,129 @@
+{
+  "source": "tests/native/pvm_computed_links.nim",
+  "build_name": "pvm-computed-links",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-links-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed links default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-links-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed links source"
+    },
+    {
+      "identity": {
+        "origin": "shape"
+      },
+      "arguments": [
+        "shape"
+      ],
+      "name": "pvm-computed-links-shape",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed links shape"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-computed-links-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed links limit"
+    },
+    {
+      "identity": {
+        "origin": "witness"
+      },
+      "arguments": [
+        "witness"
+      ],
+      "name": "pvm-computed-links-witness",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed links witness"
+    },
+    {
+      "identity": {
+        "origin": "package"
+      },
+      "arguments": [
+        "package"
+      ],
+      "name": "pvm-computed-links-package",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed links package"
+    },
+    {
+      "identity": {
+        "origin": "root"
+      },
+      "arguments": [
+        "root"
+      ],
+      "name": "pvm-computed-links-root",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed links root"
+    },
+    {
+      "identity": {
+        "origin": "count"
+      },
+      "arguments": [
+        "count"
+      ],
+      "name": "pvm-computed-links-count",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed links count"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-links-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed links owner"
+    },
+    {
+      "identity": {
+        "origin": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "pvm-computed-links-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed links index"
+    },
+    {
+      "identity": {
+        "origin": "empty"
+      },
+      "arguments": [
+        "empty"
+      ],
+      "name": "pvm-computed-links-empty",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed links empty"
+    }
+  ]
+}
