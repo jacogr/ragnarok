@@ -8,7 +8,8 @@ import std/assertions
 import ../../src/state/[accumulation_inputs, accumulation_operands, accumulation_queue,
   accumulation_service, accumulation_invocation, accumulation_machine, accumulation_dispatch,
   accumulation_batch, store]
-import ../../src/codec/[bounded, composite, header, work_digest, c2_records, state_privileges,
+import ../../src/codec/[assurances, bounded, composite, header, work_digest, c2_records,
+  state_privileges,
   state_workqueues, state_accounts, state_service_values, state_authorization, state_safrole,
   state_layout, state_trie]
 import ../../src/pvm/[initialize, machine, program, step, host_fetch, gas]
@@ -89,19 +90,28 @@ proc batchFixture*(first = BatchEnding.Halt, second = BatchEnding.Halt,
     writes = 64'u64, incoming = true, firstEnvelope: seq[byte] = @[],
     secondEnvelope: seq[byte] = @[], extra: seq[StateEntry] = @[],
     assigners: seq[ServiceIndex] = @[], manager = 0'u32,
-    always: seq[AlwaysAccumulate] = @[], allowanceLimit = 0'u64): BatchFixture =
+    always: seq[AlwaysAccumulate] = @[], allowanceLimit = 0'u64, cores = 2'u64, delegator = 0'u32,
+    stagingCount = 6): BatchFixture =
   ## Capture both ready-code services and independent canonical requests in the same complete immutable prior.
   ## Optional copied envelopes/extra entries authorize cross-host witnesses without changing default callers.
-  var config = pvmContextConfig()
+  var config = pvmContextConfig(cores)
+  if cores == 3:
+    config.totalBytes = ByteLimit(12000) # Three-core/nine-validator source chapters exceed the older two-core aggregate ceiling.
+  config.validators = ValidatorCount(uint64(stagingCount)) # Explicit initial roster count remains distinct from the host successor count.
   config.privileges.maxAlways = ElementLimit(allowanceLimit) # Explicit manager fixtures opt into allowance capture; earlier callers retain zero capacity.
-  assert assigners.len == 0 or assigners.len == 2 # Optional current roles enter the same authenticated fixture map.
-  let selectedAssigners = if assigners.len == 0: @[ServiceIndex(0), ServiceIndex(0)] else: assigners
+  assert assigners.len == 0 or assigners.len == int(
+      cores) # Optional current roles enter the same authenticated fixture map.
+  let selectedAssigners = if assigners.len == 0: newSeq[ServiceIndex](int(cores)) else: assigners
+  var queues = newSeq[AuthorizerRow](int(cores))
+  for core in 0..<int(cores):
+    queues[core] = newSeq[AuthorizerHash](80) # Optional three-core fixtures retain the same fixed queue shape.
   var entries = @[
-    authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80), newSeq[
-        AuthorizerHash](80)], config.queues).value,
-    validatorEntry(ValidatorChapter.Staging, newSeq[StateValidator](6), config.staging).value,
+    authorizationEntry(AuthorizationKind.Queues, queues, config.queues).value,
+    validatorEntry(ValidatorChapter.Staging, newSeq[StateValidator](stagingCount),
+        config.staging).value,
     privilegeStateEntry(PrivilegeState(manager: ServiceIndex(manager),
-        assigners: selectedAssigners, always: always), config.privileges).value,
+        assigners: selectedAssigners, delegator: ServiceIndex(delegator), always: always),
+            config.privileges).value,
     StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 8]),
     serviceStorageEntry(ServiceIndex(42), @[1'u8], @[2'u8], ServiceEntryLimits(keyBytes: ByteLimit(
         1), valueBytes: ByteLimit(1))).value,
@@ -136,18 +146,22 @@ proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128
     accountWriteKeys = ElementLimit(0),
     createdAccounts = ElementLimit(0),
     deletedAccounts = ElementLimit(0), allowanceLimit = 0'u64,
-    serviceProbes = ServiceProbeLimit(0), entropy = default(StateEntropyWord)):
+    serviceProbes = ServiceProbeLimit(0), entropy = default(StateEntropyWord), cores = 2'u64,
+        stagingCount = 6, codeBytes = 512'u64, preimageBytes = 1024'u64):
     AccumulationDispatchResult =
   ## Prepare and execute exactly one indexed service against the fixture's own immutable input/prior owners.
   ## Explicit finite execution policies support integrations; defaults retain the earlier supported path.
   let service = prepareAccumulationService(fixture.inputs, InvocationServiceIndex(index),
-    fixture.state.snapshot.value, slot, AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512),
-        preimageBytes: ByteLimit(1024))).value
+    fixture.state.snapshot.value, slot, AccumulationServiceConfig(codeLimit: ServiceCodeLimit(
+        codeBytes), preimageBytes: ByteLimit(preimageBytes))).value
   let invoked = prepareAccumulationInvocation(service, entropy, ServiceProbeLimit(1)).value
   let prepared = initializeAccumulationMachine(invoked, InitializationLimits(
-      envelope: InitializationByteLimit(512),
+      envelope: InitializationByteLimit(codeBytes),
     program: ProgramByteLimit(256), jumps: JumpCountLimit(0), pages: PageLimit(5))).value
-  var config = pvmContextConfig()
+  var config = pvmContextConfig(cores)
+  if cores == 3:
+    config.totalBytes = ByteLimit(12000) # Three-core/nine-validator source chapters exceed the older two-core aggregate ceiling.
+  config.validators = ValidatorCount(uint64(stagingCount)) # Explicit initial roster count remains distinct from the host successor count.
   config.privileges.maxAlways = ElementLimit(allowanceLimit) # Real bless guests explicitly opt into bounded dictionary growth/shrinkage.
   executeAccumulationMachine(prepared, parameters,
     FetchAccumulationLimits(items: ElementLimit(1), bytes: ByteLimit(512),

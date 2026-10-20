@@ -206,12 +206,14 @@ for checkpoint in [false, true]:
   let suffix = (if checkpoint: @[@[10'u8, 18], @[0'u8]] else: @[@[0'u8]])
   let failed = run(source(suffix = suffix))
   assert failed.value.exit == StepExit.Panic, "authored terminal panic"
+  assert normalizeAccumulationOutcome(failed).value.outcomeContext.value.effectInfo.value.hasStaging == checkpoint
   checkStaging(normalizeAccumulationOutcome(failed).value.outcomeContext.value,
     (if checkpoint: payload() else: zeros)) # Select the coherent roster and C7 version together.
   let exhausted = run(source(credit = price(valid)+4000, suffix = (if checkpoint:
     @[@[10'u8, 18], @[10'u8, 17], @[50'u8, 0]] else: @[@[10'u8, 17], @[50'u8, 0]])))
   assert exhausted.error == AccumulationDispatchError.None and exhausted.value.exit ==
       StepExit.OutOfGas, "second designate is unaffordable"
+  assert normalizeAccumulationOutcome(exhausted).value.outcomeContext.value.effectInfo.value.hasStaging == checkpoint
   checkStaging(normalizeAccumulationOutcome(exhausted).value.outcomeContext.value,
     (if checkpoint: payload() else: zeros)) # OOG retains the same exact exceptional checkpoint.
 # Later yield, storage and assign publish new versions without losing the accepted staging roster.
@@ -219,6 +221,7 @@ let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 26],
   registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
   registerImmediate(10, 3), @[10'u8, 5], @[50'u8, 0]]))
 checkStaging(context(preserved), payload())
+assert context(preserved).effectInfo.value.hasStaging, "yield/storage preserve designation provenance"
 assert context(preserved).effectInfo.value.hasYield, "yield preserved beside staging and storage"
 let assigned = run(source(suffix = @[registerImmediate(7, 0), registerImmediate(8, 65536),
   registerImmediate(9, 99), @[10'u8, 16], @[50'u8, 0]]))

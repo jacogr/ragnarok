@@ -5,8 +5,8 @@
 ## Supports explicit executed subsets or complete input coverage with certified skips; no round/block certificate is claimed.
 
 import std/algorithm
-import ../codec/[natural, bounded, composite, header, state_accounts, state_authorization,
-    state_privileges, state_layout, state_trie]
+import ../codec/[assurances, natural, bounded, composite, header, state_accounts,
+    state_authorization, state_privileges, state_safrole, state_layout, state_trie]
 import ./[accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_context,
   accumulation_effects, accumulation_dispatch, accumulation_outcome, accumulation_provisions,
   accumulation_skip, accumulation_transfers,
@@ -14,15 +14,17 @@ import ./[accumulation_inputs, accumulation_service, accumulation_invocation, ac
 
 type
   AccumulationBatchLimits* = object ## Account merge work is independently bounded from union traversal/copy/wire work.
-    accounts*: ElementLimit ## Maximum invoking metadata records copied for credits or supported selected changes.
+    accounts*: ElementLimit  ## Maximum invoking metadata records copied for credits or supported selected changes.
     deletedAccounts*: ElementLimit ## Maximum captured ejection facts inspected; participating targets remain gated.
     createdAccounts*: ElementLimit ## Maximum captured creation facts inspected, including prior-ID recreations.
     selfWrites*: ElementLimit ## Maximum unique nonmetadata self keys copied across all selected executions; zero preserves the gate.
     selfValueBytes*: ByteLimit ## Aggregate copied final self values; deletions consume a key but no value bytes.
     assignCores*: ElementLimit ## Complete positional core work when selected assign/bless exists; zero preserves the gate.
-    assignBytes*: ByteLimit ## Aggregate C(2) plus the larger original/output C(12) byte ceiling.
+    assignBytes*: ByteLimit  ## Aggregate C(2) plus the larger original/output C(12) byte ceiling.
     managerEntries*: ElementLimit ## Larger original/selected manager allowance dictionary; zero permits only empty dictionaries.
     managerBytes*: ByteLimit ## Aggregate original and selected manager C(12) bytes; zero preserves bless publication gate.
+    stagingValidators*: ElementLimit ## Larger original/selected roster count; zero preserves designation publication gate.
+    stagingBytes*: ByteLimit ## Aggregate original and selected canonical C(7) byte ceiling.
     provisions*: AccumulationProvisionUnionLimits ## Independent terminal union traversal, copy and wire ceilings.
   AccumulationBatchError* {.pure.} = enum ## Refusals expose only their reasons; no earlier credit, candidate root or partial terminal set escapes.
     Uninitialized,      ## Default result or plan without initialized ownership.
@@ -45,6 +47,7 @@ type
     executions*: int      ## Unique services with genuine completed executions.
     skipped*: int         ## Unique services with certified non-executing outcomes.
     completeInputs*: bool ## Every service in the retained input owner is represented exactly once.
+    stagingWrites*: int   ## One canonical C(7) write when selected designate requires publication.
     assignmentWrites*: int ## Two canonical global chapter writes when selected assign/bless requires publication.
     accountWrites*: int   ## Invoking metadata records prepared for credits or supported selected changes.
     deletedAccounts*: int ## Prior accounts absent from selected final domains and actually removed.
@@ -61,7 +64,7 @@ type
     prior: StateStoreSnapshot
     writes: seq[StateWrite]
     metadataWrites: int
-    assignmentWrites: int
+    assignmentWrites, stagingWrites: int
     selfBytes: uint64
     selfWriteCount, createdCount, deletedCount: int
     terminal: PreparedTerminalAccumulationProvisions
@@ -145,7 +148,8 @@ proc batchInfo*(plan: PreparedAccumulationBatch): AccumulationBatchResult[Accumu
   AccumulationBatchResult[AccumulationBatchInfo](status: AccumulationBatchError.None,
     completed: AccumulationBatchInfo(executions: data.terminal.terminalProvisionInfo.value.provisions.contexts,
       skipped: data.skipped, completeInputs: data.completeInputs,
-      assignmentWrites: data.assignmentWrites, accountWrites: data.metadataWrites,
+      stagingWrites: data.stagingWrites, assignmentWrites: data.assignmentWrites,
+      accountWrites: data.metadataWrites,
       deletedAccounts: data.deletedCount,
       createdAccounts: data.createdCount,
       selfWrites: data.selfWriteCount,
@@ -236,7 +240,7 @@ func selectedRole(original, manager, owner: ServiceIndex): ServiceIndex =
   if uint32(manager) == uint32(original): owner
   else: manager # A changed manager choice wins independently of execution order.
 
-# Merge manager roles/allowances and original-assigner queues; validator staging remains gated.
+# Merge manager roles/allowances and original-assigner queues independently of staging publication.
 
 proc assignmentWrites(selected: PreparedTerminalAccumulationProvisions,
     initial: InitialAccumulationContext, limits: AccumulationBatchLimits): AccumulationBatchResult[
@@ -326,6 +330,56 @@ proc assignmentWrites(selected: PreparedTerminalAccumulationProvisions,
         value: encodedQueues.value.value),
       StateWrite(key: encodedRoles.value.key, kind: StateWriteKind.Put,
           value: encodedRoles.value.value)])
+
+# Select only the original delegator's roster, independently of any manager handoff or execution order.
+proc stagingWrites(selected: PreparedTerminalAccumulationProvisions,
+    initial: InitialAccumulationContext, limits: AccumulationBatchLimits): AccumulationBatchResult[
+        seq[StateWrite]] =
+  template fail(reason: AccumulationBatchError) =
+    ## Refuse without exposing a partial roster or proposed chapter write.
+    return AccumulationBatchResult[seq[StateWrite]](status: reason)
+  var designated = false
+  let original = initial.contextStaging.value
+  let delegator = initial.contextPrivileges.value.privilegeInfo.value.delegator
+  var roster = original
+  for index in 0..<selected.terminalProvisionInfo.value.provisions.contexts:
+    let outcome = selected.terminalProvisionOutcomeAt(AccumulationProvisionSourceIndex(uint64(index))).value
+    let context = outcome.outcomeContext.value
+    designated = designated or context.effectInfo.value.hasStaging
+    if uint32(outcome.outcomeInfo.value.service) == uint32(delegator):
+      roster = context.effectStaging.value # New delegators never replace the source required by pinned accpar.
+  if not designated:
+    return AccumulationBatchResult[seq[StateWrite]](status: AccumulationBatchError.None,
+      completed: @[]) # Existing no-designate callers retain their prior work path and budgets.
+  let count = roster.validatorCount.value
+  if uint64(max(original.validatorCount.value, count)) > uint64(limits.stagingValidators) or
+      count > high(int) div sizeof(StateValidator):
+    fail(AccumulationBatchError.LimitExceeded) # Bound both roster domains and typed/native storage before capture.
+  let config = ValidatorStateConfig(cores: CoreCount(uint64(
+      initial.contextPrivileges.value.privilegeInfo.value.cores)),
+    validators: limits.stagingValidators, maxBytes: limits.stagingBytes)
+  let measured = stateValidatorSize(ValidatorCount(uint64(count)), config)
+  if measured.error in {StateComponentError.LimitExceeded, StateComponentError.LengthOverflow}:
+    fail(AccumulationBatchError.LimitExceeded) # Canonical compact-count and record extents remain codec-owned.
+  if measured.error != StateComponentError.None:
+    fail(AccumulationBatchError.UnsupportedAccountEffects) # Genuine selected rosters must retain the chain population domain.
+  let prior = initial.contextAccounts.value.lookup(chapterKey(StateChapter(7)))
+  if prior.error != StateStoreError.None:
+    fail(AccumulationBatchError.UnsupportedAccountEffects) # Missing source state cannot masquerade as an empty roster.
+  let priorBytes = uint64(prior.value.byteLength)
+  if priorBytes > uint64(limits.stagingBytes) or uint64(measured.value) > uint64(
+      limits.stagingBytes)-priorBytes:
+    fail(AccumulationBatchError.LimitExceeded) # Charge aggregate original/output bytes before copying or encoding any record.
+  var records = newSeq[StateValidator](count)
+  for index in 0..<count:
+    records[index] = roster.validatorAt(StateValidatorIndex(uint64(
+        index))).value # Preserve all opaque fields, duplicates and protocol order.
+  let encoded = validatorEntry(ValidatorChapter.Staging, records, config)
+  if encoded.error != StateComponentError.None:
+    fail(AccumulationBatchError.UnsupportedAccountEffects) # No partial codec output escapes an invariant refusal.
+  AccumulationBatchResult[seq[StateWrite]](status: AccumulationBatchError.None,
+    completed: @[StateWrite(key: encoded.value.key, kind: StateWriteKind.Put,
+        value: encoded.value.value)])
 
 # Shared preparation proves source ownership before retaining credits or normalizing genuine executions.
 proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
@@ -508,6 +562,7 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
       writes.add(StateWrite(key: key, kind: StateWriteKind.Put, value: record.value.bytes))
       inc metadataWrites
   var globalWrites = 0
+  var rosterWrites = 0
   if executions.len > 0:
     let initial = executions[0].effects.effectsSource.value.initialContext(
         AccumulationDimension.Regular).value
@@ -518,6 +573,12 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
         AccumulationBatchError.LimitExceeded)
     for write in extra: writes.add(write) # Global and account writes commit together on one private complete-map fork.
     globalWrites = extra.len
+    let staging = stagingWrites(selected.value, initial, limits)
+    if staging.error != AccumulationBatchError.None: fail(staging.error)
+    if writes.len > high(int) div sizeof(StateWrite)-staging.value.len:
+      fail(AccumulationBatchError.LimitExceeded) # Prove the combined descriptor extent before appending C(7).
+    for write in staging.value: writes.add(write) # The final key-uniqueness and private-fork checks cover this chapter too.
+    rosterWrites = staging.value.len
   var keys = newSeq[StateKey](writes.len)
   for index, write in writes:
     keys[index] = write.key # Fixed-key scratch detects cross-service or namespace conflicts without copying payloads.
@@ -528,6 +589,7 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
   AccumulationBatchResult[PreparedAccumulationBatch](status: AccumulationBatchError.None,
     completed: PreparedAccumulationBatch(data: BatchData(inputs: inputs, prior: prior,
       writes: writes, metadataWrites: metadataWrites, assignmentWrites: globalWrites,
+      stagingWrites: rosterWrites,
       selfBytes: selfBytes,
       selfWriteCount: int(selfWrites), createdCount: int(createdCount), deletedCount: int(
           deletedCount),

@@ -239,8 +239,8 @@ proc checkManagerOnly() =
   var caller = fixture.state
   let published = applyAccumulationBatch(caller, plan).value
   assert array[32, byte](published.commitment.root) == array[32, byte](wanted.root)
-proc checkUnsupported() =
-  ## A real designate between two successful bless calls keeps unsupported staging ancestry sticky.
+proc checkStagingGate() =
+  ## A real designate between two successful bless calls retains its independent staging publication budget.
   let program = guestEnvelope([registerImmediate(7, 42), registerImmediate(8, 196608),
     registerImmediate(9, 42), registerImmediate(10, 0), registerImmediate(11, 0),
     registerImmediate(12, 0), @[10'u8, 15], registerImmediate(7, 196608),
@@ -254,9 +254,10 @@ proc checkUnsupported() =
   assert a.error == AccumulationDispatchError.None
   let selected = normalizeAccumulationOutcome(a).value.outcomeContext.value
   assert selected.effectInfo.value.hasPrivileges
-  assert selected.effectAccountScope.value == AccumulationAccountScope.Unsupported
+  assert selected.effectInfo.value.hasStaging
+  assert selected.effectAccountScope.value == AccumulationAccountScope.Initial
   assert prepareCompleteAccumulationBatch(fixture.inputs, fixture.state.snapshot.value, [a, b], [],
-    HeaderSlot(128), policy(0, 0)).error == AccumulationBatchError.UnsupportedAccountEffects
+    HeaderSlot(128), policy(0, 0)).error == AccumulationBatchError.LimitExceeded
 proc main() =
   ## Exercise manager changes, R fallback, terminal rollback, restored-equal occurrence, growth/shrinkage and independent execution order.
   check(true, Halt, 2)
@@ -270,7 +271,7 @@ proc main() =
   checkSubset()
   checkStoreLimit()
   checkManagerOnly()
-  checkUnsupported()
+  checkStagingGate()
   let before = getOccupiedMem()
   for iteration in 0..<1000:
     let source = batchFixture()

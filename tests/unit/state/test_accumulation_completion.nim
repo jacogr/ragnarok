@@ -5,8 +5,10 @@
 ## Genuine stopped driver histories compose complete candidates with manual-root parity and reason-preserving atomic refusal.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[bounded, report_owned, state_trie]
-import ../../../src/state/[accumulation_completion, accumulation_driver, accumulation_execution,
+import ../../../src/codec/[bounded, report_owned, state_layout, state_trie]
+import ../../../src/pvm/machine
+import ../../../src/state/[accumulation_completion, accumulation_driver, accumulation_runner,
+  accumulation_execution,
   accumulation_round, accumulation_queue, report_admission, block_transition, block_admission,
   accumulation_finalization, accumulation_outputs, accumulation_history, accumulation_ready,
   accumulation_recent, accumulation_times, accumulation_statistics, accumulation_validators,
@@ -15,7 +17,7 @@ import ../../../src/state/[accumulation_completion, accumulation_driver, accumul
   accumulation_continuation_execution, accumulation_reentry, accumulation_effects, store]
 import ../../support/[accumulation_completion_context, accumulation_activity_context,
   accumulation_runner_context, accumulation_reentry_context, accumulation_execution_context,
-  pvm_accumulation_context, pvm_accumulation_provision, arc_evidence]
+  pvm_accumulation_context, pvm_accumulation_program, pvm_accumulation_provision, arc_evidence]
 
 # Refuse provider work only after real authenticated source/terminal construction.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -91,12 +93,51 @@ proc yieldProgram(): seq[byte] =
   for octet in pvmEnvelope([0'u8, 0, 9, 0, 0, 0, 0, 0, 10, 26, 50, 0, 191, 0]):
     result.add(octet) # Preserve complete service metadata and JAM envelope framing.
 
+proc checkStagingPublication(base: OwnedReport) =
+  ## Existing state runner/driver/completion APIs preserve a real original-delegator C(7) change through final publication.
+  var payload = newSeq[byte](32)
+  for index in 0..<32:
+    payload[index] = byte(index+1) # The rest of the six-validator raw roster comes from mapped zero padding.
+  var code = @[0'u8]
+  for octet in guestEnvelope([registerImmediate(7, 196608), registerImmediate(8, 6),
+    @[10'u8, 17], @[50'u8, 0]], writable = payload):
+    code.add(octet) # Preserve ordinary metadata/envelope framing in the signed parent.
+  let fixture = executionFixture(base, firstProgram = code, delegator = 42,
+    extra = @[activityParentEntry()])
+  let prior = fixture.state.snapshot.value
+  var execution = runnerLimits()
+  execution.copyBytes = MemoryByteLimit(2016)
+  execution.completion.batch.stagingValidators = ElementLimit(6)
+  execution.completion.batch.stagingBytes = ByteLimit(4034)
+  let initial = runBlockAccumulation(fixture.round, runnerParameters(), execution)
+  assert initial.error == AccumulationRunnerError.None
+  let stopped = driveAccumulation(initial.value, runnerParameters(), completionDriverLimits()).value
+  let composed = prepareStoppedAccumulation(stopped, completionLimits())
+  assert composed.error == AccumulationCompletionError.None
+  var expected = newSeq[byte](2017)
+  expected[0] = 6
+  for index in 0..<32:
+    expected[index+1] = byte(index+1) # Literal C(7) framing and ordered first record are independent of the production codec.
+  let candidate = composed.value.accumulationConsensusState.value
+  let key = chapterKey(StateChapter(7))
+  assert candidate.lookup(key).value.bytes == expected
+  assert prior.lookup(key).value.bytes != expected
+  var caller = fixture.state
+  failHash(1)
+  let published = publishAccumulationState(caller, composed.value)
+  assert published.error == AccumulationPublicationError.None and hashCalls() == 0
+  failHash(0)
+  assert sameStateSnapshot(caller.snapshot.value, candidate)
+  assert published.value.lookup(key).value.bytes == expected
+  assert sameStateSnapshot(fixture.state.snapshot.value, prior), "signed parent aliases survive private completion and publication"
+
 proc main() {.raises.} =
   # The native runner verifies the static report witness before the test creates real signatures and state commitments.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var wire = newSeq[byte](raw.len)
   for index in 0..<raw.len: wire[index] = byte(raw[index])
   let base = decodeOwnedReport(wire, 2).value
+  checkStagingPublication(base)
   discard scenario(base)
   discard scenario(base, guarantees = 2)
   discard scenario(base, guarantees = 2, available = true, blobs = true, provided = true)

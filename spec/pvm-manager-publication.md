@@ -28,7 +28,9 @@ manager, copied observations, zero/exact/one-below quotas, inherited-store refus
 hash rollback/retry, literal complete-map entries/roots and ARC release. Retain
 unsupported staging and affected host/account/publication regressions.
 
-Next: selected validator staging publication. M1 framing remains complete; full
+[The following staging increment](pvm-staging-publication.md) implements selected
+validator staging publication. Next: converge the finalized-accumulation successor
+with state block composition. M1 framing remains complete; full
 state serialization and block parity remain open. Full/light separation and
 remaining whole-block validity gates are unchanged.
 
