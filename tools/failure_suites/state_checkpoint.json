@@ -22,6 +22,28 @@
         "reason": "refused"
       },
       "name": "state-checkpoint-refused"
+    },
+    {
+      "arguments": [
+        "decode-default"
+      ],
+      "description": "Checkpoint extraction decode-default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "decode-default"
+      },
+      "name": "state-checkpoint-decode-default"
+    },
+    {
+      "arguments": [
+        "decode-refused"
+      ],
+      "description": "Checkpoint extraction decode-refused",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "decode-refused"
+      },
+      "name": "state-checkpoint-decode-refused"
     }
   ],
   "crypto_library": "crypto",

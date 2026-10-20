@@ -28,6 +28,24 @@ hashing, publication or disk I/O. Callers must respect any active worker lease.
 The native suite verifies exact empty/nonempty layout, fixed-width count/lengths,
 sorted keys, copied root, every short output ceiling, exact/max ceilings,
 independent output mutation, historical snapshots and 1,000 ARC release cycles.
-Strict decoding/root verification, crash-safe file publication, startup recovery,
+Crash-safe file publication, startup recovery,
 canonical head binding and separate light-state persistence follow in later layers.
 M1 framing is complete; full state serialization and JAM parity remain open.
+
+## Strict restoration
+
+`decodeFullCheckpoint(input, StateStoreLimits, ByteLimit)` first checks the exact
+version, fixed overhead, full-width counts/lengths, strictly increasing keys,
+complete consumption and entry/per-value/aggregate byte ceilings. No record is
+allocated until the entire borrowed input passes structural/policy checks. Input
+must remain stable for this synchronous call. It then owns raw entries, constructs
+the complete store under the supplied trie/node ceilings and compares every byte
+of its recomputed root with the envelope root. Only complete success returns a
+store; no partial map or root is published. Restored stores inherit the caller's
+explicit subsequent mutation budgets. This verifies internal integrity, not an
+externally trusted chain head or adversarial file authenticity.
+
+Native checks cover exact round trips, every truncated prefix and short input
+ceiling, all single-byte tampering, duplicate/reversed keys, trailers, uint64
+length attacks, all store ceilings, source mutation, independent branches,
+empty maps and 1,000 successful/refused restoration ARC cycles.
