@@ -66,3 +66,24 @@ publication follows next. These APIs are not called from networking callbacks.
 Real-file native tests cross a read chunk, enforce exact/short/zero budgets,
 reject missing/directory/invalid paths and malformed files, preserve inner policy
 errors and retained owners, and repeat successful/refused loads for ARC cleanup.
+
+## Synchronized atomic publication
+
+`saveFullCheckpoint(path, snapshot, byteLimit)` encodes before opening filesystem
+resources, creates a unique 0600 sibling with standard POSIX `mkstemp`, handles
+short writes, syncs and closes the file, atomically renames it over the destination,
+and syncs the parent directory. Success retains the exact source snapshot. Every
+pre-rename failure closes and attempts to remove its own temporary, preserving
+the previous destination. A cleanup I/O failure or process crash can leave an
+orphan sibling; readers never select temporary filenames. A failed parent sync after rename returns `PublishedUnsynced`: new
+complete bytes are visible, while durable publication has not been established.
+Callers serialize writers and keep directory names/current working directory stable
+during the synchronous operation. This is one file's publication, not a multi-file
+transaction or an externally authenticated chain-head recovery protocol. Storage
+hardware/filesystem synchronization guarantees still govern power-loss behavior.
+
+Real native tests verify initial publication/replacement, exact load round trips,
+preflight rollback, missing parents, a real post-write rename refusal, retained
+owners and 1,000 file-plus-directory-sync publication ARC cycles. The small libc
+bindings compile against standard headers; compiler/runtime/dependency pins stay
+unchanged. System-call failure injection and recovery policy follow in later layers.
