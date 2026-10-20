@@ -1,0 +1,63 @@
+{
+  "source": "tests/native/pvm_export_commitment.nim",
+  "build_name": "pvm-export-commitment",
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-export-commitment-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Export commitment default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-export-commitment-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Export commitment source"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-export-commitment-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Export commitment limit"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-export-commitment-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Export commitment owner"
+    },
+    {
+      "identity": {
+        "origin": "page"
+      },
+      "arguments": [
+        "page"
+      ],
+      "name": "pvm-export-commitment-page",
+      "diagnostic": "outcome.status == None",
+      "description": "Export commitment page"
+    }
+  ]
+}
