@@ -6,7 +6,7 @@
 import std/[assertions, strutils]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider, parameters]
-import ../../src/json_writer
+import ../../src/lib/json_writer
 import ../../src/codec/[block_codec, header, bounded, report_owned, state_layout]
 import ../../src/state/[store, accumulation_finalization, accumulation_validators,
   accumulation_statistics, accumulation_times, accumulation_activity, report_admission, block_admission]

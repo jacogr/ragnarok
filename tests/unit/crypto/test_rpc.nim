@@ -9,7 +9,7 @@
 
 import std/[assertions, syncio, base64]
 import ../../../src/version
-import ../../../src/json_writer
+import ../../../src/lib/json_writer
 import ../../../src/chain/[services, statistics, beefy, reports]
 from ../../support/report_context import unhex
 from ../../../src/codec/state_requests import serviceRequestKey, RequestError, error, value
