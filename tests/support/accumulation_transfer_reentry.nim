@@ -1,12 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Real signed transfer chains exercise first/repeated reentry, credit once, paid gas, bounded ownership and statistics scope.
+## Real signed transfer chains exercise first/repeated reentry, credit once, paid gas, bounded ownership and processed-transfer statistics.
 
 import std/assertions
 import ../../src/chain/parameters
 import ../../src/codec/[bounded, composite, header, c2_records, report_owned, state_accounts,
-  state_service_values, state_layout, state_trie, state_outputs]
+  state_service_values, state_layout, state_trie, state_outputs, state_statistics]
 import ../../src/state/[accumulation_execution, accumulation_round, accumulation_batch,
   accumulation_continuation, accumulation_continuation_inputs, accumulation_continuation_invocation,
   accumulation_continuation_execution, accumulation_reentry, accumulation_reentry_invocation,
@@ -102,25 +102,33 @@ proc config(): AccumulationReentryConfig =
     operands: executionRoundConfig().operands, inputs: inputs)
 
 proc fixture(base: OwnedReport, stop = TransferStop.Halt, checkpoint = false,
-    zeroGas = false, mixed = false, lateOnly = false, budget = 200000'u64): TransferFixture =
+    zeroGas = false, mixed = false, lateOnly = false, missing = false, large = false,
+        budget = 200000'u64): TransferFixture =
   ## Initial 42 -> 99 plus duplicated 99 -> 77 funds later 77 -> 88; each round uses actual complete-source execution.
   var halt = @[0'u8]
   for octet in guestEnvelope([@[50'u8, 0]]):
     halt.add(octet) # Service 88 consumes its inputs and emits nothing, ensuring finite real termination.
-  let c77 = code(77, 88, 3, if zeroGas: 0'u64 else: 10000'u64, stop = stop, checkpoint = checkpoint)
+  let c77 = code(77, 88, 3, if large: high(uint64)-30000 elif zeroGas: 0'u64 else: 10000'u64,
+      stop = stop, checkpoint = checkpoint)
   var extra = serviceEntries(77, 10, c77)
+  if missing:
+    extra.setLen(1) # Preserve metadata and known code hash while withholding its preimage for a genuine skip.
   for entry in serviceEntries(88, 7, halt):
     extra.add(entry) # Both destinations exist before any transfer host lookup.
   let ready = (if lateOnly: @[reentryReady(base, 97, [99999'u64], 99)] elif mixed: @[reentryReady(
       base, 94, [150000'u64], 99), reentryReady(base, 95, [20000'u64], 99),
     reentryReady(base, 96, [0'u64], 99)] else: @[])
   let ending = (if lateOnly: ExecutionEnding.Exhausted else: ExecutionEnding.Halt)
-  var initial = executionFixture(base, first = ending, second = ending, firstProgram = code(42, 99,
-      0, if zeroGas: 0'u64 else: 30000'u64),
-    secondProgram = code(99, 77, 2, if zeroGas: 0'u64 else: 10000'u64, repeat = true),
-    secondBalance = 20, extra = extra, ready = ready)
+  let secondEnding = (if large: ExecutionEnding.Exhausted else: ending)
+  let firstGas = (if large: high(uint64)-10000 elif zeroGas: 0'u64 else: 30000'u64)
+  let secondGas = (if large: high(uint64)-20000 elif zeroGas: 0'u64 else: 10000'u64)
+  let allowance = (if large: high(uint64)-1 else: 100000'u64)
+  var initial = executionFixture(base, first = ending, second = secondEnding,
+    firstProgram = code(42, 99, 0, firstGas), secondProgram = code(99, 77, 2, secondGas,
+        repeat = not large),
+    secondBalance = 20, extra = extra, ready = ready, allowanceGas = allowance)
   var policy = executionRoundConfig()
-  policy.blockGas = Gas(if lateOnly: 100000'u64 else: budget)
+  policy.blockGas = Gas(if large: high(uint64) elif lateOnly: 100000'u64 else: budget)
   initial.round = planBlockInitialAccumulation(initial.round.roundBlockQueue.value, policy).value
   let a = executionGuest(initial, 0, parameters = profile(), copyLimit = MemoryByteLimit(128),
     transferLimit = ElementLimit(3), steps = ExecutionStepLimit(100), calls = HostCallLimit(10))
@@ -132,28 +140,43 @@ proc fixture(base: OwnedReport, stop = TransferStop.Halt, checkpoint = false,
     operands: policy.operands, inputs: policy.inputs)).value
   assert uint64(selected.continuationInfo.value.prefix) == (if lateOnly: 1'u64 else: 0'u64)
   let count = context.continuationInputs.value.invocationServiceCount.value
-  assert count == (if lateOnly: 1 else: 2)
+  assert count == (if lateOnly or large: 1 else: 2)
   var executions: seq[AccumulationDispatchResult] = @[]
+  var skips: seq[SkippedAccumulation] = @[]
   for index in countdown(count-1, 0):
-    let invoked = prepareContinuationAccumulationInvocation(context, InvocationServiceIndex(uint64(
+    let service = prepareContinuationAccumulationService(context, InvocationServiceIndex(uint64(
         index)),
-      AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024)),
-          ServiceProbeLimit(1)).value
-    executions.add(run(invoked.bootstrapProjection.value)) # Reverse execution order must not choose outgoing source order.
-  TransferFixture(initial: initial, later: completeAccumulationContinuation(context, executions, [],
-      executionLimits()).value)
+      AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024))).value
+    if service.serviceInfo.value.code != AccumulationCodeStatus.Ready:
+      skips.add(finishUninvokedAccumulation(service).value) # Missing destinations still receive and process their transfers.
+    else:
+      let invoked = prepareContinuationAccumulationInvocation(context, InvocationServiceIndex(
+          uint64(index)),
+        AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024)),
+            ServiceProbeLimit(1)).value
+      executions.add(run(invoked.bootstrapProjection.value)) # Reverse execution order must not choose outgoing source order.
+  TransferFixture(initial: initial, later: completeAccumulationContinuation(context, executions,
+      skips, executionLimits()).value)
 
 proc completed(source: PreparedAccumulationReentry): CompletedAccumulationReentry =
   ## Execute every actual reentry group against its own posterior state/entropy, in reversed arrival order.
   let count = source.reentryInputs.value.invocationServiceCount.value
   var executions: seq[AccumulationDispatchResult] = @[]
+  var skips: seq[SkippedAccumulation] = @[]
   for index in countdown(count-1, 0):
-    let invoked = prepareReentryAccumulationInvocation(source, InvocationServiceIndex(uint64(
-        index)),
-      AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024)),
-          ServiceProbeLimit(1)).value
-    executions.add(run(invoked.bootstrapProjection.value)) # No gas observation, incoming credit or verdict is forged.
-  completeAccumulationReentry(source, executions, [], executionLimits(uint64(count))).value
+    let service = prepareReentryAccumulationService(source, InvocationServiceIndex(uint64(index)),
+      AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024))).value
+    if service.serviceInfo.value.code != AccumulationCodeStatus.Ready:
+      skips.add(finishUninvokedAccumulation(service).value) # Counted input destinations may legitimately skip code execution.
+    else:
+      let invoked = prepareReentryAccumulationInvocation(source, InvocationServiceIndex(uint64(
+          index)),
+        AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024)),
+        ServiceProbeLimit(1)).value
+      executions.add(run(invoked.bootstrapProjection.value)) # No usage, credit or verdict is forged.
+  var limits = executionLimits(uint64(count))
+  limits.batch.accounts = ElementLimit(uint64(count)) # Mixed rounds can update three distinct service metadata rows.
+  completeAccumulationReentry(source, executions, skips, limits).value
 
 proc balance(state: StateStoreSnapshot, service: uint32): uint64 =
   ## Read exact canonical balances from the retained complete map.
@@ -182,13 +205,24 @@ proc historyPolicy(): AccumulationOutputHistoryLimits =
     log: OutputLogConfig(items: ElementLimit(0), maxBytes: ByteLimit(1)))
 
 proc statisticsPolicy(): AccumulationStatisticsLimits =
-  ## A scope refusal must precede report-only aggregation, not depend on accidentally exceeding unrelated ceilings.
+  ## Independent transfer/gas/report populations bound the genuine history before dictionary preparation.
   AccumulationStatisticsLimits(rounds: ElementLimit(6), gasRows: ElementLimit(10),
-      reports: ElementLimit(2),
+      transfers: ElementLimit(10), reports: ElementLimit(2),
     digests: ElementLimit(2), services: ElementLimit(4))
 
+proc finished(source: CompletedAccumulationContinuation): PreparedFinalAccumulation =
+  ## Complete the authored finite chain under an explicit depth cap, retaining any selected hash-return outputs.
+  var next = prepareAccumulationReentry(source, config()).value
+  while next.reentryInfo.value.dispatch:
+    # Actual completions alone authorize each successor, including transfer-only and skipped-service rounds.
+    next = prepareAccumulationReentry(completed(next), config(), AccumulationReentryDepthLimit(4)).value
+  var limits = historyPolicy()
+  limits.executions = ElementLimit(16) # Mixed report/transfer rounds can contain three service groups.
+  limits.log = OutputLogConfig(items: ElementLimit(10), maxBytes: ByteLimit(1024))
+  prepareFinalAccumulation(completed(next), limits).value
+
 proc checkTransferReentry*(base: OwnedReport) =
-  ## Exercise first and repeated transfer-only advances, terminal rollback, limits, real roots and fresh ARC release.
+  ## Exercise genuine transfer chains, destination statistics, rollback, independent limits, real roots and ARC release.
   let source = fixture(base)
   let first = prepareAccumulationReentry(source.later, config()).value
   let firstInfo = first.reentryInfo.value
@@ -245,14 +279,69 @@ proc checkTransferReentry*(base: OwnedReport) =
   failHash(0)
   let finalized = prepareFinalAccumulation(terminal, historyPolicy()).value
   failHash(1)
-  assert prepareAccumulationStatistics(finalized, statisticsPolicy()).error ==
-      AccumulationStatisticsError.UnsupportedTransfers
+  let statistics = prepareAccumulationStatistics(finalized, statisticsPolicy()).value
+  assert statistics.statisticsInfo.value.transfers == 7
+  assert statistics.statisticsInfo.value.services == 4
+  for index, count in [0'u64, 4'u64, 2'u64, 1'u64]:
+    let row = statistics.statisticsAt(StatisticsServiceIndex(uint64(index))).value
+    assert uint32(row.service) == [42'u32, 77'u32, 88'u32, 99'u32][index]
+    assert uint64(row.statistics.counters[ServiceMeasure.TransferCount]) == count
+    assert uint64(row.statistics.counters[ServiceMeasure.AccumulationCount]) == 0
   assert hashCalls() == 0
   failHash(0)
   let gross = uint64(source.later.executionContinuation.value.continuationPlan.value.continuationSource.value.executionInfo.value.gasUsed) +
     uint64(source.later.executionInfo.value.gasUsed)+uint64(
         firstDone.executionInfo.value.gasUsed)+uint64(secondDone.executionInfo.value.gasUsed)
+  assert uint64(statistics.statisticsInfo.value.gasUsed) == gross
   assert gross == 200000-uint64(stopped.reentryInfo.value.budget)+90000, "gross actual gas reconciles only when all selected outgoing gas is restored"
+  let initialDone = source.later.executionContinuation.value.continuationPlan.value.continuationSource.value
+  let expectedGas = [uint64(initialDone.executionGasAt(InvocationServiceIndex(0)).value.gasUsed),
+    uint64(source.later.executionGasAt(InvocationServiceIndex(0)).value.gasUsed)+uint64(
+        firstDone.executionGasAt(InvocationServiceIndex(0)).value.gasUsed),
+    uint64(firstDone.executionGasAt(InvocationServiceIndex(1)).value.gasUsed)+uint64(
+        secondDone.executionGasAt(InvocationServiceIndex(0)).value.gasUsed),
+    uint64(initialDone.executionGasAt(InvocationServiceIndex(1)).value.gasUsed)+uint64(
+        source.later.executionGasAt(InvocationServiceIndex(1)).value.gasUsed)]
+  for index, gas in expectedGas:
+    assert uint64(statistics.statisticsAt(StatisticsServiceIndex(uint64(
+        index))).value.statistics.accumulationGas) == gas
+  var exact = statisticsPolicy()
+  exact.rounds = ElementLimit(5)
+  exact.gasRows = ElementLimit(7)
+  exact.transfers = ElementLimit(7)
+  exact.reports = ElementLimit(0)
+  exact.digests = ElementLimit(0)
+  failHash(3)
+  assert prepareAccumulationStatistics(finalized, exact).value.statisticsInfo.value.transfers == 7
+  for mode in 0..<5:
+    var limited = exact
+    case mode
+    of 0: limited.transfers = ElementLimit(6) # Exact aggregate cardinality includes duplicates across rounds.
+    of 1: limited.transfers = ElementLimit(0) # Default transfer capacity authorizes report-only histories.
+    of 2: limited.rounds = ElementLimit(4) # Count the certified stopped entry as well.
+    of 3: limited.gasRows = ElementLimit(6) # Every bound input service, including zeros, consumes traversal.
+    else: limited.services = ElementLimit(3) # Nonzero statistics includes transfer-only destinations.
+    assert prepareAccumulationStatistics(finalized, limited).error ==
+        AccumulationStatisticsError.LimitExceeded
+  var wide = statisticsPolicy()
+  wide.rounds = ElementLimit(high(uint64))
+  wide.gasRows = ElementLimit(high(uint64))
+  wide.transfers = ElementLimit(high(uint64))
+  wide.reports = ElementLimit(high(uint64))
+  wide.digests = ElementLimit(high(uint64))
+  wide.services = ElementLimit(high(uint64))
+  assert prepareAccumulationStatistics(finalized, wide).value.statisticsInfo.value.transfers == 7
+  var copied = statistics.statisticsAt(StatisticsServiceIndex(1)).value
+  copied.statistics.counters[ServiceMeasure.TransferCount] = ActivityNatural(0)
+  var observedStatistics = statistics.statisticsInfo.value
+  observedStatistics.transfers = 0
+  assert statistics.statisticsInfo.value.transfers == 7
+  assert uint64(statistics.statisticsAt(StatisticsServiceIndex(1)).value.statistics.counters[
+      ServiceMeasure.TransferCount]) == 4
+  assert sameStateSnapshot(statistics.statisticsSource.value.finalAccumulationState.value,
+      finalized.finalAccumulationState.value)
+  assert hashCalls() == 0
+  failHash(0)
   let mixed = fixture(base, mixed = true)
   let mixedPlan = prepareAccumulationReentry(mixed.later, config()).value
   assert uint64(mixedPlan.reentryInfo.value.prefix) == 1 and uint64(
@@ -261,6 +350,25 @@ proc checkTransferReentry*(base: OwnedReport) =
   let group = mixedPlan.reentryInputs.value.invocationServiceAt(InvocationServiceIndex(2)).value
   assert uint32(group.service) == 99 and uint64(group.gas) == 150000 and group.operands == 1
   assert uint64(mixedPlan.reentryInfo.value.transferGas) == 30000, "restored outgoing gas cannot fund an extra report"
+  let mixedFinal = finished(mixed.later)
+  var mixedPolicy = statisticsPolicy()
+  mixedPolicy.reports = ElementLimit(3)
+  mixedPolicy.digests = ElementLimit(3)
+  mixedPolicy.gasRows = ElementLimit(16)
+  failHash(3)
+  let mixedActivity = prepareAccumulationStatistics(mixedFinal, mixedPolicy).value
+  assert mixedActivity.statisticsInfo.value.transfers == 10
+  assert mixedActivity.statisticsInfo.value.reports == 3 and
+      mixedActivity.statisticsInfo.value.digests == 3
+  for index, count in [0'u64, 6'u64, 3'u64, 1'u64]:
+    let row = mixedActivity.statisticsAt(StatisticsServiceIndex(uint64(index))).value
+    assert uint64(row.statistics.counters[ServiceMeasure.TransferCount]) == count
+    assert uint64(row.statistics.counters[ServiceMeasure.AccumulationCount]) == (if index ==
+        3: 3'u64 else: 0'u64)
+  assert uint64(mixedActivity.statisticsInfo.value.gasUsed) == 200000-uint64(
+      mixedFinal.finalAccumulationInfo.value.remainingGas)+120000
+  assert hashCalls() == 0
+  failHash(0)
   let prior = source.later.executionContinuation.value.continuationState.value
   for mode in 0..<5:
     var limited = config()
@@ -295,6 +403,13 @@ proc checkTransferReentry*(base: OwnedReport) =
       assert selected.reentryInfo.value.transfers == (if kept: 3 else: 2)
       assert uint64(selected.reentryInfo.value.transferGas) == (if kept: 30000'u64 else: 20000'u64)
       sameRoot(local.initial, selected.reentryState.value, 12, (if kept: 11'u64 else: 14'u64), 7)
+      let terminal = finished(local.later)
+      failHash(3)
+      let activity = prepareAccumulationStatistics(terminal, statisticsPolicy()).value
+      assert activity.statisticsInfo.value.transfers == (if kept: 7 else: 5)
+      assert uint64(activity.statisticsAt(StatisticsServiceIndex(1)).value.statistics.counters[
+          ServiceMeasure.TransferCount]) == 4
+      failHash(0)
   let maximum = fixture(base, budget = high(uint64))
   let maximumInfo = prepareAccumulationReentry(maximum.later, config()).value.reentryInfo.value
   assert uint64(maximumInfo.budget) == uint64(maximum.later.executionInfo.value.round.budget) -
@@ -307,9 +422,14 @@ proc checkTransferReentry*(base: OwnedReport) =
   sameRoot(zeros.initial, zeroPlan.reentryState.value, 16, 14, 7)
   let zeroFinal = prepareFinalAccumulation(completed(zeroPlan), historyPolicy()).value
   failHash(1)
-  assert prepareAccumulationStatistics(zeroFinal, statisticsPolicy()).error ==
-      AccumulationStatisticsError.UnsupportedTransfers,
-    "even zero-gas processed transfers must not silently become zero transfer statistics"
+  let zeroStatistics = prepareAccumulationStatistics(zeroFinal, statisticsPolicy()).value
+  assert zeroStatistics.statisticsInfo.value.transfers == 3 and
+      zeroStatistics.statisticsInfo.value.services == 3
+  let zeroDestination = zeroStatistics.statisticsAt(StatisticsServiceIndex(1)).value
+  assert uint32(zeroDestination.service) == 77 and uint64(
+      zeroDestination.statistics.accumulationGas) == 0
+  assert uint64(zeroDestination.statistics.counters[ServiceMeasure.TransferCount]) == 2,
+    "zero-gas transfer-only destinations must survive all-zero omission"
   failHash(0)
   for zeroGas in [false, true]:
     # Initial allowance OOG emits nothing; only the selected continuation report starts this chain.
@@ -324,11 +444,40 @@ proc checkTransferReentry*(base: OwnedReport) =
     if zeroGas:
       sameRoot(late.initial, next.reentryState.value, 16, 14, 7)
     failHash(1)
-    assert prepareAccumulationStatistics(final, statisticsPolicy()).error ==
-        AccumulationStatisticsError.UnsupportedTransfers,
-      "later-only processed transfers must be detected through the retained reentry history"
+    let activity = prepareAccumulationStatistics(final, statisticsPolicy()).value
+    assert activity.statisticsInfo.value.transfers == (if zeroGas: 2 else: 3)
+    assert activity.statisticsInfo.value.reports == 1 and activity.statisticsInfo.value.digests == 1
+    let firstRow = activity.statisticsAt(StatisticsServiceIndex(0)).value
+    assert uint32(firstRow.service) == 77 and uint64(firstRow.statistics.counters[
+        ServiceMeasure.TransferCount]) == 2
+    let lastRow = activity.statisticsAt(StatisticsServiceIndex(uint64(
+        activity.statisticsInfo.value.services-1))).value
+    assert uint32(lastRow.service) == 99 and uint64(lastRow.statistics.counters[
+        ServiceMeasure.AccumulationCount]) == 1
     assert hashCalls() == 0
     failHash(0)
+  var detachedStatistics = default(PreparedAccumulationStatistics)
+  block released_statistics_callers:
+    # A missing code preimage preserves input credit/counts through genuine skips in both later rounds.
+    let skipped = fixture(base, missing = true)
+    let final = finished(skipped.later)
+    failHash(3)
+    detachedStatistics = prepareAccumulationStatistics(final, statisticsPolicy()).value
+    failHash(0)
+    sameRoot(skipped.initial, final.finalAccumulationOutputs.value.outputsReentry.value.executionReentry.value.reentryState.value,
+        12, 18, 7)
+  assert detachedStatistics.statisticsInfo.value.transfers == 5 and
+      detachedStatistics.statisticsInfo.value.services == 3
+  let skippedRow = detachedStatistics.statisticsAt(StatisticsServiceIndex(1)).value
+  assert uint32(skippedRow.service) == 77 and uint64(skippedRow.statistics.accumulationGas) == 0
+  assert uint64(skippedRow.statistics.counters[ServiceMeasure.TransferCount]) == 4
+  let enormous = finished(fixture(base, large = true).later)
+  failHash(3)
+  assert prepareAccumulationStatistics(enormous, wide).error ==
+      AccumulationStatisticsError.LimitExceeded,
+    "valid repeated paid gas can exceed the uint64 aggregate representation and must not wrap"
+  assert hashCalls() == 0
+  failHash(0)
   let absent = default(PreparedAccumulationReentry)
   assert absent.reentryTransfers.error == AccumulationReentryError.Uninitialized
   var observed = firstInfo
@@ -348,5 +497,11 @@ proc checkTransferReentry*(base: OwnedReport) =
     let next = prepareAccumulationReentry(done, config(), AccumulationReentryDepthLimit(3)).value
     assert next.reentryInfo.value.transfers == 1 and uint64(next.reentryInfo.value.depth) == 2
     assert balance(next.reentryState.value, 88) == 10
+    let activity = prepareAccumulationStatistics(finalized, exact).value
+    assert activity.statisticsInfo.value.transfers == 7
+    var limited = exact
+    limited.transfers = ElementLimit(6)
+    assert prepareAccumulationStatistics(finalized, limited).error ==
+        AccumulationStatisticsError.LimitExceeded
   let after = getOccupiedMem()
   assert before == after, "repeated transfer owners, predecessors, private maps and memos release across 1000 real cycles"

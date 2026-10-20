@@ -33,10 +33,11 @@ and combined limits, stopped/depth refusals, backend rollback and ARC release.
 Use genuine signed admitted roots and actual guest executions; preserve existing
 report-only cases and result/privacy guards.
 
-The report-only statistics consumer must explicitly refuse processed-transfer
-histories until transfer counters and refunded-gas reconciliation are supported.
-That gate is a local supported-scope refusal, not a protocol invalidity. Full
-processed-transfer statistics/publication remains the next bounded work.
+[Processed-transfer statistics](pvm-transfer-statistics.md) now derives destination
+counts and reconciles gross gas from genuine completed inputs. It replaces the
+historical statistics scope gate; independent transfer limits and uint64 aggregate
+representability remain explicit local limits. Account timestamp/C(13) integration
+and whole-block publication remain separate.
 M1 framing remains complete; full state serialization remains open.
 
 ## Local verification (2026-10-19)
@@ -76,7 +77,7 @@ gitlink or dependency pin changed. Logs and detailed results are retained under
 ignored `build/pvm-transfer-reentry*`; these are local macOS checks, distinct from
 exact-head Linux CI.
 
-Next bounded work: derive processed-transfer service counts from genuine input
-histories and reconcile gross actual gas with all paid outgoing-gas restorations,
-then remove the statistics scope gate. M1 framing remains complete; full state
+[Processed-transfer statistics](pvm-transfer-statistics.md) implements that next
+bounded item and removes the statistics scope gate. Account last-accumulation
+updates and complete C(13) coordination remain subsequent work. M1 framing remains complete; full state
 serialization and full accumulation/block parity remain open.

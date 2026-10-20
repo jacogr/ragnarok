@@ -1,4 +1,4 @@
-# Accumulation statistics from finalized report-only execution
+# Accumulation statistics from finalized execution
 
 ## Scope and authority
 
@@ -9,24 +9,30 @@ Derive the accumulation statistics mapping S(s)=(N(s),T(s),G(s)) from a genuine
 `accumulationstatisticsdef`. N counts every work-digest in the processed original report prefix,
 including services whose code could not execute. G sums actual certified service gas across initial,
 continuation and repeated reentry rounds, including allowance-only executions. For the supported
-report-only finalization T is zero. Transfer-aware continuation and
-[reentry](pvm-transfer-reentry.md) now permit transfer inputs, so statistics explicitly
-returns `UnsupportedTransfers` if any completed continuation/reentry processed transfers,
-including zero-gas records. This is a local scope refusal until processed-transfer
-counts and refunded-gas reconciliation are implemented. Omit exactly the all-zero tuples, not zero-gas
-services which accumulated work-items. Order the resulting dictionary by numeric service.
+transfer-aware finalization T counts every processed transfer by destination, including
+ordered duplicates, zero-gas/value records and skipped-code recipients. Derive each count
+from the actual completed round's bound input group. See
+[processed-transfer statistics](pvm-transfer-statistics.md) for the bounded extension.
+Omit exactly the all-zero tuples; zero-gas services with work-items or transfers remain.
+Order the resulting dictionary by numeric service.
 
 ## API and ownership
 
 `prepareAccumulationStatistics` accepts the finalization certificate and independent local limits
 for completed rounds, inspected gas rows (including skips and zero-gas rows), processed reports,
-work-digests and retained nonzero services. Derive both report provenance and all round completions
+work-digests, processed transfers and retained nonzero services. Default zero transfer
+capacity authorizes no processed transfers; an explicit count policy enables them. Derive both
+report provenance and all round completions
 through that exact finalization's output owner; callers cannot substitute rows, reports or gas.
 Bounds precede descriptor/candidate allocation. Candidate storage is bounded by gas rows plus
 work-digests, with native extent proofs. Sort candidates and combine by service in O(R + C log C) time
-and O(R + C) scratch for R rounds and C candidate rows. Prove actual gas sums against the initial budget minus terminal remaining gas;
+and O(R + C) scratch for R rounds and C candidate rows. Prove gross actual gas sums against the
+initial budget minus terminal remaining gas
+plus every paid outgoing-gas refund represented in completed later-round inputs.
+Refuse gross totals beyond uint64 with local LimitExceeded before candidate allocation;
 per-service sums are nonnegative subsets of that checked total. Work-item sums are bounded by the
-preflighted digest count. Full-width local ceilings never become unchecked allocation sizes.
+preflighted digest count; transfer sums by the preflighted processed-transfer count.
+Full-width local ceilings never become unchecked allocation sizes.
 
 `PreparedAccumulationStatistics` retains the exact finalization and independent fixed service
 records. `statisticsInfo` copies traversal/cardinality and actual gas observations;
@@ -51,7 +57,7 @@ C(13) coordination with other activity, last-accumulation account timestamps, qu
 transfer/account/privilege integration and whole-block publication remain open. M1 framing is
 complete; full state serialization and accumulation/block parity remain open.
 
-## Local verification
+## Original report-only local verification
 
 Passed `make unit SUITE=accumulation_statistics`. The four-round signed fixture yields six
 work-items and 132 actual gas: service 42 has four items/66 gas and service 99 has two items/66 gas.
