@@ -224,3 +224,14 @@ publication. Joined session journals preserve that operation identity. Tests cro
 both operations, exact context/resource refusals, cancellation, joined receipts,
 backpressure and 1,000 host ticket/receipt cycles; verifier tests separately witness
 complete decoded graph release. No recovered chain is adopted automatically.
+
+## Service verification during execution leases
+
+Services stages verification using explicit independent fixed context and resource
+policy through the existing export session. No canonical getter or graph traversal
+is involved, so managed preparation/RPC exclusion remains held independently.
+Native integration publishes once, starts a real execution lease, then verifies
+without releasing that lease. Done capacity and default-context refusal remain
+effective. Repeated aggregate close retains a distinctly Verify joined receipt,
+not a publication receipt; no restored canonical chain is installed. Verification
+requires no startup trust-policy decision and changes no PVM/backend implementation.
