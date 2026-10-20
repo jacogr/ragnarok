@@ -8,6 +8,8 @@
 import std/[syncio, strutils, base64]
 import ./options
 import ./handoff
+import ./candidate
+import ../codec/[block_codec, header]
 import ./chain as application_chain
 import ../state/[store, accumulation_finalization, accumulation_completion]
 import ../chain/provider
@@ -182,6 +184,12 @@ proc enqueueAccumulation*(services: var Services, source: PreparedFinalAccumulat
     limits: AccumulationCompositionLimits): AccumulationEnqueueError =
   ## Hand one finalized candidate to the next dispatcher turn; canonical authority is rechecked at adoption.
   services.adoption.enqueue(services.canonical, source, limits)
+
+proc enqueueCandidate*(services: var Services, candidate: OwnedBlock,
+    ancestors: openArray[OwnedHeader], limits: ApplicationCandidateLimits,
+    composition: AccumulationCompositionLimits): ApplicationCandidateResult =
+  ## Prepare from this selected head and queue the genuine successor; publication waits for the next service tick.
+  services.adoption.enqueueCandidate(services.canonical, candidate, ancestors, limits, composition)
 
 proc takeAccumulation*(services: var Services): ApplicationChainResult[BlockSnapshot] {.requires:
     services.accumulationStage == AccumulationHandoffStage.Finished.} =

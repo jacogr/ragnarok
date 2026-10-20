@@ -1,0 +1,20 @@
+{
+  "source": "tests/native/application_candidate_results.nim",
+  "build_name": "application-candidate-results",
+  "crypto_library": "crypto",
+  "native_libraries": ["bandersnatch"],
+  "quic_library": "quic",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "application-candidate-default", "diagnostic": "outcome.status == None", "description": "Application candidate selected result guard default"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "application-candidate-refused", "diagnostic": "outcome.status == None", "description": "Application candidate selected result guard refused"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "application-candidate-state", "diagnostic": "outcome.status == StateFailure", "description": "Application candidate selected result guard state"},
+    {"identity": {"reason": "block"}, "arguments": ["block"], "name": "application-candidate-block", "diagnostic": "outcome.status == BlockFailure", "description": "Application candidate selected result guard block"},
+    {"identity": {"reason": "report"}, "arguments": ["report"], "name": "application-candidate-report", "diagnostic": "outcome.status == ReportFailure", "description": "Application candidate selected result guard report"},
+    {"identity": {"reason": "queue"}, "arguments": ["queue"], "name": "application-candidate-queue", "diagnostic": "outcome.status == QueueFailure", "description": "Application candidate selected result guard queue"},
+    {"identity": {"reason": "round"}, "arguments": ["round"], "name": "application-candidate-round", "diagnostic": "outcome.status == RoundFailure", "description": "Application candidate selected result guard round"},
+    {"identity": {"reason": "runner"}, "arguments": ["runner"], "name": "application-candidate-runner", "diagnostic": "outcome.status == RunnerFailure", "description": "Application candidate selected result guard runner"},
+    {"identity": {"reason": "driver"}, "arguments": ["driver"], "name": "application-candidate-driver", "diagnostic": "outcome.status == DriverFailure", "description": "Application candidate selected result guard driver"},
+    {"identity": {"reason": "finalization"}, "arguments": ["finalization"], "name": "application-candidate-finalization", "diagnostic": "outcome.status == FinalizationFailure", "description": "Application candidate selected result guard finalization"},
+    {"identity": {"reason": "enqueue"}, "arguments": ["enqueue"], "name": "application-candidate-enqueue", "diagnostic": "outcome.status == EnqueueFailure", "description": "Application candidate selected result guard enqueue"}
+  ]
+}
