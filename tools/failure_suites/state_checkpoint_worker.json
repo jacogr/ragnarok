@@ -1,0 +1,62 @@
+{
+  "build_name": "state-checkpoint-worker-results",
+  "cases": [
+    {
+      "arguments": [
+        "unclosed"
+      ],
+      "description": "Checkpoint I/O worker lifecycle unclosed",
+      "diagnostic": "not worker.started",
+      "identity": {
+        "reason": "unclosed"
+      },
+      "name": "state-checkpoint-worker-unclosed"
+    },
+    {
+      "arguments": [
+        "admission"
+      ],
+      "description": "Checkpoint I/O worker lifecycle admission",
+      "diagnostic": "admission.status == None",
+      "identity": {
+        "reason": "admission"
+      },
+      "name": "state-checkpoint-worker-admission"
+    },
+    {
+      "arguments": [
+        "completion"
+      ],
+      "description": "Checkpoint I/O worker lifecycle completion",
+      "diagnostic": "completion.status == Completed",
+      "identity": {
+        "reason": "completion"
+      },
+      "name": "state-checkpoint-worker-completion"
+    },
+    {
+      "arguments": [
+        "cancelled"
+      ],
+      "description": "Checkpoint I/O worker lifecycle cancelled",
+      "diagnostic": "completion.status == Completed",
+      "identity": {
+        "reason": "cancelled"
+      },
+      "name": "state-checkpoint-worker-cancelled"
+    },
+    {
+      "arguments": [
+        "moved"
+      ],
+      "description": "Checkpoint I/O worker active-address move",
+      "diagnostic": "not worker.started",
+      "identity": {
+        "reason": "moved"
+      },
+      "name": "state-checkpoint-worker-moved"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/state_checkpoint_worker_results.nim"
+}
