@@ -5,4 +5,4 @@
 ## Make generates application labels/revisions and the verified nightly identity before compilation.
 ## Exposes AppVersion, AppRevision, CompilerVersion, CompilerRevision and BuildTimestamp constants.
 
-include ../../build/build_info
+include ../build/build_info

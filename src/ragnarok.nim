@@ -10,7 +10,8 @@
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
-import ./app/[options, version]
+import ./app/options
+import ./version
 
 # CLI entry point returns through all normal ARC/native teardown before process exit.
 proc main(): int =

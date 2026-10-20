@@ -8,7 +8,7 @@
 ## interface.
 
 import std/[assertions, syncio, base64]
-import ../../../src/app/version
+import ../../../src/version
 import ../../../src/chain/[services, statistics, beefy, reports]
 from ../../support/report_context import unhex
 from ../../../src/codec/state_requests import serviceRequestKey, RequestError, error, value

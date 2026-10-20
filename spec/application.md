@@ -31,7 +31,7 @@ The exporter adapter reads that exporter's enabled state instead of global CLI f
 
 `build/ragnarok --version` prints the application version and full source revision, then
 `Nimony <version> <full compiler revision>` and `Built <UTC timestamp>`. Both CLI and
-`ragnarok_clientInfo` use immutable constants from `app/version.nim`, generated into ignored `build/build_info.nim` by Make.
+`ragnarok_clientInfo` use immutable constants from `src/version.nim`, generated into ignored `build/build_info.nim` by Make.
 RPC `version` is the application label, `revision` its source identity, and `compilerVersion` /
 `compilerRevision` identify the validated nightly in `spec/toolchain.json`.
 `buildTimestamp` is a UTC ISO 8601 instant compiled into the app, unchanged across runs/requests.

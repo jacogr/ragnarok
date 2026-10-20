@@ -27,7 +27,7 @@ modules. Process-level networking/collector checks launch the application; there
 peer CLI wrapper or standalone synthetic telemetry driver. E2E feature profiles compile this
 same entry point with their existing integration/offload definitions and isolated caches.
 
-`app/version.nim` shares immutable build identity between `--version` and RPC client information.
+`src/version.nim` shares immutable build identity between `--version` and RPC client information.
 Make reads `src/version.json` and generates the source revision, validated compiler pin and UTC
 build timestamp before compilation. Shipped binaries query no external version files, Git
 repository or compiler process.
