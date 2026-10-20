@@ -1,0 +1,51 @@
+{
+  "build_name": "state-checkpoint-writer-results",
+  "cases": [
+    {
+      "arguments": [
+        "unclosed"
+      ],
+      "description": "Checkpoint writer lifecycle unclosed",
+      "diagnostic": "not writer.active",
+      "identity": {
+        "reason": "unclosed"
+      },
+      "name": "state-checkpoint-writer-unclosed"
+    },
+    {
+      "arguments": [
+        "load-default"
+      ],
+      "description": "Checkpoint writer lifecycle load-default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "load-default"
+      },
+      "name": "state-checkpoint-writer-load-default"
+    },
+    {
+      "arguments": [
+        "save-default"
+      ],
+      "description": "Checkpoint writer lifecycle save-default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "save-default"
+      },
+      "name": "state-checkpoint-writer-save-default"
+    },
+    {
+      "arguments": [
+        "closed"
+      ],
+      "description": "Checkpoint writer lifecycle closed",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "closed"
+      },
+      "name": "state-checkpoint-writer-closed"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/state_checkpoint_writer_results.nim"
+}

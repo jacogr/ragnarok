@@ -1,0 +1,1 @@
+PASS checkpoint writers: explicit lock ownership, process contention and guarded lifecycle
