@@ -1,0 +1,121 @@
+{
+  "source": "tests/native/pvm_computed_publication.nim",
+  "build_name": "pvm-computed-publication",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-publication-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed publication default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-publication-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed publication source"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-computed-publication-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed publication limit"
+    },
+    {
+      "identity": {
+        "origin": "backend"
+      },
+      "arguments": [
+        "backend"
+      ],
+      "name": "pvm-computed-publication-backend",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed publication backend"
+    },
+    {
+      "identity": {
+        "origin": "replay"
+      },
+      "arguments": [
+        "replay"
+      ],
+      "name": "pvm-computed-publication-replay",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed publication replay"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-publication-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed publication owner"
+    },
+    {
+      "identity": {
+        "origin": "snapshot"
+      },
+      "arguments": [
+        "snapshot"
+      ],
+      "name": "pvm-computed-publication-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed publication snapshot"
+    },
+    {
+      "identity": {
+        "origin": "reason-default"
+      },
+      "arguments": [
+        "reason-default"
+      ],
+      "name": "pvm-computed-publication-reason-default",
+      "diagnostic": "outcome.status == StoreFailure",
+      "description": "Computed publication reason-default"
+    },
+    {
+      "identity": {
+        "origin": "reason-success"
+      },
+      "arguments": [
+        "reason-success"
+      ],
+      "name": "pvm-computed-publication-reason-success",
+      "diagnostic": "outcome.status == StoreFailure",
+      "description": "Computed publication reason-success"
+    },
+    {
+      "identity": {
+        "origin": "reason-limit"
+      },
+      "arguments": [
+        "reason-limit"
+      ],
+      "name": "pvm-computed-publication-reason-limit",
+      "diagnostic": "outcome.status == StoreFailure",
+      "description": "Computed publication reason-limit"
+    }
+  ]
+}
