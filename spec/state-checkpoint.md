@@ -372,3 +372,13 @@ checkpoint restoration. Exact re-encoding, independently supplied roots, exact a
 one-below byte/item ceilings and detached preparation are checked for each mapping.
 This is complete-map persistence evidence; it does not execute those blocks or
 establish whole-block JAM parity.
+
+## Published bank generation replay
+
+Seven original pre/post map pairs now cross real bootstrap, close/reopen,
+expected-head advancement and recovery against independently published roots.
+Every original key/value, root and node count is checked. Exact old/new slot bytes,
+stale-selector refusal and selected-file corruption are checked without allowing
+an intact orphan/older slot to substitute for selected state. Repair is explicit
+in the test; production recovery never scans or rewrites data implicitly. These
+local process-restart witnesses do not simulate power loss or whole-block execution.
