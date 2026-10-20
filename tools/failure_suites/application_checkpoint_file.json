@@ -55,6 +55,17 @@
         "reason": "checkpoint-reason"
       },
       "name": "application-checkpoint-file-checkpoint-reason"
+    },
+    {
+      "arguments": [
+        "default-verify"
+      ],
+      "description": "Application checkpoint verification default context",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default-verify"
+      },
+      "name": "application-checkpoint-file-default-verify"
     }
   ],
   "crypto_library": "crypto",
