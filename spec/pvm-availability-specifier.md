@@ -46,6 +46,8 @@ buffer limits, raw-leaf and ceil-split counterexamples, preflight/backend refusa
 copy/source/lifetime, full-width index and compiler source/privacy guards,
 optimized result guards and fresh ARC release.
 
+Complete report assembly continues in [pvm-computed-report.md](pvm-computed-report.md).
+
 Next: assemble complete work-report metadata from retained execution/availability
 owners and integrate root/state trust checks before publication. Production
 recovery, faster transforms and whole-block parity remain open. M1 framing is
