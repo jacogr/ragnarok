@@ -16,9 +16,9 @@ from pathlib import Path
 import sys
 from native_checks import NativeChecks, announce
 from corpus_catalog import CORPUS_NAMES, run_corpora
-from failure_checks import probe_failure, run_failure_suites, FAILURE_SUITES
+from failure_checks import run_failure_suites, FAILURE_SUITES
 from failure_plans import (FAILURE_PLANS, FAILURE_COUNTS, SPECIAL_CASES, SPECIAL_DRIVERS,
-                           check_driver_modes, failure_partition, parse_failure_shard, failure_libraries)
+                           failure_partition, parse_failure_shard, failure_libraries)
 from native_tests import UNIT_SUITES, unit_work_directory, unit_command, unit_environment, unit_evidence, unit_cache_lock, unit_partition, parse_unit_shard, ARC_SUITES
 from native_preparation import prepare_libraries, prepare_integration, prepare_unit_fixtures, prepare_partition_fixtures
 
@@ -127,103 +127,10 @@ def run_failures(compiler, report, libraries, availability_fixture, composition_
     if not specialized:
         # Specialized controls and their native resource setup execute once, in the final partition.
         return
-    from bandersnatch_native import OWNER_DEFINES
-    crypto_library = libraries['crypto']
-    crypto_observer = libraries['observer']
-    bs_library = libraries['bandersnatch']
-    bs_libraries = (libraries['bandersnatch_observer'], bs_library)
-    # Public store payloads/views require their own contracts, independent of ordinary success suites.
-    compiled, binary = build(compiler, ROOT/'tests/native/state_store_results.nim', 'state-store-results', crypto_library)
-    report['store_build'] = compiled
-    report['store_controls'] = dict(passed=False)
-    if compiled['exit_code'] == 0:
-        # Actual and default failures cover every public generic payload family.
-        cases = SPECIAL_CASES['store']
-        for member, origin, sentinel in cases:
-            # Match the supported precondition and exit status, never an unrelated crash or fixture error.
-            probe_failure(command, report['store'], [binary, member, origin],
-                          'store-' + member + '-' + origin, sentinel,
-                          'store ' + member + ' ' + origin + ' runtime guard', member=member, origin=origin)
-        controls = {member: command([binary, member, 'valid'], 'store-'+member+'-valid')
-                    for member in ('metadata', 'length', 'bytes')}
-        report['store_controls'] = dict(checks=controls,
-            passed=all(row['exit_code'] == 0 and row['output'].strip() == ('1' if member == 'metadata' else '0')
-                       for member, row in controls.items()))
-    # Actual/default result access must reject for every fixed proof/output, sequence and opaque native owner.
-    compiled, binary = build(compiler, SPECIAL_DRIVERS['bandersnatch'], 'bandersnatch-results',
-                             native_libraries=bs_libraries, cflags=OWNER_DEFINES)
-    report['bandersnatch_build'] = compiled
-    if compiled['exit_code'] == 0:
-        # Separate processes prevent prior contract failures or test-observer flags from concealing later checks.
-        check_driver_modes(command, binary, 'bandersnatch', report)
-        for member, origin, sentinel in SPECIAL_CASES['bandersnatch']:
-            # Each declared mode and failure origin retains its own process and supported diagnostic.
-            probe_failure(command, report['bandersnatch'], [binary, member, origin],
-                          'bs-' + origin + '-' + member, sentinel,
-                          origin + ' Bandersnatch ' + member + ' runtime guard', origin=origin, member=member)
-    # Completion guards need only their public fixture, not the E2E network/soak workloads.
-    from test_quic_offload import corpus as offload_fixture
-    offload_wire, _ = offload_fixture(BUILD/'offload-fixture')
-    # The same guarded completion API must reject defaults and actual empty polls in both build profiles.
-    for enabled in (False, True):
-        compiled, binary = build(compiler, ROOT/'tests/native/nimony_offload_results.nim',
-                                 'offload-results-'+str(enabled), native_libraries=(bs_library,) if enabled else (),
-                                 defines=('offload',) if enabled else ())
-        report['offload_results_'+str(enabled)] = compiled
-        if compiled['exit_code'] == 0:
-            # Enabled empty-poll probes start and join their own workers before attempting the invalid read.
-            for selected, origin in SPECIAL_CASES['offload']:
-                # Each enabled/disabled build executes only its own planned origins.
-                if selected != enabled:
-                    continue
-                environment = {**os.environ, 'RAGNAROK_OFFLOAD_FIXTURE': str(offload_wire),
-                               'RAGNAROK_OFFLOAD_REPEATS': '1', 'RAGNAROK_OFFLOAD_GATE': ''}
-                probe_failure(command, report['offload'], [binary, origin],
-                              'offload-result-' + str(enabled) + '-' + origin, 'value.hasCompletion',
-                              'offload ' + str(enabled) + ' ' + origin + ' completion runtime guard', environment=environment, enabled=enabled, origin=origin)
-    # Wrapping is the accepted Nimony language policy; assertions and bounds must still reject.
-    compiled, binary = build(compiler, ROOT/'tests/native/nimony_runtime_guards.nim', 'runtime')
-    report['runtime_build'] = compiled
-    if compiled['exit_code'] == 0:
-        # Every observation is separate so a prior assertion failure cannot conceal wrapping behavior.
-        for mode, sentinel, expected_exit in SPECIAL_CASES['runtime']:
-            result = command([binary, mode], mode+'-runtime')
-            passed = result['exit_code'] == expected_exit and sentinel in result['output']
-            report['runtime'].append(dict(name=mode, passed=passed, run=result))
-            announce(mode+' behavior', passed)
-    # Every public/private result and each inactive assignment field must retain its exact contract.
-    compiled, binary = build(compiler, SPECIAL_DRIVERS['availability'], 'availability-results', crypto_library)
-    report['availability_build'] = compiled
-    if compiled['exit_code'] == 0:
-        # Actual/default failures and dynamic absence origins execute independently, retaining their own diagnostics.
-        check_driver_modes(command, binary, 'availability', report)
-        cases = SPECIAL_CASES['availability']
-        for member, origin, sentinel in cases:
-            probe_failure(command, report['availability'], [binary, member, origin, availability_fixture],
-                          'availability-' + origin + '-' + member, sentinel,
-                          origin + ' availability ' + member + ' runtime guard', origin=origin, member=member)
-    # Both queue domains and internal count/layout proofs require successful payload selection.
-    compiled, binary = build(compiler, SPECIAL_DRIVERS['workqueues'], 'workqueues-results', crypto_library)
-    report['workqueues_build'] = compiled
-    if compiled['exit_code'] == 0:
-        # Actual/default failures execute separately so one rejected access cannot conceal another.
-        check_driver_modes(command, binary, 'workqueues', report)
-        for member, origin, sentinel in SPECIAL_CASES['workqueues']:
-            # Execute every declared access in its own process with the original failure expectation.
-            probe_failure(command, report['workqueues'], [binary, member, origin, availability_fixture],
-                          'workqueues-' + origin + '-' + member, sentinel,
-                          origin + ' workqueues ' + member + ' runtime guard', origin=origin, member=member)
-    # Complete composition payloads require exact success, including backend and association failures.
-    compiled, binary = build(compiler, SPECIAL_DRIVERS['composition'], 'composition-results', crypto_observer)
-    report['composition_build'] = compiled
-    if compiled['exit_code'] == 0:
-        # Actual and default failures execute separately so one protected read never conceals another.
-        check_driver_modes(command, binary, 'composition', report)
-        for member, origin, sentinel in SPECIAL_CASES['composition']:
-            # Execute every declared access in its own process with the original failure expectation.
-            probe_failure(command, report['composition'], [binary, member, origin, composition_fixture],
-                          'composition-' + origin + '-' + member, sentinel,
-                          origin + ' composition ' + member + ' runtime guard', origin=origin, member=member)
+    from failure_controls import CONTROLS, FailureContext
+    context = FailureContext(compiler, report, libraries, build, command, BUILD,
+                             availability_fixture, composition_fixture)
+    CONTROLS.run(context)
 
 
 # Select one independent workload and invalidate stale evidence before any setup or compilation.

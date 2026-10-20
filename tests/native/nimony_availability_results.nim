@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+# @@Verification={"group": "failure_driver"}
+
 ## Isolated public/private result failures and runtime-selected absent fields need exact
 ## contracts.
 ##
