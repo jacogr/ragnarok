@@ -21,6 +21,7 @@ future work.
 | [`rpc/`](rpc/) | Optional WebSocket JSON-RPC queries and bounded subscriptions | [RPC contract](../spec/rpc.md) |
 | [`state/`](state/) | Serialized state storage, Merklization and transition foundations | [State design](../docs/design/state.md) |
 | [`telemetry/`](telemetry/) | Optional bounded JIP-3 telemetry delivery | [Telemetry contract](../spec/telemetry.md) |
+| [`ui/`](ui/) | Embedded gzip static server and Nimony browser prototype | [UI contract](../spec/ui.md) · [Browser prototype](../spec/ui-browser.md) |
 
 Module contracts in [`spec/`](../spec/) record precise behavior, evidence and remaining gates.
 The [implementation scope](../docs/design/scope.md) and [M1 codec progress](../docs/m1.md)
@@ -35,10 +36,10 @@ start a complete JAM node.
 
 ### Telemetry
 
-Append `--telemetry HOST:PORT` and `--chain PATH` with an explicit JIP-4 chain file to enable
-the implemented JIP-3 subset. It reports local node information, periodic peer/status
+Append `--with-telemetry --telemetry HOST:PORT --chain PATH` with an explicit JIP-4 chain file
+to enable the implemented JIP-3 subset. It reports local node information, periodic peer/status
 observations, handshake outcomes and disconnections through bounded nonblocking TCP delivery
-with reconnects. Telemetry is disabled when the option is absent.
+with reconnects. Telemetry is disabled without `--with-telemetry`.
 
 The chain file supplies telemetry network identity; it does not initialize chain execution or
 connect bootnodes. See [telemetry usage, scope and verification](../spec/telemetry.md) for the
@@ -46,15 +47,26 @@ full invocation and event limitations.
 
 ### WebSocket JSON-RPC
 
-Append `--rpc-port 19800` to expose `ws://127.0.0.1:19800/`. RPC is disabled when the option is
-absent. `ragnarok_clientInfo` reports client diagnostics; `--chain PATH` supplies protocol
-parameters and can seed a read-only genesis view when an explicit header/state pair is present.
+Append `--with-rpc` to expose `ws://127.0.0.1:19800/`; `--rpc-port NUMBER` changes its port.
+RPC is disabled unless `--with-rpc` or `--with-ui` is specified. `ragnarok_clientInfo` reports
+client diagnostics; `--chain PATH` supplies protocol parameters and can seed a read-only genesis view when an explicit header/state pair is present.
 
 The modules support chain/state/service queries and bounded subscriptions, with dispatcher
 publication boundaries for future import and finality integration. The CLI remains genesis-only;
 there is no live block importer or consensus finality source. Available methods, missing-state
 behavior and configuration-derived placeholders are detailed in the [RPC contract](../spec/rpc.md).
 This is partial JIP-2 support.
+
+### Browser UI
+
+Append `--with-ui` to serve the embedded browser prototype at `http://127.0.0.1:8888/`;
+`--ui-port NUMBER` changes its port. This also enables WebSocket RPC. The page calls
+`ragnarok_clientInfo` and displays the response; its RPC URL is editable for nondefault ports.
+
+Assets are compiled from Nimony and gzipped at build time. The server requires gzip acceptance
+and serves no uncompressed fallback. For development, use `--dev-ui-dir build/ui` alongside
+`--with-ui` and rebuild assets with `make ui-assets`. See the [UI contract](../spec/ui.md) and
+[browser prototype](../spec/ui-browser.md) for build details and verification.
 
 ## Verification
 
