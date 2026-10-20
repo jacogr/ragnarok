@@ -1,0 +1,12 @@
+{
+  "source": "tests/native/accumulation_state_results.nim",
+  "build_name": "accumulation-state-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-state-default", "diagnostic": "outcome.status == None", "description": "Atomic accumulation default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-state-refused", "diagnostic": "outcome.status == None", "description": "Atomic accumulation refused extraction guard"},
+    {"identity": {"reason": "state"}, "arguments": ["state"], "name": "accumulation-state-state", "diagnostic": "outcome.status == StateFailure", "description": "Atomic accumulation state extraction guard"},
+    {"identity": {"reason": "composition"}, "arguments": ["composition"], "name": "accumulation-state-composition", "diagnostic": "outcome.status == CompositionFailure", "description": "Atomic accumulation composition extraction guard"},
+    {"identity": {"reason": "publication"}, "arguments": ["publication"], "name": "accumulation-state-publication", "diagnostic": "outcome.status == PublicationFailure", "description": "Atomic accumulation publication extraction guard"}
+  ]
+}
