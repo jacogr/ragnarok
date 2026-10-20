@@ -373,7 +373,7 @@ def unit_authorization_fixture(folder):
 
 # Describe freshly generated certificates and independent CE fixtures without committing private keys.
 def unit_runtime_fixtures(certificates, original, reload, suite=None):
-    if suite not in (None, 'quic_transport', 'quic_integration'):
+    if suite not in (None, 'application_block_download', 'quic_transport', 'quic_integration'):
         # Unknown selections cannot silently produce an empty successful manifest.
         raise ValueError('Unknown QUIC fixture suite: '+suite)
     fixtures = {}
@@ -383,6 +383,16 @@ def unit_runtime_fixtures(certificates, original, reload, suite=None):
                      'RAGNAROK_TEST_KEY': certificates/'a.key.pem'}
         cert_files = tuple((path, hashlib.sha256(path.read_bytes()).hexdigest()) for path in transport.values())
         fixtures['quic_transport'] = (None, transport, cert_files)
+    if suite in (None, 'application_block_download'):
+        # The block requester shares fresh transport identities and the pinned signed-block report input.
+        report = ROOT/'tests/fixtures/state-report.bin'
+        inputs = {'RAGNAROK_STATE_REPORT': report,
+                  'RAGNAROK_TEST_CERT': certificates/'a.cert.pem',
+                  'RAGNAROK_TEST_KEY': certificates/'a.key.pem'}
+        files = tuple((path, '3ea13ab83a1db73fd4be6f741729e9fb70771610d3d780e46cfae8b0722ac371'
+                       if path == report else hashlib.sha256(path.read_bytes()).hexdigest())
+                      for path in inputs.values())
+        fixtures['application_block_download'] = (None, inputs, files)
     if suite in (None, 'quic_integration'):
         # Every CE child remains hashed and checked, including later original/reload siblings.
         integration = {'RAGNAROK_TEST_WIRES': original, 'RAGNAROK_TEST_RELOAD': reload}
