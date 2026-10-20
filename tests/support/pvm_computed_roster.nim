@@ -49,7 +49,7 @@ proc rosterTransitionConfig*(): BlockReportConfig =
   cfg
 proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 65535'u16,
     target = 0'u32, offender = false, repeatReporter = false,
-    additionalCores: openArray[uint64] = []): ComputedRosterFixture =
+    additionalCores: openArray[uint64] = [], distinctPackages = false): ComputedRosterFixture =
   ## Re-author a three-core complete signed prefix; optional parent9 -> posterior6 is a real epoch transition.
   let base = transitionFixture(epoch = shrink)
   let cfg = rosterTransitionConfig()
@@ -156,6 +156,17 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
   for ordinal in 0..additionalCores.len:
     # Each independently executed report shares the same original snapshot, signed block and genuine staged result.
     let selectedCore = if ordinal == 0: core else: additionalCores[ordinal-1]
+    if distinctPackages:
+      # Distinct authored payloads produce different genuine package identities before execution and input binding.
+      var selectedPackage = package
+      selectedPackage.items[0].payload = @[42'u8, byte(selectedCore)]
+      let selectedSize = encodeWorkPackage(selectedPackage, packageConfig, packageWire).value
+      fixture.package = decodeWorkPackage(packageWire.toOpenArray(0, selectedSize-1),
+          packageConfig).value.owner
+      let selectedExternal = verifyExtrinsicInputs(fixture.package, @[newSeq[seq[byte]](0)],
+          extrinsicLimits()).value
+      fixture.inputs = bindImportInputs(selectedExternal, @[newSeq[VerifiedImport](0)], [],
+          inputLimits()).value
     let links = rosterLinks(executionRun(fixture, core = selectedCore).value, ErasureShards(shards))
     let admitted = validateBlockCommitments(candidate, base.context.parent, snapshot, cfg.admission)
     assert admitted.error == BlockAdmissionError.None, "genuine three-core source admission"
