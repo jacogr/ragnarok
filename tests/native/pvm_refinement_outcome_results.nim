@@ -31,7 +31,7 @@ checkStage(refused, RefinementInvocationError.InvalidBootstrap)
 let capture = runRefinementInvocation(source, [], default(RefinementInputs), ExportOffset(7),
     refinementLimits())
 checkStage(capture, RefinementInvocationError.BootstrapFailure)
-let host = run(refinementFixture([@[10'u8, 9], halt]))
+let host = run(refinementFixture([@[10'u8, 13], halt]))
 checkStage(host, RefinementInvocationError.HostFailure)
 var limited = refinementLimits()
 limited.steps = ExecutionStepLimit(0)

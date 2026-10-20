@@ -27,7 +27,8 @@ proc refinementLimits*(): RefinementInvocationLimits =
     steps: ExecutionStepLimit(32), calls: HostCallLimit(4), cycles: GasCycleLimit(1000),
     output: OutputByteLimit(512))
 proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
-    missing = false, oversized = false, pages = 3'u32): PreparedRefinementBootstrap =
+    missing = false, oversized = false, pages = 3'u32,
+    writable: seq[byte] = @[21'u8, 22, 23]): PreparedRefinementBootstrap =
   ## Build one original standard envelope with distinguishable RO/RW prefixes and genuine code commitments.
   ## Sources die before extraction; the bootstrap owns complete state/package/code/arguments independently.
   var code: seq[byte] = @[]
@@ -44,7 +45,10 @@ proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
   for index, marked in starts:
     if marked: mask[index div 8] = mask[index div 8] or byte(1 shl (index mod 8))
   for octet in mask: raw.add(octet)
-  var preimage = @[0'u8, 3, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 11, 12, 13, 21, 22, 23]
+  assert writable.len <= 4096 # Keep the test envelope's writable fixture within one page.
+  var preimage = @[0'u8, 3, 0, 0, byte(writable.len and 255), byte(writable.len shr 8),
+    0, 0, 0, 0, 0, 0, 11, 12, 13]
+  for octet in writable: preimage.add(octet) # Literal guest programs can now be captured through the real bootstrap.
   preimage.add(byte(raw.len))
   for index in 0..<3: preimage.add(0) # E4 raw-program length follows the fixed RO/RW bytes.
   for octet in raw: preimage.add(octet)

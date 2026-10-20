@@ -1,0 +1,63 @@
+{
+  "source": "tests/native/pvm_inner_lifecycle_results.nim",
+  "build_name": "pvm-inner-lifecycle-results",
+  "crypto_library": null,
+  "native_libraries": [],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-inner-lifecycle-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner lifecycle default"
+    },
+    {
+      "identity": {
+        "origin": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "pvm-inner-lifecycle-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner lifecycle refused"
+    },
+    {
+      "identity": {
+        "origin": "missing"
+      },
+      "arguments": [
+        "missing"
+      ],
+      "name": "pvm-inner-lifecycle-missing",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner lifecycle missing"
+    },
+    {
+      "identity": {
+        "origin": "limited"
+      },
+      "arguments": [
+        "limited"
+      ],
+      "name": "pvm-inner-lifecycle-limited",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner lifecycle limited"
+    },
+    {
+      "identity": {
+        "origin": "owner-default"
+      },
+      "arguments": [
+        "owner-default"
+      ],
+      "name": "pvm-inner-lifecycle-owner-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Inner lifecycle owner-default"
+    }
+  ]
+}

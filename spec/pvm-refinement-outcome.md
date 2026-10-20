@@ -37,7 +37,9 @@ Scope ends at the Psi_R result tuple for implemented host execution. Malformed
 metadata/envelope/program bootstrap gates remain local. Work-package I's Oversize,
 BadExports and zero-segment replacement belong to report construction, not this
 normalizer. No report publication, input/state-freshness authentication, light-state
-support or state composition change is implied. Inner-machine hosts remain gated.
+support or state composition change is implied. Inner-machine lifecycle hosts 9/14
+now run with explicit local policies; hosts 10–13 remain gated. See
+[the lifecycle contract](pvm-inner-lifecycle.md).
 
 Completion: real bound guests for halt/readability/empty/panic/page-fault/host and
 instruction OOG; exact/capped gas, export retention/discard, BAD/BIG short-circuit,

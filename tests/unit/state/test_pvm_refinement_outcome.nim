@@ -141,7 +141,7 @@ cap.copy = MemoryByteLimit(2)
 let copyFailure = run(refinementFixture(fetchInstructions), cap)
 assert copyFailure.error == RefinementInvocationError.HostFailure
 assert copyFailure.hostError == RefinementDispatchError.LimitExceeded
-let unsupported = run(refinementFixture([@[10'u8, 9], halt]))
+let unsupported = run(refinementFixture([@[10'u8, 13], halt]))
 assert unsupported.error == RefinementInvocationError.HostFailure
 assert unsupported.hostError == RefinementDispatchError.UnsupportedHostCall
 # Saved output/source/exports remain immutable after extraction, copied metadata mutation and independent replay.
