@@ -35,8 +35,10 @@ with source-bound export commitment roots; copy/lifetime isolation and 1000-cycl
 ARC. Optimized failed-result guards, compiler privacy/domain rejection, selected
 native suite, inventory/provenance tests and pinned formatting.
 
-Next: package-bound authenticated extrinsic/import input ownership, execution
-against those owned bytes, auditable bundle assembly and erasure coding. State
+Package-bound extrinsic authentication is now specified in
+[pvm-extrinsic-inputs.md](pvm-extrinsic-inputs.md). Next: package-bound authenticated
+import input ownership, execution against those owned bytes, auditable bundle
+assembly and erasure coding. State
 retains block composition/publication. M1 framing is complete; full state
 serialization remains open.
 
