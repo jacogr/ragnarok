@@ -5,7 +5,8 @@
 ## Actual finalized histories produce bounded accumulation-only service deltas, including skipped work-items.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/state/[block_activity, service_activity, accumulation_accounts,
+import ../../../src/state/[accumulation_publication, block_activity, service_activity,
+  accumulation_accounts,
   accumulation_statistics,
   accumulation_finalization, accumulation_outputs,
   accumulation_reentry, accumulation_continuation_execution, accumulation_continuation,
@@ -14,7 +15,7 @@ import ../../../src/state/[block_activity, service_activity, accumulation_accoun
 import ../../../src/codec/[bounded, report_owned, state_outputs, state_statistics]
 import ../../support/[accumulation_reentry_context, accumulation_execution_context,
   accumulation_continuation_execution_context, accumulation_account_timestamps,
-  service_activity_context, block_activity_context, arc_evidence]
+  service_activity_context, block_activity_context, accumulation_publication_context, arc_evidence]
 
 # Statistics must perform no hashes after genuine signing, execution and private finalization.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -178,6 +179,7 @@ proc main() {.raises.} =
     detachedActivity = checkServiceActivity(stats, incoming = true)
   assert detachedActivity.serviceActivityInfo.value.services == 3
   assert detachedActivity.serviceActivitySource.value.statisticsInfo.value.reports == 4
+  var publishedAccumulation = default(PublishedAccumulation)
   var publishedActivity = default(PublishedBlockActivity)
   for empty in [true, false]:
     let preimages = if empty: newSeq[byte]() else: activityPreimages()
@@ -189,9 +191,14 @@ proc main() {.raises.} =
     let stats = prepareAccumulationStatistics(finalized, limits).value
     let services = prepareServiceActivity(stats, activityPolicy()).value
     publishedActivity = checkBlockActivity(services, fixture.initial.entries, empty)
+    let activity = prepareBlockActivity(services, blockPolicy()).value
+    publishedAccumulation = checkAccumulationPublication(activity, fixture.initial.entries, empty)
   assert publishedActivity.publishedActivitySource.value.blockActivityInfo.value.services == 3
   assert publishedActivity.publishedActivityState.value.commitment.entries >
       0 # Published owner alone retains the entire original graph.
+  assert publishedAccumulation.publishedAccumulationSource.value.accumulationPublicationInfo.value.accounts.services == 2
+  assert publishedAccumulation.publishedAccumulationState.value.commitment.entries >
+      0 # The combined owner retains its exact complete source graph.
   var detached: PreparedAccumulationStatistics
   block:
     let local = finished(reentryFixture(base))
