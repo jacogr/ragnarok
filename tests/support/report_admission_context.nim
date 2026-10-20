@@ -146,7 +146,8 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
         byte] = @[], ready: ReadyRow = @[], preimageWire: seq[byte] = @[],
             poolCopies = 1, refinementGas = high(uint64),
     historyPeaks: seq[HistoryPeak] = @[], targetSlot = 0'u32, withTicket = false,
-    shiftPending = false, guaranteeSlot = 0'u32, refinement: seq[RefineLoad] = @[]): Context =
+    shiftPending = false, guaranteeSlot = 0'u32, refinement: seq[RefineLoad] = @[],
+        parentPools: seq[AuthorizerRow] = @[]): Context =
   ## Author a signed advancing block (slot 2 by default), then run real disputes/Safrole/assurance processing.
   ## Modes damage one report or parent relation; full headers, signatures and parent roots are recomputed honestly.
   ## Optional ready rows and belt peaks enter the parent; explicit preimage wire enters the child extrinsic before commitment/signing.
@@ -191,6 +192,7 @@ proc authored*(base: OwnedReport, mode = 0, reports = 2, maxWriteBytes = 1000000
     pools[i] = newSeq[AuthorizerHash](poolCopies)
     for ordinal in 0..<poolCopies: pools[i][ordinal] = ownedReportInfo(
         sample).value.authorizer # Both cores admit the same authenticated authorizer, with optional oldest-only removal witnesses.
+  if parentPools.len > 0: pools = parentPools # Explicit canonical pools enter the original signed parent.
   if mode == 1: pools[1] = @[] # Later report fails after the first valid policy record.
   entries[0] = authorizationEntry(AuthorizationKind.Pools, pools, cfg.policy.pools).value
   let history = HistoryState(blocks: @[HistoryBlock(header: HistoryHeaderHash(parentHash),

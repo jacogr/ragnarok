@@ -65,7 +65,9 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
         poolCopies = 1, refinementGas = high(uint64),
     historyPeaks: seq[HistoryPeak] = @[], targetSlot = 0'u32,
     withTicket = false, shiftPending = false, guaranteeSlot = 0'u32, refinement: seq[
-        RefineLoad] = @[]): ExecutionFixture =
+        RefineLoad] = @[],
+    parentPools: seq[AuthorizerRow] = @[], authorizationQueue: seq[byte] = @[],
+    omitAuthorizationQueue = false): ExecutionFixture =
   ## Recompute parent commitments and real signatures after selecting code, optional complete preimages and free allowances.
   ## Optional allowances, balances, ready rows and belt peaks enter the parent; incoming reports/preimages enter the genuinely signed child.
   let firstCode = (if firstProgram.len == 0: code(first) else: firstProgram)
@@ -82,10 +84,12 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
       assigner) # Optional authority enters the signed parent before real assign calls.
   let privileges = privilegeStateEntry(PrivilegeState(assigners: assigners,
     always: allowances), executionRoundConfig().privileges).value
-  var entries = @[privileges,
-    authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80), newSeq[
-        AuthorizerHash](80)],
-      pvmContextConfig().queues).value]
+  var entries = @[privileges]
+  if not omitAuthorizationQueue:
+    let queues = authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80), newSeq[
+        AuthorizerHash](80)], pvmContextConfig().queues).value
+    entries.add(StateEntry(key: queues.key, value: (if authorizationQueue.len == 0:
+      queues.value else: authorizationQueue))) # Explicit malformed fixtures are committed honestly before the tested decoder stage.
   for ordinal, raw in [firstCode, secondCode]:
     let service = ServiceIndex(if ordinal == 0: 42 else: 99)
     let hash = array[32, byte](blake2b256(raw).value)
@@ -102,7 +106,7 @@ proc executionFixture*(base: OwnedReport, first = ExecutionEnding.Halt,
       accountCode = firstCode, ready = ready, preimageWire = preimageWire, poolCopies = poolCopies,
       refinementGas = refinementGas, historyPeaks = historyPeaks, targetSlot = targetSlot,
     withTicket = withTicket, shiftPending = shiftPending, guaranteeSlot = guaranteeSlot,
-      refinement = refinement)
+      refinement = refinement, parentPools = parentPools)
   let queue = planBlockAccumulationQueue(planBlockReports(context.staged, context.older, config()).value,
     executionQueueConfig()).value
   ExecutionFixture(round: planBlockInitialAccumulation(queue, executionRoundConfig()).value,
