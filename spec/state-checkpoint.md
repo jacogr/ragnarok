@@ -172,3 +172,19 @@ synchronous; this does not claim a wall-clock I/O deadline.
 Raw-file tests cross chunk boundaries, check binary/empty/exact/short/max limits,
 invalid/missing/directory paths, output mutation/retention and 1,000 read/refusal
 ARC cycles. The complete-state file suite remains the affected integration control.
+
+## Schema-independent file ownership
+
+`AtomicFileWriter` now owns the common copied path, stable lock inode and explicit
+retirement contract. Its bounded raw read/replace methods support generation and
+light-state control records without a complete-map API. Closed reads expose no
+bytes, closed writes return `Uninitialized`, and the existing nonblocking contention,
+0600 SDK creation, close-on-exec lock and no-lock-inode-deletion rules remain.
+`CheckpointWriter` is an independently noncopyable composite facade: its private
+native child cannot bypass full-state encoding or independently trusted-root reads.
+No canonical graph is retained by either owner between calls.
+
+Raw ownership tests cover binary/empty control records, path mutation, contention,
+reopen, short-budget rollback and 1,000 ownership cycles. The state-facing owner
+suite retains real permissions, forked contention and its own 1,000 ARC cycles;
+privacy, lifecycle and actual lowering checks cover both resource types.

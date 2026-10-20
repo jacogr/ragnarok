@@ -8,7 +8,7 @@ import std/posix/posix
 import ../codec/bounded
 
 type AtomicFileError* {.pure.} = enum ## Success is explicit; visible-but-unsynced publication never becomes None.
-  Uninitialized, None, InvalidPath, IoFailure, LimitExceeded, PublishedUnsynced
+  Uninitialized, None, InvalidPath, IoFailure, LimitExceeded, PublishedUnsynced, Busy
 
 type BoundedFileResult* = object ## Only actual bounded EOF exposes owned bytes; default/refused alternatives have no prefix.
   case status: AtomicFileError
