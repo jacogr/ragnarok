@@ -122,3 +122,58 @@ class UiCompiler(unittest.TestCase):
             (source/'app.js').write_bytes(b'conflict')
             with self.assertRaisesRegex(ValueError, 'collides'):
                 build(source, root/'stage', root/'manifest.nim', {'app.js': payload})
+
+
+class UiMinification(unittest.TestCase):
+    """Verify development selection, one-time precompression transforms and strict release failures."""
+
+    def test_mode_selection(self):
+        """Local builds skip minification; CI enables it and explicit 0/1 override either default."""
+        for environment, enabled in (({}, False), ({'CI': 'false'}, False), ({'CI': 'true'}, True),
+                                     ({'CI': '1'}, True), ({'UI_MINIFY': '1'}, True),
+                                     ({'CI': 'true', 'UI_MINIFY': '0'}, False)):
+            # Pure selection must not provision or execute tools.
+            with self.subTest(environment=environment):
+                self.assertEqual(build_ui.minify_enabled(environment), enabled)
+        with self.assertRaisesRegex(ValueError, 'UI_MINIFY'):
+            build_ui.minify_enabled({'UI_MINIFY': 'yes'})
+        with patch.dict(build_ui.os.environ, {}, clear=True), patch.object(
+                build_ui, 'compile_client', return_value=b'js'), patch.object(
+                build_ui, 'build', return_value=3) as bundle, patch.object(
+                build_ui, 'minifier_tool', side_effect=AssertionError('development needs no minifier')):
+            build_ui.main()
+        self.assertIsNone(bundle.call_args.kwargs['minifier'])
+
+    def test_transform_before_gzip_and_failure(self):
+        """Generated JS and static CSS are transformed once; failure never publishes partial assets."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, stage, manifest = root/'source', root/'stage', root/'assets.nim'
+            source.mkdir()
+            (source/'index.html').write_bytes(b'<h1>untouched HTML</h1>')
+            (source/'style.css').write_bytes(b'body { color: red; }')
+            calls = []
+            def transform(command, **kwargs):
+                # Model only the native tool boundary; actual generated code runs in browser verification.
+                calls.append(command)
+                self.assertTrue(kwargs['check'])
+                self.assertIn('--minify', command)
+                self.assertIn('input', kwargs)
+                loader = next(value for value in command if value.startswith('--loader='))
+                return subprocess.CompletedProcess(command, 0, stdout=(
+                    b'console.log(1);' if loader == '--loader=js' else b'body{color:red}'))
+            with patch.object(build_ui.subprocess, 'run', side_effect=transform):
+                build(source, stage, manifest, {'app.js': b'console.log( 1 );'}, minifier='/native/esbuild')
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(gzip.decompress((stage/'app.js.gz').read_bytes()), b'console.log(1);')
+            self.assertEqual(gzip.decompress((stage/'style.css.gz').read_bytes()), b'body{color:red}')
+            self.assertEqual(gzip.decompress((stage/'index.html.gz').read_bytes()), b'<h1>untouched HTML</h1>')
+            previous = manifest.read_bytes()
+            with patch.object(build_ui.subprocess, 'run', side_effect=subprocess.CalledProcessError(
+                    1, ['esbuild'])), self.assertRaises(subprocess.CalledProcessError):
+                build(source, stage, manifest, {'app.js': b'bad syntax'}, minifier='/native/esbuild')
+            self.assertEqual(manifest.read_bytes(), previous)
+            # Returning to development replaces minified bytes with the original source without any tool call.
+            with patch.object(build_ui.subprocess, 'run', side_effect=AssertionError('unexpected minifier')):
+                build(source, stage, manifest, {'app.js': b'console.log( 1 );'})
+            self.assertEqual(gzip.decompress((stage/'app.js.gz').read_bytes()), b'console.log( 1 );')

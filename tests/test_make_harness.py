@@ -121,7 +121,7 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
     print('deliberate runtime failure')
     sys.exit(7)
 """
-            for name in ('setup_browser', 'setup_web', 'build_ui', 'build_info', 'check_inventory', 'setup_nimony', 'setup_submodules', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
+            for name in ('setup_browser', 'setup_web', 'setup_minifier', 'build_ui', 'build_info', 'check_inventory', 'setup_nimony', 'setup_submodules', 'test_modules', 'test_runtime', 'test_python', 'test_guards', 'test_e2e', 'format'):
                 # The test exercises Make ordering/status; native behavior has its own application coverage.
                 (folder/'tools'/(name+'.py')).write_text(stub)
             for name in ('test_spec', 'test_nimony_ci'):
@@ -132,7 +132,8 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                 'class Fixture(unittest.TestCase):\n'
                 '    # Discovery itself is the behavior exercised by this fixture.\n'
                 '    def test_discovery(self): pass\n')
-            environment = {**os.environ, 'PATH': str(folder/'bin')+os.pathsep+os.environ['PATH']}
+            environment = {**os.environ, 'PATH': str(folder/'bin')+os.pathsep+os.environ['PATH'],
+                           'CI': '', 'UI_MINIFY': '0'}
             arguments = ['make', '--no-print-directory', 'PYTHON='+sys.executable]
             (folder/'build/nested').mkdir(parents=True)
             (folder/'build/nested/stale').write_text('old artifact')
@@ -144,6 +145,7 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
             self.assertEqual(calls.count('setup_nimony.py'), 1)
             self.assertEqual(calls.count('check_inventory.py'), 1)
             self.assertEqual(calls.count('build_ui.py'), 1)
+            self.assertNotIn('setup_minifier.py', calls)
             self.assertEqual(calls.count('build_info.py'), 1)
             self.assertLess(calls.index('setup_nimony.py'), calls.index('build_info.py'))
             self.assertLess(calls.index('build_info.py'), calls.index('test_modules.py'))
@@ -174,6 +176,14 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                                     env={**environment, 'FAIL_INVENTORY': '1'}, capture_output=True)
             self.assertNotEqual(failed.returncode, 0)
             self.assertEqual((folder/'calls').read_text().splitlines(), ['check_inventory.py'])
+            # CI provisions the minifier before embedding; an explicit local opt-in takes the same path.
+            for selection in ({'CI': 'true'}, {'UI_MINIFY': '1'}):
+                (folder/'calls').write_text('')
+                release = {key: value for key, value in environment.items() if key != 'UI_MINIFY'}
+                subprocess.run(arguments+['ui-assets'], cwd=folder, env={**release, **selection},
+                               capture_output=True, check=True)
+                scheduled = (folder/'calls').read_text().splitlines()
+                self.assertLess(scheduled.index('setup_minifier.py'), scheduled.index('build_ui.py'))
 
     # Both host profiles must keep ARC/checks/LTO, enable both maintained features and exclude every observer ABI.
     def test_checked_build_profile(self):

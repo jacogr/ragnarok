@@ -14,6 +14,7 @@ import os
 import subprocess
 from setup_nimony import installed as native_tools, cache_directory
 from setup_web import installed as web_tools
+from setup_minifier import installed as minifier_tool
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,8 +44,30 @@ def compressed(data):
     return output.getvalue()
 
 
+# Development keeps original bytes; explicit selection and CI enable the same native release transform.
+def minify_enabled(environment):
+    """Resolve UI_MINIFY=0|1, defaulting to enabled only for CI=1 or CI=true."""
+    value = environment.get('UI_MINIFY', '1' if environment.get('CI') in ('1', 'true') else '0')
+    if value not in ('0', '1'):
+        # A misspelled release option must not silently ship readable development assets.
+        raise ValueError('UI_MINIFY must be 0 or 1')
+    return value == '1'
+
+
+# Use transform mode so URLs, script globals and separate asset names retain their runtime contracts.
+def minified(binary, name, data):
+    """Minify JS/CSS before gzip; keep every other asset byte-exact and propagate parser failures."""
+    suffix = Path(name).suffix
+    if suffix not in ('.js', '.css'):
+        # HTML and binary assets are outside this transform's scope.
+        return data
+    return subprocess.run([str(binary), '--loader='+suffix[1:], '--minify',
+                           '--charset=utf8', '--sourcefile='+name], input=data,
+                          stdout=subprocess.PIPE, check=True).stdout
+
+
 # Capture source bytes once, before updating output, so each staged file matches its embedded constant.
-def build(source, stage, manifest, generated=None):
+def build(source, stage, manifest, generated=None, minifier=None):
     """Gzip one public asset tree and embed sorted sidecar paths; reject symlink sources."""
     source, stage, manifest = Path(source), Path(stage), Path(manifest)
     if not source.is_dir() or source.is_symlink():
@@ -72,6 +95,9 @@ def build(source, stage, manifest, generated=None):
     assets.sort(key=lambda asset: asset[0]) # Sort URL paths rather than host path components.
     if 'index.html' not in {name for name, _ in assets}:
         raise ValueError('UI distribution requires index.html')
+    if minifier is not None:
+        # Finish every transform before replacing staged output; malformed release assets fail the build.
+        assets = [(name, minified(minifier, name, data)) for name, data in assets]
     # Only gzip representations are staged/embedded; identity bytes are build-time inputs only.
     assets = sorted(((name+'.gz', compressed(content)) for name, content in assets),
                     key=lambda asset: asset[0]) # Suffixes can change ordering for prefix-related names.
@@ -117,9 +143,10 @@ def compile_client():
 # Make owns tool preparation; this step emits the complete distribution and embedded manifest.
 def main():
     """Build the repository-owned static distribution and its compile-time manifest."""
+    minifier = minifier_tool() if minify_enabled(os.environ) else None
     count = build(ROOT/'src/ui/static', ROOT/'build/ui', ROOT/'build/ui_assets.nim',
-                  {'app.js': compile_client()})
-    print(f'Embedded UI manifest: {count} assets; staged in build/ui/')
+                  {'app.js': compile_client()}, minifier=minifier)
+    print(f'Embedded UI manifest: {count} assets; minified={minifier is not None}; staged in build/ui/')
 
 
 if __name__ == '__main__':

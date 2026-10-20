@@ -13,7 +13,7 @@ Missing development files return 404 without falling back to the bundle.
 The old `--ui-dir` spelling is removed. The development flag alone never starts the listener.
 
 `make ui-assets` compiles `src/ui/client.nim` to JavaScript, combines it with the static
-assets in `src/ui/static/`, gzips each asset into `<filename>.<ext>.gz` under `build/ui/`
+assets in `src/ui/static/`, optionally minifies JS/CSS, gzips each asset into `<filename>.<ext>.gz` under `build/ui/`
 and generates `build/ui_assets.nim`, containing immutable sorted URL paths and byte-exact asset constants.
 Make runs this step before production builds, native verification and source module checks.
 Only gzip bytes are staged and embedded; original bytes are build-time inputs. Gzip metadata
@@ -22,6 +22,22 @@ changes when asset paths or bytes change, so the compiler sees asset edits.
 Generated outputs remain under ignored `build/`; `make clean` removes them. Asset sources are
 part of runtime verification provenance. The browser client has no frontend framework or
 JavaScript package dependency; Node/Playwright are used only for browser verification.
+
+Local builds retain original JS/CSS bytes by default and do not provision a minifier.
+CI sets `UI_MINIFY=1`; Make also defaults to minification for `CI=true` or `CI=1`.
+Use `make UI_MINIFY=1 ui-assets` (or `make UI_MINIFY=1`) to opt in locally;
+`UI_MINIFY=0` explicitly selects readable assets. Other values fail the build.
+
+Minified builds use the standalone native [esbuild](https://esbuild.github.io/getting-started/#download-a-build)
+executable pinned in `spec/ui-tools.json`, with archive and executable SHA-256 verification for
+Linux amd64 and macOS arm64. It is downloaded directly from official platform packages into
+`build/ui-minifier/`; no Node, npm install or Go compiler is needed for application builds.
+`tools/setup_minifier.py` provisions it through Make only when requested. Transform mode
+minifies generated `app.js` and static `.js`/`.css` assets before gzip/embedding, preserving
+separate asset names, URLs and script globals. HTML and other assets retain their original bytes.
+Parser errors fail the build before replacing staged assets; no unminified release fallback is used.
+Both modes retain deterministic gzip metadata, and switching modes replaces the staged/embedded
+bytes without changing public filenames. Browser verification in CI exercises minified output.
 
 `--with-ui` also enables the WebSocket RPC listener, default `ws://127.0.0.1:19800/`;
 `--rpc-port NUMBER` selects its port. `--with-rpc` enables RPC independently.
@@ -94,3 +110,13 @@ encoding cases, missing-sidecar isolation despite an original file, symlink reje
 RPC/QUIC progress and clean shutdown. No runtime compression library or identity asset is added.
 Evidence: `build/ci/ui-gzip-*.log`, `build/tests/ui-browser/peer/browser/results.json` and
 `build/tests/ui-gzip-dev/results.json`. Canonical Linux CI remains separate.
+
+Native minification validation on 2026-10-20 (macOS arm64, pinned Nimony 0.6.3 and esbuild
+0.28.2): minified production build and real-browser/WebSocket RPC workload passed, including
+DOM updates, refresh, disconnect/reconnect, mobile layout, gzip serving and concurrent QUIC
+progress. The default production build then passed and restored original JS/CSS bytes.
+Focused asset/setup/Make/provenance checks passed (29 Python tests), as did verification inventory
+and whitespace checks. No Nim source changed, so native source formatting was unchanged.
+For this prototype, app.js gzip shrank from 27,775 to 12,731 bytes; style.css gzip shrank from
+1,488 to 1,285 bytes. Evidence is under `build/ci/ui-minify-*.log` and
+`build/ci/ui-minify-sizes.json`; canonical Linux CI remains separate verification.

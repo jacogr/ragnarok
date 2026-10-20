@@ -72,7 +72,8 @@ Append `--with-ui` to serve the embedded browser prototype at `http://127.0.0.1:
 `--ui-port NUMBER` changes its port. This also enables WebSocket RPC. The page calls
 `ragnarok_clientInfo` and displays the response; its RPC URL is editable for nondefault ports.
 
-Assets are compiled from Nimony and gzipped at build time. The server requires gzip acceptance
+Assets are compiled from Nimony and gzipped at build time. CI minifies JS/CSS with a pinned
+native esbuild executable; local builds skip it unless `UI_MINIFY=1` is set. The server requires gzip acceptance
 and serves no uncompressed fallback. For development, use `--dev-ui-dir build/ui` alongside
 `--with-ui` and rebuild assets with `make ui-assets`. See the [UI contract](../spec/ui.md) and
 [browser prototype](../spec/ui-browser.md) for build details and verification.
