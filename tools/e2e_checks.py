@@ -139,6 +139,22 @@ def application_state(context):
 
 
 @PLAN.workload
+def application_checkpoint_import(context):
+    """Verify explicit trusted checkpoint imports in the production executable and both retained peer shapes."""
+    compiled, binary = context.peer
+    observed = dict(passed=False)
+    if compiled['exit_code'] == 0:
+        from application_recovery_checks import run as recovery_checks
+        try:
+            observed = recovery_checks(binary, context.certificates, context.checks.folder/'application-checkpoint-import')
+        except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
+            # Startup, RPC, preservation and child-retirement failures remain this workload's own failed verdict.
+            observed = dict(passed=False, failure=str(error))
+    announce('Executable trusted checkpoint import', observed['passed'])
+    return observed
+
+
+@PLAN.workload
 def application_download_load(context):
     """Repeat authenticated signed download cancellation and native reset progress before real adoption."""
     import hashlib
