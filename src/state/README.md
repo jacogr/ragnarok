@@ -12,6 +12,7 @@ than a single block executor; their exact supported boundaries live in the linke
 | `checkpoint*` | Complete-map checkpoint encoding/validation, bounded file access and managed publication workers |
 | Authorization, entropy, history, validators, tickets and Safrole | Bounded component transitions and atomic chapter publication |
 | `block_*`, `extrinsic_inputs`, report and guarantee modules | Structural admission, authentication/projection boundaries and selected block transitions |
+| [`ancestor_context.nim`](ancestor_context.nim) | Immutable sealed ancestry, child-committed lookup proofs and [bounded report context discovery](../../spec/state-ancestor-context.md) |
 | `accumulation_*` | Prepared service inputs, credited execution contexts, host effects, continuation/reentry and selected successor composition |
 | Refinement, assured/computed, bundle, import/export and erasure modules | Bounded work execution, provenance, data availability and publication stages |
 

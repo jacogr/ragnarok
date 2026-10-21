@@ -17,8 +17,7 @@ retains immutable owners; no sequence backing escapes. A parent-only success dif
 
 Completion checks: `make unit SUITE=ancestor_context` and registration inventory. Authored independent
 sealed chains cover skipped slots, order/duplicate/gap refusal, defaults, exact and exceeded quotas,
-invalid indices and source-sequence replacement. Consumer migration and missing-context planning
-remain later layers. M1 framing is complete; complete state serialization/JAM parity remain open.
+invalid indices and source-sequence replacement. Consumer integration and missing-context planning are implemented below. M1 framing is complete; complete state serialization/JAM parity remain open.
 
 `extendAncestorContext` appends an older suffix atomically, preserving the selected parent and
 all prior context aliases. Count/host descriptor bounds precede allocation. Complete recapture
@@ -156,3 +155,31 @@ and a two-child run whose exact request order is child, missing ancestor, next c
 proves exact-pin reconnect after both child and ancestor connection retirement, preserved context,
 confirmed progress and every restored map entry/history/finality expectation. The observer requires
 both CLI and native witness success, and reaps the native process after exceptions/timeouts.
+
+## Completed scope, reproduction and remaining work
+
+This bounded feature is complete for explicit pinned loopback peers and the existing supported
+complete-state child execution path. No storage format, storage/public Services API, protocol pin,
+full/light selection or finality semantics changed. The operator guide is
+[download ancestry](../docs/download-ancestors.md).
+
+Local checked ARC/Clang verification covers `ancestor_context`, `report_anchors`,
+`report_admission`, `application_candidate`, `application_candidate_reports`,
+`application_input_ancestors`, `application_worker_ancestors`, `application_download_ancestors`,
+`application_session_ancestors`, `application_download_peers`, `application_dispatch_ancestors`,
+`application_discovery_ancestor_options` and `application_discovery_ancestor_command` through
+`make unit SUITE=<name>`. Worker and existing report/candidate release witnesses run 1,000 cycles;
+source-owned runtime/compiler guards reject invalid extraction and certificate forgery.
+
+The production Make build passes. Both registered executable workloads
+`application_remote_ancestors` and `application_discovery_ancestors` pass, including complete-map
+journal/managed restart, wrong-parent byte preservation, timeout refusal and exact three-request
+two-child discovery. Observer/build-failure Python safeguards pass. Detailed local logs are under
+`build/state-*-unit.log`, `build/state-*-guards.log`, `build/state-discovery-production-build.log`
+and `build/state-discovery-e2e/{upfront,discovery}-results.json`; these are local results, not Linux
+CI evidence.
+
+Remaining work includes non-loopback bootstrap/peer discovery, fork choice, light-node proof/storage
+contracts, broader independent JAM interoperability and sizing beyond these finite development
+commands. M1 framing remains complete; complete state serialization and whole-block JAM/STF parity
+remain open under the existing pinned request-namespace disposition.

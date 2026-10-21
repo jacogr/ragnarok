@@ -37,4 +37,7 @@ FIN gates. The download command can extend local/file inputs with explicit
 `--download-remote-ancestors COUNT` context before child requests. See the
 [remote acquisition contract](../../spec/application-remote-ancestors.md) and
 [operator guide](../../docs/download-ancestors.md) for bounds, retry behavior and
-canonical-history separation.
+canonical-history separation. Alternatively, `--download-discover-ancestors COUNT`
+receives each child first and fetches only certified missing context within one
+whole-run allowance. Its prepared input resumes after worker/connection retirement;
+see the [state context contract](../../spec/state-ancestor-context.md).

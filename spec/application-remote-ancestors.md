@@ -25,8 +25,10 @@ Completion witnesses: independent literal request bytes, genuine descending
 chains, exact/short limits, shorter responses, empty/truncated/suffixed bodies,
 wrong first identity, reordered/duplicate/unrelated parents, strict slots, default
 owners/results, late failure atomicity, detached ownership and repeated ARC release.
-Streaming FIN, transport retirement, command wiring and actual network operation
-remain separate layers. M1 framing is complete; full serialization/JAM parity remain open.
+Streaming FIN, transport retirement, command wiring and actual executable operation
+are verified in the layers below. Child-driven acquisition is documented separately in
+[the on-demand context contract](state-ancestor-context.md). M1 framing is complete;
+full serialization/JAM parity remain open.
 
 ## Response evidence
 
