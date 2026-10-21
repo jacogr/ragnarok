@@ -405,3 +405,19 @@ copying, separately from replay and full StateStore reconstruction. Each extract
 count; an independently rebuilt root checks the extracted mapping outside timing. Physical record
 count and zero extraction hash calls are exact counters; `history_ns` remains a noisy separate phase.
 Reports from the earlier workload refuse comparison because their workload source identity differs.
+
+## Reachable-leaf extraction
+
+Physical extraction records leaf positions while the existing complete-graph validator traverses
+the selected root. Only those validated leaves are detached afterwards; it no longer scans every
+accumulated historical record to find them. Left-before-right traversal returns ascending full keys.
+The existing physical-table-sized duplicate-visit bitmap, graph checks, ceilings and error contracts
+remain unchanged. Publication does not collect leaf positions. Detached output mutation and owner
+close cannot alter retained views. The historical suite exercises ordering, empty roots, zero-node
+budgets, output isolation and retained extraction after file-owner close.
+
+On the same checked macOS ARM64 workload, ten-run median extraction times changed from about
+1.26 ms to 1.19–1.20 ms at 128 keys and 26.4–26.6 ms to 26.0–26.4 ms at 1024 keys (64 extractions).
+The larger case is close to timing noise; no general throughput claim follows. Every deterministic
+counter, physical byte count and hash count stayed identical. Repository rejection/1,000-cycle ARC,
+real disk replay and bounded application-history suites pass with the shared traversal change.

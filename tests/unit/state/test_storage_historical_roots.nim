@@ -52,6 +52,22 @@ proc main() {.raises.} =
   assert sameStateSnapshot(current, disk.snapshot.value) and uint64(disk.generation.value) == 5
   assert disk.close == FileError.None
   assert snapshots[0].lookup(storageKey(0)).value.bytes == @[7'u8]
+  var physical = default(FileRepository)
+  assert openFileRepository(physical, path, default(StorageChainId), limits) == FileError.None
+  let view = physical.snapshot.value
+  var extracted = restoreHistoricalStateEntries(view, seed.commitment.root, policy.trie).value
+  assert extracted.len == 2
+  assert array[31, byte](extracted[0].key) == array[31, byte](storageKey(0))
+  assert array[31, byte](extracted[1].key) == array[31, byte](storageKey(128))
+  extracted[0].value[0] = 99
+  assert restoreHistoricalStateEntries(view, seed.commitment.root, policy.trie).value[0].value == @[7'u8]
+  assert restoreHistoricalStateEntries(view, default(StateRoot), policy.trie).value.len == 0
+  var noNodes = policy.trie
+  noNodes.nodes = TrieNodeLimit(0)
+  assert restoreHistoricalStateEntries(view, seed.commitment.root, noNodes).error ==
+      RepositoryError.LimitExceeded
+  assert physical.close == FileError.None
+  assert restoreHistoricalStateEntries(view, seed.commitment.root, policy.trie).value[0].value == @[7'u8]
 try:
   main()
 except:

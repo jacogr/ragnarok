@@ -33,6 +33,10 @@ type
     data: nil RepositoryData
   NodeRepository* = object ## Copies are independent updateable handles sharing immutable prior data only.
     head: nil RepositoryData
+  GraphVisit = object ## Traversal scratch records only reachable leaves for optional detached extraction.
+    seen: seq[bool]
+    leaves: seq[int]
+    collect: bool
   GraphCounts = object ## Explicitly initialized running totals bound untrusted graph traversal.
     entries, nodes, bytes: uint64
 
@@ -85,16 +89,16 @@ proc position(records: seq[TrieRecord], digest: StateNodeHash): int =
     else: return middle
   -1
 proc graph(records: seq[TrieRecord], digest: StateNodeHash, depth: int,
-    prefix: array[31, byte], limits: StateTrieLimits, seen: var seq[bool],
+    prefix: array[31, byte], limits: StateTrieLimits, visit: var GraphVisit,
     counts: var GraphCounts): RepositoryError =
   ## Verify complete reachability, bounded acyclic topology and every full key's MSB route.
   if array[32, byte](digest) == default(array[32, byte]): return RepositoryError.None
   let index = position(records, digest)
   if index < 0: return RepositoryError.MissingNode # Partial graphs never become complete revisions.
-  if seen[index]: return RepositoryError.InvalidGraph # Cycles and repeated logical subtrees cannot represent a full-key map.
+  if visit.seen[index]: return RepositoryError.InvalidGraph # Cycles and repeated logical subtrees cannot represent a full-key map.
   if counts.nodes >= uint64(limits.nodes): return RepositoryError.LimitExceeded
   inc counts.nodes
-  seen[index] = true
+  visit.seen[index] = true
   let record = records[index]
   if record.kind == TrieRecordKind.Leaf:
     let key = array[31, byte](record.key)
@@ -106,16 +110,17 @@ proc graph(records: seq[TrieRecord], digest: StateNodeHash, depth: int,
     if counts.entries >= uint64(limits.items) or size > uint64(limits.perValue) or
         size > uint64(limits.totalValueBytes)-counts.bytes:
       return RepositoryError.LimitExceeded
+    if visit.collect: visit.leaves.add(index) # Remember validated leaves without scanning historical records later.
     inc counts.entries
     counts.bytes += uint64(record.payload.len)
   else:
     if depth >= 248: return RepositoryError.InvalidGraph # No branch may read past the full serialized key domain.
     let before = counts.entries
-    let left = graph(records, record.left, depth+1, prefix, limits, seen, counts)
+    let left = graph(records, record.left, depth+1, prefix, limits, visit, counts)
     if left != RepositoryError.None: return left
     var rightPrefix = prefix
     rightPrefix[depth div 8] = rightPrefix[depth div 8] or byte(128 shr (depth mod 8))
-    let right = graph(records, record.right, depth+1, rightPrefix, limits, seen, counts)
+    let right = graph(records, record.right, depth+1, rightPrefix, limits, visit, counts)
     if right != RepositoryError.None: return right
     if counts.entries-before < 2: return RepositoryError.InvalidGraph # Singletons must collapse instead of retaining unary paths.
   RepositoryError.None
@@ -213,15 +218,15 @@ proc publish*(repository: var NodeRepository, expected: RepositoryView,
     else:
       records[index] = added[fresh]
       inc fresh
-  var seen = newSeq[bool](records.len)
+  var visit = GraphVisit(seen: newSeq[bool](records.len))
   var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
   let complete = graph(records, StateNodeHash(array[32, byte](batch.root)), 0,
-    default(array[31, byte]), limits.codec.trie, seen, counts)
+    default(array[31, byte]), limits.codec.trie, visit, counts)
   if complete != RepositoryError.None: return RepositoryResult[RepositoryView](status: complete)
   if counts.entries != batch.entries or counts.nodes != batch.nodes:
     return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph)
   for record in batch.records:
-    if not seen[position(records, record.digest)]:
+    if not visit.seen[position(records, record.digest)]:
       return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph) # Do not admit unrelated orphan records through a revision batch.
   let data = RepositoryData(records: records, commitment: StateTrieCommitment(root: batch.root,
     entries: int(counts.entries), nodes: counts.nodes), generation: RepositoryGeneration(uint64(
@@ -240,20 +245,20 @@ proc collectStateEntries(view: RepositoryView, expected: StateRoot,
   if selected and (uint64(data.commitment.entries) > uint64(limits.items) or data.commitment.nodes >
       uint64(limits.nodes)):
     return RepositoryResult[seq[StateEntry]](status: RepositoryError.LimitExceeded) # Reject narrower fixed ceilings before traversal scratch.
-  var seen = newSeq[bool](data.records.len)
+  var visit = GraphVisit(seen: newSeq[bool](data.records.len), collect: true)
   var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
   let checked = graph(data.records, StateNodeHash(array[32, byte](expected)), 0,
-    default(array[31, byte]), limits, seen, counts)
+    default(array[31, byte]), limits, visit, counts)
   if checked != RepositoryError.None: return RepositoryResult[seq[StateEntry]](status: checked)
   if counts.entries > uint64(high(int) div sizeof(StateEntry)):
     return RepositoryResult[seq[StateEntry]](status: RepositoryError.LimitExceeded) # Bound the exact leaf descriptor extent before allocation.
   var entries = newSeq[StateEntry](int(counts.entries))
   var next = 0
-  for index, record in data.records:
-    if seen[index] and record.kind == TrieRecordKind.Leaf:
-      let copied = copyRecord(record)
-      entries[next] = StateEntry(key: copied.key, value: copied.payload)
-      inc next # Complete graph validation proved the exact reachable leaf count.
+  for index in visit.leaves:
+    # Left-before-right traversal yields full keys in canonical order, independent of physical history.
+    let copied = copyRecord(data.records[index])
+    entries[next] = StateEntry(key: copied.key, value: copied.payload)
+    inc next # Complete graph validation proved the exact reachable leaf count.
   RepositoryResult[seq[StateEntry]](status: RepositoryError.None, completed: entries)
 
 proc restoreStateEntries*(view: RepositoryView, expected: StateRoot,
