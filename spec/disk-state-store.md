@@ -396,3 +396,12 @@ child-only kernel file-size limit to preserve typed IO uncertainty, the exact pr
 write refusal after uncertainty and unchanged bytes on strict incomplete-tail startup failure.
 The [operator guide](../docs/disk-storage.md) records supported controls, trust separation, fixed
 ceilings, explicit recovery limits and remaining performance/layout work.
+
+## Historical-extraction measurement
+
+The fixed disk workload additionally opens the completed physical journal and extracts the oldest
+complete root 64 times. This region includes graph validation, traversal scratch and detached leaf
+copying, separately from replay and full StateStore reconstruction. Each extraction checks its leaf
+count; an independently rebuilt root checks the extracted mapping outside timing. Physical record
+count and zero extraction hash calls are exact counters; `history_ns` remains a noisy separate phase.
+Reports from the earlier workload refuse comparison because their workload source identity differs.

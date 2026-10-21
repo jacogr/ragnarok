@@ -19,7 +19,8 @@ from native_preparation import prepare_libraries
 PROFILE = 'pinned Nimony ARC Clang release speed boundchecks LTO crypto observer real files'
 CASES = ((128, 1), (128, 8), (1024, 1), (1024, 8))
 FIELDS = {'entries', 'retained', 'updates', 'hash_calls', 'initialized_bytes', 'peak_bytes',
-          'retained_bytes', 'journal_bytes', 'full_frame_bytes'}
+          'retained_bytes', 'journal_bytes', 'full_frame_bytes', 'history_hash_calls', 'physical_nodes'}
+PHASES = ('publish_ns', 'reopen_ns', 'history_ns')
 MATCH = ('source_sha256', 'profile', 'platform', 'compiler_sha256', 'crypto_pins_sha256')
 
 
@@ -46,10 +47,10 @@ def parse_sample(text):
     rows = [json.loads(line) for line in text.splitlines()]
     timings = []
     for row in rows:
-        if (not isinstance(row, dict) or set(row) != FIELDS | {'publish_ns', 'reopen_ns'}
+        if (not isinstance(row, dict) or set(row) != FIELDS | set(PHASES)
                 or any(type(value) is not int or value < 0 for value in row.values())):
             raise ValueError('Invalid phase timing or counter')
-        timings.append({key: row.pop(key) for key in ('publish_ns', 'reopen_ns')})
+        timings.append({key: row.pop(key) for key in PHASES})
     # Reuse independent fixed-coordinate validation, even for a single process observation.
     validate_samples([rows, rows])
     return rows, timings
@@ -108,7 +109,7 @@ def main():
                   process_median_seconds=statistics.median(run['elapsed_seconds'] for run in runs))
     report['phase_medians_nanoseconds'] = [dict(entries=count, retained=pins,
         **{phase: statistics.median(run['phase_nanoseconds'][index][phase] for run in runs)
-           for phase in ('publish_ns', 'reopen_ns')})
+           for phase in PHASES})
         for index, (count, pins) in enumerate(CASES)]
     if baseline is not None:
         report['comparison'] = compare_reports(baseline, report)

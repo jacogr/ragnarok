@@ -78,13 +78,32 @@ proc sample(count, retained: int) {.raises.} =
     assert restored.lookup(key(i)).value.bytes == entries[
         i].value # Check every restored value, not only the root.
   assert disk.close == FileError.None
+  # Isolate physical historical extraction from journal replay and trie reconstruction.
+  var physical = default(FileRepository)
+  assert openFileRepository(physical, path, default(StorageChainId), limits) == FileError.None
+  defer:
+    if physical.opened: discard physical.close # Measurement failures still release the exclusive file owner.
+  let view = physical.snapshot.value
+  reset(0)
+  let historyStarted = getMonoTime().ticks
+  for iteration in 0..<64:
+    let old = restoreHistoricalStateEntries(view, seed.commitment.root, policy.trie).value
+    assert old.len == count # Each successful iteration owns a complete detached mapping.
+  let historyNanoseconds = getMonoTime().ticks-historyStarted
+  let historyHashes = hashCalls()
+  let historical = restoreHistoricalStateEntries(view, seed.commitment.root, policy.trie).value
+  let historicalRoot = stateTrieRoot(historical, policy.trie).value
+  assert array[32, byte](historicalRoot.root) == array[32, byte](seed.commitment.root)
+  assert uint64(view.generation) == 65 and historyHashes == 0
+  assert physical.close == FileError.None
   echo "{\"entries\":" & $count & ",\"retained\":" & $retained & ",\"updates\":64,\"hash_calls\":" &
       $hashes &
     ",\"initialized_bytes\":" & $initialized & ",\"peak_bytes\":" & $peak & ",\"retained_bytes\":" &
         $occupied &
     ",\"journal_bytes\":" & $bytes & ",\"full_frame_bytes\":" & $fullBytes & ",\"publish_ns\":" &
         $publishNanoseconds &
-    ",\"reopen_ns\":" & $reopenNanoseconds & "}"
+    ",\"reopen_ns\":" & $reopenNanoseconds & ",\"history_ns\":" & $historyNanoseconds &
+    ",\"history_hash_calls\":" & $historyHashes & ",\"physical_nodes\":" & $view.storedNodes & "}"
 try:
   for count in [128, 1024]:
     for retained in [1, 8]: sample(count, retained) # Each fixture retires all handles before the next case.
