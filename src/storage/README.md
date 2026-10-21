@@ -109,6 +109,7 @@ confirms a successful file and directory barrier. Both owners share snapshot/pub
 semantics while preserving their typed error distinctions. Run `storage_backend_contract` and
 `storage_disk_replay` for the common scenarios and published full/delta/inverse mapping roundtrips.
 
-The standalone roadmap stops here for maintainer evaluation. Consumer adoption, full/light startup
-configuration and workload-driven layout/reclamation need separately scoped work. Availability or
-merging of these modules does not authorize either workstream to begin integration.
+The standalone roadmap stopped for maintainer evaluation; the explicitly authorized in-memory
+StateStore tranche is recorded above and in its integration contract. Other consumer adoption,
+full/light startup configuration and workload-driven layout/reclamation still need separately scoped
+work. Availability or merging of these modules does not authorize those further changes.

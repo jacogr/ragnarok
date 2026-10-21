@@ -197,3 +197,8 @@ help:
 	  'make runtime       Alias for make check-unit' \
 	  'make format        Apply pinned Nim and Rust formatters' \
 	  'make format-check  Verify Nim and Rust formatting'
+
+# Repeat fixed crypto-work/live-memory observations; an optional baseline is supplied via the environment.
+.PHONY: measure-state-store
+measure-state-store: setup
+	. ./build/toolchain/env.sh; $(PYTHON) tools/measure_state_store.py --compiler "$$NIMONY"
