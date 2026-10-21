@@ -30,6 +30,11 @@ proc cycle() =
   let projected = projectProofView(view, [key], budget).value
   let merged = mergeProofViews(projected, view, budget).value
   let encoded = encodeProofView(merged, budget, limits, ByteLimit(500)).value
+  var shortAggregate = aggregate
+  shortAggregate.nodes = ElementLimit(1)
+  let refused = decodeProofView(encoded, root, budget, limits, shortAggregate, ByteLimit(500))
+  assert refused.error == ProofViewError.ProofFailure and refused.proofError ==
+      StateProofError.LimitExceeded
   assert calls() == 0
   fail(0) # Wire decoding intentionally authenticates raw witnesses again under the supplied root.
   let decoded = decodeProofView(encoded, root, budget, limits, aggregate, ByteLimit(500)).value
