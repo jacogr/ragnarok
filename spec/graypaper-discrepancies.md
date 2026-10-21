@@ -206,7 +206,10 @@ The [executed arithmetic cross-check](pvm-register-reference-crosscheck.md) pass
 all38977 unchanged independent rows across85 register-only opcodes, comparing the
 exact trap PC and all13 registers against pinned PolkaVM interpreter/JamV1. These
 expectations remain Gray Paper-derived; no row was changed to obtain parity.
-This result does not imply unrestricted PVM conformance.
+The [executed gas cross-check](pvm-gas-reference-crosscheck.md) also passes all1776
+independent block prices under JamV1/L2Hit, retaining the paper's25-cycle memory
+profile. Exact local simulation ceilings remain checked by the native gas suite.
+These results do not imply unrestricted PVM conformance.
 
 ## Related findings outside this PVM increment
 
