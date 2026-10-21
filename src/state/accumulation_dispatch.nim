@@ -1239,10 +1239,11 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
     provisionLimits = default(AccumulationProvisionLimits),
     serviceProbes = ServiceProbeLimit(0), transferLimit = ElementLimit(0),
     accountWriteKeys = ElementLimit(0), createdAccounts = ElementLimit(0),
-        deletedAccounts = ElementLimit(0), modifiedAccounts = ElementLimit(
-            0)): AccumulationDispatchResult =
+        deletedAccounts = ElementLimit(0), modifiedAccounts = ElementLimit(0),
+            accountWriteFacts = ElementLimit(0)): AccumulationDispatchResult =
   ## Execute only the supplied prepared machine, with entropy and inputs derived from its bootstrap.
   ## Capture limits apply before execution; copy, provision and engine budgets are independent local policies.
+  ## accountWriteFacts independently enables bounded physical account/key facts; zero disables their queries.
   ## modifiedAccounts enables bounded exact account membership; zero keeps those publication facts disabled.
   ## deletedAccounts bounds eligible ejection publication proofs; zero retains the earlier gate.
   ## createdAccounts independently bounds new-service publication proofs; zero retains the earlier gate.
@@ -1274,7 +1275,7 @@ proc executeAccumulationMachine*(prepared: PreparedAccumulationMachine, paramete
   if initial.error != AccumulationContextError.None:
     return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext) # Require exact initial I.
   let initialized = prepareAccumulationEffects(initial.value, accountWriteKeys, createdAccounts,
-      deletedAccounts, modifiedAccounts)
+      deletedAccounts, modifiedAccounts, accountWriteFacts)
   if initialized.error != AccumulationEffectError.None:
     return AccumulationDispatchResult(status: AccumulationDispatchError.InvalidContext) # No partial pair.
   var context = DispatchContext(parameters: parameters, staging: contextConfig.staging,

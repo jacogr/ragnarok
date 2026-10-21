@@ -26,6 +26,21 @@ of "refused": discard outcome.value # Invalid initial contexts expose no pair.
 of "dimension": discard pair.effectContext(AccumulationDimension.Regular).value # No default dimension child.
 of "source": discard pair.effectsSource.value # No fabricated initial preparation.
 of "initial": discard context.effectInitialContext.value # No substituted account backing.
+of "write-fact-count": discard context.effectAccountWriteFactCount.value # Defaults contain no physical write trace.
+of "write-fact-at": discard context.effectAccountWriteFactAt(AccumulationAccountWriteFactIndex(
+    0)).value # No default account/key payload.
+of "write-fact-disabled":
+  let disabled = prepareAccumulationEffects(preparedEffectContexts()).value
+  discard disabled.effectContext(AccumulationDimension.Regular).value.effectAccountWriteFactCount.value # Disabled capture is not an empty proof.
+of "write-fact-disabled-at":
+  let disabled = prepareAccumulationEffects(preparedEffectContexts()).value
+  discard disabled.effectContext(AccumulationDimension.Regular).value.effectAccountWriteFactAt(
+      AccumulationAccountWriteFactIndex(0)).value # Initialized disabled extraction still exposes no fact.
+of "write-fact-index":
+  let enabled = prepareAccumulationEffects(preparedEffectContexts(),
+      accountWriteFacts = ElementLimit(1)).value
+  discard enabled.effectContext(AccumulationDimension.Regular).value.effectAccountWriteFactAt(
+      AccumulationAccountWriteFactIndex(high(uint64))).value # Initialized empty traces still enforce full-width index bounds.
 of "modified-count": discard context.effectModifiedAccountCount.value # Default contexts expose no membership count.
 of "modified-at": discard context.effectModifiedAccountAt(AccumulationModifiedAccountIndex(
     0)).value # No default service payload.

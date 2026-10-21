@@ -24,6 +24,9 @@ proc parameters(): Parameters =
   var bytes = encodeParameters(pvmParameters())
   for index in 0..<24:
     bytes[index] = 0 # No protocol funding refusal obscures a successful no-op host.
+  for index in 0..<4:
+    bytes[74+index] = byte((14400'u32 shr (8*index)) and
+        255) # Explicit standard retention replaces the maximal generic fixture field.
   decodeParameters(bytes).value
 
 let blob = @[4'u8, 5, 6]
@@ -36,23 +39,32 @@ proc junior(service: uint32): StateEntry =
       storageItems: AccountStorageItems(if service == 99: 2'u32 else: 0'u32),
       storageBytes: AccountStorageBytes(if service == 99: 84'u64 else: 0'u64)), ByteLimit(
           ServiceMetadataBytes)).value
-proc source(code: seq[seq[byte]] = @[@[50'u8, 0]], data = newSeq[byte](
-    128)): PreparedAccumulationMachine =
+proc source(code: seq[seq[byte]] = @[@[50'u8, 0]], data = newSeq[byte](128),
+    history = requestedHistory(), retained = false, slot = HeaderSlot(
+        128)): PreparedAccumulationMachine =
   ## Real complete source accounts and a request support every account-mutating host independently.
-  let request = serviceRequestEntry(ServiceIndex(99), hash, RequestLength(3), requestedHistory(),
+  let request = serviceRequestEntry(ServiceIndex(99), hash, RequestLength(3), history,
       RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
-          0), maxBytes: ByteLimit(1)))).value
+          3), maxBytes: ByteLimit(13)))).value
+  var entries = @[junior(77), junior(99), request]
+  if retained:
+    entries.add(servicePreimageEntry(ServiceIndex(99), hash, blob,
+        ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(
+            3))).value) # Retained bytes belong to the available/unavailable request's real hash.
   guestProgram(code, credit = 100000, account = ServiceMetadata(balance: AccountBalance(1000),
       supervisorBalance: AccountBalance(1000), supervisor: ServiceIndex(42),
           supervisorCreated: AccountSlot(43),
-      created: AccountSlot(43)), extra = @[junior(77), junior(99), request], writable = data,
-      manager = 42, assigner = 42, delegator = 42, registrar = 42, writes = 4, spareEntries = 8)
-proc pair(prepared: PreparedAccumulationMachine, limit = 8'u64): AccumulationEffects =
+      created: AccountSlot(43)), extra = entries, writable = data,
+      manager = 42, assigner = 42, delegator = 42, registrar = 42, writes = 4, spareEntries = 8, slot = slot)
+proc pair(prepared: PreparedAccumulationMachine, limit = 8'u64,
+    facts = 12'u64): AccumulationEffects =
   ## Tracking capacity is explicit and separate from existing key/membership publication proofs.
   let contexts = prepareAccumulationContexts(prepared.machineBootstrap.value, pvmContextConfig()).value
   prepareAccumulationEffects(contexts, createdAccounts = ElementLimit(2),
-      deletedAccounts = ElementLimit(2), modifiedAccounts = ElementLimit(limit)).value
-proc run(prepared: PreparedAccumulationMachine, limit = 8'u64): AccumulationDispatchResult =
+      deletedAccounts = ElementLimit(2), modifiedAccounts = ElementLimit(limit),
+          accountWriteFacts = ElementLimit(facts)).value
+proc run(prepared: PreparedAccumulationMachine, limit = 8'u64,
+    facts = 12'u64): AccumulationDispatchResult =
   ## Execute current host IDs with finite capture, output, state and membership ceilings.
   executeAccumulationMachine(prepared, parameters(),
       FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1), operand: OperandLimits(
@@ -60,7 +72,7 @@ proc run(prepared: PreparedAccumulationMachine, limit = 8'u64): AccumulationDisp
       MemoryByteLimit(128), ExecutionStepLimit(200), HostCallLimit(20), GasCycleLimit(1000),
           pvmContextConfig(),
       serviceProbes = ServiceProbeLimit(1), transferLimit = ElementLimit(2),
-          modifiedAccounts = ElementLimit(limit))
+          modifiedAccounts = ElementLimit(limit), accountWriteFacts = ElementLimit(facts))
 proc context(effects: AccumulationEffects, dimension = AccumulationDimension.Regular): AccumulationEffectContext =
   ## Selected context retains both state and immutable successful-membership facts.
   effects.effectContext(dimension).value
@@ -199,6 +211,8 @@ for checkpoint in [false, true]:
       "genuine upgrade/no-op guest reaches the selected exceptional terminal"
   check(context(completed.effects), [77'u32])
   let selected = normalizeAccumulationOutcome(completed).value.outcomeContext.value
+  assert selected.effectAccountWriteFactCount.value == (if checkpoint: 1 else: 0),
+      "terminal selection restores physical facts together with matching account membership"
   if checkpoint: check(selected, [77'u32])
   else: check(selected, []) # Panic restores membership together with the initial accounts.
 var restoring = upgrade()
@@ -225,7 +239,7 @@ incoming.inputs = prepareAccumulationInputs(incoming.inputs.invocationOperands.v
     AccumulationInputConfig(inputs: ElementLimit(1), allowances: ElementLimit(1),
         services: ElementLimit(1))).value
 let credited = batchExecution(incoming, 0, parameters = parameters(),
-    modifiedAccounts = ElementLimit(1))
+    modifiedAccounts = ElementLimit(1), accountWriteFacts = ElementLimit(1))
 assert credited.error == AccumulationDispatchError.None, "zero credit executes within an explicit one-member budget"
 check(context(credited.effects), [42'u32])
 check(context(credited.effects, AccumulationDimension.Exceptional), [42'u32])
@@ -233,6 +247,116 @@ assert root(context(credited.effects)) == array[32, byte](
     incoming.state.snapshot.value.commitment.root),
     "zero incoming credit marks the recipient at an unchanged complete-state root"
 
+# Physical write facts bind actual keys to their logical account, independently of membership.
+proc checkFacts(owner: AccumulationEffectContext, services: openArray[uint32], keys: openArray[StateKey]) =
+  ## A copied descriptor grants no mutable access to the retained fact set or account values.
+  let count = owner.effectAccountWriteFactCount
+  assert count.error == AccumulationEffectError.None, "queried fixtures explicitly enable physical write facts"
+  assert services.len == keys.len and count.value == keys.len,
+      "exact unique account/key fact count"
+  for index, key in keys:
+    let value = owner.effectAccountWriteFactAt(AccumulationAccountWriteFactIndex(uint64(index))).value
+    assert uint32(value.service) == services[index] and array[31, byte](value.key) == array[31,
+        byte](key),
+        "successful physical key remains bound to its actual account owner"
+  let past = owner.effectAccountWriteFactAt(AccumulationAccountWriteFactIndex(high(uint64)))
+  assert past.error == AccumulationEffectError.InvalidIndex, "full-width fact ordinal is checked before native indexing"
+let ownKey = chapterServiceKey(StateChapter(255), ServiceIndex(42))
+let juniorKey = chapterServiceKey(StateChapter(255), ServiceIndex(77))
+let otherKey = chapterServiceKey(StateChapter(255), ServiceIndex(99))
+let storageKey = serviceStorageKey(ServiceIndex(77), [1'u8], ByteLimit(1)).value
+let absentKey = serviceStorageKey(ServiceIndex(77), [9'u8], ByteLimit(1)).value
+let requestKey = serviceRequestKey(ServiceIndex(77), default(ServicePreimageHash), RequestLength(3),
+    ByteLimit(32)).value
+checkFacts(context(initial), [], [])
+checkFacts(context(stored), [77'u32, 77], [juniorKey, storageKey])
+checkFacts(context(absentWrite), [77'u32, 77], [juniorKey, absentKey])
+checkFacts(context(solicited), [77'u32, 77], [requestKey, juniorKey])
+checkFacts(context(forgotten), [77'u32, 77], [requestKey, juniorKey])
+assert context(forgotten).effectAccounts.value.lookup(requestKey).error ==
+    StateStoreError.MissingKey,
+    "a retained successful key fact does not fabricate a final value after deletion"
+checkFacts(context(upgraded), [77'u32], [juniorKey])
+checkFacts(context(supervised), [77'u32], [juniorKey])
+let childKey = chapterServiceKey(StateChapter(255), born.service)
+let childRequest = serviceRequestKey(born.service, default(ServicePreimageHash), RequestLength(3),
+    ByteLimit(32)).value
+let childId = uint32(born.service)
+checkFacts(context(born.effects), [77'u32, childId, childId], [juniorKey, childKey, childRequest])
+checkFacts(context(deferred), [77'u32], [juniorKey])
+checkFacts(context(direct), [77'u32, 99], [juniorKey, otherKey])
+checkFacts(context(crossed), [77'u32], [juniorKey])
+checkFacts(context(ejected), [77'u32, 42], [juniorKey, ownKey])
+checkFacts(context(yieldingAfter), [77'u32, 99], [juniorKey, otherKey])
+for unchanged in [blessed, assigned, designated, yielded, provided]:
+  checkFacts(context(unchanged), [], []) # Global chapters and provision payloads add no account key facts.
+checkFacts(context(later), [77'u32, 42, 99], [juniorKey, ownKey, otherKey])
+checkFacts(context(later, AccumulationDimension.Exceptional), [77'u32], [juniorKey])
+checkFacts(context(restored.effects), [77'u32], [juniorKey])
+checkFacts(context(missed.effects), [], [])
+checkFacts(context(credited.effects), [42'u32], [ownKey])
+checkFacts(context(credited.effects, AccumulationDimension.Exceptional), [42'u32], [ownKey])
+var copied = context(upgraded).effectAccountWriteFactAt(AccumulationAccountWriteFactIndex(0)).value
+copied.service = ServiceIndex(99)
+copied.key = default(StateKey)
+checkFacts(context(upgraded), [77'u32], [juniorKey])
+let noFacts = pair(prepared, 8, 0)
+assert context(noFacts).effectAccountWriteFactCount.error ==
+    AccumulationEffectError.AccountWriteFactsDisabled,
+    "disabled fact capture is distinct from an enabled empty trace"
+let disabledFact = context(noFacts).effectAccountWriteFactAt(AccumulationAccountWriteFactIndex(0))
+assert disabledFact.error == AccumulationEffectError.AccountWriteFactsDisabled, "disabled extraction grants no copied account/key descriptor"
+let defaultFact = default(AccumulationEffectContext).effectAccountWriteFactAt(
+    AccumulationAccountWriteFactIndex(0))
+assert defaultFact.error == AccumulationEffectError.Uninitialized, "default contexts supply no fact payload"
+let oneFact = pair(prepared, 8, 1)
+let touched = recordAccumulationUpgrade(oneFact, default(CodeHash), Gas(0), Gas(0), ServiceIndex(77)).value
+let repeated = recordAccumulationSupervisor(touched, ServiceIndex(77), ServiceIndex(42)).value
+checkFacts(context(repeated), [77'u32], [juniorKey])
+let oneCrossed = recordAccumulationDirectTransfer(oneFact, ServiceIndex(77),
+    AccumulationTransferDestination(77), TransferBalance(0), AccumulationFundingMode(1), parameters()).value
+checkFacts(context(oneCrossed), [77'u32], [juniorKey])
+failHash(1)
+let twoFacts = recordAccumulationDirectTransfer(oneFact, ServiceIndex(77),
+    AccumulationTransferDestination(99), TransferBalance(0), AccumulationFundingMode(0), parameters())
+assert twoFacts.error == AccumulationEffectError.LimitExceeded and hashCalls() == 0,
+    "complete physical-key fact capacity precedes account hashing and publication"
+failHash(0)
+check(context(oneFact), [])
+checkFacts(context(oneFact), [], [])
+let twoFactBudget = pair(prepared, 8, 2)
+let refusedChild = recordAccumulationNew(twoFactBudget, AccumulationNewService(
+    length: RequestLength(3)), parameters(),
+
+ServiceProbeLimit(1), ServiceIndex(77), AccumulationFundingMode(0))
+assert refusedChild.error == AccumulationEffectError.LimitExceeded, "creation requires payer, child metadata and child request facts atomically"
+checkFacts(context(twoFactBudget), [], [])
+failHash(1)
+let failedFact = recordAccumulationUpgrade(initial, default(CodeHash), Gas(1), Gas(0), ServiceIndex(77))
+assert failedFact.error == AccumulationEffectError.BackendFailure, "failed hashing publishes neither a fact nor an account version"
+failHash(0)
+checkFacts(context(initial), [], [])
+let independent = pair(prepared, 0, 2)
+let recorded = recordAccumulationDirectTransfer(independent, ServiceIndex(77),
+    AccumulationTransferDestination(99), TransferBalance(0), AccumulationFundingMode(0), parameters()).value
+checkFacts(context(recorded), [77'u32, 99], [juniorKey, otherKey])
+assert context(recorded).effectModifiedAccountCount.error ==
+    AccumulationEffectError.ModifiedAccountsDisabled,
+    "physical write capture and logical membership ceilings remain independent"
+# Expired two-slot forgetting captures the third physical key, not only metadata/history.
+let expired = pair(source(history = unavailableHistory(RequestSlot(4), RequestSlot(7)),
+    retained = true, slot = HeaderSlot(20000)))
+let expiredForget = recordAccumulationForget(expired, hash, RequestLength(3), parameters(),
+    ServiceIndex(99))
+assert expiredForget.error == AccumulationEffectError.None, "expired two-slot request reaches complete removal"
+let removed = expiredForget.value
+let expiredRequest = serviceRequestKey(ServiceIndex(99), hash, RequestLength(3), ByteLimit(32)).value
+let retainedKey = servicePreimageKey(ServiceIndex(99), hash, ByteLimit(32)).value
+checkFacts(context(removed), [99'u32, 99, 99], [otherKey, expiredRequest, retainedKey])
+let absentRetained = context(removed).effectAccounts.value.lookup(retainedKey)
+let priorRetained = context(expired).effectAccounts.value.lookup(retainedKey).value.bytes
+assert absentRetained.error == StateStoreError.MissingKey, "expired forgetting retains the removed physical preimage key fact"
+assert priorRetained == blob, "prior raw preimage owner remains independent of later deletion"
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let owned = pair(prepared)
@@ -240,6 +364,8 @@ for iteration in 0..<1000:
       AccumulationTransferDestination(99), TransferBalance(0), AccumulationFundingMode(0),
           parameters()).value
   check(context(modified), [77'u32, 99]) # Release immutable membership and source-bound checkpoints on every iteration.
+  checkFacts(context(modified), [77'u32, 99], [juniorKey,
+      otherKey]) # Fixed facts retain no mutable account values or parent chains.
 let after = getOccupiedMem()
 assert before == after, "modified-account owners release without retaining prior effect graphs"
 recordArcRelease("pvm_modified_accounts", 1000, before, after)

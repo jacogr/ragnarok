@@ -14,6 +14,61 @@
     },
     {
       "arguments": [
+        "write-fact-count"
+      ],
+      "description": "Accumulation write-fact-count selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "write-fact-count"
+      },
+      "name": "accumulation-effect-write-fact-count"
+    },
+    {
+      "arguments": [
+        "write-fact-at"
+      ],
+      "description": "Accumulation write-fact-at selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "write-fact-at"
+      },
+      "name": "accumulation-effect-write-fact-at"
+    },
+    {
+      "arguments": [
+        "write-fact-disabled"
+      ],
+      "description": "Accumulation write-fact-disabled selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "write-fact-disabled"
+      },
+      "name": "accumulation-effect-write-fact-disabled"
+    },
+    {
+      "arguments": [
+        "write-fact-disabled-at"
+      ],
+      "description": "Accumulation write-fact-disabled-at selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "write-fact-disabled-at"
+      },
+      "name": "accumulation-effect-write-fact-disabled-at"
+    },
+    {
+      "arguments": [
+        "write-fact-index"
+      ],
+      "description": "Accumulation write-fact-index selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "write-fact-index"
+      },
+      "name": "accumulation-effect-write-fact-index"
+    },
+    {
+      "arguments": [
         "modified-count"
       ],
       "description": "Accumulation modified-count selected-success guard",

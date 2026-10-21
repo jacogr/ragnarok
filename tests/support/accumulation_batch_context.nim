@@ -149,7 +149,7 @@ proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128
     deletedAccounts = ElementLimit(0), allowanceLimit = 0'u64,
     serviceProbes = ServiceProbeLimit(0), entropy = default(StateEntropyWord), cores = 2'u64,
         stagingCount = 6, codeBytes = 512'u64, preimageBytes = 1024'u64,
-    modifiedAccounts = ElementLimit(0)):
+    modifiedAccounts = ElementLimit(0), accountWriteFacts = ElementLimit(0)):
     AccumulationDispatchResult =
   ## Prepare and execute exactly one indexed service against the fixture's own immutable input/prior owners.
   ## Explicit finite execution policies support integrations; defaults retain the earlier supported path.
@@ -172,7 +172,7 @@ proc batchExecution*(fixture: BatchFixture, index: uint64, slot = HeaderSlot(128
     provisionPolicy(items = 2, perBlob = 1, total = 2), transferLimit = transferLimit,
     accountWriteKeys = accountWriteKeys, createdAccounts = createdAccounts,
     deletedAccounts = deletedAccounts, serviceProbes = serviceProbes,
-        modifiedAccounts = modifiedAccounts)
+        modifiedAccounts = modifiedAccounts, accountWriteFacts = accountWriteFacts)
 
 proc batchPolicy*(accounts = 2'u64, selfWrites = 0'u64,
     selfValueBytes = 0'u64, createdAccounts = 0'u64,
