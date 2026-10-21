@@ -12,7 +12,7 @@ proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## A trusted materialization must perform no hidden hash or verification calls.
 proc cycle(selection: RepositorySelection, limits: RepositoryLimits) =
-  ## Detached physical tables and payloads retire after each independent cloned update handle.
+  ## Independent physical tables retire while selected immutable records remain safely shared.
   var cloned = cloneRepositorySelection(selection, limits).value
   assert cloned.snapshot.value.storedNodes == selection.retainedNodes
   assert cloned.close == RepositoryError.None
@@ -50,6 +50,9 @@ proc main() =
   assert cloneRepositorySelection(plan, changed).error == RepositoryError.PolicyMismatch
   changed = limits
   changed.records = ElementLimit(uint64(plan.retainedNodes-1))
+  assert cloneRepositorySelection(plan, changed).error == RepositoryError.LimitExceeded
+  changed = limits
+  changed.valueBytes = ByteLimit(1)
   assert cloneRepositorySelection(plan, changed).error == RepositoryError.LimitExceeded
   assert cloneRepositorySelection(default(RepositorySelection), limits).error ==
       RepositoryError.Uninitialized

@@ -47,7 +47,8 @@ claiming a retained-memory reduction. The repository malformed graph regression 
 Changed revisions now own sorted tables of private ARC record cells. Each newly admitted record
 copies caller bytes once; later tables share the immutable cell. Public lookups, map extraction and
 record/image exports continue to deep-copy payload bytes. Raw images still validate and copy their
-inputs. There is no public cell or mutable access to stored records. Cell sequences reserve capacity
+inputs. Existing native-worker graph-alias exclusion and join-before-retirement remain mandatory;
+sharing private ARC cells does not introduce concurrent graph access. There is no public cell or mutable access to stored records. Cell sequences reserve capacity
 and append initialized nonnil owners; no nil placeholder is treated as an admitted record.
 
 At 8,192 entries, shallow nine-reader occupied bytes fall from 23,006,544 to 4,014,928 for 16-byte
@@ -61,3 +62,23 @@ bounded retained histories, not a claim that every lifetime uses less memory. Ph
 ceilings and descriptor-overflow refusals remain unchanged. `storage_record_owners` checks caller
 input/output mutation, independent mutable forks/clones, stale identity, retained views after close
 and 1,000 ARC release cycles.
+
+## Selected clone sharing
+
+A validated selection clone now allocates an independent sorted table and fresh public view
+identity while sharing only selected private immutable cells. It retains no source table or view,
+accepts no serialized input and grants no additional root/finality authority. Exact inherited trie
+policy and physical record/value ceilings are checked before allocation, including the original
+descriptor-overflow bound. The source selection's index order remains unchanged.
+
+The workload additionally measures occupied bytes above an already-owned selection during clone
+creation, checks zero hash attempts and compares every selected map. Fork/detachment tests return
+a clone across a helper boundary where its source owner, source views and selection all retire.
+The original policy, stale-identity, omitted-root and ARC tests remain; an explicit narrowed value
+ceiling refusal is added. No private record payload is ever returned through a public mutable view.
+
+For 8,192 entries with 256-byte values, additional occupied clone storage falls from 4,882,528
+to 135,360 bytes for shallow keys and from 5,232,992 to 151,744 bytes for deep-prefix keys.
+All 24 matching cases preserve complete maps, zero clone/extraction hash attempts, publication
+hash counts, the reader-memory observations and exact final scope release. This measures only
+additional clone ownership above an already-owned selection, not total process memory.

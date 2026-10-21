@@ -13,8 +13,8 @@ type
     policy: StateTrieLimits
   Measurement = object ## Fixed scalars survive scenario release without retaining heap allocations.
     withReaders, currentOnly, readersAfterClose, released: int
-    publicationHashes, extractionHashes: int
-    publicationNs, extractionNs: int64
+    publicationHashes, extractionHashes, cloneHashes, cloneBytes: int
+    publicationNs, extractionNs, cloneNs: int64
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Observe genuine hashing while resetting the existing test-only primitive counter.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
@@ -81,6 +81,29 @@ proc measure(count, size, offset: int): Measurement =
   result.extractionNs = (getMonoTime()-extractionStart).inNanoseconds
   result.extractionHashes = int(calls())
   assert result.extractionHashes == 0
+  block:
+    # The plan pins the source independently; measure only additional clone storage under the same policy.
+    var roots: seq[StateRoot] = @[]
+    for view in owned.views:
+      roots.add(view.commitment.root)
+    let selection = selectRepositoryRoots(owned.views[^1], roots, ElementLimit(9)).value
+    let beforeClone = getOccupiedMem()
+    reset(0)
+    let cloneStart = getMonoTime()
+    var cloned = cloneRepositorySelection(selection, selection.repositoryLimits).value
+    result.cloneNs = (getMonoTime()-cloneStart).inNanoseconds
+    result.cloneHashes = int(calls())
+    result.cloneBytes = getOccupiedMem()-beforeClone
+    assert result.cloneHashes == 0
+    assert cloned.snapshot.value.storedNodes == selection.retainedNodes
+    for index, root in roots:
+      let entries = restoreHistoricalStateEntries(cloned.snapshot.value, root, owned.policy).value
+      assert entries.len == count
+      let applied = if index == 0: 0 else: index+8
+      for position, entry in entries:
+        assert array[31, byte](entry.key) == array[31, byte](key(position, offset))
+        assert entry.value == payload(position, size, applied)
+    assert cloned.close == RepositoryError.None
   assert owned.repository.close == RepositoryError.None
   result.readersAfterClose = getOccupiedMem()-before
   for index, view in owned.views:
@@ -99,7 +122,9 @@ proc row(count, size, offset, sample: int, m: Measurement): string =
     ",\"after_close\":" & $m.readersAfterClose & ",\"current_only\":" & $m.currentOnly &
     ",\"publication_hashes\":" & $m.publicationHashes & ",\"extraction_hashes\":" &
         $m.extractionHashes &
-    ",\"publication_ns\":" & $m.publicationNs & ",\"extraction_ns\":" & $m.extractionNs & "}"
+    ",\"publication_ns\":" & $m.publicationNs & ",\"extraction_ns\":" & $m.extractionNs &
+        ",\"clone_bytes\":" & $m.cloneBytes &
+    ",\"clone_hashes\":" & $m.cloneHashes & ",\"clone_ns\":" & $m.cloneNs & "}"
 proc main() {.raises.} =
   ## Three repeated samples cover payload size and deep-prefix topology without changing production policies.
   var evidence = "["

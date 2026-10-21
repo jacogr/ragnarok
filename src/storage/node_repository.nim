@@ -100,11 +100,6 @@ proc storeRecord(source: TrieRecord): StoredRecord =
     bytes[index] = octet # Borrowed transport must not become a mutable alias of an admitted record.
   StoredRecord(kind: source.kind, digest: source.digest, key: source.key, payload: bytes,
     left: source.left, right: source.right)
-proc consumeRecord(source: var TrieRecord): StoredRecord =
-  ## Transfer only module-owned detached transport bytes; callers' raw images still use storeRecord.
-  let bytes = move(source.payload)
-  StoredRecord(kind: source.kind, digest: source.digest, key: source.key, payload: bytes,
-    left: source.left, right: source.right)
 proc copyRecord(source: StoredRecord): TrieRecord =
   ## Deep-copy only mutable byte storage; fixed addresses and keys copy by value.
   var bytes = newSeq[byte](source.payload.len)
@@ -594,7 +589,7 @@ proc measureRepositorySelection*(selection: RepositorySelection,
 
 proc cloneRepositorySelection*(selection: RepositorySelection,
     limits: RepositoryLimits): RepositoryResult[NodeRepository] =
-  ## Materialize an opaque already admitted complete root union without rehashing or decoding trusted owned records.
+  ## Materialize an independent selected table sharing private immutable records, without rehashing or payload copies.
   let data = selection.data
   if data == nil: return RepositoryResult[NodeRepository](status: RepositoryError.Uninitialized)
   let source = data.source.data
@@ -607,13 +602,16 @@ proc cloneRepositorySelection*(selection: RepositorySelection,
     uint64(required.perValue), uint64(required.totalValueBytes)]
   if oldPolicy != newPolicy:
     return RepositoryResult[NodeRepository](status: RepositoryError.PolicyMismatch)
-  var detached = exportRepositorySelection(selection, TrieExportLimits(
-    records: TrieNodeLimit(uint64(limits.records)), valueBytes: limits.valueBytes))
-  if detached.error != RepositoryError.None:
-    return RepositoryResult[NodeRepository](status: detached.error)
-  var records = newSeqOfCap[StoredRecord](detached.completed.len)
-  for index in 0..<detached.completed.len:
-    records.add(consumeRecord(detached.completed[index])) # Transfer detached bytes into initialized cells.
+  let maximum = min(uint64(limits.records), uint64(high(int) div sizeof(TrieRecord)))
+  if uint64(data.indices.len) > maximum or data.valueBytes > uint64(limits.valueBytes):
+    return RepositoryResult[NodeRepository](status: RepositoryError.LimitExceeded)
+  var indices = newSeq[int](data.indices.len)
+  for index, position in data.indices:
+    indices[index] = position # Keep the immutable selection's traversal order untouched.
+  indices.sort() # Complete table order must remain canonical for physical lookup and subsequent publication.
+  var records = newSeqOfCap[StoredRecord](indices.len)
+  for position in indices:
+    records.add(source.table.records[position]) # Share only selected immutable cells; no source view/table is retained.
   let cloned = RepositoryData(table: RepositoryTable(records: records),
     commitment: source.commitment, generation: source.generation, valueBytes: data.valueBytes,
         limits: limits)
