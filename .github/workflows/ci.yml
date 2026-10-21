@@ -355,6 +355,9 @@ jobs:
       - name: Compare pinned PolkaVM and native PVM fixtures
         run: make check-pvm-reference
       # Retain diagnostics even if provisioning failed before results.json could be created.
+      - name: Show PVM comparison summary
+        if: always()
+        run: make summary-pvm-reference SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       - name: Retain PVM comparison evidence
         if: always()
         uses: *upload-artifact
@@ -366,5 +369,6 @@ jobs:
             build/ci/*.log
             build/tests/pvm-reference/*.log
             build/tests/pvm-reference/results.json
+            build/tests/pvm-reference/summary.md
             build/tests/native/selected/pvm_*.log
             build/tests/native/preparation/selected-pvm_*.json

@@ -26,6 +26,10 @@ def summarize(report, kind):
         # List every module so a new failure or a newly ported module is visible in the PR.
         for row in rows:
             lines.append('| `'+row['source']+'` | '+('Pass' if row['passed'] else 'Fail')+' |')
+    elif kind == 'pvm-reference':
+        # The optional paired-reference job owns a stricter completeness check and its own table.
+        from pvm_reference_summary import summarize_reference
+        return summarize_reference(report)
     elif kind == 'runtime':
         corpora = {key: value for key, value in report.items() if key.endswith('_corpus')}
         scope = ''
@@ -148,20 +152,28 @@ def summarize(report, kind):
 # Missing reports produce an explicit summary and a failing helper, preserving the preceding job failure.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--kind', choices=('runtime', 'modules', 'python', 'guards', 'failures', 'e2e'), required=True)
+    parser.add_argument('--kind', choices=('runtime', 'modules', 'python', 'guards', 'failures', 'e2e', 'pvm-reference'), required=True)
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--artifact', type=Path, help='Also replace one downloadable Markdown report')
     args = parser.parse_args()
     try:
         # Do not infer a pass when setup, compilation or the runner failed before writing evidence.
         text = summarize(json.loads(args.report.read_text()), args.kind)
     except (OSError, ValueError, KeyError, TypeError) as error:
         # Setup/report failures stay visible even if no normal JSON evidence exists.
+        text = '## Verification '+args.kind+'\n\nNo usable verification report: '+str(error)+'\n'
         with args.output.open('a') as output:
-            output.write('## Verification '+args.kind+'\n\nNo usable verification report: '+str(error)+'\n')
+            output.write(text)
+        if args.artifact is not None:
+            # Setup failure must replace an earlier successful downloadable summary too.
+            args.artifact.write_text(text)
         raise SystemExit(1)
     with args.output.open('a') as output:
         output.write(text)
+    if args.artifact is not None:
+        # Artifacts contain this run's table, while Actions may append several job sections.
+        args.artifact.write_text(text)
 
 
 # Importing the renderer never reads reports or modifies a GitHub summary.

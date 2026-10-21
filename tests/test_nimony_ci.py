@@ -185,6 +185,8 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('if: always()\n        uses: *upload-artifact', section)
         paths = section.split('          path: |\n', 1)[1]
         self.assertIn('build/tests/pvm-reference/results.json', paths)
+        self.assertIn('build/tests/pvm-reference/summary.md', paths)
+        self.assertIn('run: make summary-pvm-reference SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', section)
         self.assertIn('build/tests/pvm-reference/*.log', paths)
         self.assertNotIn('**', paths)
         self.assertNotIn('target', paths)
