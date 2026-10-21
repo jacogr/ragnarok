@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [unit, e2e, docker, bench-pvm, full]
+        options: [unit, e2e, docker, interop, perf, pvm-reference, bench-pvm, full]
         default: full
         required: true
 
@@ -26,7 +26,7 @@ permissions:
 
 # New requests supersede earlier runs for the same ref; unrelated labels cannot cancel them.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:e2e' && github.run_id || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 # All verification groups use the same shell and Python output policy.
@@ -290,9 +290,41 @@ jobs:
             build/bandersnatch/cargo-features.log
             build/quic/build.log
 
+  # Keep Interop jobs adjacent; group requests run every implementation comparison.
+  # Pinned public-API comparisons remain distinct from frozen native fixtures and future fuzzing.
+  pvm-reference:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'pvm-reference' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
+    name: Interop PVM
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Compare pinned PolkaVM and native PVM fixtures
+        run: make check-pvm-reference
+      # Retain diagnostics even if provisioning failed before results.json could be created.
+      - name: Show PVM comparison summary
+        if: always()
+        run: make summary-pvm-reference SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      - name: Retain PVM comparison evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-reference-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/pvm-reference/*.log
+            build/tests/pvm-reference/results.json
+            build/tests/pvm-reference/summary.md
+            build/tests/native/selected/pvm_*.log
+            build/tests/native/preparation/selected-pvm_*.json
+
   telemetry-interop:
-    if: *full
-    name: JAM Tart interoperability
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
+    name: Interop JAM Tart
     timeout-minutes: 60
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
@@ -342,41 +374,10 @@ jobs:
             build/ci/docker-build.log
             build/ci/docker-smoke.log
 
-  # Pinned public-API comparisons remain distinct from frozen native fixtures and future fuzzing.
-  pvm-reference:
-    if: *full
-    name: PVM reference comparisons
-    timeout-minutes: 45
-    runs-on: ubuntu-latest
-    steps:
-      - *checkout
-      - *python
-      - *inventory
-      - name: Compare pinned PolkaVM and native PVM fixtures
-        run: make check-pvm-reference
-      # Retain diagnostics even if provisioning failed before results.json could be created.
-      - name: Show PVM comparison summary
-        if: always()
-        run: make summary-pvm-reference SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
-      - name: Retain PVM comparison evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: pvm-reference-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/*.log
-            build/tests/pvm-reference/*.log
-            build/tests/pvm-reference/results.json
-            build/tests/pvm-reference/summary.md
-            build/tests/native/selected/pvm_*.log
-            build/tests/native/preparation/selected-pvm_*.json
-
-  # Measurements are explicitly requested; ordinary full verification keeps correctness as its verdict.
+  # Perf jobs publish validated measurements on master pushes and explicit group/full requests.
   bench-pvm:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'bench-pvm' }}
-    name: PVM speed comparison
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+    name: Perf PVM
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:

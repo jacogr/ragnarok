@@ -93,7 +93,8 @@ attaching its URL to the calling task.
 PR creation, pushes and rebases do not request CI. Keep local verification appropriate to the diff;
 request remote checks only when asked or when the maintainer has authorized that verification.
 Use `ci:unit` for native units/corpora, Python tooling and source compilation, `ci:e2e` for
-end-to-end networking alone, or `ci:full` for every CI group. Add the label to the selected PR
+end-to-end networking alone, `ci:interop` for all interoperability jobs, `ci:perf` for
+all performance jobs, or `ci:full` for every CI group. Add the label to the selected PR
 (normally the stack tip); remove and reapply it for a fresh request after later commits. Existing
 labels do not trigger checks on new commits. See [requesting CI](testing.md#requesting-ci). Master
 pushes retain automatic full verification.

@@ -57,7 +57,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [unit, e2e, docker, bench-pvm, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [unit, e2e, docker, interop, perf, pvm-reference, bench-pvm, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         self.assertNotIn('synchronize', triggers)
         self.assertNotIn('opened', triggers)
@@ -94,8 +94,13 @@ class NimonyCISafeguards(unittest.TestCase):
                                ('docker', '${{ '+requested.replace("inputs.suite == 'unit' ||",
                                    "inputs.suite == 'unit' || inputs.suite == 'docker' ||")+' }}'),
                                ('guards', '&full ${{ '+full+' }}'), ('failures', '*full'),
-                               ('pvm-reference', '*full'),
-                               ('e2e', '${{ '+e2e+' }}'), ('telemetry-interop', '*full'),
+                               ('pvm-reference', '${{ '+full.replace("inputs.suite == 'full')",
+                                   "(inputs.suite == 'interop' || inputs.suite == 'pvm-reference' || inputs.suite == 'full'))").replace("github.event.label.name == 'ci:full')",
+                                   "(github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))")+' }}'),
+                               ('e2e', '${{ '+e2e+' }}'),
+                               ('telemetry-interop', '${{ '+full.replace("inputs.suite == 'full')",
+                                   "(inputs.suite == 'interop' || inputs.suite == 'full'))").replace("github.event.label.name == 'ci:full')",
+                                   "(github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))")+' }}'),
                                ('unit-status', '${{ always() && ('+requested+') }}'),
                                ('failures-status', '${{ always() && ('+full+') }}')]:
             # Gates retain the same selection as their matrix while still observing failed/cancelled jobs.
@@ -113,7 +118,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && "
                     "github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && "
-                    "github.event.label.name != 'ci:e2e' && github.run_id || github.ref }}")
+                    "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.run_id || github.ref }}")
         self.assertIn('group: '+expected+'\n  cancel-in-progress: true', text)
 
     # The matrix covers every partition once, and the stable unit gate rejects every non-success result.
@@ -179,9 +184,10 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_pvm_reference_evidence_scope(self):
         """The separate full-scope job keeps failed-run evidence without silently allowing failure."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = text.split('  pvm-reference:\n', 1)[1]
+        section = re.search(r'^  pvm-reference:\n(.*?)(?=^  [\w-]+:|\Z)', text, re.MULTILINE | re.DOTALL).group(1)
         self.assertIn('runs-on: ubuntu-latest', section)
-        self.assertIn('if: *full', section)
+        self.assertIn("inputs.suite == 'interop'", section)
+        self.assertIn("github.event.label.name == 'ci:interop'", section)
         self.assertEqual(section.count('run: make check-pvm-reference'), 1)
         self.assertIn('if: always()\n        uses: *upload-artifact', section)
         paths = section.split('          path: |\n', 1)[1]
@@ -195,11 +201,11 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('continue-on-error', section)
         self.assertNotIn('needs:', section)
 
-    def test_benchmark_is_manual_and_retains_raw_data(self):
-        """Timing never becomes an automatic correctness gate or runs after an unrelated request."""
+    def test_benchmark_runs_on_master_and_perf_requests_with_raw_data(self):
+        """Master/group requests retain the Actions table and raw validated measurements."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         section = text.split('  bench-pvm:\n', 1)[1]
-        self.assertIn("if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'bench-pvm' }}", section)
+        self.assertIn("if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}", section)
         self.assertEqual(section.count('run: make bench-pvm\n'), 1)
         self.assertLess(section.index('- *inventory'), section.index('run: make bench-pvm'))
         self.assertIn('summary-pvm-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', section)
@@ -207,6 +213,16 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertIn('build/tests/pvm-benchmark/'+name, section)
         self.assertNotIn('continue-on-error', section)
         self.assertNotIn('sysctl', section)
+
+    # Interop jobs remain adjacent in the workflow and use consistent group names in Actions.
+    def test_interop_and_perf_job_names(self):
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        jobs = re.findall(r'^  ([\w-]+):\n    if:', text, re.MULTILINE)
+        index = jobs.index('pvm-reference')
+        self.assertEqual(jobs[index:index+2], ['pvm-reference', 'telemetry-interop'])
+        self.assertIn('name: Interop PVM', text)
+        self.assertIn('name: Interop JAM Tart', text)
+        self.assertIn('name: Perf PVM', text)
 
     # The shared native builder must work before any historical driver has created its output directory.
     def test_bandersnatch_clean_build_directory(self):
