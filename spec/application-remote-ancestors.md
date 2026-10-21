@@ -56,3 +56,21 @@ stale/cancelled generations and detached response ownership. Five runtime
 extraction failures/positive controls, three privacy checks, actual `=dup`
 lowering rejection and inventory pass. Its 1,000-cycle ARC observation holds
 276,576 occupied bytes before/after (`build/ancestor-receiver-*.log`).
+
+## Native stream binding
+
+`AncestorStream` binds one receiver address/generation to one native stream,
+checks all callback identities and uses explicit per-callback read/write bounds.
+Partial request writes retain their exact offset; only actual native EOF supplies
+response FIN. Reset, deadline and cancellation stop I/O but retain the native
+handle until its final close callback. The exclusive binding's destructor checks
+that this retirement occurred; actual duplication lowering rejects copies.
+
+The focused `application_ancestor_stream` suite passes real TLS healthy/empty,
+oversized, premature-close, no-FIN, deadline and reset scenarios. An independent
+finite responder validates every literal descending request byte and request FIN.
+One-byte input/output fragmentation and foreign/replayed callback checks pass.
+The independent primitive observer reports zero hash calls during reception;
+producer decoding occurs only after native teardown. Ownership rejection and
+inventory pass (`build/ancestor-stream-*.log`). Peer pin selection and command
+integration remain subsequent layers; no remote CI was requested.
