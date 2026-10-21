@@ -176,3 +176,16 @@ only independent bytes and fixed identity remain. Strict runtime witnesses start
 real managed execution lease and reject both APIs before graph access, with genuine
 successful controls before the lease. Native tests cover configured capture,
 explicit short budgets, close/restart and 1,000 detached preparation lifetimes.
+
+## Service-owned export lifecycle
+
+Services explicitly starts one managed export session at its stable address.
+Prepared bytes may stage/dispatch/observe/collect during execution leases because
+these APIs touch no canonical graph. Serialization remains a separate lease-guarded
+host operation outside callbacks. Aggregate close joins I/O and preparation before
+retiring canonical/listener aliases; repeated close preserves a fixed actual joined
+receipt, and export restart requires explicit acknowledgement. Neither actual
+publication nor retirement uncertainty triggers an implicit retry or adoption.
+Services itself rejects live relocation and implicit copies. Native tests cross
+real publication, aggregate close/restart, stale tickets, staged cancellation and
+acknowledged idle shutdown, with actual runtime/move/copy/private checks.

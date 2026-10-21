@@ -1,0 +1,45 @@
+{
+  "build_name": "application-checkpoint-services-export-results",
+  "cases": [
+    {
+      "arguments": [
+        "unclosed"
+      ],
+      "description": "Service checkpoint export unclosed",
+      "diagnostic": "not session.active",
+      "identity": {
+        "reason": "unclosed"
+      },
+      "name": "application-checkpoint-services-export-unclosed"
+    },
+    {
+      "arguments": [
+        "moved"
+      ],
+      "description": "Service checkpoint export moved",
+      "diagnostic": "not services.started",
+      "identity": {
+        "reason": "moved"
+      },
+      "name": "application-checkpoint-services-export-moved"
+    },
+    {
+      "arguments": [
+        "shutdown"
+      ],
+      "description": "Service checkpoint export shutdown",
+      "diagnostic": "session.pending",
+      "identity": {
+        "reason": "shutdown"
+      },
+      "name": "application-checkpoint-services-export-shutdown"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_checkpoint_services_export_results.nim"
+}

@@ -12,7 +12,7 @@ import ./handoff
 import ./candidate
 import ./block_input
 import ./preparation_worker
-import ./[checkpoint_identity, checkpoint_transfer]
+import ./[checkpoint_identity, checkpoint_transfer, checkpoint_session, checkpoint_worker, checkpoint_file]
 import ../codec/bounded
 import ../codec/[block_codec, header]
 import ./chain as application_chain
@@ -32,15 +32,29 @@ type Services* = object ## Owns listeners/exporter; fields are borrowed by synch
   canonical: ApplicationChain
   adoption: AccumulationHandoff
   worker: PreparationWorker
+  checkpointExport: ApplicationCheckpointSession
   rpcLease: nil RpcChainLease
   preparing: bool
   started, chainRpc: bool
+
+proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not services.started.} =
+  ## Only closed aggregates may relocate; native workers and callback borrows require the original stable parent address.
+  `=wasMoved`(services.checkpointExport)
+  `=wasMoved`(services.worker)
+  `=wasMoved`(services.rpcLease)
+  `=wasMoved`(services.ui)
+  `=wasMoved`(services.rpc)
+  `=wasMoved`(services.telemetry)
+  `=wasMoved`(services.chainText)
+  `=wasMoved`(services.canonical)
+  `=wasMoved`(services.adoption)
 
 proc `=copy`*(destination: var Services, source: Services) {.error: "Application Services owns descriptors".}
 proc `=dup`*(source: Services): Services {.error.}
   ## Composite ownership includes the stable worker and all listener lifetimes.
 proc `=destroy`*(services: Services) =
   ## Retire partially configured owners and the shared snapshot even without explicit shutdown.
+  `=destroy`(services.checkpointExport) # Explicit close joins the detached I/O child before aggregate destruction.
   `=destroy`(services.worker) # Explicit close must join before any shared chain alias retires.
   `=destroy`(services.rpcLease)
   `=destroy`(services.ui)
@@ -57,8 +71,13 @@ proc stopPreparation*(services: var Services) =
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil
 
+proc stopCheckpointExport*(services: var Services) =
+  ## Join detached I/O outside callbacks and retain actual uncollected work/retirement uncertainty until explicit acknowledgement.
+  services.checkpointExport.close()
+
 proc close*(services: var Services) =
   ## Idempotent retirement happens after every dispatcher/native callback has ended its borrows.
+  services.stopCheckpointExport() # Repeated close preserves the fixed joined-outcome journal.
   services.stopPreparation() # Join before releasing any canonical or listener alias.
   services.ui.close()
   services.rpc.close()
@@ -182,6 +201,42 @@ proc start*(services: var Services, options: Options, role: string,
 func chainView*(services: Services): ChainView {.requires: not services.preparing.} =
   ## Return an immutable selected-history alias; default/closed/legacy services have no canonical head.
   services.canonical.chainView
+
+proc startCheckpointExport*(services: var Services,
+    path: string): ApplicationCheckpointFileError {.raises.} =
+  ## Explicit host startup requires an active stable service owner; pending shutdown acknowledgement blocks worker restart.
+  if not services.started: return ApplicationCheckpointFileError.Uninitialized
+  services.checkpointExport.start(path)
+proc checkpointExportPhase*(services: var Services): ApplicationCheckpointWorkerPhase =
+  ## Bounded scalar polling performs no serialization, canonical graph access or file I/O.
+  services.checkpointExport.phase
+proc stageCheckpointExport*(services: var Services, prepared: var PreparedApplicationCheckpoint,
+    limit: ByteLimit): ApplicationCheckpointAdmission =
+  ## Stage only independent bytes, including during an execution lease; refusal preserves the caller's sole owner.
+  services.checkpointExport.stage(prepared, limit)
+proc beginCheckpointExport*(services: var Services, ticket: ApplicationCheckpointTicket): bool =
+  ## Explicit bounded dispatch authorizes a matching staged native publication.
+  services.checkpointExport.begin(ticket)
+proc cancelCheckpointExport*(services: var Services, ticket: ApplicationCheckpointTicket): bool =
+  ## Cancel only unstarted matching work; possible publication outcomes stay observable.
+  services.checkpointExport.cancel(ticket)
+proc peekCheckpointExport*(services: var Services,
+    ticket: ApplicationCheckpointTicket): ApplicationCheckpointCompletion =
+  ## Fixed receipt observation retains acknowledgement capacity and never touches canonical state.
+  services.checkpointExport.peek(ticket)
+proc collectCheckpointExport*(services: var Services,
+    ticket: ApplicationCheckpointTicket): ApplicationCheckpointCompletion =
+  ## Host acknowledgement retires sole bytes only after native aliases have ended.
+  services.checkpointExport.collect(ticket)
+func checkpointShutdownPending*(services: Services): bool =
+  ## A fixed actual joined receipt survives canonical/listener close and repeated aggregate cleanup.
+  services.checkpointExport.shutdownPending
+func checkpointShutdown*(services: Services): ApplicationCheckpointShutdown =
+  ## Only a retained shutdown journal grants its exact operation and retirement outcomes.
+  services.checkpointExport.shutdown
+proc takeCheckpointShutdown*(services: var Services): ApplicationCheckpointShutdown =
+  ## Explicit acknowledgement unblocks export restart without retrying or adopting a possibly published state.
+  services.checkpointExport.takeShutdown()
 
 proc checkpointIdentity*(services: Services): ApplicationCheckpointIdentityResult {.requires: not services.preparing.} =
   ## Capture fixed context only while canonical aliases are available; no file metadata supplies independent trust.
