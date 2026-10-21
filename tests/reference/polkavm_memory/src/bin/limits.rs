@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Public parser bounds at the exact code-byte and declared jump-entry limits.
+// @@PvmReference={"suite":"pvm_module_limits"}
 use polkavm::{ProgramBlob, ProgramParts};
 use polkavm_common::program::{ISA_JamV1, InstructionSetKind};
 fn main() {

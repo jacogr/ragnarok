@@ -27,7 +27,7 @@ DOCKER ?= docker
 DOCKER_IMAGE ?= ragnarok:local
 DOCKER_PLATFORM ?= linux/amd64
 
-.PHONY: ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
@@ -117,6 +117,11 @@ runtime: check-unit
 check-unit: setup format-check
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" 2>&1 | tee build/ci/runtime.log
 
+# Optional differential verification owns Rust setup; ordinary native tests retain frozen inputs.
+check-pvm-reference: setup
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/reference/polkavm_memory/Cargo.toml
+	$(PYTHON) tools/pvm_reference.py
+
 # Runtime contract/crash probes retain strict diagnostics without delaying ordinary unit/corpus checks.
 check-failures: setup
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" --group failures 2>&1 | tee build/ci/failures.log
@@ -205,6 +210,7 @@ help:
 	  'make unit SUITE=natural  Run one native suite; full output stays under build/tests/native/selected/' \
 	  'make check-modules Check every production module' \
 	  'make check-inventory  Validate local registries without native setup' \
+	  'make check-pvm-reference  Run pinned PolkaVM probes and matching native suites' \
 	  'make check-python  Run Python reference/tooling/provenance tests' \
 	  'make check-unit    Run native suites and independent corpora' \
 	  'make check-failures Run runtime contract/crash probes and positive controls' \

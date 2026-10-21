@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Public JamV1 parsing and execution observations for GP-PVM-005/006.
+// @@PvmReference={"suite":"pvm_jump_table_reference"}
 use polkavm::{
     BackendKind, Config, Engine, InterruptKind, Module, ModuleConfig, ProgramBlob, ProgramCounter,
     ProgramParts, Reg,

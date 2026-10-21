@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Cross-check independent GP conditional-control paths through the public JamV1 interpreter.
+// @@PvmReference={"input":"pvm-control.bin","suite":"pvm_conditional_control_reference"}
 use polkavm::{
     BackendKind, CacheModel, Config, CostModelKind, Engine, GasMeteringKind, InterruptKind, Module,
     ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,

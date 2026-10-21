@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Public Sync/Full/L2Hit fault-repair/retry observations for every direct scalar memory form.
+// @@PvmReference={"suite":"pvm_metered_fault_retry_reference"}
 use polkavm::{
     BackendKind, CacheModel, Config, CostModelKind, Engine, GasMeteringKind, InterruptKind,
     MemoryProtection, Module, ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,
