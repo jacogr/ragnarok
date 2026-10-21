@@ -29,9 +29,10 @@ proc policy*(writes = 1000'u64, bytes = 1000000'u64): StateStoreLimits =
   result.writes = ElementLimit(writes)
   result.writeValueBytes = ByteLimit(bytes)
 
-proc fixture*(base: OwnedReport): SeedFixture =
+proc fixture*(base: OwnedReport, guarantees = 0): SeedFixture =
   ## Capture all original entries of a signed two-guest block, including code and opaque/service chapters.
-  let authored = activityFixture(base, executed = true)
+  ## Optional genuine guarantees require their matching lookup headers when preparing this child.
+  let authored = activityFixture(base, executed = true, guarantees = guarantees)
   let source = authored.source.accumulationValidatorsSource.value.accumulationTimesStatistics.value.statisticsSource.value
   let parent = source.finalAccumulationParent.value
   let bound = source.finalAccumulationAdmission.value.reportBlockStage.value.value.admitted

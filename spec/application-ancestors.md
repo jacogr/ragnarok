@@ -69,3 +69,29 @@ ancestor/count-policy refusals before fresh disk creation; 1,000 policy cycles
 retain 264,448 occupied bytes before/after. The parser privacy rejection, semantic
 checks and source-owned inventory pass. Logs use `build/ancestor-{options,app-options,
 disk-options,recovery-options,startup}*`.
+
+## Genuine lookup, TLS and durable restart
+
+The startup suite retains its original six scenarios and adds five cases using a
+signed child with a genuine newly guaranteed report and two actual guest
+executions. Missing ancestry preserves ReportFailure/AnchorFailure/
+MissingLookupAnchor; a structurally valid seal mutation preserves BrokenAncestry.
+Correct independently encoded headers allow actual pinned-TLS acquisition and
+adoption. Omitting/mutating the header exhausts the real attempt; a suffixed file
+returns InvalidAncestors and the responder observes zero requests.
+
+The disk scenario returns Adopted only after durable publication. A fresh normal
+restart restores both child and parent, leaves finality unset, and matches the
+block hash, complete posterior root, entry count and every serialized entry of an
+independently prepared/composed in-memory successor. No external trust file or
+ancestry input is required for that local restart. All responder children are
+reaped; command shutdown joins execution/IO before captured aliases retire.
+
+Final strengthened startup checks pass locally. Its separate 1,000-cycle policy
+ownership observation retains 787,648 occupied bytes before/after; this is not a
+claim of 1,000 network or disk operations. The affected application-candidate suite
+passes with 203,520 occupied bytes unchanged over its 1,000 execution/refusal
+cycles. Evidence is `build/ancestor-lookup-final-*` and
+`build/ancestor-candidate-regression.log`. Existing no-ancestor startup behavior
+and optional-fixture defaults remain covered. Linux CI and full JAM parity remain
+separate evidence.
