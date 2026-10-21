@@ -1,0 +1,1 @@
+PASS storage file read bounds: chunk boundaries, exact ceilings, excess-byte refusal and detached bytes
