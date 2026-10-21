@@ -223,6 +223,7 @@ proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario) 
     selected = peerOptions(firstPort, getEnv("RAGNAROK_TEST_PEER_A"), [$port, peer])
   if scenario >= AncestorHealthy:
     var args = arguments(port, peer)
+    args.add("--download-local-ancestors") # A one-head seed cannot invent its older lookup anchor; explicit suffix admission remains mandatory.
     if scenario != AncestorMissing:
       args.add("--download-ancestor")
       args.add(if scenario == AncestorBroken: "download-startup-ancestor-broken"
