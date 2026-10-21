@@ -198,3 +198,15 @@ transition implementation changes are required.
 
 Local signed-successor suite, focused semantic checking and inventory pass.
 Evidence uses `build/recovery-successor*`; no full JAM/STF or Linux CI claim is made.
+
+## Resumed RPC publication and notifications
+
+Real RPC-only ticks continue to expose the imported parent while genuine signed
+child execution is privately queued. One service tick installs canonical/RPC
+state together and emits exactly the adopted child notification. Later reads
+resolve both parent/child roots, preserve unset finality, and reject replay without
+a spurious notification ahead of the next request response. The existing opaque
+execution/adoption APIs are unchanged.
+
+Local resumed RPC successor, semantic and inventory checks pass; logs use
+`build/recovery-rpc-successor*`. No transition/RPC production implementation changes.
