@@ -69,6 +69,42 @@ host-function memory operations, not scalar instruction accesses. The latter sho
 not be mistaken for a resolution of GP-PVM-001/002. The source/body/review snapshots
 used for this search remain locally under `build/graypaper-issue-review/`.
 
+## Grey implementation review —2026-10-21
+
+Sorpaas's [original Grey repository](https://github.com/bitarray/grey) now contains
+only a relocation notice at `bb58d33108b31dcbfe901183e12132702d77fc5e`.
+The notice points to JAR, whose GitHub URL now redirects to `alleyos/alley`.
+The preserved pre-relocation source revision is
+`bc2ba32c45a2dcce1392073f8d3b5874f3045628`; this review reads source and discussions,
+without importing code, executing Grey, or changing our dependency pins.
+
+Relevant clarification: closed [Grey issue155](https://github.com/alleyos/alley/issues/155)
+reports that branch targets incorrectly split interpreter gas blocks, while merged
+[PR154](https://github.com/alleyos/alley/pull/154) aligns the recompiler with GP508's
+post-terminator gas blocks. The issue explains why compare-mode tests missed the
+difference: transpiled inputs inserted fallthrough at branch targets. This is an
+implementation deviation, not a demonstrated paper contradiction, and does not
+resolve our negative-target lookup question. Use original raw-byte fixtures to
+exercise block partitioning independently of a shared transpiler.
+
+The preserved [program validator](https://github.com/bitarray/grey/blob/bc2ba32c45a2dcce1392073f8d3b5874f3045628/crates/javm/src/program.rs#L277-L301)
+checks the last opcode's terminator membership; its
+[unit fixture](https://github.com/bitarray/grey/blob/bc2ba32c45a2dcce1392073f8d3b5874f3045628/crates/javm/src/program.rs#L420-L436)
+accepts final fallthrough. This is source evidence related to GP-PVM-004, not an
+executed third implementation result. Its additional jump-table checks must not
+be inferred to be paper requirements.
+
+JAR subsequently chose a different memory model and protocol; merged
+[PR197](https://github.com/alleyos/alley/pull/197) changes the memory layout, and
+[later workspace removal](https://github.com/alleyos/alley/commit/1dc8753ffb26cf9f302b76a45b00d23d797bb069)
+explicitly retires legacy Grey. Current JAR behavior therefore cannot be assumed
+JAM0.8.0-compatible. Bounded searches for `PVM`, `graypaper`, `gray paper` and
+`discrepancy` found the useful threads above, but no exact resolution of our four
+questions; this is not proof that no other discussion exists.
+
+Four [local issue drafts](graypaper-discrepancy-issue-drafts.md) retain exact
+witnesses and upstream context for maintainer review and manual posting.
+
 ## GP-PVM-001: exception ordering across the address-space boundary
 
 **Paper evidence:** Appendix PVM, Single-Step State Transition,
