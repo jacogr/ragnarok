@@ -6,7 +6,7 @@
 import ./[chain, checkpoint_identity, checkpoint_codec, checkpoint_transfer]
 import ../state/[store, checkpoint]
 import ../codec/bounded
-import ../lib/atomic_file
+import ../lib/[atomic_file, atomic_file_writer]
 
 type
   ApplicationCheckpointFileError* {.pure.} = enum ## Native and selected codec failures never carry a partial map or successful publication receipt.
@@ -114,3 +114,25 @@ proc loadApplicationCheckpoint*(path: string, expected: ApplicationCheckpointIde
       status: ApplicationCheckpointFileError.IdentityFailure,
       identityReason: ApplicationCheckpointIdentityError.Uninitialized)
   restored(readBoundedFile(path, limit), expected, limits, limit)
+
+proc saveApplicationCheckpoint*(writer: var AtomicFileWriter,
+    prepared: PreparedApplicationCheckpoint, limit: ByteLimit): ApplicationCheckpointFileResult[
+        ApplicationCheckpointIdentity] =
+  ## The existing cooperative native owner serializes one whole-envelope publication without retaining application graphs.
+  if prepared.error != ApplicationCheckpointError.None: return refused(prepared)
+  let published = prepared.publish(writer, limit)
+  if published != AtomicFileError.None:
+    return ApplicationCheckpointFileResult[ApplicationCheckpointIdentity](
+        status: toApplicationCheckpointFileError(published))
+  ApplicationCheckpointFileResult[ApplicationCheckpointIdentity](
+      status: ApplicationCheckpointFileError.None, completed: prepared.identity)
+proc loadApplicationCheckpoint*(writer: var AtomicFileWriter,
+    expected: ApplicationCheckpointIdentity,
+
+limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointFileResult[StateStore] =
+  ## Require independent trust before any owner-path read, then share bounded EOF/checked-close and decode behavior.
+  if not expected.ready:
+    return ApplicationCheckpointFileResult[StateStore](
+      status: ApplicationCheckpointFileError.IdentityFailure,
+      identityReason: ApplicationCheckpointIdentityError.Uninitialized)
+  restored(writer.read(limit), expected, limits, limit)
