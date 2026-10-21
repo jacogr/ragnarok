@@ -62,5 +62,15 @@ proc main() =
   let branched = captureStateProof([branch, leaf], [byte 7], limits).value
   let branchRoot = StateRoot(array[32, byte](hashStateNode(branch).value))
   assert verifyStateProof(branched, branchRoot, key, limits).error == StateProofError.None
+  let empty = captureStateProof([], [], limits).value
+  assert not verifyStateProof(empty, default(StateRoot), key, limits).value.present
+  assert verifyStateProof(empty, root, key, limits).error == StateProofError.RootMismatch
+  let edge = captureStateProof([branch], [], limits).value
+  assert not verifyStateProof(edge, branchRoot, chapterKey(StateChapter(128)), limits).value.present
+  assert verifyStateProof(edge, branchRoot, key, limits).error == StateProofError.InvalidProof
+  assert verifyStateProof(captureStateProof([branch], [byte 0], limits).value,
+    branchRoot, chapterKey(StateChapter(128)), limits).error == StateProofError.InvalidProof
+  assert verifyStateProof(default(StateProof), default(StateRoot), key, limits).error ==
+      StateProofError.Uninitialized
   echo "state-proof: ok"
 main()

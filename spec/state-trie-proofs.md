@@ -35,3 +35,7 @@ remain open under the existing pinned request-namespace disposition.
 Membership verification now authenticates every selected edge and the exact leaf preimage,
 including present-empty and the 32/33-byte boundary. Verified lookups retain root/key authority
 and expose only detached bytes. Wrong roots, keys, values and backend refusal expose no lookup.
+
+Empty absence accepts only a zero root with an explicit empty path, or a path ending
+at an authenticated zero selected edge. Nonzero truncated edges, attached value bytes
+and all-empty branches refuse. Terminal branches may not exceed the 248-bit key domain.
