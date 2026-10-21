@@ -33,10 +33,19 @@ type
     data: nil RepositoryData
   NodeRepository* = object ## Copies are independent updateable handles sharing immutable prior data only.
     head: nil RepositoryData
-  GraphVisit = object ## Traversal scratch records only reachable leaves for optional detached extraction.
+  RepositorySelectionData = ref object ## Immutable exact-source reachability inventory owns no mutable repository.
+    source: RepositoryView
+    roots: seq[StateRoot]
+    indices: seq[int]
+    valueBytes: uint64
+  RepositorySelection* = object ## Opaque bounded root union; old plans remain valid after publication/close.
+    data: nil RepositorySelectionData
+  GraphCollection {.pure.} = enum ## Admission avoids collection; extraction and retention request exact positions.
+    None, Leaves, Records
+  GraphVisit = object ## Traversal scratch optionally collects reachable leaf or complete-record positions.
     seen: seq[bool]
     leaves: seq[int]
-    collect: bool
+    collect: GraphCollection
   GraphCounts = object ## Explicitly initialized running totals bound untrusted graph traversal.
     entries, nodes, bytes: uint64
 
@@ -99,6 +108,8 @@ proc graph(records: seq[TrieRecord], digest: StateNodeHash, depth: int,
   if counts.nodes >= uint64(limits.nodes): return RepositoryError.LimitExceeded
   inc counts.nodes
   visit.seen[index] = true
+  if visit.collect == GraphCollection.Records:
+    visit.leaves.add(index) # Retention needs branch and leaf addresses, each once per validated root.
   let record = records[index]
   if record.kind == TrieRecordKind.Leaf:
     let key = array[31, byte](record.key)
@@ -110,7 +121,8 @@ proc graph(records: seq[TrieRecord], digest: StateNodeHash, depth: int,
     if counts.entries >= uint64(limits.items) or size > uint64(limits.perValue) or
         size > uint64(limits.totalValueBytes)-counts.bytes:
       return RepositoryError.LimitExceeded
-    if visit.collect: visit.leaves.add(index) # Remember validated leaves without scanning historical records later.
+    if visit.collect == GraphCollection.Leaves: visit.leaves.add(
+        index) # Remember validated leaves without scanning historical records later.
     inc counts.entries
     counts.bytes += uint64(record.payload.len)
   else:
@@ -245,7 +257,7 @@ proc collectStateEntries(view: RepositoryView, expected: StateRoot,
   if selected and (uint64(data.commitment.entries) > uint64(limits.items) or data.commitment.nodes >
       uint64(limits.nodes)):
     return RepositoryResult[seq[StateEntry]](status: RepositoryError.LimitExceeded) # Reject narrower fixed ceilings before traversal scratch.
-  var visit = GraphVisit(seen: newSeq[bool](data.records.len), collect: true)
+  var visit = GraphVisit(seen: newSeq[bool](data.records.len), collect: GraphCollection.Leaves)
   var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
   let checked = graph(data.records, StateNodeHash(array[32, byte](expected)), 0,
     default(array[31, byte]), limits, visit, counts)
@@ -291,3 +303,81 @@ proc synchronize*(repository: NodeRepository): RepositoryResult[StorageDurabilit
     return RepositoryResult[StorageDurability](status: RepositoryError.Uninitialized)
   RepositoryResult[StorageDurability](status: RepositoryError.None,
     completed: StorageDurability.ProcessLifetime)
+
+func initialized*(selection: RepositorySelection): bool =
+  ## Query success ownership before accessing a retention plan's scalar observations.
+  selection.data != nil
+func matches*(selection: RepositorySelection, view: RepositoryView): bool =
+  ## Compare exact immutable source owners, never just a root or local generation.
+  let data = selection.data
+  data != nil and data.source.data == view.data
+proc retainedNodes*(selection: RepositorySelection): int {.requires: selection.initialized.} =
+  ## Count unique physical records needed by the selected root union.
+  let data = selection.data
+  assert data != nil
+  data.indices.len
+proc retainedValueBytes*(selection: RepositorySelection): uint64 {.requires: selection.initialized.} =
+  ## Count unique retained leaf payload bytes, without multiplying shared nodes across roots.
+  let data = selection.data
+  assert data != nil
+  data.valueBytes
+proc reclaimableNodes*(selection: RepositorySelection): int {.requires: selection.initialized.} =
+  ## Count source records outside the root union; this observation performs no reclamation.
+  let data = selection.data
+  assert data != nil
+  data.source.storedNodes-data.indices.len
+proc reclaimableValueBytes*(selection: RepositorySelection): uint64 {.requires: selection.initialized.} =
+  ## Count source payload bytes outside the union, under the source's already checked total.
+  let data = selection.data
+  assert data != nil
+  let source = data.source.data
+  assert source != nil
+  source.valueBytes-data.valueBytes
+proc retainedRoots*(selection: RepositorySelection): seq[
+    StateRoot] {.requires: selection.initialized.} =
+  ## Return detached root identities; their presence grants no chain or finality authority.
+  let data = selection.data
+  assert data != nil
+  var roots = newSeq[StateRoot](data.roots.len)
+  for index, root in data.roots: roots[index] = root # No mutable alias to the accepted plan escapes.
+  roots
+proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
+    limit: ElementLimit): RepositoryResult[RepositorySelection] =
+  ## Validate an explicit bounded root union including current selection, without changing the source.
+  let source = view.data
+  if source == nil: return RepositoryResult[RepositorySelection](
+      status: RepositoryError.Uninitialized)
+  if roots.len == 0: return RepositoryResult[RepositorySelection](
+      status: RepositoryError.RootMismatch)
+  if uint64(roots.len) > uint64(limit) or roots.len > high(int) div sizeof(StateRoot):
+    return RepositoryResult[RepositorySelection](status: RepositoryError.LimitExceeded)
+  var selected = false
+  var unique: seq[StateRoot] = @[]
+  for root in roots:
+    # Count every borrowed slot against the ceiling, then coalesce equal root identities.
+    if array[32, byte](root) == array[32, byte](source.commitment.root): selected = true
+    var duplicate = false
+    for prior in unique:
+      if array[32, byte](prior) == array[32, byte](root): duplicate = true
+    if not duplicate: unique.add(root)
+  if not selected: return RepositoryResult[RepositorySelection](
+      status: RepositoryError.RootMismatch)
+  var retained = newSeq[bool](source.records.len)
+  var indices: seq[int] = @[]
+  var bytes = 0'u64
+  for root in unique:
+    # Each complete root gets independent cycle/route checks; shared records count once in the union.
+    var visit = GraphVisit(seen: newSeq[bool](source.records.len), collect: GraphCollection.Records)
+    var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
+    let checked = graph(source.records, StateNodeHash(array[32, byte](root)), 0,
+      default(array[31, byte]), source.limits.codec.trie, visit, counts)
+    if checked != RepositoryError.None:
+      return RepositoryResult[RepositorySelection](status: checked)
+    for index in visit.leaves:
+      if not retained[index]:
+        retained[index] = true
+        indices.add(index)
+        bytes += uint64(source.records[index].payload.len) # Unique source records are bounded by source.valueBytes.
+  RepositoryResult[RepositorySelection](status: RepositoryError.None,
+    completed: RepositorySelection(data: RepositorySelectionData(source: view, roots: unique,
+      indices: indices, valueBytes: bytes)))
