@@ -1,0 +1,51 @@
+{
+  "build_name": "application-ancestor-inputs-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Ancestor input extraction default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-ancestor-inputs-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Ancestor input extraction refused",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "refused"
+      },
+      "name": "application-ancestor-inputs-refused"
+    },
+    {
+      "arguments": [
+        "file"
+      ],
+      "description": "Ancestor input extraction file",
+      "diagnostic": "outcome.status == FileFailure",
+      "identity": {
+        "reason": "file"
+      },
+      "name": "application-ancestor-inputs-file"
+    },
+    {
+      "arguments": [
+        "header"
+      ],
+      "description": "Ancestor input extraction header",
+      "diagnostic": "outcome.status == HeaderFailure",
+      "identity": {
+        "reason": "header"
+      },
+      "name": "application-ancestor-inputs-header"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/application_ancestor_inputs_results.nim"
+}
