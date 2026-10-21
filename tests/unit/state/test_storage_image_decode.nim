@@ -31,6 +31,21 @@ proc cycle() =
   let image = exportRepositoryImage(selected, limits.codec.records, ElementLimit(2)).value
   var body = encodeRecordCollection(image.collection, limits.codec).value
   reset(0)
+  assert decodeRepositoryImage(body, RepositoryGeneration(0), image.commitment, image.roots,
+    limits, ElementLimit(2), ByteLimit(1000000)).error == RepositoryError.InvalidGraph
+  assert int(calls()) == 0 # Invalid metadata must not hash or allocate the physical collection first.
+  var excessive = image.commitment
+  excessive.entries = 17
+  reset(0)
+  assert decodeRepositoryImage(body, image.generation, excessive, image.roots,
+    limits, ElementLimit(2), ByteLimit(1000000)).error == RepositoryError.LimitExceeded
+  assert int(calls()) == 0
+  var rootsWithoutCurrent = @[a.commitment.root]
+  reset(0)
+  assert decodeRepositoryImage(body, image.generation, image.commitment, rootsWithoutCurrent,
+    limits, ElementLimit(2), ByteLimit(1000000)).error == RepositoryError.RootMismatch
+  assert int(calls()) == 0
+  reset(0)
   let detached = decodeRecordCollection(body, limits.codec).value
   let raw = RepositoryImage(generation: image.generation, commitment: image.commitment,
     roots: image.roots, collection: detached)

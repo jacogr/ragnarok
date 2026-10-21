@@ -185,3 +185,19 @@ identical; complete maps, generation17, context and retained readers are checked
 The1K/8K managed workload additionally asserts replay hashes equal stored physical nodes plus
 18 outer checks and any long-value hashes. Compacted reopen requires selected nodes plus two
 outer checks and the same retained value hashes. Persisted checksums/bytes remain baseline-bound.
+
+The12 matching1K/8K managed samples preserve every persisted snapshot checksum and byte extent,
+selected/physical count, publication/compaction/reopen hash count and complete map. Journal replay
+removes272 redundant hashes with inline values and288 with long values. Timing stays descriptive.
+
+## Early image metadata refusal
+
+Raw and serialized images share scalar/root-inventory preflight: nonzero generation, nonnegative
+and policy-bounded selected counts, possible empty/nonempty target metadata, canonical unique
+roots including the selected root, and host-bounded inventories. Known impossible metadata now
+refuses before physical decoding/copying/hashing. It carries no integrity authority: accepted
+metadata still requires every record hash, graph route, per-root budget and orphan check.
+
+The decoder observer requires zero hashes for invalid generation, excess selected entries and
+missing selected-root membership. Existing malformed image, empty-current union and ARC coverage
+remain. Error precedence for impossible metadata is explicitly before physical transport errors.
