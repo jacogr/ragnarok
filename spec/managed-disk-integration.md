@@ -34,3 +34,12 @@ runs synchronously inside dispatcher callbacks.
 
 `managed_disk_state_store` checks public identity, retained values, compaction, context, exact trust,
 narrow restore policy, inherited explicit zero-write policy and 1,000 composite-owner ARC cycles.
+
+## Recovery boundary evidence
+
+`managed_disk_recovery` exercises the complete state facade with actual torn/modified journal
+bytes. It refuses cross-layout/schema opens, wrong exact prefix tokens, complete visible successors
+and complete corrupt frames without fallback. An independently authorized tail repair may become
+durable before a subsequently narrower map policy refuses restoration; that refusal still releases
+the owner. Successful read-only restoration preserves explicit zero-write limits. Already retained
+public snapshots remain readable after repair, refused startup and owner close.
