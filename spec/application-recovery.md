@@ -299,3 +299,20 @@ ARC release claim is made.
 Both selected staged/durable process-exit witnesses pass with exact file bytes,
 independent context refusal and fresh parent lock/verification/recovery. Semantic
 checks and inventory pass; evidence uses `build/recovery-process-exit*`.
+
+## Exact roundtrip and producer-history separation
+
+A genuinely advanced producer may retain its parent and explicitly caller-certified
+parent/head finality, yet exports the same exact selected context/map envelope.
+Import preserves the complete root and serialized C(3) history bytes while creating
+only one provider head with finality unset and no retained parent lookup. Producer
+history/finality owners remain unchanged. Mutation limits come from explicit
+recovery policy rather than the producer; readonly recovery stays readonly.
+Repeated full decode/bind/re-encode cycles preserve exact envelope bytes and
+release complete map/header/buffer ownership between observations.
+
+Local roundtrip/history-policy suite passes with exactly 369,904 occupied bytes
+before/after 1,000 complete decode/bind/re-encode cycles. Both producer finality
+selections preserve exact bytes while imports retain one unfinalized head and
+explicit readonly policy. Semantic checks and inventory pass; evidence uses
+`build/recovery-roundtrip*`.
