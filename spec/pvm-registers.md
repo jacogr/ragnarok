@@ -18,8 +18,10 @@ trap merely because the interpreter has not implemented that opcode yet.
 This is the register-mutation part of an instruction, not `Psi_1` or `Psi`.
 It neither advances the PC nor reads/changes memory, gas or the block-charged flag.
 GP 0.8.0 requires charging the **whole basic block** using its pipeline simulation
-before any mutation may be committed. A future executor must perform those checks
-and order exceptional effects before using this result. No flat per-opcode gas
+before any mutation may be committed. The [charged executor](pvm-step.md) performs those checks
+and orders exceptional effects before using this result. It reuses an existing
+[private validated instruction result](pvm-validated-register-evaluation.md)
+through the second evaluator overload. No flat per-opcode gas
 substitute, unchecked execution mode or fabricated VM exit is introduced.
 
 ## Arithmetic and ownership

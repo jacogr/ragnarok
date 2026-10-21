@@ -20,7 +20,10 @@ the full state on out-of-gas and the specified single-step terminal PCs; see
 and permit repair/retry without double charging. Complete single-step capability now
 includes host suspension, and bounded iterative execution applies recursive exit rules;
 see [the execution contract](../../spec/pvm-execution.md). Standard initialization and
-host-function integration remain open.
+host dispatch now have separate [initialization](../../spec/pvm-initialization.md)
+and [host execution](../../spec/pvm-host-execution.md) contracts. The
+[readiness map](../../spec/pvm-interpreter-readiness.md) records current interpreter
+comparisons and remaining JAM/specification gates.
 
 ## Accumulation successor boundary
 

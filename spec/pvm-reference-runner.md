@@ -71,8 +71,10 @@ below only after completing the actual Make target; Linux CI is separate evidenc
 
 ## Readiness and later comparison work
 
-The next testing increments are a dedicated Linux differential job and broader
-memory/program combinations. The existing positive gas-domain ambiguity remains
+The dedicated [Linux reference job](pvm-reference-ci.md) and broader
+[mixed memory/host programs](pvm-mixed-program-reference.md) are implemented.
+The [readiness map](pvm-interpreter-readiness.md) separates current fixture pairs
+from future full upstream fuzzing. The existing positive gas-domain ambiguity remains
 an explicit conformance gate. M1 framing is complete; complete state serialization,
 whole-block parity and full chainspec equivalence remain open.
 
@@ -81,8 +83,9 @@ workload, Ragnarök PVM, PolkaVM interpreted and PolkaVM compiled where supporte
 Start with a meaningful common subset once its correctness comparisons pass; full
 PVM completion is not a prerequisite. Validate equivalent results before timing,
 record hardware/toolchain/source pins and execution profiles, separate preparation
-or compilation from execution, and mark unavailable backends explicitly. A separate
-benchmark CI job can follow once measurements are reproducible. The maintainer selected
+or compilation from execution, and mark unavailable backends explicitly. The separate
+[benchmark CI job](pvm-benchmark-comparison.md) is implemented with interpreted-only
+measurements and an explicit deferred compiled column. The maintainer selected
 the GitHub Actions run summary as the primary Markdown table, with downloadable raw
 measurements and environment metadata alongside it. Do not split a
 coherent table into one PR per result or backend.
@@ -91,7 +94,7 @@ The required [future fuzzing CI](graypaper-discrepancies.md#required-future-polk
 remains a distinct job and coverage obligation. This deterministic runner does not
 execute or claim the complete upstream Rust test suite or any fuzz target.
 
-## Observed local evidence
+## Initial runner evidence (historical)
 
 The complete Make target passed all nine declared pairs (one release build and
 18 reference/native processes) on macOS with pinned Rust and checked Nimony
@@ -103,7 +106,7 @@ The runner controls, existing dependency-lock tests and Make harness tests pass.
 No remote Linux execution, benchmark or fuzzing result is claimed.
 
 
-## First limited speed baseline
+## First limited speed baseline (historical)
 
 The [consolidated benchmark](pvm-benchmark-comparison.md) now measures the verified
 arithmetic, memory and host-loop subset with Ragnarök/interpreter/compiled columns,

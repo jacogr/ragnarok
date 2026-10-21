@@ -68,7 +68,9 @@ The existing program byte limit controls owner capture size.
 `captureMachine` remains a trusted environment/import API, not proof that gas was
 previously charged. Its supplied charged flag is followed exactly as specified;
 the executor does not add a second gas policy or silently reset imported state.
-This increment does not implement standard initialization or host resumption.
+Standard initialization and host resumption are supplied separately by the
+[initializer](pvm-initialization.md), [host-response application](pvm-host-response.md)
+and [host-aware executor](pvm-host-execution.md).
 
 ## Control-flow semantics
 
@@ -207,7 +209,10 @@ licence or binary fixture is copied into the project.
 ## Remaining execution work
 
 Host suspension and bounded recursive `Psi` are implemented in the
-[execution contract](pvm-execution.md). Next: standard program/memory initialization.
-Host functions and complete JAM invocation remain unimplemented. Branch pricing and wrapping-memory ordering follow the approved PolkaVM
-adoptions.
+[execution contract](pvm-execution.md). [Standard initialization](pvm-initialization.md)
+and [trusted host dispatch](pvm-host-execution.md) are also implemented. JAM host
+functions and invocation adapters have their own scoped contracts; their presence
+does not establish complete JAM invocation parity. See the current
+[readiness map](pvm-interpreter-readiness.md). Branch pricing and wrapping-memory
+ordering follow the approved PolkaVM adoptions.
 These APIs do not establish full JAM parity or unrestricted PVM conformance.

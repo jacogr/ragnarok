@@ -106,5 +106,8 @@ The [single-step executor](pvm-step.md) now composes charging with immutable
 successor snapshots, unchanged out-of-gas state and single-step terminal outcomes.
 Memory faults preserve the paid block charge for repair/retry. The bounded
 [executor](pvm-execution.md) now handles host suspension and recursive exit rules;
-standard initialization and host functions remain separate work. Branch pricing follows the approved PolkaVM adoption; this is not a complete
-PVM or JAM invocation implementation.
+[standard initialization](pvm-initialization.md) and
+[host dispatch](pvm-host-execution.md) are implemented by separate adapters.
+Branch pricing follows the approved PolkaVM adoption; the
+[readiness map](pvm-interpreter-readiness.md) retains the remaining specification
+and full JAM conformance gates.
