@@ -261,26 +261,41 @@ proc journalPolicy(limits: ManagedLimits): JournalLimits =
 proc initializeManagedDiskStateStore*(store: var DiskStateStore, path: string,
     chain: StorageChainId, source: StateStoreSnapshot, limits: ManagedLimits,
         schema = StorageSchema.FullNodesV1,
-    context: openArray[byte] = []): DiskStoreResult[StateStoreSnapshot] =
-  ## Build the complete generation-one seed before managed creation; no durable empty bootstrap state exists.
+    context: openArray[byte] = [], history: openArray[StateStoreSnapshot] = []): DiskStoreResult[
+        StateStoreSnapshot] =
+  ## Admit bounded older snapshots and the selected seed before IO; no durable intermediate bootstrap head exists.
   if store.opened: return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.Busy)
   if schema == StorageSchema.FullStateV1 and context.len == 0:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ContextRequired)
+  if uint64(history.len) >= uint64(limits.roots):
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+        fileReason: FileError.LimitExceeded)
+  for retained in history:
+    if not sameStateStorePolicy(source, retained):
+      return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.PolicyMismatch)
   let candidate = forkStateStore(source)
   if candidate.error != StateStoreError.None:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.StateFailure,
         stateReason: candidate.error)
-  let batch = source.exportStateSnapshot(limits.repository.codec.records)
-  if batch.error != TrieError.None:
-    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ExportFailure,
-        exportReason: batch.error)
   var seed = newNodeRepository(limits.repository)
   defer: discard seed.close
-  let prepared = seed.publish(seed.snapshot.value, batch.value)
-  if prepared.error != RepositoryError.None:
-    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.RepositoryFailure,
-        repositoryReason: prepared.error)
-  let selection = selectRepositoryRoots(prepared.value, [prepared.value.commitment.root], limits.roots)
+  var previous = default(StateStoreSnapshot)
+  var roots: seq[StateRoot] = @[]
+  for index in 0..history.len:
+    # The current source is always provisioned last; every prior owner has the same complete-state policy.
+    let target = if index < history.len: history[index] else: source
+    let batch = if index == 0: target.exportStateSnapshot(limits.repository.codec.records)
+      else: exportStateChanges(previous, target, limits.repository.codec.records)
+    if batch.error != TrieError.None:
+      return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ExportFailure,
+          exportReason: batch.error)
+    let prepared = seed.publish(seed.snapshot.value, batch.value)
+    if prepared.error != RepositoryError.None:
+      return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.RepositoryFailure,
+          repositoryReason: prepared.error)
+    roots.add(prepared.value.commitment.root)
+    previous = target
+  let selection = selectRepositoryRoots(seed.snapshot.value, roots, limits.roots)
   if selection.error != RepositoryError.None:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.RepositoryFailure,
         repositoryReason: selection.error)
