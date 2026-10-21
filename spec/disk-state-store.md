@@ -64,3 +64,35 @@ cryptographic StateStore restoration fails; no writable owner escapes that later
 A separate maintained-crypto-observer suite refuses each required hash stage before update
 publication. Every refusal preserves journal bytes, generation and exact old snapshot identity;
 the same workload also completes with real successful controls.
+
+## Reproducible real-file workload
+
+`make measure-disk-store` runs the identical 128/1024-key, 33-byte-value workload ten times,
+performing 64 deterministic sparse updates, retaining one/eight snapshots and strictly reopening
+the result against its independently calculated complete root. Every restored key/value is checked.
+Counter samples must agree exactly; source/compiler/crypto/profile/host identities are recorded.
+`DISK_STORE_BASELINE=path/to/results.json make measure-disk-store` compares compatible prior
+reports. Python tests reject malformed, partial, duplicate, incompatible and unstable observations.
+
+The measured update region includes actual commitment, export, physical admission, frame encoding,
+append and synchronization. Full-frame reference encoding and independent root checks are outside
+that region. Monotonic publication/reopen durations are stored separately from exact counters;
+process duration additionally includes fixtures and reference work, so is not update latency.
+Occupied ARC bytes are live observations after completed updates, not internal transient allocation
+peaks, allocation counts or RSS. This benchmark does not claim power-loss behavior or production
+throughput from synthetic authored mappings.
+
+Initial checked macOS ARM64 baseline, all ten counter samples identical:
+
+| Complete keys | Held snapshots | Update hash calls | Journal bytes | Equivalent full-frame bytes | Maximum observed occupied bytes |
+| --- | --- | --- | --- | --- | --- |
+| 128 | 1 | 1984 | 92272 | 1690672 | 293568 |
+| 128 | 8 | 1984 | 92272 | 1690672 | 402800 |
+| 1024 | 1 | 3520 | 471823 | 23133327 | 2311536 |
+| 1024 | 8 | 3520 | 471823 | 23133327 | 3037216 |
+
+The equivalent full-frame total is a byte-size reference, not a second database benchmark or a
+claim that it fits the configured total-journal budget. Delta persistence uses 98.0% fewer bytes
+in the 1024-key workload. The current accumulated sorted record table still copies all descriptors,
+sorts them on every append and walks the entire target graph. No disk-addressed paging, bounded
+read cache, automatic history reclamation or production-scale efficiency is claimed yet.
