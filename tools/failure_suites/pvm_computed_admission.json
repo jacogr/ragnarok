@@ -1,0 +1,121 @@
+{
+  "source": "tests/native/pvm_computed_admission.nim",
+  "build_name": "pvm-computed-admission",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-admission-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed admission default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-admission-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed admission source"
+    },
+    {
+      "identity": {
+        "origin": "profile"
+      },
+      "arguments": [
+        "profile"
+      ],
+      "name": "pvm-computed-admission-profile",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed admission profile"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-computed-admission-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed admission limit"
+    },
+    {
+      "identity": {
+        "origin": "child"
+      },
+      "arguments": [
+        "child"
+      ],
+      "name": "pvm-computed-admission-child",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed admission child"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-admission-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed admission owner"
+    },
+    {
+      "identity": {
+        "origin": "reports"
+      },
+      "arguments": [
+        "reports"
+      ],
+      "name": "pvm-computed-admission-reports",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed admission reports"
+    },
+    {
+      "identity": {
+        "origin": "reason-default"
+      },
+      "arguments": [
+        "reason-default"
+      ],
+      "name": "pvm-computed-admission-reason-default",
+      "diagnostic": "outcome.status == AdmissionFailure",
+      "description": "Computed admission reason-default"
+    },
+    {
+      "identity": {
+        "origin": "reason-success"
+      },
+      "arguments": [
+        "reason-success"
+      ],
+      "name": "pvm-computed-admission-reason-success",
+      "diagnostic": "outcome.status == AdmissionFailure",
+      "description": "Computed admission reason-success"
+    },
+    {
+      "identity": {
+        "origin": "reason-profile"
+      },
+      "arguments": [
+        "reason-profile"
+      ],
+      "name": "pvm-computed-admission-reason-profile",
+      "diagnostic": "outcome.status == AdmissionFailure",
+      "description": "Computed admission reason-profile"
+    }
+  ]
+}
