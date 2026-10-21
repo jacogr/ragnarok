@@ -128,3 +128,50 @@ register, memory and host effects if runtime handling is intended.
 For compatibility we have approved rejecting these at JAM guest preparation while
 preserving the paper-aligned raw interpreter. That local policy is not evidence
 that the paper already defines the stricter predicate.
+
+## GP-PVM-005 — Suggested comment on existing PR559
+
+[PR559](https://github.com/gavofyork/graypaper/pull/559) directly addresses a
+reproducible difference with Gray Paper0.8.0
+`07f041dabd073f9018b418e9ee72e79dd2185401`: its deblob predicate currently
+permits z=5, whereas PolkaVM0.37.0
+`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa` rejects widths above4.
+
+Minimal complete GP blob: `[1,5,4,0,0,0,0,0,10,0,50,8,5]`.
+It has one zero table entry encoded in five bytes and valid host0/jump_ind code.
+Our independent paper decoder accepts it. Public PolkaVM ProgramParts parsing
+returns `invalid jump table entry size`; even count0 with width5 is rejected.
+The full width0..255/count0..1 matrix confirms502 such rejections.
+
+Please retain explicit malformed-width fixtures alongside the new predicate,
+including an empty table with oversized width. The separate zero-width/nonzero-
+count question below also needs a defined result; a four-byte upper bound alone
+leaves it open.
+
+## GP-PVM-006 — Define zero-width jump-table count semantics
+
+Gray Paper0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+[deblob](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L49-L56),
+carries a table count and one-byte entry width separately. Appendix C permits
+E_0(0), so a nonempty sequence of zeros needs no table payload at width0.
+
+Complete literal blobs, entry2, r8=2:
+
+| Case | Blob | Paper execution |
+| --- | --- | --- |
+| Empty table | `[0,0,4,10,0,50,8,5]` | Panic at jump PC2 |
+| One zero-width entry | `[1,0,4,10,0,50,8,5]` | Jump to PC0, then host0 |
+| One width1 zero entry | `[1,1,4,0,10,0,50,8,5]` | Jump to PC0, then host0 |
+
+PolkaVM0.37.0 `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa` publicly parses,
+validates and loads all three. Its
+[JumpTable implementation](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/program.rs#L5245-L5270)
+returns no entries for any width0 table. Executing through the public interpreter
+therefore gives Trap at2 for both width0 cases and Ecalli(0) at0 for the width1
+control. This is an executed result, not an inference from the parser alone.
+
+Should width0 require count0, retain the count of zero entries, or explicitly
+mean an empty table? Please define both acceptance and dynamic lookup. Rejecting
+all nonempty width0 tables would itself differ from current PolkaVM's successful
+module load and later trap. [PR559](https://github.com/gavofyork/graypaper/pull/559)
+proposes an upper width bound but does not resolve this case.
