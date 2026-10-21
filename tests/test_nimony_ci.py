@@ -57,7 +57,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [unit, e2e, docker, interop, perf, pvm-reference, bench-pvm, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [unit, e2e, docker, interop, perf, pvm-reference, bench-pvm, bench-storage, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         self.assertNotIn('synchronize', triggers)
         self.assertNotIn('opened', triggers)
@@ -170,13 +170,13 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(definition.strip(),
                          'name: Validate verification inventory\n        run: make check-inventory')
         jobs = ('modules', 'python', 'guards', 'unit', 'failures', 'e2e', 'telemetry-interop', 'docker', 'pvm-reference')
-        for job in (*jobs, 'bench-pvm'):
+        for job in (*jobs, 'bench-pvm', 'bench-storage'):
             # Exact job boundaries keep an appended independent workload from entering its neighbor's scope.
             with self.subTest(job=job):
                 section = re.search(r'^  '+job+r':\n(.*?)(?=^  [\w-]+:|\Z)',
                                     text, re.MULTILINE | re.DOTALL).group(1)
                 preflight = '- &inventory' if job == 'modules' else '- *inventory'
-                target = 'bench-pvm' if job == 'bench-pvm' else 'check-'+job
+                target = job if job.startswith('bench-') else 'check-'+job
                 self.assertEqual(section.count(preflight), 1)
                 self.assertLess(section.index(preflight), section.index('run: make '+target))
         self.assertNotIn('continue-on-error:', text)
@@ -225,6 +225,24 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('name: Interop PVM', text)
         self.assertIn('name: Interop JAM Tart', text)
         self.assertIn('name: Perf PVM', text)
+        self.assertIn('name: Perf Storage', text)
+        index = jobs.index('bench-pvm')
+        self.assertEqual(jobs[index:index+2], ['bench-pvm', 'bench-storage'])
+
+    def test_storage_perf_scope_and_summary(self):
+        """Storage shares the Perf group while retaining independent validated artifacts and failure status."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        section = text.split('  bench-storage:\n', 1)[1]
+        for trigger in ("github.event_name == 'push'", "inputs.suite == 'perf'", "inputs.suite == 'bench-storage'",
+                        "inputs.suite == 'full'", "github.event.label.name == 'ci:perf'", "github.event.label.name == 'ci:full'"):
+            self.assertIn(trigger, section)
+        self.assertEqual(section.count('run: make bench-storage\n'), 1)
+        self.assertIn('summary-storage-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', section)
+        self.assertIn('if: always()', section)
+        for name in ('results.json', 'samples.csv', 'summary.md'):
+            self.assertIn('build/tests/storage-benchmark/'+name, section)
+        self.assertNotIn('continue-on-error', section)
+        self.assertNotIn('needs:', section)
 
     # The shared native builder must work before any historical driver has created its output directory.
     def test_bandersnatch_clean_build_directory(self):
