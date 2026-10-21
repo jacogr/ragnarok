@@ -102,3 +102,9 @@ The grouped Perf Storage job compares memory, synchronized journal and managed s
 checked workloads. The [performance guide](storage-performance.md) distinguishes resident reads,
 durable publication, strict restart, bounded-history reclamation and selected-file extents. Its
 host-specific measurements never replace recovery authority or independent checkpoint trust.
+
+## I/O failure and restart guide
+
+The [I/O failure guide](storage-io-failures.md) maps actual syscall boundaries to ownership,
+uncertainty and explicit restart/cleanup behavior. It records the native refusal matrices and
+keeps storage receipts separate from the stricter Services maintenance-failure policy.
