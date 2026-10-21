@@ -251,6 +251,59 @@ proc retryCycle() =
   samePages(memoryOf(source).value, [first, second])
   samePages(memoryOf(fault.machine).value, [first, second])
 
+# Rechecking the PolkaVM overflow rule after host page repair must preserve the paid block across every transition.
+proc overflowRetryCycle() =
+  for row in 0..<ops.len:
+    # Every absolute/immediate/indirect form uses the same effective final-byte address with its own original register roles.
+    let op = ops[row]
+    let program = owner(op, 0xffffffff'u64, high(uint64), false)
+    let memory = captureMemory([], PageLimit(1)).value
+    var regs = default(RegisterFile)
+    regs[1] = RegisterValue(0x100000000'u64)
+    regs[12] = RegisterValue(0x123456789abcdef0'u64)
+    if op in {70'u8..73'u8}:
+      regs[12] = RegisterValue(0x100000000'u64) # These indirect immediate stores select saturated A as their address base.
+    let cost = blockGas(program, CodeAddress(0), GasCycleLimit(1000)).value
+    let initial = MachineInfo(pc: CodeAddress(0), gas: MachineGas(uint64(cost)),
+      blockCharged: false, registers: regs)
+    let source = captureMachine(program, memory, initial).value
+    let fault = stepMemory(source, GasCycleLimit(1000)).value
+    assert fault.exit == StepExit.Fault and uint32(fault.faultPage) == 0xfffff000'u32
+    var paid = initial
+    paid.gas = MachineGas(0)
+    paid.blockCharged = true
+    same(machineInfo(fault.machine).value, paid)
+    let repeated = stepMemory(fault.machine, GasCycleLimit(0)).value
+    assert repeated.exit == StepExit.Fault and uint32(repeated.faultPage) == 0xfffff000'u32
+    same(machineInfo(repeated.machine).value, paid)
+    for access in [PageAccess.ReadOnly, PageAccess.ReadWrite]:
+      # Presence makes PolkaVM overflow trap even for stores to the supplied read-only page.
+      let image = page(0xfffff, access, 181)
+      let present = withMemory(fault.machine, withPage(memory, image).value).value
+      let panic = stepMemory(present, GasCycleLimit(0)).value
+      assert panic.exit == StepExit.Panic
+      same(machineInfo(panic.machine).value, paid)
+      samePages(memoryOf(panic.machine).value, [image])
+      let completed = execute(present, ExecutionStepLimit(1), GasCycleLimit(0)).value
+      assert completed.exit == StepExit.Panic
+      same(machineInfo(completed.machine).value, paid)
+      samePages(memoryOf(completed.machine).value, [image])
+      var hidden = image
+      hidden.access = PageAccess.Inaccessible
+      let unmapped = withMemory(panic.machine, withPage(memoryOf(panic.machine).value,
+          hidden).value).value
+      let again = stepMemory(unmapped, GasCycleLimit(0)).value
+      assert again.exit == StepExit.Fault and uint32(again.faultPage) == 0xfffff000'u32
+      same(machineInfo(again.machine).value, paid)
+      samePages(memoryOf(again.machine).value, [hidden])
+      samePages(memoryOf(present).value, [image])
+      samePages(memoryOf(panic.machine).value, [image])
+      samePages(memoryOf(unmapped).value, [hidden])
+    same(machineInfo(source).value, initial)
+    same(machineInfo(fault.machine).value, paid)
+    assert pageImage(memoryOf(source).value, PageIndex(0xfffff)).value.access ==
+        PageAccess.Inaccessible
+
 # A repaired aliased load must still use its original base and then replace it with the loaded value.
 let loadProgram = owner(130, 69631, 0, true)
 let initialMemory = captureMemory([page(16, PageAccess.ReadOnly, 128)], PageLimit(2)).value
@@ -279,9 +332,12 @@ let host = captureMachine(hostProgram, initialMemory, MachineInfo(pc: CodeAddres
 assert stepMemory(host, GasCycleLimit(0)).error == StepError.UnsupportedInstruction
 
 retryCycle()
+overflowRetryCycle()
 let before = getOccupiedMem()
 # Releasing complete source/fault/repair/store graphs must return ARC allocation to its baseline.
-for iteration in 0..<1000: retryCycle()
+for iteration in 0..<1000:
+  retryCycle()
+  overflowRetryCycle() # Each batch covers all30 forms and both present-page permission modes.
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("pvm_memory_step", 1000, before, after)
