@@ -31,6 +31,7 @@ separate list of executable identities in the runner.
 | `control` | `pvm_conditional_control_reference` | Branch/load-jump programs, registers and exits with explicit PC representation |
 | `jumps` | `pvm_jump_table_reference` | Raw paper versus JAM jump-table decoding and public module/execution observations |
 | `validation` | `pvm_initialization` | Final-terminator admission matrix and prefix refusal |
+| `cross_retry` | `pvm_metered_cross_page_retry` | Missing-page/read-only repair in one prepaid block, with exact/underfunded gas and atomic writes |
 | `retry` | `pvm_metered_fault_retry_reference` | Fault, page repair and retry without duplicate gas charge |
 | `hosts` | `pvm_metered_host_reference` | Two host exits, register replies and prepaid resumption |
 | `limits` | `pvm_module_limits` | Complete code/count limits, including zero-width table normalization |

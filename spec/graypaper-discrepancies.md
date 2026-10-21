@@ -419,6 +419,8 @@ to exactly 48 rows across all 12 multi-byte store forms. Controls include every
 permission pair, the two read-only pages case, lower-absent/higher-read-only,
 noncrossing accesses, all load forms and untouched bytes after refusal. See the
 [complete scalar memory matrix](pvm-memory-access-reference.md).
+The [metered two-stage retry](pvm-cross-page-metered-retry.md) additionally executes
+both repair faults and final success in one prepaid block at exact and surplus gas.
 No upstream duplicate search or issue posting is claimed for this newly found case.
 A local issue draft is prepared for the maintainer; a normative clarification remains open.
 

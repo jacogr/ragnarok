@@ -1,0 +1,11 @@
+{
+  "defines": [],
+  "directory": "codec",
+  "fixtures": [
+    "pvm_cross_page_retry"
+  ],
+  "includes": [],
+  "libraries": [],
+  "observers": [],
+  "prepared": false
+}
