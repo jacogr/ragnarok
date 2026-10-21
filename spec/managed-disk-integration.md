@@ -200,3 +200,17 @@ confirmed child remains canonical, exact nested failure reasons, mutation refusa
 CURRENT, explicit no-maintenance restart and kernel retirement of abruptly abandoned locks.
 Fork occurs before any parent Services worker starts. No production fault hook or power-loss
 claim is introduced. The existing real TLS download-progress consumer remains passing.
+
+## Authenticated TLS integration evidence
+
+`managed_download_tls` migrates a genuine legacy prefix with explicitly selected genesis finality,
+then downloads two and five additional signed children over actual authenticated TLS connections.
+Every next request uses the newly confirmed parent. Independent full-map comparisons cover the
+entire rolling window and the separated finalized root after eight total children; source legacy
+bytes remain identical and each confirmed maintenance epoch has a header-only journal.
+
+A separate farther-epoch collision causes the second post-publication maintenance to refuse.
+The command returns StorageMaintenanceFailure with exactly two confirmed children and two actual
+requests, never requests the third, and strictly restores that complete prefix with automatic
+maintenance explicitly disabled. Unknown future files remain untouched. No transport, ancestry,
+execution validation or checkpoint trust shortcut is introduced.
