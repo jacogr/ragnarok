@@ -1,0 +1,51 @@
+{
+  "build_name": "application-recovery-trust-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Application recovery trust default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-recovery-trust-default"
+    },
+    {
+      "arguments": [
+        "missing"
+      ],
+      "description": "Application recovery trust missing",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "missing"
+      },
+      "name": "application-recovery-trust-missing"
+    },
+    {
+      "arguments": [
+        "identity"
+      ],
+      "description": "Application recovery trust identity",
+      "diagnostic": "trust.initialized",
+      "identity": {
+        "reason": "identity"
+      },
+      "name": "application-recovery-trust-identity"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Application recovery trust reason",
+      "diagnostic": "outcome.status == IdentityFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "application-recovery-trust-reason"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/application_recovery_trust_results.nim"
+}
