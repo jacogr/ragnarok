@@ -50,3 +50,20 @@ The typed C(11) reader delegates to the existing pinned E4 codec only after chec
 exact authenticated value extent. Unknown evidence, verified absence and malformed
 state bytes have different typed failures; a valid trie proof does not make malformed
 state canonical or certify chronology. Full uint32 boundary values remain exact.
+
+Strict runtime extraction probes protect default, unknown-key, foreign capture/merge,
+missing projection, envelope, decode and typed-time failures with genuine valid
+controls. Compiler privacy probes reject view owners, result discriminators, payloads
+and nested proof causes. No unchecked conversion into complete state is provided.
+
+A separate fresh 1,000-cycle ARC witness covers partial view capture, union,
+projection, export, decoded transport, typed reads and short-policy refusal. All
+derived immutable owners must return occupied allocation to the warmed baseline.
+
+A nominal compiler guard rejects passing a partial ProofView to forkStateStore,
+which requires a complete StateStoreSnapshot. This preserves the full/light
+provenance boundary without introducing another store representation.
+
+An actual verified absent lookup must reject byte extraction through the base
+lookup presence precondition; raw neighboring leaf bytes never become a present
+value through a partial-view accessor.
