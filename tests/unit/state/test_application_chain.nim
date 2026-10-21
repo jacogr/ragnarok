@@ -13,7 +13,9 @@ import ../../../src/rpc/[server, protocol]
 import ../../../src/codec/[header, bounded, report_owned, state_layout, state_trie]
 import ../../../src/state/[store, accumulation_chain, accumulation_state, accumulation_completion,
   accumulation_finalization, accumulation_times, accumulation_statistics, accumulation_validators,
-  accumulation_activity, accumulation_consensus, report_admission, block_transition, block_admission]
+  accumulation_activity, accumulation_consensus, report_admission, block_transition,
+  block_admission,
+  accumulation_publication]
 import ../../support/[accumulation_activity_context, accumulation_completion_context, arc_evidence]
 
 # Primitive refusal begins after genuine signed source and retained view construction.
@@ -283,6 +285,43 @@ proc rpcWitness(context: Fixture) =
   failHash(0)
   short.close()
 
+proc preparedRpcWitness(context: Fixture) =
+  ## Prepare once, preflight exact lease/view authority, then install before any best-head notification.
+  var rpc = default(Server)
+  let port = listener(rpc, context.parent)
+  let peer = client(port)
+  defer: discard posix.close(peer)
+  var pending = ""
+  sendText(peer, "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n", false)
+  assert "101 Switching Protocols" in readPacket(rpc, peer, pending, true)
+  sendText(peer, Subscribe)
+  assert "\"result\":1" in readPacket(rpc, peer, pending)
+  assert "\"slot\":1" in readPacket(rpc, peer, pending)
+  var owner = initApplicationChain(genesisView(context.parent)).value
+  let before = owner
+  let prepared = owner.prepareAccumulation(context.source, completionLimits().composition).value
+  assert sameChainView(owner.chainView, before.chainView)
+  let lease = rpc.pauseChain()
+  assert lease != nil
+  failHash(1)
+  assert owner.canInstallPrepared(prepared)
+  assert not owner.canInstallPrepared(rpc, prepared)
+  assert owner.canInstallPrepared(rpc, prepared, lease)
+  let alternate = initialized(context)
+  assert not alternate.canInstallPrepared(rpc, prepared, lease)
+  owner.installPrepared(rpc, prepared, lease)
+  assert hashCalls() == 0 and sameStateSnapshot(owner.stateSnapshot.value, prepared.stateSnapshot)
+  assert not owner.canInstallPrepared(rpc, prepared, lease)
+  assert rpc.resumeChain(lease)
+  let event = readPacket(rpc, peer, pending)
+  assert "subscribeBestBlock" in event and base64.encode(array[32, byte](
+      prepared.child.blockHash)) in event
+  sendText(peer, Best)
+  assert base64.encode(array[32, byte](prepared.child.blockHash)) in readPacket(rpc, peer, pending)
+  assert sameChainView(before.chainView, genesisView(context.parent))
+  rpc.close()
+  failHash(0)
+
 proc cycle(context: Fixture) =
   ## Independent success, stale replay and late quota refusal release all private application branches each cycle.
   let policy = completionLimits().composition
@@ -313,6 +352,7 @@ proc main() {.raises.} =
   witness(fixture(base, rotated = true))
   views(context)
   rpcWitness(context)
+  preparedRpcWitness(context)
   let cappedSource = fixture(base, writes = 6)
   var capped = initialized(cappedSource)
   let limited = capped.applyAccumulation(cappedSource.source, completionLimits().composition)
