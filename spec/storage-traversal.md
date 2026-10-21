@@ -112,3 +112,12 @@ root to one per operation; no wall-clock claim follows from that structural coun
 `storage_retention_plan` includes reverse root order with an intervening empty root; `storage_image`
 continues to admit multiple individually bounded graphs whose union exceeds a single-root value
 budget, and rejects omitted-root orphans and malformed unions. Both retain exact ARC release.
+
+## Canonical immutable selections
+
+Selection construction sorts unique retained physical indices once. Repeated record exports and
+independent clones read that canonical order directly, removing one index-array allocation/copy
+and sort from each operation. Public retained-root request order remains unchanged; encoded image
+roots retain their existing canonical ordering. Detached public payloads and fresh clone identities
+remain mandatory. Opposite root orders produce identical physical transport, and retained owners
+remain independent after source close. The24-case workload must preserve roots, counters and memory.

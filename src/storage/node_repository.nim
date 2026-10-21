@@ -423,6 +423,7 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
         retained[index] = true
         indices.add(index)
         bytes += uint64(source.table.records[index].payload.len) # Unique source records are bounded by source.valueBytes.
+  indices.sort() # Canonicalize the immutable union once; repeated exports/clones can borrow this order.
   RepositoryResult[RepositorySelection](status: RepositoryError.None,
     completed: RepositorySelection(data: RepositorySelectionData(source: view, roots: unique,
       indices: indices, valueBytes: bytes)))
@@ -448,11 +449,9 @@ proc exportRepositorySelection*(selection: RepositorySelection,
     return RepositoryResult[seq[TrieRecord]](status: RepositoryError.LimitExceeded)
   let source = data.source.data
   assert source != nil
-  var indices = newSeq[int](data.indices.len)
-  for index, position in data.indices: indices[index] = position # Sorting must not mutate the immutable plan.
-  indices.sort() # Source record indices have the same unique lexical order as their full physical addresses.
-  var records = newSeq[TrieRecord](indices.len)
-  for index, position in indices:
+  var records = newSeq[TrieRecord](data.indices.len)
+  for index, position in data.indices:
+    # The immutable selected indices already follow the source's full physical-address order.
     records[index] = copyRecord(source.table.records[position]) # Never export shared mutable payload bytes.
   RepositoryResult[seq[TrieRecord]](status: RepositoryError.None, completed: records)
 
@@ -619,12 +618,9 @@ proc cloneRepositorySelection*(selection: RepositorySelection,
   let maximum = min(uint64(limits.records), uint64(high(int) div sizeof(TrieRecord)))
   if uint64(data.indices.len) > maximum or data.valueBytes > uint64(limits.valueBytes):
     return RepositoryResult[NodeRepository](status: RepositoryError.LimitExceeded)
-  var indices = newSeq[int](data.indices.len)
-  for index, position in data.indices:
-    indices[index] = position # Keep the immutable selection's traversal order untouched.
-  indices.sort() # Complete table order must remain canonical for physical lookup and subsequent publication.
-  var records = newSeqOfCap[StoredRecord](indices.len)
-  for position in indices:
+  var records = newSeqOfCap[StoredRecord](data.indices.len)
+  for position in data.indices:
+    # Selection construction proved unique full-address order, independent of borrowed root order.
     records.add(source.table.records[position]) # Share only selected immutable cells; no source view/table is retained.
   let cloned = RepositoryData(table: RepositoryTable(records: records),
     commitment: source.commitment, generation: source.generation, valueBytes: data.valueBytes,
