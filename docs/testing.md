@@ -57,7 +57,9 @@ not claim the deferred groups passed. Master pushes/merges always request full v
 newer master runs supersede older ones.
 
 For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
-choose `unit`, `e2e`, `docker` or `full` (the default). CLI equivalent:
+choose `unit`, `e2e`, `docker`, `pvm-bench` or `full` (the default). The explicit
+`pvm-bench` scope runs only the [PVM speed comparison](../spec/pvm-benchmark-comparison.md),
+with an Actions table and raw artifacts; it is not a correctness-suite request. CLI equivalent:
 
 ```sh
 gh workflow run ci.yml --ref <branch> -f suite=full

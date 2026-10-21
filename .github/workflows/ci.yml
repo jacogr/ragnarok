@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [unit, e2e, docker, full]
+        options: [unit, e2e, docker, pvm-bench, full]
         default: full
         required: true
 
@@ -372,3 +372,33 @@ jobs:
             build/tests/pvm-reference/summary.md
             build/tests/native/selected/pvm_*.log
             build/tests/native/preparation/selected-pvm_*.json
+
+  # Measurements are explicitly requested; ordinary full verification keeps correctness as its verdict.
+  pvm-benchmark:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'pvm-bench' }}
+    name: PVM speed comparison
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Measure validated PVM workloads
+        run: make bench-pvm
+      - name: Show speed comparison table
+        if: always()
+        run: make summary-pvm-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      - name: Retain raw benchmark evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-benchmark-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            build/tests/pvm-benchmark/*.log
+            build/tests/pvm-benchmark/results.json
+            build/tests/pvm-benchmark/samples.csv
+            build/tests/pvm-benchmark/summary.md
+            build/pvm-benchmark/native-build.log
+            build/ci/*.log

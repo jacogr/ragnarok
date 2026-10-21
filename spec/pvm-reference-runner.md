@@ -100,3 +100,11 @@ matrix, module limits, metered fault retries and host resumptions. The existing
 probe-specific contracts describe the exact boundaries of those counts.
 The runner controls, existing dependency-lock tests and Make harness tests pass.
 No remote Linux execution, benchmark or fuzzing result is claimed.
+
+
+## First limited speed baseline
+
+The [consolidated benchmark](pvm-benchmark-comparison.md) now measures the verified
+arithmetic, memory and host-loop subset with Ragnarök/interpreter/compiled columns,
+explicit availability, raw samples and Actions summaries. This does not replace the
+correctness runner or close the remaining conformance/fuzzing gates.
