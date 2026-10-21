@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_APPLICATION_CHECKPOINT",
+  "files": {
+    "rpc-genesis.json": "8576d067432b92fbc0f5865ab3be976570c34f28119b80ef550179218c476f62"
+  },
+  "target": "rpc-genesis.json"
+}
