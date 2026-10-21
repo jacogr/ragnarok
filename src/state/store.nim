@@ -329,3 +329,17 @@ proc exportStateChanges*(base, target: StateStoreSnapshot,
   let after = target.data
   if before == nil or after == nil: return default(TrieResult[TrieExport])
   exportTrieChanges(before.trie, after.trie, limits)
+
+func sameStateStorePolicy*(left, right: StateStoreSnapshot): bool =
+  ## Compare every inherited complete-map and mutation ceiling; defaults never authorize policy adoption.
+  let before = left.data
+  let after = right.data
+  if before == nil or after == nil: return false
+  let a = before.limits
+  let b = after.limits
+  uint64(a.trie.items) == uint64(b.trie.items) and
+    uint64(a.trie.perValue) == uint64(b.trie.perValue) and
+    uint64(a.trie.totalValueBytes) == uint64(b.trie.totalValueBytes) and
+    uint64(a.trie.nodes) == uint64(b.trie.nodes) and
+    uint64(a.writes) == uint64(b.writes) and
+    uint64(a.writeValueBytes) == uint64(b.writeValueBytes)
