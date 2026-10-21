@@ -70,8 +70,8 @@ proc main() {.raises.} =
   assert session.resumeAncestors(foreign, owner, older).error ==
       DownloadSessionError.StaleAttempt
   let refused = session.resumeAncestors(id, owner, [older[0], older[0]])
-  assert refused.error == DownloadSessionError.DownloadFailure and refused.failure.downloadFailure.inputError ==
-      BlockInputError.LimitExceeded
+  assert refused.error == DownloadSessionError.DownloadFailure and
+      refused.failure.downloadFailure.inputError ==BlockInputError.LimitExceeded
   assert session.stage == BlockDownloadStage.AwaitingAncestors
   assert session.resumeAncestors(id, owner, older).error == DownloadSessionError.None
   assert session.stage == BlockDownloadStage.Ready
