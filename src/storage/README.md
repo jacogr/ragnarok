@@ -79,3 +79,10 @@ make unit SUITE=full_state_trie
 make unit SUITE=full_state_trie_private
 make unit SUITE=full_state_trie_replay
 ```
+
+## Standalone persistence work
+
+`node_records.nim` defines detached physical transport records. The trie can export a complete
+revision or just records missing from an explicit base, with no extra hashing. See
+[the record contract](../../spec/storage-records.md). These storage-only APIs do not authorize
+state/checkpoint integration.
