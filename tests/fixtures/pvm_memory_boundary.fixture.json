@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_PVM_MEMORY_BOUNDARY",
+  "files": {
+    "pvm-memory-boundary.bin": "9a27ed2322e3615c6cacceb63f1d10610c88866d25ac121f03e43e0efe684089"
+  },
+  "target": "pvm-memory-boundary.bin"
+}
