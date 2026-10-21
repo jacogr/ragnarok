@@ -33,3 +33,19 @@ runtime extraction refusals and genuine success/nested-reason controls pass; all
 three private-result compiler probes reject the intended field. Source-owned
 inventory, pinned formatting and whitespace checks pass. Evidence is under
 `build/recovery-binding.log` and `build/recovery-guards/`; no CI is requested.
+
+## Complete envelope recovery
+
+`decodeRecoveryCheckpoint` restores the existing canonical application envelope
+against independent expected context and explicit map/byte ceilings, then binds
+its complete map to the supplied sealed header. Default trust refuses first.
+Selected context/identity/checkpoint failures remain available only through the
+guarded EnvelopeFailure alternative. No decoded state escapes a subsequent header
+refusal, and success owns both map and header independently of input buffers.
+Native checks cover every envelope cut, independent context variants, narrow byte/
+map policies, header mismatch, every original key/value and repeated release.
+
+Local envelope and affected binding suites pass under checked ARC. Envelope
+release retains 20,704 bytes before/after 1,000 cycles; binding retains 47,728.
+Four runtime refusal cases, genuine success/error controls, four private-result
+compiler probes and source-owned inventory pass. Logs use `build/recovery-envelope*`.

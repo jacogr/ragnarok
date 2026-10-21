@@ -5,19 +5,22 @@
 ## Recovery creates one retained head with unset finality; no ancestor or consensus proof is inferred.
 
 import std/assertions
-import ./[chain, checkpoint_identity]
+import ./[chain, checkpoint_identity, checkpoint_codec]
+import ../codec/bounded
 import ../chain/[genesis, provider]
 import ../state/store
 
 type
   ApplicationRecoveryError* {.pure.} = enum ## Refusals expose no partial canonical owner.
-    Uninitialized, None, MissingTrust, StateFailure, ContextMismatch, HeaderFailure, HeaderMismatch
+    Uninitialized, None, MissingTrust, StateFailure, ContextMismatch, HeaderFailure, HeaderMismatch, EnvelopeFailure
   ApplicationRecoveryResult* = object ## Only an exact trusted head/map pair grants an independent application branch.
     case status: ApplicationRecoveryError
     of None:
       completed: ApplicationChain
     of StateFailure:
       stateReason: StateStoreError
+    of EnvelopeFailure:
+      envelopeReason: ApplicationCheckpointResult[StateStore]
     else:
       discard # Missing trust and mismatches retain no recovered graph.
 func error*(outcome: ApplicationRecoveryResult): ApplicationRecoveryError =
@@ -52,3 +55,19 @@ proc recoverApplicationChain*(state: StateStoreSnapshot, sealedHeader: openArray
   let resumed = initApplicationChain(genesisView(captured))
   assert resumed.error == ApplicationChainError.None # Exact initialized capture permits a policy-preserving fork.
   ApplicationRecoveryResult(status: ApplicationRecoveryError.None, completed: resumed.value)
+
+func envelopeFailure*(outcome: ApplicationRecoveryResult): ApplicationCheckpointResult[
+    StateStore] {.inline, requires: outcome.status == ApplicationRecoveryError.EnvelopeFailure.} =
+  ## Preserve precise context/identity/map failure without returning any recovered state.
+  outcome.envelopeReason
+proc decodeRecoveryCheckpoint*(bytes, sealedHeader: openArray[byte],
+    expected: ApplicationCheckpointIdentity, limits: StateStoreLimits,
+    limit: ByteLimit): ApplicationRecoveryResult =
+  ## Independent trust and explicit recovery policy precede complete-map allocation and canonical construction.
+  if not expected.ready:
+    return ApplicationRecoveryResult(status: ApplicationRecoveryError.MissingTrust)
+  let restored = decodeApplicationCheckpoint(bytes, expected, limits, limit)
+  if restored.error != ApplicationCheckpointError.None:
+    return ApplicationRecoveryResult(status: ApplicationRecoveryError.EnvelopeFailure,
+      envelopeReason: restored) # Failure owns only typed reasons; no decoded map is retained.
+  recoverApplicationChain(restored.value.snapshot.value, sealedHeader, expected)
