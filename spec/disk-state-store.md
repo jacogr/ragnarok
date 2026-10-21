@@ -237,3 +237,27 @@ Structurally authored local histories exceed the retention window and exercise e
 in-window owner sharing, duplicate/reversed/oversized histories and root-equal foreign map owners.
 Modified fixture seals never stand in for execution certificates; live publication tests use the
 separate genuine signed execution fixtures.
+
+## Bounded durable history context
+
+`app/disk_history.nim` encodes one exact `RAGNAROK-DISK-CHAIN-V1\n` representation:
+a retained count (1..8), finality tag (0 absent, 1..count referencing the retained owner,
+255 for one detached older anchor), then oldest-to-newest retained single-head contexts and
+an optional detached finalized context. Each entry has a full 32-byte posterior-root hint,
+an E8 exact byte length and the existing single-head encoding. The root hint only routes
+physical restoration; the checked enclosed identity/header must agree with the restored root.
+Every enclosed head is bound to the same configured chain, full parameters and journal generation.
+No alternate schemas or trailing bytes are accepted.
+
+Encoding preflights all header extents and the total ceiling before allocation/hashing. Decoding
+preflights every extent before restoring any graph. Historical snapshots rebuild under the explicit
+restart policy, while the newest block reuses the disk store's exact current snapshot owner. The
+provider checks the linked retained suffix and separate explicit finality; in-window finality reuses
+its already restored owner. This boundary consumes verified local journal context, not external
+checkpoint trust or new consensus/finality certificates.
+
+`make unit SUITE=disk_history` checks a real journal exceeding the retention window, every retained
+value, evicted/in-window/absent finality, exact current ownership and byte-identical round trips.
+All truncations, malformed tags/lengths/root hints, trailing data, insufficient context budgets,
+wrong generations/policies and absent historical records refuse without changing durable selection.
+The local-history fixtures contain structurally authored headers, not execution certificates.
