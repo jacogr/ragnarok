@@ -7,7 +7,7 @@
 import std/[assertions, syncio]
 import ../../../src/state/[authorization_invocation, refinement_lookup, store]
 import ../../../src/codec/[bounded, composite, work_package, work_digest, work_report]
-import ../../../src/pvm/[machine, step, gas, initialize, host_fetch, output]
+import ../../../src/pvm/[program, machine, step, gas, initialize, host_fetch, output]
 import ../../../src/chain/parameters
 import ../../../src/codec/state_authorization # Invocation names coexist with the existing state codec domain.
 import ../../support/[pvm_authorization_invoke, pvm_refinement_outcome, arc_evidence]
@@ -171,6 +171,26 @@ for terminal in [@[1'u8], @[170'u8, 0, 253]]:
   let completed = authorizationRun(authorizationFixture([@[51'u8, 7, 7], safeTerminal, @[0'u8]]))
   assert completed.error == AuthorizationInvocationError.None
   assert completed.value.authorizationInfo.value.kind == WorkKind.Panic
+
+# A real authenticated width-zero table executes as empty, rather than looping through declared j[0].
+for width in [0'u8, 5]:
+  var tableProgram = @[1'u8, width, 5]
+  for index in 0..<int(width): tableProgram.add(0)
+  for octet in [51'u8, 8, 2, 50, 8, 9]: tableProgram.add(octet)
+  var historical = @[0'u8]
+  for index in 0..<11: historical.add(0)
+  historical.add(byte(tableProgram.len))
+  for index in 0..<3: historical.add(0)
+  for octet in tableProgram: historical.add(octet)
+  var tableLimits = authorizationLimits()
+  tableLimits.initialization.jumps = JumpCountLimit(1)
+  let checked = authorizationRun(authorizationFixture([halt], overrideBytes = historical), tableLimits)
+  if width == 0:
+    assert checked.error == AuthorizationInvocationError.None
+    assert checked.value.authorizationInfo.value.kind == WorkKind.Panic
+  else:
+    assert checked.error == AuthorizationInvocationError.InitializationFailure
+    assert checked.initializationError == InitializationError.InvalidProgram
 
 let lookup = authorizationRun(authorizationFixture([halt], malformedState = true))
 assert lookup.error == AuthorizationInvocationError.LookupFailure and lookup.lookupError ==

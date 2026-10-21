@@ -177,6 +177,27 @@ block:
   for octet in [9'u8, 0, 0, 0, 0, 0, 5, 51, 7, 7, 1, 0, 25]: authenticated.add(octet)
   assert prepare(authenticated).value.bootstrapInfo.value.status == RefinementCodeStatus.Ready
 
+# Historical refinement code selects the JAM table profile before binding its real host context.
+for width in [0'u8, 5]:
+  var tableProgram = @[1'u8, width, 5]
+  for index in 0..<int(width): tableProgram.add(0)
+  for octet in [51'u8, 8, 2, 50, 8, 9]: tableProgram.add(octet)
+  var authenticated = @[2'u8, 201, 202]
+  for index in 0..<11: authenticated.add(0)
+  authenticated.add(byte(tableProgram.len))
+  for index in 0..<3: authenticated.add(0)
+  for octet in tableProgram: authenticated.add(octet)
+  var tableLimits = limits()
+  tableLimits.initialization.jumps = JumpCountLimit(1)
+  let checked = prepare(authenticated, cap = tableLimits)
+  if width == 0:
+    assert checked.error == RefinementBootstrapError.None
+    let execution = run(hosts(checked.value).value)
+    assert execution.error == RefinementDispatchError.None
+    assert execution.value.outcome.exit == StepExit.Panic
+  else:
+    assert checked.error == RefinementBootstrapError.InvalidProgram
+
 # A wrong committed preimage hash is invalid supplied state; backend failures cannot fabricate BAD/Ready/hash bytes.
 let originalState = state(raw, expectedCodeHash)
 var altered = raw

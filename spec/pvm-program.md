@@ -84,3 +84,21 @@ scalar memory access, with the approved PolkaVM memory exception ordering. Gas c
 instruction execution, standard program initialization,
 host calls, invocation wrappers and whole JAM execution remain unimplemented.
 Next bounded increment: instruction execution and gas accounting.
+
+## JAM table-profile execution witnesses
+
+Authenticated authorization and refinement code, mandatory-entry5 accumulation and
+real inner invocation now exercise GP-PVM-006 with a one-entry width0 table. A
+successful load sets the dynamic address2 before jumping. Paper table semantics
+would revisit entry0; the selected JAM profile instead produces Panic within the
+bounded execution budget, matching PolkaVM's empty table. Width5 variants refuse
+at preparation with the existing typed errors. Every declared entry has an explicit
+one-entry local policy budget, so semantic rejection is distinguished from policy
+exhaustion.
+
+Inner invocation additionally checks the completed register write in the returned
+E8 frame, exact reservation/refund using the separately verified block price,
+outer Continue/inner Panic classification, and preserved source frame/map aliases.
+All four native suites pass with their1000-cycle ARC evidence unchanged:
+authorization975472, refinement25202592, accumulation269248 and inner invocation
+507504 bytes. Evidence is local checked-release macOS/ARC/Clang LTO, not Linux CI.
