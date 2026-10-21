@@ -21,6 +21,7 @@ type
   ComputedRosterFixture* = object ## Mutable test handles preserve genuine original and authenticated posterior provenance.
     source*: TransitionBoundComputedReport
     original*: StateStore
+    siblings*: seq[TransitionBoundComputedReport] ## Optional additional cores reuse the exact original map and successful transition.
 proc rosterLinks(execution: InputRefinement, shards: ErasureShards): ComputedReportLinks =
   ## Compute actual availability with the independently selected structurally valid shard population before eligibility checking.
   let bundle = prepareAuditableBundle(execution, ByteLimit(20000)).value
@@ -33,7 +34,8 @@ proc rosterLinks(execution: InputRefinement, shards: ErasureShards): ComputedRep
   let transcript = prepareComputedGuarantee(report, ByteLimit(100000)).value
   prepareComputedLinks(transcript, [], ElementLimit(0)).value
 proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 65535'u16,
-    target = 0'u32, offender = false, repeatReporter = false): ComputedRosterFixture =
+    target = 0'u32, offender = false, repeatReporter = false,
+    additionalCores: openArray[uint64] = []): ComputedRosterFixture =
   ## Re-author a three-core complete signed prefix; optional parent9 -> posterior6 is a real epoch transition.
   let base = transitionFixture(epoch = shrink)
   var cfg = transitionConfig()
@@ -145,17 +147,25 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
   fixture.package = decodeWorkPackage(packageWire.toOpenArray(0, size-1), packageConfig).value.owner
   let external = verifyExtrinsicInputs(fixture.package, @[newSeq[seq[byte]](0)], extrinsicLimits()).value
   fixture.inputs = bindImportInputs(external, @[newSeq[VerifiedImport](0)], [], inputLimits()).value
-  let links = rosterLinks(executionRun(fixture, core = core).value, ErasureShards(shards))
-  let admitted = validateBlockCommitments(candidate, base.context.parent, snapshot, cfg.admission)
-  assert admitted.error == BlockAdmissionError.None, "genuine three-core source admission"
-  let bound = bindComputedState(links, admitted).value
-  var historyConfig = recentConfig()
-  historyConfig.cores = CoreCount(3)
-  let recent = checkComputedRecentAnchor(bound, historyConfig).value
-  let lookup = checkComputedLookupAnchor(recent, base.context.older, lookupLimits()).value
-  let captured = captureBlockSnapshot(lookupWire(base.context.parent), snapshot, fixture.parameters)
-  assert captured.error == GenesisError.None, "genuine original configured three-core parent"
-  let configured = bindComputedProfile(lookup, captured).value
-  let source = bindComputedTransition(configured, staged, ByteLimit(4096))
-  assert source.error == ComputedTransitionError.None, "exact signed source bound to genuine posterior"
-  ComputedRosterFixture(source: source.value, original: original)
+  result = ComputedRosterFixture(original: original)
+  for ordinal in 0..additionalCores.len:
+    # Each independently executed report shares the same original snapshot, signed block and genuine staged result.
+    let selectedCore = if ordinal == 0: core else: additionalCores[ordinal-1]
+    let links = rosterLinks(executionRun(fixture, core = selectedCore).value, ErasureShards(shards))
+    let admitted = validateBlockCommitments(candidate, base.context.parent, snapshot, cfg.admission)
+    assert admitted.error == BlockAdmissionError.None, "genuine three-core source admission"
+    let bound = bindComputedState(links, admitted).value
+    var historyConfig = recentConfig()
+    historyConfig.cores = CoreCount(3)
+    let recent = checkComputedRecentAnchor(bound, historyConfig).value
+    let lookup = checkComputedLookupAnchor(recent, base.context.older, lookupLimits()).value
+    let captured = captureBlockSnapshot(lookupWire(base.context.parent), snapshot,
+        fixture.parameters)
+    assert captured.error == GenesisError.None, "genuine original configured three-core parent"
+    let configured = bindComputedProfile(lookup, captured).value
+    let source = bindComputedTransition(configured, staged, ByteLimit(4096))
+    assert source.error == ComputedTransitionError.None, "exact signed source bound to genuine posterior"
+    if ordinal == 0:
+      result.source = source.value # Preserve the historical single-core fixture without an extra sequence allocation.
+    else:
+      result.siblings.add(source.value) # Only explicit multi-core callers retain additional sources.
