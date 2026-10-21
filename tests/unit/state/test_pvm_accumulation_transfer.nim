@@ -554,7 +554,7 @@ for mode in 0'u64..3:
       "stale destination authority HUH precedes CASH and performs no hashing"
   failHash(0)
   let missing = run(source(address = 0, mode = mode, includeTarget = false, account = fundedActor(
-      )), limit = 0, capacity = 0)
+    )), limit = 0, capacity = 0)
   assert uint64(machineInfo(missing.value.machine).value.registers[7]) == high(uint64)-3,
       "missing destination WHO precedes valid-mode authority"
 # Distinct destination credit cannot restore source funding or hide selected-pool underflow.

@@ -79,6 +79,12 @@ The previous argument layout
 is never accepted as a production fallback. These gates are incomplete implementation,
 not discrepancies in the normative paper.
 
+[Exact modified-account membership](pvm-modified-accounts.md) is now available
+through bounded immutable invocation facts, including successful no-ops, restored
+writes and zero incoming credits. This is a prerequisite for current parallel
+selection; it does not remove the foreign publication gate by itself.
+
+
 The legacy Bandersnatch backend remains a verified release-reference IETF profile;
 its gate now identifies the current Thin VRF requirement. No current Thin parity is
 claimed from historical vector success.
