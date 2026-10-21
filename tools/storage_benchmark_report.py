@@ -9,8 +9,8 @@ COUNTS=(1024,8192)
 TOPOLOGIES=('leading','trailing')
 VALUE_BYTES=(16,256)
 CASES=tuple((count,topology,value_bytes) for count in COUNTS for topology in TOPOLOGIES for value_bytes in VALUE_BYTES)
-PHASES=('publication','reads','extraction','reopen','maintenance')
-LABELS=('16 publications','4,096 warm-view reads','Complete-map extraction','Strict disk reopen','Current-root reclamation')
+PHASES=('publication','reads','extraction','reopen','maintenance','retention')
+LABELS=('16 publications','4,096 warm-view reads','Complete-map extraction','Strict disk reopen','Current-root reclamation','Nine-root reclamation')
 
 
 # Native success alone cannot substitute for all warmup/sample identities and positive timings.
@@ -20,7 +20,7 @@ def parse_output(output, engine, count, topology='leading', value_bytes=256):
     rows=[]
     for line in output.splitlines():
         fields=line.split('\t')
-        if len(fields)!=10 or fields[0]!='sample':
+        if len(fields)!=11 or fields[0]!='sample':
             raise ValueError('Unexpected storage benchmark output')
         size=int(fields[1])
         if fields[2]!=topology:
@@ -32,7 +32,7 @@ def parse_output(output, engine, count, topology='leading', value_bytes=256):
             raise ValueError('Invalid storage benchmark sample')
         for phase,duration in zip(PHASES,times):
             # Unsupported operations have exactly one sentinel; no fabricated duration or ratio is accepted.
-            missing=(engine=='memory' and phase=='reopen') or (engine=='journal' and phase=='maintenance')
+            missing=(engine=='memory' and phase=='reopen') or (engine=='journal' and phase in ('maintenance','retention'))
             if (missing and duration!=-1) or (not missing and not 0<duration<(1<<63)):
                 raise ValueError('Invalid storage operation observation')
         rows.append(dict(items=size,topology=topology,value_bytes=value_bytes,sample=sample,**dict(zip(PHASES,times))))
@@ -60,7 +60,7 @@ def aggregate(passes):
                         '\t'.join(str(r[k]) for k in PHASES)+'\n' for r in group)
                     if parse_output(encoded,engine,count,topology,value_bytes)!=group:
                         raise ValueError('Noncanonical storage samples')
-                if (phase=='reopen' and engine=='memory') or (phase=='maintenance' and engine=='journal'):
+                if (phase=='reopen' and engine=='memory') or (phase in ('maintenance','retention') and engine=='journal'):
                     engines[engine]=None
                 else:
                     groups=[[r[phase] for r in group if r['sample']>=3] for group in rows]
@@ -107,7 +107,7 @@ def summarize_benchmark(report):
         'Reads use warm resident repository views for every backend, not cold/random disk reads. '
         'Reopen includes strict selected snapshot/journal admission; memory has no durable reopen.',
         'Leading/trailing key pairs distinguish short/deep prefixes. Checked native ARC/Clang release LTO, 16/256-byte values, sixteen sparse updates. '
-        'Current-root reclamation clones selected memory records or durably compacts managed storage; journal has no equivalent. Setup and fixture cleanup are outside timing.',
+        'Nine-root reclamation precedes current-only reclamation; both clone selected memory records or durably compacts managed storage; journal has no equivalent. Setup and fixture cleanup are outside timing.',
         'Observations on one recorded host; no affinity/frequency isolation or fixed speed threshold.',
         'Download `summary.md`, `results.json`, `samples.csv` and logs for raw measurements and provenance.']
     return '\n'.join(lines)+'\n'
