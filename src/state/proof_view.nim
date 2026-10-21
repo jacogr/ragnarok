@@ -5,14 +5,15 @@
 ## These owners cannot substitute for complete StateStore snapshots or certify a new state root.
 import std/[algorithm, assertions]
 import ./trie_proof
-import ../codec/[bounded, state_layout, state_trie]
+import ../codec/[bounded, state_layout, state_trie, state_safrole]
 type
   ProofViewLimits* = object ## Count and retained logical value bytes bound this partial evidence collection.
     items*: ElementLimit
     valueBytes*: ByteLimit
   ProofViewError* {.pure.} = enum ## Missing witnesses are distinct from a successfully verified absent lookup.
     Uninitialized, None, WrongRoot, DuplicateKey, LimitExceeded, MissingWitness,
-    InvalidIndex, ConflictingEvidence, InvalidValue, ProofFailure, NonCanonical, Truncated, LengthOverflow
+    InvalidIndex, ConflictingEvidence, InvalidValue, AbsentValue, ProofFailure, NonCanonical,
+      Truncated, LengthOverflow
   ViewData = ref object ## Sorted immutable verified lookups share only already immutable witness owners.
     root: StateRoot
     entries: seq[VerifiedStateLookup]
@@ -328,3 +329,17 @@ proc decodeProofView*(input: openArray[byte], expectedRoot: StateRoot,
     return ProofViewResult[ProofView](status: ProofViewError.ProofFailure,
         proofReason: verified.error)
   captureProofView(verified.value, expectedRoot, limits) # No policy can widen after the shared atomic verifier.
+
+proc readProofTime*(view: ProofView): ProofViewResult[StateTime] =
+  ## Decode only authenticated C(11) bytes, distinguishing unknown, absent and malformed evidence.
+  let found = view.lookup(chapterKey(StateChapter(11)))
+  if found.error != ProofViewError.None:
+    return ProofViewResult[StateTime](status: found.error)
+  if not found.value.present:
+    return ProofViewResult[StateTime](status: ProofViewError.AbsentValue)
+  if found.value.byteLength != 4:
+    return ProofViewResult[StateTime](status: ProofViewError.InvalidValue)
+  let decoded = decodeStateTime(found.value.bytes)
+  if decoded.error != StateComponentError.None or decoded.value.consumed != 4:
+    return ProofViewResult[StateTime](status: ProofViewError.InvalidValue)
+  ProofViewResult[StateTime](status: ProofViewError.None, completed: decoded.value.value)

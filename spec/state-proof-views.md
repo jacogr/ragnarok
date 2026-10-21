@@ -45,3 +45,8 @@ individual witness is copied. It requires strictly sorted unique keys, canonical
 inner witnesses and exact EOF, then verifies every proof under the separately supplied
 root atomically. Wrong roots/values preserve precise nested reasons; no verified
 prefix escapes a later failure. Every truncated original prefix is a negative witness.
+
+The typed C(11) reader delegates to the existing pinned E4 codec only after checking
+exact authenticated value extent. Unknown evidence, verified absence and malformed
+state bytes have different typed failures; a valid trie proof does not make malformed
+state canonical or certify chronology. Full uint32 boundary values remain exact.
