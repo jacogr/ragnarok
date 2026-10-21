@@ -125,3 +125,19 @@ The shared exchange helper joins every responder after command workers/callbacks
 retire. Pinned semantic and native checks pass; evidence uses
 `build/multiblock-prefix-*`. Scalar prefix observations are followed by direct
 RPC/durable-map verification in subsequent layers.
+
+## Independent live RPC observation
+
+A forked RPC client subscribes to the actual command listener before the responder
+releases child one. It receives the initial head and exactly three ordered genuine
+adoption notifications. Before a gated fourth empty response can end the command,
+it queries every retained block's independently expected state root, exact sealed
+header and parent, plus current best head and unavailable finality. The next
+ordinary reply also proves no duplicate notification displaced the response.
+
+The final empty response yields Exhausted with three confirmed adoptions from
+four requests. The independent TLS responder observes four exact parent-bound
+requests; all child processes join and the RPC port is released. Response gates
+exist only in test responders and perform no callback file IO or production
+fault injection. Pinned semantic and native `application_download_rpc` checks
+pass; evidence uses `build/multiblock-rpc-*`.
