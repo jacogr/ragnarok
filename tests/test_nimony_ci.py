@@ -57,7 +57,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [unit, e2e, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [unit, e2e, docker, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         self.assertNotIn('synchronize', triggers)
         self.assertNotIn('opened', triggers)
@@ -91,6 +91,8 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('if: &full ${{ '+full+' }}', text)
         for job, condition in [('modules', '&requested ${{ '+requested+' }}'),
                                ('python', '*requested'), ('unit', '*requested'),
+                               ('docker', '${{ '+requested.replace("inputs.suite == 'unit' ||",
+                                   "inputs.suite == 'unit' || inputs.suite == 'docker' ||")+' }}'),
                                ('guards', '&full ${{ '+full+' }}'), ('failures', '*full'),
                                ('e2e', '${{ '+e2e+' }}'), ('telemetry-interop', '*full'),
                                ('unit-status', '${{ always() && ('+requested+') }}'),
@@ -161,7 +163,7 @@ class NimonyCISafeguards(unittest.TestCase):
         definition = text.split('      - &inventory\n', 1)[1].split('      - ', 1)[0]
         self.assertEqual(definition.strip(),
                          'name: Validate verification inventory\n        run: make check-inventory')
-        jobs = ('modules', 'python', 'guards', 'unit', 'failures', 'e2e', 'telemetry-interop')
+        jobs = ('modules', 'python', 'guards', 'unit', 'failures', 'e2e', 'telemetry-interop', 'docker')
         positions = [text.index('\n  '+job+':\n') for job in jobs]+[len(text)]
         for index, job in enumerate(jobs):
             # Keeping the step in each job avoids relying on another job's result or skipped dependencies.
