@@ -163,3 +163,13 @@ truncation. File identity, bytes, publication and uncertainty behavior remain un
 
 Required local regressions cover the file repository, published complete-map replay pairs and
 real interrupted-write recovery. Managed replay adoption follows independently.
+
+## Managed journal replay adoption
+
+The managed owner independently admits CURRENT, its bound snapshot and paired journal header,
+then uses the same fused replay for each exact contiguous frame. No alternate epoch scan, fallback
+head or inferred checkpoint/finality authority is introduced. Confirmed-prefix repair requires the
+same independent exact generation/root token and refuses complete corrupt/successor frames.
+
+Required local regressions include real managed append recovery, corruption/short-write failures
+and application-level explicit managed recovery. Snapshot admission and worker ownership stay intact.
