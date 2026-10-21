@@ -9,7 +9,7 @@
 ## policy/history context.
 
 import ../codec/[bounded, state_history, state_safrole, header, report_owned]
-import ../crypto/primitives
+import ./ancestor_context
 import ./[report_policy, guarantee_credentials]
 
 type
@@ -35,7 +35,7 @@ type
   ## Final owner retains each checked full sealed header and the entire previous stage.
   AnchorData = ref object
     recent: RecentAnchoredReports
-    headers: seq[OwnedHeader]
+    context: AncestorContext
   AnchoredReports* = object ## Complete anchors still require later package/dependency/capacity admission.
     data: nil AnchorData
   ReportAnchorResult*[T] = object ## Success-only payload extraction uses the supported checked-build contract.
@@ -129,66 +129,30 @@ proc checkReportLookupAnchors*(recent: RecentAnchoredReports, parent: OwnedHeade
   let data = recent.data
   if data == nil:
     return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidRecent) # A default cannot bypass the first stage.
-  if uint64(older.len) >= uint64(config.headers) or older.len == high(int):
-    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.LimitExceeded) # Account for parent before adding or allocating.
-  let count = older.len+1
-  if count > high(int) div sizeof(OwnedHeader) or count > high(int) div sizeof(array[32, byte]):
-    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.LimitExceeded) # Bound native descriptor storage before allocation.
-  var bytes = 0'u64
-  # Validate every owner and aggregate extent before copying or hashing any input.
-  for i in 0..<count:
-    let owner = if i == 0: parent else: older[i-1] # Parent is always the chain's newest member.
-    let info = headerInfo(owner)
-    if info.error != HeaderError.None:
-      return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidHeader) # No default full headers.
-    let size = uint64(info.value.consumed)
-    if size > uint64(config.header.maxBytes) or size > uint64(config.maxBytes)-bytes:
-      return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.LimitExceeded) # Safe sum invariant bytes <= maxBytes.
-    bytes += size
-  var headers = newSeq[OwnedHeader](count)
-  var hashes = newSeq[array[32, byte]](count)
-  # Recapture full sealed bytes under this header profile, and verify a strictly decreasing linked chain.
-  for i in 0..<count:
-    let owner = if i == 0: parent else: older[i-1] # Keep borrowed inputs stable during capture.
-    var wire = newSeq[byte](headerInfo(owner).value.consumed)
-    if encodeOwnedHeader(owner, wire).error != HeaderError.None:
-      return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidHeader) # No failed serialization is hashed.
-    let decoded = decodeHeader(wire, config.header)
-    if decoded.error == HeaderError.LimitExceeded:
-      return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.LimitExceeded) # Stricter marker/offender budgets apply again.
-    if decoded.error != HeaderError.None or decoded.value.consumed != wire.len:
-      return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidHeader) # Full exact header only.
-    headers[i] = decoded.value.owner
-    let fields = headerInfo(headers[i]).value.unsigned
-    let hash = blake2b256(wire)
-    if hash.error != CryptoError.None:
-      return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.BackendFailure) # Never compare a fabricated digest.
-    hashes[i] = array[32, byte](hash.value)
-    if i == 0:
-      if uint32(fields.slot) >= uint32(data.slot):
-        return ReportAnchorResult[AnchoredReports](
-            status: ReportAnchorError.InvalidSlot) # Trusted parent still must precede this candidate.
-    else:
-      let child = headerInfo(headers[i-1]).value.unsigned
-      if uint32(fields.slot) >= uint32(child.slot) or array[32, byte](child.parent) != hashes[i]:
-        return ReportAnchorResult[AnchoredReports](
-            status: ReportAnchorError.BrokenAncestry) # No gaps, forks, duplicates or reordering.
+  let captured = captureAncestorContext(parent, older, AncestorContextLimits(
+    header: config.header, headers: config.headers, maxBytes: config.maxBytes))
+  case captured.error
+  of AncestorContextError.None: discard # Only a full capture may be retained by the final report certificate.
+  of AncestorContextError.LimitExceeded:
+    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.LimitExceeded)
+  of AncestorContextError.BrokenAncestry:
+    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.BrokenAncestry)
+  of AncestorContextError.BackendFailure:
+    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.BackendFailure)
+  else:
+    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidHeader)
+  let context = captured.value
+  if uint32(context.headerAt(0).value.headerInfo.value.unsigned.slot) >= uint32(data.slot):
+    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidSlot)
   let credentials = data.policy.policyCredentials.value
   # Every report needs the lookup hash, its own slot and the child-committed posterior root together.
   for i in 0..<credentials.verifiedGuaranteeCount.value:
     let report = ownedReportInfo(credentials.verifiedGuaranteeAt(i).value.report).value.header
-    var found = false
-    # Index zero has no retained child, so it cannot satisfy this two-header proof.
-    for j in 1..<count:
-      if hashes[j] == report.lookupAnchor.bytes and
-          uint32(headerInfo(headers[j]).value.unsigned.slot) == uint32(report.lookupSlot):
-        if array[32, byte](headerInfo(headers[j-1]).value.unsigned.priorState) !=
-            report.lookupStateRoot.bytes:
-          return ReportAnchorResult[AnchoredReports](
-              status: ReportAnchorError.WrongLookupState) # Use child's prior root, not lookup header's own prior root.
-        found = true # This exact parent-linked header and child establish the tuple.
-        break
-    if not found:
-      return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.MissingLookupAnchor) # No on-chain-history substitute for retained headers.
+    let found = context.findLookupAnchor(HeaderParent(report.lookupAnchor.bytes),
+      HeaderSlot(uint32(report.lookupSlot)), PriorStateRoot(report.lookupStateRoot.bytes))
+    if found.error == AncestorContextError.WrongLookupState:
+      return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.WrongLookupState)
+    if found.error != AncestorContextError.None:
+      return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.MissingLookupAnchor)
   ReportAnchorResult[AnchoredReports](status: ReportAnchorError.None,
-    completed: AnchoredReports(data: AnchorData(recent: recent, headers: headers)))
+    completed: AnchoredReports(data: AnchorData(recent: recent, context: context)))
