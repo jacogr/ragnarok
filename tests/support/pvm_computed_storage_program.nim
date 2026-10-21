@@ -13,7 +13,9 @@ type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection;
     CheckpointOutOfGas,
   FetchFirst, FetchSecond, FetchMissing, FetchList, FetchWideOffset, FetchWideIndex, FetchTail,
     FetchDelete, FetchBranchPanic, FetchReadBack, FetchReadTail, ReadMissing, ReadCheckpointPanic,
-      ReadCheckpointFault, ReadCheckpointProtection, ReadCheckpointWrapLoad, ReadCheckpointWrapStore
+      ReadCheckpointFault, ReadCheckpointProtection, ReadCheckpointWrapLoad,
+        ReadCheckpointWrapStore,
+    ReadCheckpointNegativeBranch
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   ## Jump from refinement entry0 to empty output; entry5 writes RO key11 using literal or genuinely fetched RW bytes.
@@ -23,11 +25,12 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   if mode in {ComputedStorageMode.ReadMissing, ComputedStorageMode.ReadCheckpointPanic,
       ComputedStorageMode.ReadCheckpointFault, ComputedStorageMode.ReadCheckpointProtection,
       ComputedStorageMode.ReadCheckpointWrapLoad,
-      ComputedStorageMode.ReadCheckpointWrapStore}:
+      ComputedStorageMode.ReadCheckpointWrapStore,
+      ComputedStorageMode.ReadCheckpointNegativeBranch}:
     let retainedDeletion = mode in {ComputedStorageMode.ReadCheckpointPanic,
       ComputedStorageMode.ReadCheckpointFault, ComputedStorageMode.ReadCheckpointProtection,
       ComputedStorageMode.ReadCheckpointWrapLoad,
-      ComputedStorageMode.ReadCheckpointWrapStore}
+      ComputedStorageMode.ReadCheckpointWrapStore, ComputedStorageMode.ReadCheckpointNegativeBranch}
     body = @[]
     if retainedDeletion:
       body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 0], @[51'u8, 9, 1],
@@ -122,16 +125,20 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
       ComputedStorageMode.ReadMissing, ComputedStorageMode.ReadCheckpointPanic,
       ComputedStorageMode.ReadCheckpointFault, ComputedStorageMode.ReadCheckpointProtection,
       ComputedStorageMode.ReadCheckpointWrapLoad,
-      ComputedStorageMode.ReadCheckpointWrapStore}:
+      ComputedStorageMode.ReadCheckpointWrapStore,
+      ComputedStorageMode.ReadCheckpointNegativeBranch}:
     body.add(@[51'u8, 8, 0]) # Only the read-back and missing-read guests use compact empty-yield setup to keep the authored code below128 bytes.
   else:
     body.add(refinementImmediate(8, 0)) # Preserve every predecessor guest byte and its instruction boundaries.
   if mode in {ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
       ComputedStorageMode.ReadCheckpointProtection, ComputedStorageMode.ReadCheckpointWrapLoad,
-      ComputedStorageMode.ReadCheckpointWrapStore}:
+      ComputedStorageMode.ReadCheckpointWrapStore,
+      ComputedStorageMode.ReadCheckpointNegativeBranch}:
     body.add(@[81'u8, 22, 2, 6]) # Compare preserved r6 with two and branch forward past the historical regular halt.
     body.add(@[50'u8, 0]) # One genuine input commits the actual regular restoration.
-    if mode == ComputedStorageMode.ReadCheckpointWrapLoad:
+    if mode == ComputedStorageMode.ReadCheckpointNegativeBranch:
+      body.add(@[170'u8, 0, 0, 128]) # Register equality has signed offset-32768: price its missing target, then panic on invalid block membership.
+    elif mode == ComputedStorageMode.ReadCheckpointWrapLoad:
       body.add(@[55'u8, 7, 255]) # Signed load_i16 atMAX64 touches inaccessible physical0xffffffff then protected0, faulting at the first absent high page under the approved PolkaVM rule.
     elif mode == ComputedStorageMode.ReadCheckpointWrapStore:
       body.add(@[60'u8, 7, 255]) # The corresponding store_u16 faults atomically at the same absent high page, then selects the retained checkpoint.
