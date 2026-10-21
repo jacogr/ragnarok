@@ -39,3 +39,18 @@ then repository-image admission verifies the same owned records again. The next 
 will fuse decoding and graph admission inside the repository module. Serialized input must still
 pass record integrity, canonical address/root order, full graph/routing, union reachability and all
 original budgets. Public raw-image restoration must retain its independent validation.
+
+## Fused serialized image admission
+
+`decodeRepositoryImage` accepts serialized record-collection bytes plus generation, commitment and
+root inventory. It verifies record shape, uniqueness, hashes and aggregate limits once, then calls
+a private graph-admission helper with the exact same policy. No public flag/token permits skipping
+integrity checks. Graph completeness, canonical record/root order, routing, selected metadata and
+orphan rejection are identical to raw restoration. Public `restoreRepositoryImage` continues to
+validate mutable raw records independently. Returned repositories own their records and do not
+retain borrowed serialized bytes or mutable caller root arrays.
+
+`storage_image_decode` compares real hash attempts (ten for decode plus raw admission versus five
+for fused admission on a five-record union), all-prefix truncation and hash corruption, canonical
+order, orphan and narrower-policy refusals, empty-current retention, continued publication and
+1,000 ARC release cycles. Snapshot adoption is a separate dependent layer.
