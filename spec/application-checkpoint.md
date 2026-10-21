@@ -121,3 +121,18 @@ limits cannot masquerade as native failure. No live writer/lock crosses fork.
 Private-directory removal witnesses temporary cleanup. These nine refusals and
 six controls cover process/kernel write behavior, not power loss or post-rename
 parent-directory synchronization failures.
+
+## Detached envelope I/O worker
+
+One fixed-address native worker owns an exclusive writer and one prepared envelope.
+Stage checks lifecycle, capacity, readiness, explicit byte limit and nonwrapping
+request generation before moving the caller's sole bytes. Explicit begin grants
+I/O; Done retains capacity until matching collection. Host-only namespace identity
+keeps foreign/stale/restarted tickets distinct. No canonical graph is shared with
+the native thread. Collection/join retires all native aliases before host buffer
+release. Joined shutdown preserves actual returned publication outcome separately
+from native retirement error; unstarted work is Cancelled, missing outcomes after
+native entry are Interrupted. Copy/duplication and live-address relocation are
+checked independently. Startup allocates host identity before starting the thread.
+Tests cover real publication/recovery, detached producer lifetime, ticket isolation,
+backpressure, restart and 1,000 host buffer/ticket retirement cycles.
