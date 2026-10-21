@@ -260,8 +260,11 @@ Source evidence: [module validation](https://github.com/paritytech/polkavm/blob/
 and upstream `jam_validate_invalid_fallthrough` in tests.rs. The latter was
 source-inspected; our independent public-API witness was executed.
 
-**Ragnarök disposition and coverage:** preserve current paper behavior pending a
-scoped decision. Three active native cases verify successful decoding, the actual
+**Ragnarök disposition and coverage:** the maintainer approved strict rejection at
+shared JAM initialization as `InvalidProgram`, before memory materialization or any
+execution. All22 final members of T are covered at0/1/24 operand padding lengths,
+including unreachable suffixes. Static-target runtime validation remains unchanged.
+Raw decoding/stepping and inner-machine decoding retain paper behavior. Three active native cases verify successful decoding, the actual
 prefix, single-step and recursive panic state, exact2/1 step budgets and original
 aliases. The separate reference checker requires both observed module rejections
 and the successful control. No private feature or upstream/source pin change.
@@ -270,10 +273,9 @@ Do not claim these differing expected observations establish loading parity.
 **Question to raise:** should a structurally valid final terminator with a missing
 successor be rejected by deblob, or admitted and panic when reached? Clarify the
 validation rule and preservation of earlier register/memory/host effects.
-Locally, choosing strict rejection also requires deciding whether it belongs in
-raw decoding, JAM preparation or an explicit reference-loader adapter, and how
-that failure is represented. This choice remains pending; prior approved memory
-and gas exceptions do not settle it.
+The local approved exception belongs to JAM preparation, with existing typed failure
+mapping and no fabricated guest panic. It does not resolve the formal upstream
+question or establish blanket PolkaVM validation precedence.
 
 ## Reproducing the local fixture evidence
 

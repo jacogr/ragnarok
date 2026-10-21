@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Preserve GP-PVM-004's Gray Paper execution witness while the separate loader policy is pending.
+## Preserve GP-PVM-004's Gray Paper execution witness alongside the approved JAM preparation check.
 
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, gas, step]
@@ -48,4 +48,4 @@ witness([51'u8, 7, 7, 0], 4)
 # The paper admits both final opcodes as terminators; their missing successors cause runtime panic.
 witness([51'u8, 7, 7, 1], 3)
 witness([51'u8, 7, 7, 170, 0, 253], 3)
-echo "PVM final terminator validation witnesses passed: 3; GP-PVM-004 policy pending"
+echo "PVM final terminator validation witnesses passed: 3; paper-aligned raw execution"

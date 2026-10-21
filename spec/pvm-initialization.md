@@ -17,6 +17,16 @@ input exactly. Arguments are separately borrowed and cannot exceed 2^24 bytes.
 The API combines the standard initializer Y with existing program/entry validation
 and machine capture. Y alone may return a malformed raw program; this adapter
 returns `InvalidProgram` for it rather than claiming that Y rejects its envelope.
+The maintainer-approved [GP-PVM-004 exception](pvm-final-terminator-validation.md)
+also rejects a final successor-dependent terminator as `InvalidProgram` at this
+shared JAM preparation boundary. Among final members of T, only trap, static jump,
+indirect jump, load-immediate/static jump and load-immediate/indirect jump require
+no fallthrough. The check scans the entire decoded program, including unreachable
+suffixes, before page materialization. It does not prevalidate branch destinations,
+execute prefixes or synthesize a guest panic. Existing callers retain their typed
+initialization/preparation failures. Raw `decodeProgram`, machine capture, stepping
+and inner-machine decoding retain the paper's structural and runtime behavior.
+
 It does not implement the argument-invocation wrapper, host functions, return-buffer
 extraction or invocation-level panic/gas normalization.
 

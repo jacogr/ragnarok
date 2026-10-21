@@ -1,11 +1,12 @@
-# Final terminator validation: pending behavior selection
+# Final terminator validation at JAM preparation
 
 This isolates GP-PVM-004 in the [discrepancy register](graypaper-discrepancies.md).
 Gray Paper0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401` admits final
 fallthrough/conditional opcodes as members of T, then performs destination checks
 at execution. Pinned PolkaVM `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`
 public interpreter module loading rejects these programs before any instruction.
-No production behavior, program acceptance rule or JAM preparation policy changes.
+The maintainer approved a scoped compatibility exception at shared JAM guest
+preparation. Raw program decoding and execution remain paper-aligned.
 
 The [native witnesses](../tests/unit/codec/test_pvm_final_terminator_validation.nim)
 verify the existing paper behavior: load r7=7 over99, then final fallthrough or
@@ -21,7 +22,7 @@ reject final fallthrough/conditional at offsets4/6; the trap control executes an
 retains A0/r7=7. These differing observations are intentional fixtures, not a claim
 that loading parity passes.
 
-## Reproduction and pending scope
+## Reproduction and approved scope
 
 ```sh
 make unit SUITE=pvm_final_terminator_validation
@@ -29,13 +30,24 @@ rustup run 1.99.0 cargo run --release --locked --offline --manifest-path tests/r
 rustup run 1.99.0 cargo fmt --manifest-path tests/reference/polkavm_memory/Cargo.toml -- --check
 ```
 
-Before changing code, select whether to retain the paper's runtime semantics or
-adopt a scoped load-time rejection. The latter requires choosing the owning layer:
-raw program decoding, JAM guest preparation, or an explicit fixture-loader adapter.
-It also needs a decision about representing rejection as a local preparation
-failure versus a guest panic. A broad loader change can prevent otherwise successful
-prefix work from running and invalidate previously supported raw programs.
-Do not silently infer this policy from the earlier memory/gas exceptions.
+`initializeMachine` now rejects a final fallthrough or conditional as
+`InitializationError.InvalidProgram` before materializing memory pages. Authorization,
+refinement and accumulation already use this shared boundary and retain their
+existing typed failure mappings. Rejection publishes no CPU or partially initialized
+memory and executes no prefix or host call. It does not fabricate a guest panic or
+change invocation-level gas normalization.
+
+The raw decoder/stepper and inner-machine decoder keep their paper behavior. This
+exception only narrows JAM preparation's final terminator rule; it does not adopt
+other PolkaVM validation restrictions or eagerly validate static/dynamic targets.
+A final trap, static jump, indirect jump, load-immediate/static jump or
+load-immediate/indirect jump remains admissible. A conditional/fallthrough with a
+present final trap successor remains admissible too.
+
+The initializer suite covers all22 final members of T, each with0/1/24 operand
+padding bytes and reachable/unreachable suffixes, plus the original conditional
+witness, present-successor controls, a runtime-invalid static target and source
+preservation. The raw three-case witness remains unchanged.
 
 Require both actual implementations' observations, pinned sources, selected native
 suite, reference-tool checks and inventory. M1 framing remains complete; full state
@@ -49,8 +61,8 @@ found explicit prevalidation discussion in merged PR508, including
 and [reviewer agreement](https://github.com/gavofyork/graypaper/pull/508#discussion_r2735584016).
 This establishes relevant design intent. It does not explicitly resolve why a final
 fallthrough/conditional, admitted by the pinned T-based predicate, is rejected by
-PolkaVM. The precise witness and failure-stage choice remain open; no new behavior
-or pin adoption follows from this research alone.
+PolkaVM. The precise formal rule remains an upstream question; our scoped preparation
+exception follows explicit maintainer approval, with no pin adoption.
 
 ## Observed local evidence
 
@@ -61,5 +73,10 @@ formatting passes2585 Nim sources plus both Rust format checks; upstream-lock an
 local documentation-link checks pass. Inventory passes219 failure families/2562
 probes/341 native suites. Evidence is local checked-release macOS/ARC/Clang LTO
 and pinned Rust release; no remote CI or full upstream Rust suite is claimed.
-Logs remain under `build/pvm-final-terminator-*`. Loading/execution policy remains
-pending maintainer feedback; these fixtures do not change the production decision.
+Logs remain under `build/pvm-final-terminator-*`. The raw interpreter evidence remains applicable after the preparation-only change.
+
+The approved preparation check passes the initializer matrix and its existing
+1000-cycle ARC lifecycle (2320 bytes before/after). The public pinned PolkaVM
+checker independently passes all132 final-terminator/padding/reachability cases,
+including exact rejection offsets. The raw three-case suite still passes.
+Inventory remains219 failure families/2562 probes/341 native suites.
