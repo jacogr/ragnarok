@@ -1,0 +1,23 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Actual finalized computed work with canonical original statistics and bounded maintained state-composition policies.
+
+import ../../src/state/[computed_finalization, accumulation_completion]
+import ../../src/codec/[bounded, assurances]
+import ./[pvm_computed_finalization, accumulation_completion_context]
+
+proc compositionFixture*(withComposition = true): FinalizedComputedAccumulation =
+  ## Author original statistics before computation, then genuinely execute and stop the historical work.
+  let source = finalizationFixture(withComposition = withComposition)
+  finalizeComputedAccumulation(source, computedFinalizationConfig()).value
+proc computedCompositionLimits*(): AccumulationCompositionLimits =
+  ## Adapt only the actual three-core domains and independent aggregate reporter/queue resource ceilings.
+  result = completionLimits().composition
+  result.history.queues.cores = CoreCount(3)
+  result.ready.queues.cores = CoreCount(3)
+  result.recent.history.cores = CoreCount(3)
+  result.validators.validators = ElementLimit(9)
+  result.validators.projection.reporters = ElementLimit(9)
+  result.validators.projection.comparisons = ElementLimit(128)
+  result.authorization.inputHashes = ElementLimit(512)
