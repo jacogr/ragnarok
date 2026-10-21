@@ -48,3 +48,7 @@ Complete-map generation preflights all payload/count/topology/path ceilings and 
 keys before hashing. It commits each node once, retains only the selected canonical path,
 and never copies an absent neighbor value. Source order and storage remain unchanged.
 `state_proof_generation` compares generated membership/absence against unchanged trie roots.
+
+The snapshot adapter uses only existing complete-map enumeration and owner-bound reads.
+It checks all source value extents before copying and leaves the store/revision policy
+unchanged. Snapshot-root trust still belongs to the caller; no storage API changes occur.

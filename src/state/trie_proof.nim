@@ -298,3 +298,8 @@ proc generateStateProof*(entries: openArray[StateEntry], query: StateKey,
   if valueIndex >= 0:
     return captureStateProof(path, entries[valueIndex].value, limits)
   captureStateProof(path, [], limits) # Absence never copies the neighboring value.
+
+func proofFailure*[T](reason: StateProofError): StateProofResult[T] {.requires:
+    reason != StateProofError.None.} =
+  ## Integration adapters may preserve failure reasons but cannot fabricate successful proof authority.
+  StateProofResult[T](status: reason)
