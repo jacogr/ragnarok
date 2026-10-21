@@ -138,3 +138,15 @@ missing FIN, wrong pin and quota failures issue no child request; wrong pin and
 count preflight issue zero requests. Two pinned peers each observe one ancestry
 and one child request during empty-first fallback. Legacy startup/progress suites
 and inventory pass (`build/remote-ancestor-command-*.log`).
+
+## Durable canonical separation
+
+The command suite additionally fetches the genuine lookup ancestor before a real
+disk-backed child adoption. Normal disk restart matches the independently composed
+child hash/root and every serialized entry, retains exactly the original seed and
+adopted child, preserves the real parent link and leaves finality unavailable.
+The fetched historical header is absent from canonical snapshot/history lookup:
+acquired report context grants no state snapshot or persistence authority.
+`build/remote-ancestor-durable-unit.log` records the focused native pass. The test
+starts with an explicitly fresh generated database, so prior interrupted invocations
+cannot replace its source head or contaminate expected request identities.

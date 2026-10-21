@@ -5,16 +5,16 @@
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import std/posix/posix
 import ../../../src/app/[download_command, download_policy, download_schedule, block_input,
-    options, chain, candidate]
+    options, chain, candidate, services]
 import ../../../src/quic/[block_download_loop, block_download_stream]
 import ../../../src/codec/[bounded, header, block_codec, report_owned]
 import ../../../src/chain/[genesis, provider]
-import ../../../src/state/[report_admission, report_anchors]
+import ../../../src/state/[report_admission, report_anchors, store]
 import ../../support/[application_candidate_context, accumulation_completion_context, block_download_transport]
 import ../../support/report_admission_context as report_context
 
 type Scenario = enum ## Each run starts a fresh bounded command and independent finite responder process.
-  Healthy, Empty, WrongParent, Suffix, MissingFin, WrongPin, CountRefusal, ByteRefusal, Fallback
+  Healthy, Empty, WrongParent, Suffix, MissingFin, WrongPin, CountRefusal, ByteRefusal, Fallback, Durable
 proc pause() =
   ## Bounded native polling yields without creating a thread or changing any protocol clock.
   var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
@@ -96,15 +96,18 @@ proc scenario(remote, child: seq[byte], remoteRequest, childRequest: array[42, b
   for value in ["--with-state", "--chain", "remote-command-chain", "--state-writes", "1000",
       "--state-write-bytes", "1000000", "--download-remote-ancestors", "1"]:
     args.add(value)
+  if which == Durable:
+    for value in ["--state-storage", "disk", "--state-db", "remote-command.db"]:
+      args.add(value) # Acquisition itself writes no history; actual child adoption still waits for durable publication.
   var selected = default(Options)
   assert parseOptions(args, selected)
   let outcome = runDownloads(selected)
-  let wanted = if which in [Healthy, Fallback]: DownloadCommandResult.Adopted
+  let wanted = if which in [Healthy, Fallback, Durable]: DownloadCommandResult.Adopted
     elif which == CountRefusal: DownloadCommandResult.InvalidPolicy
     elif which == ByteRefusal: DownloadCommandResult.Exhausted
     else: DownloadCommandResult.Exhausted
   assert outcome.error == wanted, "remote command " & $which & ": " & $outcome.error
-  assert outcome.adoptedBlocks == (if which in [Healthy, Fallback]: 1 else: 0)
+  assert outcome.adoptedBlocks == (if which in [Healthy, Fallback, Durable]: 1 else: 0)
   writeFile("remote-command-stop", "stop")
   var status = 0.cint
   assert posix.waitpid(process, status, 0) == process and status == 0
@@ -112,12 +115,13 @@ proc scenario(remote, child: seq[byte], remoteRequest, childRequest: array[42, b
   let counts = readFile("remote-command-counts")
   let expected = if which == Fallback: "2:2"
     elif which in [CountRefusal, WrongPin]: "0:0"
-    elif which == Healthy: "0:2"
+    elif which in [Healthy, Durable]: "0:2"
     else: "0:1"
   assert counts == expected, "remote command request order/count " & $which & ": " & counts
 
 proc main() {.raises.} =
   ## A genuine newly guaranteed report fails without its historical lookup header, then succeeds with fetched context.
+  discard posix.unlink("remote-command.db") # Repeated runner invocations begin from a fresh database even after an abrupt assertion failure.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var bytes = newSeq[byte](raw.len)
   for index, octet in raw: bytes[index] = byte(octet)
@@ -126,11 +130,11 @@ proc main() {.raises.} =
   writeFile("remote-command-chain", context.text)
   defer:
     for name in ["remote-command-chain", "remote-command-policy", "remote-command-stop",
-        "remote-command-counts"]:
+        "remote-command-counts", "remote-command.db"]:
       var path = name
       discard posix.unlink(path.toCString()) # Runner work directories own all generated inputs and process markers.
   let ancestor = report_context.authored(base).older[0]
-  let source = initialized(context)
+  var source = initialized(context)
   let missing = prepareCandidate(source, candidateBlock(context), [], preparationLimits())
   assert missing.error == ApplicationCandidateError.ReportFailure
   assert missing.reportFailure.error == ReportAdmissionError.AnchorFailure
@@ -149,9 +153,35 @@ proc main() {.raises.} =
   assert encodeOwnedBlock(blockOwner, child).error == FrameError.None
   let remoteRequest = request(array[32, byte](head.header.headerInfo.value.unsigned.parent), true)
   let childRequest = request(array[32, byte](head.blockHash), false)
-  for which in Scenario.Healthy..Scenario.Fallback:
+  for which in Scenario.Healthy..Scenario.Durable:
     scenario(frame(older), frame(child), remoteRequest, childRequest,
         which) # Every command joins worker and IO lifetimes before the next process fork.
+  let expected = source.applyAccumulation(genuine.value, completionLimits().composition)
+  assert expected.error == ApplicationChainError.None, "independent successor retains its original canonical owner"
+  var options = default(Options)
+  assert parseOptions(@["server", "--with-state", "--chain", "remote-command-chain",
+    "--state-writes", "1000", "--state-write-bytes", "1000000", "--state-storage", "disk",
+    "--state-db", "remote-command.db"], options)
+  var resumed = default(Services)
+  defer: resumed.close()
+  assert resumed.start(options, "remote ancestry durable restart"), "normal durable restart"
+  let restored = resumed.chainView
+  let actual = restored.bestBlock.value
+  assert restored.retainedCount == 2
+  assert array[32, byte](actual.blockHash) == array[32, byte](expected.value.blockHash)
+  assert array[32, byte](actual.stateSnapshot.commitment.root) == array[32, byte](
+      expected.value.stateSnapshot.commitment.root)
+  let actualState = actual.stateSnapshot
+  let expectedState = expected.value.stateSnapshot
+  assert actualState.commitment.entries == expectedState.commitment.entries
+  for index in 0..<expectedState.commitment.entries:
+    let key = expectedState.keyAt(StateEntryIndex(index)).value
+    assert actualState.lookup(key).value.bytes == expectedState.lookup(
+        key).value.bytes # Every serialized entry equals independent in-memory composition.
+  assert restored.parentOf(actual.blockHash).error == GenesisError.None
+  assert restored.finalizedBlock.error == GenesisError.Unavailable
+  assert restored.blockAt(BlockHash(array[32, byte](head.parentHash))).error ==
+      GenesisError.Unavailable # Fetched historical headers never acquire canonical snapshot/history authority.
   echo "PASS application remote ancestor command: genuine lookup, TLS order, fallback and atomic refusal"
 try:
   main() # Real process/transport/admission failures retain native failure status.
