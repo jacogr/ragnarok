@@ -240,3 +240,18 @@ independent original fixture graphs remain untouched.
 Local restored native-preparation suite, semantic checking and inventory pass.
 Evidence uses `build/recovery-preparation*`; runtime ownership remains host/native
 lease evidence, not full JAM/STF or Linux CI parity.
+
+## Recovered export during execution exclusion
+
+Detached bytes prepared from restored canonical state publish on the I/O worker
+while a real preparation worker retains canonical/RPC exclusion. Publish Done,
+observation and collection never release the separate execution gate. Both explicit
+collection and unacknowledged joined shutdown preserve actual Publish identity
+and exact whole-envelope bytes. Reimport/restart cannot overwrite that journal,
+restart remains Busy until acknowledgement, and stale tickets cannot revive.
+Independent sufficient-policy verification succeeds only after both native owners
+retire; idle restart creates no duplicate publication receipt.
+
+Local recovered-export lease scenarios, semantic checking and inventory pass.
+Both collected/joined paths preserve exact original envelope bytes and independent
+lease gates; evidence uses `build/recovery-export-lease*`.

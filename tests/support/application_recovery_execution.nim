@@ -5,7 +5,7 @@
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
 import ../../src/app/[chain, services, options, checkpoint_identity, checkpoint_codec,
-    checkpoint_recovery, block_input, preparation_worker]
+    checkpoint_recovery, block_input, preparation_worker, checkpoint_worker]
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[bounded, header, report_owned, block_codec]
 import ../../src/state/store
@@ -67,3 +67,13 @@ proc waitRecoveredPreparation*(owner: var Services) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # The bounded host pause yields to the actual native worker.
+
+proc waitRecoveredExport*(owner: var Services) =
+  ## I/O polling touches only fixed metadata and permitted dispatcher work while a separate canonical lease may remain held.
+  let started = getMonoTime()
+  while owner.checkpointExportPhase != ApplicationCheckpointWorkerPhase.Done:
+    assert (getMonoTime() - started).inSeconds < 20
+    owner.tick(0)
+    var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
+    var remaining = default(Timespec)
+    discard nanosleep(requested, remaining) # Yield only between bounded scalar polls.
