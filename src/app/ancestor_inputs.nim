@@ -1,16 +1,17 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Capture bounded complete sealed headers from explicit regular files, preserving caller order.
+## Capture bounded sealed headers from explicit regular files or retained local parents, preserving exact order.
 ## Structural decoding grants no ancestry/trust authority; report admission still checks every link.
 
 import std/assertions
 import ../codec/[bounded, header]
 import ../lib/atomic_file
+import ../chain/[genesis, provider]
 
 type
   AncestorInputError* {.pure.} = enum ## Refusal never exposes the successfully decoded prefix.
-    Uninitialized, None, LimitExceeded, FileFailure, HeaderFailure, TrailingBytes
+    Uninitialized, None, LimitExceeded, FileFailure, HeaderFailure, TrailingBytes, InvalidHistory
   AncestorInputResult* = object ## Private alternatives separate complete captured inputs from exact child failures.
     case status: AncestorInputError
     of None:
@@ -61,4 +62,40 @@ proc loadAncestorInputs*(paths: openArray[string], config: HeaderConfig,
       return AncestorInputResult(status: AncestorInputError.TrailingBytes)
     remaining -= uint64(wire.len) # Reader success proves subtraction and the aggregate capture bound.
     captured.add(decoded.value.owner)
+  AncestorInputResult(status: AncestorInputError.None, captured: captured)
+
+proc prependLocalAncestors*(view: ChainView, older: seq[OwnedHeader], config: HeaderConfig,
+    count: ElementLimit, bytes: ByteLimit): AncestorInputResult =
+  ## Capture the entire rolling parent suffix before explicit older inputs; never search separated finality or truncate to fit.
+  let retained = view.retainedCount
+  if retained == 0 or retained > MaxRetainedBlocks:
+    return AncestorInputResult(status: AncestorInputError.InvalidHistory)
+  let local = retained - 1 # The selected head is already supplied independently to report admission.
+  if uint64(local) > uint64(count) or uint64(older.len) > uint64(count) - uint64(local) or
+      older.len > high(int) div sizeof(OwnedHeader) - local:
+    return AncestorInputResult(status: AncestorInputError.LimitExceeded)
+  var captured = newSeq[OwnedHeader](local + older.len)
+  var remaining = uint64(bytes)
+  var child = view.bestBlock.value
+  for index in 0..<captured.len:
+    # Only rolling ordinals participate: an evicted finalized owner cannot bridge a missing parent.
+    var owner = default(OwnedHeader)
+    if index < local:
+      let parent = view.retainedBlockAt(RetainedBlockIndex(retained - 2 - index))
+      if parent.error != GenesisError.None or
+          array[32, byte](child.parentHash) != array[32, byte](parent.value.blockHash) or
+          uint32(parent.value.slot) >= uint32(child.slot):
+        return AncestorInputResult(status: AncestorInputError.InvalidHistory)
+      owner = parent.value.header
+      child = parent.value
+    else:
+      owner = older[index - local] # Explicit suffix linkage remains the ordinary report validator's responsibility.
+    let info = owner.headerInfo
+    if info.error != HeaderError.None:
+      return AncestorInputResult(status: AncestorInputError.HeaderFailure, headerReason: info.error)
+    let size = uint64(info.value.consumed)
+    if size > uint64(config.maxBytes) or size > remaining:
+      return AncestorInputResult(status: AncestorInputError.LimitExceeded)
+    remaining -= size # Actual sealed bytes consume one shared budget before exposing any prefix.
+    captured[index] = owner
   AncestorInputResult(status: AncestorInputError.None, captured: captured)
