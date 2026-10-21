@@ -202,18 +202,36 @@ assert load(lowMapped, MemoryAddress(0), AccessWidth(1)).error == MachineError.P
 assert store(lowMapped, MemoryAddress(65535), AccessWidth(2), RegisterValue(0)).error ==
     MachineError.Panic
 let highMapped = checked(captureMemory([page(0xfffff, PageAccess.ReadWrite)], PageLimit(1)))
-assert uint64(checked(load(highMapped, MemoryAddress(0xffffffff'u64), AccessWidth(1)))) == 254
+assert uint64(checked(load(highMapped, MemoryAddress(0xfffffffe'u64), AccessWidth(1)))) == 253
+assert load(highMapped, MemoryAddress(0xffffffff'u64), AccessWidth(1)).error == MachineError.Panic
 assert load(highMapped, MemoryAddress(0xffffffff'u64), AccessWidth(2)).error == MachineError.Panic
 assert store(highMapped, MemoryAddress(high(uint64)), AccessWidth(8), RegisterValue(0)).error ==
     MachineError.Panic
 assert load(empty, MemoryAddress(0x100000000'u64), AccessWidth(1)).error == MachineError.Panic
 let normal = checked(captureMemory([page(16, PageAccess.ReadWrite)], PageLimit(1)))
 assert uint64(checked(load(normal, MemoryAddress(0x100010000'u64), AccessWidth(8)))) == 0x1716151413121110'u64
-# Pending normative gate: formal min(x) selects a high fault, but prose requires protected-low panic.
-assert load(empty, MemoryAddress(0xffffffff'u64), AccessWidth(2)).error ==
-    MachineError.AmbiguousAccessOrder
-assert store(empty, MemoryAddress(high(uint64)), AccessWidth(8), RegisterValue(0)).error ==
-    MachineError.AmbiguousAccessOrder
+# PolkaVM checks exclusive-end overflow before ordinary permissions: absent final page faults, present final page traps.
+# Probe the exact fitting/overflowing boundary at every scalar width and both 32/64-bit address extremes.
+for width in [1, 2, 4, 8]:
+  for access in [PageAccess.Inaccessible, PageAccess.ReadOnly, PageAccess.ReadWrite]:
+    let originalPage = page(0xfffff, access)
+    let memory = checked(captureMemory([page(0, PageAccess.ReadWrite), originalPage], PageLimit(2)))
+    for start in [0xffffffff'u64 - uint64(width), 0x100000000'u64 - uint64(width),
+        0xffffffff'u64, high(uint64)]:
+      let overflow = (start and 0xffffffff'u64) + uint64(width) > 0xffffffff'u64
+      let expectedRead = if overflow and access != PageAccess.Inaccessible: MachineError.Panic
+        elif access == PageAccess.Inaccessible: MachineError.Fault else: MachineError.None
+      let expectedWrite = if overflow and access != PageAccess.Inaccessible: MachineError.Panic
+        elif access != PageAccess.ReadWrite: MachineError.Fault else: MachineError.None
+      let loaded = load(memory, MemoryAddress(start), AccessWidth(byte(width)))
+      let written = store(memory, MemoryAddress(start), AccessWidth(byte(width)), RegisterValue(0))
+      assert loaded.error == expectedRead and written.error == expectedWrite
+      if loaded.error == MachineError.Fault:
+        assert uint32(loaded.faultPage) == 0xfffff000'u32 # Fault metadata retains the final physical page.
+      if written.error == MachineError.Fault:
+        assert uint32(written.faultPage) == 0xfffff000'u32 # Read-only nonoverflow writes fault; overflowing present-page writes trap.
+      assert checked(pageImage(memory, PageIndex(0xfffff))).bytes == originalPage.bytes
+      assert checked(pageImage(memory, PageIndex(0xfffff))).access == access
 
 # Environment updates preserve hidden bytes, insert in order and enforce limits only for new pages.
 var local = page(17, PageAccess.Inaccessible)
@@ -253,7 +271,9 @@ let zeroCpu = MachineInfo(pc: CodeAddress(0), gas: MachineGas(0),
 let zeroMachine = checked(captureMachine(programOwner(), empty, zeroCpu))
 sameCpu(checked(machineInfo(zeroMachine)), zeroCpu)
 assert store(zeroMachine, MemoryAddress(0xffffffff'u64), AccessWidth(2), RegisterValue(0)).error ==
-    MachineError.AmbiguousAccessOrder
+    MachineError.Fault
+assert uint32(store(zeroMachine, MemoryAddress(0xffffffff'u64), AccessWidth(2), RegisterValue(
+    0)).faultPage) == 0xfffff000'u32
 let replaced = checked(withMemory(initial, empty))
 sameCpu(checked(machineInfo(replaced)), initialCpu)
 assert withMemory(initial, default(Memory)).error == MachineError.InvalidOwner

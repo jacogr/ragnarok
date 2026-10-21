@@ -447,7 +447,7 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
       # A resumable fault preserves the precise physical page and successfully charged snapshot.
       outcome = StepExit.Fault
     of MachineError.AmbiguousAccessOrder:
-      # The pinned wrapping-access ambiguity remains local; no tentative charge escapes.
+      # Retain the historical error alternative for compatibility; current PolkaVM-aligned scalar inspection never emits it.
       return StepResult(status: StepError.AmbiguousAccessOrder)
     else:
       # Decoded widths and captured owners make other scalar API failures unreachable.

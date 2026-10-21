@@ -32,7 +32,7 @@ type
     index*: PageIndex
     access*: PageAccess
     bytes*: array[4096, byte]
-  MachineError* {.pure.} = enum ## Local API failures are distinct from guest panic/fault, including an explicit specification gate.
+  MachineError* {.pure.} = enum ## Local API failures are distinct from guest panic/fault, with retained historical error identifiers.
     Uninitialized, None, InvalidOwner, InvalidPage, UnsortedPages, LimitExceeded,
     InvalidWidth, InvalidRegister, InvalidProgram, Panic, Fault, AmbiguousAccessOrder, InvalidRange, InvalidGasState
   MachineResult*[T] = object ## Fault addresses belong to the failure reason; other failures carry no value or progress.
@@ -281,36 +281,29 @@ proc inspect(memory: Memory, address: MemoryAddress, width: AccessWidth,
     # Invalid scalar widths cannot accidentally become unbounded scans or shifts.
     return MachineResult[bool](status: MachineError.InvalidWidth)
   let data = memory.data
-  var hasFault = false
-  var firstFault = PageAddress(0)
-  var protected = false
-  # At most eight byte checks cover all scalar load/store instructions, including page crossings.
+  let start = uint64(address) and 0xffffffff'u64
+  # PolkaVM DynamicMemory checks the exclusive end in u32, including an access ending exactly at2^32.
+  # start plus at most eight fits u64; prove the u32 overflow without performing a wrapping addition.
+  if start > uint64(high(uint32)) - uint64(byte(width)):
+    let at = lowerBound(data, 0xfffff'u32)
+    # A retained inaccessible image represents an absent runtime page, not a present mapping.
+    if at < data.pages.len and uint32(data.pages[at].image.index) == 0xfffff'u32 and
+        data.pages[at].image.access != PageAccess.Inaccessible:
+      return MachineResult[bool](status: MachineError.Panic) # Present final pages trap before write-protection checks, matching PolkaVM.
+    return MachineResult[bool](status: MachineError.Fault, failedPage: PageAddress(0xfffff000'u32))
+  # At most eight checks preflight every successful scalar; the first failed byte determines the exit.
   for i in 0..<int(byte(width)):
     let physical = byteAddress(address, i)
-    # The low 64 KiB is protected even if an environment supplied accessible pages there.
     if physical < 0x10000'u32:
-      protected = true
-    else:
-      # Permissions are attached to pages; writable implies readable in the pinned definition.
-      let index = physical div 4096
-      let at = lowerBound(data, index)
-      var access = PageAccess.Inaccessible
-      # A missing sparse page has inaccessible permissions and zero underlying bytes.
-      if at < data.pages.len and uint32(data.pages[at].image.index) == index:
-        access = data.pages[at].image.access
-      # Remember the first inaccessible byte in the original ascending access sequence.
-      if not hasFault and (access == PageAccess.Inaccessible or
-          (writing and access != PageAccess.ReadWrite)):
-        hasFault = true
-        firstFault = PageAddress(physical and 0xfffff000'u32)
-  # At a wrap, prose says protected-low panic while the formal minimum can select a high-page fault.
-  # Refuse to invent precedence; this local error is an explicit specification gate, not a VM exit.
-  if protected and hasFault and uint64(address) mod 0x100000000'u64 >= 0x10000'u64:
-    return MachineResult[bool](status: MachineError.AmbiguousAccessOrder)
-  # An access containing protected bytes and no earlier fault always panics.
-  if protected: return MachineResult[bool](status: MachineError.Panic)
-  # Fault addresses are aligned physical byte addresses, never page ordinals.
-  if hasFault: return MachineResult[bool](status: MachineError.Fault, failedPage: firstFault)
+      return MachineResult[bool](status: MachineError.Panic) # Low memory stays protected even when supplied as accessible page images.
+    let index = physical div 4096
+    let at = lowerBound(data, index)
+    var access = PageAccess.Inaccessible
+    if at < data.pages.len and uint32(data.pages[at].image.index) == index:
+      access = data.pages[at].image.access # Missing sparse pages retain inaccessible permissions.
+    if access == PageAccess.Inaccessible or (writing and access != PageAccess.ReadWrite):
+      return MachineResult[bool](status: MachineError.Fault,
+        failedPage: PageAddress(physical and 0xfffff000'u32)) # Atomic preflight publishes no bytes or cloned pages on failure.
   MachineResult[bool](status: MachineError.None, completed: true)
 
 proc load*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineResult[

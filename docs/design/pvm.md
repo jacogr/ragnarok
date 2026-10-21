@@ -8,7 +8,7 @@ formats into copied values backed by an immutable program owner. See
 [the program decoding contract](../../spec/pvm-program.md). This is the first PVM
 increment. `src/pvm/machine.nim` adds immutable CPU snapshots and sparse paged memory
 with atomic scalar stores; see [the machine/memory contract](../../spec/pvm-machine.md),
-including its explicit wrapping-access specification gate. `src/pvm/registers.nim`
+including the approved PolkaVM memory exception ordering. `src/pvm/registers.nim`
 evaluates all 85 register-only instruction mutations against a copied register file;
 see [the register semantics contract](../../spec/pvm-registers.md). `src/pvm/gas.nim`
 calculates whole-block pipeline costs with bounded storage and a local cycle limit;

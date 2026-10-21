@@ -168,14 +168,18 @@ let negativeProgram = owner([@[51'u8, 0, 7], @[62'u8, 0, 0, 0, 1, 0], @[1'u8],
 let negativeSource = source(negativeProgram, memory, registers, 0, high(uint64), false)
 assert execute(negativeSource, ExecutionStepLimit(4), GasCycleLimit(1000)).error ==
   StepError.NegativeBranchTarget
-let ambiguousProgram = owner([@[51'u8, 0, 7], @[62'u8, 0, 0, 0, 1, 0],
+let wrappingProgram = owner([@[51'u8, 0, 7], @[62'u8, 0, 0, 0, 1, 0],
   @[55'u8, 0, 255, 255, 255, 255], @[0'u8]])
-let ambiguousSource = source(ambiguousProgram, memory, registers, 0, high(uint64), false)
-assert execute(ambiguousSource, ExecutionStepLimit(3), GasCycleLimit(1000)).error ==
-  StepError.AmbiguousAccessOrder
+let wrappingSource = source(wrappingProgram, memory, registers, 0, high(uint64), false)
+let wrapping = execute(wrappingSource, ExecutionStepLimit(3), GasCycleLimit(1000))
+assert wrapping.error == StepError.None and wrapping.value.exit == StepExit.Fault
+assert uint32(wrapping.value.faultPage) == 0xfffff000'u32
+assert uint64(machineInfo(wrapping.value.machine).value.registers[0]) == 7
+assert uint64(load(memoryOf(wrapping.value.machine).value, MemoryAddress(65536), AccessWidth(
+    8)).value) == 7
 assert uint64(load(memory, MemoryAddress(65536), AccessWidth(8)).value) == 0
 assert uint64(machineInfo(negativeSource).value.registers[0]) == 0
-assert uint64(machineInfo(ambiguousSource).value.registers[0]) == 0
+assert uint64(machineInfo(wrappingSource).value.registers[0]) == 0
 # Per-block simulation exhaustion is independent of the execution step budget and guest gas.
 let costlyProgram = owner([@[51'u8, 0, 7], @[1'u8], @[10'u8, 5], @[0'u8]])
 let costlySource = source(costlyProgram, memory, registers, 0, high(uint64), false)

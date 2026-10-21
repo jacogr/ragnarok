@@ -3,6 +3,11 @@
 Read this file for protocol behavior, domain bytes or specification/vector upgrades, even when
 only editing implementation code. Preserve these established interpretations.
 
+The maintainer selects pinned PolkaVM as the accepted PVM implementation authority,
+including Gray Paper disagreements. Record scoped behavior adoptions against exact source pins;
+see [memory ordering](pvm-polkavm-memory-order.md). Preserve independent JAM/vector encoding
+and host-function contracts; do not infer unrelated pin upgrades.
+
 For encoding-width discrepancies, the maintainer directs following the published vectors: if the
 vectors encode a field compactly, use that compact encoding and document the text discrepancy.
 Use exactly one representation, with no alternate-format fallback. This accepts C13 statistics gas

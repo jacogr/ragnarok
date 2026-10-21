@@ -6,7 +6,10 @@ Language selection is complete; the foundation is not a production validator or 
 ## Authority and scope
 
 Use the pinned Gray Paper, recorded `davxy/jam-test-vectors`, then pinned JAMNP-S. Other clients
-are cross-checks. Follow published vector encoding widths, document discrepancies and accept one
+are cross-checks. For PVM behavior, the maintainer selects pinned PolkaVM as the accepted
+implementation authority, including Gray Paper disagreements; record each scoped adoption and
+its exact source evidence in the owning feature contract. Do not silently change pins.
+Follow published vector encoding widths, document discrepancies and accept one
 representation without fallback. Never guess protocol semantics: record ambiguity and a focused
 failing/pending test. Keep upstream sources, submodule gitlinks and toolchains pristine and pinned;
 no private-runtime hooks, compiler patches or unapproved dependency upgrades.
