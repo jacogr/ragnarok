@@ -16,7 +16,8 @@ proc main() =
   fail(0)
   let member = paramStr(1)
   let origin = paramStr(2)
-  var path = "build/tests/storage_file/guard.db"
+  # The standard runner creates build/tests; it does not create per-family fixture directories.
+  var path = "build/tests/storage-file-guard.db"
   discard posix.unlink(path.toCString())
   let limits = JournalLimits(repository: storageLimits(), bytes: ByteLimit(1048576))
   var file = default(FileRepository)
