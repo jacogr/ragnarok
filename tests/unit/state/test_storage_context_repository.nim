@@ -171,7 +171,7 @@ proc attempt(extra: uint64, succeeds: bool) {.raises.} =
       initial.commitment.root) == FileError.InvalidJournal
     assert not file.opened and readFile(path) == impossible
 
-proc contextBoundaries() =
+proc contextBoundaries() {.raises.} =
   ## Context limits precede publication, and both input/output buffers stay detached from private metadata.
   var path = "storage-context-bounds.db"
   let limits = JournalLimits(repository: storageLimits(), bytes: ByteLimit(1048576),
@@ -193,6 +193,16 @@ proc contextBoundaries() =
   assert file.snapshotContext.value == @[1'u8, 2]
   assert file.close == FileError.None and copied == @[98'u8, 2]
   assert file.snapshotContext.error == FileError.Uninitialized
+  let complete = readFile(path)
+  var impossible = complete
+  for index in 0..<8:
+    impossible.add(char(if index == 0: 108 else: 0)) # Too short for context length plus fixed record header.
+  writeFile(path, impossible)
+  let root = storageTrie().commitment.root
+  assert contextRecover(file, path, default(StorageChainId), limits,
+    RepositoryGeneration(1), root) == FileError.InvalidJournal
+  assert not file.opened and readFile(path) == impossible
+
 
 proc main() {.raises.} =
   ## Exact and ample kernel ceilings prove the same publisher succeeds without a refusal.

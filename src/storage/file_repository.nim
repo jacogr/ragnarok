@@ -117,14 +117,15 @@ proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
 proc truncateFile(fd: cint, extent: int64): cint {.importc: "ftruncate", cdecl,
     header: "<unistd.h>".}
   ## Supported native Linux/macOS SDKs use 64-bit off_t; host-bounded extents are proved before conversion.
-proc incompleteTail(bytes: openArray[byte], offset: int, limit: ByteLimit): bool =
+proc incompleteTail(bytes: openArray[byte], offset: int, limit: ByteLimit, contextual: bool): bool =
   ## Admit only an incomplete final frame, never a complete corrupt frame or oversized length attack.
   let remaining = bytes.len-offset
   if remaining < 8: return true # A torn length prefix cannot be decoded but can be explicitly discarded.
   var length = 0'u64
   for i in 0..<8: length = length or (uint64(bytes[offset+i]) shl (8*i))
   let maximum = min(uint64(limit), uint64(high(int)))
-  if maximum < 48 or length < uint64(TrieExportHeaderBytes) or length > maximum-48:
+  let minimumBody = uint64(TrieExportHeaderBytes)+(if contextual: 8'u64 else: 0'u64)
+  if maximum < 48 or length < minimumBody or length > maximum-48:
     return false # Unknown/impossible complete lengths require operator investigation, not truncation.
   length+48 > uint64(remaining)
 
@@ -190,7 +191,8 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
     while offset < bytes.len:
       let extent = journalFrameExtent(bytes.toOpenArray(offset, bytes.high), limits.bytes)
       if extent.error != FrameError.None:
-        if repair and incompleteTail(bytes, offset, limits.bytes):
+        if repair and incompleteTail(bytes, offset, limits.bytes, schema ==
+            StorageSchema.FullStateV1):
           partial = true
           break # Only explicit recovery can stop at a verified prefix preceding an incomplete final frame.
         return FileError.InvalidJournal
