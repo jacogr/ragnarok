@@ -34,7 +34,9 @@ class VerificationFailures(unittest.TestCase):
             # A fixed complete inventory rejects missing rows, duplicates and a failed diagnostic predicate.
             with self.subTest(group=key):
                 self.assertFalse(test_runtime.failures_passed({**report, key: report[key][1:]}))
-                self.assertFalse(test_runtime.failures_passed({**report, key: [report[key][0]]*len(report[key])}))
+                # A singleton needs two copies before this report actually contains duplicates.
+                duplicated = [report[key][0]]*max(2, len(report[key]))
+                self.assertFalse(test_runtime.failures_passed({**report, key: duplicated}))
                 self.assertFalse(test_runtime.failures_passed({**report, key: [dict(row, passed=False) for row in report[key]]}))
                 replaced = [dict(row) for row in report[key]]
                 replaced[0] = dict(name='unexpected-replacement', passed=True)
@@ -95,7 +97,9 @@ class VerificationFailures(unittest.TestCase):
             for key in plans:
                 # Every family retains exact completeness and positive failure verdict requirements.
                 self.assertFalse(test_runtime.failures_passed({**report, key: report[key][1:]}))
-                self.assertFalse(test_runtime.failures_passed({**report, key: [report[key][0]]*len(report[key])}))
+                # A singleton needs two copies before this report actually contains duplicates.
+                duplicated = [report[key][0]]*max(2, len(report[key]))
+                self.assertFalse(test_runtime.failures_passed({**report, key: duplicated}))
                 self.assertFalse(test_runtime.failures_passed({**report, key: [dict(row, passed=False) for row in report[key]]}))
             foreign = next(key for key in test_runtime.FAILURE_PLANS if key not in plans)
             self.assertFalse(test_runtime.failures_passed({**report, foreign: []}))
