@@ -41,3 +41,23 @@ Checked generated C contains no record-duplication call in the graph routine, ve
 baseline routine. All 24 matching workloads retain identical occupied-byte and hash counters,
 complete mappings and exact scope release; this change removes transient payload copies without
 claiming a retained-memory reduction. The repository malformed graph regression remains required.
+
+## Private immutable record owners
+
+Changed revisions now own sorted tables of private ARC record cells. Each newly admitted record
+copies caller bytes once; later tables share the immutable cell. Public lookups, map extraction and
+record/image exports continue to deep-copy payload bytes. Raw images still validate and copy their
+inputs. There is no public cell or mutable access to stored records. Cell sequences reserve capacity
+and append initialized nonnil owners; no nil placeholder is treated as an admitted record.
+
+At 8,192 entries, shallow nine-reader occupied bytes fall from 23,006,544 to 4,014,928 for 16-byte
+values and from 40,725,264 to 5,984,848 for 256-byte values. Deep-prefix results fall from
+26,611,024 to 4,842,576 and from 44,329,744 to 6,812,496 bytes respectively. All 24 cases preserve
+complete maps, publication/extraction hash counts and exact final scope release.
+
+The per-cell owner costs memory with only one reader: the 8,192-entry shallow cases increase by
+375,616 occupied bytes, and deep-prefix cases by 449,600 bytes. This is an explicit tradeoff for
+bounded retained histories, not a claim that every lifetime uses less memory. Physical record/value
+ceilings and descriptor-overflow refusals remain unchanged. `storage_record_owners` checks caller
+input/output mutation, independent mutable forks/clones, stale identity, retained views after close
+and 1,000 ARC release cycles.
