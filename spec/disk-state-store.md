@@ -120,3 +120,17 @@ chain identity and physical integrity, then resume the app's own previously vali
 External checkpoint imports still require independently supplied trusted application identity and
 sealed header. Persisted state root/generation alone is insufficient application context; disk mode
 must atomically select matching block identity, sealed header, full parameters and state revision.
+
+## Atomic contextual frames
+
+The separate `RAGNAROK-FULL-STATE-V1` database schema uses frames containing E8 body length,
+E8 nonzero local generation, E8 context length, bounded raw context, the existing strict record
+batch and a Blake2b-256 checksum covering every preceding frame byte. Both identity domains have
+fixed equal extents; callers explicitly select a schema. Existing `FULL-NODES-V1` bytes remain
+unchanged. There is no format guessing, conversion or cross-schema fallback.
+
+Context ceilings and exact borrowed extents are checked before checksum work or transport
+allocation. Truncation, every single-byte mutation, huge lengths, exact/short budgets and schema
+cross-decoding are exercised; a frozen independent Python struct/hashlib checksum covers the
+combined generation/context/record representation. Application decoding remains responsible for
+validating context semantics and its match to the selected complete root.

@@ -10,13 +10,17 @@ import ../codec/bounded
 
 const
   IdentityMagic = "RAGNAROK-FULL-NODES-V1\n"
+  ContextMagic = "RAGNAROK-FULL-STATE-V1\n"
   IdentityPrefix = IdentityMagic.len + 32
   StorageIdentityBytes* = IdentityPrefix + 32
 
 type
+  StorageSchema* {.pure.} = enum ## Distinct physical formats never silently reinterpret each other.
+    FullNodesV1, FullStateV1
   StorageChainId* = distinct array[32, byte] ## Storage chain identity is not a state root or protocol block hash.
   DatabaseIdentity* = object ## Opaque initialized full-state schema identity; no light-state APIs are implied.
     chain: StorageChainId
+    schema: StorageSchema
     initialized: bool
   IdentityError* {.pure.} = enum ## No default/failed codec operation exposes initialized identity metadata.
     Uninitialized, None, InvalidFormat, LimitExceeded, ChecksumMismatch, WrongChain, BackendFailure
@@ -32,9 +36,9 @@ func value*[T](outcome: IdentityResult[T]): T {.inline,
     requires: outcome.status == IdentityError.None.} =
   ## Extract only complete checked bytes or an initialized identity.
   outcome.completed
-func fullStateIdentity*(chain: StorageChainId): DatabaseIdentity =
+func fullStateIdentity*(chain: StorageChainId, schema = StorageSchema.FullNodesV1): DatabaseIdentity =
   ## Bind the full-state schema to an explicit scalar chain identity without IO or defaults.
-  DatabaseIdentity(chain: chain, initialized: true)
+  DatabaseIdentity(chain: chain, schema: schema, initialized: true)
 func chainId*(identity: DatabaseIdentity): StorageChainId {.requires: identity.initialized.} =
   ## Copy the identity domain without exposing initialization or mutable storage fields.
   identity.chain
@@ -44,7 +48,8 @@ proc encodeDatabaseIdentity*(identity: DatabaseIdentity, limit: ByteLimit): Iden
   if uint64(limit) < uint64(StorageIdentityBytes): return IdentityResult[seq[byte]](
       status: IdentityError.LimitExceeded)
   var prefix = default(array[IdentityPrefix, byte])
-  for i, character in IdentityMagic: prefix[i] = byte(character) # Full-state mode/schema has one exact domain.
+  let magic = if identity.schema == StorageSchema.FullNodesV1: IdentityMagic else: ContextMagic
+  for i, character in magic: prefix[i] = byte(character) # Full-state mode/schema has one exact domain.
   let chain = array[32, byte](identity.chain)
   for i in 0..<32: prefix[IdentityMagic.len+i] = chain[i]
   let hashed = blake2b256(prefix)
@@ -56,13 +61,14 @@ proc encodeDatabaseIdentity*(identity: DatabaseIdentity, limit: ByteLimit): Iden
   for i in 0..<32: output[IdentityPrefix+i] = checksum[i]
   IdentityResult[seq[byte]](status: IdentityError.None, completed: output)
 proc decodeDatabaseIdentity*(input: openArray[byte], expected: StorageChainId,
-    limit: ByteLimit): IdentityResult[DatabaseIdentity] =
+    limit: ByteLimit, schema = StorageSchema.FullNodesV1): IdentityResult[DatabaseIdentity] =
   ## Refuse unknown mode/schema, exact-width corruption and a different independently selected chain.
   if uint64(input.len) > uint64(limit): return IdentityResult[DatabaseIdentity](
       status: IdentityError.LimitExceeded)
   if input.len != StorageIdentityBytes: return IdentityResult[DatabaseIdentity](
       status: IdentityError.InvalidFormat)
-  for i, character in IdentityMagic:
+  let magic = if schema == StorageSchema.FullNodesV1: IdentityMagic else: ContextMagic
+  for i, character in magic:
     if input[i] != byte(character): return IdentityResult[DatabaseIdentity](
         status: IdentityError.InvalidFormat)
   var prefix = default(array[IdentityPrefix, byte])
@@ -78,4 +84,5 @@ proc decodeDatabaseIdentity*(input: openArray[byte], expected: StorageChainId,
   for i in 0..<32:
     if input[IdentityMagic.len+i] != chain[i]: return IdentityResult[DatabaseIdentity](
         status: IdentityError.WrongChain)
-  IdentityResult[DatabaseIdentity](status: IdentityError.None, completed: fullStateIdentity(expected))
+  IdentityResult[DatabaseIdentity](status: IdentityError.None, completed: fullStateIdentity(
+      expected, schema))
