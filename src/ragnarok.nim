@@ -39,14 +39,18 @@ proc main(): int =
       stdout.writeLine("         --state-checkpoint FILE --state-trust FILE --state-header FILE --state-checkpoint-bytes BYTES")
       stdout.writeLine("         Checkpoint imports require independent trusted identity/header; restart retains one unfinalized head.")
       stdout.writeLine("         --download-ancestor FILE (repeat newest-first; download only, maximum 64)")
+      stdout.writeLine("         --download-blocks COUNT (download only, default 1, range 1..64)")
       stdout.writeLine("State limits are unsigned budgets; supplied complete state is structurally checked.")
       return 0
     if options.argumentCount() >= 1 and options.argument(1) == "download":
-      let outcome = runDownload(options)
-      if outcome == DownloadCommandResult.Adopted:
+      let outcome = runDownloads(options)
+      if outcome.requestedBlocks > 1:
+        stdout.writeLine("DOWNLOAD_PROGRESS adopted=" & $outcome.adoptedBlocks & " requested=" &
+            $outcome.requestedBlocks)
+      if outcome.error == DownloadCommandResult.Adopted:
         stdout.writeLine("DOWNLOAD_ADOPTED")
         return 0 # Command owners have already retired callbacks and canonical Services.
-      stderr.writeLine("DOWNLOAD_FAILED " & $outcome)
+      stderr.writeLine("DOWNLOAD_FAILED " & $outcome.error)
       return 2 # Invalid/unavailable/exhausted downloads never imply an adopted child.
     # Retained dual-role peers have a separate bounded CLI and preserve normal proof workloads.
     if options.argumentCount() >= 1 and options.argument(1) == "mesh":

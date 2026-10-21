@@ -12,18 +12,34 @@ checkpoint trust, bounded history and explicit finality.
 
 ## Lifetimes and intended progression
 
-Each child runs in a separate `receiveChild` activation. Its stable dispatcher
-and every stream/input/preparation/disk-publication alias retire only after joined
-teardown, before the caller inspects the next canonical head or mutates its local
-ancestor sequence. One Services instance outlives the complete run. A shared
-monotonic deadline covers every child; retry/stage policies remain explicit.
+One `receiveChildren` activation keeps stable authenticated endpoints and one
+Services owner for the complete run. `BlockDownloadLoop.nextChild` rearms only
+after a genuine consumed adoption, native stream close, input retirement and
+worker/publication lease release. Refusals preserve the prior adoption diagnostic
+and ancestry. All graph/ancestry replacement happens on the host between jobs;
+final shutdown joins before outer canonical inspection or alias retirement.
 
-The follow-up progression will count only consumed successful adoption receipts,
-retain the prior selected header newest-first for the next child, and bound total
-requested work and accumulated ancestry without silently dropping old headers.
-Later failure preserves earlier confirmed publications. No fork choice, automatic
-finality, discovery, partial light-map claim or storage-maintenance adoption is
-introduced.
+`--download-blocks COUNT` is download-only, defaults to one and accepts canonical
+positive decimal values 1–64. Before file/Services IO reserve initial ancestors
+plus `COUNT-1` older headers and one additional selected parent in report policy.
+Actual per-header/input/report bytes are checked again before each new child.
+Never drop old headers to make a quota fit. Each adopted parent's sealed header
+is prepended newest-first for the next child; no history/state is fabricated.
+
+Retry/stage budgets restart explicitly per child on the same monotonic clock.
+One shared run deadline starts after Services startup and is checked between
+bounded dispatcher turns; successful children never reset it. No new handshake
+or connection slot is consumed per child. Existing finality, checkpoint trust,
+exact-parent authority and memory/disk receipt rules remain unchanged.
+
+`runDownloads` returns immutable scalar requested/adopted counts plus a terminal
+reason; the old `runDownload` status-only API remains. Count only consumed genuine
+adoptions. After joined teardown also reconcile the one possible outstanding
+durable receipt against the actual canonical child. A timeout can therefore
+report confirmed progress while retaining its Timeout reason. These diagnostics
+are not execution certificates. Every later refusal preserves the confirmed
+prefix. No fork choice, automatic finality, discovery, partial light-map claim or
+storage-maintenance adoption is introduced.
 
 ## Completion witnesses
 
@@ -65,3 +81,27 @@ focused native chain suite passes with unchanged 312,160 occupied bytes across
 source-owned inventory and whitespace checks pass; logs use
 `build/multiblock-chain-*`. This is local evidence, separate from Linux CI and
 complete block/epoch parity.
+
+## Bounded command and rearming verification
+
+Real pinned-TLS runs adopt one, two and three genuine children. Independent
+responders verify every changed CE128 parent request, observing exactly the
+requested count over retained authenticated connections. Insufficient whole-run
+ancestry count refuses before fresh disk creation. All 64 admitted count values,
+default one, malformed/full-width/duplicate counts, disabled/unrelated commands
+and four raw-field privacy rejections pass. Failed/default outcomes expose only
+zero scalar progress.
+
+The loop suite additionally checks active-worker refusal, backwards clock and
+invalid replacement ancestry preserving the prior receipt, explicit rearming
+without publication, and repeated Waiting refusal. Its 1,000-cycle observation
+retains 159,584 occupied bytes. Existing TLS/startup/lookup/disk scenarios pass
+with their separate policy observation at 787,648 bytes unchanged. Evidence uses
+`build/multiblock-{progress,options,loop,startup-regression}*`.
+
+Affected legacy app/ancestor/recovery parser suites and the actual executable
+build pass. The executable keeps the original single-child success/failure tokens
+and adds `DOWNLOAD_PROGRESS adopted=N requested=M` for multi-child requests.
+The confirmed count includes only actual consumed receipts or the one joined
+shutdown receipt; it never counts attempted/downloaded bytes. Semantic, privacy,
+inventory and whitespace checks pass. Remote CI remains unrequested.

@@ -24,6 +24,9 @@ type
     stream: NativeStream
     expected, request: array[42, byte]
     response: seq[byte]
+    expectedSeries: seq[array[42, byte]]
+    responseSeries: seq[seq[byte]]
+    modeSeries: seq[DownloadTransferMode]
     received, offset, requests: int
     mode: DownloadTransferMode
     requestFin, writeFin, reset, allowCancelled: bool
@@ -129,6 +132,11 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
         wantRead(stream, 0)
         streamAbort(stream)
         return # Catalog retry fixtures explicitly admit an aborted request before successful binding.
+      if server.expectedSeries.len > 0:
+        assert server.requests < server.expectedSeries.len, "unexpected request after finite response series"
+        server.expected = server.expectedSeries[server.requests]
+        server.response = server.responseSeries[server.requests]
+        server.mode = server.modeSeries[server.requests] # Select bytes/behavior only after the actual request ordinal is known.
       assert server.received == 42 and server.request == server.expected
       server.requestFin = true
       inc server.requests # Observe completed independent requests per authenticated server identity.
@@ -366,6 +374,23 @@ proc openResponders*(servers: var DownloadResponders, expected: array[42, byte],
     servers.close()
     return false # Failed second startup must close the already opened first listener.
   true
+proc openSequenceResponders*(servers: var DownloadResponders, expected: seq[array[42, byte]],
+    responses: seq[seq[byte]], modes: seq[DownloadTransferMode], emptyFirst = false): bool =
+  ## Each independent listener validates the exact request series and emits only its authored per-request bytes.
+  if expected.len == 0 or expected.len > 64 or responses.len != expected.len or modes.len != expected.len:
+    return false # Prove all callback indexing before creating any listener.
+  if not servers.openResponders(expected[0], responses[0], modes[0], emptyFirst): return false
+  servers.first.expectedSeries = expected
+  servers.second.expectedSeries = expected
+  servers.first.modeSeries = modes
+  servers.second.modeSeries = modes
+  servers.second.responseSeries = responses
+  servers.first.responseSeries = @[]
+  for response in responses:
+    servers.first.responseSeries.add(if emptyFirst: @[0'u8, 0, 0,
+        0] else: response) # Fallback still consumes a real request per child.
+  true
+
 proc port*(servers: DownloadResponders, second: bool): uint16 =
   ## Return only the bound scalar endpoint selected by the test's explicit identity.
   if second: servers.second.transport.localPort
