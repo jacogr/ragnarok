@@ -128,3 +128,11 @@ Unchanged-root zero-record publications share their validated immutable physical
 creating a new exact view identity and generation. Ordinary changed-root admission, frame bytes
 and durability barriers retain their contracts. See `storage_unchanged_publication` and the
 [maintenance measurements](../../spec/disk-state-store.md#maintenance-measurement-scope).
+
+`managed_repository.nim` owns a stable directory lease and exactly the snapshot/journal pair
+selected by CURRENT. Creation takes a complete immutable root selection; strict reopen checks the
+chain, schema, snapshot binding, retained graphs and every contiguous journal frame. It never
+scans for a fallback head. Retained views and detached context survive explicit owner close.
+This standalone component is not yet used by StateStore or application startup. Managed append,
+reclamation, explicit migration and consumer adoption are subsequent storage-owned layers; other
+workstreams should continue through their existing APIs until a coordinated integration lands.

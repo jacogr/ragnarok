@@ -75,6 +75,13 @@ implementation work. For unfamiliar pinned APIs, consult the short
   excluding dependency/generated trees unless relevant. Batch independent reads; avoid short polls
   and rereading unchanged instructions. Distinguish local scope from exact-head Linux CI evidence.
 
+- Treat agent tokens and API quotas as shared, finite budgets. Request only needed fields and
+  bounded output; save full logs locally and inspect short failure excerpts or diffs. Reuse saved
+  working records and verified results instead of rediscovering unchanged state. Batch independent
+  reads/checks and verified PR publication where supported; avoid repeated status/quota polls,
+  broad file dumps and verbose routine orchestration. Reduce I/O without skipping required checks,
+  hiding failures or weakening review evidence.
+
 ## Completion and Git
 
 Complete the authorized bounded increment, report it and wait for the next go-ahead. Report

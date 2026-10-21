@@ -557,3 +557,23 @@ journal observations. CURRENT publication uses exclusive CURRENT.next, file sync
 descriptor-relative rename and directory synchronization. A post-rename barrier failure is explicit
 PublishedUnsynced. Pending cleanup requires a previously validated CURRENT and never follows links.
 No low-level append/truncation operation supplies graph, canonical-head or rollback authority.
+
+## Managed repository admission
+
+`managed_repository.nim` owns the stable directory and selected journal leases together. Creation
+requires an opaque complete retained-root selection with a nonzero state generation. It preflights
+and admits an independent snapshot before creating files, then publishes CURRENT only after both
+selected files are synchronized. Existing paths are never reset. Failed creation preserves forensic
+files and releases all leases.
+
+Strict reopen validates the caller's chain/schema, CURRENT checksum, exact selected snapshot
+checksum/generation/root, every retained complete graph and the paired journal header. Journal
+frames must advance generations contiguously and pass ordinary repository graph admission; context
+advances only with a complete accepted frame. Unknown/staged epochs confer no authority, and a
+missing or corrupt selected file never triggers older-epoch fallback. Local durable-head resumption
+remains distinct from externally trusted checkpoint import.
+
+Run `make unit SUITE=storage_managed_repository` for real locking/reopen, retained history,
+chain/schema rejection, detached context and repeated ARC retirement. This component does not
+change StateStore or select the application's backend. Append, explicit tail repair, epoch
+replacement, migration and app adoption remain separate bounded increments.
