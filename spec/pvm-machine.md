@@ -84,7 +84,10 @@ The historical AmbiguousAccessOrder reason is retained but no longer emitted.
 
 PolkaVM is pinned as an implementation cross-check and test-only dependency in `vendor/polkavm` at
 `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`; `spec/polkavm-pins.json`
-records source hashes. No Rust engine or upstream scripts are built or run.
+records source hashes. Production builds do not build or link the Rust engine.
+The original scalar witnesses below were adapted from source. The later optional
+[executed memory reference](pvm-memory-boundary-reference.md) runs the public pinned
+interpreter to freeze boundary fixtures; ordinary Nim tests replay those bytes.
 The native suite adapts two witnesses from `crates/polkavm/src/tests.rs`:
 
 - `dynamic_paging_write_at_page_boundary_with_first_page`: store `0x12345678`
