@@ -7,7 +7,7 @@
 import ./[transport, block_download_stream]
 import ../app/[download_schedule, block_download, block_input, candidate, services, preparation_worker]
 import ../codec/[bounded, header]
-import ../state/[accumulation_finalization, accumulation_completion]
+import ../state/[report_anchors, accumulation_finalization, accumulation_completion]
 
 type
   DownloadSessionError* {.pure.} = enum ## Defaults and failed alternatives contain no usable attempt or execution prefix.
@@ -260,3 +260,35 @@ proc retirePreparation*(session: var BlockDownloadSession, attempt: DownloadSess
   ## Joined shutdown ends the worker borrow before the session receiver or captured history can be destroyed.
   if not session.matches(attempt): return false
   session.download.retirePreparation(attempt.generation, owner)
+
+proc ancestorDemand*(session: BlockDownloadSession,
+    attempt: DownloadSessionAttempt): DownloadSessionResult[ReportLookupDemand] =
+  ## Only the original attempt after actual stream retirement can expose certified missing context.
+  if not session.matches(attempt): return refused[ReportLookupDemand](plain(
+      DownloadSessionError.StaleAttempt))
+  if session.queued: return refused[ReportLookupDemand](plain(DownloadSessionError.AlreadyQueued))
+  if session.streamActive: return refused[ReportLookupDemand](plain(
+      DownloadSessionError.AwaitingClose))
+  let demand = session.download.ancestorDemand(attempt.generation)
+  if demand.error != BlockDownloadError.None:
+    return refused[ReportLookupDemand](DownloadSessionFailure(
+      status: DownloadSessionError.DownloadFailure,
+      downloadReason: demand.failure))
+  DownloadSessionResult[ReportLookupDemand](successful: true, completed: demand.value)
+
+proc resumeAncestors*(session: var BlockDownloadSession, attempt: DownloadSessionAttempt,
+    owner: Services, ancestors: openArray[OwnedHeader]): DownloadSessionResult[
+        DownloadSessionAttempt] =
+  ## Preserve the reserved scheduler attempt and same input generation while rearming only a retired prepared block.
+  if not session.matches(attempt): return refused[DownloadSessionAttempt](plain(
+      DownloadSessionError.StaleAttempt))
+  if session.queued: return refused[DownloadSessionAttempt](plain(
+      DownloadSessionError.AlreadyQueued))
+  if session.streamActive: return refused[DownloadSessionAttempt](plain(
+      DownloadSessionError.AwaitingClose))
+  let resumed = session.download.resumeAncestors(attempt.generation, owner, ancestors)
+  if resumed.error != BlockDownloadError.None:
+    return refused[DownloadSessionAttempt](DownloadSessionFailure(
+      status: DownloadSessionError.DownloadFailure,
+      downloadReason: resumed.failure))
+  DownloadSessionResult[DownloadSessionAttempt](successful: true, completed: attempt)

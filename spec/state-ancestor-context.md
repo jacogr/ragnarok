@@ -104,3 +104,9 @@ query retrieves the certified demand. Resumption checks the same generation and 
 then makes only the original prepared input Ready. Typed quota refusal leaves suspension intact.
 A real Services test verifies two managed leases, no second stream, restored host availability,
 exact demand, atomic quota refusal and canonical publication only on a later handoff tick.
+
+The scheduled session exposes demand/resumption only for its exact immutable attempt token,
+without an active native stream or queued adoption. Resumption retains the original scheduler
+reservation and input generation. Foreign/stale tokens, still-live streams and queued successors
+cannot substitute context. A real TLS exchange plus two Services worker leases verifies stream
+retirement, missing context, atomic quota refusal, later adoption and final token retirement.

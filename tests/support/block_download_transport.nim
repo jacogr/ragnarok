@@ -286,6 +286,7 @@ proc sessionEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rai
     assert session[].finish(token, DownloadAttemptOutcome.Retry,
       DownloadScheduleTick(100)).error == DownloadSessionError.AwaitingClose
     assert session[].discardInput(token).error == DownloadSessionError.AwaitingClose
+    assert session[].ancestorDemand(token).error == DownloadSessionError.AwaitingClose # Discovery cannot observe a still-borrowed receiver.
   else:
     assert not session[].streamEvent(token, DownloadPeerId(0), stream, event)
     assert not session[].streamEvent(token, token.peer, NativeStream(nil), event)
@@ -345,6 +346,7 @@ proc exchangeSession*(session: var BlockDownloadSession, owner: var Services,
   if session.streamActive:
     let barred = session.enqueue(token, owner, default(AccumulationCompositionLimits))
     assert barred.error == DownloadSessionError.AwaitingClose # Native close precedes even an invalid preparation policy.
+    assert session.resumeAncestors(token, owner, []).error == DownloadSessionError.AwaitingClose # Context replacement observes the same native retirement barrier.
 
 
 type DownloadResponders* = object ## Two actual TLS identities distinguish target selection from merely naming a peer ID.
