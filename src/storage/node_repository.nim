@@ -21,7 +21,7 @@ type
     collection*: RecordCollection
   RepositoryError* {.pure.} = enum ## Errors expose no partial graph, candidate or publication receipt.
     Uninitialized, None, MissingNode, LimitExceeded, StaleView, BaseMismatch,
-    InvalidRecords, InvalidGraph, RecordConflict, GenerationExhausted, RootMismatch, TrieFailure
+    InvalidRecords, InvalidGraph, RecordConflict, GenerationExhausted, RootMismatch, TrieFailure, PolicyMismatch
   RepositoryResult*[T] = object ## Only the selected alternatives own a payload or codec diagnostic.
     case status: RepositoryError
     of None: completed: T
@@ -545,3 +545,27 @@ proc measureRepositorySelection*(selection: RepositorySelection,
     if payload > maximum-size: return RepositoryResult[int](status: RepositoryError.LimitExceeded)
     size += payload # Each addition is proved against the exact host-bounded output ceiling.
   RepositoryResult[int](status: RepositoryError.None, completed: int(size))
+
+proc cloneRepositorySelection*(selection: RepositorySelection,
+    limits: RepositoryLimits): RepositoryResult[NodeRepository] =
+  ## Materialize an opaque already admitted complete root union without rehashing or decoding trusted owned records.
+  let data = selection.data
+  if data == nil: return RepositoryResult[NodeRepository](status: RepositoryError.Uninitialized)
+  let source = data.source.data
+  assert source != nil
+  let inherited = source.limits.codec.trie
+  let required = limits.codec.trie
+  let oldPolicy = [uint64(inherited.items), uint64(inherited.nodes),
+    uint64(inherited.perValue), uint64(inherited.totalValueBytes)]
+  let newPolicy = [uint64(required.items), uint64(required.nodes),
+    uint64(required.perValue), uint64(required.totalValueBytes)]
+  if oldPolicy != newPolicy:
+    return RepositoryResult[NodeRepository](status: RepositoryError.PolicyMismatch)
+  var detached = exportRepositorySelection(selection, TrieExportLimits(
+    records: TrieNodeLimit(uint64(limits.records)), valueBytes: limits.valueBytes))
+  if detached.error != RepositoryError.None:
+    return RepositoryResult[NodeRepository](status: detached.error)
+  let cloned = RepositoryData(table: RepositoryTable(records: move(detached.completed)),
+    commitment: source.commitment, generation: source.generation, valueBytes: data.valueBytes,
+        limits: limits)
+  RepositoryResult[NodeRepository](status: RepositoryError.None, completed: NodeRepository(head: cloned))

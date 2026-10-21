@@ -125,8 +125,11 @@ proc initializeManagedRepository*(repository: var ManagedRepository, path: strin
   if repository.active: return FileError.Busy
   let encoded = encodeRepositorySnapshot(selection, chain, schema, context, snapshotLimits(limits))
   if encoded.error != SnapshotError.None: return snapshotFailure(encoded.error)
-  let restored = decodeRepositorySnapshot(encoded.value.bytes, chain, schema, snapshotLimits(limits))
-  if restored.error != SnapshotError.None: return snapshotFailure(restored.error)
+  let restored = cloneRepositorySelection(selection, limits.repository)
+  if restored.error == RepositoryError.LimitExceeded: return FileError.LimitExceeded
+  if restored.error != RepositoryError.None: return FileError.InvalidJournal
+  var selectedContext = newSeq[byte](context.len)
+  for index, octet in context: selectedContext[index] = octet # Borrowed application bytes never become a mutable alias.
   let manifest = encodeManagedManifest(chain, schema, ManagedEpoch(1), selection.generation,
     selection.commitment.root, encoded.value.checksum, ByteLimit(ManagedManifestBytes))
   if manifest.error != ManifestError.None: return FileError.BackendFailure
@@ -149,8 +152,8 @@ proc initializeManagedRepository*(repository: var ManagedRepository, path: strin
   if journal.value != header.value: return FileError.InvalidJournal
   reason = replaceManagedManifest(repository.directory, manifest.value.bytes, ByteLimit(ManagedManifestBytes))
   if reason != FileError.None: return reason
-  repository.memory = restored.value.repository
-  repository.context = restored.value.context
+  repository.memory = restored.value
+  repository.context = selectedContext
   repository.chain = chain
   repository.schema = schema
   repository.epoch = ManagedEpoch(1)
@@ -332,10 +335,11 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
     repository.context, snapshotLimits(repository.limits))
   if encoded.error != SnapshotError.None:
     return ManagedResult[ManagedCompaction](status: snapshotFailure(encoded.error))
-  let restored = decodeRepositorySnapshot(encoded.value.bytes, repository.chain, repository.schema,
-    snapshotLimits(repository.limits))
-  if restored.error != SnapshotError.None:
-    return ManagedResult[ManagedCompaction](status: snapshotFailure(restored.error))
+  let restored = cloneRepositorySelection(plan, repository.limits.repository)
+  if restored.error == RepositoryError.LimitExceeded:
+    return ManagedResult[ManagedCompaction](status: FileError.LimitExceeded)
+  if restored.error != RepositoryError.None:
+    return ManagedResult[ManagedCompaction](status: FileError.InvalidRetention)
   let next = ManagedEpoch(uint64(repository.epoch)+1)
   let manifest = encodeManagedManifest(repository.chain, repository.schema, next,
     selected.generation,
@@ -371,8 +375,7 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   let prior = repository.epoch
   let closed = repository.journal.close
   let moved = moveManagedJournal(repository.journal, journal)
-  repository.memory = restored.value.repository
-  repository.context = restored.value.context
+  repository.memory = restored.value # The private selected context remains byte-identical through physical replacement.
   repository.epoch = next
   repository.snapshotBytes = uint64(encoded.value.bytes.len)
   if closed != FileError.None or moved != FileError.None:
