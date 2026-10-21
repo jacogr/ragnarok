@@ -3,10 +3,11 @@
 
 ## Synchronous exclusive-owner disk coordination: publish nodes/context before canonical or RPC installation.
 ## Call only during startup or on an explicitly excluded native worker, never from dispatcher callbacks.
+import std/assertions
 import ./[chain, disk_history]
 import ../chain/[genesis, provider, parameters]
 import ../state/[store, disk_store, accumulation_publication]
-import ../storage/[file_repository, node_repository, database_identity]
+import ../storage/[file_repository, node_repository, database_identity, managed_repository]
 import ../codec/bounded
 import ../rpc/server as rpc_server
 
@@ -47,15 +48,12 @@ func fileError*[T](outcome: DiskChainResult[T]): FileError {.requires:
     outcome.status == DiskChainError.FileFailure.} =
   ## Inspect only an actual context-read IO failure.
   outcome.fileReason
-proc initializeDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
-    owner: ApplicationChain, limits: JournalLimits): DiskChainResult[RepositoryGeneration] =
-  ## Exclusive creation provisions at most nine complete roots, then one atomic canonical context.
-  ## Intermediate bootstrap frames are forensic evidence, never a resumable canonical fallback.
-  if disk.opened: return DiskChainResult[RepositoryGeneration](status: DiskChainError.Busy)
+proc diskSources(owner: ApplicationChain): DiskChainResult[seq[StateStoreSnapshot]] =
+  ## Collect rolling roots and separated explicit finality under the existing complete-state policy.
   let current = owner.stateSnapshot
   let view = owner.chainView
   if current.error != StateStoreError.None or view.retainedCount == 0:
-    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+    return DiskChainResult[seq[StateStoreSnapshot]](status: DiskChainError.CanonicalMismatch)
   var sources: seq[StateStoreSnapshot] = @[]
   let finalized = view.finalizedBlock
   var inside = false
@@ -68,7 +66,18 @@ proc initializeDiskChain*(disk: var DiskStateStore, path: string, chain: Storage
     sources.add(view.retainedBlockAt(RetainedBlockIndex(index)).value.stateSnapshot)
   for source in sources:
     if not sameStateStorePolicy(current.value, source):
-      return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+      return DiskChainResult[seq[StateStoreSnapshot]](status: DiskChainError.CanonicalMismatch)
+  DiskChainResult[seq[StateStoreSnapshot]](status: DiskChainError.None, completed: sources)
+proc initializeDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
+    owner: ApplicationChain, limits: JournalLimits): DiskChainResult[RepositoryGeneration] =
+  ## Exclusive creation provisions at most nine complete roots, then one atomic canonical context.
+  ## Intermediate bootstrap frames are forensic evidence, never a resumable canonical fallback.
+  if disk.opened: return DiskChainResult[RepositoryGeneration](status: DiskChainError.Busy)
+  let current = owner.stateSnapshot
+  let captured = diskSources(owner)
+  if captured.error != DiskChainError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let sources = captured.value
   let generation = RepositoryGeneration(uint64(sources.len)+1)
   let context = encodeDiskHistory(owner, chain, generation, limits.contextBytes)
   if context.error != DiskHistoryError.None:
@@ -95,13 +104,37 @@ proc initializeDiskChain*(disk: var DiskStateStore, path: string, chain: Storage
         storeReason: selected)
   adopted = true
   DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: generation)
-proc openDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
+proc initializeManagedDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
+    owner: ApplicationChain, limits: ManagedLimits): DiskChainResult[RepositoryGeneration] =
+  ## All rolling roots, explicit finality and canonical context are admitted before publishing one managed epoch.
+  if disk.opened: return DiskChainResult[RepositoryGeneration](status: DiskChainError.Busy)
+  let captured = diskSources(owner)
+  if captured.error != DiskChainError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let sources = captured.value
+  let generation = RepositoryGeneration(uint64(sources.len))
+  let context = encodeDiskHistory(owner, chain, generation, limits.contextBytes)
+  if context.error != DiskHistoryError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.ContextFailure,
+        contextReason: context.error)
+  var history: seq[StateStoreSnapshot] = @[]
+  for index in 0..<sources.len-1: history.add(sources[index])
+  let initialized = initializeManagedDiskStateStore(disk, path, chain, owner.stateSnapshot.value,
+    limits, StorageSchema.FullStateV1, context.value, history)
+  if initialized.error != DiskStoreError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
+        storeReason: initialized)
+  assert uint64(disk.generation.value) == uint64(generation)
+  DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: generation)
+proc acquireDiskChain(disk: var DiskStateStore, path: string, chain: StorageChainId,
     configuration: Parameters, policy: StateStoreLimits,
-    limits: JournalLimits): DiskChainResult[ApplicationChain] =
+    limits: JournalLimits, managed: bool, physical: ManagedLimits): DiskChainResult[
+        ApplicationChain] =
   ## Normal restart trusts only this complete local journal and exact configured chain/profile.
   ## No external-import fallback, repair, truncation or silent bootstrap adoption occurs.
   if disk.opened: return DiskChainResult[ApplicationChain](status: DiskChainError.Busy)
-  let acquired = openLocalDiskStateStore(disk, path, chain, policy, limits)
+  let acquired = if managed: openLocalManagedDiskStateStore(disk, path, chain, policy, physical)
+    else: openLocalDiskStateStore(disk, path, chain, policy, limits)
   if acquired.error != DiskStoreError.None:
     return DiskChainResult[ApplicationChain](status: DiskChainError.StoreFailure,
         storeReason: acquired)
@@ -119,6 +152,18 @@ proc openDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainI
       contextReason: restored.error)
   adopted = true
   DiskChainResult[ApplicationChain](status: DiskChainError.None, completed: restored.value)
+proc openDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
+    configuration: Parameters, policy: StateStoreLimits,
+    limits: JournalLimits): DiskChainResult[ApplicationChain] =
+  ## Existing single-file startup keeps its strict local-head and application context binding.
+  acquireDiskChain(disk, path, chain, configuration, policy, limits, false, default(ManagedLimits))
+proc openManagedDiskChain*(disk: var DiskStateStore, path: string, chain: StorageChainId,
+    configuration: Parameters, policy: StateStoreLimits,
+    limits: ManagedLimits): DiskChainResult[ApplicationChain] =
+  ## Managed startup resumes only after the same profile, history, map and explicit finality checks.
+  let journal = JournalLimits(repository: limits.repository, bytes: limits.journalBytes,
+      contextBytes: limits.contextBytes)
+  acquireDiskChain(disk, path, chain, configuration, policy, journal, true, limits)
 proc prepareContext(disk: DiskStateStore, owner: ApplicationChain, prepared: PreparedChainUpdate,
     chain: StorageChainId, limit: ByteLimit): DiskChainResult[seq[byte]] =
   ## Preflight exact canonical/disk authority and all fallible context encoding before IO begins.
