@@ -91,3 +91,8 @@ proof/root compatibility evidence, not execution of the published STF blocks.
 Independent snapshot forks now prove present-empty, replacement and deletion under
 their separate roots. Retained witnesses survive source handle retirement; foreign
 revision roots refuse, and detached byte mutation cannot affect proofs or snapshots.
+
+The maintained primitive observer refuses every actual generation and verification
+hash prefix, including long-value hashing and completed sibling work. Short individual
+and aggregate quotas refuse with zero hash calls; recovery preserves the original
+witness, trusted root and source values. No fault hook enters production.
