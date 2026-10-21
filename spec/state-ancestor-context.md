@@ -82,3 +82,11 @@ completes lookup admission under captured policies and only then executes/finali
 The existing one-shot API now composes the same two stages, preserving its public contract and exact hash work. A genuine guaranteed two-guest
 fixture verifies missing/satisfied demand, failed completion without context, exact resulting root,
 no early publication, two actual guest executions and refusal after canonical advancement.
+
+Raw input discovery is explicitly enabled by `BlockInputLimits.discoverAncestors` (default false).
+An incomplete certified demand returns `NeedsAncestors` and retains the exact generation/prepared
+block in `AwaitingAncestors`; redundant raw bytes retire. Only after worker collection may the host
+call `resumeAncestors`, which checks exact canonical identity and all count/byte/owner bounds before
+replacing context. Refusal preserves suspension. A later preparation turn checks the supplied chain
+and completes the original reports, without repeating block decoding/signatures. Partial context can
+suspend again. Genuine tests cover completion, repeated missing context, stale IDs and atomic refusal.
