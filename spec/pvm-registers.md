@@ -65,7 +65,8 @@ implementation. It emits the checked-in `tests/fixtures/pvm-registers.bin`:
 
 `spec/polkavm-pins.json` hashes the complete consumed source files, the assembly
 macro definitions and original license. Upstream sources remain pristine in the
-pinned submodule; none of their code or build scripts is executed. These are
+pinned submodule; the original fixture extraction executes no upstream code or
+build scripts. These are
 compatible scalar value witnesses, **not** RISC-V instruction encodings, complete
 PolkaVM programs, gas vectors or saved fuzz crash results. The `TEST_RR_OP` result
 and operand order is verified against the pinned `test_macros.h`. The bundled
@@ -82,11 +83,20 @@ and invalid/default address is checked separately. Four compiler guards protect
 payload/status/accessor privacy and the nominal PC; three isolated misuse processes
 must fail at the exact success-access contract.
 
+A later [public interpreter cross-check](pvm-register-reference-crosscheck.md)
+executes all38977 unchanged independent rows across85 register opcodes against
+pinned PolkaVM JamV1 and compares every register plus the trap PC. It preserves
+these independent expectations and their source-only extraction; Rust is optional
+test tooling, with no production integration or full-VM conformance claim.
+
 ## Remaining execution work
 
-The [basic-block gas cost model](pvm-gas.md) now has independent pipeline/dependency
-witnesses and an explicit negative-target specification gate. Next, compose block
-charging and register-only stepping with exact exceptional-state ordering; control
-flow and memory-instruction integration follow separately. The wrapping memory
-ambiguity in `pvm-machine.md` remains an explicit gate. Standard initialization,
-host calls and complete JAM invocation remain unimplemented.
+Register-value agreement does not establish complete execution conformance.
+[Charged stepping](pvm-step.md) and [recursive execution](pvm-execution.md) now
+compose gas, control flow and scalar memory; [initialization](pvm-initialization.md)
+and the scoped host/JAM adapters have their own contracts and completion evidence.
+The [discrepancy register](graypaper-discrepancies.md) records the adopted memory/
+pricing exceptions and unresolved specification questions. Local execution limits
+and remaining integration scope still prevent an unrestricted PVM conformance claim.
+M1 framing is complete; full state serialization, whole-block parity and full
+chainspec equivalence remain open.
