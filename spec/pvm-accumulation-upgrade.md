@@ -10,6 +10,25 @@ and current account-write proofs. Foreign supervised mutation remains an explici
 implementation gate. Underfunding drains gas to zero. The details and verification
 below retain the historical release argument layout.
 
+## Current foreign-target refusal ordering
+
+Scope: Omega_U at Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
+`pvm_invocations.tex`, current upgrade21. Charge1028 first, then capture the entire
+32-byte hash before selecting the account. A full-width missing or out-of-domain
+selector returns WHO; an existing foreign account whose effective supervisor is not
+the invoker returns HUH. Supervisor authority includes the recorded creation slot,
+so a recreated service cannot inherit it. These protocol refusals precede the
+remaining explicit gate for an authorized foreign mutation. Self/sentinel success
+and all publication boundaries remain unchanged.
+
+Completion checks: native `pvm_accumulation_upgrade` and dispatch consumers, covering
+fault versus missing/unauthorized targets, exact/short gas, full-width IDs, malformed
+metadata, stale supervisor incarnation, unchanged accounts/checkpoints and retained
+ARC ownership. This closes an implementation error, not a discrepancy in the paper.
+
+Local macOS upgrade and dispatch native suites passed, each with stable1000-cycle
+ARC evidence. The authorized foreign mutation remains explicitly incomplete.
+
 ## Scope and authority
 
 Implement upgrade (20), Omega_U, against GP 0.8.0 revision

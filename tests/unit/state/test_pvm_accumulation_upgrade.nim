@@ -63,8 +63,8 @@ proc creationData(data: seq[byte]): seq[byte] =
 proc source(address = 196608'u64, accumulation = 123'u64, transfer = 456'u64,
     credit = 100000'u64, data: seq[byte] = payload(), account: ServiceMetadata = original(),
     extra: seq[StateEntry] = @[], writes = 2'u64,
-    suffix: seq[seq[byte]] = @[@[50'u8, 0]]): PreparedAccumulationMachine =
-  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, address),
+    suffix: seq[seq[byte]] = @[@[50'u8, 0]], target = high(uint64)): PreparedAccumulationMachine =
+  var instructions = @[registerImmediate(7, target), registerImmediate(8, address),
     registerImmediate(9, accumulation), registerImmediate(10, transfer), @[10'u8, 21]]
   for instruction in suffix:
     instructions.add(instruction) # Continue the original decoded program after its own metadata changes.
@@ -307,6 +307,47 @@ let noRead = source(address = high(uint64))
 failHash(1)
 assert run(noRead).value.exit == StepExit.Panic and hashCalls() == 0, "bad memory never reaches state hashing"
 failHash(0)
+# Explicit self and the sentinel share the same successful metadata transition.
+checkCode(context(run(source(target = 42))), payload())
+# Current target selection preserves memory, WHO and HUH ordering before the remaining authorized-mutation gate.
+for target in [99'u64, uint64(high(uint32)), uint64(high(uint32))+43]:
+  let missing = source(target = target)
+  failHash(1)
+  let rejected = run(missing)
+  assert hashCalls() == 0, "WHO requires no account hashing"
+  failHash(0)
+  assert rejected.error == AccumulationDispatchError.None and rejected.value.exit == StepExit.Halt
+  assert uint64(machineInfo(rejected.value.machine).value.registers[7]) == high(uint64)-3
+  assert accountBytes(context(rejected)) == accountBytes(context(rejected,
+      AccumulationDimension.Exceptional)), "WHO leaves both account versions unchanged"
+  let fault = run(source(target = target, address = high(uint64)))
+  assert fault.error == AccumulationDispatchError.None and fault.value.exit == StepExit.Panic
+  assert uint64(machineInfo(fault.value.machine).value.registers[7]) == target, "memory panic preserves target"
+# Valid foreign metadata with no matching supervisor, including a stale incarnation, returns HUH.
+for supervisor in [ServiceIndex(99), ServiceIndex(42)]:
+  let foreign = serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(supervisor: supervisor,
+      supervisorCreated: AccountSlot(44)), ByteLimit(ServiceMetadataBytes)).value
+  let rejected = run(source(target = 99, extra = @[foreign]))
+  assert rejected.error == AccumulationDispatchError.None and rejected.value.exit == StepExit.Halt
+  assert uint64(machineInfo(rejected.value.machine).value.registers[7]) == high(uint64)-8
+  assert context(rejected).effectAccounts.value.lookup(foreign.key).value.bytes == foreign.value
+  assert accountBytes(context(rejected)) == accountBytes(context(rejected,
+      AccumulationDimension.Exceptional)), "HUH never mutates self"
+# A matching supervisor creation slot reaches the explicit implementation gate rather than a false HUH.
+let supervised = serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(supervisor: ServiceIndex(
+    42), supervisorCreated: AccountSlot(43)), ByteLimit(ServiceMetadataBytes)).value
+assert run(source(target = 99, extra = @[supervised])).error ==
+    AccumulationDispatchError.UnsupportedHostCall
+# Gas and local capture limits precede even a genuinely authorized foreign mutation.
+let foreignCall = source(target = 99, extra = @[supervised])
+let foreignCost = price(foreignCall)+1028
+assert run(source(target = 99, credit = foreignCost-1, extra = @[supervised])).value.exit ==
+    StepExit.OutOfGas
+assert run(source(target = 99, extra = @[supervised]), 31).error ==
+    AccumulationDispatchError.LimitExceeded
+let broken = StateEntry(key: supervised.key, value: newSeq[byte](ServiceMetadataBytes-1))
+assert run(source(target = 99, extra = @[broken])).error == AccumulationDispatchError.MalformedState
+assert run(source(target = 99, extra = @[broken], address = high(uint64))).value.exit == StepExit.Panic
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let completed = run(valid)

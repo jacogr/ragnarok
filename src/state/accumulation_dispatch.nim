@@ -693,8 +693,6 @@ proc upgradeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return charged # Affordability precedes memory capture and all state changes.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let self = uint64(uint32(current.effectInfo.value.service))
-  if uint64(cpu.registers[7]) != high(uint64) and uint64(cpu.registers[7]) != self:
-    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Foreign upgrade needs supervised account mutation tracking.
   let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),
       context.copyLimit)
   case captured.error
@@ -710,6 +708,34 @@ proc upgradeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
   var hash = default(array[32, byte])
   for i in 0..<32:
     hash[i] = captured.value[i] # Exact fixed capture proves every source index.
+  let target = uint64(cpu.registers[7])
+  if target != high(uint64) and target != self:
+    # Memory panic precedes WHO; never narrow a full-width target into an unrelated account.
+    if target > uint64(high(uint32)):
+      response.registers[7] = RegisterValue(high(uint64)-3)
+      return hostSuccess[AccumulationDispatchError](response)
+    let accounts = current.effectAccounts.value
+    let found = accounts.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(uint32(target))))
+    if found.error == StateStoreError.MissingKey:
+      response.registers[7] = RegisterValue(high(uint64)-3)
+      return hostSuccess[AccumulationDispatchError](response) # WHO precedes authority checks.
+    if found.error != StateStoreError.None or found.value.byteLength != ServiceMetadataBytes:
+      return hostFailure(AccumulationDispatchError.MalformedState) # Corrupt backing cannot impersonate a guest refusal.
+    let account = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
+    if account.error != ServiceMetadataError.None:
+      return hostFailure(AccumulationDispatchError.MalformedState) # Check complete canonical metadata before selecting authority.
+    let invoker = accounts.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(uint32(self))))
+    if invoker.error != StateStoreError.None or invoker.value.byteLength != ServiceMetadataBytes:
+      return hostFailure(AccumulationDispatchError.MalformedState) # The current invoker needs authentic creation provenance.
+    let identity = decodeServiceMetadata(invoker.value.bytes, ByteLimit(ServiceMetadataBytes))
+    if identity.error != ServiceMetadataError.None:
+      return hostFailure(AccumulationDispatchError.MalformedState) # No authority may be fabricated from malformed metadata.
+    if uint64(uint32(account.value.metadata.supervisor)) != self or
+        uint32(account.value.metadata.supervisorCreated) != uint32(identity.value.metadata.created):
+      response.registers[7] = RegisterValue(high(uint64)-8)
+      return hostSuccess[AccumulationDispatchError](
+          response) # HUH includes stale incarnations and effective fallback to the foreign target.
+    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Authorized foreign mutation still requires its bounded publication proof.
   let changed = recordAccumulationUpgrade(context.effects, CodeHash(hash),
     Gas(uint64(cpu.registers[9])), Gas(uint64(cpu.registers[10])))
   case changed.error
