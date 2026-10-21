@@ -149,3 +149,7 @@ shutdown, repeated observation and 1,000 staged buffer/ticket retirement cycles.
 ## Real worker write refusal receipts
 
 Child-only kernel file-size ceilings cross header/profile/map context changes through actual detached-envelope I/O threads. Each zero/partial/short refusal must remain Completed(IoFailure), and exact/ample controls Completed(None), through both explicit collection and joined shutdown. Eighteen refusals and twelve controls verify exact old/new whole bytes, independently bound child/parent recovery, lock retirement and absence of temporary siblings. Producer byte policy remains sufficient; no live native owner crosses fork. Process/kernel behavior is covered, not power loss or post-rename directory-sync refusal.
+
+## Known worker process-exit boundaries
+
+Child processes exit without collection, joined close or copied-parent ARC destruction at observed Staged, Cancelled and durable Done boundaries. Across header/profile/map changes, nine boundary witnesses verify exact old/new whole envelope bytes, fresh parent cooperative lock admission and independently bound recovery, rejecting the other context. No live native owner crosses fork. Final private-directory removal detects orphan temporaries. These are known process boundaries, not mid-write interruption, power-loss or filesystem crash-consistency claims.
