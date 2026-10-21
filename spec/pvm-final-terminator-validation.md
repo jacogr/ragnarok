@@ -37,9 +37,12 @@ existing typed failure mappings. Rejection publishes no CPU or partially initial
 memory and executes no prefix or host call. It does not fabricate a guest panic or
 change invocation-level gas normalization.
 
-The raw decoder/stepper and inner-machine decoder keep their paper behavior. This
-exception only narrows JAM preparation's final terminator rule; it does not adopt
-other PolkaVM validation restrictions or eagerly validate static/dynamic targets.
+The raw decoder/stepper keep their paper behavior. `decodeJamProgram` now owns
+the shared check within the original bounded scan; both outer initialization and
+inner-machine creation use it. This
+exception narrows JAM preparation's final terminator rule. The same explicit JAM profile
+also owns separately documented jump-table exceptions GP-PVM-005/006; it does not adopt
+unrelated PolkaVM validation restrictions or eagerly validate static/dynamic targets.
 A final trap, static jump, indirect jump, load-immediate/static jump or
 load-immediate/indirect jump remains admissible. A conditional/fallthrough with a
 present final trap successor remains admissible too.
@@ -96,3 +99,11 @@ All three caller suites pass in checked release with their existing1000-cycle AR
 checks: authorization975472, refinement25202592 and accumulation269248 bytes,
 each unchanged before/after. The longer accumulation fixture uses its own64-byte
 program budget so refusal is semantic rather than local limit exhaustion.
+
+The explicit JAM decoder profile preserves all earlier initializer cases while
+sharing the single structural scan. Raw program and jump-table suites, initializer
+suite (1000 ARC cycles,2320 bytes stable) and inner lifecycle (1000 ARC cycles,
+140176 bytes stable) pass after the profile change. Inner creation now verifies HUH
+for malformed final terminators/oversized widths and successful capture of an empty
+semantic width0 table. The public132-case final-terminator and512-case jump-table
+oracles retain identical source/configuration and expected observations.

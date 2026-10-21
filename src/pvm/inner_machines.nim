@@ -127,7 +127,7 @@ proc createInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: Re
     fail(InnerMachineError.LimitExceeded)
   else:
     fail(InnerMachineError.InvalidMemory)
-  let parsed = decodeProgram(bytes.value, CodeAddress(uint64(registers[9])), limits.program, limits.jumps)
+  let parsed = decodeJamProgram(bytes.value, CodeAddress(uint64(registers[9])), limits.program, limits.jumps)
   if parsed.error == ProgramError.LimitExceeded: fail(InnerMachineError.LimitExceeded)
   if parsed.error != ProgramError.None:
     transition.response.registers[7] = RegisterValue(high(uint64)-8)

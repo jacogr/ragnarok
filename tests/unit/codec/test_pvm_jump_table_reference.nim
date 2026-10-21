@@ -18,11 +18,31 @@ for width in 0..255:
       assert uint64(jumpTarget(parsed.value, JumpIndex(0)).value) == 0
     else:
       assert jumpTarget(parsed.value, JumpIndex(0)).error == ProgramError.InvalidIndex
+    let jam = decodeJamProgram(wire, CodeAddress(2), ProgramByteLimit(512), JumpCountLimit(1))
+    assert jam.error == (if width > 4: ProgramError.InvalidProgram else: ProgramError.None)
+    if width <= 4:
+      let entry = jumpTarget(jam.value, JumpIndex(0))
+      if count == 1 and width != 0:
+        assert entry.error == ProgramError.None and uint64(entry.value) == 0
+      else:
+        assert entry.error == ProgramError.InvalidIndex
+    # The declared count still consumes local policy even if the JAM profile hides width-zero entries.
+    if count == 1:
+      let limited = decodeJamProgram(wire, CodeAddress(2), ProgramByteLimit(512), JumpCountLimit(0))
+      assert limited.error == ProgramError.LimitExceeded
     var registers = default(RegisterFile)
     registers[8] = RegisterValue(2)
     let source = captureMachine(parsed.value, captureMemory([], PageLimit(0)).value,
       MachineInfo(pc: CodeAddress(2), gas: MachineGas(1000), blockCharged: true,
         registers: registers)).value
+    if width <= 4:
+      let compatible = captureMachine(jam.value, captureMemory([], PageLimit(0)).value,
+        machineInfo(source).value).value
+      let observed = execute(compatible, ExecutionStepLimit(2), GasCycleLimit(1000))
+      assert observed.error == StepError.None
+      assert observed.value.exit == (if count == 1 and width !=
+          0: StepExit.Host else: StepExit.Panic)
+      if observed.value.exit == StepExit.Host: assert uint64(observed.value.hostCall) == 0
     let first = stepOnce(source, GasCycleLimit(1000))
     assert first.error == StepError.None
     assert first.value.exit == (if count == 1: StepExit.Continued else: StepExit.Panic)

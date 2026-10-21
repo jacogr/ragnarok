@@ -264,7 +264,8 @@ source-inspected; our independent public-API witness was executed.
 shared JAM initialization as `InvalidProgram`, before memory materialization or any
 execution. All22 final members of T are covered at0/1/24 operand padding lengths,
 including unreachable suffixes. Static-target runtime validation remains unchanged.
-Raw decoding/stepping and inner-machine decoding retain paper behavior. Three active native cases verify successful decoding, the actual
+Raw decoding/stepping retain paper behavior. The explicit JAM decoding profile
+also applies the rule to inner-machine creation, preserving its HUH failure mapping. Three active native cases verify successful decoding, the actual
 prefix, single-step and recursive panic state, exact2/1 step budgets and original
 aliases. The separate reference checker requires both observed module rejections
 and the successful control. No private feature or upstream/source pin change.
@@ -298,7 +299,10 @@ explicitly proposes limiting each table entry to four bytes, as well as total
 code/table limits. This is a direct proposed resolution for the width discrepancy,
 not a merged rule in our pinned paper. Do not file a duplicate issue; the
 [local draft](graypaper-discrepancy-issue-drafts.md) supplies a precise comment.
-No production acceptance rule or pin changes in this evidence layer.
+The explicit `decodeJamProgram` profile now returns `InvalidProgram` for widths
+above4 at outer initialization and HUH at inner-machine creation. Raw paper decoding
+continues to accept them. The native512-case suite checks both profiles against the
+retained512 public reference observations. No pin changes.
 
 ## GP-PVM-006: nonempty zero-width jump tables disappear in PolkaVM
 
@@ -320,10 +324,13 @@ semantics difference, not merely stricter module rejection or a local resource c
 **Coverage and disposition:** the [native witness](../tests/unit/codec/test_pvm_jump_table_reference.nim)
 checks logical lookup, first-step destination, full host/panic exit and all CPU
 source aliases for widths0..255/counts0..1. The public checker verifies502 parse
-rejections,6 traps and4 host calls. Production raw execution remains paper-aligned;
-JAM normalization requires an explicit compatibility representation rather than
-mistaking this accepted program for a preparation failure. The existing final-
-terminator rejection exception alone cannot make this accepted width0 case match.
+rejections,6 traps and4 host calls. Production raw execution remains paper-aligned. The explicit JAM profile captures
+width0 tables with semantic count0 while retaining the original bytes verbatim;
+outer initialization and inner-machine creation both select that profile. The
+accepted width0/count1 case now matches PolkaVM's later panic rather than becoming
+a preparation failure. Local limits still apply to the declared count. All512 native
+raw cases and the JAM profile's502 rejections/6 panics/4 host calls match their
+respective expected observations.
 
 **Question to raise:** should z=0 require a zero table count, preserve the declared
 number of zero entries, or define a semantically empty table regardless of count?

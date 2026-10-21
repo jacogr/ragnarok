@@ -4,7 +4,7 @@
 ## GP 0.8.0 program deblob and operand decoding; see spec/pvm-program.md. Input is borrowed
 ## during validation, then copied into private acyclic ARC storage.
 ##
-## Exposes Program snapshots and nominal address/index/limit types, decodeProgram,
+## Exposes Program snapshots and nominal address/index/limit types, decodeProgram/decodeJamProgram,
 ## instruction/jump lookup, raw instruction-byte lookup with zero padding, and block-boundary
 ## and containing-block queries.
 
@@ -28,6 +28,9 @@ type
     else:
       # No partial owner, cursor or value escapes a failure.
       discard
+  # The private choice cannot be supplied accidentally through an existing raw decoder call.
+  DecodeProfile {.pure.} = enum
+    Paper, Jam
   # A single immutable byte allocation owns code, bitmap and compressed table together.
   ProgramData = ref object
     bytes: seq[byte]
@@ -79,8 +82,8 @@ func distance(bytes: openArray[byte], maskOffset, length, index: int): range[0..
     if marked(bytes, maskOffset, index + 1 + result): break
     inc result
 
-proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
-    byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit): ProgramResult[Program] =
+proc decode(input: openArray[byte], entry: CodeAddress,
+    byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit, profile: DecodeProfile): ProgramResult[Program] =
   ## Decode canonical framing, check every extent/value before allocation, then capture one owned copy.
   ## entry must name a marked valid opcode; jump targets are checked only when executed, not here.
   # Bound even a fully present input before scanning or copying it.
@@ -99,6 +102,9 @@ proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
   if cursor == input.len: return ProgramResult[Program](status: ProgramError.Truncated)
   let width = int(input[cursor])
   inc cursor
+  # GP-PVM-005: executable JAM preparation follows the reference's four-byte entry-width ceiling.
+  if profile == DecodeProfile.Jam and width > 4:
+    return ProgramResult[Program](status: ProgramError.InvalidProgram)
   let codeCount = natural.decode(input.toOpenArray(cursor, input.len - 1))
   # Canonical naturals give a unique framing; overlong lengths are not alternate formats.
   if not codeCount.ok:
@@ -149,8 +155,13 @@ proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
       return ProgramResult[Program](status: ProgramError.InvalidProgram)
     let step = 1 + int(distance(input, maskOffset, codeLength, pc))
     # The final instruction must belong to T, even when it carries operand bytes.
-    if step == codeLength - pc and not terminatesBlock(input[codeOffset + pc]):
-      return ProgramResult[Program](status: ProgramError.InvalidProgram)
+    if step == codeLength - pc:
+      let opcode = input[codeOffset + pc]
+      if not terminatesBlock(opcode):
+        return ProgramResult[Program](status: ProgramError.InvalidProgram)
+      # GP-PVM-004: JAM modules require a final terminator with no fallthrough successor.
+      if profile == DecodeProfile.Jam and opcode notin {0'u8, 40'u8, 50'u8, 80'u8, 180'u8}:
+        return ProgramResult[Program](status: ProgramError.InvalidProgram)
     pc += step
   # Validate entry without narrowing it until the code extent proves the conversion safe.
   if uint64(entry) >= codeSize:
@@ -163,7 +174,21 @@ proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
   for i in 0..<input.len: owned[i] = input[i]
   ProgramResult[Program](status: ProgramError.None, completed: Program(data: ProgramData(
     bytes: owned, codeOffset: codeOffset, codeLength: codeLength, maskOffset: maskOffset,
-    jumpOffset: jumpOffset, jumpWidth: width, jumps: jumps)))
+    jumpOffset: jumpOffset, jumpWidth: width,
+    jumps: (if profile == DecodeProfile.Jam and width == 0: 0'u64 else: jumps))))
+
+proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
+    byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit): ProgramResult[Program] =
+  ## Decode the pinned paper's raw structure and preserve logical zero-width table entries.
+  ## Input is borrowed only during capture; all successful program storage is privately owned.
+  decode(input, entry, byteLimit, jumpLimit, DecodeProfile.Paper)
+
+proc decodeJamProgram*(input: openArray[byte], entry: CodeAddress,
+    byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit): ProgramResult[Program] =
+  ## Decode for JAM execution with scoped GP-PVM-004/005/006 PolkaVM compatibility rules.
+  ## Reject missing final successors/widths above four; width-zero tables are semantically empty.
+  ## Original bytes remain owned verbatim; limits apply to the declared count before normalization.
+  decode(input, entry, byteLimit, jumpLimit, DecodeProfile.Jam)
 
 proc codeLength*(program: Program): ProgramResult[uint64] =
   ## Return logical code size without publishing backing storage; default handles are typed failures.
