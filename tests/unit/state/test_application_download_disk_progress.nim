@@ -6,7 +6,8 @@ import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/download_command
 import ../../../src/quic/[block_download_loop, block_download_stream]
-import ../../../src/codec/[bounded, report_owned]
+import ../../../src/codec/[bounded, header, report_owned]
+import ../../../src/chain/genesis
 import ../../support/[application_download_chain, application_download_command_context,
   application_download_disk_context, block_download_transport]
 
@@ -58,6 +59,47 @@ proc main() {.raises.} =
   assert stale.outcome.error == DownloadCommandResult.Exhausted and stale.outcome.adoptedBlocks == 0
   assert stale.secondRequests == 1 and readFile(DiskPath) == bytes
   assertDiskPrefix(context, 5, ChainPath, DiskPath)
+  var local = extra()
+  local.add("--download-local-ancestors")
+  var restricted = downloadLimits()
+  restricted.input.ancestors = ElementLimit(4)
+  let noCount = exchangeDownloads(context, @[responseFrame(context.children[5])],
+    @[DownloadTransferMode.Healthy], 1, restricted, ChainPath, PolicyPath, "local-count", local,
+        firstChild = 5)
+  assert noCount.outcome.error == DownloadCommandResult.InvalidAncestors
+  assert noCount.secondRequests == 0 and noCount.outcome.adoptedBlocks == 0
+  assert readFile(DiskPath) == bytes # Startup/reopen cannot append when ancestry acquisition refuses.
+  restricted.input.ancestors = ElementLimit(5)
+  let noFuture = exchangeDownloads(context, @[responseFrame(context.children[5])],
+    @[DownloadTransferMode.Healthy], 2, restricted, ChainPath, PolicyPath, "local-future", local,
+        firstChild = 5)
+  assert noFuture.outcome.error == DownloadCommandResult.InvalidPolicy
+  assert noFuture.secondRequests == 0 and readFile(DiskPath) == bytes
+  var localBytes = 0'u64
+  for index in 0..<5:
+    localBytes += uint64(context.heads[index].header.headerInfo.value.consumed)
+  restricted = downloadLimits()
+  restricted.input.ancestorBytes = ByteLimit(localBytes - 1)
+  let noBytes = exchangeDownloads(context, @[responseFrame(context.children[5])],
+    @[DownloadTransferMode.Healthy], 1, restricted, ChainPath, PolicyPath, "local-bytes", local,
+        firstChild = 5)
+  assert noBytes.outcome.error == DownloadCommandResult.InvalidAncestors
+  assert noBytes.secondRequests == 0 and readFile(DiskPath) == bytes
+  restricted.input.ancestorBytes = ByteLimit(localBytes)
+  let exact = exchangeDownloads(context, @[responseFrame(context.children[5])],
+    @[DownloadTransferMode.Healthy], 1, restricted, ChainPath, PolicyPath, "local-exact", local,
+        firstChild = 5)
+  assert exact.outcome.error == DownloadCommandResult.Adopted and exact.outcome.adoptedBlocks == 1
+  assert exact.secondRequests == 1
+  assertDiskPrefix(context, 6, ChainPath, DiskPath)
+  let localProgress = exchangeDownloads(context, @[responseFrame(context.children[6]),
+      responseFrame(context.children[7])],
+    healthy[0..1], 2, downloadLimits(), ChainPath, PolicyPath, "local-progress", local,
+        firstChild = 6)
+  assert localProgress.outcome.error == DownloadCommandResult.Adopted and
+      localProgress.outcome.adoptedBlocks == 2
+  assert localProgress.secondRequests == 2
+  assertDiskPrefix(context, 8, ChainPath, DiskPath)
   removeDisk()
   let empty = exchangeDownloads(context, @[first, @[0'u8, 0, 0, 0]], healthy[0..1], 3,
     downloadLimits(), ChainPath, PolicyPath, "disk-empty", extra())
@@ -84,7 +126,7 @@ proc main() {.raises.} =
   removeDisk()
   initializeFinalizedPrefix(context, DiskPath)
   let finalized = exchangeDownloads(context, @[second, third], healthy[0..1], 2, downloadLimits(),
-    ChainPath, PolicyPath, "disk-finalized", extra(), firstChild = 1)
+    ChainPath, PolicyPath, "disk-finalized", local, firstChild = 1)
   assert finalized.outcome.error == DownloadCommandResult.Adopted and
       finalized.outcome.adoptedBlocks == 2
   assertDiskPrefix(context, 3, ChainPath, DiskPath, finalizedIndex = 0)
