@@ -79,14 +79,16 @@ The pinned `davxy/jam-test-vectors` revision
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a` has codec, STF and trace data but no
 standalone PVM instruction corpus at its top level. This increment makes no
 published PVM execution-vector parity claim. Tests use independently specified
-literal bytes and expected operands; a compatible execution corpus remains a gate
-for the interpreter increment. No upstream pins are advanced.
+literal bytes and expected operands. Subsequent [reference comparisons](pvm-reference-runner.md)
+now cover the interpreter subset through pinned public PolkaVM APIs; they do not
+establish a published execution-vector or unrestricted conformance claim. No upstream pins are advanced.
 
 The [machine/memory increment](pvm-machine.md) now supplies immutable snapshots and
-scalar memory access, with the approved PolkaVM memory exception ordering. Gas charging,
-instruction execution, standard program initialization,
-host calls, invocation wrappers and whole JAM execution remain unimplemented.
-Next bounded increment: instruction execution and gas accounting.
+scalar memory access, with the approved PolkaVM memory exception ordering.
+[Charged execution](pvm-execution.md), [standard initialization](pvm-initialization.md)
+and [host dispatch](pvm-host-execution.md) are implemented by separate adapters.
+The [interpreter readiness map](pvm-interpreter-readiness.md) distinguishes those
+contracts, focused comparison evidence and remaining specification/JAM gates.
 
 ## JAM table-profile execution witnesses
 
