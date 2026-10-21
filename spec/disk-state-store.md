@@ -28,3 +28,24 @@ These sources inform design tradeoffs; no foreign node encoding, dependency or l
 implementation is copied. Our journal remains the correctness baseline. Layout/cache/reclamation
 changes require reproducible measurements and recovery tests; no throughput claim follows from
 fewer encoded bytes alone. Canonical block authority cannot be inferred from a locally valid root.
+
+## Durable StateStore owner
+
+`state/disk_store.nim` owns one explicit-close, noncopyable `FileRepository` and an ordinary
+in-memory `StateStore`. Creation requires an explicit complete snapshot and exclusively creates
+the journal. Strict reopen requires independently supplied chain, root and exact local generation,
+then constructs one StateStore from checked reachable leaves under explicit caller-selected policy.
+No self-authentication, implicit repair, truncation, default database or policy widening occurs.
+
+Updates fork the current immutable snapshot privately, validate/apply the borrowed batch, export
+only changed physical nodes, and append/synchronize the journal before replacing the live memory
+snapshot. Empty batches retain identity without a frame. Successful nonempty no-ops publish a new
+snapshot and a journal generation. Native IO uncertainty poisons the journal: new reads/writes
+refuse until close and explicit trusted recovery; already retained snapshots remain readable.
+Failed initialization/open releases its lock, preserving any created bytes for explicit diagnosis.
+Normal forks remain independent in-memory execution branches, never duplicate descriptor owners.
+
+This first owner exposes durable state revisions only. It is not yet wired into normal application
+adoption, canonical block metadata or a startup flag. Those require atomic publication of the
+matching application context and coordination with state #5's startup/recovery layer. A successful
+storage receipt cannot silently advance the application head or choose consensus authority.
