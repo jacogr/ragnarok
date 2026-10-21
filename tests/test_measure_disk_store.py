@@ -18,7 +18,7 @@ class DiskStoreMeasurementTests(unittest.TestCase):
         """Construct one complete authored report without running the native workload."""
         rows = [dict(entries=entries, retained=retained, updates=64, hash_calls=100,
                      initialized_bytes=200, peak_bytes=400, retained_bytes=300,
-                     journal_bytes=1000, full_frame_bytes=2000) for entries, retained in CASES]
+                     journal_bytes=1000, full_frame_bytes=2000, history_hash_calls=0, physical_nodes=1000) for entries, retained in CASES]
         return dict(**{key: key for key in MATCH}, samples=[copy.deepcopy(rows), copy.deepcopy(rows)])
 
     def test_complete_repeated_report_and_signed_deltas(self):
@@ -57,10 +57,10 @@ class DiskStoreMeasurementTests(unittest.TestCase):
         """Noisy durations never enter exact counter equality; malformed timing fields refuse."""
         rows = self.report()['samples'][0]
         for row in rows:
-            row.update(publish_ns=100, reopen_ns=200)
+            row.update(publish_ns=100, reopen_ns=200, history_ns=300)
         counters, timings = parse_sample('\n'.join(json.dumps(row) for row in rows))
         self.assertEqual(len(counters), 4)
-        self.assertEqual(timings[0], dict(publish_ns=100, reopen_ns=200))
+        self.assertEqual(timings[0], dict(publish_ns=100, reopen_ns=200, history_ns=300))
         for value in (True, -1, '100'):
             rows[0]['publish_ns'] = value
             with self.assertRaises(ValueError):
