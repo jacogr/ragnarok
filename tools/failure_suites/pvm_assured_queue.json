@@ -1,0 +1,209 @@
+{
+  "source": "tests/native/pvm_assured_queue.nim",
+  "build_name": "pvm-assured-queue",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-assured-queue-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured queue default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-assured-queue-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured queue source"
+    },
+    {
+      "identity": {
+        "origin": "profile"
+      },
+      "arguments": [
+        "profile"
+      ],
+      "name": "pvm-assured-queue-profile",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured queue profile"
+    },
+    {
+      "identity": {
+        "origin": "ancestors"
+      },
+      "arguments": [
+        "ancestors"
+      ],
+      "name": "pvm-assured-queue-ancestors",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured queue ancestors"
+    },
+    {
+      "identity": {
+        "origin": "admission"
+      },
+      "arguments": [
+        "admission"
+      ],
+      "name": "pvm-assured-queue-admission",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured queue admission"
+    },
+    {
+      "identity": {
+        "origin": "queue"
+      },
+      "arguments": [
+        "queue"
+      ],
+      "name": "pvm-assured-queue-queue",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured queue queue"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-assured-queue-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured queue owner"
+    },
+    {
+      "identity": {
+        "origin": "plan"
+      },
+      "arguments": [
+        "plan"
+      ],
+      "name": "pvm-assured-queue-plan",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured queue plan"
+    },
+    {
+      "identity": {
+        "origin": "reports"
+      },
+      "arguments": [
+        "reports"
+      ],
+      "name": "pvm-assured-queue-reports",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured queue reports"
+    },
+    {
+      "identity": {
+        "origin": "parameters"
+      },
+      "arguments": [
+        "parameters"
+      ],
+      "name": "pvm-assured-queue-parameters",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured queue parameters"
+    },
+    {
+      "identity": {
+        "origin": "admissionFailure-default"
+      },
+      "arguments": [
+        "admissionFailure-default"
+      ],
+      "name": "pvm-assured-queue-admissionFailure-default",
+      "diagnostic": "outcome.status == AdmissionFailure",
+      "description": "Assured queue admissionFailure-default"
+    },
+    {
+      "identity": {
+        "origin": "admissionFailure-success"
+      },
+      "arguments": [
+        "admissionFailure-success"
+      ],
+      "name": "pvm-assured-queue-admissionFailure-success",
+      "diagnostic": "outcome.status == AdmissionFailure",
+      "description": "Assured queue admissionFailure-success"
+    },
+    {
+      "identity": {
+        "origin": "admissionFailure-source"
+      },
+      "arguments": [
+        "admissionFailure-source"
+      ],
+      "name": "pvm-assured-queue-admissionFailure-source",
+      "diagnostic": "outcome.status == AdmissionFailure",
+      "description": "Assured queue admissionFailure-source"
+    },
+    {
+      "identity": {
+        "origin": "admissionFailure-other"
+      },
+      "arguments": [
+        "admissionFailure-other"
+      ],
+      "name": "pvm-assured-queue-admissionFailure-other",
+      "diagnostic": "outcome.status == AdmissionFailure",
+      "description": "Assured queue admissionFailure-other"
+    },
+    {
+      "identity": {
+        "origin": "queueFailure-default"
+      },
+      "arguments": [
+        "queueFailure-default"
+      ],
+      "name": "pvm-assured-queue-queueFailure-default",
+      "diagnostic": "outcome.status == QueueFailure",
+      "description": "Assured queue queueFailure-default"
+    },
+    {
+      "identity": {
+        "origin": "queueFailure-success"
+      },
+      "arguments": [
+        "queueFailure-success"
+      ],
+      "name": "pvm-assured-queue-queueFailure-success",
+      "diagnostic": "outcome.status == QueueFailure",
+      "description": "Assured queue queueFailure-success"
+    },
+    {
+      "identity": {
+        "origin": "queueFailure-source"
+      },
+      "arguments": [
+        "queueFailure-source"
+      ],
+      "name": "pvm-assured-queue-queueFailure-source",
+      "diagnostic": "outcome.status == QueueFailure",
+      "description": "Assured queue queueFailure-source"
+    },
+    {
+      "identity": {
+        "origin": "queueFailure-other"
+      },
+      "arguments": [
+        "queueFailure-other"
+      ],
+      "name": "pvm-assured-queue-queueFailure-other",
+      "diagnostic": "outcome.status == QueueFailure",
+      "description": "Assured queue queueFailure-other"
+    }
+  ]
+}
