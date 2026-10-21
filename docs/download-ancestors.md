@@ -57,8 +57,10 @@ attempt and may end in `Exhausted`; it cannot publish a child.
 
 Ancestor files supply lookup context for the selected canonical head. They neither
 select a different head nor grant checkpoint-import authority. They do not create
-retained historical state or infer finality. The command still downloads at most
-one child from the configured pinned loopback peers.
+retained historical state or infer finality. The command defaults to one
+child; [bounded successive downloads](download-progress.md) can request up to 64
+additional children on the configured pinned loopback peers. Budget both initial
+files and the carried newer headers for the complete run.
 
 ## Combine with restored state
 
