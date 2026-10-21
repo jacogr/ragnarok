@@ -287,3 +287,24 @@ without byte changes, genuine signed successors with and without RPC, missing le
 changed durable finality, budget failures, exact owner retention and strict successor restart.
 Application options/services are not wired by this coordinator layer. External checkpoint import
 continues to require independent trust and does not inherit local history/finality.
+
+## Native disk-publication worker
+
+`app/disk_worker.nim` owns one fixed-address native thread and one bounded publication slot.
+Submission borrows stable disk/publication addresses and all their ARC aliases exclusively until
+Done collection or joined close. The host preflights and pauses RPC beforehand, touches only scalar
+worker state while native IO runs, then checks the actual receipt and installs the prepared update
+on the host before resuming RPC. The worker never invokes RPC or canonical installation.
+
+Default/foreign/stale tickets cannot collect another slot; Done retains capacity until collection.
+There is no cancellation-as-rollback API. Joined close reports either the actual operation result,
+including any IO uncertainty, or an explicit NotExecuted result when queued work never entered IO.
+A completed durable commit is never discarded by shutdown. Composite copy/dup hooks reject actual
+ARC lowering; relocation and destruction require an inactive worker.
+
+`make unit SUITE=disk_worker` exercises real native commits, normal collection, completed and
+racing shutdown, stale publication refusal, ticket reuse and 24 repeated full lifetimes. Compiler
+fixtures verify composite duplication rejection and opaque publication context privacy. These
+checks run under checked ARC/Clang. The pinned native allocator's public occupied counter is scoped
+to the calling thread and includes pending remote frees; it is not a process-wide cross-thread
+leak measurement. This suite makes no numeric zero-leak claim from that counter.
