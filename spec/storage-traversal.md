@@ -277,3 +277,16 @@ ssize_t results on supported Linux/macOS. This preserves the existing ABI and le
 header observer target those call sites. The pinned header-free std/posix binding uses mangled
 assembler aliases that cannot be redirected by C macros; it and the runtime remain untouched.
 The consumed-fault assertion caught that missing observation before any false pass was accepted.
+
+## Interrupted partial-progress writes
+
+Physical writes use explicit SDK-header size_t/ssize_t bindings and retry only negative EINTR
+results at the same remaining extent. Positive real short writes advance the offset exactly once;
+zero progress and permanent failures retain the original poisoned-owner rules. Native controls
+perform an actual8-byte write, inject two interruptions, then finish through real short writes.
+The complete resulting file must equal independently encoded frame bytes without duplication.
+
+A separate EIO after actual8-byte progress is not retried. Strict reopen refuses the torn frame;
+an older prefix token refuses, and only the independently exact generation/root token truncates
+the incomplete tail. Subsequent append resumes correctly and every prior complete view survives.
+Both physical layouts exercise the same contract; no implicit repair or authority change occurs.

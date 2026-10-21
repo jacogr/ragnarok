@@ -105,11 +105,16 @@ proc validPath(path: string): bool =
   for character in path:
     if character == char(0): return false
   true
+proc writeNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "write", cdecl,
+    header: "<unistd.h>".}
+  ## SDK-header binding preserves signed-long ssize_t results and bounded size_t input extents.
 proc writeAll(fd: cint, bytes: openArray[byte]): bool =
   ## Bound each write by actual remaining bytes; zero progress or native refusal terminates.
   var offset = 0
   while offset < bytes.len:
-    let count = posix.write(fd, cast[pointer](unsafeAddr bytes[offset]), bytes.len-offset)
+    let count = writeNative(fd, cast[pointer](unsafeAddr bytes[offset]), csize_t(bytes.len-offset))
+    if count < 0 and posix.errno() == interrupted:
+      continue # No bytes transferred; retain the offset established by earlier real progress.
     if count <= 0 or count > bytes.len-offset: return false
     offset += count
   true
