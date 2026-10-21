@@ -27,6 +27,7 @@ chosen compatibility behavior as proof that the paper must change.
 | --- | --- | --- | --- |
 | GP-PVM-001 | Internal ambiguity | Wrapping access: protected-low-memory prose versus minimum-index fault equation | Scoped compatibility rule tested; upstream clarification needed |
 | GP-PVM-002 | Paper/implementation discrepancy | Mapped final byte is accessible in the paper but traps in PolkaVM | Explicit compatibility exception tested; upstream clarification needed |
+| GP-PVM-003 | Missing definition | Branch gas lookup at a negative mathematical target | Wrapped-target price tested; upstream clarification needed |
 
 ## GP-PVM-001: exception ordering across the address-space boundary
 
@@ -101,6 +102,54 @@ validity depend on requested byte indices or on representability of the exclusiv
 end? Specify the boundary and permission priority for every scalar width. A proposed
 fix must say whether to change the paper, PolkaVM, or both; this register does not
 assume which is defective.
+
+## GP-PVM-003: branch gas for a negative target
+
+**Paper evidence:** the instruction stream is defined as code with an indefinite
+zero suffix in
+[text/pvm.tex lines100–104](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L100-L104).
+This defines nonnegative indices past the end, not negative indices. Relative
+targets add a signed offset to the instruction counter without an explicit modulo;
+see [lines432–442](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L432-L442).
+The branch latency function indexes both target and fallthrough bytes in
+[Gas Cost Tables, lines1172–1188](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L1172-L1188).
+Gas is calculated before execution rejects invalid branch destinations. The paper
+therefore needs to define this lookup even for an invalid negative target.
+
+**Minimal witness:** JamV1 instruction bytes
+`[170, 0, 255, 255, 255, 255, 100, 0, 0]`, opcode-mask bytes `[65, 1]`.
+The first conditional branch has a signed displacement of-1 at PC0 and a noncheap
+fallthrough byte100. The paper gives no byte at instruction index-1, so its price
+cannot be obtained directly from the stated sequence. This is a missing definition,
+not evidence that the paper explicitly assigns a different numerical price.
+
+**Pinned PolkaVM:**
+[read_args_offset](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/program.rs#L733-L735)
+wraps the decoded target to u32;
+[get_branch_cost](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/simulator.rs#L1151-L1181)
+treats a missing byte as a prediction hit, giving latency1. Unlike the memory
+source-only findings, a temporary public-API Rust probe executed this literal
+witness against the pristine pinned JamV1 parser and Full/L2Hit simulator and
+returned block cost1. This was not a full upstream test-suite run. Its source,
+locked dependencies and output are retained locally under ignored
+`build/polkavm-oracle-probe/` and `build/polkavm-oracle-probe-run.log`.
+No Rust implementation or probe is part of the production VM.
+
+**Ragnarök disposition and coverage:** independent bounded arithmetic wraps the
+pricing target to u32, then uses the existing zero-suffix byte lookup. The
+[gas corpus generator](../tests/pvm_gas_reference.py) and native gas suite cover
+all16 conditional branch opcodes at-1,-128 and INT32_MIN, with noncheap
+fallthroughs. All1776 records pass, including48 new cases; all1728 previous
+records remain byte-identical. Step/execution fixtures cover actual invalid-target
+panic after successful prefixes, with gas and source aliases preserved. See
+[the branch-cost contract](pvm-polkavm-branch-cost.md) for hashes and exact limits.
+This does not establish general parity of static-target execution arithmetic.
+
+**Question to raise:** should relative targets be normalized modulo `2^32` for gas
+lookup, or should the instruction sequence explicitly define negative-index bytes?
+Specify the price before invalid-target panic and retain an executable malformed-
+destination witness. The paper's memory latency25 is retained; generic PolkaVM
+cache models and its default gas mode are not alternative protocol specifications.
 
 ## Related findings outside this PVM increment
 

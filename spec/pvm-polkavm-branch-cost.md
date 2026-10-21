@@ -1,6 +1,8 @@
 # PolkaVM wrapped branch-target pricing
 
-Authority follows the maintainer-approved pinned PolkaVM behavior contract.
+The Gray Paper remains primary; GP-PVM-003 in the
+[discrepancy register](graypaper-discrepancies.md) records the missing negative-index
+gas definition and the scoped PolkaVM-compatible fixture interpretation.
 Pins remain PolkaVM `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`,
 GP0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`.
 Program read_args_offset wraps instruction_offset plus signed offset to u32;
@@ -51,5 +53,7 @@ The gas reference passes6 tests with no pending negative-target skip; source-pin
 specification tests pass3 with the existing unrelated Bandersnatch skip, failure
 harness7 tests and inventory pass. Pinned formatting passes2581 Nim sources and
 the Rust crate. Local checked-release macOS/ARC/Clang LTO evidence; remote Linux
-CI and PolkaVM Rust execution are not claimed. Exact records/logs remain under
+CI and the full PolkaVM Rust test suite are not claimed. A separate targeted
+public-API JamV1/L2Hit Rust probe confirms block cost1 for the register-branch
+witness recorded in GP-PVM-003; it changes no upstream source or production dependency. Exact records/logs remain under
 `build/polkavm-branch-cost-*`.

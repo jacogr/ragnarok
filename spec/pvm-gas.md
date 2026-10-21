@@ -57,8 +57,9 @@ operand positions; jump admissibility is a separate execution check. The new
 addresses beyond the program. Signed backward targets within the program remain
 ordinary raw-byte lookups.
 
-The maintainer-selected PolkaVM authority now resolves negative mathematical
-targets using its u32-wrapped decoded target and absent-byte prediction-hit rule.
+The Gray Paper leaves negative-index branch pricing undefined; see GP-PVM-003 in
+the [discrepancy register](graypaper-discrepancies.md). The scoped compatibility
+interpretation uses PolkaVM u32-wrapped targets and its absent-byte prediction-hit rule.
 See [the scoped adoption](pvm-polkavm-branch-cost.md). NegativeBranchTarget is a
 historical compatibility identifier, not a current blockGas result. The fixed
 25-cycle memory latency matches PolkaVM Full(L2Hit); this adoption changes only
