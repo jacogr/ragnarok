@@ -9,7 +9,8 @@ normal `server`, `client`, `mesh` or `download` command arguments:
 
 Omitted `--state-writes` and `--state-write-bytes` default independently to 1,000 writes and
 100,000 written value bytes per batch. Either flag can override its default; explicit zero remains
-zero. These are local resource policies, not protocol constants. The parent directory must already exist. The backend uses an exclusively locked regular file and refuses
+zero. These are local resource policies, not protocol constants. The parent directory must already
+exist. The default `journal` layout uses an exclusively locked regular file and refuses
 symlinks, a competing owner, incompatible identity/schema and corrupt or incomplete journals.
 Each file belongs to one configured genesis header, complete genesis state root and full parameter
 profile. Memory/disk selection is independent of the future full/light node mode.
@@ -39,7 +40,9 @@ not borrow local history or finality from another database. Any existing path ca
 to refuse without replacing its contents.
 
 For later local restarts, omit the checkpoint/trust/header/import-byte controls and keep the same
-chain/backend/path and desired mutation budgets (defaults or overrides). Switching backend does not migrate databases.
+chain/backend/layout/path and desired mutation budgets (defaults or overrides). Switching backend
+does not migrate databases. The [managed layout](managed-storage.md) offers online reclamation and
+explicit source-preserving migration from a legacy journal.
 
 ## Durable publication and shutdown
 
@@ -66,8 +69,10 @@ it can discard only an incomplete final append, never a complete successor or co
 The initial backend caps the journal at 256 MiB, physical retained value bytes at 128 MiB, physical
 records at 4,194,304, an encoded batch at 64 MiB and application context at 4 MiB. These are finite
 implementation ceilings, separate from complete-map and caller-selected mutation budgets. All
-physical history is append-only; the eight-block application window does not reclaim node records.
-There is no compaction, page packing, disk cache or automatic database migration yet.
+physical history in the default `journal` layout is append-only; the eight-block application
+window does not reclaim its node records. The opt-in [managed layout](managed-storage.md) reclaims
+unreachable records while preserving the selected history and finality. Page packing, a disk cache
+and automatic database migration remain outside this implementation.
 
 Startup currently reconstructs the configured genesis and bounded historical maps. The existing
 [storage measurements](../spec/disk-state-store.md) cover sparse publication, exact counters and
