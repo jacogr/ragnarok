@@ -247,3 +247,16 @@ continue to fail with the actual receipt rather than being discarded automatical
 exact next/previous retirement, an untouched farther future pair, unchanged CURRENT bytes and
 symlink refusal without unlinking the alias or selected target. Real authenticated TLS migration,
 confirmed-prefix maintenance failure and ordinary managed startup regressions remain passing.
+
+## Operator handoff and production build
+
+The operator guide documents explicit layout selection, source-preserving local migration,
+independent import trust, bounded history/finality, maintenance thresholds and zero-preserved
+forensics, adjacent-only cleanup and confirmed-prefix failure semantics. Production --help now
+advertises the three managed controls. The existing single-file guide and storage README link the
+authorized managed behavior without changing unrelated consumers' contracts.
+
+The current production executable builds with the maintained checked native profile; its actual
+--help, --version and --selftest succeed. Format checking, verification inventory, changed-document
+relative links and git whitespace checks pass. This tranche stops at twenty dependent layers.
+Local validation does not claim remote CI success or physical power-loss certification.

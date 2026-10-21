@@ -18,7 +18,8 @@ against state #5's now-merged checkpoint startup work. Disk owners, exact durabl
 native publication and memory/disk startup are covered by the [disk contract](../../spec/disk-state-store.md)
 and [operator guide](../../docs/disk-storage.md). External checkpoint trust remains independent;
 normal local restart preserves bounded history and explicit finality. Unrelated state/PVM work,
-full/light semantics and layout/reclamation changes still require their own scope.
+full/light semantics remain separate work. The subsequently authorized managed layout and
+reclamation are described in the [managed operator guide](../../docs/managed-storage.md).
 
 ## Complete-state revisions
 
@@ -103,16 +104,17 @@ open remains unchanged. Real child-process short-write checks exercise recovery 
 
 `revision_retention.nim` provides bounded explicit pins for immutable repository views. Catalog
 copies update independently; release/close never revoke held views. Tokens also retain their
-selected view until dropped. There is no automatic eviction, finality policy or disk reclamation.
+selected view until dropped. The pin catalog itself provides no automatic eviction, finality
+policy or disk reclamation; managed consumers select an explicit complete-root union.
 
 `synchronize` uses `StorageDurability` receipts: memory confirms only process lifetime; disk
 confirms a successful file and directory barrier. Both owners share snapshot/publication/view
 semantics while preserving their typed error distinctions. Run `storage_backend_contract` and
 `storage_disk_replay` for the common scenarios and published full/delta/inverse mapping roundtrips.
 
-The authorized complete-state memory/disk consumer boundary is recorded above. Full/light startup
-and workload-driven layout/reclamation remain separate work. Availability of these primitives does
-not authorize unrelated consumers to change their state or trust contracts.
+The authorized complete-state memory/disk consumer boundary is recorded above. Managed layout,
+reclamation and explicit migration use the same state and trust contracts. Full/light startup and
+unrelated consumer changes remain separate work.
 
 `selectRepositoryRoots` builds an immutable reachability inventory for explicitly selected roots,
 including the current head. It validates each complete graph and counts shared records once, exposing
@@ -133,9 +135,10 @@ and durability barriers retain their contracts. See `storage_unchanged_publicati
 selected by CURRENT. Creation takes a complete immutable root selection; strict reopen checks the
 chain, schema, snapshot binding, retained graphs and every contiguous journal frame. It never
 scans for a fallback head. Retained views and detached context survive explicit owner close.
-This standalone component is not yet used by StateStore or application startup. Managed append,
-reclamation, explicit migration and consumer adoption are subsequent storage-owned layers; other
-workstreams should continue through their existing APIs until a coordinated integration lands.
+Explicit managed DiskStateStore and application startup entry points now adopt this component.
+The existing StateStore API and default single-file journal layout remain unchanged. Application
+maintenance uses the same native worker and an exact canonical root/history selection; see the
+[integration contract](../../spec/managed-disk-integration.md).
 
 Managed `publish` exposes a prepared revision only after its paired journal frame is synchronized.
 IO uncertainty requires reopening. `recoverManagedRepository` is an explicit operation requiring an
@@ -167,3 +170,16 @@ facade. `initializeManagedFileRepository`, `openManagedFileRepository` and
 `recoverManagedFileRepository` explicitly select managed ownership; legacy entry points remain
 single-file operations. `opened` reads scalar lifecycle state, so worker polling does not touch ARC
 graphs. Managed compaction and selected usage return `UnsupportedLayout` for legacy owners.
+
+
+`cloneRepositorySelection` copies an opaque validated selection into an independent repository,
+assigning a fresh view identity while enforcing inherited complete-state policy and physical
+budgets. It accepts no serialized input. Managed creation and compaction use it after snapshot
+encoding; strict disk reopen still independently validates every record and complete graph.
+The measured hash counts and unchanged byte/root evidence are in the integration contract.
+
+At application startup, enabled managed maintenance cleans only the immediate predecessor and
+unselected successor of the validated selected epoch, plus CURRENT.next. It never scans unknown
+files or falls back to another head. Explicit zero maintenance preserves staged forensic files.
+Online maintenance runs after confirmed publication and before producer acknowledgement; failure
+preserves the confirmed canonical prefix and prevents further mutation until fresh startup.
