@@ -297,6 +297,8 @@ jobs:
     name: Interop PVM
     timeout-minutes: 45
     runs-on: ubuntu-latest
+    env:
+      RAGNAROK_PVM_REFERENCE_BACKEND: interpreter
     steps:
       - *checkout
       - *python

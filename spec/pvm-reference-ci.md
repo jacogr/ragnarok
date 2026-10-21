@@ -5,7 +5,9 @@ The independent `pvm-reference` job in the canonical CI workflow executes
 [source-owned comparison runner](pvm-reference-runner.md) without altering the
 Gray Paper, PolkaVM, Nimony or Rust pins, guest expectations or production dependencies.
 
-Master pushes and explicit full verification requests select the job. Unit/e2e/Docker
+Master pushes, explicit full/Interop requests and manual `pvm-reference` dispatch
+select the **Interop PVM** job. The job explicitly sets `RAGNAROK_PVM_REFERENCE_BACKEND=interpreter`;
+it neither enables sandbox kernel facilities nor requests compiled execution. Unit/e2e/Docker
 requests preserve their existing scopes. Opening PRs or pushing commits does not
 request CI; maintainers retain the existing label/manual request mechanism. No
 remote run is requested merely by introducing this job.
@@ -32,3 +34,12 @@ This is deterministic correctness CI. The required complete upstream fuzzing cov
 and differential bridge remain a separate future job. Future benchmark CI must validate
 outputs before timing and use the consolidated Ragnarök/interpreted/compiled table
 recorded in the runner contract.
+
+## Focused interpreted verification
+
+Use `gh workflow run ci.yml --ref <branch> -f suite=pvm-reference` for exact-head Linux
+PVM correctness without unrelated compiler, networking or whole-project jobs. The
+ordinary full/Interop/push selection remains intact; unit/e2e/Docker/benchmark requests do
+not select this job. The same inventory, Make target, timeout, failure summary and
+artifact paths apply. Local CI safeguards and YAML parsing validate the schedule;
+only a completed hosted run can establish the corresponding Linux verdict.

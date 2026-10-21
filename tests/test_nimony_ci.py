@@ -186,6 +186,8 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         section = re.search(r'^  pvm-reference:\n(.*?)(?=^  [\w-]+:|\Z)', text, re.MULTILINE | re.DOTALL).group(1)
         self.assertIn('runs-on: ubuntu-latest', section)
+        self.assertIn('RAGNAROK_PVM_REFERENCE_BACKEND: interpreter', section)
+        self.assertNotIn('sysctl', section)
         self.assertIn("inputs.suite == 'interop'", section)
         self.assertIn("github.event.label.name == 'ci:interop'", section)
         self.assertEqual(section.count('run: make check-pvm-reference'), 1)
