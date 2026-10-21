@@ -443,3 +443,21 @@ not a single-target `TrieExport`; ordinary publication still rejects unrelated o
 No journal format or application context is rewritten. Tests witness every retained record against
 independent complete exports, exclude unselected revisions, exercise exact/one-short budgets and
 empty unions, and prove repeated detached mutation/owner close preserve plans with balanced ARC.
+
+## Maintenance measurement scope
+
+The checked disk workload now measures a current-plus-held root selection/export and 64 durable
+unchanged-root publications as separate monotonic phases. Root unions report exact retained and
+reclaimable physical records/value bytes. Metadata-only publications retain the old physical view,
+advance generations 65 through 129, append checksummed frames and strictly reopen at generation 129.
+Their retained occupied-byte increase and appended journal bytes are exact counters; timings remain
+noisy observations. The validator rejects nonzero extraction hashing, incomplete metadata hashing
+and inconsistent union totals. Workload identity prevents comparison with the previous phase set.
+These observations do not claim on-disk space has been reclaimed or cover a production state mix.
+
+The initial ten-run checked macOS ARM64 maintenance baseline retained an additional 132,256 bytes
+at 128 keys and 740,512 bytes at 1024 keys during unchanged-root publication with the old view held.
+The 64-publication medians were about 3.7 ms and 30.7 ms respectively, including real synchronization.
+For current-plus-eight-held roots, 504/832 and 952/4671 physical records were outside the selected
+union. These are exact authored-workload counts, not disk bytes already reclaimed or a production
+retention estimate. Full logs/reports remain under ignored `build/`.
