@@ -287,9 +287,15 @@ proc `=destroy`*(journal: ManagedJournal) =
 proc renameAt(sourceDirectory: cint, source: cstring, targetDirectory: cint,
     target: cstring): cint {.importc: "renameat", cdecl, header: "<stdio.h>".}
   ## Atomic CURRENT replacement stays within the exact held namespace.
-proc truncateFile(fd: cint, extent: int64): cint {.importc: "ftruncate", cdecl,
+proc truncateNative(fd: cint, extent: int64): cint {.importc: "ftruncate", cdecl,
     header: "<unistd.h>".}
   ## Only a separately trusted complete-prefix boundary may request truncation.
+proc truncateFile(fd: cint, extent: int64): cint =
+  ## Retry only EINTR on the same already-authorized extent; repeating that truncation is idempotent.
+  while true:
+    let status = truncateNative(fd, extent)
+    if status == 0 or posix.errno() != interrupted: return status
+    # No new generation/root or extent can be chosen while this native owner holds the lease.
 func opened*(journal: ManagedJournal): bool =
   ## Inspect descriptor lifetime independently from a potentially poisoned append result.
   journal.active

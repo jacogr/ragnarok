@@ -15,4 +15,8 @@
 #ifdef RAGNAROK_STORAGE_IO_FSYNC
 #define fsync storage_io_fsync
 #endif
+#ifdef RAGNAROK_STORAGE_IO_FTRUNCATE
+#define ftruncate storage_io_ftruncate
+#endif
+
 #endif

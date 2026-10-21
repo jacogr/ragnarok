@@ -9,10 +9,10 @@ import ../../src/storage/[full_state_trie, node_repository, node_records, file_r
   managed_repository, managed_manifest, database_identity]
 import ../../src/codec/bounded
 proc repairCase*(label: string, managed: bool, skip, failures: cint,
-    permanent = false): uint64 {.raises.} =
+    permanent = false, truncateFault = false): uint64 {.raises.} =
   ## Genuine eight-byte partial appends precede independently authorized repair and complete-map checks.
   resetIo()
-  var path = label & "-" & $managed & "-" & $skip
+  var path = label & "-" & $managed & "-" & $skip & "-" & $int(storageProcessId())
   let limits = managedStorageLimits()
   let journal = JournalLimits(repository: limits.repository, bytes: limits.journalBytes)
   let a = storageTrie(7)
@@ -44,14 +44,25 @@ proc repairCase*(label: string, managed: bool, skip, failures: cint,
   resetIo()
   assert file.close == FileError.None
   assert readFile(journalPath).len == prefix.len+8
-  armIo(syncIo, skip, failures, if permanent: failedIo else: interruptedIo)
+  if truncateFault:
+    # Strict startup has no truncation authority, even when a pending truncation fault could be observed.
+    armIo(truncateIo, 0, 1, failedIo)
+    let opened = if managed:
+      openManagedFileRepository(file, path, default(StorageChainId), limits)
+    else:
+      openFileRepository(file, path, default(StorageChainId), journal)
+    assert opened == FileError.InvalidJournal and not file.opened
+    assert pendingIo() == 1 and ioCalls(truncateIo) == 0
+    resetIo()
+  let operation = if truncateFault: truncateIo else: syncIo
+  armIo(operation, skip, failures, if permanent: failedIo else: interruptedIo)
   let repaired = if managed:
     recoverManagedFileRepository(file, path, default(StorageChainId), limits,
       RepositoryGeneration(1), held.commitment.root)
   else:
     recoverFileRepository(file, path, default(StorageChainId), journal,
       RepositoryGeneration(1), held.commitment.root)
-  result = ioCalls(syncIo)
+  result = ioCalls(operation)
   assert pendingIo() == 0, "repair fault boundary did not execute"
   resetIo()
   if permanent:
