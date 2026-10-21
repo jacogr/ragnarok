@@ -123,3 +123,24 @@ It refuses repeated import into an existing path and missing external trust with
 already valid local database. A subsequent normal local restart resumes that previously admitted
 imported head with finality unset. This keeps local durable-head resumption distinct from external
 checkpoint authority; physical layout never supplies missing import trust or execution provenance.
+
+## Services maintenance lifecycle
+
+Services pauses RPC, stages an opaque maintenance request in a separate activation, retires all
+host temporary aliases, then borrows its stable disk/request fields through the existing native
+slot. Every existing publication exclusion gate remains active. Physical completion preserves
+canonical/RPC identity and the last ordinary publication receipt; actual maintenance, cleanup,
+preparation and worker admission reasons are retained separately. Entered IO is joined on shutdown,
+and queued-only shutdown remains explicit NotExecuted. Cleanup refusal does not undo confirmed
+selection; it disables further mutation until restart/operator recovery.
+
+Automatic maintenance runs only in the existing confirmed-adoption publication barrier. While its
+lease remains active, `accumulationStage` continues to report Publishing, so producers cannot take
+the graph-bearing completed adoption early. It does not start spontaneously in an idle download or
+preparation phase. Due retained history is instead compacted during synchronous startup before
+listeners or worker borrowers exist. A header-only journal never triggers repeated replacement.
+Explicit zero disables these automatic paths while retaining the explicit maintenance API.
+
+The Services maintenance suite uses a real RPC listener, observes pause/resume, checks unchanged
+public snapshot identity and publication outcome, and verifies retained maintenance receipts across
+joined shutdown and strict local restart.

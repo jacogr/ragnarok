@@ -20,7 +20,8 @@ import ../crypto/primitives
 import ../codec/[block_codec, header, state_trie]
 import ./chain as application_chain
 import ../state/[store, disk_store, accumulation_finalization, accumulation_completion, accumulation_publication]
-import ../storage/[file_repository, node_repository, node_records, record_codec, database_identity, managed_repository]
+import ../storage/[file_repository, node_repository, node_records, record_codec, database_identity,
+    managed_repository, managed_manifest]
 import ../chain/provider
 import ../telemetry/[wire, client, chain]
 import ../quic/transport
@@ -42,6 +43,12 @@ type Services* = object ## Owns listeners/exporter; fields are borrowed by synch
   started, chainRpc: bool
   disk: DiskStateStore
   diskWorker: DiskPublicationWorker
+  diskMaintenance: PreparedDiskMaintenance
+  maintenanceStage: DiskChainResult[PreparedDiskMaintenance]
+  maintenanceCompletion: DiskPublicationCompletion
+  startupMaintenance: DiskChainResult[ManagedCompaction]
+  maintenanceAdmission: DiskWorkerError
+  maintaining: bool
   diskPublication: PreparedDiskPublication
   diskTicket: DiskPublicationTicket
   diskStageOutcome: DiskChainResult[PreparedDiskPublication]
@@ -55,6 +62,10 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   ## Only closed aggregates may relocate; native workers and callback borrows require the original stable parent address.
   `=wasMoved`(services.diskWorker)
   `=wasMoved`(services.disk)
+  `=wasMoved`(services.diskMaintenance)
+  `=wasMoved`(services.maintenanceStage)
+  `=wasMoved`(services.maintenanceCompletion)
+  `=wasMoved`(services.startupMaintenance)
   `=wasMoved`(services.diskPublication)
   `=wasMoved`(services.diskTicket)
   `=wasMoved`(services.diskStageOutcome)
@@ -76,6 +87,10 @@ proc `=destroy`*(services: Services) =
   ## Retire partially configured owners and the shared snapshot even without explicit shutdown.
   `=destroy`(services.diskWorker) # Join must precede every disk/canonical/publication alias retirement.
   `=destroy`(services.disk)
+  `=destroy`(services.diskMaintenance)
+  `=destroy`(services.maintenanceStage)
+  `=destroy`(services.maintenanceCompletion)
+  `=destroy`(services.startupMaintenance)
   `=destroy`(services.diskPublication)
   `=destroy`(services.diskTicket)
   `=destroy`(services.diskStageOutcome)
@@ -90,9 +105,28 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.canonical)
   `=destroy`(services.adoption)
 
+proc finishDiskMaintenance(services: var Services, completion: DiskPublicationCompletion) =
+  ## Joined/collected maintenance ends the physical lease without changing canonical/RPC state or adoption receipts.
+  services.maintenanceCompletion = completion
+  if completion.kind == DiskCompletionKind.Maintained:
+    let outcome = completion.maintenanceValue
+    if outcome.error != DiskChainError.None:
+      services.diskFaulted = true
+    elif outcome.value.cleanup != FileError.None:
+      services.diskFaulted = true # Preserve durable selection and expose cleanup refusal without attempting another mutation.
+  else:
+    assert completion.kind == DiskCompletionKind.NotExecuted
+  services.maintaining = false
+  services.publishing = false
+  services.diskMaintenance = default(PreparedDiskMaintenance)
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
 proc finishDiskPublication(services: var Services, completion: DiskPublicationCompletion) =
   ## Called only after collect/join retires all native temporaries; install before reopening RPC access.
   if not services.publishing: return
+  if services.maintaining:
+    services.finishDiskMaintenance(completion)
+    return
   if completion.kind == DiskCompletionKind.Completed:
     services.diskCommitOutcome = completion.value
     if completion.value.error == DiskChainError.None:
@@ -156,6 +190,7 @@ proc close*(services: var Services) =
   services.diskEnabled = false
   services.diskManaged = false
   services.compactBytes = ByteLimit(0)
+  services.maintaining = false
   services.diskFaulted = false
   services.diskTicket = default(DiskPublicationTicket)
   services.canonical = default(ApplicationChain)
@@ -246,6 +281,16 @@ proc initializeSelectedDisk(services: var Services, path: string): DiskChainResu
   else:
     initializeDiskChain(services.disk, path, services.diskId, services.canonical,
         services.diskLimits)
+proc maintenanceDue(services: var Services): bool =
+  ## Inspect only cached scalar usage while idle; a header-only journal never triggers repeated no-op replacement.
+  if not services.diskManaged or services.diskFaulted or uint64(services.compactBytes) ==
+      0: return false
+  let usage = services.disk.managedDiskUsage
+  if usage.error != FileError.None:
+    services.diskFaulted = true
+    return false
+  usage.value.journalBytes > uint64(ManagedJournalHeaderBytes) and
+    usage.value.journalBytes >= uint64(services.compactBytes)
 proc setupDisk(services: var Services, options: Options, limits: StateStoreLimits,
     imported: bool): bool {.raises.} =
   ## Derive chain identity from the selected configured genesis; imports create exclusively and never replace a local DB.
@@ -282,6 +327,22 @@ proc setupDisk(services: var Services, options: Options, limits: StateStoreLimit
       let created = services.initializeSelectedDisk(options.stateDatabase)
       if created.error != DiskChainError.None:
         return false # O_EXCL prevents a failed open from overwriting any existing or concurrently created file.
+  services.diskMaintenance = default(PreparedDiskMaintenance)
+  services.maintenanceStage = default(DiskChainResult[PreparedDiskMaintenance])
+  services.maintenanceCompletion = default(DiskPublicationCompletion)
+  services.maintenanceAdmission = DiskWorkerError.Uninitialized
+  services.startupMaintenance = default(DiskChainResult[ManagedCompaction])
+  services.maintaining = false
+  if services.maintenanceDue():
+    let prepared = prepareDiskMaintenance(services.disk, services.canonical, services.diskId,
+      services.diskLimits.contextBytes)
+    if prepared.error != DiskChainError.None:
+      services.maintenanceStage = prepared
+      return false
+    services.startupMaintenance = commitDiskMaintenance(services.disk, prepared.value)
+    if services.startupMaintenance.error != DiskChainError.None: return false
+    if services.startupMaintenance.value.cleanup != FileError.None: return false
+  if services.diskFaulted: return false # Startup has no callbacks/listeners or foreign ARC borrowers yet.
   services.diskEnabled = true
   services.diskStageOutcome = default(DiskChainResult[PreparedDiskPublication])
   services.diskCommitOutcome = default(DiskChainResult[RepositoryGeneration])
@@ -449,7 +510,8 @@ proc applyAccumulation*(services: var Services, source: PreparedFinalAccumulatio
     services.canonical.applyAccumulation(source, limits) # Disabled/default canonical owners still use existing guarded adoption.
 
 func accumulationStage*(services: Services): AccumulationHandoffStage =
-  ## Observe producer backpressure independently of optional listener lifetime.
+  ## Maintenance preserves the completed adoption but delays its graph-bearing acknowledgement until the lease ends.
+  if services.publishing and services.maintaining: return AccumulationHandoffStage.Publishing
   services.adoption.stage
 
 proc enqueueAccumulation*(services: var Services, source: PreparedFinalAccumulation,
@@ -561,6 +623,59 @@ proc stageDiskPublication(services: var Services): bool =
   services.adoption.markPublishing() # Drop pending source/limits before any native graph access is possible.
   true
 
+func startupDiskMaintenanceOutcome*(services: Services): DiskChainResult[
+    ManagedCompaction] {.requires:
+    not services.preparing and not services.publishing.} =
+  ## Retain a real pre-listener startup compaction receipt; default means no startup maintenance was due.
+  services.startupMaintenance
+func diskMaintenanceCompletion*(services: Services): DiskPublicationCompletion {.requires:
+    not services.preparing and not services.publishing.} =
+  ## Retain the exact completed or queued-not-executed maintenance receipt across joined shutdown.
+  services.maintenanceCompletion
+func diskMaintenancePreparation*(services: Services): DiskChainResult[
+    PreparedDiskMaintenance] {.requires:
+    not services.preparing and not services.publishing.} =
+  ## Preserve a refused host context/root preparation without fabricating a worker result.
+  services.maintenanceStage
+func diskMaintenanceAdmissionError*(services: Services): DiskWorkerError =
+  ## A scalar actual worker admission reason is observable without touching leased graphs.
+  services.maintenanceAdmission
+proc stageDiskMaintenance(services: var Services): bool =
+  ## Retire all temporary canonical/context aliases in this activation before outer worker submission.
+  services.rpcLease = services.rpc.pauseChain()
+  if services.chainRpc and services.rpcLease == nil: return false
+  let staged = prepareDiskMaintenance(services.disk, services.canonical, services.diskId,
+    services.diskLimits.contextBytes)
+  if staged.error != DiskChainError.None:
+    services.maintenanceStage = staged
+    services.diskFaulted = true
+    discard services.rpc.resumeChain(services.rpcLease)
+    services.rpcLease = nil
+    return false
+  services.maintenanceStage = default(DiskChainResult[PreparedDiskMaintenance])
+  services.maintenanceCompletion = default(DiskPublicationCompletion)
+  services.diskMaintenance = staged.value
+  true
+proc beginDiskMaintenance*(services: var Services): bool =
+  ## Explicit host maintenance shares publication exclusion, RPC pause and one fixed-address native slot.
+  if not services.started or not services.diskEnabled or not services.diskManaged or
+      services.diskFaulted:
+    return false
+  if services.preparing or services.publishing: return false
+  if services.rpc.chainPaused: return false
+  if not services.stageDiskMaintenance(): return false
+  let admitted = services.diskWorker.submitMaintenance(services.disk, services.diskMaintenance)
+  services.maintenanceAdmission = admitted.error
+  if admitted.error != DiskWorkerError.None:
+    services.diskMaintenance = default(PreparedDiskMaintenance)
+    discard services.rpc.resumeChain(services.rpcLease)
+    services.rpcLease = nil
+    services.diskFaulted = true
+    return false
+  services.diskTicket = admitted.value
+  services.maintaining = true
+  services.publishing = true # Every existing canonical/RPC/checkpoint gate now covers the maintenance lease too.
+  true
 proc tick*(services: var Services, peers: uint32) =
   ## Attempt one pending adoption between native callbacks; exclusive preparation leaves independent UI work available.
   if services.preparing:
@@ -580,6 +695,10 @@ proc tick*(services: var Services, peers: uint32) =
       services.publishing = true
       services.ui.tick()
       return # No managed canonical/source alias may be touched or retired after successful admission.
+    if services.adoption.stage == AccumulationHandoffStage.Finished and
+        services.maintenanceDue() and services.beginDiskMaintenance():
+      services.ui.tick()
+      return # No canonical/RPC graph aliases are touched until scalar polling observes the maintenance completion.
   elif services.chainRpc:
     services.adoption.process(services.canonical, services.rpc) # Enabled listener failure remains a completed refusal.
   else:
