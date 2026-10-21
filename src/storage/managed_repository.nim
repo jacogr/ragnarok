@@ -374,3 +374,23 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   ManagedResult[ManagedCompaction](status: FileError.None, completed: ManagedCompaction(epoch: next,
     generation: selected.generation, reclaimedNodes: plan.reclaimableNodes,
     reclaimedValueBytes: plan.reclaimableValueBytes, cleanup: cleanup))
+proc cleanupRetiredEpoch*(repository: var ManagedRepository, epoch: ManagedEpoch): FileError =
+  ## Explicitly retry deletion of one caller-selected earlier epoch; never scan or remove the selected pair.
+  if not repository.active: return FileError.Uninitialized
+  if repository.poisoned: return FileError.RecoveryRequired
+  if uint64(epoch) == 0 or uint64(epoch) >= uint64(
+      repository.epoch): return FileError.InvalidRetention
+  let journal = removeManagedFile(repository.directory, ManagedFileKind.Journal, epoch)
+  if journal != FileError.None: return journal
+  removeManagedFile(repository.directory, ManagedFileKind.Snapshot, epoch)
+proc discardManagedStaging*(repository: var ManagedRepository): FileError =
+  ## A validated selected owner may explicitly discard only CURRENT.next and its immediate unselected successor.
+  if not repository.active: return FileError.Uninitialized
+  if repository.poisoned: return FileError.RecoveryRequired
+  if uint64(repository.epoch) == high(uint64): return FileError.EpochExhausted
+  let pending = discardManagedPending(repository.directory)
+  if pending != FileError.None: return pending
+  let next = ManagedEpoch(uint64(repository.epoch)+1)
+  let journal = removeManagedFile(repository.directory, ManagedFileKind.Journal, next)
+  if journal != FileError.None: return journal
+  removeManagedFile(repository.directory, ManagedFileKind.Snapshot, next)

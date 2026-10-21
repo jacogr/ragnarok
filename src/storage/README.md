@@ -147,3 +147,7 @@ root, generation and context. It retains the explicit complete-root union, durab
 then retires the previous selected files. Its receipt distinguishes confirmed selection from deferred
 cleanup. Old readers remain valid; callers obtain a fresh physical view before another publication.
 Compaction does not choose canonical roots/finality or schedule application maintenance.
+
+`discardManagedStaging` explicitly removes only the next unselected epoch and pending manifest.
+`cleanupRetiredEpoch` retries cleanup of one earlier epoch. Both require a validated live owner,
+refuse the selected pair and avoid directory scanning. Unknown epochs remain untouched.

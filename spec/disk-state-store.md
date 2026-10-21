@@ -609,3 +609,15 @@ work. No automatic root/finality policy or application scheduling is introduced.
 
 Run `make unit SUITE=storage_managed_compaction` for retained/dropped complete histories, exact-parent
 refusal, unchanged state generation/context, continued append after replacement and repeated epochs.
+
+## Explicit staging and retired-file cleanup
+
+A validated live managed owner may explicitly discard only CURRENT.next and the immediate
+unselected successor epoch. It may separately retry removal of a caller-named earlier epoch.
+Neither operation scans the directory, touches the selected pair, changes state/context or grants
+unknown files authority. Poisoned owners refuse cleanup until strict reopen. Missing targets are
+idempotent; symlinks and nonregular files remain refused. This recovers interrupted compaction
+staging without widening startup trust or allowing deletion of arbitrary future epochs.
+
+Run `make unit SUITE=storage_managed_staging` for staged-name collision, strict restart amid partial
+candidates, selected/future deletion refusal, repeated cleanup and preservation of unrelated epochs.
