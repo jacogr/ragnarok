@@ -198,3 +198,31 @@ The owning Python E2E safeguards pass all three tests, including refusal to buil
 or launch stale witnesses after either current-build failure. Semantic compilation,
 source-owned inventory and whitespace checks pass. This selected workload does
 not claim a full E2E group run or exact-head Linux CI.
+
+## Operator and scope handoff
+
+The [operator guide](../docs/download-progress.md) records finite count, full-run
+ancestry budgeting, shared deadline, partial progress and memory/disk/import
+semantics. Shared application/network ownership and implementation scope now
+reflect the merged PVM/state/persistence foundation and this bounded progression.
+No full JAM/STF parity, automatic fork choice/finality, peer discovery, light-mode
+store or managed-reclamation adoption is claimed. M1 framing remains complete;
+full state serialization and compatible request-namespace pin adoption remain
+open under the existing maintainer disposition.
+
+## Integrated publication verification
+
+The ten-layer stack was natively restacked onto merged PVM master `5685d2fe`.
+Fresh selected native chain/progress/RPC/disk/import/loop/startup suites all pass
+on that base, including the 1,000-cycle chain, loop and policy ARC observations
+recorded above. The actual executable is rebuilt and all three registered E2E
+scenarios pass again with independent complete-map witnesses. Four privacy
+rejections, all three owning E2E safeguard tests, pinned Nim/Rust formatting,
+source-owned inventory and local documentation links pass. Evidence uses
+`build/multiblock-integrated-*` and
+`build/multiblock-e2e/integrated-results.json`.
+
+No storage/state-store interface, upstream source/gitlink or protocol/toolchain
+pin is changed by this tranche. Managed storage work remains independent. These
+are focused local checks, not a full verification-group or exact-head Linux CI
+claim; remote CI has not been requested.

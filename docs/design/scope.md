@@ -30,20 +30,35 @@ in the relevant `spec/` contract.
   Fourteen unmodified published full-state mappings reproduce their roots independently and natively;
   exact typed chapter captures now compose with typed service records or explicit opaque captures
   into immutable whole mappings; fourteen complete published mappings reproduce their roots.
-  Numeric-width/domain resolution, proofs and persistence remain future work.
+  Remaining protocol-adoption gates, trie proofs and production-scale sizing remain open;
+  complete-map memory/disk persistence is implemented within its bounded contracts.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
 - Authenticated CE 143 peers, retained multi-peer listeners, IPv6 arbitration/reconnect,
   backpressure, cancellation, deadlines, peer-loss/admission recovery and bounded proof offload.
+- [Native PVM execution](../../spec/pvm-execution.md), supported refinement/accumulation hosts and
+  [selected finalized successors](../../spec/pvm-state-successor.md), with explicit parity gates.
+- Authenticated block admission and supported disputes/Safrole/assurance/report stages, bounded
+  accumulation driving and [state-owned composition](../../spec/accumulation-completion.md).
+- Complete-map memory and [durable disk state](../../spec/disk-state-store.md), exact-parent
+  canonical/RPC publication, bounded local history/explicit finality recovery and independently
+  [trusted checkpoint imports](../../spec/application-recovery.md).
+- [Bounded successive child downloads](../../spec/application-download-progress.md) from explicit
+  pinned loopback peers, with retained connections, managed execution, confirmed partial progress
+  and durable restart. RPC exposes actual retained heads, roots, sealed headers and parents.
 - Official/vector references, native fuzz/selftests and Linux correctness/lifecycle CI.
 
 See [M1 codec progress](../m1.md) for baseline coverage and the next scope boundary.
 
 ## Outstanding work
 
-PVM execution, complete state transitions, block import, consensus and availability processing,
-remaining state-component serialization, trie proofs/persistence and production validator operation
-are not implemented. Root construction accepts already serialized state-key/value entries; state
+Whole-block JAM/STF parity, complete admission/validation policy, consensus/fork choice,
+production availability distribution/retrieval, trie proofs, full/light mode selection and
+validator operation remain open. Native PVM execution, supported state transitions, bounded
+signed-child import and durable complete-map publication are implemented foundations; their
+feature contracts retain the precise limitations and independent evidence. Full T(state)
+serialization/state parity remains qualified by the parked specification-adoption gate below.
+Root construction accepts canonical serialized state-key/value entries; state
 chapters 1–16 now have typed serializers; chapter 13 follows the
 [accepted compact gas policy](../../spec/state-statistics.md). Service-account metadata is implemented.
 Storage/preimage and request-history keyed entries are implemented. Request-length namespace
@@ -59,8 +74,8 @@ test remain against 0.8.0. Further implementation
 scope is selected separately; the pending upgrade still qualifies full M1 state parity.
 The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
 [M1 coverage audit](../codec-coverage.md) distinguishes framing from those remaining state and
-validation responsibilities. Current network tests use bounded controlled topologies; general
-multi-target networking and independent JAM-stack interoperability remain open. Full-ring capacity
+validation responsibilities. Current network tests use bounded controlled topologies; production peer discovery,
+non-loopback download bootstrap and independent JAM-stack interoperability remain open. Full-ring capacity
 sizing and dependency/security audits remain necessary. The exceptional-point Ed25519 acceptance policy requires an explicit normative
 decision and focused independent tests before consensus-sensitive verification is finalized.
 
