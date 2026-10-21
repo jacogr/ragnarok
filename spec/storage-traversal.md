@@ -152,3 +152,14 @@ mutation and1000 ARC cycles. Replay alone does not select a disk head or authori
 Replay reads the immutable expected view's scalar repository policy, refusing an oversized inner
 body before outer checksum hashing. The observer suite requires zero hash attempts on that refusal.
 `repositoryLimits(view)` returns only copied policy scalars, never graph ownership or mutable bytes.
+
+## Legacy journal replay adoption
+
+Strict single-file open/recovery uses atomic fused replay for each exact frame after independent
+chain/schema admission. Replayed context advances only after a complete admitted revision. Normal
+open still refuses incomplete tails; explicit repair still requires the independently supplied
+exact generation/root prefix token, preserves complete successors and synchronizes before/after
+truncation. File identity, bytes, publication and uncertainty behavior remain unchanged.
+
+Required local regressions cover the file repository, published complete-map replay pairs and
+real interrupted-write recovery. Managed replay adoption follows independently.

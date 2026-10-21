@@ -208,20 +208,15 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
           partial = true
           break # Only explicit recovery can stop at a verified prefix preceding an incomplete final frame.
         return FileError.InvalidJournal
+      let current = memory.snapshot.value
       let frame = if schema == StorageSchema.FullStateV1:
-        decodeContextJournalFrame(bytes.toOpenArray(offset, offset+extent.value-1),
-          limits.contextBytes, limits.repository.codec, limits.bytes)
+        memory.replayContextJournalFrame(current, bytes.toOpenArray(offset, offset+extent.value-1),
+          limits.contextBytes, limits.bytes)
       else:
-        decodeJournalFrame(bytes.toOpenArray(offset, offset+extent.value-1),
-          limits.repository.codec, limits.bytes) # Schema is independently selected before any frame interpretation.
+        memory.replayJournalFrame(current, bytes.toOpenArray(offset, offset+extent.value-1),
+          limits.bytes) # Schema is independently selected before checksum and atomic graph admission.
       if frame.error == FrameError.BackendFailure: return FileError.BackendFailure
       if frame.error != FrameError.None: return FileError.InvalidJournal
-      let current = memory.snapshot.value
-      if uint64(current.generation) == high(uint64) or
-          uint64(frame.value.generation) != uint64(current.generation)+1:
-        return FileError.InvalidJournal
-      if memory.publish(current, frame.value.batch).error !=
-          RepositoryError.None: return FileError.InvalidJournal
       context = frame.value.context # Only a fully admitted frame can select its context.
       offset += extent.value # Extent validation proved exact bounded forward progress.
     if repair:
