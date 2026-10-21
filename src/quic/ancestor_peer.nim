@@ -11,7 +11,7 @@ import ../codec/[bounded, block_codec]
 type
   AncestorPeerKey* = distinct array[32, byte] ## Explicit expected TLS Ed25519 identity, unrelated to a header hash.
   AncestorPeerStage* {.pure.} = enum ## Ready requires both FINs and actual final native stream close.
-    Idle, Connecting, Receiving, Ready, Failed
+    Idle, Connecting, Receiving, Disconnecting, Ready, Failed
   AncestorPeerError* {.pure.} = enum ## Scalar lifetime failures retain no usable response prefix.
     Uninitialized, None, Busy, InvalidPolicy, InvalidRequest, InvalidEndpoint,
     TransportFailure, IdentityFailure, FramingFailure, Timeout
@@ -149,8 +149,9 @@ proc tick*(peer: var AncestorPeer, now: AncestorTick): AncestorPeerError =
   peer.lastTick = now
   if uint64(now) - uint64(peer.started) >= uint64(peer.limits.timeout):
     return peer.stop(AncestorPeerError.Timeout) # One total deadline includes TLS and final callback retirement.
-  if not peer.transport.pollTransport(0): return peer.stop(AncestorPeerError.TransportFailure)
+  let polled = peer.transport.pollTransport(0)
   if peer.checked and not peer.verified: return peer.stop(AncestorPeerError.IdentityFailure)
+  if not polled: return peer.stop(AncestorPeerError.TransportFailure)
   if peer.state == AncestorPeerStage.Failed: return peer.reason
   if peer.state == AncestorPeerStage.Connecting and peer.verified and
       peer.transport.authenticatedConnections > 0:
@@ -165,7 +166,11 @@ proc tick*(peer: var AncestorPeer, now: AncestorTick): AncestorPeerError =
     return peer.stop(AncestorPeerError.TransportFailure) # Reset/unclean close cannot manufacture an empty response.
   if peer.receiver.stage == AncestorReceiveStage.Ready and not peer.route.active and peer.handle ==
       NativeStream(nil):
-    peer.state = AncestorPeerStage.Ready # Complete bytes and both FINs precede actual final native close.
+    if peer.state != AncestorPeerStage.Disconnecting:
+      peer.transport.disconnectTransport()
+      peer.state = AncestorPeerStage.Disconnecting # Send graceful connection close before a later owner reuses this single-peer server.
+    elif peer.transport.peerMetric(0) == 0:
+      peer.state = AncestorPeerStage.Ready # Native connection retirement follows stream FIN/close and close-packet processing.
   AncestorPeerError.None
 
 proc response*(peer: AncestorPeer, frame: FrameConfig,

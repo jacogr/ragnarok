@@ -62,6 +62,16 @@ proc scenario(request: AncestorRequest, body: seq[byte], key: AncestorPeerKey,
     peer.close()
     assert peer.stage == AncestorPeerStage.Idle
     if mode == Healthy:
+      assert peer.open(request, key, servers.port(false)) == AncestorPeerError.None
+      var reconnected = false
+      for tick in 0..<4000:
+        assert servers.poll()
+        assert peer.tick(AncestorTick(uint64(100 + tick))) == AncestorPeerError.None
+        if peer.stage == AncestorPeerStage.Ready:
+          reconnected = true
+          break # A fresh second TLS connection to the same one-peer listener proves graceful slot release.
+      assert reconnected and servers.requestCount(false) == 2
+      peer.close()
       assert response.value.headers.len == 1 # Captured context survives whole endpoint/receiver retirement.
   elif mode == Oversized:
     assert peer.stage == AncestorPeerStage.Failed and peer.failure ==
