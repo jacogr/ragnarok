@@ -161,3 +161,20 @@ external checkpoint import certificate or seal/consensus verifier.
 Tests preserve exact snapshot ownership and encoding roundtrips, and refuse wrong chains, complete
 profiles, posterior maps, generations, sealed headers, truncated contexts and oversized extents.
 Historical/finality persistence beyond the selected anchor remains a separate explicit contract.
+
+## Prepared snapshot commit and local reopen
+
+DiskStateStore can durably commit an already prepared snapshot without repeating state execution
+or changed-path hashing. It requires the exact current parent owner and equality of all six
+complete-map/batch ceilings. Root-equal foreign parents and any policy change refuse before IO.
+Contextual owners require explicit nonempty context for creation/commit and refuse bare mutation
+batches that would erase the application head. A new context may select unchanged state while
+still consuming a durable generation. Ordinary node-only apply uses the same prepared commit path.
+
+Local reopen explicitly selects only the contextual schema and the maintainer-authorized local
+restart trust policy. It strictly checks identity, complete journal/graphs and a rebuilt state root;
+application adoption must additionally validate the selected context against configured chain/profile.
+External trusted-root/generation open and explicit repair retain their existing independent trust
+contracts. Tests change each inherited ceiling independently, reject foreign parents/context budgets,
+preserve exact prepared identity and verify context/generation across local restart. Existing hash
+failure and real partial-write recovery suites pass through the refactored node-only path.

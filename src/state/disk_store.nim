@@ -12,7 +12,8 @@ import ../codec/[state_trie, bounded]
 
 type
   DiskStoreError* {.pure.} = enum ## Selected failures expose reasons alone; roots grant no block authority.
-    Uninitialized, None, Busy, TrustMismatch, StateFailure, ExportFailure, FileFailure, RepositoryFailure
+    Uninitialized, None, Busy, TrustMismatch, StaleSnapshot, PolicyMismatch, ContextRequired,
+    StateFailure, ExportFailure, FileFailure, RepositoryFailure
   DiskStoreResult*[T] = object ## Guard every selected stage before extracting a success or nested reason.
     case status: DiskStoreError
     of None: completed: T
@@ -25,6 +26,7 @@ type
     journal: FileRepository
     state: StateStore
     limits: JournalLimits
+    schema: StorageSchema
 
 proc `=copy`*(destination: var DiskStateStore, source: DiskStateStore) {.error.}
   ## The composite owner may never duplicate the journal descriptor or its retirement obligation.
@@ -89,9 +91,13 @@ proc generation*(store: DiskStateStore): DiskStoreResult[RepositoryGeneration] =
   DiskStoreResult[RepositoryGeneration](status: DiskStoreError.None,
     completed: current.value.generation)
 proc initializeDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
-    source: StateStoreSnapshot, limits: JournalLimits): DiskStoreResult[StateStoreSnapshot] =
+    source: StateStoreSnapshot, limits: JournalLimits,
+    schema = StorageSchema.FullNodesV1, context: openArray[byte] = []): DiskStoreResult[
+        StateStoreSnapshot] =
   ## Create exclusively from an explicit complete seed; failures retire handles but preserve forensic files.
   if store.opened: return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.Busy)
+  if schema == StorageSchema.FullStateV1 and context.len == 0:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ContextRequired)
   let candidate = forkStateStore(source)
   if candidate.error != StateStoreError.None:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.StateFailure,
@@ -100,28 +106,31 @@ proc initializeDiskStateStore*(store: var DiskStateStore, path: string, chain: S
   if batch.error != TrieError.None:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ExportFailure,
       exportReason: batch.error)
-  let initialized = initializeFileRepository(store.journal, path, chain, limits)
+  let initialized = initializeFileRepository(store.journal, path, chain, limits, schema)
   if initialized != FileError.None:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
       fileReason: initialized)
-  let published = store.journal.publish(store.journal.snapshot.value, batch.value)
+  let published = store.journal.publish(store.journal.snapshot.value, batch.value, context)
   if published.error != FileError.None:
     discard store.journal.close # No failed initialization exports a live descriptor owner.
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
       fileReason: published.error)
   store.state = candidate.value
   store.limits = limits
+  store.schema = schema
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: source)
 proc acquireDiskStateStore(store: var DiskStateStore, path: string, chain: StorageChainId,
     expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
-    policy: StateStoreLimits, limits: JournalLimits, repair: bool): DiskStoreResult[
+    policy: StateStoreLimits, limits: JournalLimits, repair: bool,
+    schema: StorageSchema, local: bool): DiskStoreResult[
         StateStoreSnapshot] =
   ## Strictly replay then compare independently supplied authority before constructing writable state.
   if store.opened: return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.Busy)
   let opened = if repair:
-    recoverFileRepository(store.journal, path, chain, limits, expectedGeneration, expectedRoot)
+    recoverFileRepository(store.journal, path, chain, limits, expectedGeneration, expectedRoot, schema)
   else:
-    openFileRepository(store.journal, path, chain, limits) # Ordinary open never mutates an incomplete tail.
+    openFileRepository(store.journal, path, chain, limits,
+        schema) # Ordinary open never mutates an incomplete tail.
   if opened != FileError.None:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
         fileReason: opened)
@@ -129,10 +138,13 @@ proc acquireDiskStateStore(store: var DiskStateStore, path: string, chain: Stora
   defer:
     if not adopted: discard store.journal.close # Every refused trust/policy/hash check releases its lock.
   let physical = store.journal.snapshot.value
-  if uint64(physical.generation) != uint64(expectedGeneration) or
-      array[32, byte](physical.commitment.root) != array[32, byte](expectedRoot):
+  if not local and (uint64(physical.generation) != uint64(expectedGeneration) or
+      array[32, byte](physical.commitment.root) != array[32, byte](expectedRoot)):
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.TrustMismatch)
-  let entries = restoreStateEntries(physical, expectedRoot, policy.trie)
+  if schema == StorageSchema.FullStateV1 and store.journal.snapshotContext.value.len == 0:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ContextRequired)
+  let selectedRoot = if local: physical.commitment.root else: expectedRoot
+  let entries = restoreStateEntries(physical, selectedRoot, policy.trie)
   if entries.error != RepositoryError.None:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.RepositoryFailure,
       repositoryReason: entries.error)
@@ -141,46 +153,75 @@ proc acquireDiskStateStore(store: var DiskStateStore, path: string, chain: Stora
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.StateFailure,
       stateReason: candidate.error)
   let restored = candidate.value.snapshot.value
-  if array[32, byte](restored.commitment.root) != array[32, byte](expectedRoot):
+  if array[32, byte](restored.commitment.root) != array[32, byte](selectedRoot):
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.TrustMismatch)
   store.state = candidate.value
   store.limits = limits
+  store.schema = schema
   adopted = true
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: restored)
 proc openDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
     expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
-    policy: StateStoreLimits, limits: JournalLimits): DiskStoreResult[StateStoreSnapshot] =
+    policy: StateStoreLimits, limits: JournalLimits,
+    schema = StorageSchema.FullNodesV1): DiskStoreResult[StateStoreSnapshot] =
   ## Read strictly without repair; independently supplied root/generation choose the only admissible head.
-  acquireDiskStateStore(store, path, chain, expectedRoot, expectedGeneration, policy, limits, false)
+  acquireDiskStateStore(store, path, chain, expectedRoot, expectedGeneration, policy, limits, false,
+      schema, false)
 proc recoverDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
     expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
-    policy: StateStoreLimits, limits: JournalLimits): DiskStoreResult[StateStoreSnapshot] =
+    policy: StateStoreLimits, limits: JournalLimits,
+    schema = StorageSchema.FullNodesV1): DiskStoreResult[StateStoreSnapshot] =
   ## Explicitly truncate only a plausible incomplete final frame after exact trusted-prefix validation.
   ## Complete successors and complete corrupt frames are never discarded; later restore failure may
   ## leave the authorized repair durable even though no writable StateStore has been adopted.
-  acquireDiskStateStore(store, path, chain, expectedRoot, expectedGeneration, policy, limits, true)
+  acquireDiskStateStore(store, path, chain, expectedRoot, expectedGeneration, policy, limits, true,
+      schema, false)
 
+proc openLocalDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
+    policy: StateStoreLimits, limits: JournalLimits): DiskStoreResult[StateStoreSnapshot] =
+  ## Resume only the contextual local database after strict chain/format/graph integrity checks.
+  ## The application must additionally bind selected context to its configured profile and restored map.
+  acquireDiskStateStore(store, path, chain, default(StateRoot), RepositoryGeneration(0),
+    policy, limits, false, StorageSchema.FullStateV1, true)
+proc snapshotContext*(store: DiskStateStore): FileResult[seq[byte]] =
+  ## Return independently owned metadata selected by the same durable generation as the state view.
+  store.journal.snapshotContext
+proc commit*(store: var DiskStateStore, expected, target: StateStoreSnapshot,
+    context: openArray[byte] = []): DiskStoreResult[StateStoreSnapshot] =
+  ## Publish a privately prepared immutable snapshot without repeating application or commitment work.
+  let before = store.snapshot
+  if before.error != DiskStoreError.None: return before
+  if not sameStateSnapshot(before.value, expected):
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.StaleSnapshot)
+  if not sameStateStorePolicy(expected, target):
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.PolicyMismatch)
+  if store.schema == StorageSchema.FullStateV1 and context.len == 0:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ContextRequired)
+  let candidate = forkStateStore(target).value
+  let batch = exportStateChanges(expected, target, store.limits.repository.codec.records)
+  if batch.error != TrieError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ExportFailure,
+      exportReason: batch.error)
+  let published = store.journal.publish(store.journal.snapshot.value, batch.value, context)
+  if published.error != FileError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+      fileReason: published.error)
+  store.state = candidate # Only a confirmed durable frame authorizes the exact prepared memory owner.
+  DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: target)
 proc apply*(store: var DiskStateStore,
     writes: openArray[StateWrite]): DiskStoreResult[StateStoreSnapshot] =
-  ## Validate/hash a private fork, append and synchronize its delta, then replace the live state once.
+  ## Ordinary node-only updates stage privately; contextual applications must supply prepared head context.
   let before = store.snapshot
   if before.error != DiskStoreError.None: return before
   if writes.len == 0: return before # Empty batches preserve identity and never consume a journal generation.
+  if store.schema == StorageSchema.FullStateV1:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ContextRequired)
   var candidate = forkStateStore(before.value).value
   let changed = candidate.apply(writes)
   if changed.error != StateStoreError.None:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.StateFailure,
       stateReason: changed.error)
-  let batch = exportStateChanges(before.value, changed.value, store.limits.repository.codec.records)
-  if batch.error != TrieError.None:
-    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ExportFailure,
-      exportReason: batch.error)
-  let published = store.journal.publish(store.journal.snapshot.value, batch.value)
-  if published.error != FileError.None:
-    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
-      fileReason: published.error)
-  store.state = candidate # Only a confirmed durable frame authorizes the matching memory snapshot.
-  DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: changed.value)
+  store.commit(before.value, changed.value)
 proc synchronize*(store: var DiskStateStore): FileResult[StorageDurability] =
   ## A successful receipt confirms file/directory synchronization, never canonical block selection.
   store.journal.synchronize
