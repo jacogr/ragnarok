@@ -79,3 +79,19 @@ Local trust native verification passes, with 299,808 occupied bytes before/after
 1,000 captured-input/complete-recovery cycles. Nine combined runtime refusals,
 genuine success/error controls, eleven private-owner/result compiler checks and
 inventory pass. Evidence uses `build/recovery-trust*`; CI is not requested.
+
+## Separate bounded operator files
+
+`loadCheckpointTrust` reads at most 238 identity bytes, checks exact canonical
+identity before opening the header path, then bounds that regular-file read by
+both the remaining aggregate ceiling and existing header ceiling. Shared private
+header capture avoids rehashing identity. All descriptors retire before returning
+the immutable owner; later checkpoint work never rereads either trust path.
+FileFailure retains the native reason. Explicit operator selection supplies trust;
+no checkpoint self-authentication, implicit repair or alternate-file scan occurs.
+
+Local trust-file suite and affected memory-capture consumer pass. The 1,000-cycle
+file/recovery witness retains 21,184 occupied bytes before/after; captured input
+replacement and identity-before-header error ordering pass. Ten combined runtime
+refusals, genuine controls, twelve compiler privacy checks and inventory pass.
+Evidence uses `build/recovery-trust-files*`; CI remains separate.
