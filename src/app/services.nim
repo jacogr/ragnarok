@@ -356,3 +356,8 @@ proc configureTelemetry*(services: var Services, options: Options, certificate: 
     port: uint16, ipv6: bool): bool {.raises.} =
   ## Register the actual transport identity/address after binding, using the captured chain bytes.
   setupTelemetry(services.telemetry, options, certificate, port, ipv6, services.chainText)
+
+proc stageCheckpointVerification*(services: var Services, expected: ApplicationCheckpointIdentity,
+    limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointAdmission =
+  ## Independent fixed trust and explicit decode budgets require no canonical alias, so verification may run during preparation leases.
+  services.checkpointExport.stageVerification(expected, limits, limit)
