@@ -29,9 +29,11 @@ proc computedAdmissionConfig*(source: IncludedComputedGuarantees): ReportAdmissi
   result.packages.queues.cores = CoreCount(3)
   result.ancestors.header.cores = CoreCount(3)
   result.ancestors.header.authorValidators = ValidatorCount(9)
-proc admissionFixture*(distinctPackages = true, withReady = false): IncludedComputedGuarantees =
+proc admissionFixture*(distinctPackages = true, withReady = false,
+    withRound = false): IncludedComputedGuarantees =
   ## Two distinct original packages are executed before signing; optional duplicates exercise actual package refusal.
-  let batch = inclusionFixture(distinctPackages = distinctPackages, withReady = withReady)
+  let batch = inclusionFixture(distinctPackages = distinctPackages, withReady = withReady,
+      withRound = withRound)
   let first = batch.computedBatchSourceAt(ComputedBatchIndex(
       0)).value.computedEnvelopeGuarantee.value.report
   let second = batch.computedBatchSourceAt(ComputedBatchIndex(

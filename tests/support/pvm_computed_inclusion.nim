@@ -17,9 +17,10 @@ import ./[pvm_computed_batch, pvm_computed_roster, pvm_computed_credentials,
   pvm_computed_recent, pvm_computed_lookup]
 
 proc inclusionFixture*(changed = false, distinctPackages = false,
-    withReady = false): ComputedGuaranteeBatch =
+    withReady = false, withRound = false): ComputedGuaranteeBatch =
   ## Raw proposals author the candidate only; returned authority is rederived from its actual signed prefix.
-  let proposals = batchEnvelopes(distinctPackages = distinctPackages, withReady = withReady)
+  let proposals = batchEnvelopes(distinctPackages = distinctPackages, withReady = withReady,
+      withRound = withRound)
   let proposed = prepareComputedBatch(proposals, batchLimits()).value
   let first = proposals[0].computedEnvelopeSource.value.computedCredentialSource.value.computedGuarantorSource.value.computedRosterSource.value
   let original = first.computedTransitionSource.value.computedProfileContext.value

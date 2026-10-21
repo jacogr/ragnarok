@@ -11,7 +11,7 @@ import ../../src/state/[computed_transition, computed_profile, computed_lookup, 
   erasure_layout, erasure_words, auditable_bundle, extrinsic_inputs, import_inputs, import_justification]
 import ../../src/chain/[genesis, parameters]
 import ../../src/codec/[assurances, bounded, header, block_codec, work_package, work_report, composite,
-  state_safrole, state_layout, state_trie, state_availability, state_authorization, state_disputes]
+  state_safrole, state_layout, state_trie, state_availability, state_authorization, state_disputes, state_privileges]
 import ../../src/crypto/primitives
 import ../../src/bandersnatch/bandersnatch
 import ./[pvm_computed_transition, report_admission_context, pvm_input_refinement,
@@ -50,7 +50,7 @@ proc rosterTransitionConfig*(): BlockReportConfig =
 proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 65535'u16,
     target = 0'u32, offender = false, repeatReporter = false,
     additionalCores: openArray[uint64] = [], distinctPackages = false,
-        withReady = false): ComputedRosterFixture =
+        withReady = false, withRound = false): ComputedRosterFixture =
   ## Re-author a three-core complete signed prefix; optional parent9 -> posterior6 is a real epoch transition.
   let base = transitionFixture(epoch = shrink, withReady = withReady)
   let cfg = rosterTransitionConfig()
@@ -75,6 +75,13 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
   var writes = @[StateWrite(kind: StateWriteKind.Put, key: assignments.key,
       value: assignments.value),
     StateWrite(kind: StateWriteKind.Put, key: poolEntry.key, value: poolEntry.value)]
+  if withRound:
+    # Commit canonical original privileges before root/signing/execution; completed sources are never patched afterward.
+    let privileges = privilegeStateEntry(PrivilegeState(manager: ServiceIndex(42),
+      delegator: ServiceIndex(42), registrar: ServiceIndex(42),
+      assigners: @[ServiceIndex(42), ServiceIndex(42), ServiceIndex(42)], always: @[]),
+      PrivilegeConfig(cores: CoreCount(3), maxAlways: ElementLimit(2), maxBytes: ByteLimit(1000))).value
+    writes.add(StateWrite(kind: StateWriteKind.Put, key: privileges.key, value: privileges.value))
   if shrink or repeatReporter:
     # Optionally extend parent C8 or repeat one actual Ed identity before signing; pending/staging remain six.
     let raw = original.snapshot.value.lookup(chapterKey(StateChapter(8))).value.bytes
@@ -132,6 +139,13 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
   params[24] = 3 # All original computation and configuration now use three configured cores.
   params[84] = byte(rotation and 255)
   params[85] = byte(rotation shr 8) # Original rotation control precedes computation and configured capture; default preserves prior fixture.
+  if withRound:
+    # Fixed AppendixB E8 gas fields and E2 authorization queue length are authored before original parameter capture.
+    for index in 0..<8:
+      params[34+index] = byte((100000'u64 shr (8*index)) and 255)
+      params[58+index] = byte((1000000'u64 shr (8*index)) and 255)
+    params[82] = 80
+    params[83] = 0
   fixture.parameters = decodeParameters(params).value
   let info = fixture.package.workPackageInfo.value
   let item = fixture.package.workItemAt(0).value.workItemInfo.value
