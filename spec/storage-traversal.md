@@ -99,3 +99,16 @@ counter. Timings are descriptive; no general speedup is claimed without controll
 Next work stays within physical storage: reuse multi-root scratch without sharing per-root visited
 state, canonicalize selected inventories once, reduce repeated serialized admission work, then add
 bounded read/maintenance capabilities with explicit authority, lifetime and budget contracts.
+
+## Reused multi-root scratch
+
+Root selection and raw/serialized image admission allocate the physical visited array once per
+operation, rather than once per root. Between roots, they clear exactly the recorded branch/leaf
+positions and retain the collection buffer capacity. Counts and route prefixes start fresh for each
+root. The union's retained bitmap remains separate: it cannot suppress per-root cycle, route or
+value-limit checks. Empty roots do not skip the reset. This reduces allocation sites from one per
+root to one per operation; no wall-clock claim follows from that structural count.
+
+`storage_retention_plan` includes reverse root order with an intervening empty root; `storage_image`
+continues to admit multiple individually bounded graphs whose union exceeds a single-root value
+budget, and rejects omitted-root orphans and malformed unions. Both retain exact ARC release.

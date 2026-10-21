@@ -162,6 +162,12 @@ proc graph(records: seq[StoredRecord], digest: StateNodeHash, depth: int,
     if counts.entries-before < 2: return RepositoryError.InvalidGraph # Singletons must collapse instead of retaining unary paths.
   RepositoryError.None
 
+proc resetGraph(visit: var GraphVisit) =
+  ## Reuse union traversal scratch while clearing every record seen by the preceding complete root.
+  for index in visit.leaves:
+    visit.seen[index] = false # Records collection includes branches and leaves, including empty-root no-ops.
+  visit.leaves.setLen(0) # Retain bounded capacity; no previous root can authorize a repeated subtree.
+
 proc newNodeRepository*(limits: RepositoryLimits): NodeRepository =
   ## Open an initialized empty in-memory owner; allocation exhaustion keeps the fail-stop policy.
   NodeRepository(head: RepositoryData(table: RepositoryTable(records: @[]), limits: limits))
@@ -402,10 +408,11 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
   var retained = newSeq[bool](source.table.records.len)
   var indices: seq[int] = @[]
   var bytes = 0'u64
+  var visit = GraphVisit(seen: newSeq[bool](source.table.records.len),
+      collect: GraphCollection.Records)
   for root in unique:
-    # Each complete root gets independent cycle/route checks; shared records count once in the union.
-    var visit = GraphVisit(seen: newSeq[bool](source.table.records.len),
-        collect: GraphCollection.Records)
+    # Reuse bounded storage, but reset membership and counters for independent per-root graph checks.
+    resetGraph(visit)
     var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
     let checked = graph(source.table.records, StateNodeHash(array[32, byte](root)), 0,
       default(array[31, byte]), source.limits.codec.trie, visit, counts)
@@ -509,8 +516,10 @@ proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
     bytes += uint64(record.payload.len) # Collection preflight proved the aggregate physical byte bound.
   var retained = newSeq[bool](records.len)
   var count = 0
+  var visit = GraphVisit(seen: newSeq[bool](records.len), collect: GraphCollection.Records)
   for root in image.roots:
-    var visit = GraphVisit(seen: newSeq[bool](records.len), collect: GraphCollection.Records)
+    # Serialized roots never inherit prior cycle/route/count authority when scratch storage is reused.
+    resetGraph(visit)
     var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
     let checked = graph(records, StateNodeHash(array[32, byte](root)), 0,
       default(array[31, byte]), limits.codec.trie, visit, counts)

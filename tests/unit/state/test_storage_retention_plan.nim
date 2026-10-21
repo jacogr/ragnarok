@@ -31,6 +31,11 @@ proc cycle() =
     last.commitment.root, last.commitment.root], ElementLimit(4)).value
   assert all.retainedRoots.len == 3 and all.retainedNodes == 7
   assert all.reclaimableNodes == 0 and all.reclaimableValueBytes == 0
+  let reversed = selectRepositoryRoots(c, [last.commitment.root, default(StateRoot),
+    first.commitment.root, middle.commitment.root], ElementLimit(4)).value
+  assert reversed.retainedNodes == all.retainedNodes and reversed.retainedValueBytes ==
+      all.retainedValueBytes
+  assert reversed.retainedRoots.len == 4 # Empty roots between overlapping nonempty roots cannot retain stale scratch.
   let current = selectRepositoryRoots(c, [last.commitment.root], ElementLimit(1)).value
   assert current.retainedNodes == 3 and current.reclaimableNodes == 4
   assert selectRepositoryRoots(c, roots, ElementLimit(1)).error == RepositoryError.LimitExceeded
