@@ -42,5 +42,17 @@ proc main() =
     "--download-ancestor", "older"], selected)
   assert selected.diskStorage and selected.ancestorPaths == @["newest", "older"]
   assert parseOptions(base, selected) and selected.ancestorPaths.len == 0
+  assert not selected.localDownloadAncestors
+  var localArgs = base
+  localArgs.add("--download-local-ancestors")
+  assert parseOptions(localArgs, selected) and selected.localDownloadAncestors
+  localArgs.add("--download-local-ancestors")
+  assert not parseOptions(localArgs, selected) and not selected.localDownloadAncestors
+  for command in ["server", "client", "mesh", "--help"]:
+    assert not parseOptions(@[command, "--with-state", "--chain", "chain.json",
+        "--download-local-ancestors"], selected)
+    assert not selected.valid and not selected.localDownloadAncestors
+  assert not parseOptions(@["download", "--download-local-ancestors"], selected)
+  assert parseOptions(base, selected) and not selected.localDownloadAncestors
   echo "PASS application ancestor options: bounded ordered paths, download-only activation and atomic refusal"
 main() # Assertion failures retain the native runner's ordinary verdict.

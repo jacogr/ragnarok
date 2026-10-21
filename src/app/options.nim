@@ -13,7 +13,7 @@ const
   MaxDownloadAncestors* = 64          ## Hard path-count cap before any ancestor file IO or native setup.
   DefaultStateWrites = 1000'u64       # CLI defaults do not widen explicitly supplied component policies.
   DefaultStateWriteBytes = 100000'u64 # Each omitted mutation ceiling resolves independently.
-  Switches = ["--with-ui", "--with-rpc", "--with-telemetry", "--with-state"]
+  Switches = ["--with-ui", "--with-rpc", "--with-telemetry", "--with-state", "--download-local-ancestors"]
   Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes",
       "--state-write-bytes", "--state-checkpoint", "--state-trust", "--state-header",
       "--state-checkpoint-bytes", "--state-storage", "--state-db", "--download-ancestor", "--download-blocks"]
@@ -22,7 +22,7 @@ type StateStorage* {.pure.} = enum ## Backend choice is independent of future fu
   Memory, Disk
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
-  parsed, telemetry, rpc, ui, state, recover: bool
+  parsed, telemetry, rpc, ui, state, recover, localAncestors: bool
   positional: seq[string]
   ancestorFiles: seq[string]
   downloadCount: int
@@ -52,6 +52,10 @@ proc ancestorPaths*(options: Options): seq[string] =
   result = newSeq[string](options.ancestorFiles.len)
   for index, path in options.ancestorFiles:
     result[index] = path # Callers cannot reorder or replace the parser's retained list.
+
+func localDownloadAncestors*(options: Options): bool =
+  ## Explicit download-only activation captures retained local parents; failed/default parsing never enables it.
+  options.parsed and options.localAncestors
 
 func downloadBlocks*(options: Options): int =
   ## Valid commands default to one child; failed/default parsing reports no requested work.
@@ -162,6 +166,7 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--with-rpc": candidate.rpc = true
       of "--with-ui": candidate.ui = true
       of "--with-state": candidate.state = true
+      of "--download-local-ancestors": candidate.localAncestors = true
       else: return false # Switch classification above makes this branch unreachable.
       inc i
     elif name in Values:
@@ -237,7 +242,7 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       return false # Socket services belong to network commands, never no-socket selftests.
   if candidate.positional.len > 0 and candidate.positional[0] == "download":
     if not candidate.state or candidate.telemetry: return false # Downloads require explicit canonical state; outgoing telemetry is not wired yet.
-  if candidate.ancestorFiles.len > 0 or "--download-blocks" in seen:
+  if candidate.ancestorFiles.len > 0 or "--download-blocks" in seen or candidate.localAncestors:
     if candidate.positional.len == 0 or candidate.positional[0] != "download" or
         not candidate.state:
       return false # Other commands must not silently ignore supplied download controls.
