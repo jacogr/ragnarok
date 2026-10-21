@@ -153,3 +153,32 @@ proc mergeProofViews*(left, right: ProofView, limits: ProofViewLimits): ProofVie
     entries.add(chosen) # Retain an immutable owner after its current output budget passes.
   ProofViewResult[ProofView](status: ProofViewError.None,
     completed: ProofView(data: ViewData(root: a.root, entries: entries)))
+
+proc projectProofView*(source: ProofView, queries: openArray[StateKey],
+    limits: ProofViewLimits): ProofViewResult[ProofView] =
+  ## Retain only explicitly requested existing evidence, without widening source root authority.
+  if not source.valid:
+    return ProofViewResult[ProofView](status: ProofViewError.Uninitialized)
+  if uint64(queries.len) > uint64(limits.items) or queries.len > high(int) div sizeof(VerifiedStateLookup):
+    return ProofViewResult[ProofView](status: ProofViewError.LimitExceeded)
+  var bytes = 0'u64
+  var entries = newSeq[VerifiedStateLookup](queries.len)
+  for i, query in queries:
+    # Missing evidence refuses atomically; the requested key is never inferred absent.
+    let found = source.lookup(query)
+    if found.error != ProofViewError.None:
+      return ProofViewResult[ProofView](status: found.error)
+    let lookup = found.value
+    if lookup.present:
+      let size = uint64(lookup.byteLength)
+      if size > uint64(limits.valueBytes)-bytes:
+        return ProofViewResult[ProofView](status: ProofViewError.LimitExceeded)
+      bytes += size
+    entries[i] = lookup
+  entries.sort(compare)
+  for i in 1..<entries.len:
+    # Projections preserve the unique-key collection contract regardless of request order.
+    if compareKey(entries[i-1].key, entries[i].key) == 0:
+      return ProofViewResult[ProofView](status: ProofViewError.DuplicateKey)
+  ProofViewResult[ProofView](status: ProofViewError.None,
+    completed: ProofView(data: ViewData(root: source.root, entries: entries)))

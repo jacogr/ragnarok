@@ -57,5 +57,16 @@ proc main() =
     aggregate).value, default(StateRoot), budget).value
   assert mergeProofViews(view, foreign, budget).error == ProofViewError.WrongRoot
   assert one.len == 1 and two.len == 1 and view.len == 2
+  let projected = projectProofView(view, [other], budget).value
+  assert projected.len == 1 and not projected.lookup(other).value.present
+  assert projected.lookup(key).error == ProofViewError.MissingWitness
+  assert projectProofView(view, [], ProofViewLimits()).value.valid
+  assert projectProofView(view, [key, key], ProofViewLimits(items: ElementLimit(2),
+    valueBytes: ByteLimit(2))).error == ProofViewError.DuplicateKey
+  assert projectProofView(view, [chapterKey(StateChapter(3))], budget).error ==
+      ProofViewError.MissingWitness
+  assert projectProofView(view, [key], ProofViewLimits(items: ElementLimit(1))).error ==
+      ProofViewError.LimitExceeded
+  assert view.lookup(key).value.bytes == @[byte 7]
   echo "state-proof-view: ok"
 main()
