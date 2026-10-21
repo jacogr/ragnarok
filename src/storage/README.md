@@ -103,3 +103,7 @@ callbacks. See the record contract for bounded IO, cooperative inode locking and
 requires the independently trusted generation and root of the complete prefix before truncating
 anything; complete corrupt frames and complete successor revisions are never discarded. Strict
 open remains unchanged. Real child-process short-write checks exercise recovery and resumed append.
+
+`revision_retention.nim` provides bounded explicit pins for immutable repository views. Catalog
+copies update independently; release/close never revoke held views. Tokens also retain their
+selected view until dropped. There is no automatic eviction, finality policy or disk reclamation.
