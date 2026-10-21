@@ -1,0 +1,110 @@
+{
+  "source": "tests/native/pvm_computed_state_publication.nim",
+  "build_name": "pvm-computed-state-publication",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-state-publication-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state publication default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-state-publication-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state publication source"
+    },
+    {
+      "identity": {
+        "origin": "stale"
+      },
+      "arguments": [
+        "stale"
+      ],
+      "name": "pvm-computed-state-publication-stale",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state publication stale"
+    },
+    {
+      "identity": {
+        "origin": "target"
+      },
+      "arguments": [
+        "target"
+      ],
+      "name": "pvm-computed-state-publication-target",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state publication target"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-state-publication-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state publication owner"
+    },
+    {
+      "identity": {
+        "origin": "snapshot"
+      },
+      "arguments": [
+        "snapshot"
+      ],
+      "name": "pvm-computed-state-publication-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed state publication snapshot"
+    },
+    {
+      "identity": {
+        "origin": "reason-default"
+      },
+      "arguments": [
+        "reason-default"
+      ],
+      "name": "pvm-computed-state-publication-reason-default",
+      "diagnostic": "outcome.status == PublicationFailure",
+      "description": "Computed state publication reason-default"
+    },
+    {
+      "identity": {
+        "origin": "reason-success"
+      },
+      "arguments": [
+        "reason-success"
+      ],
+      "name": "pvm-computed-state-publication-reason-success",
+      "diagnostic": "outcome.status == PublicationFailure",
+      "description": "Computed state publication reason-success"
+    },
+    {
+      "identity": {
+        "origin": "reason-source"
+      },
+      "arguments": [
+        "reason-source"
+      ],
+      "name": "pvm-computed-state-publication-reason-source",
+      "diagnostic": "outcome.status == PublicationFailure",
+      "description": "Computed state publication reason-source"
+    }
+  ]
+}
