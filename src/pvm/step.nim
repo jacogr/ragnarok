@@ -520,7 +520,8 @@ proc stepOnce*(source: Machine, limit: GasCycleLimit): StepResult =
 # Evaluate recursive Psi iteratively over an already validated program and captured machine.
 # The shared remaining budget counts attempted instructions, including the exiting instruction.
 # Each gas simulation is independently bounded by gasLimit. Local failures expose no partial progress.
-proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLimit): StepResult =
+proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLimit,
+    chargeCache: var BlockChargeCache): StepResult =
   let original = machineInfo(source)
   let owner = programOf(source)
   let originalMemory = memoryOf(source)
@@ -533,8 +534,6 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
     return StepResult(status: StepError.InvalidMachine)
   let program = owner.value
   var current = source
-  # This cache cannot escape the segment or observe a different program or cycle limit.
-  var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
   # Retain only the current immutable root; no host recursion or growing state history is required.
   while remaining > 0:
     # Consume each attempted instruction once, even when a Host exit returns to the dispatcher.
@@ -583,7 +582,9 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
 proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycleLimit): StepResult =
   ## Execute a guest-only segment with a fresh local instruction budget; Host is returned to the caller.
   var remaining = uint64(stepLimit)
-  executeBudget(source, remaining, gasLimit)
+  # A direct execution has its own memo, never inherited from another program or local policy.
+  var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
+  executeBudget(source, remaining, gasLimit, chargeCache)
 
 # Lift guest/engine results without confusing guest terminal exits with local host errors.
 func executionResult[Reason: enum](evaluated: StepResult): HostExecutionResult[Reason] =
@@ -595,8 +596,9 @@ func executionResult[Reason: enum](evaluated: StepResult): HostExecutionResult[R
 
 # Advance a shared invocation budget to the next dispatch or terminal result.
 # Dispatch credit is consumed before callbacks, identically for both public callback forms.
-proc nextHost(current: Machine, remaining, calls: var uint64, gasLimit: GasCycleLimit): StepResult =
-  let evaluated = executeBudget(current, remaining, gasLimit)
+proc nextHost(current: Machine, remaining, calls: var uint64, gasLimit: GasCycleLimit,
+    chargeCache: var BlockChargeCache): StepResult =
+  let evaluated = executeBudget(current, remaining, gasLimit, chargeCache)
   if evaluated.error != StepError.None:
     # Engine refusals carry no partial machine state.
     return evaluated
@@ -619,9 +621,12 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   var remaining = uint64(stepLimit)
   var calls = uint64(hostLimit)
   var current = source
+  # Host responses preserve this invocation's program and fixed simulation limit.
+  # Scalar cached prices retain neither context nor callbacks and disappear on every return.
+  var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
   while true:
     # Iteration retains one current snapshot; the shared helper owns all guest/dispatch budget rules.
-    let evaluated = nextHost(current, remaining, calls, gasLimit)
+    let evaluated = nextHost(current, remaining, calls, gasLimit, chargeCache)
     if evaluated.error != StepError.None:
       # Local refusal exposes no machine progress; already-completed context mutations remain visible.
       return executionResult[Reason](evaluated)
@@ -657,9 +662,12 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   var remaining = uint64(stepLimit)
   var calls = uint64(hostLimit)
   var current = source
+  # Host responses preserve this invocation's program and fixed simulation limit.
+  # Scalar cached prices retain neither context nor callbacks and disappear on every return.
+  var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
   while true:
     # All scheduling and charging happens in the same helper used by fallible callbacks.
-    let evaluated = nextHost(current, remaining, calls, gasLimit)
+    let evaluated = nextHost(current, remaining, calls, gasLimit, chargeCache)
     if evaluated.error != StepError.None:
       # Preserve the legacy local engine refusal without reading a failed payload.
       return evaluated

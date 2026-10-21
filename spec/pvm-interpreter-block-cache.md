@@ -61,3 +61,8 @@ instruction-count or exact-head Linux result is claimed from these local measure
 Remaining costs include repeated instruction decoding and snapshot validation.
 Cross-host reuse would need a separately reviewed invariant and host/refusal tests;
 it is not implied by this segment-local optimization.
+
+The subsequent [invocation-local extension](pvm-host-price-reuse.md) preserves this
+same scalar memo across host replies, relying on the existing fixed-program/fixed-limit
+host-response boundary. The segment-local measurements and lifetime discussion above
+describe this first optimization; the extension has its own evidence and regression cases.
