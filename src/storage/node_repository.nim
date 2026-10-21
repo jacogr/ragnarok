@@ -117,29 +117,29 @@ proc graph(records: seq[TrieRecord], digest: StateNodeHash, depth: int,
   visit.seen[index] = true
   if visit.collect == GraphCollection.Records:
     visit.leaves.add(index) # Retention needs branch and leaf addresses, each once per validated root.
-  let record = records[index]
-  if record.kind == TrieRecordKind.Leaf:
-    let key = array[31, byte](record.key)
+  # Borrow scalar fields directly from the immutable table; a local record would deep-copy payload bytes.
+  if records[index].kind == TrieRecordKind.Leaf:
+    let key = array[31, byte](records[index].key)
     for bit in 0..<depth:
       let mask = byte(128 shr (bit mod 8))
       if (key[bit div 8] and mask) != (prefix[bit div 8] and mask):
         return RepositoryError.InvalidGraph # A locally valid node at the wrong path is not a valid trie.
-    let size = uint64(record.payload.len)
+    let size = uint64(records[index].payload.len)
     if counts.entries >= uint64(limits.items) or size > uint64(limits.perValue) or
         size > uint64(limits.totalValueBytes)-counts.bytes:
       return RepositoryError.LimitExceeded
     if visit.collect == GraphCollection.Leaves: visit.leaves.add(
         index) # Remember validated leaves without scanning historical records later.
     inc counts.entries
-    counts.bytes += uint64(record.payload.len)
+    counts.bytes += uint64(records[index].payload.len)
   else:
     if depth >= 248: return RepositoryError.InvalidGraph # No branch may read past the full serialized key domain.
     let before = counts.entries
-    let left = graph(records, record.left, depth+1, prefix, limits, visit, counts)
+    let left = graph(records, records[index].left, depth+1, prefix, limits, visit, counts)
     if left != RepositoryError.None: return left
     var rightPrefix = prefix
     rightPrefix[depth div 8] = rightPrefix[depth div 8] or byte(128 shr (depth mod 8))
-    let right = graph(records, record.right, depth+1, rightPrefix, limits, visit, counts)
+    let right = graph(records, records[index].right, depth+1, rightPrefix, limits, visit, counts)
     if right != RepositoryError.None: return right
     if counts.entries-before < 2: return RepositoryError.InvalidGraph # Singletons must collapse instead of retaining unary paths.
   RepositoryError.None

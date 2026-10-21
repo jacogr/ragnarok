@@ -32,3 +32,12 @@ values, nine shallow readers occupy 40,725,264 bytes versus 4,526,272 for only t
 deep readers occupy 44,329,744 versus 5,116,096 bytes. Owner close leaves those readers usable
 and does not release their occupied storage. Extraction makes zero hash attempts. The baseline
 uses pinned checked Nimony native ARC on macOS ARM64; timing is descriptive only.
+
+## Borrowed graph fields
+
+Graph traversal now reads scalar fields directly from the immutable physical table rather than
+duplicating a local `TrieRecord`. All route/cycle/completeness/budget checks remain in place.
+Checked generated C contains no record-duplication call in the graph routine, versus one in the
+baseline routine. All 24 matching workloads retain identical occupied-byte and hash counters,
+complete mappings and exact scope release; this change removes transient payload copies without
+claiming a retained-memory reduction. The repository malformed graph regression remains required.
