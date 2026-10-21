@@ -1,0 +1,11 @@
+{
+  "defines": [],
+  "directory": "codec",
+  "fixtures": [
+    "pvm_control"
+  ],
+  "includes": [],
+  "libraries": [],
+  "observers": [],
+  "prepared": false
+}

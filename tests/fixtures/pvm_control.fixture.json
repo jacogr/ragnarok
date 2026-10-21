@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_PVM_CONTROL",
+  "files": {
+    "pvm-control.bin": "30a0ee5ee6f45d394c69dd246dfb865a73d33ca2b80f869935d8da9cb3e7356a"
+  },
+  "target": "pvm-control.bin"
+}
