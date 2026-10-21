@@ -9,8 +9,9 @@ import std/posix/posix
 import ./[options, services, chain, download_policy, block_download, ancestor_inputs, ancestor_response]
 import ./download_schedule
 import ../codec/[bounded, header]
+import ../state/report_anchors
 import ../chain/[genesis, provider]
-import ../quic/[block_download_loop, block_download_peers, ancestor_peer, ancestor_stream]
+import ../quic/[block_download_loop, block_download_session, block_download_peers, ancestor_peer, ancestor_stream]
 
 type DownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
   Uninitialized, Adopted, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,
@@ -85,14 +86,14 @@ type RemoteAncestorResult = object ## A refused acquisition retains no decoded p
 proc remoteAncestors(owner: var Services, options: Options, peers: seq[DownloadPeerId],
     ports: array[16, uint16], keys: array[16, DownloadPeerKey], older: seq[OwnedHeader],
     limits: DownloadLoopLimits, started: MonoTime,
-        timeout: uint64): RemoteAncestorResult {.raises.} =
+        timeout: uint64, maximum: ElementLimit): RemoteAncestorResult {.raises.} =
   ## Acquire only missing context, before any execution worker lease; native peer cleanup precedes returning copied headers.
   let selected = owner.chainView.bestBlock
   if selected.error != GenesisError.None or not ancestorsFit(selected.value.header, older, limits):
     return RemoteAncestorResult(successful: false, refusal: DownloadCommandResult.InvalidAncestors)
   let head = selected.value.header
   let child = if older.len == 0: head else: older[older.high]
-  let request = initAncestorRequest(child, ElementLimit(options.remoteDownloadAncestors))
+  let request = initAncestorRequest(child, maximum)
   if request.error != AncestorResponseError.None:
     return RemoteAncestorResult(successful: false, refusal: DownloadCommandResult.InvalidAncestors)
   var inputBytes = uint64(limits.input.ancestorBytes)
@@ -193,6 +194,8 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
     slot: uint32(initial.value.slot))
   var previousHeader = initial.value.header
   var older = ancestors
+  var remoteRemaining = uint64(options.discoverDownloadAncestors)
+  var peersRetired = false
   if not ancestorsFit(previousHeader, older, limits): return DownloadCommandResult.AdmissionFailure
   var preflight = default(BlockDownload)
   let admitted = preflight.begin(owner, older, limits.input, limits.candidate)
@@ -210,8 +213,9 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
     let elapsed = (getMonoTime() - started).inMilliseconds
     if elapsed < 0: return DownloadCommandResult.DispatchFailure # Never narrow a broken clock into a huge deadline.
     if uint64(elapsed) >= timeout: return DownloadCommandResult.Timeout
-    if dispatcher.tick(DownloadLoopTick(uint64(elapsed))) != DownloadLoopError.None:
-      return DownloadCommandResult.DispatchFailure
+    let ticked = dispatcher.tick(DownloadLoopTick(uint64(elapsed)))
+    if ticked == DownloadLoopError.AttemptExpired: return DownloadCommandResult.Timeout
+    if ticked != DownloadLoopError.None: return DownloadCommandResult.DispatchFailure
     case dispatcher.stage
     of DownloadLoopStage.Adopted:
       let confirmed = dispatcher.adoption
@@ -233,8 +237,45 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
       if not ancestorsFit(child.header, next, limits): return DownloadCommandResult.AdmissionFailure
       if dispatcher.nextChild(next, DownloadLoopTick(uint64(elapsed))) != DownloadLoopError.None:
         return DownloadCommandResult.DispatchFailure
+      if peersRetired:
+        for index in 0..<peers.len:
+          # Graceful discovery retirement preserved each fixed ID/key association; only the next child needs fresh endpoints.
+          if dispatcher.openPeer(peers[index], keys[index], ports[index], options.argument(3),
+              options.argument(4), options.argument(6)) != DownloadPeerError.None:
+            return DownloadCommandResult.TransportFailure
+        peersRetired = false
       previousHeader = child.header
       older = next # All ARC replacement occurs after collection/publication and before the next worker submission.
+    of DownloadLoopStage.AwaitingAncestors:
+      peersRetired = true # The dispatcher has joined its worker and gracefully retired every child connection.
+      if remoteRemaining == 0: return DownloadCommandResult.Exhausted
+      let demand = dispatcher.ancestorDemand
+      if demand.error != DownloadSessionError.None: return DownloadCommandResult.DispatchFailure
+      let maximum = demand.value.lookupDemandMaximum(ElementLimit(remoteRemaining))
+      if maximum.error != ReportAnchorError.None or uint64(maximum.value) == 0:
+        return DownloadCommandResult.InvalidAncestors
+      let selected = owner.chainView.bestBlock
+      if selected.error != GenesisError.None or array[32, byte](selected.value.blockHash) != observed.hash:
+        return DownloadCommandResult.DispatchFailure # A changed canonical parent cannot authorize unrelated remote context.
+      let now = uint64(elapsed)
+      let duration = min(timeout - now, dispatcher.ancestorRemaining(DownloadLoopTick(now)))
+      if duration == 0: return DownloadCommandResult.Timeout
+      let deadline = now + duration # duration <= timeout-now proves addition cannot overflow or widen the command deadline.
+      let before = older.len
+      let acquired = remoteAncestors(owner, options, peers, ports, keys, older, limits, started,
+        deadline, maximum.value)
+      if not acquired.successful: return acquired.refusal
+      let combined = acquired.captured
+      if combined.len <= before or uint64(combined.len - before) > remoteRemaining:
+        return DownloadCommandResult.InvalidAncestors # Every successful round must consume finite actual header progress.
+      remoteRemaining -= uint64(combined.len - before)
+      older = combined
+      let resumedAt = (getMonoTime() - started).inMilliseconds
+      if resumedAt < 0: return DownloadCommandResult.DispatchFailure
+      if uint64(resumedAt) >= timeout: return DownloadCommandResult.Timeout
+      let resumed = dispatcher.resumeAncestors(older, DownloadLoopTick(uint64(resumedAt)))
+      if resumed == DownloadLoopError.AttemptExpired: return DownloadCommandResult.Timeout
+      if resumed != DownloadLoopError.None: return DownloadCommandResult.DispatchFailure
     of DownloadLoopStage.Exhausted: return DownloadCommandResult.Exhausted
     of DownloadLoopStage.Failed: return DownloadCommandResult.DispatchFailure
     else: discard # Waiting/receiving/preparing/queued work requires a later bounded turn.
@@ -254,7 +295,8 @@ proc performDownloads(options: Options, adopted: var int): DownloadCommandResult
   if timeout == 0: return DownloadCommandResult.InvalidEndpoint
   let policy = loadDownloadPolicy(options.argument(8))
   if policy.error != DownloadPolicyError.None: return DownloadCommandResult.InvalidPolicy
-  let limits = policy.value
+  var limits = policy.value
+  limits.input.discoverAncestors = options.discoverDownloadAncestors > 0
   let count = 1 + (options.argumentCount - 8) div 2
   if uint64(count) > uint64(limits.schedule.peers): return DownloadCommandResult.InvalidPolicy
   var ports = default(array[16, uint16])
@@ -276,7 +318,7 @@ proc performDownloads(options: Options, adopted: var int): DownloadCommandResult
   let paths = options.ancestorPaths
   let ancestry = limits.candidate.reporting.reports.ancestors
   let requested = options.downloadBlocks
-  let remote = uint64(options.remoteDownloadAncestors)
+  let remote = uint64(options.remoteDownloadAncestors) + uint64(options.discoverDownloadAncestors)
   if remote > 0 and uint64(limits.input.blockBytes) > uint64(high(uint32)):
     return DownloadCommandResult.InvalidPolicy # Remote E4 response claims have a fixed u32 extent before any file or Services IO.
   let retained = uint64(paths.len) + remote + uint64(requested -
@@ -302,8 +344,10 @@ proc performDownloads(options: Options, adopted: var int): DownloadCommandResult
     let reserved = uint64(ancestors.len) + remote + uint64(requested - 1)
     if reserved > uint64(limits.input.ancestors) or reserved >= uint64(ancestry.headers):
       return DownloadCommandResult.InvalidPolicy # Entire local suffix plus future parents must fit before outgoing transport.
-  if remote > 0:
-    let acquired = remoteAncestors(owner, options, peers, ports, keys, ancestors, limits, started, timeout)
+  if options.remoteDownloadAncestors > 0:
+    let acquired = remoteAncestors(owner, options, peers, ports, keys, ancestors, limits, started,
+      timeout,
+      ElementLimit(options.remoteDownloadAncestors))
     if not acquired.successful: return acquired.refusal # No child request follows a failed/partial ancestry capture.
     ancestors = acquired.captured
   var observed = default(ObservedDownloadHead)

@@ -132,3 +132,19 @@ mutually exclusive with up-front `--download-remote-ancestors`. Local/file conte
 supplied. Defaults and failed parses expose zero allowance; no option opens sockets by itself.
 Parser tests cover every accepted count, malformed/duplicate/foreign-command controls, both
 conflicting option orders and atomic reset. The activation field remains private.
+
+The production command now enables discovery only from the explicit option. It reserves the entire
+local/file + remote allowance + future-parent count before outgoing IO, receives each child once,
+then acquires only a certified missing suffix after joined worker/connection retirement. Useful
+request maximum is bounded by remaining whole-run headers and slot distance. Each nonempty valid
+response subtracts its actual header count; short responses can resume and discover again without
+re-decoding/re-authenticating the child. One shared command deadline and the original child attempt
+deadline bound every acquisition. Resumed execution needs no child endpoint; successive children
+reopen only the exact preserved peer identities. Existing up-front acquisition remains separate.
+
+The command integration suite uses independent forked TLS responders to require child-before-
+ancestor ordering and one original child request. It covers genuine guaranteed two-guest adoption,
+already supplied context (zero ancestry requests), invalid child seal (zero ancestry requests),
+empty/wrong-parent/suffixed/no-FIN/byte refusals, pin/count preflight, finite two-peer fallback and
+real durable adoption/restart with complete-map/history/finality checks. Refused remote context
+never reaches canonical publication.
