@@ -1,0 +1,20 @@
+{
+  "source": "tests/native/storage_restore_results.nim",
+  "build_name": "storage-restore-results",
+  "crypto_library": "observer",
+  "cases": [
+    {
+      "identity": {
+        "member": "reason",
+        "origin": "default"
+      },
+      "arguments": [
+        "reason",
+        "default"
+      ],
+      "name": "storage-restore-reason-default",
+      "diagnostic": "outcome.status == TrieFailure",
+      "description": "Storage restore selected failure reason guard"
+    }
+  ]
+}

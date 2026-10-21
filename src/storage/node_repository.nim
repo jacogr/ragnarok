@@ -5,7 +5,7 @@
 ## Retained immutable read views are independent of later publication and explicit owner close.
 
 import std/[algorithm, assertions]
-import ./[node_records, record_codec]
+import ./[node_records, record_codec, full_state_trie]
 import ../codec/[state_layout, state_trie, bounded]
 
 type
@@ -16,11 +16,12 @@ type
   RepositoryGeneration* = distinct uint64 ## Local publication sequence, unrelated to protocol timeslots.
   RepositoryError* {.pure.} = enum ## Errors expose no partial graph, candidate or publication receipt.
     Uninitialized, None, MissingNode, LimitExceeded, StaleView, BaseMismatch,
-    InvalidRecords, InvalidGraph, RecordConflict, GenerationExhausted
+    InvalidRecords, InvalidGraph, RecordConflict, GenerationExhausted, RootMismatch, TrieFailure
   RepositoryResult*[T] = object ## Only the selected alternatives own a payload or codec diagnostic.
     case status: RepositoryError
     of None: completed: T
     of InvalidRecords: recordReason: RecordError
+    of TrieFailure: trieReason: TrieError
     else: discard               # Default and ordinary refusals retain no graph owner.
   RepositoryData = ref object ## Published immutable node table retains no previous revision owner.
     records: seq[TrieRecord]
@@ -46,6 +47,10 @@ func recordError*[T](outcome: RepositoryResult[T]): RecordError {.requires:
     outcome.status == RepositoryError.InvalidRecords.} =
   ## Inspect only a selected physical-record integrity refusal.
   outcome.recordReason
+func trieError*[T](outcome: RepositoryResult[T]): TrieError {.requires:
+    outcome.status == RepositoryError.TrieFailure.} =
+  ## Inspect only a selected failed standalone trie reconstruction.
+  outcome.trieReason
 func compareHash(left, right: StateNodeHash): int =
   ## Full physical addresses use fixed lexical order.
   let a = array[32, byte](left)
@@ -97,8 +102,9 @@ proc graph(records: seq[TrieRecord], digest: StateNodeHash, depth: int,
       let mask = byte(128 shr (bit mod 8))
       if (key[bit div 8] and mask) != (prefix[bit div 8] and mask):
         return RepositoryError.InvalidGraph # A locally valid node at the wrong path is not a valid trie.
-    if counts.entries >= uint64(limits.items) or uint64(record.payload.len) >
-        uint64(limits.totalValueBytes)-counts.bytes:
+    let size = uint64(record.payload.len)
+    if counts.entries >= uint64(limits.items) or size > uint64(limits.perValue) or
+        size > uint64(limits.totalValueBytes)-counts.bytes:
       return RepositoryError.LimitExceeded
     inc counts.entries
     counts.bytes += uint64(record.payload.len)
@@ -209,3 +215,35 @@ proc publish*(repository: var NodeRepository, expected: RepositoryView,
     valueBytes: bytes, limits: limits)
   repository.head = data # No failed validation can change the prior published owner.
   RepositoryResult[RepositoryView](status: RepositoryError.None, completed: RepositoryView(data: data))
+
+proc restoreFullTrie*(view: RepositoryView, expected: StateRoot,
+    limits: FullStateTrieLimits): RepositoryResult[FullStateTrie] =
+  ## Reconstruct only an independently trusted complete root, preserving caller mutation ceilings.
+  let data = view.data
+  if data == nil: return RepositoryResult[FullStateTrie](status: RepositoryError.Uninitialized)
+  if array[32, byte](data.commitment.root) != array[32, byte](expected):
+    return RepositoryResult[FullStateTrie](status: RepositoryError.RootMismatch) # Local journal/root claims cannot choose authority.
+  if uint64(data.commitment.entries) > uint64(limits.trie.items) or data.commitment.nodes > uint64(
+      limits.trie.nodes):
+    return RepositoryResult[FullStateTrie](status: RepositoryError.LimitExceeded) # Reject narrower fixed ceilings before traversal scratch.
+  var seen = newSeq[bool](data.records.len)
+  var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
+  let checked = graph(data.records, StateNodeHash(array[32, byte](expected)), 0,
+    default(array[31, byte]), limits.trie, seen, counts)
+  if checked != RepositoryError.None: return RepositoryResult[FullStateTrie](status: checked)
+  if counts.entries > uint64(high(int) div sizeof(StateEntry)):
+    return RepositoryResult[FullStateTrie](status: RepositoryError.LimitExceeded) # Bound the exact leaf descriptor extent before allocation.
+  var entries = newSeq[StateEntry](int(counts.entries))
+  var next = 0
+  for index, record in data.records:
+    if seen[index] and record.kind == TrieRecordKind.Leaf:
+      let copied = copyRecord(record)
+      entries[next] = StateEntry(key: copied.key, value: copied.payload)
+      inc next # Complete graph validation proved the exact reachable leaf count.
+  let restored = newFullStateTrie(entries, limits)
+  if restored.error != TrieError.None:
+    return RepositoryResult[FullStateTrie](status: RepositoryError.TrieFailure,
+        trieReason: restored.error)
+  if array[32, byte](restored.value.commitment.root) != array[32, byte](expected):
+    return RepositoryResult[FullStateTrie](status: RepositoryError.RootMismatch)
+  RepositoryResult[FullStateTrie](status: RepositoryError.None, completed: restored.value)

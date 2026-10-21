@@ -57,3 +57,18 @@ no reclamation, disk durability or state-consumer integration is introduced here
 `make unit SUITE=storage_repository` checks independent changed-node publication, exact counts,
 input/read isolation, stale/base/partial/misrouted/count-invalid refusal, storage budgets, close
 lifetimes and 1,000 fresh ARC cycles. Shared storage samples remain test-only.
+
+## Independently trusted standalone restoration
+
+`restoreFullTrie(view, expectedRoot, FullStateTrieLimits)` checks an independently trusted root
+before any reconstruction. Narrower target limits are enforced on the complete reachable graph
+before copying leaf values; retained unreachable history does not become part of the map. The
+standalone trie constructor rebuilds the exact root, and only a matching result is exposed with
+the caller's explicit future mutation ceilings. Backend refusal carries a guarded `TrieFailure`
+reason, not a partial trie. No `StateStore` or checkpoint adapter is involved.
+
+`storage_restoration_replay` loads all fourteen original mappings via the existing pinned provider,
+publishes full/changed/inverse physical batches and verifies every restored value/count/root,
+trusted-root refusal, narrower ceilings and views retained beyond close. The observer-linked
+`storage_restoration_failure` suite proves trust/policy refusal before hashes, typed backend failure,
+subsequent recovery and 1,000 independent ARC release cycles.
