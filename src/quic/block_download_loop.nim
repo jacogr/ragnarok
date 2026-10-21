@@ -177,6 +177,8 @@ proc tick*(dispatcher: var BlockDownloadLoop, now: DownloadLoopTick): DownloadLo
   dispatcher.lastTick = uint64(now)
   owner[].tick(uint32(dispatcher.catalog.readyPeers.len)) # At most sixteen authenticated endpoints; no narrowing overflow.
   if dispatcher.status == DownloadLoopStage.Queued:
+    if owner[].accumulationStage != AccumulationHandoffStage.Finished:
+      return DownloadLoopError.None # Durable publication may span multiple nonblocking service ticks.
     dispatcher.completion = owner[].takeAccumulation()
     dispatcher.hasCompletion = true
     let outcome = if dispatcher.completion.error == ApplicationChainError.None:
@@ -259,6 +261,8 @@ proc close*(dispatcher: var BlockDownloadLoop) =
   let borrowed = dispatcher.owner
   if borrowed != nil:
     let owner: ptr Services = borrowed
+    if owner[].diskPublicationActive:
+      owner[].stopDiskPublication() # Join durable IO before input/callback aliases can retire.
     owner[].stopPreparation() # Join before any native close callback or retained input/context owner can retire.
     let active = dispatcher.current
     if active != nil: discard dispatcher.session.retirePreparation(active, owner[])

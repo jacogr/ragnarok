@@ -5,9 +5,10 @@
 
 ## Service-owned configured state, exact RPC seeding, adoption and shutdown/restart without a running peer.
 
-import std/[assertions, syncio, envvars, strutils]
+import std/[assertions, syncio, envvars, strutils, monotimes, times]
 import std/posix/posix
-import ../../../src/app/[services, options]
+import ../../../src/app/[services, options, disk_chain, handoff]
+import ../../../src/storage/node_repository
 import ../../../src/app/chain
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../../src/rpc/[server, protocol]
@@ -77,8 +78,9 @@ proc execution(owner: var Services, context: SeedFixture): PreparedFinalAccumula
 
 
 const SeedPath = "application-services-chain.json"
+const DiskPath = "application-services-state.db" # Every mode chooses one explicit isolated fixture journal.
 
-proc configured(port = 0'u16, withState = false): Options =
+proc configured(port = 0'u16, withState = false, disk = false): Options =
   ## Telemetry-only options exercise disabled RPC without making a collector connection.
   result = default(Options)
   var arguments = @["server", "--chain", SeedPath]
@@ -91,14 +93,16 @@ proc configured(port = 0'u16, withState = false): Options =
   elif port != 0:
     for value in ["--with-rpc", "--rpc-port", $port]:
       arguments.add(value) # Preserve the validated explicit listener port.
+  if disk:
+    for value in ["--state-storage", "disk", "--state-db", DiskPath]: arguments.add(value)
   assert parseOptions(arguments, result)
 
-proc listener(owner: var Services, viaCli = false): uint16 {.raises.} =
+proc listener(owner: var Services, viaCli = false, withDisk = false): uint16 {.raises.} =
   ## Retry only the bounded release/bind race; each successful listener uses explicit state policy.
   for attempt in 0..<8:
     let reserved = reservation()
     discard posix.close(reserved.fd)
-    let options = configured(reserved.port, viaCli)
+    let options = configured(reserved.port, viaCli, withDisk)
     let started = if viaCli: owner.start(options, "test") else: owner.start(options, "test", policy())
     if started: return reserved.port # Return only the port owned by the successful startup path.
   assert false, "ephemeral Services startup failed"
@@ -278,6 +282,56 @@ proc cycle(options: Options, explicitClose: bool) {.raises.} =
     owner.close()
     assert owner.stateSnapshot.error == StateStoreError.Uninitialized
 
+proc diskLifecycle(context: SeedFixture, withRpc: bool) {.raises.} =
+  ## Real execution is rebound to the fresh disk owner; native durability spans multiple nonblocking ticks.
+  writeFile(SeedPath, context.text)
+  let options = configured(withState = true, disk = true)
+  var owner = default(Services)
+  defer: owner.close()
+  if withRpc:
+    discard owner.listener(viaCli = true, withDisk = true)
+  else:
+    assert owner.start(options, "disk runtime")
+  var diskPath = DiskPath
+  defer: discard posix.unlink(diskPath.toCString())
+  var competing = default(Services)
+  assert not competing.start(options, "locked disk")
+  competing.close()
+  let parent = owner.stateSnapshot.value
+  let parentHash = owner.chainView.bestBlock.value.blockHash
+  let source = execution(owner, context)
+  assert owner.applyAccumulation(source, completionLimits().composition).error ==
+      ApplicationChainError.DurabilityRequired
+  assert owner.enqueueAccumulation(source, completionLimits().composition) ==
+      AccumulationEnqueueError.None
+  owner.tick(0)
+  assert owner.accumulationStage == AccumulationHandoffStage.Publishing
+  assert owner.diskPublicationActive and owner.rpc.chainPaused
+  assert not owner.cancelAccumulation()
+  let started = getMonoTime()
+  while owner.accumulationStage != AccumulationHandoffStage.Finished:
+    assert (getMonoTime()-started).inSeconds < 20, "bounded durable service completion"
+    owner.tick(0)
+    var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
+    var remaining = default(Timespec)
+    discard nanosleep(requested, remaining) # Only scalar/tick work occurs until the native graph lease ends.
+  assert not owner.diskPublicationActive and not owner.rpc.chainPaused
+  let adopted = owner.takeAccumulation()
+  assert adopted.error == ApplicationChainError.None
+  assert sameStateSnapshot(adopted.value.stateSnapshot, owner.stateSnapshot.value)
+  assert not sameStateSnapshot(parent, owner.stateSnapshot.value)
+  assert owner.diskPublicationOutcome.error == DiskChainError.None
+  assert uint64(owner.diskPublicationOutcome.value) == 3
+  let child = owner.chainView.bestBlock.value.blockHash
+  owner.close()
+  assert owner.diskPublicationOutcome.error == DiskChainError.None
+  assert owner.start(options, "local disk restart")
+  assert array[32, byte](owner.chainView.bestBlock.value.blockHash) == array[32, byte](child)
+  assert owner.chainView.retainedCount == 2
+  assert array[32, byte](owner.chainView.parentOf(child).value.blockHash) ==
+    array[32, byte](parentHash)
+  owner.close()
+
 proc main() {.raises.} =
   ## Build authentic authority once, then test file/listener lifecycle and allocation-stable independent startup.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
@@ -299,6 +353,8 @@ proc main() {.raises.} =
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("application_services", 1000, before, after)
+  diskLifecycle(context, false)
+  diskLifecycle(context, true)
   echo "Application service state lifecycles passed"
   echo "ARC_RELEASE cycles=1000 unchanged"
 

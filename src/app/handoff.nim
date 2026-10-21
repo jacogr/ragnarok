@@ -7,11 +7,11 @@
 import ./chain
 import ../chain/genesis
 import ../rpc/server
-import ../state/[store, accumulation_finalization, accumulation_completion]
+import ../state/[store, accumulation_finalization, accumulation_completion, accumulation_publication]
 
 type
   AccumulationHandoffStage* {.pure.} = enum ## Default Idle owns no candidate; Finished requires explicit acknowledgement.
-    Idle, Pending, Finished
+    Idle, Pending, Publishing, Finished
   AccumulationEnqueueError* {.pure.} = enum ## Failed admission retains no candidate and leaves the existing slot unchanged.
     None, Busy, Unavailable, InvalidSource, StaleState
   AccumulationHandoff* = object ## Private closed alternatives prevent source/result forgery or unbounded queued ownership.
@@ -68,3 +68,18 @@ proc cancel*(handoff: var AccumulationHandoff): bool =
   if handoff.status != AccumulationHandoffStage.Pending: return false
   handoff = default(AccumulationHandoff)
   true
+
+proc preparePending*(handoff: AccumulationHandoff,
+    chain: ApplicationChain): ChainPreparationResult {.requires:
+    handoff.status == AccumulationHandoffStage.Pending.} =
+  ## Stage the opaque update before granting any native durable-publication lease.
+  chain.prepareAccumulation(handoff.source, handoff.limits)
+proc markPublishing*(handoff: var AccumulationHandoff) {.requires:
+    handoff.status == AccumulationHandoffStage.Pending.} =
+  ## Retire source aliases before native IO begins; the service owns the opaque publication until receipt collection.
+  handoff = AccumulationHandoff(status: AccumulationHandoffStage.Publishing)
+proc completePublication*(handoff: var AccumulationHandoff,
+    outcome: ApplicationChainResult[BlockSnapshot]) {.requires:
+    handoff.status in [AccumulationHandoffStage.Pending, AccumulationHandoffStage.Publishing].} =
+  ## Retain one exact host outcome until the original producer acknowledges it, with no retry or adoption here.
+  handoff = AccumulationHandoff(status: AccumulationHandoffStage.Finished, completion: outcome)

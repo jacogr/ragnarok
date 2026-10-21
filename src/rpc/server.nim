@@ -198,6 +198,17 @@ proc start*(server: var Server, port: uint16, role: string,
   true
 
 # Queue only after a successful publication; overflow retires one consumer without rolling back the head.
+proc start*(server: var Server, port: uint16, role: string,
+    parameters: ParameterResult, view: ChainView, uiPort: uint16 = 0): bool =
+  ## Startup binds the whole restored local history/finality before any dispatcher can observe the listener.
+  let head = view.bestBlock
+  if head.error != GenesisError.None or not parameters.ok or
+      parameters.value.encodeParameters != head.value.chainParameters.encodeParameters:
+    return false # No live socket may be opened for a mismatched or absent restored view.
+  if not server.start(port, role, parameters, head, uiPort): return false
+  server.chain = view
+  true
+
 proc queueBestUpdates(server: var Server, child: BlockSnapshotResult) =
   for slot in mitems(server.connections):
     if slot.opened and slot.upgraded and not slot.closing: # Only usable WS connections receive events.
