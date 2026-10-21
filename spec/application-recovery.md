@@ -225,3 +225,18 @@ by an invalid source or producer byte limit.
 Local rollback suite, semantic checks and inventory pass, including the measured
 late native refusal, genuine retry and repeated inherited quota refusal. Evidence
 uses `build/recovery-rollback*`; no production change or remote CI request.
+
+## Managed native preparation after import
+
+A real native worker prepares the genuine signed two-guest child against the
+restored canonical map. Canonical/RPC exclusion stays held through Done; foreign
+collection cannot release it. Collection returns a source bound to the exact
+restored parent, and only later host enqueue/tick adopts it. Cancellation keeps
+the lease until actual collection, stale tickets cannot cancel later work, and
+joined aggregate close retires the worker before input/canonical aliases. Shared
+fixture setup leaves no temporary restored aliases alive across the lease;
+independent original fixture graphs remain untouched.
+
+Local restored native-preparation suite, semantic checking and inventory pass.
+Evidence uses `build/recovery-preparation*`; runtime ownership remains host/native
+lease evidence, not full JAM/STF or Linux CI parity.
