@@ -82,3 +82,8 @@ native checking. See [the Services binding test](../tests/unit/state/test_applic
 Keep negative controls opaque enough to exercise runtime admission rather than
 constant construction; this observation does not establish a general default-value
 restriction or justify modifying the compiler.
+
+For the observed stale imported generic-call arity after an incremental source edit,
+see the [source-sensitive native cache record](../spec/pvm-native-cache-identity.md).
+Fresh project-owned source epochs preserve checked builds without a compiler patch;
+this is a bounded observed failure, not a general compiler-cache correctness claim.

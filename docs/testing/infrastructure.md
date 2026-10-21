@@ -256,3 +256,9 @@ Direct offload selftests share the same callables, exact flags, marker checks an
 with E2E; neither path maintains another list of their names. Registration performs no native or
 network work. Failed builds never execute stale binaries, and failed offload selftests still
 prevent the subsequent live offload workload.
+
+Persistent native/Hastur caches include a shared [owned-source epoch](../../spec/pvm-native-cache-identity.md)
+so stale imported generic bodies cannot cross edited runtime/support/adjacent Nim
+sources. Unchanged source trees retain profile reuse; source edits may create a fresh
+project cache directory. Existing compiler identity, flags, native ABI hashes, worker
+isolation and locks remain in force. Compiler files and metadata are never modified.
