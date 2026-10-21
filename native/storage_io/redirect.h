@@ -5,6 +5,7 @@
 #ifndef RAGNAROK_STORAGE_IO_REDIRECT_H
 #define RAGNAROK_STORAGE_IO_REDIRECT_H
 #include <unistd.h>
+#include <stdio.h>
 #include <sys/file.h>
 #include "observer.h"
 #ifdef RAGNAROK_STORAGE_IO_READ
@@ -22,6 +23,10 @@
 
 #ifdef RAGNAROK_STORAGE_IO_FLOCK
 #define flock storage_io_flock
+#endif
+
+#ifdef RAGNAROK_STORAGE_IO_RENAMEAT
+#define renameat storage_io_renameat
 #endif
 
 #endif

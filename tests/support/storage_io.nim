@@ -34,3 +34,5 @@ proc storageProcessId*(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".
   ## Supported SDK pid_t is int; fixture names stay process-specific without changing the pinned runtime.
 let lockIo* {.importc: "STORAGE_IO_FLOCK", header: "observer.h".}: cint
   ## Observe the actual native lease boundary independently from read/write and durability calls.
+let renameIo* {.importc: "STORAGE_IO_RENAMEAT", header: "observer.h".}: cint
+  ## Observe native namespace changes independently from data and durability operations.

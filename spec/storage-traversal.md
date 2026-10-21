@@ -365,3 +365,9 @@ still returns Busy immediately after two consumed interruptions; permanent acqui
 never opens an owner. Interrupted unlock completes, while permanent unlock refusal still retires
 the descriptor and returns its actual IO error. Strict restart proves the kernel lease is released
 and complete bytes/maps survive. No blocking lock mode or wait/backoff policy is introduced.
+
+## Refused manifest rename
+
+A consumed native rename refusal leaves CURRENT byte-identical, poisons the failed owner, and
+retains staged files for diagnosis. Strict restart selects the old complete epoch; only explicit
+bounded staging cleanup permits a replacement retry. Held readers retain their original map.

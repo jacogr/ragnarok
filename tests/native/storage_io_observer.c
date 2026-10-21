@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <sys/file.h>
 
 /* Bounded scalar configuration performs no allocation or logging at an observed call boundary. */
@@ -135,4 +136,11 @@ int storage_io_flock(int descriptor, int operation) {
         return -1;
     }
     return flock(descriptor, operation);
+}
+int storage_io_renameat(int source_directory, const char *source, int target_directory, const char *target) {
+    /* Only selected refusal bypasses the actual descriptor-relative SDK operation. */
+    if (refuse(STORAGE_IO_RENAMEAT)) {
+        return -1;
+    }
+    return renameat(source_directory, source, target_directory, target);
 }
