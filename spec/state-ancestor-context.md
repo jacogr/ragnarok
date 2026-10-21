@@ -62,3 +62,9 @@ and captured limits. Callers cannot substitute a parent, slot, policy certificat
 All older inputs undergo complete structural capture. Defaults and broken supplied context refuse;
 missing and satisfied signed report batches return explicit plans. Existing admission tests verify
 two genuine reports need one older linked header and become complete with that exact suffix.
+
+Demand admission additionally checks package uniqueness/dependencies and post-assurance core
+capacity before authorizing any missing-header plan. These state-only failures cannot be repaired
+by ancestry acquisition and therefore must not spend network attempts. The ordinary full planner
+retains its original failure ordering. Signed duplicate-package, missing-parent-queue and occupied
+core cases verify exact refusal with the entire older suffix absent; no discovery plan escapes.
