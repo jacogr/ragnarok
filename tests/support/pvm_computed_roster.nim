@@ -88,7 +88,8 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
     let wideFetch = storage in {ComputedStorageMode.FetchWideOffset,
         ComputedStorageMode.FetchWideIndex, ComputedStorageMode.FetchTail,
         ComputedStorageMode.FetchReadTail, ComputedStorageMode.ReadMissing,
-        ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault}
+        ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
+        ComputedStorageMode.ReadCheckpointProtection}
     metadata.balance = AccountBalance(if wideFetch: 58'u64 elif storage ==
         ComputedStorageMode.Underfunded: 49'u64 else: 50'u64) # Eleven-byte storage needs10+2+(35+11)=58, authored before the genuine committed parent.
     let account = serviceMetadataEntry(ServiceIndex(42), metadata, ByteLimit(89)).value

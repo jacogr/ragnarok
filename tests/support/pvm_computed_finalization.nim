@@ -24,12 +24,15 @@ proc finalizationFixture*(withReady = true, withComposition = false,
         ComputedStorageMode.FetchWideIndex, ComputedStorageMode.FetchTail,
             ComputedStorageMode.FetchReadTail, ComputedStorageMode.ReadMissing,
                 ComputedStorageMode.ReadCheckpointPanic,
-                    ComputedStorageMode.ReadCheckpointFault}: 11'u64 else: 3'u64
+                    ComputedStorageMode.ReadCheckpointFault,
+                        ComputedStorageMode.ReadCheckpointProtection}: 11'u64 else: 3'u64
     limits.completion.batch.selfValueBytes = ByteLimit(bytes)
   if storage in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail,
-      ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault}:
+      ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
+      ComputedStorageMode.ReadCheckpointProtection}:
     limits.steps = ExecutionStepLimit(32) # Admit only the longer read and checkpoint guests before their original execution.
-  if storage in {ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault}:
+  if storage in {ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
+      ComputedStorageMode.ReadCheckpointProtection}:
     limits.calls = HostCallLimit(5) # This new guest fetches, deletes, checkpoints, reads and restores before its actual terminal.
   let executed = executeComputedAccumulation(computedExecutionFixture(withReady = withReady,
       withComposition = withComposition, withChain = withChain, storage = storage), limits)
