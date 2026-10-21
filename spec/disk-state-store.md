@@ -211,3 +211,14 @@ The real WebSocket application suite now prepares a genuine source once, refuses
 and mismatched-finality publication, installs under the correct lease with zero observed hash calls
 for the best-block subscription, and then observes the matching notification and query reply.
 Existing application-chain failure, owner-identity and 1,000-cycle ARC checks still pass.
+
+## Historical complete mappings
+
+Explicit historical-root extraction validates the full reachable graph under caller ceilings and
+copies complete leaves without changing current selection. Merely finding records grants no
+block or finality authority; durable application context supplies that binding. Selected-root
+restoration keeps its stricter current-root equality contract. Disk snapshot restoration rebuilds
+and independently checks the requested historical root under an explicit policy, leaving current
+snapshot identity/generation untouched. Empty complete roots and missing physical roots remain
+distinct cases. Real restart tests compare every historical value and independently recomputed root,
+check narrow ceilings and unknown roots, and preserve current selection and held readers.

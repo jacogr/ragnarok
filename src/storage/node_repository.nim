@@ -230,15 +230,15 @@ proc publish*(repository: var NodeRepository, expected: RepositoryView,
   repository.head = data # No failed validation can change the prior published owner.
   RepositoryResult[RepositoryView](status: RepositoryError.None, completed: RepositoryView(data: data))
 
-proc restoreStateEntries*(view: RepositoryView, expected: StateRoot,
-    limits: StateTrieLimits): RepositoryResult[seq[StateEntry]] =
+proc collectStateEntries(view: RepositoryView, expected: StateRoot,
+    limits: StateTrieLimits, selected: bool): RepositoryResult[seq[StateEntry]] =
   ## Copy complete reachable leaves under an independently trusted root, without rehashing them.
   let data = view.data
   if data == nil: return RepositoryResult[seq[StateEntry]](status: RepositoryError.Uninitialized)
-  if array[32, byte](data.commitment.root) != array[32, byte](expected):
+  if selected and array[32, byte](data.commitment.root) != array[32, byte](expected):
     return RepositoryResult[seq[StateEntry]](status: RepositoryError.RootMismatch) # Local journal/root claims cannot choose authority.
-  if uint64(data.commitment.entries) > uint64(limits.items) or data.commitment.nodes > uint64(
-      limits.nodes):
+  if selected and (uint64(data.commitment.entries) > uint64(limits.items) or data.commitment.nodes >
+      uint64(limits.nodes)):
     return RepositoryResult[seq[StateEntry]](status: RepositoryError.LimitExceeded) # Reject narrower fixed ceilings before traversal scratch.
   var seen = newSeq[bool](data.records.len)
   var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
@@ -255,6 +255,16 @@ proc restoreStateEntries*(view: RepositoryView, expected: StateRoot,
       entries[next] = StateEntry(key: copied.key, value: copied.payload)
       inc next # Complete graph validation proved the exact reachable leaf count.
   RepositoryResult[seq[StateEntry]](status: RepositoryError.None, completed: entries)
+
+proc restoreStateEntries*(view: RepositoryView, expected: StateRoot,
+    limits: StateTrieLimits): RepositoryResult[seq[StateEntry]] =
+  ## Extract only the selected complete mapping under independently supplied root authority.
+  collectStateEntries(view, expected, limits, true)
+proc restoreHistoricalStateEntries*(view: RepositoryView, expected: StateRoot,
+    limits: StateTrieLimits): RepositoryResult[seq[StateEntry]] =
+  ## Verify and copy a complete explicitly selected historical root without changing the current head.
+  ## Presence of physical records grants no chain/finality authority; the caller must supply that binding.
+  collectStateEntries(view, expected, limits, false)
 
 proc restoreFullTrie*(view: RepositoryView, expected: StateRoot,
     limits: FullStateTrieLimits): RepositoryResult[FullStateTrie] =

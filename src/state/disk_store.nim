@@ -225,3 +225,24 @@ proc apply*(store: var DiskStateStore,
 proc synchronize*(store: var DiskStateStore): FileResult[StorageDurability] =
   ## A successful receipt confirms file/directory synchronization, never canonical block selection.
   store.journal.synchronize
+
+proc restoreDiskSnapshot*(store: DiskStateStore, expected: StateRoot,
+    policy: StateStoreLimits): DiskStoreResult[StateStoreSnapshot] =
+  ## Reconstruct an explicitly bound historical complete map without changing live selection or generation.
+  if not store.opened: return default(DiskStoreResult[StateStoreSnapshot])
+  let physical = store.journal.snapshot
+  if physical.error != FileError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+      fileReason: physical.error)
+  let entries = restoreHistoricalStateEntries(physical.value, expected, policy.trie)
+  if entries.error != RepositoryError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.RepositoryFailure,
+      repositoryReason: entries.error)
+  let state = newStateStore(entries.value, policy)
+  if state.error != StateStoreError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.StateFailure,
+      stateReason: state.error)
+  let restored = state.value.snapshot.value
+  if array[32, byte](restored.commitment.root) != array[32, byte](expected):
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.TrustMismatch)
+  DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: restored)
