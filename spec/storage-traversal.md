@@ -339,3 +339,12 @@ A bounded matrix interrupts each actual file/directory barrier in both repair pa
 must be consumed before genuine synchronization succeeds, and repaired bytes must equal the
 original complete prefix exactly. No older token, alternate selected head or implicit truncation
 is introduced. Complete retained readers remain valid after repair and native owner close.
+
+## Refused explicit-repair confirmation
+
+Each actual repair barrier can refuse permanently in a separate real-file case. Refusal returns
+no live owner. Strict reopen accepts a complete visible prefix only if truncation already happened;
+it still refuses an intact torn tail. Confirmation failure cannot undo visible truncation, and
+subsequent exact-token repair may finish synchronization of that same independent prefix. Every
+case preserves its complete maps and old readers without accepting incomplete data or choosing
+a rollback point from the physical layout.
