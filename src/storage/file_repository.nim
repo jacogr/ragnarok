@@ -4,6 +4,9 @@
 ## Locked append-only physical node journals publish complete checked revisions after synchronization.
 ## IO is synchronous startup/storage work; callers preserve the directory and journal inode namespace.
 
+import ./file_errors
+export file_errors
+
 import std/assertions
 import std/posix/posix
 import ./[node_repository, node_records, record_codec, journal_codec, database_identity, durability]
@@ -14,10 +17,6 @@ type
     repository*: RepositoryLimits
     bytes*: ByteLimit
     contextBytes*: ByteLimit # Independent per-frame application metadata ceiling; zero for node-only journals.
-  FileError* {.pure.} = enum ## Partial/uncertain writes never expose a successful successor view.
-    Uninitialized, None, Busy, InvalidPath, AlreadyExists, IoFailure, LimitExceeded,
-    WrongIdentity, InvalidJournal, InvalidBatch, InvalidFrame, PublishedUnsynced, RecoveryRequired,
-      BackendFailure, RecoveryMismatch
   FileResult*[T] = object ## Guarded alternatives retain precise selected preparation diagnostics.
     case status: FileError
     of None: completed: T
