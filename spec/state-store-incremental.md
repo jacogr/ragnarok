@@ -23,7 +23,7 @@ input/output mutation isolation and atomic invalid/duplicate/limit refusals on t
 Existing store, observer failure, slice, published replay and checkpoint suites remain mandatory
 consumer evidence when the commitment implementation changes.
 
-## Planned implementation and completion checks
+## Implementation and completion checks
 
 Retain the sorted mapping for keyAt and bounded value slicing. Each private snapshot also owns one
 immutable FullStateTrie revision. Validate the existing store batch before adapting writes and
@@ -66,3 +66,56 @@ including when applying the same mutation on an independently retained fork. Fir
 failures prove atomic rollback; the independent whole-map calculator checks the final root and
 every sorted key/value. Absent deletes and empty batches need zero calls; retained values/slices
 survive both original and fork owner destruction.
+
+## Consumer validation and reproducible measurements
+
+`state_store_checkpoint_updates` resumes all seven independently pinned pre/post mapping pairs
+from complete checkpoints, applies forward/inverse writes through restored stores and private
+forks, verifies every original root/value/count, and reproduces the exact original checkpoint
+bytes after inverse updates. Restored zero-write ceilings stay inherited by forks; retained
+values outlive both restored owners. This checks mutation-capable trie reconstruction, not just
+successful decode of a root.
+
+Existing `state_checkpoint_bank_replay`, `application_chain`, `application_checkpoint_bundle`,
+`pvm_accumulation_lookup`, `authorization_transition_failure` and `history_transition_failure`
+pass through the same public store API. Their real checkpoint publication, state application,
+bounded value slicing and required-backend-failure checks remain intact. The application chain,
+checkpoint bundle, lookup and transition-failure ARC witnesses each complete 1,000 release cycles
+without growth; occupied-byte baselines differ by the fixtures those suites deliberately retain.
+No production consumer or checkpoint format changes were necessary.
+
+Reproduce measurements without changing a checkout or Git ref:
+
+```sh
+STATE_STORE_BASELINE_REF=6e300dd4 make measure-state-store
+```
+
+The tool archives only project sources from the explicit reviewed baseline, compiles the identical
+current workload against both source trees with the same compiler/library/profile, and executes
+each binary twice. It refuses changed compiler/crypto inputs, incompatible report metadata,
+missing/duplicate cases or divergent repetitions. The four Python validator tests exercise those
+numeric/report refusals. Existing local reports can instead be supplied with
+`STATE_STORE_BASELINE=path/to/results.json`; full evidence lives under
+`build/tests/state-store-measurements/`. Make owns setup and maintained observer preparation.
+
+Observed checked optimized macOS ARM64 results (64 updates per case, 33-byte values):
+
+| Entries | Retained snapshots | Baseline Blake2b calls | Incremental calls | Baseline peak occupied bytes | Incremental peak occupied bytes |
+| --- | --- | --- | --- | --- | --- |
+| 128 | 1 | 24576 | 640 | 57792 | 128544 |
+| 128 | 8 | 24576 | 640 | 159088 | 237776 |
+| 1024 | 1 | 294848 | 1152 | 410048 | 1079504 |
+| 1024 | 8 | 294848 | 1152 | 1127792 | 1805184 |
+
+Both repetitions agree exactly, and the archived-reference baseline reproduces the independently
+captured pre-change baseline exactly. The 1,024-entry cases perform 99.6% fewer Blake2b calls;
+peak live occupied memory increases by 669,456/677,392 bytes for one/eight retained snapshots.
+Initialization increases by 565,168 bytes in those cases. Absolute occupied bytes include the
+same authored input mapping and retained snapshots; deltas expose the added cached trie and
+separately owned payloads. These are crypto-work/live-memory observations, not total allocation
+counts, RSS, throughput or wall-clock latency claims. Descriptor merging remains O(n), and
+reducing the measured memory cost needs a separately justified representation change.
+
+All stated evidence is local to this checked profile. Exact-head Linux CI remains separate.
+The scoped three-PR in-memory tranche is complete; disk/canonical-head integration and startup
+configuration remain deferred, and the existing M1/serialization completion gates are unchanged.
