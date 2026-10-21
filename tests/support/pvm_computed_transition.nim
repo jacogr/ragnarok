@@ -83,7 +83,7 @@ proc transitionFixture*(epoch = false, withReady = false,
   let guest = reportGuest(instructions)
   var fixture = executionFixture([halt], [guest], external = false)
   if storage != ComputedStorageMode.Disabled:
-    fixture = computedStorageBudget(fixture) # Historical ready and current reports share the actual declared gas, not a later patched observation.
+    fixture = computedStorageBudget(fixture, storage) # Historical ready and current reports share the actual declared gas, not a later patched observation.
   let templateLinks = transitionLinks(executionRun(fixture, core = 0).value)
   let templateReport = templateLinks.computedLinkSource.value.computedGuaranteeReport.value
   let base = decodeOwnedReport(templateReport.computedReportBytes.value, 2).value

@@ -24,18 +24,20 @@ proc metadata(state: StateStoreSnapshot): ServiceMetadata =
 func expectedStorage(mode: ComputedStorageMode): seq[byte] =
   ## Independent literal oracle distinguishes the selected checkpoint from both later regular and unchanged initial states.
   case mode
-  of ComputedStorageMode.Commit, ComputedStorageMode.CheckpointPanic: @[21'u8, 22,
-      23] # First write survives halt or a later checkpointed panic.
+  of ComputedStorageMode.Commit, ComputedStorageMode.CheckpointPanic,
+      ComputedStorageMode.CheckpointOutOfGas: @[21'u8, 22,
+
+23] # First write survives halt or a later checkpointed panic.
   of ComputedStorageMode.CheckpointCommit: @[22'u8,
       23] # Halt proves the second mutation actually executes and is publishable.
-  else: @[] # Disabled, underfunded and uncheckpointed panic retain no storage.
+  else: @[] # Disabled, underfunded and uncheckpointed exceptional exits retain no storage.
 proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   ## Assert exact guest-memory bytes and independently derived footprint; a missing row differs from present-empty storage.
   let row = state.lookup(key)
   let account = metadata(state)
   if expected.len > 0:
     assert row.error == StateStoreError.None
-    assert row.value.bytes == @expected
+    assert row.value.bytes == @expected, "selected guest storage bytes"
     assert uint32(account.storageItems) == 1
     assert uint64(account.storageBytes) == uint64(35+expected.len)
   else:
@@ -56,15 +58,31 @@ proc witness(mode: ComputedStorageMode): ComposedComputedState =
   let outcome = initial.executionBatch.value.batchOutcomeAt(AccumulationProvisionSourceIndex(0)).value
   let info = outcome.outcomeInfo.value
   let expectedStorageBytes = expectedStorage(mode)
-  if mode in {ComputedStorageMode.Panic, ComputedStorageMode.CheckpointPanic}:
+  let exhausted = mode in {ComputedStorageMode.OutOfGas, ComputedStorageMode.CheckpointOutOfGas}
+  if exhausted and (info.termination != AccumulationTermination.OutOfGas or info.dimension !=
+      AccumulationDimension.Exceptional or uint64(info.gasUsed) != 3500):
+    echo "exhaustion mode ", mode, " termination ", info.termination, " dimension ", info.dimension,
+        " gas ", uint64(info.gasUsed)
+  if exhausted:
+    assert info.termination == AccumulationTermination.OutOfGas
+    assert info.dimension == AccumulationDimension.Exceptional
+    assert uint64(info.gasUsed) == 3500 # Host debt cannot increase charged usage beyond the actual original invocation credit.
+  elif mode in {ComputedStorageMode.Panic, ComputedStorageMode.CheckpointPanic}:
     assert info.termination == AccumulationTermination.Panic
     assert info.dimension == AccumulationDimension.Exceptional
   else:
     assert info.termination == AccumulationTermination.Halt
     assert info.dimension == AccumulationDimension.Regular
-  let minimumGas = if mode in {ComputedStorageMode.CheckpointCommit,
-      ComputedStorageMode.CheckpointPanic}: 2*2447+103 else: 2447
-  assert uint64(info.gasUsed) >= uint64(minimumGas) and uint64(info.gasUsed) < 10000
+  let declared = if exhausted: 3500'u64 else: 10000'u64
+  if uint64(initial.executionInfo.value.round.reportGas) != declared:
+    echo "reservation mode ", mode, " got ", uint64(initial.executionInfo.value.round.reportGas),
+        " expected ", declared
+  assert uint64(initial.executionInfo.value.round.reportGas) ==
+      declared # The historical ready report carries the actual original package reservation.
+  if not exhausted:
+    let minimumGas = if mode in {ComputedStorageMode.CheckpointCommit,
+        ComputedStorageMode.CheckpointPanic}: 2*2447+103 else: 2447
+    assert uint64(info.gasUsed) >= uint64(minimumGas) and uint64(info.gasUsed) < declared
   assert uint64(initial.executionInfo.value.gasUsed) == uint64(info.gasUsed)
   if mode == ComputedStorageMode.Commit:
     # Actual guest execution under insufficient local provenance/publication budgets must expose only precise refusals.
@@ -139,12 +157,13 @@ proc witness(mode: ComputedStorageMode): ComposedComputedState =
   source
 
 let modes = [ComputedStorageMode.Commit, ComputedStorageMode.Panic, ComputedStorageMode.Underfunded,
-  ComputedStorageMode.CheckpointCommit, ComputedStorageMode.CheckpointPanic]
+  ComputedStorageMode.CheckpointCommit, ComputedStorageMode.CheckpointPanic,
+  ComputedStorageMode.OutOfGas, ComputedStorageMode.CheckpointOutOfGas]
 var sources: seq[ComposedComputedState] = @[]
 for mode in modes: sources.add(witness(mode)) # Each distinct original code/funding combination executes and normalizes genuinely.
 proc detached(): AdvancedComputedChain =
   ## Keep an actual storage-bearing child alive after all local guest, source and live store/view handles retire.
-  let source = chainFixture(storage = ComputedStorageMode.CheckpointPanic)
+  let source = chainFixture(storage = ComputedStorageMode.CheckpointOutOfGas)
   let parent = source.chainFixtureParent(source.chainFixtureParameters)
   var state = forkStateStore(source.statePublicationParent).value
   var view = genesisView(parent)
@@ -153,7 +172,7 @@ let held = detached()
 storage(held.computedChainBlock.value.stateSnapshot, expectedStorage(
     ComputedStorageMode.CheckpointPanic))
 proc cycle(sources: openArray[ComposedComputedState]) =
-  ## Release private capture/header/index and view owners for all five genuine selected guest outcomes per cycle.
+  ## Release private capture/header/index and view owners for all seven genuine selected guest outcomes per cycle.
   for index, source in sources:
     let parent = source.chainFixtureParent(source.chainFixtureParameters)
     var state = forkStateStore(source.statePublicationParent).value
@@ -162,7 +181,7 @@ proc cycle(sources: openArray[ComposedComputedState]) =
     storage(receipt.computedChainBlock.value.stateSnapshot, expectedStorage(modes[index]))
 cycle(sources)
 let before = getOccupiedMem()
-for iteration in 0..<1000: cycle(sources) # Five real computed state versions survive while every per-publication owner retires.
+for iteration in 0..<1000: cycle(sources) # Seven real computed state versions survive while every per-publication owner retires.
 let after = getOccupiedMem()
 assert before == after, "computed storage ARC release"
 recordArcRelease("pvm_computed_storage", 1000, before, after)
