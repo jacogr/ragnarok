@@ -10,7 +10,7 @@ import std/posix/posix
 import ../../../src/quic/[block_download_loop, block_download_peers, block_download_stream]
 import ../../../src/app/[services, options, chain, candidate, handoff, block_download,
     block_input, download_schedule, preparation_worker]
-import ../../../src/codec/[bounded, block_codec, report_owned]
+import ../../../src/codec/[bounded, block_codec, report_owned, header]
 import ../../../src/state/[store, accumulation_finalization, accumulation_completion]
 import ../../support/[application_candidate_context, accumulation_completion_context,
     block_download_transport, arc_evidence]
@@ -120,6 +120,17 @@ proc transfer(frame: seq[byte], key: DownloadPeerKey, shutdown, lost, refuse: bo
       assert dispatcher.tick(DownloadLoopTick(2)) == DownloadLoopError.None, "transfer witness 23"
       assert sameStateSnapshot(after, owner.stateSnapshot.value),
           "transfer witness 24" # Terminal turns cannot prepare/adopt again.
+      let prior = dispatcher.adoption
+      assert dispatcher.nextChild([], DownloadLoopTick(1)) == DownloadLoopError.ClockRegression
+      assert dispatcher.completed and dispatcher.stage == DownloadLoopStage.Adopted
+      assert dispatcher.nextChild([default(OwnedHeader)], DownloadLoopTick(2)) ==
+          DownloadLoopError.InvalidPolicy
+      assert dispatcher.completed and array[32, byte](dispatcher.adoption.value.blockHash) == array[
+          32, byte](prior.value.blockHash)
+      assert dispatcher.nextChild([], DownloadLoopTick(2)) == DownloadLoopError.None
+      assert dispatcher.stage == DownloadLoopStage.Waiting and not dispatcher.completed
+      assert dispatcher.nextChild([], DownloadLoopTick(2)) == DownloadLoopError.Busy
+      assert sameStateSnapshot(after, owner.stateSnapshot.value), "rearming never executes or republishes a child"
 
 proc assertLease(owner: var Services, expected: bool) =
   ## Observe the mutable borrowed Services after indirect dispatcher calls, without retaining stale caller-side flow facts.
@@ -142,6 +153,8 @@ proc preparing(frame: seq[byte], key: DownloadPeerKey, expire, shutdown: bool,
   assert dispatcher.open(key, servers.port(true)) == DownloadPeerError.None
   advance(dispatcher, servers, DownloadLoopStage.Preparing)
   assertLease(owner, true)
+  assert dispatcher.nextChild([], DownloadLoopTick(0)) ==
+      DownloadLoopError.Busy # Rearming cannot inspect or retire a live worker's canonical aliases.
   assert owner.accumulationStage == AccumulationHandoffStage.Idle and not dispatcher.completed
   if shutdown:
     dispatcher.close() # No collection or adoption is needed to retire queued/running/Done execution safely.

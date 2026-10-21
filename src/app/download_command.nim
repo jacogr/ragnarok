@@ -1,19 +1,34 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded one-child command owns canonical Services and stable download callbacks through explicit teardown.
+## Bounded successive-child command owns canonical Services and stable download callbacks through explicit teardown.
 ## Startup accepts only explicit state/stage policies and a bounded pinned loopback peer list; no fixture or process-global inputs.
 
 import std/[syncio, monotimes, times]
 import std/posix/posix
-import ./[options, services, download_policy, block_download, ancestor_inputs]
+import ./[options, services, chain, download_policy, block_download, ancestor_inputs]
 import ./download_schedule
 import ../codec/[bounded, header]
+import ../chain/[genesis, provider]
 import ../quic/[block_download_loop, block_download_peers]
 
 type DownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
   Uninitialized, Adopted, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,
   InvalidAncestors, StartupFailure, AdmissionFailure, TransportFailure, DispatchFailure, Exhausted, Timeout
+
+type DownloadCommandOutcome* = object ## Immutable scalar diagnostics describe confirmed installed progress, never execution authority.
+  status: DownloadCommandResult
+  requested, adopted: int
+
+func error*(outcome: DownloadCommandOutcome): DownloadCommandResult =
+  ## Preserve the terminal reason independently of earlier confirmed progress.
+  outcome.status
+func requestedBlocks*(outcome: DownloadCommandOutcome): int =
+  ## Report the validated finite request; invalid/default options have zero requested work.
+  outcome.requested
+func adoptedBlocks*(outcome: DownloadCommandOutcome): int =
+  ## Count actual canonical advancement observed only after joined child teardown, including confirmed shutdown receipts.
+  outcome.adopted
 
 proc number(text: string, maximum: uint64): uint64 =
   ## Positive canonical decimal parsing proves arithmetic/conversion bounds before native setup.
@@ -39,18 +54,50 @@ proc identity(path: string, expected: var DownloadPeerKey): bool {.raises.} =
   expected = DownloadPeerKey(key)
   true
 
-proc receiveChild(owner: var Services, options: Options, peers: seq[DownloadPeerId],
+proc ancestorsFit(head: OwnedHeader, older: seq[OwnedHeader], limits: DownloadLoopLimits): bool =
+  ## Bound actual retained bytes/counts for the next request, including the selected parent in report validation.
+  let config = limits.candidate.reporting.reports.ancestors
+  if uint64(older.len) > uint64(limits.input.ancestors) or uint64(older.len) >= uint64(
+      config.headers):
+    return false # Parent consumes one additional validator header.
+  var inputBytes = uint64(limits.input.ancestorBytes)
+  var reportBytes = uint64(config.maxBytes)
+  for index in 0..older.len:
+    let owner = if index == 0: head else: older[index - 1]
+    let info = owner.headerInfo
+    if info.error != HeaderError.None: return false # No default or invalid selected/retained header becomes context.
+    let size = uint64(info.value.consumed)
+    if size > uint64(config.header.maxBytes) or size > reportBytes: return false
+    reportBytes -= size # Subtraction proves cumulative parent-plus-ancestor accounting.
+    if index > 0:
+      if size > inputBytes: return false # Only older headers consume the receiver's separate retained-byte budget.
+      inputBytes -= size
+  true
+
+type ObservedDownloadHead = object ## Fixed metadata survives joined shutdown without retaining a canonical ARC alias.
+  initialized: bool
+  hash: array[32, byte]
+  slot: uint32
+
+proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadPeerId],
     ports: array[16, uint16], keys: array[16, DownloadPeerKey], ancestors: seq[OwnedHeader],
-    limits: DownloadLoopLimits, started: MonoTime,
-        timeout: uint64): DownloadCommandResult {.raises.} =
-  ## One activation owns every callback/input alias until joined teardown, including all refusal paths.
+    limits: DownloadLoopLimits, started: MonoTime, timeout: uint64, requested: int,
+    adopted: var int, observed: var ObservedDownloadHead): DownloadCommandResult {.raises.} =
+  ## Stable endpoints outlive every retired child session; joined teardown precedes caller reconciliation on all exits.
+  let initial = owner.chainView.bestBlock
+  if initial.error != GenesisError.None: return DownloadCommandResult.AdmissionFailure
+  observed = ObservedDownloadHead(initialized: true, hash: array[32, byte](initial.value.blockHash),
+    slot: uint32(initial.value.slot))
+  var previousHeader = initial.value.header
+  var older = ancestors
+  if not ancestorsFit(previousHeader, older, limits): return DownloadCommandResult.AdmissionFailure
   var preflight = default(BlockDownload)
-  let admitted = preflight.begin(owner, ancestors, limits.input, limits.candidate)
+  let admitted = preflight.begin(owner, older, limits.input, limits.candidate)
   if admitted.error != BlockDownloadError.None: return DownloadCommandResult.AdmissionFailure
   discard preflight.cancel(admitted.value) # Exact raw admission is checked before any outgoing TLS engine opens.
   var dispatcher = default(BlockDownloadLoop)
-  defer: dispatcher.close() # Stable stack owner remains alive during native close callbacks on every exit.
-  if dispatcher.configure(owner, peers, ancestors, limits, DownloadLoopTick(0)) !=
+  defer: dispatcher.close() # Every native input/execution/disk borrower joins before outer canonical inspection or alias retirement.
+  if dispatcher.configure(owner, peers, older, limits, DownloadLoopTick(0)) !=
       DownloadLoopError.None: return DownloadCommandResult.InvalidPolicy
   for index in 0..<peers.len:
     if dispatcher.openPeer(peers[index], keys[index], ports[index], options.argument(3),
@@ -58,21 +105,42 @@ proc receiveChild(owner: var Services, options: Options, peers: seq[DownloadPeer
       return DownloadCommandResult.TransportFailure # Deferred close retires all earlier opened endpoints too.
   while true:
     let elapsed = (getMonoTime() - started).inMilliseconds
-    if elapsed < 0: return DownloadCommandResult.DispatchFailure # Do not narrow a broken host clock into a huge deadline.
+    if elapsed < 0: return DownloadCommandResult.DispatchFailure # Never narrow a broken clock into a huge deadline.
     if uint64(elapsed) >= timeout: return DownloadCommandResult.Timeout
     if dispatcher.tick(DownloadLoopTick(uint64(elapsed))) != DownloadLoopError.None:
       return DownloadCommandResult.DispatchFailure
     case dispatcher.stage
-    of DownloadLoopStage.Adopted: return DownloadCommandResult.Adopted # Only an actual consumed Services success reaches this alternative.
+    of DownloadLoopStage.Adopted:
+      let confirmed = dispatcher.adoption
+      let selected = owner.chainView.bestBlock # The actual adoption receipt has retired the exclusive worker lease.
+      if confirmed.error != ApplicationChainError.None or selected.error != GenesisError.None:
+        return DownloadCommandResult.DispatchFailure
+      let child = confirmed.value
+      if array[32, byte](selected.value.blockHash) != array[32, byte](child.blockHash) or
+          array[32, byte](child.parentHash) != observed.hash or uint32(child.slot) <= observed.slot:
+        return DownloadCommandResult.DispatchFailure # Status cannot manufacture a canonical child or unrelated replacement.
+      inc adopted
+      observed = ObservedDownloadHead(initialized: true, hash: array[32, byte](child.blockHash),
+          slot: uint32(child.slot))
+      if adopted == requested: return DownloadCommandResult.Adopted
+      var next = newSeq[OwnedHeader](older.len + 1)
+      next[0] = previousHeader
+      for index, ancestor in older: next[index + 1] = ancestor # Whole-run count reservation proved this finite extent before startup.
+      if not ancestorsFit(child.header, next, limits): return DownloadCommandResult.AdmissionFailure
+      if dispatcher.nextChild(next, DownloadLoopTick(uint64(elapsed))) != DownloadLoopError.None:
+        return DownloadCommandResult.DispatchFailure
+      previousHeader = child.header
+      older = next # All ARC replacement occurs after collection/publication and before the next worker submission.
     of DownloadLoopStage.Exhausted: return DownloadCommandResult.Exhausted
     of DownloadLoopStage.Failed: return DownloadCommandResult.DispatchFailure
-    else: discard # Waiting/receiving/queued work requires a later bounded dispatcher turn.
-    var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
+    else: discard # Waiting/receiving/preparing/queued work requires a later bounded turn.
+    var requestedPause = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
-    discard nanosleep(requested, remaining) # One bounded host pause avoids spinning; all native endpoint polls remain nonblocking.
+    discard nanosleep(requestedPause, remaining) # One bounded pause avoids spinning; endpoint polling remains nonblocking.
 
-proc runDownload*(options: Options): DownloadCommandResult {.raises.} =
-  ## Open at most sixteen endpoints; timeout/exhaustion/failure returns only after all callbacks and Services retire.
+proc performDownloads(options: Options, adopted: var int): DownloadCommandResult {.raises.} =
+  ## One Services owner retains every confirmed prefix; per-child barriers precede ancestry mutation and final shutdown joins.
+  adopted = 0
   if not options.valid or options.argumentCount < 8 or
       options.argumentCount > 38 or (options.argumentCount - 8) mod 2 != 0 or options.argument(1) !=
           "download" or
@@ -103,16 +171,39 @@ proc runDownload*(options: Options): DownloadCommandResult {.raises.} =
     peers.add(DownloadPeerId(uint64(index + 1))) # The shape cap proves IDs 1..16 and all argument arithmetic.
   let paths = options.ancestorPaths
   let ancestry = limits.candidate.reporting.reports.ancestors
-  if paths.len > 0 and (uint64(paths.len) > uint64(limits.input.ancestors) or
-      uint64(paths.len) >= uint64(ancestry.headers)):
-    return DownloadCommandResult.InvalidPolicy # The report policy additionally reserves one header for the selected parent.
+  let requested = options.downloadBlocks
+  let retained = uint64(paths.len) + uint64(requested -
+      1) # Parser caps both operands, independently of wrapping arithmetic.
+  if retained > uint64(limits.input.ancestors) or retained >= uint64(ancestry.headers):
+    return DownloadCommandResult.InvalidPolicy # Reserve the whole finite lineage, including each future selected parent, before file/Services IO.
   let loaded = loadAncestorInputs(paths, ancestry.header, limits.input.ancestors,
     ByteLimit(min(uint64(limits.input.ancestorBytes), uint64(ancestry.maxBytes))))
   if loaded.error != AncestorInputError.None:
     return DownloadCommandResult.InvalidAncestors # No Services/listener/database/outgoing TLS work follows partial capture.
-  let ancestors = loaded.headers
+  var ancestors = loaded.headers
   var owner = default(Services)
   defer: owner.close() # Dispatcher teardown below must end every Services borrow first.
   if not owner.start(options, "download"): return DownloadCommandResult.StartupFailure
   let started = getMonoTime()
-  receiveChild(owner, options, peers, ports, keys, ancestors, limits, started, timeout)
+  var observed = default(ObservedDownloadHead)
+  let terminal = receiveChildren(owner, options, peers, ports, keys, ancestors, limits,
+    started, timeout, requested, adopted, observed)
+  if observed.initialized:
+    let settled = owner.chainView.bestBlock # Joined shutdown may confirm an IO receipt after the command reached its deadline.
+    if settled.error != GenesisError.None: return DownloadCommandResult.DispatchFailure
+    if array[32, byte](settled.value.blockHash) != observed.hash:
+      if adopted >= requested or array[32, byte](settled.value.parentHash) != observed.hash or
+          uint32(settled.value.slot) <= observed.slot:
+        return DownloadCommandResult.DispatchFailure # Only this run's one outstanding child can add shutdown-confirmed progress.
+      inc adopted
+  terminal
+
+proc runDownloads*(options: Options): DownloadCommandOutcome {.raises.} =
+  ## Report confirmed scalar progress after Services/worker teardown; failure does not imply rollback of its prefix.
+  var adopted = 0
+  let terminal = performDownloads(options, adopted)
+  DownloadCommandOutcome(status: terminal, requested: options.downloadBlocks, adopted: adopted)
+
+proc runDownload*(options: Options): DownloadCommandResult {.raises.} =
+  ## Preserve the original status-only API; callers needing partial progress use runDownloads.
+  runDownloads(options).error

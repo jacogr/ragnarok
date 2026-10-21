@@ -115,6 +115,42 @@ proc configure*(dispatcher: var BlockDownloadLoop, owner: var Services,
   dispatcher.status = DownloadLoopStage.Waiting
   DownloadLoopError.None
 
+proc nextChild*(dispatcher: var BlockDownloadLoop, ancestors: openArray[OwnedHeader],
+    now: DownloadLoopTick): DownloadLoopError =
+  ## Rearm only after an actual consumed adoption and retired stream/worker lease; retain stable authenticated endpoints.
+  if dispatcher.status != DownloadLoopStage.Adopted or not dispatcher.hasCompletion or
+      dispatcher.completion.error != ApplicationChainError.None or dispatcher.current != nil:
+    return DownloadLoopError.Busy # Waiting, failed or fabricated producer status cannot create another import turn.
+  if uint64(now) < dispatcher.lastTick: return DownloadLoopError.ClockRegression
+  let borrowed = dispatcher.owner
+  if borrowed == nil: return DownloadLoopError.Uninitialized
+  let owner: ptr Services = borrowed
+  if owner[].preparationActive or owner[].diskPublicationActive:
+    return DownloadLoopError.ServicesBusy # Observe scalar exclusion before any canonical access.
+  if not owner[].preparationAvailable: return DownloadLoopError.ServicesBusy
+  if dispatcher.catalog.busy or dispatcher.session.busy or dispatcher.session.streamActive:
+    return DownloadLoopError.ServicesBusy # No old native callback/input may survive rearming.
+  if uint64(ancestors.len) > uint64(dispatcher.limits.input.ancestors): return DownloadLoopError.InvalidPolicy
+  var remaining = uint64(dispatcher.limits.input.ancestorBytes)
+  for ancestor in ancestors:
+    let info = ancestor.headerInfo
+    if info.error != HeaderError.None or uint64(info.value.consumed) > remaining:
+      return DownloadLoopError.InvalidPolicy # Refuse the whole replacement before retiring the prior result/ancestry.
+    remaining -= uint64(info.value.consumed)
+  var retained = newSeq[OwnedHeader](ancestors.len)
+  for index, ancestor in ancestors: retained[index] = ancestor # Copy only bounded immutable header handles while the worker is idle.
+  if dispatcher.session.configure(dispatcher.peers, dispatcher.limits.schedule,
+      DownloadScheduleTick(uint64(now))) != DownloadScheduleError.None:
+    return DownloadLoopError.InvalidPolicy # Keep all native endpoints and the consumed adoption diagnostic on refusal.
+  dispatcher.ancestors = retained
+  dispatcher.completion = default(ApplicationChainResult[BlockSnapshot])
+  dispatcher.refusal = default(DownloadSessionFailure)
+  dispatcher.hasCompletion = false
+  dispatcher.requested = false
+  dispatcher.lastTick = uint64(now)
+  dispatcher.status = DownloadLoopStage.Waiting # The next tick may select one new attempt; rearming performs no IO or execution.
+  DownloadLoopError.None
+
 proc openPeer*(dispatcher: var BlockDownloadLoop, id: DownloadPeerId, expected: DownloadPeerKey,
     port: uint16, certificate, key, alpn: string): DownloadPeerError =
   ## Startup explicitly maps only scheduled identities to endpoints, without changing budgets or peer weight.

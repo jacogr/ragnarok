@@ -9,13 +9,14 @@ import std/[strutils, assertions]
 import ../codec/bounded
 
 const
+  MaxDownloadBlocks* = 64             ## A command requests a finite number of actual successive adoptions.
   MaxDownloadAncestors* = 64          ## Hard path-count cap before any ancestor file IO or native setup.
   DefaultStateWrites = 1000'u64       # CLI defaults do not widen explicitly supplied component policies.
   DefaultStateWriteBytes = 100000'u64 # Each omitted mutation ceiling resolves independently.
   Switches = ["--with-ui", "--with-rpc", "--with-telemetry", "--with-state"]
   Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes",
       "--state-write-bytes", "--state-checkpoint", "--state-trust", "--state-header",
-      "--state-checkpoint-bytes", "--state-storage", "--state-db", "--download-ancestor"]
+      "--state-checkpoint-bytes", "--state-storage", "--state-db", "--download-ancestor", "--download-blocks"]
 
 type StateStorage* {.pure.} = enum ## Backend choice is independent of future full/light node modes.
   Memory, Disk
@@ -24,6 +25,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   parsed, telemetry, rpc, ui, state, recover: bool
   positional: seq[string]
   ancestorFiles: seq[string]
+  downloadCount: int
   endpoint, chain, directory: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
   backend: StateStorage
@@ -50,6 +52,10 @@ proc ancestorPaths*(options: Options): seq[string] =
   result = newSeq[string](options.ancestorFiles.len)
   for index, path in options.ancestorFiles:
     result[index] = path # Callers cannot reorder or replace the parser's retained list.
+
+func downloadBlocks*(options: Options): int =
+  ## Valid commands default to one child; failed/default parsing reports no requested work.
+  if options.parsed: options.downloadCount else: 0
 
 proc telemetryEnabled*(options: Options): bool =
   ## Endpoint configuration alone never enables the exporter.
@@ -136,7 +142,7 @@ proc decimalLimit(text: string, value: var uint64): bool =
 proc parseOptions*(arguments: seq[string], options: var Options): bool =
   ## Parse unique trailing controls atomically; repeated invocations own independent configuration.
   options = default(Options)
-  var candidate = Options(rpcNumber: 19800, uiNumber: 8888,
+  var candidate = Options(rpcNumber: 19800, uiNumber: 8888, downloadCount: 1,
     writeCount: ElementLimit(DefaultStateWrites), writeBytes: ByteLimit(DefaultStateWriteBytes))
   var first = arguments.len
   for i in 0..<arguments.len: # Only reserved service controls begin the trailing option region.
@@ -170,6 +176,11 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--state-trust": candidate.recoveryIdentity = value
       of "--state-header": candidate.recoveryHeader = value
       of "--state-db": candidate.database = value
+      of "--download-blocks":
+        var number = 0'u64
+        if value[0] == '0' or not decimalLimit(value, number) or number == 0 or
+            number > uint64(MaxDownloadBlocks): return false # Prove the positive native count before conversion.
+        candidate.downloadCount = int(number)
       of "--download-ancestor":
         if candidate.ancestorFiles.len == MaxDownloadAncestors or value in candidate.ancestorFiles:
           return false # Repeated paths cannot multiply IO/work or exceed the startup path ceiling.
@@ -226,10 +237,10 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       return false # Socket services belong to network commands, never no-socket selftests.
   if candidate.positional.len > 0 and candidate.positional[0] == "download":
     if not candidate.state or candidate.telemetry: return false # Downloads require explicit canonical state; outgoing telemetry is not wired yet.
-  if candidate.ancestorFiles.len > 0:
+  if candidate.ancestorFiles.len > 0 or "--download-blocks" in seen:
     if candidate.positional.len == 0 or candidate.positional[0] != "download" or
         not candidate.state:
-      return false # Other commands must not silently ignore supplied report-ancestry context.
+      return false # Other commands must not silently ignore supplied download controls.
   candidate.parsed = true
   options = candidate # Only a complete validated configuration replaces the cleared output.
   true
