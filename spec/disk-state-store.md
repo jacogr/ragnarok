@@ -517,3 +517,13 @@ nodes, duplicate/unsorted roots or records and incorrect selected metadata refus
 map may retain nonempty historical roots. Only successful admission constructs a writable owner;
 subsequent delta commits continue from the preserved generation. Export and admission retain no
 mutable aliases to caller data or earlier repository owners.
+
+## Managed snapshot format
+
+The exact `RAGNAROK-SNAPSHOT-V1\n` header binds chain (32 bytes), schema (one byte), durable
+generation (E8), selected root (32 bytes), complete entry/node counts (E8 each), root count (E8),
+context length (E8) and collection length (E8). Sorted 32-byte roots, exact context and the physical
+collection follow. Blake2b-256 over the entire prefix occupies the final 32 bytes. Every count and
+extent is checked before decoding/allocation/hash work; encoding consumes opaque validated root
+selections under their exact inherited complete-state policy. Decode admits all complete graphs,
+rejects orphans and preserves durable generation and context. Schema/chain never use fallback.
