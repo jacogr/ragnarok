@@ -303,3 +303,61 @@ func proofFailure*[T](reason: StateProofError): StateProofResult[T] {.requires:
     reason != StateProofError.None.} =
   ## Integration adapters may preserve failure reasons but cannot fabricate successful proof authority.
   StateProofResult[T](status: reason)
+
+type
+  StateProofQuery* = object ## Caller-owned unverified witness and exact requested key; root authority remains separate.
+    key*: StateKey
+    proof*: StateProof
+  StateProofBatchLimits* = object ## Whole-batch ceilings supplement each individual witness policy.
+    items*, nodes*: ElementLimit
+    valueBytes*: ByteLimit
+  VerifiedBatchData = ref object ## Ordered immutable results retain only successful verified evidence.
+    lookups: seq[VerifiedStateLookup]
+  VerifiedStateProofBatch* = object ## Publication is all-or-neither, including duplicate requested keys.
+    data: nil VerifiedBatchData
+func len*(batch: VerifiedStateProofBatch): int =
+  ## Defaults have no results; an explicit successful empty batch is independently initialized.
+  let data = batch.data
+  if data == nil: 0 else: data.lookups.len
+func valid*(batch: VerifiedStateProofBatch): bool =
+  ## Distinguish a valid empty batch from an uninitialized owner.
+  batch.data != nil
+proc lookupAt*(batch: VerifiedStateProofBatch, index: int): StateProofResult[VerifiedStateLookup] =
+  ## An ordinal is interpreted only against its exact retained batch owner.
+  let data = batch.data
+  if data == nil:
+    return proofFailure[VerifiedStateLookup](StateProofError.Uninitialized)
+  if index < 0 or index >= data.lookups.len:
+    return proofFailure[VerifiedStateLookup](StateProofError.InvalidIndex)
+  StateProofResult[VerifiedStateLookup](status: StateProofError.None, completed: data.lookups[index])
+proc verifyStateProofs*(queries: openArray[StateProofQuery], expectedRoot: StateRoot,
+    limits: StateProofLimits, aggregate: StateProofBatchLimits): StateProofResult[
+        VerifiedStateProofBatch] =
+  ## Preflight every owner and both aggregate sums before authenticating the first query.
+  if uint64(queries.len) > uint64(aggregate.items):
+    return proofFailure[VerifiedStateProofBatch](StateProofError.LimitExceeded)
+  if queries.len > high(int) div sizeof(VerifiedStateLookup):
+    return proofFailure[VerifiedStateProofBatch](StateProofError.LengthOverflow)
+  var nodes = 0'u64
+  var bytes = 0'u64
+  for query in queries:
+    # Duplicates preserve request order and consume their full independent resource allowance.
+    let data = query.proof.data
+    if data == nil:
+      return proofFailure[VerifiedStateProofBatch](StateProofError.Uninitialized)
+    let count = uint64(data.nodes.len)
+    let size = uint64(data.value.len)
+    if count > uint64(limits.nodes) or size > uint64(limits.valueBytes) or
+        count > uint64(aggregate.nodes)-nodes or size > uint64(aggregate.valueBytes)-bytes:
+      return proofFailure[VerifiedStateProofBatch](StateProofError.LimitExceeded)
+    nodes += count
+    bytes += size
+  var completed = newSeq[VerifiedStateLookup](queries.len)
+  for i, query in queries:
+    # A later cryptographic failure discards all earlier private successful results.
+    let checked = verifyStateProof(query.proof, expectedRoot, query.key, limits)
+    if checked.error != StateProofError.None:
+      return proofFailure[VerifiedStateProofBatch](checked.error)
+    completed[i] = checked.value
+  StateProofResult[VerifiedStateProofBatch](status: StateProofError.None,
+    completed: VerifiedStateProofBatch(data: VerifiedBatchData(lookups: completed)))

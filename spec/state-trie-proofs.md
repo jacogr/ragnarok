@@ -52,3 +52,7 @@ and never copies an absent neighbor value. Source order and storage remain uncha
 The snapshot adapter uses only existing complete-map enumeration and owner-bound reads.
 It checks all source value extents before copying and leaves the store/revision policy
 unchanged. Snapshot-root trust still belongs to the caller; no storage API changes occur.
+
+Batch verification preserves query order and duplicates under one explicit trusted root.
+All owners and per-proof/aggregate quotas preflight before hashing; later cryptographic
+refusal publishes no successful prefix. Extraction stays bound to the retained batch.
