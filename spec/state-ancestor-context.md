@@ -1,0 +1,21 @@
+# Immutable state ancestor context
+
+Scope: capture an immutable newest-first sequence of full sealed headers from a caller-selected
+parent, then use it to support report lookup queries and bounded missing-context planning.
+Gray Paper 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+`text/reporting_assurance.tex` contextual report validity and C.2 sealed header serialization remain
+unchanged. JAMNP-S requests continue to use the separately pinned CE128 contract.
+
+The context is structural evidence linked to the supplied parent, not consensus authentication,
+execution, canonical history, a complete-state map or a light-state proof. Failed/default results
+contain only reasons and require success before extracting data. Limits include the parent.
+
+`captureAncestorContext` preflights every owner and aggregate byte/count extent before hashing or
+copying. It recaptures exact canonical headers under the current profile, hashes full seals with
+BLAKE2b-256 and requires strict slot descent and every child-parent link. Read-only indexed access
+retains immutable owners; no sequence backing escapes. A parent-only success differs from default.
+
+Completion checks: `make unit SUITE=ancestor_context` and registration inventory. Authored independent
+sealed chains cover skipped slots, order/duplicate/gap refusal, defaults, exact and exceeded quotas,
+invalid indices and source-sequence replacement. Consumer migration and missing-context planning
+remain later layers. M1 framing is complete; complete state serialization/JAM parity remain open.
