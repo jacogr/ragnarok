@@ -94,8 +94,13 @@ matrix checks the exact fitting/overflow boundary for each scalar width with
 inaccessible/read-only/read-write final pages. It includes the mapped final-byte
 Panic assertion and a successful penultimate-byte control. Memory-step fixtures
 check guest exits, unchanged registers/memory and charge preservation.
-These are executable Nim regression fixtures; the reference branch was inspected,
-not verified by a dedicated executed Rust last-byte fixture.
+The [executed memory reference](pvm-memory-boundary-reference.md) now freezes12
+public-API interpreter results for byte loads/stores at the final and penultimate
+addresses with absent/RW/RO mappings. Native replay checks every exit, exact fault
+page, A0 and complete memory/source preservation. The optional generator is retained
+with the exact upstream dependency identities; ordinary tests only replay frozen data.
+This confirms the specific reference behavior by execution without claiming a full
+upstream test-suite run.
 
 **Question to raise:** is the last byte usable for byte loads/stores? Should memory
 validity depend on requested byte indices or on representability of the exclusive
@@ -127,8 +132,7 @@ not evidence that the paper explicitly assigns a different numerical price.
 [read_args_offset](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/program.rs#L733-L735)
 wraps the decoded target to u32;
 [get_branch_cost](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/simulator.rs#L1151-L1181)
-treats a missing byte as a prediction hit, giving latency1. Unlike the memory
-source-only findings, a temporary public-API Rust probe executed this literal
+treats a missing byte as a prediction hit, giving latency1. A temporary public-API Rust probe executed this literal
 witness against the pristine pinned JamV1 parser and Full/L2Hit simulator and
 returned block cost1. This was not a full upstream test-suite run. Its source,
 locked dependencies and output are retained locally under ignored
