@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_PVM_BENCHMARK",
+  "files": {
+    "pvm-benchmark.bin": "c6e7edfe2ffc0eb83a4c7fedfecd0ce7a6cd7844abb35d43916b3a8d319a154e"
+  },
+  "target": "pvm-benchmark.bin"
+}

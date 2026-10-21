@@ -1,0 +1,47 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+"""Independent expectations for a small correctness-checked PVM performance subset."""
+import struct
+from pathlib import Path
+from pvm_gas_reference import blob, simulate, tables
+
+ROOT=Path(__file__).resolve().parents[1]
+HEADER=struct.Struct('<IBII4QI2Q26Q')
+NAMES=('arithmetic-10000','memory-aligned-1000','memory-crossing-1000',
+       'hosts-aligned-1000','hosts-crossing-1000')
+
+
+# Derive fixed guest bytes, exact gas and complete outcomes independently of measured implementations.
+def fixtures():
+    rows=[];definitions=tables()
+    for kind,iterations,address in ((0,10000,0),(1,1000,0x10000),(1,1000,0x10fff),
+                                    (2,1000,0x10000),(2,1000,0x10fff)):
+        if kind==0:
+            # Simple register arithmetic and a real backward branch exercise interpreter dispatch.
+            body=[bytes((131,0x77,3)),bytes((131,0xaa,1))]
+        elif kind==1:
+            # Memory writes use a register value computed by the guest, with no host assistance.
+            body=[bytes((130,0x97,0)),bytes((131,0x77,1)),bytes((123,0x97,0)),bytes((131,0xaa,1))]
+        else:
+            # The same load/host/store/host/counter loop already has a complete paired correctness corpus.
+            body=[bytes((130,0x97,0)),bytes((10,13)),bytes((123,0x97,0)),
+                  bytes((10,14)),bytes((131,0xaa,1))]
+        pc=sum(map(len,body))
+        body.append(bytes((83,0x4a))+iterations.to_bytes(4,'little')+(-pc).to_bytes(4,'little',signed=True))
+        halt=bytes((50,0));halt_pc=sum(map(len,body));wire=blob([*body,halt])
+        price,cycles=simulate([*body,halt],definitions);halt_price,halt_cycles=simulate([halt],definitions)
+        registers=[0x1111111111111111*i for i in range(13)]
+        registers[0]=0xffff0000;registers[7]=0;registers[8]=0
+        registers[9]=(0x12345678<<32)|address;registers[10]=0
+        expected=registers.copy();expected[7]=iterations*(3 if kind==0 else 1);expected[10]=iterations
+        if kind==2:expected[8]=iterations*(iterations+1)//2
+        rows.append(HEADER.pack(len(wire),kind,iterations,address,0,iterations if kind else 0,
+            price,cycles,halt_pc,halt_price,halt_cycles,*registers,*expected)+wire)
+    return b'PVMBEN01'+struct.pack('<I',len(rows))+b''.join(rows),len(rows)
+
+
+# Explicit regeneration changes only the owned portable benchmark corpus.
+if __name__=='__main__':
+    data,count=fixtures();(ROOT/'tests/fixtures/pvm-benchmark.bin').write_bytes(data)
+    print(f'{count} benchmark workloads; {HEADER.size}-byte headers')
