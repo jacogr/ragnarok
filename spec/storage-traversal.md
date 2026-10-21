@@ -407,3 +407,10 @@ Each of the three bounded staging unlinks and its directory barrier is permanent
 turn. Confirmed CURRENT and selected bytes/maps remain unchanged. Strict restart preserves
 remaining forensic files; an explicit idempotent cleanup retry finishes the immediate successor
 only. Farther epoch files remain byte-identical throughout and are never scanned for authority.
+
+## Short reads before interruption
+
+Both layouts reopen through genuine eight-byte native reads, including two interruptions after
+real initial progress. Exact maps and journal bytes survive; permanent read refusal admits no
+owner. A ceiling one byte below the physical selected input is detected after bounded reads
+without accepting a partial graph, and the unchanged complete store can reopen under its full budget.

@@ -45,3 +45,5 @@ proc reuseClosedDescriptor*() {.importc: "storage_io_reuse_close", cdecl, header
 proc reusedDescriptorOpen*(): cint {.importc: "storage_io_reused_open", cdecl,
     header: "observer.h".}
   ## Prove the caller never accidentally closed the replacement resource by retrying.
+proc limitReads*(limit: csize_t) {.importc: "storage_io_read_limit", cdecl, header: "observer.h".}
+  ## Cap genuine native read progress; zero restores unrestricted calls and actual EOF.

@@ -20,6 +20,8 @@ uint64_t storage_io_calls(int operation);
 int storage_io_remaining(void);
 /* Cap genuine forwarded write progress; zero disables the cap. */
 void storage_io_write_limit(size_t limit);
+/* Cap actual read progress without fabricating bytes or EOF. */
+void storage_io_read_limit(size_t limit);
 /* Produce bounded zero-progress write receipts after genuine calls; reject negative controls. */
 int storage_io_zero_writes(int skip, int count);
 /* Expose remaining zero-progress controls so unexercised paths cannot pass. */
