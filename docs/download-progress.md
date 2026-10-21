@@ -86,10 +86,19 @@ files. Successful child counts never infer finality.
 RPC readers observe the canonical retained history and exact roots/headers as
 adoption proceeds; native execution/publication keeps its existing exclusion
 lease. The command closes its listeners on completion. Supply any older lookup
-context needed at startup through the explicit ancestor controls; local restart
+context needed at startup through explicit ancestor files or opt-in retained local capture; local restart
 does not automatically acquire missing external headers.
 
 See the [feature contract](../spec/application-download-progress.md) for the
 verified signed-chain, real TLS/RPC, durable restart and executable scenarios.
 M1 framing is complete; full state serialization and whole-block JAM/STF parity
 remain open.
+
+## Retained local ancestry on restart
+
+`--download-local-ancestors` prepends the restored rolling parents before any
+explicit older files. If there are L local parents and A explicit files, reserve
+L+A+N−1 input headers and L+A+N validation headers for N requested children.
+The same actual-byte ceilings apply; all local headers must fit, without silent
+truncation. One-head imports supply zero local parents, and separated finalized
+history cannot bridge eviction. See [ancestry configuration](download-ancestors.md).
