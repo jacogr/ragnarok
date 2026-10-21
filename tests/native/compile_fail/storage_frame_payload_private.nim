@@ -1,0 +1,8 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Frame transport results hide successful bytes and selected error causes.
+# @@Verification={"group":"privacy","expected":"completed"}
+import ../../../src/storage/journal_codec
+let hidden = default(FrameResult[JournalFrame])
+discard hidden.completed
