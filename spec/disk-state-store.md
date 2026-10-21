@@ -308,3 +308,31 @@ fixtures verify composite duplication rejection and opaque publication context p
 checks run under checked ARC/Clang. The pinned native allocator's public occupied counter is scoped
 to the calling thread and includes pending remote frees; it is not a process-wide cross-thread
 leak measurement. This suite makes no numeric zero-leak claim from that counter.
+
+## Process-exit and partial-publication boundaries
+
+`make unit SUITE=disk_publication_crash` uses genuine signed successors and independent child
+processes, with native workers created only after fork. Children exit without running worker,
+disk or application destructors at staged-only, durable-Done, collected-before-install and
+installed-before-close boundaries. Normal local restart selects the previous head for staged-only
+work and the complete successor for every confirmed durable case, including when the old host
+never installed it. It rebuilds the retained suffix with the exact current disk snapshot owner.
+
+The same child-only harness applies real RLIMIT_FSIZE boundaries at zero, one byte, half a frame,
+one byte short and exactly one complete frame. A failed native write preserves typed IO failure
+and poisons fresh disk reads; any incomplete nonempty tail makes strict app restart refuse without
+changing bytes. Explicit repair with the exact independently retained prior root/generation restores
+only that incomplete tail. A complete successor always refuses prior-generation recovery and remains
+byte-identical. No implicit repair, guessed rollback, new import authority or production fault hook
+is introduced. The parent's resource and signal policies are unchanged.
+
+## Remaining backend startup boundary
+
+The storage stack now provides bounded durable context, synchronous coordination, native publication
+offload and local restart/crash witnesses. It does not yet select disk through CLI options/services.
+That wiring must use state #5's agreed checkpoint-startup boundary (PR #473 / `81a092ab`) once its
+branch dependency is resolved. Preserve independent external import trust, explicit memory/disk
+selection (`--state-storage memory|disk`, `--state-db PATH`), strict refusal of incompatible existing
+DB/import combinations, RPC exclusion through native IO and joined shutdown before graph retirement.
+Full/light remains a separate future mode contract. The append-only physical store still retains all
+records under finite ceilings; page packing, reclamation and production-scale optimality are open.

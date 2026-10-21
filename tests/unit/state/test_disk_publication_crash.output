@@ -1,0 +1,1 @@
+PASS disk publication crash: staged/durable/install exits, real partial writes, exact repair and no complete rollback
