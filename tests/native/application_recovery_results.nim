@@ -3,7 +3,8 @@
 
 ## Opaque runtime result helpers reject default/refused payloads with genuine success controls.
 import std/[assertions, cmdline, syncio]
-import ../../src/app/[chain, checkpoint_identity, checkpoint_recovery]
+import ../../src/app/[chain, checkpoint_identity, checkpoint_recovery, checkpoint_codec]
+import ../../src/codec/bounded
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/header
 import ../../src/state/store
@@ -14,6 +15,9 @@ proc extract(outcome: ApplicationRecoveryResult) =
 proc inspectState(outcome: ApplicationRecoveryResult) =
   ## Nested error access requires the actual matching refusal.
   discard outcome.stateError
+proc inspectEnvelope(outcome: ApplicationRecoveryResult) =
+  ## Envelope reasons are inaccessible on default or successful recovery.
+  discard outcome.envelopeFailure
 proc main() {.raises.} =
   ## Genuine binding and missing-map controls exercise both guarded helpers.
   let mode = paramStr(1)
@@ -22,6 +26,8 @@ proc main() {.raises.} =
   elif mode == "missing":
     extract(recoverApplicationChain(default(StateStoreSnapshot), [], default(
         ApplicationCheckpointIdentity)))
+  elif mode == "wrong-envelope":
+    inspectEnvelope(default(ApplicationRecoveryResult)) # Default status grants no decoder reason.
   elif mode == "wrong-reason":
     inspectState(default(ApplicationRecoveryResult)) # Default status cannot grant a nested map reason.
   else:
@@ -31,6 +37,7 @@ proc main() {.raises.} =
     var wire = newSeq[byte](header.headerInfo.value.consumed)
     assert encodeOwnedHeader(header, wire).error == HeaderError.None
     extract(recoverApplicationChain(owner.stateSnapshot.value, wire, expected))
+    inspectEnvelope(decodeRecoveryCheckpoint([], wire, expected, genesisStoreLimits(), ByteLimit(238)))
     inspectState(recoverApplicationChain(default(StateStoreSnapshot), wire, expected))
 try:
   main() # Native fixture errors remain distinct from assertion failures.

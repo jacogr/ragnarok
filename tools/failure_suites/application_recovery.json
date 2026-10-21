@@ -33,6 +33,17 @@
         "reason": "wrong-reason"
       },
       "name": "application-recovery-wrong-reason"
+    },
+    {
+      "arguments": [
+        "wrong-envelope"
+      ],
+      "description": "Application recovery wrong-envelope",
+      "diagnostic": "outcome.status == EnvelopeFailure",
+      "identity": {
+        "reason": "wrong-envelope"
+      },
+      "name": "application-recovery-wrong-envelope"
     }
   ],
   "crypto_library": "crypto",
