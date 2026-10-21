@@ -220,3 +220,8 @@ help:
 .PHONY: measure-state-store
 measure-state-store: setup
 	. ./build/toolchain/env.sh; $(PYTHON) tools/measure_state_store.py --compiler "$$NIMONY"
+
+# Repeat real-file state workloads; compare only an explicitly supplied compatible prior report.
+.PHONY: measure-disk-store
+measure-disk-store: setup
+	. ./build/toolchain/env.sh; $(PYTHON) tools/measure_disk_store.py --compiler "$$NIMONY" $(if $(DISK_STORE_BASELINE),--baseline "$(DISK_STORE_BASELINE)",)
