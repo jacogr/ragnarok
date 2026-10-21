@@ -49,6 +49,18 @@ Protocol, ownership and result contracts in `AGENTS.md` remain mandatory.
 - Keep progress updates short and tied to new evidence, decisions or blockers. During waits, use
   brief required updates rather than repeating the plan or narrating speculative debugging.
 
+## Token-efficient continuity
+
+- Use the compact working record as the source for settled decisions and the next action. Reopen
+  decisions only when new evidence, changed requirements or an unresolved contradiction warrants it.
+  Consult relevant chat summaries before loading full histories; retrieve only missing context.
+- Coordinate through concise changes: new interface proposals, ownership changes, evidence or blockers.
+  Link the existing contract instead of repeating it; include enough context for the receiving agent
+  to act without rediscovering the work.
+- For an authorized multi-layer stack, batch publication and remote verification of several coherent,
+  locally checked layers when no feedback or dependency requires earlier publication. Preserve a
+  separate reviewable commit/PR per increment and all native stack/head checks below.
+
 ## Resume existing work
 
 Before broad source exploration, inspect the current branch, working-tree changes, recent commits,
