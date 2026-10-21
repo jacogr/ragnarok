@@ -82,6 +82,17 @@
       "name": "application-block-input-enqueue",
       "diagnostic": "outcome.status == EnqueueFailure",
       "description": "Block input selected extraction guard enqueue"
+    },
+    {
+      "arguments": [
+        "ancestors"
+      ],
+      "description": "Block input discovery extraction guard",
+      "diagnostic": "outcome.status == NeedsAncestors",
+      "identity": {
+        "reason": "ancestors"
+      },
+      "name": "application-block-input-ancestors"
     }
   ]
 }

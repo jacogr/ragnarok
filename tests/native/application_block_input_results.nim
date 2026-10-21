@@ -20,6 +20,7 @@ of "admission-refused":
   discard admission.value # Missing heads cannot provide generations.
 of "codec": discard outcome.decodeFailure # Default is not selected DecodeFailure.
 of "preparation": discard outcome.preparationFailure # Default contains no failed producer child.
+of "ancestors": discard outcome.ancestorDemand # Only explicit NeedsAncestors carries a discovery plan.
 of "enqueue": discard outcome.enqueueError # Default has no failed handoff cause.
 of "refused": discard outcome.value # Stale generation exposes no value.
 else: discard outcome.value # Default contains no finalized certificate.
