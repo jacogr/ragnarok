@@ -472,8 +472,8 @@ proc captureMachine*(program: Program, memory: Memory, info: MachineInfo): Machi
   if uint64(info.gasDeficit) != 0:
     # Negative balances are terminal state and cannot be captured as executable guest input.
     return MachineResult[Machine](status: MachineError.InvalidGasState)
-  # Reuse the base PR's instruction-boundary validation without re-decoding or copying its program.
-  if instruction(program, info.pc).error != ProgramError.None:
+  # Validate owner, address and opcode marker without reconstructing unused operands.
+  if instructionOpcode(program, info.pc).error != ProgramError.None:
     return MachineResult[Machine](status: MachineError.InvalidProgram)
   MachineResult[Machine](status: MachineError.None,
     completed: Machine(data: MachineData(program: program, memory: memory, info: info)))

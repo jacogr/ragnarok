@@ -5,7 +5,7 @@
 ## during validation, then copied into private acyclic ARC storage.
 ##
 ## Exposes Program snapshots and nominal address/index/limit types, decodeProgram/decodeJamProgram,
-## instruction/jump lookup, raw instruction-byte lookup with zero padding, and block-boundary
+## instruction/opcode/jump lookup, raw instruction-byte lookup with zero padding, and block-boundary
 ## and containing-block queries.
 
 import ../codec/natural
@@ -350,12 +350,30 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     return ProgramResult[Instruction](status: ProgramError.InvalidInstruction)
   ProgramResult[Instruction](status: ProgramError.None, completed: item)
 
+proc instructionOpcode*(program: Program, address: CodeAddress): ProgramResult[byte] =
+  ## Copy the opcode at a validated marked instruction location without decoding its operands.
+  ## Default owners, out-of-range addresses and unmarked bytes retain instruction() errors.
+  ## Unlike instructionByte(), this lookup has no zero suffix and never accepts operand locations.
+  if program.data == nil:
+    # A default handle has no captured code or instruction-marker bitmap.
+    return ProgramResult[byte](status: ProgramError.InvalidOwner)
+  let data = program.data
+  let pc = uint64(address)
+  if pc >= uint64(data.codeLength):
+    # Establish the host-int bound before narrowing the logical address or inspecting a marker.
+    return ProgramResult[byte](status: ProgramError.InvalidInstruction)
+  if not marked(data.bytes, data.maskOffset, int(pc)):
+    # Literal operand bytes remain non-executable even when they happen to encode valid opcodes.
+    return ProgramResult[byte](status: ProgramError.InvalidInstruction)
+  # Owner capture already validated every marked opcode; immutable storage preserves that proof.
+  ProgramResult[byte](status: ProgramError.None, completed: data.bytes[data.codeOffset + int(pc)])
+
 proc basicBlockStart*(program: Program, address: CodeAddress): ProgramResult[bool] =
   ## Membership in varpi uses a bounded backward search, since skip is at most 24.
   # Establish ownership locally as well as through the instruction result.
   # A default handle has no validated storage to inspect.
   if program.data == nil: return ProgramResult[bool](status: ProgramError.InvalidOwner)
-  let decoded = instruction(program, address)
+  let decoded = instructionOpcode(program, address)
   # Preserve address failures instead of treating invalid positions as ordinary block members.
   if decoded.error != ProgramError.None: return ProgramResult[bool](status: decoded.error)
   let pc = int(uint64(address))
@@ -383,7 +401,7 @@ proc instructionByte*(program: Program, address: CodeAddress): ProgramResult[byt
 proc containingBlockStart*(program: Program, address: CodeAddress): ProgramResult[CodeAddress] =
   ## Find GP startofbasicblock for a valid instruction, including entry in the middle of a block.
   ## The backward byte scan is bounded by the validated program size and retains no storage.
-  let current = instruction(program, address)
+  let current = instructionOpcode(program, address)
   # Reject default owners and invalid addresses before narrowing or scanning bytes.
   if current.error != ProgramError.None:
     return ProgramResult[CodeAddress](status: current.error)

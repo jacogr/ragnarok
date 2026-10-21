@@ -50,6 +50,7 @@ let defaultResult = default(ProgramResult[Program])
 assert defaultResult.error == ProgramError.Uninitialized
 assert codeLength(default(Program)).error == ProgramError.InvalidOwner
 assert instruction(default(Program), CodeAddress(0)).error == ProgramError.InvalidOwner
+assert instructionOpcode(default(Program), CodeAddress(0)).error == ProgramError.InvalidOwner
 assert jumpTarget(default(Program), JumpIndex(0)).error == ProgramError.InvalidOwner
 assert basicBlockStart(default(Program), CodeAddress(0)).error == ProgramError.InvalidOwner
 
@@ -79,6 +80,37 @@ for op in 0..255:
   assert terminatesBlock(byte(op)) == terminal
   assert (read(blob([byte(op), 0], [0, 1])).error == ProgramError.None) == expected
   assert (read(blob([byte(op)], [0])).error == ProgramError.None) == terminal
+  if expected:
+    # Every admitted opcode byte is returned literally without depending on its operand shape.
+    let owned = read(blob([byte(op), 0], [0, 1])).value
+    assert instructionOpcode(owned, CodeAddress(0)).value == byte(op)
+
+# A cheap opcode query retains independent marker membership across bitmap bytes and copied input ownership.
+block opcodeLocations:
+  var code = newSeq[byte](33)
+  for i in 0..<33:
+    # Operand bytes deliberately look like valid terminators; only the explicit mask grants execution.
+    code[i] = 0
+  var wire = blob(code, [0, 8, 16, 24, 32])
+  let paper = read(wire).value
+  let jam = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(4096), JumpCountLimit(0)).value
+  for i in 0..<wire.len:
+    # The query must retain the validated owner's bytes after the borrowed source is replaced.
+    wire[i] = 255
+  for owner in [paper, jam]:
+    for pc in 0'u64..33'u64:
+      # Complete decoders and the scalar query agree, but explicit marker expectations remain independent.
+      let opcode = instructionOpcode(owner, CodeAddress(pc))
+      let decoded = instruction(owner, CodeAddress(pc))
+      assert opcode.error == decoded.error
+      if pc in [0'u64, 8, 16, 24, 32]:
+        assert opcode.error == ProgramError.None and opcode.value == 0
+      else:
+        assert opcode.error == ProgramError.InvalidInstruction
+    assert instructionOpcode(owner, CodeAddress(high(uint64))).error ==
+        ProgramError.InvalidInstruction
+    assert instructionByte(owner, CodeAddress(1)).value == 0
+    assert instructionByte(owner, CodeAddress(high(uint64))).value == 0
 
 # Skip at 24 is allowed; a 25-byte operand gap reaches an unmarked instruction and must fail.
 for gap in 0..26:
