@@ -537,3 +537,13 @@ bytes. The exact `RAGNAROK-JOURNAL-V1\n` prefix carries the manifest checksum so
 journal cannot be paired with a snapshot. Unknown/corrupt manifests never trigger file scanning
 or older-head fallback. All truncations and single-byte mutations plus cross-chain/schema/pairing
 and exact/short ceilings are covered before filesystem adoption.
+
+## Stable managed directory ownership
+
+A managed directory is created exclusively with a persistent regular `LOCK` inode and opened with
+nonblocking exclusive advisory locking. LOCK survives close and every epoch replacement. Children
+are opened relative to the held directory descriptor, reject symlinks/non-regular files, and use
+only CURRENT or fixed-width lowercase epoch-derived snapshot/journal names. New child files are
+exclusive, privately permissioned and synced before namespace synchronization. CURRENT/LOCK cannot
+be reclamation targets. Missing unselected epoch removal is idempotent; wrong kinds are refused.
+Callers retain ownership of the external directory namespace, matching the existing file contract.
