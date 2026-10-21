@@ -262,3 +262,7 @@ so stale imported generic bodies cannot cross edited runtime/support/adjacent Ni
 sources. Unchanged source trees retain profile reuse; source edits may create a fresh
 project cache directory. Existing compiler identity, flags, native ABI hashes, worker
 isolation and locks remain in force. Compiler files and metadata are never modified.
+File discovery and metadata checks still run for every plan. A bounded process-local digest cache
+avoids rereading unchanged files; device/inode, size and nanosecond modification/change times
+invalidate cached bytes. Same-size edits with restored mtime and atomic replacements remain
+source changes. No metadata/digest cache persists between processes.

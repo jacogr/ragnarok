@@ -53,6 +53,27 @@ builder modes and Hastur profiles, real two-version checked rebuilds with expect
 outputs `7` then `12`, and selected native/benchmark verification. Keep failure statuses,
 ARC evidence and CI/report freshness checks intact.
 
+## Bounded digest reuse
+
+The Python reference/tooling job in CI run `39631349594` exhausted its 300-second budget.
+Local per-test timing identified repeated whole-tree hashing in native command planning as the
+largest cost: the linked-profile and unit-entrypoint checks alone spent roughly 73 seconds
+rereading the same runtime/support sources, including large PVM fixtures.
+
+Discovery still enumerates source families on every request. A bounded process-local cache reuses
+only individual file digests whose device, inode, size, nanosecond mtime and nanosecond ctime are
+unchanged. Restored-mtime same-size edits, atomic replacements, additions, deletions and newly
+created optional configuration files retain epoch invalidation. Optional absence is never cached.
+The epoch schema and content-derived output stay identical to the original full-read algorithm;
+no digest metadata is persisted or used as a replacement for runtime provenance.
+
+The optimized planner reproduces the previous content epoch exactly for codec/state/native
+source groups. Repeated local planning samples fall from 0.112/0.176/0.122 seconds to
+0.015/0.045/0.063 seconds respectively. The full Python check passes 629 tests (four skipped)
+in 145.1 seconds locally; the measured baseline took 168.7 seconds before the additional
+regression. These are local observations, not Linux CI timing guarantees. Real checked full-LTO
+private/shared rebuilds still print `7`, `12`, `12`, with source-edit rotation and unchanged reuse.
+
 ## Observed local verification
 
 All 53 source-identity, native profile, Hastur planning/locking and unit orchestration
