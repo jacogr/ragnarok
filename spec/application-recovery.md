@@ -63,3 +63,19 @@ Local selected-file native verification passes with 28,560 occupied bytes before
 after 1,000 full recovery cycles. Five runtime refusal cases, genuine success/
 error controls, all five private-result compiler probes and inventory pass.
 Evidence is under `build/recovery-file*`; CI remains unrequested.
+
+## Captured independent operator inputs
+
+`captureCheckpointTrust` accepts separately operator-selected canonical identity
+bytes and an exact hash-matching sealed header. A subtraction-checked aggregate
+byte limit and existing 256 KiB header ceiling bound work before header copying.
+Successful immutable input owners copy sealed bytes privately and expose fixed
+identity only. Decode/file recovery consumes that same captured pair, with defaults
+reaching MissingTrust before map or path access. No checksum grants authority: the
+operator must select independent trusted inputs rather than extract metadata from
+the untrusted checkpoint. No signature, ancestry or finality proof is inferred.
+
+Local trust native verification passes, with 299,808 occupied bytes before/after
+1,000 captured-input/complete-recovery cycles. Nine combined runtime refusals,
+genuine success/error controls, eleven private-owner/result compiler checks and
+inventory pass. Evidence uses `build/recovery-trust*`; CI is not requested.
