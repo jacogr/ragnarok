@@ -31,6 +31,7 @@ def observe(peer, responder, directory, environment):
     directory.mkdir(parents=True, exist_ok=True)
     rows = []
     cases = [('complete', 0, 3, 'DOWNLOAD_ADOPTED', 3),
+             ('resumed', 0, 2, 'DOWNLOAD_ADOPTED', 2),
              ('replay', 2, 1, 'DOWNLOAD_FAILED Exhausted', 2),
              ('timeout', 2, 1, 'DOWNLOAD_FAILED Timeout', 2)]
     for name, expected_code, adopted, marker, requests in cases:
@@ -48,7 +49,11 @@ def observe(peer, responder, directory, environment):
                     'jamnp-s/1/00000000', '4000' if name == 'timeout' else '10000',
                     'sequence-policy.conf', '--with-state', '--chain', 'sequence-chain.json',
                     '--state-writes', '1000', '--state-write-bytes', '1000000',
-                    '--state-storage', 'disk', '--state-db', 'sequence-state.db', '--download-blocks', '3']
+                    '--state-storage', 'disk', '--state-db', 'sequence-state.db',
+                    '--download-blocks', '2' if name == 'resumed' else '3']
+                if name == 'resumed':
+                    # The native witness seeded real retained history/finality before advertising readiness.
+                    arguments.append('--download-local-ancestors')
                 result = subprocess.run(arguments, cwd=folder, env=environment,
                     capture_output=True, text=True, timeout=20)
                 (folder/'application.stdout').write_text(result.stdout)
@@ -56,7 +61,8 @@ def observe(peer, responder, directory, environment):
                 (folder/'sequence-stop').write_text('stop')
                 code = process.wait(timeout=10)
             combined = result.stdout + result.stderr
-            expected_progress = f'DOWNLOAD_PROGRESS adopted={adopted} requested=3'
+            requested = 2 if name == 'resumed' else 3
+            expected_progress = f'DOWNLOAD_PROGRESS adopted={adopted} requested={requested}'
             verified = f'SEQUENCE_VERIFIED adopted={adopted} requests={requests}'
             passed = (result.returncode == expected_code and expected_progress in result.stdout
                       and marker in combined and code == 0 and verified in log.read_text())

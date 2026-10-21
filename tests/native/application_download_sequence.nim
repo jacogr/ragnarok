@@ -12,7 +12,7 @@ import ../support/[application_download_chain, application_download_command_cont
 proc main() {.raises.} =
   ## Write a genuine source chain and explicit policy, then serve only independently authored exact requests/bytes.
   let mode = getEnv("RAGNAROK_DOWNLOAD_SEQUENCE_CASE")
-  assert mode in ["complete", "replay", "timeout"]
+  assert mode in ["complete", "resumed", "replay", "timeout"]
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var report = newSeq[byte](raw.len)
   for index, octet in raw: report[index] = byte(octet)
@@ -24,14 +24,17 @@ proc main() {.raises.} =
     limits.attemptTimeout = DownloadAttemptTimeout(
         30000) # Command expiry must occur before these independent stage ceilings.
   writeFile("sequence-policy.conf", encodeDownloadPolicy(limits))
+  if mode == "resumed":
+    initializeFinalizedPrefix(context, "sequence-state.db") # Independent actual adoption persists one child and explicit original-head finality.
+  let first = if mode == "resumed": 1 else: 0
   let total = if mode == "complete": 3 else: 2
   var requests: seq[array[42, byte]] = @[]
   var responses: seq[seq[byte]] = @[]
   var modes: seq[DownloadTransferMode] = @[]
   for index in 0..<total:
-    requests.add(expectedRequest(context.heads[index]))
+    requests.add(expectedRequest(context.heads[first + index]))
     responses.add(responseFrame(context.children[if mode == "replay" and index ==
-        1: 0 else: index]))
+        1: 0 else: first + index]))
     modes.add(if mode == "timeout" and index == 1: NoFin else: DownloadTransferMode.Healthy)
   var servers = default(DownloadResponders)
   assert servers.openSequenceResponders(requests, responses, modes)
@@ -45,9 +48,10 @@ proc main() {.raises.} =
   let count = servers.requestCount(true)
   servers.close() # No endpoint callback remains when the actual executable's completed disk prefix is inspected.
   assert count == total, "actual executable request count"
-  let completed = if mode == "complete": 3 else: 1
-  assertDiskPrefix(context, completed, "sequence-chain.json", "sequence-state.db")
-  echo "SEQUENCE_VERIFIED adopted=" & $completed & " requests=" & $count
+  let completed = if mode in ["complete", "resumed"]: 3 else: 1
+  assertDiskPrefix(context, completed, "sequence-chain.json", "sequence-state.db",
+    finalizedIndex = if mode == "resumed": 0 else: -1)
+  echo "SEQUENCE_VERIFIED adopted=" & $(if mode == "resumed": 2 else: completed) & " requests=" & $count
 try:
   main() # Native/assertion/file failures remain strict independent-process failures.
 except:

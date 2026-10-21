@@ -174,7 +174,8 @@ proc cycle(text: string) =
       DownloadPolicyError.DuplicateField,
     "cycle failed parse"
 
-proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario) {.raises.} =
+proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario,
+    local = false) {.raises.} =
   ## A forked responder owns its TLS engines; the parent command joins its preparation worker before every later fork.
   discard posix.unlink("download-startup-stop")
   var servers = default(DownloadResponders)
@@ -223,6 +224,8 @@ proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario) 
     selected = peerOptions(firstPort, getEnv("RAGNAROK_TEST_PEER_A"), [$port, peer])
   if scenario >= AncestorHealthy:
     var args = arguments(port, peer)
+    if local:
+      args.add("--download-local-ancestors") # A one-head seed cannot invent its older lookup anchor; explicit suffix admission remains mandatory.
     if scenario != AncestorMissing:
       args.add("--download-ancestor")
       args.add(if scenario == AncestorBroken: "download-startup-ancestor-broken"
@@ -341,6 +344,9 @@ proc main() {.raises.} =
   let anchoredRequest = independentRequest()
   let anchoredFrame = responseFrame(anchored)
   for scenario in AncestorHealthy..AncestorDisk: roundTrip(anchoredRequest, anchoredFrame, scenario)
+  for scenario in AncestorHealthy..AncestorSuffix:
+    roundTrip(anchoredRequest, anchoredFrame, scenario,
+        local = true) # Retain default explicit-file controls alongside the opt-in lookup witnesses.
   var reference = initialized(anchored)
   let prepared = prepareCandidate(reference, candidateBlock(anchored), [ancestor],
       preparationLimits())
