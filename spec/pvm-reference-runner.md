@@ -25,6 +25,7 @@ separate list of executable identities in the runner.
 | Reference probe | Native suite | Boundary checked |
 | --- | --- | --- |
 | Memory generator | `pvm_memory_boundary_reference` | Exact regenerated frozen bytes; scalar address/protection edges |
+| `mixed` | `pvm_mixed_program_reference` | Complete memory/host/loop programs at exact, surplus and two underfunded gas boundaries |
 | `memory` | `pvm_memory_access_reference` | Complete scalar forms, signed values, aliases and cross-page permissions with explicit GP-PVM-008 adaptation |
 | `registers` | `pvm_registers` | Independent arithmetic expectations, all posterior registers and trap PC |
 | `gas` | `pvm_gas` | Independent GP block prices versus public pipeline simulator; native affordability/cycles |
