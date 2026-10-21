@@ -151,6 +151,51 @@ Specify the price before invalid-target panic and retain an executable malformed
 destination witness. The paper's memory latency25 is retained; generic PolkaVM
 cache models and its default gas mode are not alternative protocol specifications.
 
+## Reproducing the local fixture evidence
+
+From a provisioned checkout with the pinned dependencies, run:
+
+```sh
+make unit SUITE=pvm_machine
+make unit SUITE=pvm_memory_step
+make unit SUITE=pvm_assured_checkpoint_wrap_load
+make unit SUITE=pvm_assured_checkpoint_wrap_store
+make unit SUITE=pvm_gas
+make unit SUITE=pvm_step
+make unit SUITE=pvm_execution
+```
+
+These assert the documented compatibility behavior, not that the paper has been
+corrected. Pin checks use `python3 -m unittest discover -s tests -p test_spec.py`.
+For an upstream GP-PVM-003 report, the complete public-API core of the targeted
+Rust probe is below; build it against the pinned `polkavm-common` with `alloc`,
+using the upstream lockfile versions (`picosimd0.9.6` with `ops`). Preserve the
+upstream source and toolchain; this is optional reference evidence, not a project
+build prerequisite.
+
+```rust
+use polkavm_common::program::{InstructionSetKind, Instructions};
+use polkavm_common::simulator::{CacheModel, Simulator};
+use polkavm_common::utils::{GasVisitorT, B64};
+
+fn main() {
+    let code = [170_u8, 0, 255, 255, 255, 255, 100, 0, 0];
+    let mask = [65_u8, 1];
+    let isa = InstructionSetKind::JamV1;
+    let mut sim = Simulator::<B64, ()>::new(&code, isa, CacheModel::L2Hit, ());
+    for instruction in Instructions::new_bounded_known_boundary(isa, &code, &mask, 0) {
+        // Stop at the first completed block; following blocks are not part of this witness.
+        instruction.visit_parsing(&mut sim);
+        if let Some(cost) = sim.take_block_cost() {
+            assert_eq!(cost, 1);
+            println!("negative_target_cost={cost}");
+            return;
+        }
+    }
+    panic!("no completed block");
+}
+```
+
 ## Related findings outside this PVM increment
 
 Existing evidence remains in its owning records rather than being duplicated here:
