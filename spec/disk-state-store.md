@@ -591,3 +591,21 @@ plausibly incomplete final frame; complete corrupt frames, impossible lengths, g
 complete visible successors are never discarded. Wrong recovery tokens leave bytes untouched.
 Run `make unit SUITE=storage_managed_append_recovery` for real append/restart/context, stale parent,
 torn-tail repair, refusal to roll back a complete successor and corrupt-tail preservation.
+
+## Atomic managed compaction
+
+`compact(expected, roots)` requires the exact current physical view and an explicit bounded root
+union including its current root. It preflights and re-admits a detached snapshot before IO, stages
+the next epoch's snapshot and paired empty journal, synchronizes both and replaces CURRENT under
+the unchanged stable LOCK lease. Only a confirmed manifest replacement installs the new memory
+owner/journal. State generation, root and context remain unchanged; the epoch advances independently.
+Old views remain readable, but their publication identity is stale after replacement.
+
+Only after confirmation are the old selected journal and snapshot removed. A successful receipt
+reports reclamation and a separate cleanup status: failed old-file deletion cannot undo durable
+selection. Uncertain replacement poisons fresh operations and requires strict reopen. Staged-name
+collisions are refused without overwriting them; explicit validated staging cleanup is subsequent
+work. No automatic root/finality policy or application scheduling is introduced.
+
+Run `make unit SUITE=storage_managed_compaction` for retained/dropped complete histories, exact-parent
+refusal, unchanged state generation/context, continued append after replacement and repeated epochs.
