@@ -165,3 +165,21 @@ Local configured-startup suite passes with 27,936 occupied bytes before/after
 consumer passes. The real production entry builds and its help exposes all four
 controls; semantic checking, source-owned inventory and complete pinned formatting
 pass. Evidence uses `build/recovery-startup*`; no remote CI is requested.
+
+## Production executable import witnesses
+
+The registered application_checkpoint_import E2E workload reuses pinned complete
+checkpoint/identity/chainspec fixtures, then independently hashes a changed sealed
+header and its exact local metadata. A real retained executable peer exposes that
+imported hash, slot, posterior root and sealed bytes through an independent Python
+WebSocket client; finality and parent remain unavailable. Both executable peer
+shapes reject zero/short budgets and missing/malformed selected trust/header/map
+files before readiness, preserving every input byte. Every child is bounded and
+reaped. This covers process/startup integration, not consensus validity of the
+operator-selected anchor or filesystem power-loss behavior.
+
+The selected production executable workload passes real RPC and all sixteen
+server/mesh startup refusals, with exact input preservation and reaped children.
+Both E2E plan/completeness harness tests and inventory pass. Evidence is under
+`build/recovery-executable*`; this is focused local process evidence, not a full
+E2E or exact-head Linux CI verdict.
