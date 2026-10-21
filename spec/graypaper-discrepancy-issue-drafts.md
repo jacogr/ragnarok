@@ -1,0 +1,130 @@
+# Gray Paper PVM issue drafts
+
+Prepared for maintainer review and manual posting; nothing has been filed upstream.
+These are separate questions, not a request to adopt all PolkaVM implementation details.
+The [discrepancy register](graypaper-discrepancies.md) retains the full evidence and
+local compatibility decisions. Each draft below is intended to stand on its own.
+
+## GP-PVM-001 — Clarify wrapped memory access exception priority
+
+Gray Paper0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+[Single-Step State Transition](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L168-L179),
+says a required byte below2^16 immediately panics, while the equation takes the
+minimum inaccessible index before applying modulo2^32.
+
+For a two-byte load at0xffffffff with both the final page and page0 inaccessible,
+the unreduced requested indices are {0xffffffff, 0x100000000}. Reducing all required
+indices first exposes protected byte0 and implies Panic. Taking the stated minimum
+first instead implies Fault at0xfffff000. The same question applies to stores.
+
+Pinned PolkaVM0.37.0 `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`
+[DynamicMemory](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm/src/interpreter.rs#L1105-L1170)
+faults on the absent final page; when that page is present it traps.
+
+Could the specification explicitly define whether indices are reduced before
+forming the inaccessible set, and which exception takes precedence? Please include
+absent, read-only and writable final-page cases. Merged
+[PR201](https://github.com/gavofyork/graypaper/pull/201) introduced the formalization;
+[issue446](https://github.com/gavofyork/graypaper/issues/446) establishes the protected
+low zone but does not settle this ordering question.
+
+## GP-PVM-002 — Define whether the final addressable byte is usable
+
+Gray Paper0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+[memory exceptions](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L168-L179)
+and [scalar operations](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L384-L402),
+validate the bytes actually accessed. A one-byte load at0xffffffff with the final
+page mapped RW and its last byte7 therefore succeeds with7. A byte store to that
+RW page also succeeds. No requested byte wraps into the protected zone.
+
+Pinned PolkaVM0.37.0 `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`
+[checks the exclusive end in u32](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm/src/interpreter.rs#L1105-L1170).
+The addition0xffffffff+1 fails, so both operations Trap on a mapped final page.
+With an RO final page it also traps on both, whereas the paper implies successful
+load and Fault on store. With an absent final page both fault at0xfffff000.
+
+Our public interpreter probe executes all12 combinations of byte load/store,
+address0xfffffffe/0xffffffff and absent/RW/RO final pages. The penultimate byte is
+a positive control; the frozen final-byte results confirm the behavior above.
+[Probe source](../tests/reference/polkavm_memory/src/main.rs) and
+[reproduction contract](pvm-memory-boundary-reference.md) are available.
+
+Should admissibility depend on requested byte indices or representability of the
+exclusive end? Please specify the final fitting address for each scalar width and
+permission priority. This is independent of wrapped-byte ordering: a one-byte
+access here has no wrapped required byte. We do not assume whether the paper,
+PolkaVM, or both should change. [PR272](https://github.com/gavofyork/graypaper/pull/272)
+changed host-function ranges, not these scalar operations.
+
+## GP-PVM-003 — Define gas lookup for negative relative branch targets
+
+Gray Paper0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401` defines an
+[infinite zero suffix](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L100-L104)
+for nonnegative code indices. Its
+[branch latency](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L1172-L1188)
+also indexes a relative target that can be negative. Gas is needed before execution
+rejects that destination, so the invalid destination still requires a defined price.
+
+Minimal JamV1 code: `[170,0,255,255,255,255,100,0,0]`; mask `[65,1]`.
+At PC0 the signed displacement is-1 and the fallthrough byte is100. The paper
+does not define code[-1]; this is an undefined lookup, not an explicit competing
+numerical price.
+
+Pinned PolkaVM0.37.0 `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`
+[normalizes the target to u32](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/program.rs#L733-L735)
+and its [branch-cost function](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/simulator.rs#L1151-L1181)
+uses latency1 for the missing byte. A public Full/L2Hit simulator probe returns
+block cost1 for this witness; the retained checker also agrees with all1776 rows
+of our independent gas corpus, including48 negative-target cases.
+
+Should pricing targets be reduced modulo2^32, or should negative code indices
+have an explicit definition? Please define the gas charge before destination
+panic, including untaken conditional branches. Merged
+[PR508](https://github.com/gavofyork/graypaper/pull/508) supplies the gas model;
+we found no explicit resolution of this negative-index question in the reviewed
+threads. Generic PolkaVM cache/default gas models are not being proposed as
+alternative JAM costs.
+
+## GP-PVM-004 — Reconcile final terminator admissibility with module prevalidation
+
+Gray Paper0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+[structural validation](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L51-L70),
+accepts a complete instruction partition whose last opcode belongs to T.
+[T includes fallthrough and conditional branches](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L106-L138).
+These instructions can lack a successor at the end of code, which the
+[runtime checks](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L246-L260)
+turn into Panic when reached.
+
+Three literal witnesses, entry0, initial r7=99:
+
+| Case | Code | Mask | Full GP blob |
+| --- | --- | --- | --- |
+| Control | `[51,7,7,0]` | `[9]` | `[0,0,4,51,7,7,0,9]` |
+| Final fallthrough | `[51,7,7,1]` | `[9]` | `[0,0,4,51,7,7,1,9]` |
+| Final conditional | `[51,7,7,170,0,253]` | `[9]` | `[0,0,6,51,7,7,170,0,253,9]` |
+
+The load prefix writes r7=7. The conditional's signed-3 taken target is valid
+entry0; its missing fallthrough is the isolated defect. Under the stated paper
+rules all three decode and execute the prefix before eventual Panic, retaining7.
+Prepaid gas in our raw interpreter witness isolates this from pricing.
+
+Pinned PolkaVM0.37.0 `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa` parses
+all three raw blobs. Its
+[code validator](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/program.rs#L7420-L7432)
+rejects the latter two at offsets4/6, and
+[module loading](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm/src/api.rs#L445-L449)
+returns ValidationFailed before any execution. The control validates and traps
+at3 with A0/r7=7. The retained [public-API checker](../tests/reference/polkavm_memory/src/bin/validation.rs)
+executes these observations without private features or source patches.
+
+Merged [PR508's prevalidation proposal](https://github.com/gavofyork/graypaper/pull/508#discussion_r2733227344)
+and [reviewer agreement](https://github.com/gavofyork/graypaper/pull/508#discussion_r2735584016)
+establish prior intent to reject malformed modules before execution. Could the
+formal admissibility rule explicitly require a final terminator with no required
+fallthrough, or otherwise resolve this example? Please specify the failure stage
+and JAM invocation result/gas normalization, including preservation of earlier
+register, memory and host effects if runtime handling is intended.
+
+For compatibility we have approved rejecting these at JAM guest preparation while
+preserving the paper-aligned raw interpreter. That local policy is not evidence
+that the paper already defines the stricter predicate.
