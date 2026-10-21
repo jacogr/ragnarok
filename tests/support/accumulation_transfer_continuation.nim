@@ -89,7 +89,7 @@ proc fixture(base: OwnedReport, reports: ReadyRow = @[], stop = TransferStop.Hal
   executionOptions0.signed.ready = reports
   executionOptions0.secondBalance = 20
   executionOptions0.signed.extra = @[serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(
-      balance: AccountBalance(10)), ByteLimit(89)).value]
+      balance: AccountBalance(10)), ByteLimit(ServiceMetadataBytes)).value]
   result = executionFixture(base, executionOptions0)
   var config = executionRoundConfig()
   config.blockGas = Gas(budget)
@@ -125,7 +125,7 @@ proc balance(state: StateStoreSnapshot, service: uint32): uint64 =
   ## Inspect the actual complete map's canonical balance rather than trusting copied grouping facts.
   uint64(decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       service))).value.bytes,
-    ByteLimit(89)).value.metadata.balance)
+    ByteLimit(ServiceMetadataBytes)).value.metadata.balance)
 
 proc checkTransferContinuation*(base: OwnedReport) =
   ## Run bound transfer/gas/input witnesses once per native suite and release all signed fixtures before returning.

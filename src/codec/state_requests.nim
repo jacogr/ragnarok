@@ -34,7 +34,7 @@ type
     keyBytes*: ByteLimit
     history*: RequestHistoryConfig
   RequestError* {.pure.} = enum ## Default and failed results expose reasons alone, never default histories, keys or partial progress.
-    Uninitialized, None, Truncated, NonCanonical, InvalidCount, LimitExceeded, BackendFailure
+    Uninitialized, None, Truncated, NonCanonical, InvalidCount, InvalidLength, LimitExceeded, BackendFailure
   RequestResult*[T] = object ## Only selected complete success exposes its application payload.
     case status: RequestError
     of None:
@@ -163,9 +163,11 @@ proc serviceRequestKey*(service: ServiceIndex, hash: ServicePreimageHash, length
   ## Derive the exact request key with a fixed E4 advertised length and opaque lookup hash, without length framing.
   if uint64(maxKeyBytes) < 32:
     return RequestResult[StateKey](status: RequestError.LimitExceeded) # Logical lookup identity is exactly 32 bytes; E4 prefix is fixed overhead.
+  if uint32(length) >= high(uint32)-1:
+    return RequestResult[StateKey](status: RequestError.InvalidLength) # The current preimagelen domain excludes both reserved namespace prefixes.
   var preimage = default(array[36, byte])
   for i in 0..<4: preimage[i] = byte((uint32(length) shr (i*8)) and
-      255) # Use the full stated E4 domain without inventing reserved-length restrictions.
+      255) # The current paper reserves the two highest E4 values for storage and preimages.
   let bytes = array[32, byte](hash)
   for i in 0..<32: preimage[i+4] = bytes[i] # Hash bytes are not recomputed from a preimage or separately prefixed.
   let derived = hashedServiceKey(service, preimage, ByteLimit(preimage.len))

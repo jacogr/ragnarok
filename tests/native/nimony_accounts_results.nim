@@ -20,13 +20,13 @@ of "entry-bytes":
 of "metadata":
   # Neither a default nor an actual failed operation may fabricate application metadata or progress.
   let parsed = if useDefault: default(ServiceMetadataResult[
-      ServiceMetadataRead]) else: decodeServiceMetadata([], ByteLimit(89))
+      ServiceMetadataRead]) else: decodeServiceMetadata([], ByteLimit(ServiceMetadataBytes))
   assert parsed.error == (if useDefault: ServiceMetadataError.Uninitialized else: ServiceMetadataError.Truncated)
   discard parsed.value.metadata.balance
 of "consumed":
   # Neither a default nor an actual failed operation may fabricate application metadata or progress.
   let parsed = if useDefault: default(ServiceMetadataResult[
-      ServiceMetadataRead]) else: decodeServiceMetadata([], ByteLimit(89))
+      ServiceMetadataRead]) else: decodeServiceMetadata([], ByteLimit(ServiceMetadataBytes))
   assert parsed.error == (if useDefault: ServiceMetadataError.Uninitialized else: ServiceMetadataError.Truncated)
   discard parsed.value.consumed
 of "decode-policy":
@@ -38,25 +38,25 @@ of "decode-policy":
 of "decode-framing":
   # Neither a default nor an actual failed operation may fabricate application metadata or progress.
   let parsed = if useDefault: default(ServiceMetadataResult[
-      ServiceMetadataRead]) else: decodeServiceMetadata([128'u8, 0], ByteLimit(89))
+      ServiceMetadataRead]) else: decodeServiceMetadata([128'u8, 0], ByteLimit(ServiceMetadataBytes))
   assert parsed.error == (if useDefault: ServiceMetadataError.Uninitialized else: ServiceMetadataError.NonCanonical)
   discard parsed.value.metadata
 of "decode-version":
   # Neither a default nor an actual failed operation may fabricate application metadata or progress.
   let parsed = if useDefault: default(ServiceMetadataResult[
-      ServiceMetadataRead]) else: decodeServiceMetadata([1'u8], ByteLimit(89))
+      ServiceMetadataRead]) else: decodeServiceMetadata([1'u8], ByteLimit(ServiceMetadataBytes))
   assert parsed.error == (if useDefault: ServiceMetadataError.Uninitialized else: ServiceMetadataError.UnsupportedVersion)
   discard parsed.value.metadata
 of "decode-version-truncated":
   # Neither a default nor an actual failed operation may fabricate application metadata or progress.
   let parsed = if useDefault: default(ServiceMetadataResult[
-      ServiceMetadataRead]) else: decodeServiceMetadata([128'u8], ByteLimit(89))
+      ServiceMetadataRead]) else: decodeServiceMetadata([128'u8], ByteLimit(ServiceMetadataBytes))
   assert parsed.error == (if useDefault: ServiceMetadataError.Uninitialized else: ServiceMetadataError.Truncated)
   discard parsed.value.metadata
 of "decode-tail":
   # Neither a default nor an actual failed operation may fabricate application metadata or progress.
   let parsed = if useDefault: default(ServiceMetadataResult[
-      ServiceMetadataRead]) else: decodeServiceMetadata(late, ByteLimit(89))
+      ServiceMetadataRead]) else: decodeServiceMetadata(late, ByteLimit(ServiceMetadataBytes))
   assert parsed.error == (if useDefault: ServiceMetadataError.Uninitialized else: ServiceMetadataError.Truncated)
   discard parsed.value.metadata
 else:

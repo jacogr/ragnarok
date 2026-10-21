@@ -92,7 +92,8 @@ proc expected(source: BatchFixture, count, original: int, ending: Ending,
       let service = ServiceIndex(if index == 0: 42 else: 99)
       if (subset == 0 or subset == index+1) and array[31, byte](entry.key) == array[31, byte](
           chapterServiceKey(StateChapter(255), service)):
-        var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var account = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         account.balance = AccountBalance(if index == 0: 17 else: 31)
         row = serviceMetadataEntry(service, account, ByteLimit(
             89)).value # A subset receives only its actual invoking service credit.

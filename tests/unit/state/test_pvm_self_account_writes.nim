@@ -69,7 +69,7 @@ proc prepare(fixture: BatchFixture, first, second: AccumulationDispatchResult,
 # Inspect canonical own metadata independently from batch observations or the traced descriptor list.
 proc metadata(state: StateStoreSnapshot, service: uint32): ServiceMetadata =
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255),
-    ServiceIndex(service))).value.bytes, ByteLimit(89)).value.metadata
+    ServiceIndex(service))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 
 # Construct a complete expected map from authored rows and literal own balances/storage counters.
 proc creditedRows(fixture: BatchFixture, firstItems = 0'u32, secondItems = 0'u32,
@@ -80,7 +80,8 @@ proc creditedRows(fixture: BatchFixture, firstItems = 0'u32, secondItems = 0'u32
     for ordinal, service in [42'u32, 99'u32]:
       if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
           ServiceIndex(service))):
-        var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var account = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         account.balance = AccountBalance(if ordinal == 0: 17 else: 31)
         account.storageItems = AccountStorageItems(if ordinal == 0: firstItems else: secondItems)
         account.storageBytes = AccountStorageBytes(if ordinal == 0: firstBytes else: secondBytes)
@@ -88,7 +89,8 @@ proc creditedRows(fixture: BatchFixture, firstItems = 0'u32, secondItems = 0'u32
           account.codeHash = CodeHash(array[32, byte](digest))
           account.minimumAccumulationGas = Gas(7)
           account.minimumTransferGas = Gas(9) # Literal metadata fields are independent from selected current-account reads.
-        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(
+            ServiceMetadataBytes)).value
     result.add(copied) # Preserve all code, existing storage, requests and opaque chapters.
 
 # Compare the actual complete-map root, never a root reconstructed from partial service state.
@@ -195,7 +197,8 @@ block delete_existing_prior_storage:
           89)).value.metadata
       account.storageItems = AccountStorageItems(1)
       account.storageBytes = AccountStorageBytes(36) # The independently seeded existing key has a real deletable footprint.
-      fixture.entries[index] = serviceMetadataEntry(ServiceIndex(42), account, ByteLimit(89)).value
+      fixture.entries[index] = serviceMetadataEntry(ServiceIndex(42), account, ByteLimit(
+          ServiceMetadataBytes)).value
   fixture.state = newStateStore(fixture.entries, integrationStoreLimits()).value
   let plan = prepare(fixture, execute(fixture), execute(fixture, 1)).value
   var state = fixture.state

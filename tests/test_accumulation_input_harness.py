@@ -15,8 +15,8 @@ class AccumulationInputHarness(unittest.TestCase):
     # A service with all three sources receives transfers first and the exact three-source sum.
     def test_mixed(self):
         operand = wire('O', example('O', gas=128, tag=2))
-        transfers = [(9, 42, 123, bytes([1])*128, 7), (42, 0, 456, bytes(128), 3),
-                     (1, 42, 789, bytes([2])*128, 11)]
+        transfers = [(9, 42, 0, 123, bytes([1])*128, 7), (42, 0, 0, 456, bytes(128), 3),
+                     (1, 42, 0, 789, bytes([2])*128, 11)]
         self.assertEqual(invocation({42: [operand]}, transfers, {42: 13, 1729: 0}), [
             (0, 3, 1, [wire('T', transfers[1])]),
             (42, 159, 2, [wire('T', transfers[0]), wire('T', transfers[2]), operand]),

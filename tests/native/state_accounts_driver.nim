@@ -38,31 +38,31 @@ proc unsigned(text: string): uint64 =
 
 ## Construct typed source metadata directly from decimal fields and literal code identity.
 proc source(parts: seq[string]): ServiceMetadata =
-  assert parts.len == 13
+  assert parts.len == 16
   let raw = unhex(parts[3])
   assert raw.len == 32
   var code = default(array[32, byte])
   for i in 0..<32: code[i] = raw[i] # Code identity is a fixed value, independent of production decoding.
   ServiceMetadata(codeHash: CodeHash(code), balance: AccountBalance(unsigned(parts[4])),
-    minimumAccumulationGas: Gas(unsigned(parts[5])), minimumTransferGas: Gas(
-        unsigned(parts[6])),
-    storageBytes: AccountStorageBytes(unsigned(parts[7])), depositOffset: AccountBalance(
-        unsigned(parts[8])),
-    storageItems: AccountStorageItems(unsigned(parts[9])), created: AccountSlot(
-        unsigned(parts[10])),
-    lastAccumulation: AccountSlot(unsigned(parts[11])), parent: ServiceIndex(
-        unsigned(parts[12])))
+    supervisorBalance: AccountBalance(unsigned(parts[5])),
+    minimumAccumulationGas: Gas(unsigned(parts[6])), minimumTransferGas: Gas(unsigned(parts[7])),
+    storageBytes: AccountStorageBytes(unsigned(parts[8])), depositOffset: AccountBalance(unsigned(
+        parts[9])),
+    storageItems: AccountStorageItems(unsigned(parts[10])), created: AccountSlot(unsigned(parts[11])),
+    lastAccumulation: AccountSlot(unsigned(parts[12])), parent: ServiceIndex(unsigned(parts[13])),
+    supervisor: ServiceIndex(unsigned(parts[14])), supervisorCreated: AccountSlot(unsigned(parts[15])))
 
 ## Observe every logical fixed field, preserving the precise normative ordering of the five E8/four E4 values.
 proc observed(value: ServiceMetadataRead): string =
   let data = value.metadata
   result = $value.consumed & " " & hex(array[32, byte](data.codeHash))
-  for field in [uint64(data.balance), uint64(data.minimumAccumulationGas), uint64(
-      data.minimumTransferGas), uint64(data.storageBytes), uint64(data.depositOffset)]: result.add(
-          " " & $field) # Token/gas/octet domains remain separate in the source API.
+  for field in [uint64(data.balance), uint64(data.supervisorBalance),
+      uint64(data.minimumAccumulationGas), uint64(data.minimumTransferGas),
+      uint64(data.storageBytes), uint64(data.depositOffset)]:
+    result.add(" " & $field) # Token, gas and octet fields retain their separate source domains.
   for field in [uint32(data.storageItems), uint32(data.created), uint32(data.lastAccumulation),
-      uint32(data.parent)]:
-    result.add(" " & $field) # E4 values are observed numerically, not through production re-encoding.
+      uint32(data.parent), uint32(data.supervisor), uint32(data.supervisorCreated)]:
+    result.add(" " & $field) # E4 values are observed independently of production serialization.
 
 ## Execute a complete trusted source or hostile-wire request, exposing only selected success or a failure reason.
 proc request(parts: seq[string]) =

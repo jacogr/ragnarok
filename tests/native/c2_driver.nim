@@ -85,7 +85,8 @@ proc fields(value: AvailabilitySpec): string =
 
 # Complete fixed transfer observations retain both service roles, unsigned balance, every memo byte and E8 gas.
 proc fields(value: DeferredTransfer): string =
-  $uint32(value.source) & " " & $uint32(value.destination) & " " & $uint64(value.amount) &
+  $uint32(value.source) & " " & $uint32(value.destination) & " " & $(
+      if value.destinationSupervisor: 1 else: 0) & " " & $uint64(value.amount) &
     " " & hex(array[128, byte](value.memo)) & " " & $uint64(value.gas)
 
 # Observe complete operand metadata and payload copies after destroying the original input buffer.
@@ -187,8 +188,9 @@ proc encodeRequest(parts: seq[string]) {.raises.} =
     # Transfer source fields have a fixed memo and no operand-only payload policy.
     let value = DeferredTransfer(source: ServiceIndex(number(parts[8])), destination: ServiceIndex(
         number(parts[9])),
-      amount: TransferBalance(number(parts[10])), memo: TransferMemo(fixed[128](parts[11])),
-          gas: Gas(number(parts[12])))
+      destinationSupervisor: number(parts[10]) == 1,
+      amount: TransferBalance(number(parts[11])), memo: TransferMemo(fixed[128](parts[12])),
+          gas: Gas(number(parts[13])))
     if parts[1] == "T": emitted(encodeTransfer(value, policy.maxBytes, bytes),
         bytes) # Standalone tagged transfer encoding.
     else:

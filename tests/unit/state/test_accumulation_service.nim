@@ -58,7 +58,7 @@ proc entries(raw: seq[byte], includeCode = true): seq[StateEntry] =
   let account = ServiceMetadata(codeHash: CodeHash(hash), balance: AccountBalance(0),
     minimumAccumulationGas: Gas(high(uint64)), minimumTransferGas: Gas(high(uint64)),
     created: AccountSlot(7), lastAccumulation: AccountSlot(8), parent: ServiceIndex(9))
-  result = @[serviceMetadataEntry(ServiceIndex(42), account, ByteLimit(89)).value]
+  result = @[serviceMetadataEntry(ServiceIndex(42), account, ByteLimit(ServiceMetadataBytes)).value]
   if includeCode:
     result.add(servicePreimageEntry(ServiceIndex(42), ServicePreimageHash(hash), raw,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(

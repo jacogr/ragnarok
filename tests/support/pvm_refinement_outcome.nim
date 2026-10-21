@@ -56,7 +56,8 @@ proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
   let hash = array[32, byte](blake2b256(preimage).value)
   var entries: seq[StateEntry] = @[]
   if not missing:
-    entries.add(serviceMetadataEntry(ServiceIndex(42), ServiceMetadata(), ByteLimit(89)).value)
+    entries.add(serviceMetadataEntry(ServiceIndex(42), ServiceMetadata(), ByteLimit(
+        ServiceMetadataBytes)).value)
     entries.add(servicePreimageEntry(ServiceIndex(42), ServicePreimageHash(hash), preimage,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(uint64(
           preimage.len)))).value)

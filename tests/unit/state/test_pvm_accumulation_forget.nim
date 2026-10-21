@@ -65,7 +65,8 @@ proc source(history = availableHistory(RequestSlot(4)), present = true, length =
     wire: seq[byte] = @[], data: seq[byte] = @[], suffix: seq[seq[byte]] = @[@[50'u8, 0]],
     extra: seq[StateEntry] = @[]): PreparedAccumulationMachine =
   var entries = extra
-  entries.add(serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(89)).value)
+  entries.add(serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(
+      ServiceMetadataBytes)).value)
   entries.add(serviceRequestEntry(ServiceIndex(99), lookupHash, RequestLength(length),
       requestedHistory(), config).value)
   if present:
@@ -113,7 +114,7 @@ proc context(done: AccumulationDispatchResult, dimension = AccumulationDimension
 proc metadata(owner: AccumulationEffectContext, service = 42'u32): ServiceMetadata =
   let found = owner.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       service))).value
-  decodeServiceMetadata(found.bytes, ByteLimit(89)).value.metadata
+  decodeServiceMetadata(found.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 
 # Check both host output registers, including unchanged advertised length on every funded row result.
 proc resultCode(done: AccumulationDispatchResult, code: uint64, second = 3'u64) =

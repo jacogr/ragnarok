@@ -102,15 +102,15 @@ proc decode(input: openArray[byte], entry: CodeAddress,
   let jumps = uint64(count.value)
   # Zero-width tables also need a logical count ceiling despite consuming no payload bytes.
   if jumps > uint64(jumpLimit): return ProgramResult[Program](status: ProgramError.LimitExceeded)
-  if profile == DecodeProfile.Jam and jumps > jamJumpEntries:
+  if jumps > jamJumpEntries:
     return ProgramResult[Program](status: ProgramError.InvalidProgram)
   var cursor = int(count.consumed)
   # The width is an independent one-byte field, including widths zero and above eight.
   if cursor == input.len: return ProgramResult[Program](status: ProgramError.Truncated)
   let width = int(input[cursor])
   inc cursor
-  # GP-PVM-005: executable JAM preparation follows the reference's four-byte entry-width ceiling.
-  if profile == DecodeProfile.Jam and width > 4:
+  # The current deblob equation limits every jump-table element width to four bytes.
+  if width > 4:
     return ProgramResult[Program](status: ProgramError.InvalidProgram)
   let codeCount = natural.decode(input.toOpenArray(cursor, input.len - 1))
   # Canonical naturals give a unique framing; overlong lengths are not alternate formats.
@@ -119,7 +119,7 @@ proc decode(input: openArray[byte], entry: CodeAddress,
       ProgramError.Truncated else: ProgramError.NonCanonical))
   cursor += int(codeCount.consumed)
   let codeSize = uint64(codeCount.value)
-  if profile == DecodeProfile.Jam and codeSize > jamCodeBytes:
+  if codeSize > jamCodeBytes:
     return ProgramResult[Program](status: ProgramError.InvalidProgram)
   let jumpOffset = cursor
   # Division proves the product fits both the supplied buffer and host indexing.
@@ -143,17 +143,6 @@ proc decode(input: openArray[byte], entry: CodeAddress,
   # Unused high bits must be zero to be in the image of the bitstring encoder.
   if codeLength mod 8 != 0 and (input[cursor - 1] shr (codeLength mod 8)) != 0:
     return ProgramResult[Program](status: ProgramError.NonCanonical)
-  # E_z allows widths beyond eight, but a table element must still fit a 64-bit PVM register.
-  if width > 8:
-    var position = jumpOffset
-    # Each step consumes a present table record, so this work is bounded by the input extent.
-    while position < codeOffset:
-      # High zero bytes are valid fixed-width padding; nonzero bytes exceed the register domain.
-      for highByte in 8..<width:
-        # Reject the first nonzero high byte without constructing an oversized integer.
-        if input[position + highByte] != 0:
-          return ProgramResult[Program](status: ProgramError.InvalidJumpValue)
-      position += width
   # The empty program cannot satisfy v_inst at any entry point.
   if codeLength == 0: return ProgramResult[Program](status: ProgramError.InvalidProgram)
   var pc = 0
@@ -338,12 +327,12 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     item.x = Immediate(extended(data, pc + 3, xlen))
     item.y = Immediate(extended(data, pc + 3 + uint64(xlen), min(4, max(0, int(skip) - xlen - 2))))
   of 190..230:
-    # GP-PVM-009: raw paper saturates the whole byte; the explicit JAM owner uses its low nibble.
+    # PR554: every current-paper owner masks the third-register destination to its low nibble.
     item.shape = OperandShape.ThreeRegisters
     item.a = RegisterIndex(min(12, first mod 16))
     item.b = RegisterIndex(min(12, first div 16))
     let encoded = int(codeByte(data, pc + 2))
-    let destination = (if data.profile == DecodeProfile.Jam: encoded mod 16 else: encoded)
+    let destination = encoded mod 16
     item.d = RegisterIndex(min(12, destination))
   else:
     # A valid owner cannot contain another marked opcode; retain an explicit failure alternative.

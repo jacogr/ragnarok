@@ -31,7 +31,8 @@ proc authorizedFixture*(authCode: openArray[seq[byte]], guests: openArray[Report
   var state = forkStateStore(refinement.state).value
   if not missingAuth:
     let hash = array[32, byte](auth.package.workPackageInfo.value.codeHash)
-    let metadata = serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(), ByteLimit(89)).value
+    let metadata = serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(), ByteLimit(
+        ServiceMetadataBytes)).value
     let preimage = servicePreimageEntry(ServiceIndex(77), ServicePreimageHash(hash), auth.preimage,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(200000))).value
     let key = serviceRequestKey(ServiceIndex(77), ServicePreimageHash(hash),

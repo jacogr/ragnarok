@@ -296,9 +296,10 @@ let batchAnswer = respond("[" & repeat(bigIdCall & ",", 15) & bigIdCall & "]", s
 assert batchAnswer.len <= 65535 and batchAnswer.split("\"id\":").len == 17
 assert "\"code\":0" in batchAnswer and "\"result\"" in batchAnswer
 # Retained read views survive caller edits to independent extracted byte copies.
-assert services.serviceData(default(Genesis), ServiceIndex(42), ByteLimit(89)).error ==
-    ServiceReadError.Uninitialized
-let readMetadata = services.serviceData(serviceGenesis.value, ServiceIndex(42), ByteLimit(89))
+assert services.serviceData(default(Genesis), ServiceIndex(42), ByteLimit(
+    ServiceMetadataBytes)).error ==ServiceReadError.Uninitialized
+let readMetadata = services.serviceData(serviceGenesis.value, ServiceIndex(42), ByteLimit(
+    ServiceMetadataBytes))
 assert readMetadata.error == ServiceReadError.None
 var extracted = readMetadata.value.bytes
 extracted[0] = 99
@@ -1580,7 +1581,8 @@ for index in 0..<maximumPreimageBytes.len:
   maximumPreimageBytes[index] = byte('x') # The digest fixture commits to exactly 32 KiB of x bytes.
 let maximumPreimageHead = childSnapshot(serviceInfo.chain.bestBlock.value, 8,
   genesisParameters.value, accounts = @[
-  StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)), value: newSeq[byte](89)),
+  StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)), value: newSeq[byte](
+      ServiceMetadataBytes)),
   StateEntry(key: maximumPreimageKey.value, value: maximumPreimageBytes)])
 let maximumPreimageInfo = ClientInfo(chain: genesisView(maximumPreimageHead))
 var boundedPreimages = default(RpcSession)
@@ -1593,7 +1595,8 @@ assert base64.encode(repeat("x", 32768)) in maximumUpdate
 maximumPreimageBytes.add(byte('x'))
 let oversizedPreimageHead = childSnapshot(maximumPreimageHead.value, 9, genesisParameters.value,
   accounts = @[
-  StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)), value: newSeq[byte](89)),
+  StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)), value: newSeq[byte](
+      ServiceMetadataBytes)),
   StateEntry(key: maximumPreimageKey.value, value: maximumPreimageBytes)])
 assert boundedPreimages.queueChainUpdates(oversizedPreimageHead)
 assert boundedPreimages.nextUpdate() == preimageFailure # Oversize takes the same terminal path without copying or hashing it.
@@ -1979,7 +1982,7 @@ proc publicationLifecycle() =
       "\"subscription\":2").replace(genesisHash,
     base64.encode(array[32, byte](missingStatsHead.value.blockHash))).replace("\"slot\":7",
         "\"slot\":30"))
-  var metadata = newSeq[byte](89)
+  var metadata = newSeq[byte](ServiceMetadataBytes)
   for atSlot in 31'u32..34'u32:
     var accounts: seq[StateEntry] = @[]
     if atSlot == 31 or atSlot == 32:
@@ -2010,7 +2013,7 @@ proc publicationLifecycle() =
       ByteLimit(3))
   assert storageKey.error == ServiceValueError.None
   let accountEntry = StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)),
-      value: newSeq[byte](89))
+      value: newSeq[byte](ServiceMetadataBytes))
   let emptyStorageHead = childSnapshot(owner.chain.bestBlock.value, 35, genesisParameters.value,
       accounts = @[accountEntry])
   assert owner.publishBlock(emptyStorageHead) == ViewAdvanceError.None

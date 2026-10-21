@@ -77,7 +77,7 @@ proc serviceEntries(service: uint32, balance: uint64, raw: seq[byte]): seq[State
   ## Extra ready services enter the original parent before its real root and signatures are built.
   let digest = array[32, byte](blake2b256(raw).value)
   @[serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(codeHash: CodeHash(digest),
-    balance: AccountBalance(balance)), ByteLimit(89)).value,
+    balance: AccountBalance(balance)), ByteLimit(ServiceMetadataBytes)).value,
     servicePreimageEntry(ServiceIndex(service), ServicePreimageHash(digest), raw,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(raw.len))).value]
 
@@ -188,7 +188,7 @@ proc completed(source: PreparedAccumulationReentry): CompletedAccumulationReentr
 proc balance(state: StateStoreSnapshot, service: uint32): uint64 =
   ## Read exact canonical balances from the retained complete map.
   uint64(decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      service))).value.bytes, ByteLimit(89)).value.metadata.balance)
+      service))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata.balance)
 
 proc sameRoot(source: ExecutionFixture, state: StateStoreSnapshot, b99, b77, b88: uint64) =
   ## Independently replace only literal balances in the original full rows, preserving code, chapters and unrelated metadata.
@@ -198,9 +198,11 @@ proc sameRoot(source: ExecutionFixture, state: StateStoreSnapshot, b99, b77, b88
     for service in [99'u32, 77'u32, 88'u32]:
       if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
           ServiceIndex(service))):
-        var metadata = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var metadata = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         metadata.balance = AccountBalance(if service == 99: b99 elif service == 77: b77 else: b88)
-        copied = serviceMetadataEntry(ServiceIndex(service), metadata, ByteLimit(89)).value
+        copied = serviceMetadataEntry(ServiceIndex(service), metadata, ByteLimit(
+            ServiceMetadataBytes)).value
     rows.add(copied) # Expected roots include every unrelated original mapping.
   let wanted = newStateStore(rows, report_context.limits()).value
   assert array[32, byte](state.commitment.root) == array[32, byte](

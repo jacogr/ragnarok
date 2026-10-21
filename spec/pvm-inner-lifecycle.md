@@ -1,55 +1,49 @@
-# Refinement inner-machine lifecycle
+# Inner modules and machine lifecycle
 
-Pins: GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
-`pvm_invocations.tex` Omega_M/Omega_X and fnmemgas, `definitions.tex` M/X gas,
-`pvm.tex` deblob; vectors `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
-No pins change. The maintainer's discrepancy compatibility policy selects
-`decodeJamProgram` for machine creation: GP-PVM-004/005 reject a missing final
-successor or jump width above4 with the existing HUH result; GP-PVM-006 accepts
-width0 tables but gives them no dynamic entries, matching public PolkaVM behavior.
-GP-PVM-007 caps code at32 MiB and declared entries at16 Mi before normalization,
-with HUH for semantic refusal after existing local policy/read checks. Raw paper
-decoding remains separately available. See the
-[discrepancy register](graypaper-discrepancies.md).
+Target: unreleased GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`
+(VERSION0.8.0), `pvm_invocations.tex` Omega_Gamma/Omega_M/Omega_X.
+Published vectors remain separately pinned release-era evidence; source hashes
+are recorded in `pins.json`.
 
-Scope: hosts 9 (machine) and 14 (expunge), a private immutable map of at most
-63 inner machines, and dispatcher/invocation integration. Each run starts empty.
-Creation charges 1862+ceil(112*length/1024) without overflowing, then checks FULL
-before touching guest program memory. Read failures panic; invalid deblob/entry
-returns HUH. Success uses the smallest absent natural identifier, empty inaccessible
-zero memory, requested PC and uncharged flag. Expunge charges 335, returns WHO for
-an absent full-width identifier, otherwise returns its PC and removes only that row.
-Gas underfunding precedes mutations and keeps the exact terminal deficit.
+The invocation-local immutable owner holds a catalogue of prepared interpreted
+program modules and up to63 running instances. Module handles are the smallest
+absent natural in the union of catalogue handles and live-instance handles; at most
+128 may be occupied. Preparing a module does not create an instance or compile
+native code. Each dispatch run starts with an empty catalogue and instance map.
 
-Separate finite item, individual-program, retained-program-byte and jump policies
-are local refusals. Empty inner RAM retains its page policy for future allocation;
-creation itself materializes no pages. They never fabricate FULL/HUH/OOG or partial successors.
-Program capture is bounded before scanning/copying; a policy refusal may precede
-permission/deblob validation of oversized input. Protocol FULL still precedes all
-program access and local program policies. Valid default zero policies permit no
-creation, while default opaque map owners are invalid. Input/result bytes and
-metadata cannot mutate saved snapshots. Explicit charged-response initialization
-preserves the caller memory on present/absent deletion and OOG; fresh optimized
-ARC loops check both owner release and the retained readable response bytes. Programs shared between map generations
-remain immutable, acyclic ARC owners. Deletion releases retained byte accounting
-and the lowest hole can be reused. No public mutable slot map is exposed.
+`compile`=9 accepts m,p,l,f,i in registers7–11. Implemented memory mode0 charges
+1862+ceil(264*l/1024), checks the128-handle capacity, reads the complete guest range,
+and applies current JAM deblob validation at entry0. Bad memory panics; malformed
+code returns HUH. Unknown modes return HUH after their fixed charge. Database mode1
+has an explicit typed adapter gate until authenticated historical sourcing is wired;
+it never falls back to memory compilation or an unknown-call WHAT response.
 
-Completion checks: original literal blobs and real guests; costs at memory-gas
-rounding boundaries and maximum lengths, exact gas/debt; FULL/read/deblob priority;
-all 63 slots, hole reuse and high identifiers; independent policies; immutable
-snapshots, copied views, replay isolation and fresh 1,000-cycle ARC release;
-optimized result-access guards and compiler privacy/nominal rejections. Regress
-refinement dispatch, normalized invocation and their changed guard consumers.
+`machine`=10 accepts module handle and entry in registers7–8 and charges1862.
+Check the63-instance capacity, catalogue membership (WHO), then entry/deblob
+validity (HUH). Success creates the smallest absent instance ID with empty
+inaccessible RAM, the requested PC, an uncharged flag and its source module handle.
+Instances share immutable program storage without counting the same module bytes twice.
 
-Local evidence: checked optimized native `pvm_inner_lifecycle`, `pvm_inner_dispatch`,
-`pvm_refinement_dispatch` and `pvm_refinement_outcome` pass, each with fresh
-1,000-cycle unchanged ARC occupancy. Five new optimized runtime guards, fourteen
-outcome regression guards and five exact compiler privacy/nominal rejections pass.
-Verification inventory, nineteen inventory/provenance Python tests and pinned
-formatting pass. These are local macOS results; exact-head Linux CI is independent.
+`expunge`=15 accepts mode and ID in registers7–8 and charges335. Mode0 removes
+an instance and returns its PC. Mode1 removes a catalogue entry and returns OK.
+Missing membership returns WHO; other modes return HUH. Removing a catalogue entry
+leaves live instances usable, retains the occupied module handle and byte accounting,
+and prevents new instantiation from that removed entry. Only the final catalogue or
+instance owner releases the module's retained byte budget and handle for reuse.
 
-Host 12 follows [the page-management contract](pvm-inner-pages.md), hosts 10/11
-follow [the transfer contract](pvm-inner-transfer.md), and host 13 follows
-[bounded invocation](pvm-inner-invoke.md). Report construction, state composition
-and publication remain outside this lifecycle contract. Next: report integration.
-M1 framing is complete; full state serialization and complete refinement remain open.
+All host underfunding returns unsigned zero-gas OutOfGas before protocol mutations.
+Local item/program/total-byte/jump/page limits remain typed failures without a partial
+response or successor. Input/output copies cannot mutate earlier snapshots. No raw
+mutable catalogue, program or instance storage is exported.
+
+Current tests cover both capacities, smallest-hole reuse, full-width unknown IDs,
+source/entry validation, shared modules, independent local budgets, catalogue removal
+with live instances, eventual byte recovery, immutable copied views and guarded errors.
+Fresh-memory1,000-cycle compile/create/dual-expunge checks detect retained response
+owners; page and invoke suites independently verify their repeated ownership release.
+Direct owned response construction avoids the observed nested charge-result retention
+with the pinned compiler, without changing gas semantics or compiler dependencies.
+
+Peek/poke/pages/invoke now use IDs11/12/13/14. Complete refinement, historical
+compilation and full state serialization remain separate implementation work. M1
+framing completion does not imply complete JAM execution or current crypto parity.

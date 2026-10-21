@@ -49,7 +49,7 @@ proc context(done: AccumulationDispatchResult, dimension = AccumulationDimension
 # Inspect canonical balances independently of terminal union observations.
 proc balance(state: StateStoreSnapshot, service: uint32): uint64 =
   let found = state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(service))).value
-  uint64(decodeServiceMetadata(found.bytes, ByteLimit(89)).value.metadata.balance)
+  uint64(decodeServiceMetadata(found.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata.balance)
 
 # Prepare complete coverage of exactly this fixture's two genuine input services and original prior.
 proc prepare(fixture: BatchFixture, first, second: AccumulationDispatchResult): AccumulationBatchResult[
@@ -205,7 +205,7 @@ block upgrade_boundary:
   let first = execute(fixture)
   let record = context(first).effectAccounts.value.lookup(chapterServiceKey(StateChapter(255),
       ServiceIndex(42))).value
-  let metadata = decodeServiceMetadata(record.bytes, ByteLimit(89)).value.metadata
+  let metadata = decodeServiceMetadata(record.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
   assert array[32, byte](metadata.codeHash) == array[32, byte](hash) and uint64(
       metadata.minimumTransferGas) == 9,
     "upgrade changes current metadata while original guest reaches halt"

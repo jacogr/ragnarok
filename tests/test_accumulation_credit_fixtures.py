@@ -31,9 +31,9 @@ class CreditFixtureTests(unittest.TestCase):
             fields = line.split()
             self.assertEqual(fields[1], '1')
             before, after = bytes.fromhex(fields[2]), bytes.fromhex(fields[3])
-            self.assertEqual(int.from_bytes(before[33:41], 'little'), 227714)
-            self.assertEqual(int.from_bytes(after[33:41], 'little'), 227814)
-            self.assertEqual(before[:33]+before[41:], after[:33]+after[41:])
+            self.assertEqual(int.from_bytes(before[41:49], 'little'), 227714)
+            self.assertEqual(int.from_bytes(after[41:49], 'little'), 227814)
+            self.assertEqual(before[:41]+before[49:], after[:41]+after[49:])
             self.assertEqual(fields[6], '100')
 
 

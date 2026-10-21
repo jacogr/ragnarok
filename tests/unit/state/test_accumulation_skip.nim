@@ -55,7 +55,7 @@ proc entries(raw: seq[byte], includeCode = true): seq[StateEntry] =
   let account = ServiceMetadata(codeHash: CodeHash(hash), balance: AccountBalance(0),
     minimumAccumulationGas: Gas(high(uint64)), minimumTransferGas: Gas(high(uint64)),
     created: AccountSlot(7), lastAccumulation: AccountSlot(8), parent: ServiceIndex(9))
-  result = @[serviceMetadataEntry(ServiceIndex(42), account, ByteLimit(89)).value,
+  result = @[serviceMetadataEntry(ServiceIndex(42), account, ByteLimit(ServiceMetadataBytes)).value,
     serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(balance: AccountBalance(123)), ByteLimit(
         89)).value,
     StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 4, 2])]
@@ -148,7 +148,7 @@ proc boundaries(): SkippedAccumulation =
       let state = outcome.skipState.value
       assert uint64(decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255),
           ServiceIndex(99))).value.bytes,
-        ByteLimit(89)).value.metadata.balance) == 123
+        ByteLimit(ServiceMetadataBytes)).value.metadata.balance) == 123
       var bytes = state.lookup(chapterKey(StateChapter(250))).value.bytes
       bytes[0] = 255
       assert state.lookup(chapterKey(StateChapter(250))).value.bytes == @[9'u8, 4, 2]

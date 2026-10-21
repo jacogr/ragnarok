@@ -83,7 +83,7 @@ assert encodeAvailability(availability, config, avBytes[].toOpenArray(0, 103)).e
 # Real source arrays provide enough allocated backing for complete descriptor-alias destinations.
 var transfers: array[2, DeferredTransfer] = default(array[2, DeferredTransfer])
 let transferBytes = cast[ptr array[sizeof(transfers), byte]](addr transfers[0])
-assert encodeTransfer(transfers[0], ByteLimit(153), transferBytes[].toOpenArray(0, 152)).error ==
+assert encodeTransfer(transfers[0], ByteLimit(154), transferBytes[].toOpenArray(0, 153)).error ==
     RecordError.AliasedBuffers
 var sources: array[4, AccumulationOperand] = default(array[4, AccumulationOperand])
 sources[0] = source
@@ -111,10 +111,10 @@ let errorSize = checked(encodeOperand(source, policy, bytes))
 let errorOwner = checked(decodeOperand(bytes.toOpenArray(0, errorSize-1), policy)).owner
 var empty: seq[byte] = default(seq[byte])
 assert copyOperandOutput(errorOwner, empty).error == RecordError.NoPayload
-assert checked(encodeTransfer(transfers[0], ByteLimit(153), bytes)) == 153
+assert checked(encodeTransfer(transfers[0], ByteLimit(154), bytes)) == 154
 # Both selected source alternatives protect the complete containing union descriptor.
 unions[0] = transferSource(transfers[0])
-assert encodeAccumulationInput(unions[0], policy, unionBytes[].toOpenArray(0, 152)).error ==
+assert encodeAccumulationInput(unions[0], policy, unionBytes[].toOpenArray(0, 153)).error ==
     RecordError.AliasedBuffers
 let unionTransfer = checked(decodeAccumulationInput(bytes, policy))
 # A copied source branch and copied source payload must not mutate the original union descriptor.

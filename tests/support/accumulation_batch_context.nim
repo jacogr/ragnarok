@@ -127,7 +127,7 @@ proc batchFixture*(first = BatchEnding.Halt, second = BatchEnding.Halt,
     let hash = array[32, byte](blake2b256(preimage).value)
     entries.add(serviceMetadataEntry(service, ServiceMetadata(codeHash: CodeHash(hash),
       balance: AccountBalance(if index == 0: 10 else: 20), lastAccumulation: AccountSlot(5)),
-          ByteLimit(89)).value)
+          ByteLimit(ServiceMetadataBytes)).value)
     entries.add(servicePreimageEntry(service, ServicePreimageHash(hash), preimage,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(preimage.len))).value)
   var limits = integrationStoreLimits(writes = writes)

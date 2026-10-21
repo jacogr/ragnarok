@@ -23,11 +23,11 @@ class C2Harness(unittest.TestCase):
     # Transfers include tag one, two E4 services, E8 balance, exactly 128 memo bytes and E8 gas.
     def test_transfer(self):
         value=example('T',gas=128);data=wire('T',value)
-        self.assertEqual(len(data),153)
+        self.assertEqual(len(data),154)
         self.assertEqual(data[0],1)
-        self.assertEqual(data[17:145],bytes(range(128)))
-        self.assertEqual(data[145:],b'\x80'+bytes(7))
-        self.assertTrue(decode('I',data).startswith('1 153 '))
+        self.assertEqual(data[18:146],bytes(range(128)))
+        self.assertEqual(data[146:],b'\x80'+bytes(7))
+        self.assertTrue(decode('I',data).startswith('1 154 '))
 
     # Operand gas 128 is a two-octet natural; it must not inherit the transfer/work-digest E8 encoding.
     def test_operand_gas_and_tag(self):
@@ -47,10 +47,10 @@ class C2Harness(unittest.TestCase):
 
     # A fixed memo never gains a byte-string count, including when its first byte resembles a natural prefix.
     def test_memo_identity(self):
-        value=list(example('T',gas=MAX));value[3]=bytes([255])*128;data=wire('T',tuple(value))
-        self.assertEqual(data[17:145],bytes([255])*128)
-        self.assertEqual(len(data),153)
-        self.assertTrue(decode('T',data).startswith('153 '))
+        value=list(example('T',gas=MAX));value[4]=bytes([255])*128;data=wire('T',tuple(value))
+        self.assertEqual(data[18:146],bytes([255])*128)
+        self.assertEqual(len(data),154)
+        self.assertTrue(decode('T',data).startswith('154 '))
 
     # Invalid configuration and canonical scalar framing precede later domain/resource decisions.
     def test_precedence(self):
@@ -66,7 +66,7 @@ class C2Harness(unittest.TestCase):
         cfg=(341,3,2,4,MAX)
         self.assertEqual(decode('O',data,cfg),'limitexceeded')
         self.assertEqual(encode('O',value,cfg,0),'limitexceeded')
-        self.assertEqual(encode('UT',example('T'),(341,0,0,0,153),153),wire('T',example('T')).hex())
+        self.assertEqual(encode('UT',example('T'),(341,0,0,0,154),154),wire('T',example('T')).hex())
 
     # Missing final fields and hostile length claims cannot return earlier metadata or a partially owned record.
     def test_late_and_huge(self):

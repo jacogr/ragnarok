@@ -41,13 +41,12 @@ proc reply(source: StepOutcome, action: HostAction): HostResponse =
 let host = suspended()
 let beforeHost = machineInfo(host.machine).value
 assert beforeHost.blockCharged
-for action in [HostAction.Continue, HostAction.Halt, HostAction.Panic, HostAction.OutOfGas]:
+for action in [HostAction.Continue, HostAction.Panic, HostAction.OutOfGas]:
   let response = reply(host, action)
   let applied = applyHostResponse(host, response)
   assert applied.error == StepError.None
   let outcome = applied.value
   let expected = (if action == HostAction.Continue: StepExit.Continued
-    elif action == HostAction.Halt: StepExit.Halt
     elif action == HostAction.Panic: StepExit.Panic else: StepExit.OutOfGas)
   assert outcome.exit == expected
   let info = machineInfo(outcome.machine).value
@@ -76,12 +75,15 @@ for gasValue in [0'u64, high(uint64)]:
   assert halted.error == StepError.None and halted.value.exit == StepExit.Halt
   assert uint64(machineInfo(halted.value.machine).value.gas) == gasValue
 
-# A host may terminate directly with a readable return range at the causing ecalli PC.
-var terminating = reply(host, HostAction.Halt)
+# A host continues into the guest halt instruction before a return range can be extracted.
+assert applyHostResponse(host, reply(host, HostAction.Halt)).error == StepError.InvalidHostResponse
+var terminating = reply(host, HostAction.Continue)
+terminating.registers[0] = RegisterValue(0xffff0000'u64)
 terminating.registers[7] = RegisterValue(65536)
 terminating.registers[8] = RegisterValue(1)
-let stopped = applyHostResponse(host, terminating).value
-assert uint64(machineInfo(stopped.machine).value.pc) == 1
+let continuedOutput = applyHostResponse(host, terminating).value
+let stopped = execute(continuedOutput.machine, ExecutionStepLimit(1), GasCycleLimit(0)).value
+assert uint64(machineInfo(stopped.machine).value.pc) == 0
 assert captureOutput(stopped, OutputByteLimit(1)).value == @[81'u8]
 
 # Default responses and absent response-memory owners fail without publishing a machine.
@@ -169,7 +171,7 @@ block:
   assert execute(resumed.machine, ExecutionStepLimit(1), GasCycleLimit(0)).value.exit == StepExit.Halt
 
 # A valid empty memory owner is accepted; absent/default owners are not interchangeable with it.
-var emptyResponse = reply(host, HostAction.Halt)
+var emptyResponse = reply(host, HostAction.Panic)
 emptyResponse.memory = captureMemory([], PageLimit(0)).value
 assert applyHostResponse(host, emptyResponse).error == StepError.None
 

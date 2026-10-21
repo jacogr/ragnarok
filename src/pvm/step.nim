@@ -40,7 +40,7 @@ type
  ## Memory remains an immutable retained owner, while registers are copied by value.
     action*: HostAction
     gas*: MachineGas
-    # Nonzero only for an OutOfGas reply with zero credit; validated before snapshot publication.
+    # Reserved-zero compatibility field; all current host actions carry unsigned gas.
     gasDeficit*: GasDeficit
     registers*: RegisterFile
     memory*: Memory
@@ -156,8 +156,8 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
   if uint64(original.value.gasDeficit) != 0:
     # A replaced terminal snapshot cannot authorize another host response.
     return StepResult(status: StepError.InvalidMachine)
-  if uint64(response.gasDeficit) != 0 and response.action != HostAction.OutOfGas:
-    # Negative host gas is meaningful only on OutOfGas, never as a continuation or successful halt.
+  if uint64(response.gasDeficit) != 0:
+    # Host gas is unsigned for every action; reserved nonzero deficit values are invalid.
     return StepResult(status: StepError.InvalidHostResponse)
   let item = instruction(program.value, original.value.pc)
   if item.error != ProgramError.None:
@@ -176,13 +176,13 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
     # The validated instruction bounds PC and skip; retain the existing block's charged flag.
     info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.value.skip))
   of HostAction.Halt:
-    # A host terminal exit retains the ecalli PC, unlike a guest halt normalized by execute.
-    exit = StepExit.Halt
+    # PR533 removes host Halt from the mutator domain; retain the enum spelling only for source compatibility.
+    return StepResult(status: StepError.InvalidHostResponse)
   of HostAction.Panic:
     # Host panic likewise retains all posterior state and the causing host-call PC.
     exit = StepExit.Panic
   of HostAction.OutOfGas:
-    # Preserve the host's canonical credit/deficit balance; terminal capture validates its domain.
+    # Preserve the unsigned posterior balance supplied by the trusted host.
     exit = StepExit.OutOfGas
   of HostAction.Uninitialized:
     # A default response is not an implicit continuation with zeroed registers or gas.

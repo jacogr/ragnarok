@@ -29,3 +29,24 @@ proc innerRegisters*(size = 6'u64, pointer = 65536'u64, entry = 0'u64): Register
   result[7] = RegisterValue(pointer)
   result[8] = RegisterValue(size)
   result[9] = RegisterValue(entry)
+
+proc preparedInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
+    memory: Memory): InnerMachineResult[InnerMachineTransition] =
+  ## Test preparation compiles the source first, then exercises current instance creation at the caller's gas.
+  var source = registers
+  source[7] = RegisterValue(0)
+  source[8] = registers[7]
+  source[9] = registers[8]
+  let compiled = compileInnerModule(machines, MachineGas(high(uint64)), source, memory)
+  if compiled.error != InnerMachineError.None:
+    compiled # A source capture refusal carries only its original typed reason.
+  else:
+    let prepared = compiled.value
+    if prepared.response.action != HostAction.Continue or uint64(prepared.response.registers[7]) >= 128:
+      compiled # A protocol HUH/FULL response cannot authorize instantiation.
+    else:
+      var instance = registers
+      instance[7] = prepared.response.registers[7]
+      instance[8] = registers[9]
+      createInnerMachine(prepared.machines, gas, instance,
+          memory) # Capture the distinct current instance transition.

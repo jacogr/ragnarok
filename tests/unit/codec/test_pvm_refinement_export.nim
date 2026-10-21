@@ -86,7 +86,7 @@ for credit in [0'u64, 1, 3520, 3521, 3522]:
   let done = run(empty, regs, memory, credit).value
   if credit < 3521:
     assert done.response.action == HostAction.OutOfGas
-    assert uint64(done.response.gas) == 0 and uint64(done.response.gasDeficit) == 3521-credit
+    assert uint64(done.response.gas) == 0 and uint64(done.response.gasDeficit) == 0
     assert uint64(done.exports.count) == 0
     for index in 0..<13: assert uint64(done.response.registers[index]) == uint64(regs[index])
   else:

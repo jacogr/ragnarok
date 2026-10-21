@@ -30,9 +30,11 @@ proc checkAccountProjection*() =
     storageBytes: AccountStorageBytes(0x123456789abcdef0'u64), storageItems: AccountStorageItems(
         high(uint32)),
     created: AccountSlot(17), lastAccumulation: AccountSlot(1), parent: ServiceIndex(high(uint32)))
-  let first = serviceMetadataEntry(ServiceIndex(42), metadata, ByteLimit(89)).value
+  let first = serviceMetadataEntry(ServiceIndex(42), metadata, ByteLimit(
+      ServiceMetadataBytes)).value
   metadata.lastAccumulation = AccountSlot(2)
-  let current = serviceMetadataEntry(ServiceIndex(99), metadata, ByteLimit(89)).value
+  let current = serviceMetadataEntry(ServiceIndex(99), metadata, ByteLimit(
+      ServiceMetadataBytes)).value
   let unrelated = StateEntry(key: chapterKey(StateChapter(250)), value: @[0'u8, 255, 31])
   let malformed = StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(11)), value: @[1'u8])
   let store = newStateStore([first, current, unrelated, malformed], report_context.limits()).value

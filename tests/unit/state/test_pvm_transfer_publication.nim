@@ -102,7 +102,7 @@ proc prepare(source: BatchFixture, first, second: AccumulationDispatchResult,
 proc metadata(state: StateStoreSnapshot, service: uint32): ServiceMetadata =
   ## Decode the exact canonical record rather than trusting a copied batch balance observation.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255),
-    ServiceIndex(service))).value.bytes, ByteLimit(89)).value.metadata
+    ServiceIndex(service))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 
 proc expectedRows(source: BatchFixture, firstBalance, secondBalance: uint64,
     upgrade = false, storage = false): seq[StateEntry] =
@@ -113,7 +113,8 @@ proc expectedRows(source: BatchFixture, firstBalance, secondBalance: uint64,
     for service in [42'u32, 99'u32]:
       if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
           ServiceIndex(service))):
-        var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var account = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         account.balance = AccountBalance(if service == 42: firstBalance else: secondBalance)
         if service == 42 and upgrade:
           var digest = default(array[32, byte])
@@ -127,7 +128,8 @@ proc expectedRows(source: BatchFixture, firstBalance, secondBalance: uint64,
           account.storageItems = AccountStorageItems(1)
           account.storageBytes = AccountStorageBytes(
               36) # Existing self-write fixture's independently derived footprint.
-        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(
+            ServiceMetadataBytes)).value
     result.add(copied)
   if storage:
     result.add(serviceStorageEntry(ServiceIndex(42), @[73'u8], @[3'u8],
@@ -284,7 +286,7 @@ for before in [false, true]:
     digest[index] = input[index] # Literal code-hash proposal is copied exactly into child metadata.
   rows.add(serviceMetadataEntry(child, ServiceMetadata(codeHash: CodeHash(digest),
     storageItems: AccountStorageItems(2), storageBytes: AccountStorageBytes(82),
-    created: AccountSlot(128), parent: ServiceIndex(42)), ByteLimit(89)).value)
+    created: AccountSlot(128), parent: ServiceIndex(42)), ByteLimit(ServiceMetadataBytes)).value)
   rows.add(serviceRequestEntry(child, ServicePreimageHash(digest), RequestLength(1),
       requestedHistory(),
     RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
@@ -377,7 +379,8 @@ var writes: seq[StateWrite] = @[]
 for service in [42'u32, 99'u32]:
   var account = metadata(withProvision.state.snapshot.value, service)
   account.balance = AccountBalance(if service == 42: 12 else: 31)
-  let entry = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+  let entry = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(
+      ServiceMetadataBytes)).value
   writes.add(StateWrite(key: entry.key, kind: StateWriteKind.Put, value: entry.value))
 failHash(0)
 discard calibrated.apply(writes).value

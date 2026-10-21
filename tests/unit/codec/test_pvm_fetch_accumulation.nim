@@ -39,16 +39,16 @@ proc sources(): seq[AccumulationSource] =
 # Original literal records include their C.2 variant tags but no extra per-member framing.
 proc record(index: int): seq[byte] =
   if index == 0:
-    # Transfer: tag, E4 source/destination, E8 balance, fixed memo, E8 gas.
-    result = newSeq[byte](153)
+    # Transfer: tag, E4 source/destination, supervisor flag, E8 balance, fixed memo, E8 gas.
+    result = newSeq[byte](154)
     result[0] = 1
     result[1] = 7
     result[5] = 9
-    result[9] = 3
-    result[14] = 1
-    result[17] = 31
-    result[144] = 32
-    result[145] = 128
+    result[10] = 3
+    result[15] = 1
+    result[18] = 31
+    result[145] = 32
+    result[146] = 128
   elif index == 1:
     # Operand: tag, four hashes, compact 128 gas, success blob, compact trace blob.
     result = newSeq[byte](139)
@@ -86,7 +86,7 @@ proc base(): FetchContext =
 # Caller source mutation and destruction must not affect the stored canonical record bytes.
 proc capture(): FetchContext =
   var values = sources()
-  result = withFetchAccumulation(base(), FetchPresence.Present, values, limits(3, 425)).value
+  result = withFetchAccumulation(base(), FetchPresence.Present, values, limits(3, 426)).value
   values[1] = operandSource(AccumulationOperand(output: failedOperandOutput(WorkKind.Bad)))
 
 # r12 is deliberately huge; list selection also ignores the item index in r11.
@@ -110,23 +110,23 @@ for selector in [14'u64, 15'u64]:
     let present = selector == 14 or index < 3
     let expected = (if selector == 14: listBytes() elif present: record(int(index)) else: newSeq[
         byte](0))
-    for requested in [0'u64, 1'u64, 425'u64, 1023'u64, 1024'u64, 1025'u64, high(uint64)]:
+    for requested in [0'u64, 1'u64, 426'u64, 1023'u64, 1024'u64, 1025'u64, high(uint64)]:
       # Literal maximal prices avoid duplicating production's overflow-safe arithmetic decomposition.
       let price = (if requested == high(uint64):
         (if selector == 14: 7205759403792793887'u64 else: 6196953087261802851'u64)
         elif selector == 14: 287 + (400 * requested + 1023) div 1024
         else: 355 + (344 * requested + 1023) div 1024)
       for credit in [0'u64, price - 1, price, price + 1]:
-        for offset in [0'u64, 1'u64, 129'u64, 153'u64, 424'u64, high(uint64)]:
+        for offset in [0'u64, 1'u64, 129'u64, 153'u64, 425'u64, high(uint64)]:
           let regs = arguments(selector, index, offset, requested, 0)
           let reply = fetchContextResponse(captured, MachineGas(credit), regs, memory,
-              MemoryByteLimit(425)).value
+              MemoryByteLimit(426)).value
           let funded = credit >= price
           let start = min(offset, uint64(expected.len))
           let count = (if funded: min(requested, uint64(expected.len) - start) else: 0'u64)
           assert reply.action == (if funded: HostAction.Continue else: HostAction.OutOfGas)
           assert uint64(reply.gas) == (if funded: credit - price else: 0'u64)
-          assert uint64(reply.gasDeficit) == (if funded: 0'u64 else: price - credit)
+          assert uint64(reply.gasDeficit) == 0
           for i in 0..<13:
             # Funded r7 reports complete selected length or NONE, not copy length.
             let wanted = (if i != 7 or not funded: uint64(regs[i])
@@ -152,11 +152,11 @@ for selector in [14'u64, 15'u64]:
 
 assert withFetchAccumulation(default(FetchContext), FetchPresence.Absent, [], limits(0, 0)).error ==
     FetchError.InvalidContext
-assert withFetchAccumulation(base(), FetchPresence.Present, sources(), limits(2, 425)).error ==
+assert withFetchAccumulation(base(), FetchPresence.Present, sources(), limits(2, 426)).error ==
     FetchError.LimitExceeded
-assert withFetchAccumulation(base(), FetchPresence.Present, sources(), limits(3, 424)).error ==
+assert withFetchAccumulation(base(), FetchPresence.Present, sources(), limits(3, 425)).error ==
     FetchError.LimitExceeded
-var strict = limits(3, 425)
+var strict = limits(3, 426)
 strict.operand.authBytes = ByteLimit(1)
 assert withFetchAccumulation(base(), FetchPresence.Present, sources(), strict).error ==
     FetchError.LimitExceeded
@@ -174,7 +174,7 @@ for selector in [14'u64, 15'u64]:
     memory, MemoryByteLimit(0)).value.registers[7]) == high(uint64)
 let prior = fetchContextResponse(captured, MachineGas(1000), arguments(14, 0, high(uint64), 1,
   high(uint64)), memory, MemoryByteLimit(0)).value
-assert prior.action == HostAction.Continue and uint64(prior.registers[7]) == 425
+assert prior.action == HostAction.Continue and uint64(prior.registers[7]) == 426
 
 for count in [127, 128, 129]:
   # Crossing the compact-count boundary changes list framing, not individual record framing.
@@ -182,7 +182,7 @@ for count in [127, 128, 129]:
   for i in 0..<count:
     # Equal fixed records make metadata bounds independent of variable blob budgets.
     values[i] = transferSource(DeferredTransfer())
-  let length = uint64(count * 153 + (if count < 128: 1 else: 2))
+  let length = uint64(count * 154 + (if count < 128: 1 else: 2))
   let context = withFetchAccumulation(base(), FetchPresence.Present, values, limits(uint64(count), length)).value
   assert withFetchAccumulation(base(), FetchPresence.Present, values, limits(uint64(count), length -
       1)).error == FetchError.LimitExceeded
@@ -220,7 +220,7 @@ block:
   for context in [configured, attached, clearedPackage]:
     # Every new owner keeps the prior canonical input sequence intact.
     assert uint64(fetchContextResponse(context, MachineGas(1000), arguments(14, 0, 0, 0, 0),
-      memory, MemoryByteLimit(0)).value.registers[7]) == 425
+      memory, MemoryByteLimit(0)).value.registers[7]) == 426
   let replaced = withFetchAccumulation(attached, FetchPresence.Present, [], limits(0, 1)).value
   for selector in [0'u64, 7'u64]:
     # Replacing accumulation inputs must not clear configured parameters or package bytes.
@@ -234,7 +234,7 @@ proc dispatch(context: var FetchContext, stopped: StepOutcome): HostResult[Fetch
   let cpu = machineInfo(stopped.machine).value
   let fetched = fetchContextResponse(context, cpu.gas, cpu.registers, memoryOf(
       stopped.machine).value,
-    MemoryByteLimit(425))
+    MemoryByteLimit(426))
   if fetched.error != FetchError.None:
     # Local capture/copy failures never become fabricated guest exits.
     return hostFailure(fetched.error)
@@ -250,12 +250,12 @@ proc cycle() =
   for selector in [14'u64, 15'u64]:
     # Both selectors execute through ecalli and then return through the guest halt address.
     let machine = captureMachine(code, memory, MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
-      blockCharged: true, registers: arguments(selector, 0, 0, 425, 0))).value
+      blockCharged: true, registers: arguments(selector, 0, 0, 426, 0))).value
     let done = executeWithHost(machine, context, dispatch, ExecutionStepLimit(2), HostCallLimit(1),
         GasCycleLimit(0))
     assert done.error == HostExecutionError.None and done.value.exit == StepExit.Halt
     assert uint64(machineInfo(done.value.machine).value.registers[7]) == (if selector ==
-        14: 425'u64 else: 153'u64)
+        14: 426'u64 else: 154'u64)
 
 cycle()
 let before = getOccupiedMem()

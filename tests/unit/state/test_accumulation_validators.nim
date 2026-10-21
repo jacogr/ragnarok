@@ -113,7 +113,7 @@ proc source(base: OwnedReport, available = false, guarantees = 0, blobs = false,
     rounds: ElementLimit(2), gasRows: ElementLimit(1), reports: ElementLimit(1),
         digests: ElementLimit(1),
     services: ElementLimit(1)), accounts: AccumulationTimesLimits(services: ElementLimit(1),
-      writes: ElementLimit(1), bytes: ByteLimit(89)))).value
+      writes: ElementLimit(1), bytes: ByteLimit(ServiceMetadataBytes)))).value
 
 # Traverse the public immutable graph only for independent body/credential/state witnesses.
 proc admission(source: PreparedAccumulationTimes): AdmittedReports =

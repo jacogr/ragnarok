@@ -19,10 +19,11 @@ proc unavailable(): PreparedAccumulationService =
       AccumulationOperandConfig)).value
   let inputs = prepareAccumulationInputs(operands, [], [AlwaysAccumulate()],
     AccumulationInputConfig(allowances: ElementLimit(1), services: ElementLimit(1))).value
-  let entry = serviceMetadataEntry(ServiceIndex(0), ServiceMetadata(), ByteLimit(89)).value
+  let entry = serviceMetadataEntry(ServiceIndex(0), ServiceMetadata(), ByteLimit(
+      ServiceMetadataBytes)).value
   let state = newStateStore([entry], StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(1),
-    perValue: ByteLimit(89), totalValueBytes: ByteLimit(89), nodes: TrieNodeLimit(
-        1)))).value.snapshot.value
+    perValue: ByteLimit(ServiceMetadataBytes), totalValueBytes: ByteLimit(ServiceMetadataBytes),
+        nodes: TrieNodeLimit(1)))).value.snapshot.value
   prepareAccumulationService(inputs, InvocationServiceIndex(0), state, HeaderSlot(0),
     AccumulationServiceConfig(codeLimit: ServiceCodeLimit(100), preimageBytes: ByteLimit(100))).value
 

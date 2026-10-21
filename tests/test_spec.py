@@ -20,11 +20,14 @@ BANDERSNATCH = json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())
 # Specification upgrades must retain source identity and verify published vectors.
 class SpecificationTests(unittest.TestCase):
     # The checked-out release, its version marker and all consumed chapters must match the recorded pin.
-    def test_graypaper_release(self):
+    def test_graypaper_unreleased_revision(self):
         entry = PINS['graypaper']
         path = require_submodule(dict(entry, repository=entry['repository'].removeprefix('https://github.com/')))
         self.assertEqual((path/'VERSION').read_text().strip(), '0.8.0')
-        self.assertEqual(entry['tag'], 'v0.8.0')
+        self.assertNotIn('tag', entry)
+        self.assertEqual(entry['release_status'], 'unreleased')
+        self.assertEqual(entry['base_release'], 'v0.8.0')
+        self.assertEqual(entry['commit'], '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d')
         # Verify whole upstream chapter files rather than relying on a mutable tag name alone.
         for name, digest in entry['source_sha256'].items():
             self.assertEqual(hashlib.sha256((path/name).read_bytes()).hexdigest(), digest, name)

@@ -26,11 +26,13 @@ Never guess protocol semantics. Document ambiguity and add a focused failing/pen
 pinned revisions and sections in protocol changes. `spec/` records interpretations and hashes;
 `vendor/` gitlinks pin upstream source identities.
 
-- The M1 request-namespace question is parked by the maintainer pending Gray Paper 0.8.1/0.8.2
-  review. Upstream #542 now resolves the domain overlap, but adoption awaits compatible pins.
-  Preserve its evidence, pending test and current 0.8.0 codec behavior. Follow
-  [the upstream disposition](state-clarifications.md) during the specification/vector upgrade;
-  do not invent interim restrictions or adopt open #564 format changes without matching evidence.
+- The maintainer authorized the unreleased Gray Paper upgrade on2026-10-21.
+  The target `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` includes PR542:
+  current request lengths are strictly below2^32−2, excluding the two reserved
+  namespace prefixes. Preserve historical M1 evidence as release-era evidence;
+  current production uses the bounded domain with one canonical encoding.
+  Open #564 format changes remain outside this target.
+
 
 Feature contracts record applicable scope, pinned references, completion tests, interpretation,
 observed evidence, limitations and next bounded work. Passing local tests is not proof of complete

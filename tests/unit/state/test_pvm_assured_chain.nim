@@ -28,7 +28,7 @@ proc unchanged(state: StateStore, view: ChainView, before: StateStoreSnapshot, p
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode the actual adopted service record without substituting copied metadata observations.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      42))).value.bytes, ByteLimit(89)).value.metadata
+      42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 let source = assuredChainFixture()
 let seed = source.assuredChainSeed
 let parent = seed.view.bestBlock.value

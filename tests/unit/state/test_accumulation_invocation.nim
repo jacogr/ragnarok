@@ -49,7 +49,7 @@ proc service(includeCode = true): PreparedAccumulationService =
   let raw = @[0'u8]
   let hash = array[32, byte](blake2b256(raw).value)
   var entries = @[serviceMetadataEntry(ServiceIndex(42), ServiceMetadata(codeHash: CodeHash(hash)),
-      ByteLimit(89)).value]
+      ByteLimit(ServiceMetadataBytes)).value]
   if includeCode:
     entries.add(servicePreimageEntry(ServiceIndex(42), ServicePreimageHash(hash), raw,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(
@@ -88,7 +88,7 @@ proc projections() {.raises.} =
     if f[6] != "-":
       for item in f[6].split(','):
         entries.add(serviceMetadataEntry(ServiceIndex(uint32(number(item))), ServiceMetadata(),
-            ByteLimit(89)).value) # Occupancy uses genuine metadata keys.
+            ByteLimit(ServiceMetadataBytes)).value) # Occupancy uses genuine metadata keys.
     let state = newStateStore(entries, limits()).value.snapshot.value
     let unused = findUnusedAccumulationService(state, first.value, ServiceProbeLimit(number(f[7])))
     if f[8] == "LimitExceeded":
@@ -104,7 +104,8 @@ proc boundaries(): PreparedAccumulationInvocation =
   var entries: seq[StateEntry] = @[]
   # The final public ID wraps to the first; low and top-256 reserved intervals are never probed.
   for id in [PublicServiceEnd-1, FirstPublicService]:
-    entries.add(serviceMetadataEntry(ServiceIndex(uint32(id)), ServiceMetadata(), ByteLimit(89)).value)
+    entries.add(serviceMetadataEntry(ServiceIndex(uint32(id)), ServiceMetadata(), ByteLimit(
+        ServiceMetadataBytes)).value)
   let state = newStateStore(entries, limits()).value.snapshot.value
   assert uint32(findUnusedAccumulationService(state, ServiceIndex(uint32(PublicServiceEnd-1)),
       ServiceProbeLimit(3)).value) == uint32(FirstPublicService+1)

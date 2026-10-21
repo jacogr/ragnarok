@@ -72,7 +72,7 @@ def operands(raw):
     if 100 <= op <= 110:
         # This shape reverses the A and D nibble roles.
         return dict(A=high, B=0, D=low)
-    return dict(A=low, B=high, D=min(12, raw[2]) if 190 <= op <= 230 else 0)
+    return dict(A=low, B=high, D=min(12, raw[2] % 16) if 190 <= op <= 230 else 0)
 
 
 # Expand the pinned table's restricted macros without eval or a production cost table.

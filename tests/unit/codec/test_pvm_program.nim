@@ -157,7 +157,7 @@ assert byte(rrii.a) == 3 and byte(rrii.b) == 2
 assert uint64(rrii.x) == high(uint64) - 127 and uint64(rrii.y) == 127
 let rrr = ins([190'u8, 0x23, 16, 0], [0, 3])
 assert rrr.shape == OperandShape.ThreeRegisters
-assert byte(rrr.a) == 3 and byte(rrr.b) == 2 and byte(rrr.d) == 12
+assert byte(rrr.a) == 3 and byte(rrr.b) == 2 and byte(rrr.d) == 0
 
 # Short operands use the global code stream, including later opcodes, then infinite zero padding.
 let crossing = ins([20'u8, 0, 40, 255], [0, 1, 2])
@@ -215,30 +215,28 @@ assert not basicBlockStart(richOwner, CodeAddress(3)).value
 assert instruction(richOwner, CodeAddress(2)).error == ProgramError.InvalidInstruction
 assert read(rich, 8).error == ProgramError.None
 
-# Width zero and widths up to 255 are valid fixed encodings when their values fit registers.
+# Current deblob admits only widths zero through four; broader table encodings are invalid programs.
 for width in [0, 1, 4, 8, 9, 255]:
   var table = newSeq[byte](width)
   if width != 0:
-    # A target outside the code is structurally valid; execution will enforce target membership.
+    # A target outside the code is structurally valid at an admitted width; execution checks membership.
     table[0] = 255
   let decoded = read(blob([0'u8], [0], width, 1, table))
-  assert decoded.error == ProgramError.None
-  assert uint64(jumpTarget(decoded.value, JumpIndex(0)).value) == (if width ==
-      0: 0'u64 else: 255'u64)
-  assert jumpTarget(decoded.value, JumpIndex(1)).error == ProgramError.InvalidIndex
-  if width > 8:
-    # Any nonzero high byte leaves the register domain, even when the full payload is present.
-    table[8] = 1
-    assert read(blob([0'u8], [0], width, 1, table)).error == ProgramError.InvalidJumpValue
+  if width > 4:
+    assert decoded.error == ProgramError.InvalidProgram
+  else:
+    assert decoded.error == ProgramError.None
+    assert uint64(jumpTarget(decoded.value, JumpIndex(0)).value) == (if width ==
+        0: 0'u64 else: 255'u64)
+    assert jumpTarget(decoded.value, JumpIndex(1)).error == ProgramError.InvalidIndex
 let hugeZero = blob([0'u8], [0], 0, high(uint64))
 assert read(hugeZero).error == ProgramError.LimitExceeded
 let huge = decodeProgram(hugeZero, CodeAddress(0), ProgramByteLimit(100), JumpCountLimit(high(uint64)))
-assert huge.error == ProgramError.None
-assert uint64(jumpTarget(huge.value, JumpIndex(high(uint64) - 1)).value) == 0
-assert read(blob([0'u8], [0], 255, 1000)).error == ProgramError.Truncated
+assert huge.error == ProgramError.InvalidProgram
+assert read(blob([0'u8], [0], 255, 1000)).error == ProgramError.InvalidProgram
 var hugeCode: seq[byte] = @[0'u8, 0]
 appendNatural(hugeCode, high(uint64))
-assert read(hugeCode).error == ProgramError.Truncated
+assert read(hugeCode).error == ProgramError.InvalidProgram
 
 # Retained handles survive input mutation, while returned operand copies cannot mutate the owner.
 var mutable = blob([1'u8, 2, 0], [0, 1, 2])

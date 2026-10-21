@@ -109,7 +109,8 @@ proc expected(fixture: BatchFixture, changed: bool, ending: Ending, pairs: int,
       let service = ServiceIndex(if index == 0: 42 else: 99)
       if (index == 1 or not subset) and array[31, byte](row.key) == array[31, byte](
           chapterServiceKey(StateChapter(255), service)):
-        var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var account = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         account.balance = AccountBalance(if index == 0: 17 else: 31)
         row = serviceMetadataEntry(service, account, ByteLimit(
             89)).value # Independently known incoming credits remain atomic with global writes.

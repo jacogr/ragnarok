@@ -59,7 +59,8 @@ proc appendGuest(guest: ReportGuest, service: ServiceIndex, entries: var seq[
   if guest.oversized: preimage = newSeq[byte](4000001) # BIG is selected before metadata/program parsing or bounded copying.
   let hash = array[32, byte](blake2b256(preimage).value)
   if not guest.missing:
-    entries.add(serviceMetadataEntry(service, ServiceMetadata(), ByteLimit(89)).value)
+    entries.add(serviceMetadataEntry(service, ServiceMetadata(), ByteLimit(
+        ServiceMetadataBytes)).value)
     entries.add(servicePreimageEntry(service, ServicePreimageHash(hash), preimage,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(uint64(
           preimage.len)))).value)

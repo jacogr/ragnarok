@@ -40,18 +40,18 @@ class StateCompositionHarness(unittest.TestCase):
 
     # A service always contributes its fixed metadata; nested present-empty storage still creates a leaf.
     def test_service_mapping(self):
-        service = (7, bytes(89), [(b'', b'')], [], [], [])
+        service = (7, bytes(105), [(b'', b'')], [], [], [])
         pairs = entries(chapters(), [service])
         self.assertEqual(len(pairs), 18)
-        self.assertEqual(pairs[16], (chapter_service(255, 7), bytes(89)))
+        self.assertEqual(pairs[16], (chapter_service(255, 7), bytes(105)))
         self.assertEqual(pairs[17], (service_key('S', 7, b''), b''))
 
     # Both deterministic namespace overlaps reject rather than silently selecting one value.
     def test_namespace_overlap(self):
         h = bytes(32)
         for storage, preimages, length in (([], [(h, b'p')], 2**32-2), ([(h, b's')], [], 2**32-1)):
-            self.assertEqual(composed(chapters(), [(7, bytes(89), storage, preimages, [(h, length, ())], [])],
-                (MAX,)*4, MAX), 'duplicatekey')
+            self.assertEqual(composed(chapters(), [(7, bytes(105), storage, preimages, [(h, length, ())], [])],
+                (MAX,)*4, MAX), 'invalidcomponent')
 
     # Entry count and complete bytes include every chapter and the metadata of otherwise empty services.
     def test_parent_limits(self):
@@ -61,12 +61,12 @@ class StateCompositionHarness(unittest.TestCase):
         limits = (16, max(len(v) for _, v in pairs), sum(len(v) for _, v in pairs), nodes)
         self.assertTrue(composed(values, [], limits, 0).startswith(root.hex()+' 16 '+str(nodes)+' '))
         self.assertEqual(composed(values, [], (15, *limits[1:]), MAX), 'limitexceeded')
-        self.assertEqual(composed(values, [(7, bytes(89), [], [], [], [])], limits, MAX), 'limitexceeded')
+        self.assertEqual(composed(values, [(7, bytes(105), [], [], [], [])], limits, MAX), 'limitexceeded')
 
     # Reusing an opaque entry preserves its exact existing service-key identity and raw bytes.
     def test_opaque_capture(self):
         key = service_key('S', 7, b'original')
-        pairs = entries(chapters(), [(7, bytes(89), [], [], [], [(key, b'raw')])])
+        pairs = entries(chapters(), [(7, bytes(105), [], [], [], [(key, b'raw')])])
         self.assertEqual(pairs[-1], (key, b'raw'))
         self.assertEqual(len(pairs), 18)
 

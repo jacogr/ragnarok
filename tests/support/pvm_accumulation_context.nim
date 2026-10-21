@@ -98,7 +98,7 @@ proc pvmBootstrap*(code: openArray[byte], gas = 100'u64,
   var metadata = account
   metadata.codeHash = CodeHash(hash)
   var entries = @[serviceMetadataEntry(ServiceIndex(serviceId), metadata,
-    ByteLimit(89)).value,
+    ByteLimit(ServiceMetadataBytes)).value,
     servicePreimageEntry(ServiceIndex(serviceId), ServicePreimageHash(hash), preimage,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(preimage.len))).value]
   if includeContexts:

@@ -78,9 +78,10 @@ proc context(done: AccumulationDispatchResult, dimension = AccumulationDimension
 # Read complete canonical metadata by its actual current account identity.
 proc metadata(owner: AccumulationEffectContext, service: ServiceIndex): ServiceMetadata =
   let found = owner.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255), service))
-  assert found.error == StateStoreError.None and found.value.byteLength == 89, "complete current account metadata"
-  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(89))
-  assert decoded.error == ServiceMetadataError.None and decoded.value.consumed == 89, "canonical metadata encoding"
+  assert found.error == StateStoreError.None and found.value.byteLength == ServiceMetadataBytes, "complete current account metadata"
+  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
+  assert decoded.error == ServiceMetadataError.None and decoded.value.consumed ==
+      ServiceMetadataBytes, "canonical metadata encoding"
   decoded.value.metadata
 
 # Independently step the small public ID interval, with all intermediate values below 2^33.
@@ -210,13 +211,16 @@ for ordinal in 0..<3:
 assert uint64(metadata(context(repeated), ServiceIndex(42)).balance) == 436, "three exact creator debits"
 assert uint32(context(repeated).effectInfo.value.nextService) == uint32(advance(selected, 126)), "third public cursor advancement"
 # Initial collision scanning and successor collision scanning have independently explicit ceilings.
-let occupiedA = serviceMetadataEntry(advance(selected), default(ServiceMetadata), ByteLimit(89)).value
-let occupiedB = serviceMetadataEntry(advance(selected, 43), default(ServiceMetadata), ByteLimit(89)).value
+let occupiedA = serviceMetadataEntry(advance(selected), default(ServiceMetadata), ByteLimit(
+    ServiceMetadataBytes)).value
+let occupiedB = serviceMetadataEntry(advance(selected, 43), default(ServiceMetadata), ByteLimit(
+    ServiceMetadataBytes)).value
 let colliding = source(extra = @[occupiedA, occupiedB])
 assert run(colliding, probes = 2).error == AccumulationDispatchError.LimitExceeded, "final absence check consumes a probe"
 let skipped = run(colliding, probes = 3)
 assert uint32(context(skipped).effectInfo.value.nextService) == uint32(advance(selected, 44)), "successor skips occupied initial IDs"
-let initialOccupied = serviceMetadataEntry(selected, default(ServiceMetadata), ByteLimit(89)).value
+let initialOccupied = serviceMetadataEntry(selected, default(ServiceMetadata), ByteLimit(
+    ServiceMetadataBytes)).value
 let initialSkipped = run(source(extra = @[initialOccupied], bootstrapProbes = 2))
 assert uint64(machineInfo(initialSkipped.value.machine).value.registers[7]) == uint64(uint32(
     advance(selected, 1))), "bootstrap selects first unused public ID"

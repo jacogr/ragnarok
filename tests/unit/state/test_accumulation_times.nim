@@ -106,10 +106,12 @@ proc pureCases() =
         uint64)-3),
     storageItems: AccountStorageItems(high(uint32)), created: AccountSlot(high(uint32)-1),
     lastAccumulation: AccountSlot(0x10203040'u32), parent: ServiceIndex(high(uint32)))
-  let first = serviceMetadataEntry(ServiceIndex(42), metadata, ByteLimit(89)).value
+  let first = serviceMetadataEntry(ServiceIndex(42), metadata, ByteLimit(
+      ServiceMetadataBytes)).value
   var current = metadata
   current.lastAccumulation = AccountSlot(high(uint32))
-  let second = serviceMetadataEntry(ServiceIndex(99), current, ByteLimit(89)).value
+  let second = serviceMetadataEntry(ServiceIndex(99), current, ByteLimit(
+      ServiceMetadataBytes)).value
   let unrelated = StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 4, 2])
   let prior = newStateStore([first, second, unrelated], report_context.limits()).value.snapshot.value
   let emptyMap = newStateStore([], report_context.limits()).value.snapshot.value
@@ -156,7 +158,7 @@ proc pureCases() =
     assert hashCalls() == 0
     failHash(0)
   for version in [1'u8, 128]:
-    var bytes = newSeq[byte](89)
+    var bytes = newSeq[byte](ServiceMetadataBytes)
     bytes[0] = version
     let malformed = newStateStore([StateEntry(key: second.key, value: bytes), first],
         report_context.limits()).value.snapshot.value
@@ -182,7 +184,8 @@ proc main() {.raises.} =
   for index in 0..<raw.len: wire[index] = byte(raw[index])
   let base = decodeOwnedReport(wire, 2).value
   let extra = serviceMetadataEntry(ServiceIndex(7), ServiceMetadata(balance: AccountBalance(314),
-    created: AccountSlot(1), lastAccumulation: AccountSlot(1)), ByteLimit(89)).value
+    created: AccountSlot(1), lastAccumulation: AccountSlot(1)), ByteLimit(
+        ServiceMetadataBytes)).value
   let fixture = reentryFixture(base, incomingReports = 2, extra = @[extra])
   let source = predecessor(fixture)
   let prior = source.accumulationRecentState.value

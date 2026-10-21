@@ -1,16 +1,15 @@
 # Inner-machine memory transfers
 
-Pins: GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Pins: unreleased GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 `pvm_invocations.tex` Omega_P/Omega_O and fnmemgas, `definitions.tex` P/O gas;
-vectors `d3c089c9a1d5352ad353626d7a2db8589f137b2a`. No pins change.
+vectors `d3c089c9a1d5352ad353626d7a2db8589f137b2a`. Historical vectors remain release-era evidence.
 
-Scope: hosts 10 (peek) and 11 (poke), using the same invocation-local map as
+Scope: hosts 11 (peek) and 12 (poke), using the same invocation-local map as
 machine/pages/expunge. Registers 7/8/9/10 select inner ID, caller address, inner
 address and byte count. Peek charges 377+ceil(336*z/1024); poke charges
 297+ceil(224*z/1024). Quotient/remainder pricing handles the whole uint64 count
-domain without overflowing; every possible cost/debt remains below 2^63.
-Underfunding precedes all permission, ID and copy-policy checks, retaining exact
-debt and all original registers/memory/map owners.
+domain without overflowing; every possible cost fits unsigned64 gas.
+Underfunding precedes all permission, ID and copy-policy checks, returning zero gas and retaining all original registers/memory/map owners.
 
 Peek requires the whole caller destination writable, then checks WHO for an absent
 full-width inner ID, then OOB for unreadable inner bytes. Poke requires the whole

@@ -20,7 +20,7 @@ import ../../support/[pvm_assured_outcomes, pvm_computed_storage_program,
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## The account survives storage deletion; decode its exact canonical fields at each retained full-map owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      42))).value.bytes, ByteLimit(89)).value.metadata
+      42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 proc storage(state: StateStoreSnapshot, present: bool) =
   ## Distinguish actual MissingKey from a present empty value and independently check both storage counters.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value

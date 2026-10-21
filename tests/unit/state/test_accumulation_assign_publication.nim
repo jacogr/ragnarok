@@ -59,10 +59,11 @@ proc expected(fixture: BatchFixture, first, second: Ending): seq[StateEntry] =
     for index, ending in [first, second]:
       let service = ServiceIndex(if index == 0: 42 else: 99)
       if array[31, byte](record.key) == array[31, byte](chapterServiceKey(StateChapter(255), service)):
-        let decoded = decodeServiceMetadata(record.value, ByteLimit(89)).value.metadata
+        let decoded = decodeServiceMetadata(record.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         var account = decoded
         account.balance = AccountBalance(if index == 0: 17 else: 31)
-        row = serviceMetadataEntry(service, account, ByteLimit(89)).value
+        row = serviceMetadataEntry(service, account, ByteLimit(ServiceMetadataBytes)).value
       if ending in {Halt, CheckpointPanic}:
         if array[31, byte](record.key) == array[31, byte](chapterKey(StateChapter(2))):
           for offset in 0..<32: row.value[index*2560+64+offset] = byte((if index ==

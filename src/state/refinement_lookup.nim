@@ -134,7 +134,7 @@ proc historicalLookupResponse*(context: HistoricalLookupContext, gas: MachineGas
     gasDeficit: GasDeficit(0), registers: registers, memory: memory)
   if credit < cost:
     response.action = HostAction.OutOfGas
-    response.gasDeficit = GasDeficit(cost-credit) # Exact debt precedes reads, hashing and register changes.
+    response.gasDeficit = GasDeficit(0) # Zero-gas OutOfGas precedes reads, hashing and register changes.
     return HistoricalLookupResult[HostResponse](status: HistoricalLookupError.None,
         completed: response)
   response.gas = MachineGas(credit-cost)

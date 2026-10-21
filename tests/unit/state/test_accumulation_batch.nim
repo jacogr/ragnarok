@@ -36,10 +36,12 @@ proc expectedRows(fixture: BatchFixture, first = true, second = true,
     let accountKey = chapterServiceKey(StateChapter(255), ServiceIndex(service))
     for index in 0..<result.len:
       if credited and array[31, byte](result[index].key) == array[31, byte](accountKey):
-        var metadata = decodeServiceMetadata(result[index].value, ByteLimit(89)).value.metadata
+        var metadata = decodeServiceMetadata(result[index].value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         metadata.balance = AccountBalance(if ordinal ==
             0: 17 else: 31) # Literal original + distinct incoming transfers.
-        result[index] = serviceMetadataEntry(ServiceIndex(service), metadata, ByteLimit(89)).value
+        result[index] = serviceMetadataEntry(ServiceIndex(service), metadata, ByteLimit(
+            ServiceMetadataBytes)).value
     if ordinal == 0 or providedSecond:
       let bytes = (if ordinal == 0: @[73'u8] else: @[81'u8])
       let request = provisionRequest(service, bytes)

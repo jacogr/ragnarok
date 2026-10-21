@@ -68,7 +68,7 @@ of "request": discard context.effectRequestHistory(default(ServicePreimageHash),
 of "request-absent": discard pair.effectContext(AccumulationDimension.Regular).value.effectRequestHistory(
   default(ServicePreimageHash), RequestLength(1)).value # Absence cannot fabricate an empty requested history.
 of "eject": discard recordAccumulationEject(pair, AccumulationEjectTarget(99),
-  default(ServicePreimageHash), default(Parameters)).value # Failed eject cannot expose a credited successor.
+  default(Parameters)).value # Failed eject cannot expose a credited successor.
 of "transfer": discard context.effectTransferAt(AccumulationTransferIndex(
     0)).value # Default contexts have no outgoing element.
 of "transfer-prepare": discard prepareAccumulationTransfer(pair, AccumulationTransferDestination(99),

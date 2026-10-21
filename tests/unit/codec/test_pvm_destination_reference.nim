@@ -33,7 +33,7 @@ for row in 0..<31488:
   let encoded = byte(data[at + 2])
   let variant = int(byte(data[at + 3]))
   assert opcode in {190'u8..230'u8} and variant < 3
-  let paperDestination = min(12, int(encoded))
+  let paperDestination = min(12, int(encoded) mod 16)
   let jamDestination = min(12, int(encoded) mod 16)
   if paperDestination != jamDestination: inc differences
   var registers = default(RegisterFile)
@@ -83,6 +83,6 @@ for row in 0..<31488:
     for i in 0..<13:
       # Affordability precedes destination selection and cannot leak a partially changed register.
       assert uint64(unchanged.registers[i]) == uint64(registers[i])
-assert differences == 22140
+assert differences == 0
 
-echo "PVM destination-byte reference passed: 31488 rows, 22140 scoped differences"
+echo "PVM destination-byte reference passed: 31488 rows, 0 scoped differences"

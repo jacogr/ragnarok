@@ -88,8 +88,8 @@ proc checkCode(owner: AccumulationEffectContext, expected: openArray[byte], accu
     transfer = 456'u64) =
   assert expected.len == 32, "complete expected raw hash"
   let bytes = accountBytes(owner)
-  let decoded = decodeServiceMetadata(bytes, ByteLimit(89)).value
-  assert decoded.consumed == 89 and bytes[0] == 0, "canonical complete version-zero metadata"
+  let decoded = decodeServiceMetadata(bytes, ByteLimit(ServiceMetadataBytes)).value
+  assert decoded.consumed == ServiceMetadataBytes and bytes[0] == 0, "canonical complete version-zero metadata"
   let hash = array[32, byte](decoded.metadata.codeHash)
   for i in 0..<32:
     assert hash[i] == expected[i] and bytes[1+i] == expected[i], "offered hash retained in typed and serialized fields"
@@ -123,12 +123,12 @@ for chapter in [2, 7, 12]:
   assert context(done).effectAccounts.value.lookup(chapterKey(StateChapter(chapter))).value.bytes ==
     initial.effectAccounts.value.lookup(chapterKey(StateChapter(chapter))).value.bytes, "unrelated state chapter unchanged"
 let oldHash = ServicePreimageHash(array[32, byte](decodeServiceMetadata(accountBytes(initial),
-    ByteLimit(89)).value.metadata.codeHash))
+    ByteLimit(ServiceMetadataBytes)).value.metadata.codeHash))
 let oldCodeKey = servicePreimageKey(ServiceIndex(42), oldHash, ByteLimit(32)).value
 assert context(done).effectAccounts.value.lookup(oldCodeKey).value.bytes ==
     initial.effectAccounts.value.lookup(oldCodeKey).value.bytes, "original code preimage remains unchanged"
 let other = serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(balance: AccountBalance(777)),
-    ByteLimit(89)).value
+    ByteLimit(ServiceMetadataBytes)).value
 let withOther = run(source(extra = @[other]))
 assert context(withOther).effectAccounts.value.lookup(other.key).value.bytes == other.value, "upgrade cannot substitute another account target"
 let offeredHash = array[32, byte](decodeServiceMetadata(accountBytes(context(done)), ByteLimit(

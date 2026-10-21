@@ -37,7 +37,7 @@ proc request(service: ServiceIndex, bytes: seq[byte], history: seq[byte] = @[0'u
 ## Populate live self/other targets and all three requested blobs; account keys/requests stay in the complete map.
 proc source(): AccumulationEffects =
   var entries = @[serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(balance: AccountBalance(
-      100)), ByteLimit(89)).value]
+      100)), ByteLimit(ServiceMetadataBytes)).value]
   # The same data requested by different services represents two distinct eligible provision pairs.
   for service in [ServiceIndex(42), ServiceIndex(99)]:
     for bytes in [@[9'u8, 8, 7], @[4'u8, 5], newSeq[byte](0)]:
@@ -84,7 +84,8 @@ proc versions(): AccumulationProvision =
   assert array[32, byte](after.commitment.root) == oldRoot
   assert after.lookup(request(ServiceIndex(42), @[9'u8, 8, 7]).key).value.bytes == @[0'u8]
   let account = after.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(42))).value
-  assert uint64(decodeServiceMetadata(account.bytes, ByteLimit(89)).value.metadata.balance) == 17
+  assert uint64(decodeServiceMetadata(account.bytes, ByteLimit(
+      ServiceMetadataBytes)).value.metadata.balance) == 17
   assert uint64(context.effectInitialContext.value.contextSelf.value.balance) == 17
   assert recordAccumulationProvision(first, ServiceIndex(42), @[9'u8, 8, 7], policy(1, 3,
       3)).error == AccumulationEffectError.AlreadyProvided
@@ -110,8 +111,8 @@ proc requests() =
       3)).error == PreimageTransitionError.InvalidState
   # Target identity keeps the complete uint32 domain; low/reserved indices are not extra provide eligibility filters.
   for target in [ServiceIndex(0), ServiceIndex(high(uint32))]:
-    let extra = @[serviceMetadataEntry(target, ServiceMetadata(), ByteLimit(89)).value, request(
-        target, bytes)]
+    let extra = @[serviceMetadataEntry(target, ServiceMetadata(), ByteLimit(
+        ServiceMetadataBytes)).value, request(target, bytes)]
     let effects = prepareAccumulationEffects(preparedEffectContexts(extra)).value
     let provided = recordAccumulationProvision(effects, target, bytes, policy()).value
     check(provided.effectContext(AccumulationDimension.Regular).value.effectProvisionAt(

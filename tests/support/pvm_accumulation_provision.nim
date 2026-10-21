@@ -92,7 +92,8 @@ proc provisionMachine*(calls: openArray[ProvisionGuestCall], data: seq[byte] = @
         entries.add(StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(service)),
             value: @[0'u8])) # Corrupt local state.
       else:
-        entries.add(serviceMetadataEntry(ServiceIndex(service), default(ServiceMetadata), ByteLimit(89)).value)
+        entries.add(serviceMetadataEntry(ServiceIndex(service), default(ServiceMetadata), ByteLimit(
+            ServiceMetadataBytes)).value)
     if requested:
       entries.add(provisionRequest(service, data, history)) # An empty sequence is encoded as canonical outstanding history.
       if data.len > 0: entries.add(provisionRequest(service, @[],

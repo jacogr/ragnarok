@@ -113,7 +113,7 @@ proc executionFixture*(base: OwnedReport, options = executionFixtureConfig()): E
     let hash = array[32, byte](blake2b256(raw).value)
     if ordinal == 1:
       entries.add(serviceMetadataEntry(service, ServiceMetadata(codeHash: CodeHash(hash),
-          balance: AccountBalance(options.secondBalance)), ByteLimit(89)).value)
+          balance: AccountBalance(options.secondBalance)), ByteLimit(ServiceMetadataBytes)).value)
     let ending = (if ordinal == 0: options.first else: options.second)
     if ending != ExecutionEnding.Missing:
       entries.add(servicePreimageEntry(service, ServicePreimageHash(hash), raw,

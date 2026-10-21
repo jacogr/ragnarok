@@ -52,7 +52,8 @@ proc state(raw: seq[byte], hash: array[32, byte], damage = 0): StateStoreSnapsho
   var entries: seq[StateEntry] = @[]
   for service in [42'u32, 99]:
     if damage != 1:
-      entries.add(serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(), ByteLimit(89)).value)
+      entries.add(serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(), ByteLimit(
+          ServiceMetadataBytes)).value)
     if damage != 2:
       entries.add(servicePreimageEntry(ServiceIndex(service), ServicePreimageHash(hash), raw,
         ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(uint64(raw.len)))).value)

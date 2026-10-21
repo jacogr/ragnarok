@@ -109,7 +109,8 @@ proc rows(fixture: BatchFixture, first = 1'u64, second = 1'u64, storage = false,
     for ordinal, service in [42'u32, 99'u32]:
       if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
           ServiceIndex(service))):
-        var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var account = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         account.balance = AccountBalance(if ordinal == 0: (
             if incoming: 17-first else: 10-first) else: (if incoming: 31-second else: 20-second))
         if ordinal == 0 and storage:
@@ -120,7 +121,8 @@ proc rows(fixture: BatchFixture, first = 1'u64, second = 1'u64, storage = false,
           account.codeHash = CodeHash(array[32, byte](hash))
           account.minimumAccumulationGas = Gas(17)
           account.minimumTransferGas = Gas(19)
-        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(
+            ServiceMetadataBytes)).value
     result.add(copied) # Retain code, unrelated accounts, storage and opaque chapters exactly.
   if storage:
     result.add(serviceStorageEntry(ServiceIndex(42), @[73'u8], @[81'u8],
@@ -133,7 +135,7 @@ proc addChild(expected: var seq[StateEntry], service: ServiceIndex, parent: uint
     balance: AccountBalance(1), storageItems: AccountStorageItems(2),
         storageBytes: AccountStorageBytes(82),
     minimumAccumulationGas: Gas(7), minimumTransferGas: Gas(9), created: AccountSlot(uint32(slot)),
-    parent: ServiceIndex(parent)), ByteLimit(89)).value)
+    parent: ServiceIndex(parent)), ByteLimit(ServiceMetadataBytes)).value)
   expected.add(serviceRequestEntry(service, hash, RequestLength(1),
     (if provided: availableHistory(RequestSlot(uint32(slot))) else: requestedHistory()),
     RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
@@ -208,7 +210,7 @@ for checkpoint in [false, true]:
   identity[0] = 42 # E32 owner identity, independent from the offered request hash.
   let target = serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(codeHash: CodeHash(identity),
     balance: AccountBalance(5), storageItems: AccountStorageItems(2),
-        storageBytes: AccountStorageBytes(84)), ByteLimit(89)).value
+        storageBytes: AccountStorageBytes(84)), ByteLimit(ServiceMetadataBytes)).value
   let request = serviceRequestEntry(ServiceIndex(77), hash, RequestLength(3),
     unavailableHistory(RequestSlot(5), RequestSlot(7)), RequestEntryConfig(keyBytes: ByteLimit(32),
       history: RequestHistoryConfig(items: ElementLimit(3), maxBytes: ByteLimit(13)))).value

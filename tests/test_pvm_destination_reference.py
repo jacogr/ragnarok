@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Freeze complete destination-byte coverage while retaining the paper/reference disagreement."""
+"""Freeze complete destination-byte coverage while checking current paper/reference agreement."""
 import hashlib
 import json
 import unittest
@@ -21,16 +21,16 @@ class DestinationReferenceTests(unittest.TestCase):
         for at in range(116,len(data),ROW.size):
             # The two expected columns remain distinct even where scalar result values coincide.
             row=ROW.unpack_from(data,at);seen.add(row[:4])
-            destinations+=min(row[2],12)!=min(row[2]%16,12)
+            destinations+=row[4]!=row[5]
             prices+=row[6:8]!=row[8:10]
         self.assertEqual(len(seen),41*256*3)
-        self.assertEqual(destinations,22140);self.assertEqual(prices,1050)
+        self.assertEqual(destinations,0);self.assertEqual(prices,0)
 
     def test_literal_destination_edges(self):
         """Bytes 0x10 and 0x80 differ from whole-byte saturation; 0x0c/0x1c/0xff remain r12."""
-        for value,paper,jam in ((0x10,12,0),(0x80,12,0),(0x0c,12,12),(0x1c,12,12),(0xff,12,12)):
+        for value,paper,jam in ((0x10,0,0),(0x80,0,0),(0x0c,12,12),(0x1c,12,12),(0xff,12,12)):
             with self.subTest(value=value):
-                self.assertEqual(min(value,12),paper)
+                self.assertEqual(min(value%16,12),paper)
                 self.assertEqual(min(value%16,12),jam)
 
 

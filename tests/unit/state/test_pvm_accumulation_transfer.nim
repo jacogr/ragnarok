@@ -86,7 +86,7 @@ proc context(done: AccumulationDispatchResult, dimension = AccumulationDimension
 proc metadata(owner: AccumulationEffectContext, service = 42'u32): ServiceMetadata =
   let found = owner.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       service))).value
-  decodeServiceMetadata(found.bytes, ByteLimit(89)).value.metadata
+  decodeServiceMetadata(found.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 
 # Extraction copies every fixed transfer field, preserving append order and opaque memo identity.
 proc checkTransfer(owner: AccumulationEffectContext, index = 0'u64, destination = 99'u32,

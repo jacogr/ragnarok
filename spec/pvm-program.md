@@ -1,7 +1,7 @@
 # PVM program decoding, first increment
 
-Target: Gray Paper **0.8.0**, revision
-`07f041dabd073f9018b418e9ee72e79dd2185401`. `spec/pins.json` records the SHA-256
+Target: unreleased Gray Paper revision
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` (VERSION0.8.0). `spec/pins.json` records the SHA-256
 of `text/pvm.tex` as well as `text/serialization.tex`. Applicable definitions are
 Basic Definition (`deblob`, `v_blob`, `v_inst`), Instructions, Opcodes and
 Skip-distance (`eq:skip`, `eq:instructions`), Basic Blocks and Termination
@@ -36,23 +36,20 @@ addresses: execution must resolve them against the instruction address and verif
 basic-block membership. Non-applicable copied fields are zero; `shape` identifies
 which operands are meaningful. Decoding does not validate branch destinations.
 
-The one-byte table width is not restricted to 1–4 or 1–8. The pinned definition
-uses E_z with z encoded as one byte, and Appendix C defines E_0. Thus width zero
-encodes zero-valued entries without table payload bytes; widths above eight require zero high bytes because elements
-belong to the 64-bit register domain. Jump entries may name invalid destinations;
-the dynamic-jump execution rule, not deblob, rejects those destinations.
-These are the raw `decodeProgram` rules. The explicit `decodeJamProgram` entry
-point selects the maintainer's PolkaVM compatibility policy for JAM execution:
-[GP-PVM-004/005/006/007](graypaper-discrepancies.md) reject final missing successors
-and widths above4, and expose zero-width tables as semantically empty. It shares
-the bounded framing/ownership implementation; it is not an alternate-format
-fallback. JAM code is additionally bounded to32 MiB and declared jump counts to16 Mi entries,
-before width-zero normalization. These are the pinned implementation's compatibility
-bounds, distinct from caller byte/count policies and the paper's raw decoder.
-Original input bytes remain copied verbatim and code offsets do not
-change. The declared count is checked against the local jump ceiling before
-semantic normalization. Raw and JAM program owners remain independent and
-immutable; callers choose their preparation boundary explicitly.
+The current deblob equation bounds the one-byte table width to0–4, code to32 MiB,
+and declared jump count to16 Mi entries. These apply to both decoder profiles and
+are distinct from caller byte/count policies. Width zero encodes zero-valued entries
+without table payload bytes. Jump entries may name invalid destinations; dynamic
+execution rejects those destinations. The third register byte is masked to its low
+nibble before saturation at12, matching current paper and pinned PolkaVM.
+
+`decodeJamProgram` retains the still-scoped PolkaVM compatibility behavior for final
+successor validation and zero-width tables (GP-PVM-004/006). These owners expose
+zero-width tables as semantically empty. Both profiles share the framing and
+ownership implementation with exactly one wire representation; no alternate-format
+fallback is attempted. Original bytes and code offsets remain unchanged. Local jump
+policy applies to the declared count before semantic normalization. Raw and JAM
+owners remain independent immutable snapshots.
 
 Caller policy uses separate nominal blob-byte and jump-count limits. A zero-width
 table is never expanded, even with a large permitted logical count. All lengths,

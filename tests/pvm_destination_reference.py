@@ -20,7 +20,7 @@ def fixtures():
             for variant,descriptor in enumerate((0x10,0x77,0xff)):
                 registers=[VALUES[(i+3*variant)%13] for i in range(13)]
                 a,b=min(descriptor%16,12),min(descriptor//16,12)
-                paper=min(destination,12);jam=min(destination%16,12)
+                paper=min(destination%16,12);jam=min(destination%16,12)
                 expected_paper=oracle(opcode,registers[a],registers[b],registers[paper],0)
                 expected_jam=oracle(opcode,registers[a],registers[b],registers[jam],0)
                 prices=[]

@@ -109,8 +109,12 @@ def composed(values, services, limits, key_limit):
         return 'limitexceeded'
     pairs = entries(values, services)
     verdict = reference(pairs, limits)
-    if verdict in {'limitexceeded', 'duplicatekey'}:
-        return verdict # These reasons carry no serialized mapping or partial root.
+    if verdict=='limitexceeded':
+        return verdict # Complete parent capacity is checked before component encoding.
+    if any(length>=2**32-2 for _,_,_,_,requests,_ in services for _,length,_ in requests):
+        return 'invalidcomponent' # Current request encoders reject the two reserved namespace prefixes.
+    if verdict=='duplicatekey':
+        return verdict # A duplicate valid component has no partial mapping or root.
     return verdict+' '+''.join(k.hex()+':'+v.hex()+';' for k, v in pairs)
 
 
@@ -166,7 +170,7 @@ def requests():
             ''.join(' '+service_token(service) for service in services))
         expected.append(composed(modified, services, limits, key_limit))
     h = bytes(range(32))
-    base = (7, bytes(89), [(b'', b''), (b'key', b'value')], [(h, b'preimage')],
+    base = (7, bytes(105), [(b'', b''), (b'key', b'value')], [(h, b'preimage')],
         [(h, 8, (1,)), (h, 9, (1, 2, 3))], [])
     add([])
     add([base])
@@ -181,12 +185,12 @@ def requests():
         add([base], tuple(below), 3)
     add([base], tight, 2)
     add([base, base])
-    add([(7, bytes(89), [(b'x', b'a'), (b'x', b'b')], [], [], [])])
-    add([(7, bytes(89), [], [(h, b'p')], [(h, 2**32-2, ())], [])])
-    add([(7, bytes(89), [(h, b's')], [], [(h, 2**32-1, ())], [])])
+    add([(7, bytes(105), [(b'x', b'a'), (b'x', b'b')], [], [], [])])
+    add([(7, bytes(105), [], [(h, b'p')], [(h, 2**32-2, ())], [])])
+    add([(7, bytes(105), [(h, b's')], [], [(h, 2**32-1, ())], [])])
     # Opaque values can replace known raw storage entries while preserving their exact key and service identity.
     opaque = service_key('S', 7, b'unknown original key')
-    add([(7, bytes(89), [], [], [], [(opaque, b'opaque')])])
+    add([(7, bytes(105), [], [], [], [(opaque, b'opaque')])])
     # The current ambiguous widths are exercised explicitly without declaring normative conformance.
     add([], replacement=(12, privileges.wire((1, 4, 5, [2, 3], [(127, 128), (256, MAX)]))))
     add([], replacement=(13, statistics.wire(statistics.example())))
@@ -197,7 +201,7 @@ def requests():
             content = rng.randbytes(rng.randrange(80))
             hashed = hashlib.blake2b(content, digest_size=32).digest()
             times = tuple(rng.getrandbits(32) for _ in range(rng.randrange(4)))
-            metadata = b'\0'+rng.randbytes(88)
+            metadata = b'\0'+rng.randbytes(104)
             services.append((sid, metadata, [(rng.randbytes(8), content)], [(hashed, content)],
                 [(hashed, len(content), times)], []))
         add(services)
@@ -215,6 +219,8 @@ def requests():
             sid = int.from_bytes(key[1:8:2], 'little')
             if key == chapter_service(255, sid):
                 assert len(value) == 89 and value[0] == 0
+                # Derived current-schema composition; original release roots remain separately recorded.
+                value = value[:33]+bytes(8)+value[33:41]+bytes(8)+value[41:]
                 accounts[sid] = (sid, value, [], [], [], [])
         chapter_keys = {chapter_key(i) for i in range(1, 17)}
         metadata_keys = {chapter_service(255, sid) for sid in accounts}
@@ -227,8 +233,9 @@ def requests():
             accounts[sid][5].append((key, value))
         services = list(accounts.values())
         rebuilt = entries(raw_chapters, services)
-        assert sorted(rebuilt) == sorted(pairs)
-        assert tree(rebuilt)[0].hex() == provenance['state_root']
+        # Release inputs are converted explicitly: new metadata necessarily changes the derived root.
+        derived_pairs = [(k, v[:33]+bytes(8)+v[33:41]+bytes(8)+v[41:] if len(v)==89 and k[0]==255 and k==chapter_service(255,int.from_bytes(k[1:8:2],'little')) else v) for k,v in pairs]
+        assert sorted(rebuilt) == sorted(derived_pairs)
         lines.append('B 2 6 6 12 '+' '.join(token(v) for v in raw_chapters))
         expected.append('selftest')
         lines.append('S '+' '.join(map(str, (MAX, MAX, MAX, MAX, MAX, 0)))+' -'+

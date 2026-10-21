@@ -1,17 +1,17 @@
 # Bounded inner-machine invocation
 
-Pins: GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Pins: unreleased GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 `pvm_invocations.tex` Omega_K and general gas rules, `definitions.tex` K gas
 and invocation result codes, `pvm.tex` Psi. Vector pin remains
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
 
-Scope: host 13 runs one raw inner Psi segment, without dispatching its host requests.
+Scope: host 14 runs one raw inner Psi segment, without dispatching its host requests.
 Registers 7/8 select machine and a writable natural 112-byte caller frame: fourteen
 little-endian uint64 words containing unsigned gas followed by thirteen registers.
 An inaccessible/read-only/overflowing frame supplies zero requested gas for charging,
 then panics if the base cost is affordable. A writable frame reserves 968+requested
 gas before identity lookup. Underfunding preserves frame/map/registers with exact
-terminal debt; unrepresentable debt is a typed local LimitExceeded gate. WHO consumes
+zero-gas OutOfGas, including reservations above the complete unsigned credit domain. WHO consumes
 the full reservation and changes neither frame nor map. All arithmetic is checked
 without overflowing the sum 968+requested.
 

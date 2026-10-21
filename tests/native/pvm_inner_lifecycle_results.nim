@@ -11,17 +11,17 @@ proc check[T](outcome: InnerMachineResult[T], reason: InnerMachineError) =
   ## Confirm the intended alternative without making the caller's misuse statically unreachable.
   assert outcome.error == reason
 let empty = captureInnerMachines(innerLimits())
-let success = createInnerMachine(empty, MachineGas(10000), innerRegisters(), innerMemory())
+let success = preparedInnerMachine(empty, MachineGas(10000), innerRegisters(), innerMemory())
 check(success, InnerMachineError.None)
 assert success.value.machines.innerMachineCount.value == 1
-let refused = createInnerMachine(default(InnerMachines), MachineGas(10000), innerRegisters(),
+let refused = preparedInnerMachine(default(InnerMachines), MachineGas(10000), innerRegisters(),
     innerMemory())
 check(refused, InnerMachineError.InvalidContext)
 let missing = empty.innerMachine(InnerMachineId(0))
 check(missing, InnerMachineError.Missing)
 var cap = innerLimits()
 cap.items = InnerMachineLimit(0)
-let limited = createInnerMachine(captureInnerMachines(cap), MachineGas(10000), innerRegisters(),
+let limited = preparedInnerMachine(captureInnerMachines(cap), MachineGas(10000), innerRegisters(),
     innerMemory())
 check(limited, InnerMachineError.LimitExceeded)
 let defaultResult = default(InnerMachineResult[InnerMachineTransition])

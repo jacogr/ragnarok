@@ -38,7 +38,7 @@ class OperandReferenceTests(unittest.TestCase):
         self.assertEqual(values,(3,0,0,0,0,0x8008,0,0))
 
     def test_signed_offsets_and_destination_profile(self):
-        """Negative offsets retain mathematical signs; only the documented D-byte interpretation differs."""
+        """Negative offsets retain mathematical signs; both profiles follow the current low-nibble destination equation."""
         self.assertEqual(operands(bytes((40,255,0)),0,1)[-1],-1)
-        self.assertEqual(operands(bytes((190,0xff,0x10,0)),0,2)[:5],(12,12,12,12,0))
+        self.assertEqual(operands(bytes((190,0xff,0x10,0)),0,2)[:5],(12,12,12,0,0))
         self.assertEqual(operands(bytes((51,0xff,128,0)),0,2)[5],(1<<64)-128)

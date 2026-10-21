@@ -255,7 +255,7 @@ proc malformed() =
         PreimageTransitionError.MalformedState
   for mode in 0..<2:
     var current = base
-    var value = newSeq[byte](89)
+    var value = newSeq[byte](ServiceMetadataBytes)
     if mode == 0: value.setLen(88) # Exact account metadata width is mandatory.
     else: value[0] = 1 # Unknown account schema version.
     discard current.apply([StateWrite(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)),

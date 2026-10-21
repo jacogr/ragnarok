@@ -17,4 +17,6 @@ proc pageMachines*(limit = 4'u32): InnerMachines =
   ## Create a genuine empty-memory inner machine from a literal validated blob under a captured page policy.
   var cap = innerLimits()
   cap.pages = PageLimit(limit)
-  createInnerMachine(captureInnerMachines(cap), MachineGas(10000), innerRegisters(), innerMemory()).value.machines
+  let memory = innerMemory()
+  let created = preparedInnerMachine(captureInnerMachines(cap), MachineGas(10000), innerRegisters(), memory).value
+  created.machines

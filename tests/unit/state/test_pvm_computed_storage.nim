@@ -20,7 +20,7 @@ let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode canonical self-account metadata from the exact state at each maintained stage.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      42))).value.bytes, ByteLimit(89)).value.metadata
+      42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 func expectedStorage(mode: ComputedStorageMode): seq[byte] =
   ## Independent literal oracle distinguishes the selected checkpoint from both later regular and unchanged initial states.
   case mode

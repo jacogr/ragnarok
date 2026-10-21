@@ -24,16 +24,17 @@ class DeletionSpecificationGate(unittest.TestCase):
             self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),
                              pins['source_sha256'][relative])
         text = (ROOT / 'vendor/graypaper/text/accumulation.tex').read_text()
-        self.assertIn(r'(\ps¬accounts \cup \mathbf{n}) \setminus \mathbf{m}', text)
-        self.assertIn(r'\keys{\ps¬accounts \setminus \set{s}}', text)
+        self.assertIn(r'\effectivesupervisor{\ps¬accounts}{s}', text)
+        self.assertIn(r'\ao¬modifiedaccounts', text)
+        self.assertIn(r'\mathbf{m} \cup \mathbf{n}', text)
         self.assertIn('different services may not each contribute the same index', text)
         self.assertIn('the block must be considered invalid', text)
         invocation = (ROOT / 'vendor/graypaper/text/pvm_invocations.tex').read_text()
         row = invocation.split(r'\label{eq:accinvocation}', 1)[1].split(
             r'  I&\colon', 1)[0]
         self.assertIn(r'\is{\ao¬poststate}{\local¬postxferstate}', row)
-        self.assertIn(r'\when \jam¬blob = \none', row)
-        self.assertIn(r'\sa¬balance + \sum_{r \in \mathbf{x}}r_\dx¬amount', row)
+        self.assertIn(r'\otherwhen \jam¬blob = \none', row)
+        self.assertIn(r'r_\dx¬destsupervisor = \bot', row)
 
     def test_credited_skip_overlaps_removal(self):
         """Literal balances expose the discarded credit without choosing block validity."""

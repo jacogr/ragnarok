@@ -98,7 +98,7 @@ proc bootstrap(chapters: seq[StateEntry], credit = false): PreparedAccumulationI
   let raw = @[0'u8]
   let hash = array[32, byte](blake2b256(raw).value)
   var entries = @[serviceMetadataEntry(ServiceIndex(42), ServiceMetadata(codeHash: CodeHash(hash),
-    balance: AccountBalance(99)), ByteLimit(89)).value,
+    balance: AccountBalance(99)), ByteLimit(ServiceMetadataBytes)).value,
     servicePreimageEntry(ServiceIndex(42), ServicePreimageHash(hash), raw,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(1))).value,
     serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(balance: AccountBalance(123)), ByteLimit(
@@ -122,11 +122,13 @@ proc creditedContexts() =
     assert uint64(context.contextSelf.value.balance) == 119
     let account = context.contextAccounts.value.lookup(chapterServiceKey(StateChapter(255),
         ServiceIndex(42))).value
-    assert uint64(decodeServiceMetadata(account.bytes, ByteLimit(89)).value.metadata.balance) == 119
+    assert uint64(decodeServiceMetadata(account.bytes, ByteLimit(
+        ServiceMetadataBytes)).value.metadata.balance) == 119
     assert context.contextInfo.value.transfers == 0
     let prior = invocation.bootstrapService.value.servicePriorState.value.lookup(chapterServiceKey(
       StateChapter(255), ServiceIndex(42))).value
-    assert uint64(decodeServiceMetadata(prior.bytes, ByteLimit(89)).value.metadata.balance) == 99
+    assert uint64(decodeServiceMetadata(prior.bytes, ByteLimit(
+        ServiceMetadataBytes)).value.metadata.balance) == 99
 
 ## Both I dimensions preserve exact metadata/children and source ownership after locals disappear.
 proc checkPair(pair: PreparedAccumulationContexts, seed = 0) =
@@ -142,7 +144,7 @@ proc checkPair(pair: PreparedAccumulationContexts, seed = 0) =
     let state = current.contextAccounts.value
     assert uint64(decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255),
         ServiceIndex(99))).value.bytes,
-      ByteLimit(89)).value.metadata.balance) == 123
+      ByteLimit(ServiceMetadataBytes)).value.metadata.balance) == 123
     assert state.lookup(servicePreimageKey(ServiceIndex(99), default(ServicePreimageHash),
         ByteLimit(32)).value).value.bytes == @[9'u8, 8, 7]
     # Compare every ordered hash against independently patterned scalar expectations.
@@ -331,7 +333,7 @@ proc boundCase(base: OwnedReport): BlockAccumulationContexts =
   let original = context.original.snapshot.value.lookup(chapterServiceKey(StateChapter(255),
       ServiceIndex(42))).value
   assert uint64(credited.contextSelf.value.balance) == uint64(decodeServiceMetadata(original.bytes,
-      ByteLimit(89)).value.metadata.balance)+7
+      ByteLimit(ServiceMetadataBytes)).value.metadata.balance)+7
   let service = prepareBlockAccumulationService(round, InvocationServiceIndex(0),
     AccumulationServiceConfig(codeLimit: ServiceCodeLimit(0), preimageBytes: ByteLimit(1))).value
   let invocation = prepareBlockAccumulationInvocation(service, ServiceProbeLimit(1)).value

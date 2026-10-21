@@ -152,7 +152,7 @@ for count in [1, 16]:
                   start) else: 0'u64)
               assert response.action == (if funded: HostAction.Continue else: HostAction.OutOfGas)
               assert uint64(response.gas) == (if funded: credit - price else: 0'u64)
-              assert uint64(response.gasDeficit) == (if funded: 0'u64 else: 1'u64)
+              assert uint64(response.gasDeficit) == 0
               for i in 0..<13:
                 # Only funded r7 changes, and always reports full length or NONE.
                 let value = (if i != 7 or not funded: uint64(regs[i])

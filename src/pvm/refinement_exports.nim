@@ -68,7 +68,7 @@ proc exportResponse*(exports: RefinementExports, gas: MachineGas, registers: Reg
   let credit = uint64(gas)
   if credit < 3521:
     transition.response.action = HostAction.OutOfGas
-    transition.response.gasDeficit = GasDeficit(3521-credit) # Exact debt precedes memory and capacity checks.
+    transition.response.gasDeficit = GasDeficit(0) # Zero-gas OutOfGas precedes memory and capacity checks.
     return RefinementExportResult(status: RefinementExportError.None, completed: transition)
   transition.response.gas = MachineGas(credit-3521)
   let size = min(uint64(registers[8]), 4104'u64)

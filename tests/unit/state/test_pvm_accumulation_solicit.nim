@@ -56,7 +56,8 @@ proc source(present = false, history = requestedHistory(), length = 3'u32, offer
     data: seq[byte] = payload(), suffix: seq[seq[byte]] = @[@[50'u8, 0]], extra: seq[
         StateEntry] = @[]): PreparedAccumulationMachine =
   var entries = extra
-  entries.add(serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(89)).value)
+  entries.add(serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(
+      ServiceMetadataBytes)).value)
   entries.add(serviceRequestEntry(ServiceIndex(99), hash, RequestLength(length), requestedHistory(), config).value)
   var metadata = account
   if present:
@@ -101,7 +102,7 @@ proc context(done: AccumulationDispatchResult, dimension = AccumulationDimension
 # Inspect canonical current caller metadata independently from request decoding.
 proc metadata(owner: AccumulationEffectContext): ServiceMetadata =
   let found = owner.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(42))).value
-  decodeServiceMetadata(found.bytes, ByteLimit(89)).value.metadata
+  decodeServiceMetadata(found.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 
 # Assert exact guest result and unchanged advertised length on every funded row verdict.
 proc resultCode(done: AccumulationDispatchResult, code: uint64, length = 3'u64) =

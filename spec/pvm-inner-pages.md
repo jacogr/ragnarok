@@ -1,10 +1,10 @@
 # Inner-machine page management
 
-Pins: GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Pins: unreleased GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 `pvm_invocations.tex` Omega_Z and `definitions.tex` Z gas constants; vectors
-`d3c089c9a1d5352ad353626d7a2db8589f137b2a`. No pin changes.
+`d3c089c9a1d5352ad353626d7a2db8589f137b2a`. Historical vectors remain release-era evidence.
 
-Scope: host 12 on the invocation-local immutable inner-machine map. Registers
+Scope: host 13 on the invocation-local immutable inner-machine map. Registers
 7/8/9/10 select machine ID, starting page, count and mode. Charge 212+118*c for
 mode 0, 275+121*c for modes 1/2, 130+29*c for modes 3/4, and 80 otherwise.
 Affordable calls check WHO before malformed geometry/mode (HUH). Require p>=16
@@ -21,10 +21,9 @@ inaccessible pages are represented sparsely as absent, recovering local capacity
 
 A generic atomic memory page-range update preflights the complete retained-page
 capacity before cloning any bytes. Local capacity refusal exposes neither host
-response nor map successor. Unrepresentable natural gas costs/debts also refuse
-locally as LimitExceeded: multiplication is checked before evaluation and a terminal
-deficit must fit the engine's existing <=2^63 representation. No wrapping, clamping
-or artificial HUH/WHO/OOG is used for this implementation gate. All representable
+response nor map successor. Natural costs above the unsigned gas domain also return zero-gas OutOfGas:
+prove multiplication fits before evaluating it, then compare before subtraction.
+No representation limit creates a local refusal for protocol underfunding.
 underfunded calls preserve exact debt and every pre-call owner/register.
 
 Completion checks: literal gas costs and exact underfunding for all modes; WHO/HUH

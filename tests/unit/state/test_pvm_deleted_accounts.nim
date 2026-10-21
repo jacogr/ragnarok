@@ -49,7 +49,7 @@ proc targetEntries(service: uint32, balance: uint64): seq[StateEntry] =
   identity[0] = 42
   @[serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(codeHash: CodeHash(identity),
       balance: AccountBalance(balance), storageItems: AccountStorageItems(2),
-          storageBytes: AccountStorageBytes(84)), ByteLimit(89)).value,
+          storageBytes: AccountStorageBytes(84)), ByteLimit(ServiceMetadataBytes)).value,
     serviceRequestEntry(ServiceIndex(service), hash, RequestLength(3),
       unavailableHistory(RequestSlot(5), RequestSlot(7)), RequestEntryConfig(keyBytes: ByteLimit(32),
         history: RequestHistoryConfig(items: ElementLimit(3), maxBytes: ByteLimit(13)))).value,
@@ -162,7 +162,8 @@ proc expected(fixture: BatchFixture, removed: seq[uint32], incoming = true, stor
       for ordinal, service in [42'u32, 99'u32]:
         if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
             ServiceIndex(service))):
-          var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+          var account = decodeServiceMetadata(entry.value, ByteLimit(
+              ServiceMetadataBytes)).value.metadata
           account.balance = AccountBalance(if ordinal == 0: (
               if incoming: 17'u64 else: 10'u64)+reclaimed-(if created or
                   recreated: 1'u64 else: 0'u64) else: (
@@ -174,7 +175,8 @@ proc expected(fixture: BatchFixture, removed: seq[uint32], incoming = true, stor
             account.codeHash = CodeHash(array[32, byte](hash))
             account.minimumAccumulationGas = Gas(17)
             account.minimumTransferGas = Gas(19)
-          copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+          copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(
+              ServiceMetadataBytes)).value
       result.add(copied) # Retain all unrelated original chapters, code and account entries.
   if storage:
     result.add(serviceStorageEntry(ServiceIndex(42), @[73'u8], @[81'u8],
@@ -185,7 +187,7 @@ proc expected(fixture: BatchFixture, removed: seq[uint32], incoming = true, stor
       balance: AccountBalance(1), storageItems: AccountStorageItems(2),
           storageBytes: AccountStorageBytes(84),
       minimumAccumulationGas: Gas(7), minimumTransferGas: Gas(9), created: AccountSlot(uint32(
-          slot)), parent: ServiceIndex(42)), ByteLimit(89)).value)
+          slot)), parent: ServiceIndex(42)), ByteLimit(ServiceMetadataBytes)).value)
     result.add(serviceRequestEntry(child, hash, RequestLength(3), requestedHistory(),
       RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
           3), maxBytes: ByteLimit(13)))).value)
@@ -277,7 +279,8 @@ block participating_skip_conflict:
   for incoming in [false, true]:
     var fixture = setup(envelope(target = 99), incoming = incoming)
     let old = decodeServiceMetadata(fixture.state.snapshot.value.lookup(chapterServiceKey(
-        StateChapter(255), ServiceIndex(99))).value.bytes, ByteLimit(89)).value.metadata
+        StateChapter(255), ServiceIndex(99))).value.bytes, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
     let codeKey = servicePreimageKey(ServiceIndex(99), ServicePreimageHash(array[32, byte](
         old.codeHash)), ByteLimit(32)).value
     let requestKey = integrationRequest(99, @[81'u8]).key
@@ -300,14 +303,14 @@ block participating_skip_conflict:
     let skipped = finishUninvokedAccumulation(service).value
     assert skipped.skipInfo.value.code == AccumulationCodeStatus.Missing, "real owned target has missing executable code"
     let credited = skipped.skipState.value.lookup(accountKey).value.bytes
-    assert uint64(decodeServiceMetadata(credited, ByteLimit(89)).value.metadata.balance) ==
-        (if incoming: 31'u64 else: 20'u64),
+    assert uint64(decodeServiceMetadata(credited, ByteLimit(
+        ServiceMetadataBytes)).value.metadata.balance) ==(if incoming: 31'u64 else: 20'u64),
       "missing-code skips retain actual incoming credit without executing"
     let selected = normalizeAccumulationOutcome(first).value.outcomeContext.value
     let beneficiary = selected.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255),
         ServiceIndex(42))).value.bytes
-    assert uint64(decodeServiceMetadata(beneficiary, ByteLimit(89)).value.metadata.balance) ==
-        (if incoming: 37'u64 else: 30'u64),
+    assert uint64(decodeServiceMetadata(beneficiary, ByteLimit(
+        ServiceMetadataBytes)).value.metadata.balance) ==(if incoming: 37'u64 else: 30'u64),
       "eject reclaims only the target balance visible in the common prior"
     let complete = prepareCompleteAccumulationBatch(fixture.inputs, prior, [first], [skipped], slot,
         batchPolicy(deletedAccounts = 1))
@@ -430,7 +433,6 @@ block detached_owner:
     let context = normalizeAccumulationOutcome(first).value.outcomeContext.value
     var copied = context.effectDeletedAccountAt(AccumulationDeletedAccountIndex(0)).value
     copied.service = ServiceIndex(0)
-    copied.requestKey = chapterKey(StateChapter(250))
     assert uint32(context.effectDeletedAccountAt(AccumulationDeletedAccountIndex(
         0)).value.service) == 77, "copied facts cannot mutate deletion proof backing"
     owned = prepare(local, first, execute(local, 1)).value

@@ -98,7 +98,7 @@ let storeBlob = invokeBlob([@[59'u8, 7, 0, 0, 1], @[50'u8, 0]])
 let storeSource = invokeMachines(storeBlob)
 let mapped = innerPagesResponse(storeSource, MachineGas(10000), pageRegisters(), invokeMemory(
     storeBlob)).value.machines
-let pair = createInnerMachine(mapped, MachineGas(10000), innerRegisters(), invokeMemory()).value.machines
+let pair = preparedInnerMachine(mapped, MachineGas(10000), innerRegisters(), invokeMemory()).value.machines
 let stored = run(pair, invokeMemory(storeBlob)).value
 assert stored.machines.innerMachine(InnerMachineId(0)).value.memory.pageImage(PageIndex(
     16)).value.bytes[0] == 7
@@ -117,24 +117,24 @@ let missing = run(source, memory, invokeArgs(id = high(uint64)), 1068).value
 assert uint64(missing.response.registers[7]) == high(uint64)-3 and uint64(missing.response.gas) == 0
 assert invokeFrame(missing.response.memory)[0] == 100
 let oog = run(source, memory, invokeArgs(id = high(uint64)), 1067).value
-assert oog.response.action == HostAction.OutOfGas and uint64(oog.response.gasDeficit) == 1
+assert oog.response.action == HostAction.OutOfGas and uint64(oog.response.gasDeficit) == 0
 assert uint64(oog.response.registers[7]) == high(uint64) and invokeFrame(oog.response.memory)[0] == 100
 # Read-only/inaccessible/overflowing/partly writable frames request zero gas and panic only after affordability.
 for address in [65536'u64, 0, 204799, 0x100000000'u64, high(uint64)]:
   let bad = run(source, memory, invokeArgs(id = high(uint64), address = address), 968).value
   assert bad.response.action == HostAction.Panic and uint64(bad.response.gas) == 0
   let short = run(source, memory, invokeArgs(address = address), 967).value
-  assert short.response.action == HostAction.OutOfGas and uint64(short.response.gasDeficit) == 1
+  assert short.response.action == HostAction.OutOfGas and uint64(short.response.gasDeficit) == 0
 # Unsigned high fuel survives E8 decode; checked reservation/debt never overflows when 968+fuel exceeds uint64.
 let huge = invokeMemory(fuel = high(uint64))
-assert run(source, huge, credit = 0).error == InnerMachineError.LimitExceeded
+assert run(source, huge, credit = 0).value.response.action == HostAction.OutOfGas
 let one = run(source, huge, credit = high(uint64)).value
-assert one.response.action == HostAction.OutOfGas and uint64(one.response.gasDeficit) == 968
+assert one.response.action == HostAction.OutOfGas and uint64(one.response.gasDeficit) == 0
 let highFuel = run(source, invokeMemory(fuel = 0x8000000000000000'u64), credit = high(uint64)).value
 assert uint64(highFuel.response.gas) == high(uint64)-968-price(source)
 assert invokeFrame(highFuel.response.memory)[0] == 0x8000000000000000'u64-price(source)
 let boundary = run(source, invokeMemory(fuel = 0x8000000000000000'u64-968), credit = 0).value
-assert uint64(boundary.response.gasDeficit) == 0x8000000000000000'u64
+assert uint64(boundary.response.gasDeficit) == 0
 # Independent per-segment instruction/gas-analysis limits retain exact typed local reasons, without frame/map successors.
 for limit in 0..<2:
   var cap = innerLimits()

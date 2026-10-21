@@ -39,6 +39,7 @@ type
   TransferMemo* = distinct array[128, byte] ## A transfer memo always owns exactly 128 octets and has no length discriminator.
   DeferredTransfer* {.byref.} = object ## Transfers own every field; the standalone C.2 representation includes the outer tag one.
     source*, destination*: ServiceIndex
+    destinationSupervisor*: bool ## Select the supervisor balance of the destination service.
     amount*: TransferBalance
     memo*: TransferMemo
     gas*: Gas
@@ -306,28 +307,32 @@ proc decodeTransfer*(input: openArray[byte], maxBytes: ByteLimit): RecordResult[
   if tag.value != 1: return RecordResult[TransferRead](
       status: RecordError.InvalidTag) # Only transfer tag one belongs here.
   # The complete fixed fields and 128-byte memo must be present before copying any application value.
-  if input.len-cursor < 152: return RecordResult[TransferRead](status: RecordError.Truncated)
-  if uint64(maxBytes) < 153: return RecordResult[TransferRead](
+  if input.len-cursor < 153: return RecordResult[TransferRead](status: RecordError.Truncated)
+  if uint64(maxBytes) < 154: return RecordResult[TransferRead](
       status: RecordError.LimitExceeded) # Budget includes tag one.
+  if input[cursor+8] > 1:
+    return RecordResult[TransferRead](status: RecordError.NonCanonical) # A Boolean has exactly one canonical octet.
   let value = DeferredTransfer(source: ServiceIndex(number(input, cursor, 4)),
-    destination: ServiceIndex(number(input, cursor+4, 4)), amount: TransferBalance(number(input,
-        cursor+8, 8)),
-    memo: TransferMemo(fixed[128](input, cursor+16)), gas: Gas(number(input, cursor+144, 8)))
+    destination: ServiceIndex(number(input, cursor+4, 4)),
+    destinationSupervisor: input[cursor+8] == 1, amount: TransferBalance(number(input,
+        cursor+9, 8)),
+    memo: TransferMemo(fixed[128](input, cursor+17)), gas: Gas(number(input, cursor+145, 8)))
   RecordResult[TransferRead](status: RecordError.None, completed: TransferRead(value: value,
-      consumed: cursor+152))
+      consumed: cursor+153))
 
 proc encodeTransfer*(value: DeferredTransfer, maxBytes: ByteLimit,
     output: var openArray[byte]): RecordResult[int] =
   ## Encode all fixed transfer fields atomically, with E8 gas and a fixed memo rather than operand gas framing.
   # Explicit serialized budget precedes capacity and alias decisions.
-  if uint64(maxBytes) < 153: return RecordResult[int](status: RecordError.LimitExceeded)
-  if output.len < 153: return RecordResult[int](status: RecordError.OutputTooSmall) # No partial memo/header can be emitted.
-  if overlaps(unsafeAddr value, sizeof(value), addr output[0], 153):
+  if uint64(maxBytes) < 154: return RecordResult[int](status: RecordError.LimitExceeded)
+  if output.len < 154: return RecordResult[int](status: RecordError.OutputTooSmall) # No partial memo/header can be emitted.
+  if overlaps(unsafeAddr value, sizeof(value), addr output[0], 154):
     return RecordResult[int](status: RecordError.AliasedBuffers) # Protect the complete borrowed fixed descriptor.
   var cursor = 0
   putNatural(1, output, cursor)
   put(uint64(value.source), 4, output, cursor)
   put(uint64(value.destination), 4, output, cursor)
+  put((if value.destinationSupervisor: 1'u64 else: 0'u64), 1, output, cursor)
   put(uint64(value.amount), 8, output, cursor)
   put(array[128, byte](value.memo), output, cursor)
   put(uint64(value.gas), 8, output, cursor)
@@ -586,9 +591,9 @@ proc accumulationInputSize*(value: AccumulationSource, limits: OperandLimits): R
     measure(value.operandValue, limits)
   of Transfer:
     # Fixed transfers do not consume an operand blob budget, but still need their complete wire cap.
-    if uint64(limits.maxBytes) < 153:
+    if uint64(limits.maxBytes) < 154:
       return RecordResult[int](status: RecordError.LimitExceeded)
-    RecordResult[int](status: RecordError.None, completed: 153)
+    RecordResult[int](status: RecordError.None, completed: 154)
 
 proc encodeAccumulationInput*(value: AccumulationSource, limits: OperandLimits,
     output: var openArray[byte]): RecordResult[int] =

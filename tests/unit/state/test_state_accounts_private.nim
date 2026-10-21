@@ -27,11 +27,11 @@ proc source(marker: byte): ServiceMetadata =
 ## Return a fixed value after source fields and all mutable wire arrays retire.
 proc escaped(marker: byte): ServiceMetadataRead =
   var original = source(marker)
-  let encoded = serviceMetadataEntry(ServiceIndex(high(uint32)), original, ByteLimit(89))
+  let encoded = serviceMetadataEntry(ServiceIndex(high(uint32)), original, ByteLimit(ServiceMetadataBytes))
   assert encoded.error == ServiceMetadataError.None
   original = default(ServiceMetadata)
   var wire = encoded.value.value
-  let parsed = decodeServiceMetadata(wire, ByteLimit(89))
+  let parsed = decodeServiceMetadata(wire, ByteLimit(ServiceMetadataBytes))
   assert parsed.error == ServiceMetadataError.None
   result = parsed.value
   # No decoded fixed field may retain caller bytes or detached coordinates.
@@ -44,7 +44,7 @@ proc cycle() =
   first = escaped(29)
   assert array[32, byte](retained.metadata.codeHash)[0] == 17
   assert array[32, byte](first.metadata.codeHash)[0] == 29
-  assert retained.consumed == 89
+  assert retained.consumed == ServiceMetadataBytes
   var copy = retained.metadata
   copy = default(ServiceMetadata)
   first = default(ServiceMetadataRead)
@@ -60,15 +60,16 @@ proc cycle() =
   assert uint32(retained.metadata.parent) == high(uint32)
   var wire = serviceMetadataEntry(ServiceIndex(0), source(43), ByteLimit(high(uint64))).value.value
   wire.add(255'u8)
-  let suffix = decodeServiceMetadata(wire, ByteLimit(89))
-  assert suffix.error == ServiceMetadataError.None and suffix.value.consumed == 89
+  let suffix = decodeServiceMetadata(wire, ByteLimit(ServiceMetadataBytes))
+  assert suffix.error == ServiceMetadataError.None and suffix.value.consumed == ServiceMetadataBytes
   wire.setLen(88)
   let beforeFailure = getOccupiedMem()
-  assert decodeServiceMetadata(wire, ByteLimit(89)).error == ServiceMetadataError.Truncated
+  assert decodeServiceMetadata(wire, ByteLimit(ServiceMetadataBytes)).error ==
+      ServiceMetadataError.Truncated
   assert decodeServiceMetadata([], ByteLimit(88)).error == ServiceMetadataError.LimitExceeded
-  assert decodeServiceMetadata([1'u8], ByteLimit(89)).error ==
+  assert decodeServiceMetadata([1'u8], ByteLimit(ServiceMetadataBytes)).error ==
       ServiceMetadataError.UnsupportedVersion
-  assert decodeServiceMetadata([128'u8, 0], ByteLimit(89)).error ==
+  assert decodeServiceMetadata([128'u8, 0], ByteLimit(ServiceMetadataBytes)).error ==
       ServiceMetadataError.NonCanonical
   assert beforeFailure == getOccupiedMem()
   assert serviceMetadataEntry(ServiceIndex(0), source(43), ByteLimit(88)).error ==

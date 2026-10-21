@@ -28,7 +28,7 @@ def example(kind,gas=128,tag=0,payload=b'abc',trace=b'de'):
         return (bytes([1])*32,2**32-1,bytes([2])*32,1023,bytes([3])*32,65535)
     # A memo has exactly 128 bytes and no natural length prefix; transfer gas is E8.
     if kind=='T':
-        return (2**32-1,17,MAX,bytes(range(128)),gas)
+        return (2**32-1,17,0,MAX,bytes(range(128)),gas)
     return (bytes([1])*32,bytes([2])*32,bytes([3])*32,bytes([4])*32,gas,tag,payload if tag==0 else b'',trace)
 
 
@@ -40,8 +40,8 @@ def wire(kind,value):
         return package+length.to_bytes(4,'little')+erasure+shards.to_bytes(2,'little')+segment+count.to_bytes(2,'little')
     # The transfer's outer discriminator is part of its standalone encoding, not a separate union prefix.
     if kind=='T':
-        source,dest,amount,memo,gas=value
-        return b'\1'+source.to_bytes(4,'little')+dest.to_bytes(4,'little')+amount.to_bytes(8,'little')+memo+gas.to_bytes(8,'little')
+        source,dest,supervisor,amount,memo,gas=value
+        return b'\1'+source.to_bytes(4,'little')+dest.to_bytes(4,'little')+bytes([supervisor])+amount.to_bytes(8,'little')+memo+gas.to_bytes(8,'little')
     package,segment,authorizer,payload_hash,gas,tag,payload,trace=value
     work=natural(tag)+(natural(len(payload))+payload if tag==0 else b'')
     return b'\0'+package+segment+authorizer+payload_hash+natural(gas)+work+natural(len(trace))+trace
@@ -131,10 +131,12 @@ def parse(kind,data,config):
         raise Rejected('invalidtag')
     # Transfers require their entire fixed body before whole-wire policy and field observation.
     if kind=='T':
-        raw,cursor=fixed(data,cursor,152)
+        raw,cursor=fixed(data,cursor,153)
         budget(cursor,maximum)
+        if raw[8]>1:
+            raise Rejected('noncanonical')
         return kind,cursor,(int.from_bytes(raw[:4],'little'),int.from_bytes(raw[4:8],'little'),
-            int.from_bytes(raw[8:16],'little'),raw[16:144],int.from_bytes(raw[144:152],'little'))
+            raw[8],int.from_bytes(raw[9:17],'little'),raw[17:145],int.from_bytes(raw[145:153],'little'))
     hashes,cursor=fixed(data,cursor,128);budget(cursor,maximum)
     gas,cursor=read_natural(data,cursor);budget(cursor,maximum)
     work,cursor=read_natural(data,cursor)
@@ -172,7 +174,7 @@ def encode(kind,value,config,capacity):
             availability_policy(value,config)
         elif actual=='T':
             # Transfer payloads do not consume any operand-only blob ceilings.
-            budget(153,maximum)
+            budget(154,maximum)
         else:
             # Operand gas is natural; each complete framing piece contributes to the same serialized budget.
             cursor=129;budget(cursor,maximum)
@@ -217,7 +219,11 @@ def requests():
         lines.append(' '.join(['E',kind]+[str(v) for v in config]+[str(capacity),fields(kind,value)]))
         expected.append(encode(kind,value,config,capacity))
 
-    examples=[('A',example('A')),('T',example('T'))]
+    examples=[('A',example('A')),('T',example('T')),('T',(*example('T')[:2],1,*example('T')[3:]))]
+    # The destination-supervisor selector has one canonical boolean octet.
+    for tag in (2,127,255):
+        bad=bytearray(wire('T',example('T')));bad[9]=tag
+        dec('T',bytes(bad));dec('I',bytes(bad))
     # Every work-result alternative is a valid operand value, including empty success and error traces.
     for tag in range(7):
         examples.append(('O',example('O',tag=tag)))

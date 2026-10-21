@@ -69,7 +69,7 @@ proc accounts(done: AccumulationDispatchResult, dimension = AccumulationDimensio
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes,
-    ByteLimit(89)).value.metadata
+    ByteLimit(ServiceMetadataBytes)).value.metadata
 
 ## Find the exact one-byte raw key from the maintained namespace constructor.
 proc stored(state: StateStoreSnapshot): StateStoreResult[StateValue] =

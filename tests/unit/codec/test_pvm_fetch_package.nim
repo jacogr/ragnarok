@@ -106,7 +106,7 @@ for selector in [8'u64, 9'u64, 13'u64]:
           let count = min(requested, uint64(bytes.len) - start)
           if credit < cost:
             # Underflow must precede return assignment and all memory writes.
-            assert reply.action == HostAction.OutOfGas and uint64(reply.gasDeficit) == 1
+            assert reply.action == HostAction.OutOfGas and uint64(reply.gasDeficit) == 0
             assert uint64(reply.gas) == 0
           else:
             # Full selected length is returned even when only a suffix or no bytes were requested.

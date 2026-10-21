@@ -29,7 +29,7 @@ proc integrationRequest*(service: uint32, bytes: seq[byte], history: seq[byte] =
 proc integrationEntries*(): seq[StateEntry] =
   ## Posterior metadata deliberately differs from the contexts' credited source; fulfillment must preserve it exactly.
   result = @[serviceMetadataEntry(ServiceIndex(42), ServiceMetadata(balance: AccountBalance(123)),
-      ByteLimit(89)).value,
+      ByteLimit(ServiceMetadataBytes)).value,
     serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(balance: AccountBalance(456)), ByteLimit(
         89)).value,
     StateEntry(key: chapterKey(StateChapter(250)), value: @[7'u8, 8]),
@@ -47,7 +47,8 @@ proc integrationStoreLimits*(writes = 100'u64, bytes = 100000'u64): StateStoreLi
 
 proc integrationContexts*(sameBytes = false): seq[AccumulationEffectContext] =
   ## A/B/A inspect eight contributions but union into four pairs and six bytes; original contexts remain immutable.
-  var entries = @[serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(89)).value]
+  var entries = @[serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(
+      ServiceMetadataBytes)).value]
   for service in [42'u32, 99'u32]:
     for bytes in [newSeq[byte](0), @[2'u8], @[2'u8, 0], @[9'u8, 8, 7]]:
       entries.add(integrationRequest(service, bytes)) # Requests are validated when each source provision is recorded.
@@ -69,7 +70,8 @@ proc integrationNumericContexts*(): seq[AccumulationEffectContext] =
   ## Targets 1/256 distinguish numeric service order from little-endian service transport order.
   var entries: seq[StateEntry] = @[]
   for service in [1'u32, 256'u32]:
-    entries.add(serviceMetadataEntry(ServiceIndex(service), default(ServiceMetadata), ByteLimit(89)).value)
+    entries.add(serviceMetadataEntry(ServiceIndex(service), default(ServiceMetadata), ByteLimit(
+        ServiceMetadataBytes)).value)
     entries.add(integrationRequest(service, @[2'u8])) # Both existing targets explicitly request the same bytes.
   let initial = prepareAccumulationEffects(preparedEffectContexts(entries)).value
   let limits = AccumulationProvisionLimits(items: ElementLimit(1), perBlob: ByteLimit(1),

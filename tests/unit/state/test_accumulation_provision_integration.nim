@@ -183,7 +183,7 @@ let numeric = prepareAccumulationProvisions(integrationNumericContexts(), integr
 var numericEntries = entries
 for service in [1'u32, 256'u32]:
   numericEntries.add(serviceMetadataEntry(ServiceIndex(service), default(ServiceMetadata),
-      ByteLimit(89)).value)
+      ByteLimit(ServiceMetadataBytes)).value)
   numericEntries.add(integrationRequest(service, @[
       2'u8])) # Posterior target map is explicit and independent of the contexts' source.
 var numericStore = newStateStore(numericEntries, integrationStoreLimits()).value

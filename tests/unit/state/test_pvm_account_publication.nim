@@ -58,7 +58,7 @@ proc envelope(gas: uint32, checkpoint = false, panic = false, provide = false,
 # Extract canonical metadata by exact own service key; no selected observation supplies the expected values.
 proc metadata(state: StateStoreSnapshot, service: uint32): ServiceMetadata =
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255),
-    ServiceIndex(service))).value.bytes, ByteLimit(89)).value.metadata
+    ServiceIndex(service))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 
 # Plan complete coverage while permitting input execution order to be reversed independently of numeric service order.
 proc prepare(fixture: BatchFixture, first, second: AccumulationDispatchResult,
@@ -76,7 +76,8 @@ proc expected(fixture: BatchFixture, firstGas, secondGas: uint32, incoming = tru
     for ordinal, service in [42'u32, 99'u32]:
       if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
           ServiceIndex(service))):
-        var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var account = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         if incoming:
           account.balance = AccountBalance(if ordinal ==
               0: 17 else: 31) # Distinct original balances plus actual incoming amounts.
@@ -85,7 +86,8 @@ proc expected(fixture: BatchFixture, firstGas, secondGas: uint32, incoming = tru
           account.codeHash = CodeHash(digest)
           account.minimumAccumulationGas = Gas(uint64(gas))
           account.minimumTransferGas = Gas(uint64(gas)+1) # Full independently encoded metadata must match.
-        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(
+            ServiceMetadataBytes)).value
     rows.add(copied) # Preserve all unrelated code, storage, request and opaque chapter entries.
   newStateStore(rows, integrationStoreLimits()).value
 
@@ -194,7 +196,8 @@ block late_backend_atomicity:
     account.codeHash = CodeHash(digest)
     account.minimumAccumulationGas = Gas(if service == 42: 7 else: 19)
     account.minimumTransferGas = Gas(if service == 42: 8 else: 20)
-    let entry = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+    let entry = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(
+        ServiceMetadataBytes)).value
     writes.add(StateWrite(key: entry.key, kind: StateWriteKind.Put, value: entry.value))
   failHash(0)
   discard credited.apply(writes).value

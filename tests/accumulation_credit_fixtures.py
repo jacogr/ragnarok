@@ -17,7 +17,7 @@ from state_trie_oracle import tree
 # Bind arbitrary metadata and unrelated entries to independently computed complete embedding-map roots.
 def row(name, service, source, amounts, expected_balance):
     before = wire(source)
-    after = before[:33]+expected_balance.to_bytes(8, 'little')+before[41:]
+    after = before[:41]+expected_balance.to_bytes(8, 'little')+before[49:]
     entries = [(key(service), before), (chapter_key(250), b'opaque')]
     prior, _ = tree(entries)
     posterior, _ = tree([(key(service), after), entries[1]])
@@ -28,7 +28,8 @@ def row(name, service, source, amounts, expected_balance):
 # Published commands expose a literal transfer amount and recipient; retain only their balance projection.
 def published():
     result = []
-    # Both populations carry the same live-recipient scenario at the pinned vector revision.
+    # Both release populations carry the same liquid-credit scenario. Embed their balance
+    # projection into current metadata with explicit zero supervisor fields; these roots are derived.
     for chain in ('tiny', 'full'):
         data = blob(f'stf/accumulate/{chain}/transfer_for_live_service-1.json')
         command = bytes.fromhex(data['input']['reports'][0]['results'][0]['result']['ok'][2:])
@@ -39,8 +40,8 @@ def published():
         final = next(a['data']['service'] for a in data['post_state']['accounts'] if a['id'] == service)
         assert service == 1 and amount == 100 and final['balance'] == original['balance']+amount
         source = (bytes.fromhex(original['code_hash'][2:]),
-                  tuple(original[k] for k in ('balance', 'min_item_gas', 'min_memo_gas', 'bytes', 'deposit_offset')),
-                  tuple(original[k] for k in ('items', 'creation_slot', 'last_accumulation_slot', 'parent_service')))
+                  (original['balance'], 0, *(original[k] for k in ('min_item_gas', 'min_memo_gas', 'bytes', 'deposit_offset'))),
+                  (*tuple(original[k] for k in ('items', 'creation_slot', 'last_accumulation_slot', 'parent_service')), 0, 0))
         result.append(row(chain, service, source, [amount], final['balance']))
     return result
 
@@ -54,7 +55,7 @@ def prepare(folder):
                                      *([rng.randrange(2**48) for _ in range(8)] for _ in range(32)))):
         balance = 0 if index < 3 else rng.randrange(2**48)
         source = (bytes(rng.randrange(256) for _ in range(32)),
-                  (balance, 17, 19, 23, 29), (31, 37, 41, 43))
+                  (balance, 47, 17, 19, 23, 29), (31, 37, 41, 43, 53, 59))
         lines.append(row(f'authored-{index}', 42, source, amounts, balance+sum(amounts)))
     folder.mkdir(parents=True, exist_ok=True)
     path = folder/'accumulation-credit.txt'

@@ -64,7 +64,8 @@ proc authorizationFixture*(instructions: openArray[seq[byte]], metadata: seq[byt
   let hash = array[32, byte](blake2b256(result.preimage).value)
   var entries: seq[StateEntry] = @[]
   if not missing:
-    let account = serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(), ByteLimit(89)).value
+    let account = serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(), ByteLimit(
+        ServiceMetadataBytes)).value
     entries.add(if malformedState: StateEntry(key: account.key, value: @[1'u8]) else: account)
     var stored = result.preimage
     if wrongHash: stored[stored.len-1] = stored[stored.len-1] xor 1 # Keep the key/history while corrupting its value.

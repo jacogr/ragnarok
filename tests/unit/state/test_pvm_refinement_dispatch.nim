@@ -37,7 +37,8 @@ proc state(): StateStoreSnapshot =
   hash[0] = 73
   var entries: seq[StateEntry] = @[]
   for service in [42'u32, 99]:
-    entries.add(serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(), ByteLimit(89)).value)
+    entries.add(serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(), ByteLimit(
+        ServiceMetadataBytes)).value)
     let bytes = if service == 42: @[21'u8, 22, 23] else: @[31'u8, 32, 33]
     entries.add(servicePreimageEntry(ServiceIndex(service), ServicePreimageHash(hash), bytes,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(3))).value)

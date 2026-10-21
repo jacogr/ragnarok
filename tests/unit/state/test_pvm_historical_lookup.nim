@@ -30,7 +30,8 @@ proc fixture(history: seq[byte], anchor = 20'u32, damage = 0,
   var entries: seq[StateEntry] = @[]
   for service in [42'u32, 99, 0, high(uint32), 77]:
     if service != 77 and not (service == 42 and damage == 6):
-      var account = serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(), ByteLimit(89)).value
+      var account = serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(), ByteLimit(
+          ServiceMetadataBytes)).value
       if service == 42 and damage == 3: account.value = @[0'u8] # Malformed selected metadata is a local error.
       entries.add(account)
     if not (service == 42 and damage == 1):
