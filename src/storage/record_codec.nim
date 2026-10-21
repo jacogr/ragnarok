@@ -106,15 +106,17 @@ proc extent(batch: TrieExport, records: openArray[TrieRecord], limits: RecordLim
   RecordResult[int](status: RecordError.None, completed: int(size))
 
 proc validateRecords(batch: TrieExport, records: openArray[TrieRecord], limits: RecordLimits,
-    collection: bool): RecordError =
-  ## Verify each physical node commitment; graph completeness/routing require the repository layer.
+    collection: bool, ordered = false): RecordError =
+  ## Verify each physical node commitment; only the private decoder's strict first pass can supply order.
   let checked = extent(batch, records, limits, collection)
   if checked.error != RecordError.None: return checked.error
-  var identities = newSeq[StateNodeHash](records.len)
-  for i, record in records: identities[i] = record.digest # Fixed scratch has been preflighted.
-  identities.sort(compareHash)
-  for i in 1..<identities.len:
-    if compareHash(identities[i-1], identities[i]) == 0: return RecordError.DuplicateNode
+  if not ordered:
+    # General mutable records need independent duplicate scratch; ordered decoding already proved strict identities.
+    var identities = newSeq[StateNodeHash](records.len)
+    for i, record in records: identities[i] = record.digest # Fixed scratch has been preflighted.
+    identities.sort(compareHash)
+    for i in 1..<identities.len:
+      if compareHash(identities[i-1], identities[i]) == 0: return RecordError.DuplicateNode
   for record in records:
     var encoded = default(EncodedStateNode)
     if record.kind == TrieRecordKind.Leaf:
@@ -178,7 +180,8 @@ proc encodeRecords(batch: TrieExport, records: openArray[TrieRecord], limits: Re
       putHash(output, offset, array[32, byte](record.right)); offset += 32
   RecordResult[seq[byte]](status: RecordError.None, completed: output)
 
-proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: bool): RecordResult[TrieExport] =
+proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: bool,
+    ordered = false): RecordResult[TrieExport] =
   ## Bound and scan the entire borrowed input before allocating records or invoking crypto.
   if uint64(input.len) > uint64(limits.encoded): return RecordResult[TrieExport](
       status: RecordError.LimitExceeded)
@@ -207,8 +210,17 @@ proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: boo
   let checked = checkMetadata(batch, count, limits, collection)
   if checked != RecordError.None: return RecordResult[TrieExport](status: checked)
   var bytes = 0'u64
+  var previous = default(StateNodeHash)
   for i in 0..<int(count):
     if input.len-offset < 33: return RecordResult[TrieExport](status: RecordError.InvalidFormat)
+    if ordered:
+      # Prove canonical unique physical order from borrowed bytes before allocating any records or hash scratch.
+      let digest = StateNodeHash(readHash(input, offset+1))
+      if i > 0:
+        let order = compareHash(previous, digest)
+        if order == 0: return RecordResult[TrieExport](status: RecordError.DuplicateNode)
+        if order > 0: return RecordResult[TrieExport](status: RecordError.NonCanonical)
+      previous = digest
     let tag = input[offset]
     offset += 33 # Both record forms begin with a tag and complete digest.
     if tag == 0:
@@ -248,7 +260,7 @@ proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: boo
       batch.records[i] = TrieRecord(kind: TrieRecordKind.Branch, digest: digest,
         left: StateNodeHash(readHash(input, offset)), right: StateNodeHash(readHash(input, offset+32)))
       offset += 64
-  let validated = validateRecords(batch, batch.records, limits, collection)
+  let validated = validateRecords(batch, batch.records, limits, collection, ordered)
   if validated != RecordError.None: return RecordResult[TrieExport](status: validated)
   RecordResult[TrieExport](status: RecordError.None, completed: batch)
 
@@ -275,6 +287,15 @@ proc decodeRecordCollection*(input: openArray[byte], limits: RecordLimits): Reco
     RecordCollection] =
   ## Preflight every extent before allocation/hashing; complete graphs require separate admission.
   let decoded = decodeRecords(input, limits, true)
+  if decoded.error != RecordError.None: return RecordResult[RecordCollection](status: decoded.error)
+  RecordResult[RecordCollection](status: RecordError.None,
+    completed: RecordCollection(records: decoded.value.records))
+
+proc decodeOrderedRecordCollection*(input: openArray[byte], limits: RecordLimits): RecordResult[
+    RecordCollection] =
+  ## Require strict physical-address order before allocation while independently hashing every record once.
+  ## This decoder grants no complete-graph authority and accepts no validation bypass flag.
+  let decoded = decodeRecords(input, limits, true, true)
   if decoded.error != RecordError.None: return RecordResult[RecordCollection](status: decoded.error)
   RecordResult[RecordCollection](status: RecordError.None,
     completed: RecordCollection(records: decoded.value.records))

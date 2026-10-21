@@ -99,7 +99,9 @@ proc cycle() =
   let next = bad.collection.records[1]
   bad.collection.records[0] = next
   bad.collection.records[1] = swapped
-  assert decode(bad, limits).error == RepositoryError.InvalidGraph
+  let unordered = decode(bad, limits)
+  assert unordered.error == RepositoryError.InvalidRecords
+  assert unordered.recordError == RecordError.NonCanonical
   let complete = selectRepositoryRoots(third, [a.commitment.root, b.commitment.root,
     c.commitment.root], ElementLimit(3)).value
   var orphan = exportRepositoryImage(complete, limits.codec.records, ElementLimit(3)).value
