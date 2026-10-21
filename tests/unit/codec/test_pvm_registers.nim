@@ -79,6 +79,8 @@ for row in 0..<count:
   let evaluated = evaluateRegisters(program, CodeAddress(0), input)
   assert evaluated.error == RegisterError.None
   let output = evaluated.value
+  let reused = evaluateRegisters(instruction(program, CodeAddress(0)), input)
+  assert reused.error == RegisterError.None
   for index in 0..<13:
     # Only the selected destination may differ, and the input array must remain untouched.
     assert uint64(input[index]) == uint64(original[index])
@@ -87,6 +89,7 @@ for row in 0..<count:
     if uint64(output[index]) != wanted:
       echo "register witness ", row, " opcode ", op, " register ", index
     assert uint64(output[index]) == wanted
+    assert uint64(reused.value[index]) == wanted
   seen[int(op)] = true
 
 # All 85 implemented opcodes must have actual oracle coverage.
@@ -99,7 +102,12 @@ let missingResult = default(RegisterResult)
 assert missingResult.error == RegisterError.Uninitialized
 assert evaluateRegisters(default(Program), CodeAddress(0), default(RegisterFile)).error ==
   RegisterError.InvalidInstruction
+let missingInstruction = default(ProgramResult[Instruction])
+assert evaluateRegisters(missingInstruction, default(RegisterFile)).error ==
+  RegisterError.InvalidInstruction
 let valid = programFor(200, 0x10, 2, 0)
+assert evaluateRegisters(instruction(valid, CodeAddress(1)), default(RegisterFile)).error ==
+  RegisterError.InvalidInstruction
 assert evaluateRegisters(valid, CodeAddress(1), default(RegisterFile)).error ==
   RegisterError.InvalidInstruction
 assert evaluateRegisters(valid, CodeAddress(high(uint64)), default(RegisterFile)).error ==
@@ -111,6 +119,9 @@ for op in 0..255:
     let unsupported = programFor(byte(op), 0, 0, 0)
     assert evaluateRegisters(unsupported, CodeAddress(0), default(RegisterFile)).error ==
       RegisterError.UnsupportedInstruction
+    assert evaluateRegisters(instruction(unsupported, CodeAddress(0)), default(
+        RegisterFile)).error ==
+      RegisterError.UnsupportedInstruction
 
 # Extracting and mutating a returned array cannot change its result or another extraction.
 let copyResult = evaluateRegisters(valid, CodeAddress(0), default(RegisterFile))
@@ -118,5 +129,24 @@ assert copyResult.error == RegisterError.None
 var copiedRegisters = copyResult.value
 copiedRegisters[2] = RegisterValue(99)
 assert uint64(copyResult.value[2]) == 0
+
+# A validated scalar instruction result remains independent of extracted copies and released owners.
+block validatedResultOwnership:
+  var owner = programFor(200, 0x10, 2, 0)
+  let decoded = instruction(owner, CodeAddress(0))
+  owner = default(Program)
+  var changed = decoded.value
+  changed.opcode = 0
+  changed.d = RegisterIndex(255)
+  assert decoded.value.opcode == 200 and byte(decoded.value.d) == 2
+  var input = default(RegisterFile)
+  input[0] = RegisterValue(7)
+  input[1] = RegisterValue(11)
+  let completed = evaluateRegisters(decoded, input)
+  assert completed.error == RegisterError.None
+  for i in 0..<13:
+    # Exactly D changes after owner release; copying an instruction never opens a mutable result alias.
+    let expected = if i == 2: 18'u64 else: uint64(input[i])
+    assert uint64(completed.value[i]) == expected
 
 echo "PVM register operations passed"

@@ -102,11 +102,11 @@ func countBits(value: uint64, bits: int, mode: int): uint64 =
       # A one completes the contiguous zero prefix/suffix.
       break
 
-proc evaluateRegisters*(program: Program, pc: CodeAddress,
+proc evaluateRegisters*(decoded: ProgramResult[Instruction],
     registers: RegisterFile): RegisterResult =
-  ## Evaluate one validated instruction's register mutation. All operands come from the original array,
-  ## including when destination and sources alias. Non-register instructions fail before any mutation.
-  let decoded = instruction(program, pc)
+  ## Evaluate a private validated instruction result without repeating its owner/PC lookup.
+  ## Failed/default results and non-register instructions fail before reading any payload or array.
+  ## All operands use the original copied register file, including source/destination aliases.
   # Invalid owners and unmarked/out-of-range addresses never yield executable operands.
   if decoded.error != ProgramError.None:
     return RegisterResult(status: RegisterError.InvalidInstruction)
@@ -390,3 +390,9 @@ proc evaluateRegisters*(program: Program, pc: CodeAddress,
   var copied = registers
   copied[destination] = RegisterValue(answer)
   RegisterResult(status: RegisterError.None, completed: copied)
+
+proc evaluateRegisters*(program: Program, pc: CodeAddress,
+    registers: RegisterFile): RegisterResult =
+  ## Look up one owned instruction and evaluate its register mutation without advancing PC or gas.
+  ## This compatibility entry point retains the same validation, scope and copied-register contract.
+  evaluateRegisters(instruction(program, pc), registers)
