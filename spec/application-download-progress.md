@@ -179,3 +179,22 @@ retained independent map with finality unset. Pinned semantic/native
 `application_download_import_progress` checks pass; logs use
 `build/multiblock-import-*`. External imports still begin with one unfinalized
 head; local durable history/finality recovery remains a distinct authority.
+
+## Actual executable E2E
+
+The source-owned `application_download_sequence` E2E workload builds an independent
+native signed-chain/TLS/durable-map witness and launches the actual production
+application binary with structured argv. Complete three-child download exits 0
+with `DOWNLOAD_ADOPTED` and exact 3/3 progress; stale second-child replay and the
+shared timeout each exit 2 with their precise failure reason and exact 1/3
+progress. The independent witness observes 3/2/2 changed-parent requests and
+reopens the real database to compare every retained complete map with the manual
+chain after application exit.
+
+All three actual executable scenarios pass locally. Independent native witness
+exits are zero, all processes are reaped on failures, fixture bytes retain their
+source-owned hashes, and full logs/results remain under `build/multiblock-e2e/`.
+The owning Python E2E safeguards pass all three tests, including refusal to build
+or launch stale witnesses after either current-build failure. Semantic compilation,
+source-owned inventory and whitespace checks pass. This selected workload does
+not claim a full E2E group run or exact-head Linux CI.

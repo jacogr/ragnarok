@@ -184,6 +184,39 @@ def application_download_load(context):
     return observed
 
 
+@PLAN.workload
+def application_download_sequence(context):
+    """Verify actual executable multi-child success, later refusal and timeout against independent native TLS/maps."""
+    import hashlib
+    import os
+    from native_fixtures import unit_runtime_fixtures
+    from application_download_sequence import observe
+    peer_build, peer = context.peer
+    observed = dict(passed=False)
+    if peer_build['exit_code'] == 0:
+        # A failed current peer build must never execute a previous binary or build an unrelated witness.
+        compiled, responder = context.checks.build(context.compiler,
+            ROOT/'tests/native/application_download_sequence.nim', 'application-download-sequence',
+            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+        observed['build'] = compiled
+        if compiled['exit_code'] == 0:
+            _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
+                suite='application_download_progress')['application_download_progress']
+            for path, expected in files:
+                # Preserve independent input identities before launching either live process.
+                if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                    raise ValueError('Download sequence fixture mismatch: '+str(path))
+            environment = dict(os.environ, **{name: str(path) for name, path in inputs.items()})
+            try:
+                result = observe(peer, responder, context.checks.folder/'download-sequence-work', environment)
+                observed.update(run=result, fixtures={str(path): digest for path, digest in files},
+                                passed=result['passed'])
+            except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
+                observed['failure'] = str(error) # Process, CLI, protocol and cleanup refusals remain this workload's own failure.
+    announce('executable successive signed downloads', observed['passed'])
+    return observed
+
+
 # Preserve this task and its original checks in dependency order.
 @PLAN.workload
 def telemetry(context):
