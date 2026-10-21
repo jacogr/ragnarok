@@ -527,3 +527,13 @@ collection follow. Blake2b-256 over the entire prefix occupies the final 32 byte
 extent is checked before decoding/allocation/hash work; encoding consumes opaque validated root
 selections under their exact inherited complete-state policy. Decode admits all complete graphs,
 rejects orphans and preserves durable generation and context. Schema/chain never use fallback.
+
+## Managed manifest and journal identity
+
+`RAGNAROK-MANIFEST-V1\n` selects a nonzero physical epoch independently of durable state generation.
+Its fixed body binds chain/schema, base generation/root and snapshot checksum; a final Blake2b-256
+checksum binds the full prefix. Filenames are derived from the epoch, never supplied by manifest
+bytes. The exact `RAGNAROK-JOURNAL-V1\n` prefix carries the manifest checksum so an unrelated
+journal cannot be paired with a snapshot. Unknown/corrupt manifests never trigger file scanning
+or older-head fallback. All truncations and single-byte mutations plus cross-chain/schema/pairing
+and exact/short ceilings are covered before filesystem adoption.
