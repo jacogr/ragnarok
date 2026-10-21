@@ -90,3 +90,10 @@ call `resumeAncestors`, which checks exact canonical identity and all count/byte
 replacing context. Refusal preserves suspension. A later preparation turn checks the supplied chain
 and completes the original reports, without repeating block decoding/signatures. Partial context can
 suspend again. Genuine tests cover completion, repeated missing context, stale IDs and atomic refusal.
+
+The actual native preparation worker now has a dedicated discovery/resumption integration witness.
+One worker collects `NeedsAncestors`, restores host access, refuses resubmission while the input is
+awaiting context, then accepts the same generation after bounded resumption. An old first ticket
+cannot collect the second lease. Late cancellation of discovery and late cancellation after real
+guest execution both expose only `Cancelled`. Canonical state never advances in any worker stage.
+One thousand success/cancellation cycles require equal live ARC occupancy after joined cleanup.
