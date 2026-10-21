@@ -187,6 +187,16 @@ proc performDownloads(options: Options, adopted: var int): DownloadCommandResult
   defer: owner.close() # Dispatcher teardown below must end every Services borrow first.
   if not owner.start(options, "download"): return DownloadCommandResult.StartupFailure
   let started = getMonoTime()
+  if options.localDownloadAncestors:
+    # Capture before any worker lease; no complete view/map alias survives into receiveChildren.
+    let combined = prependLocalAncestors(owner.chainView, ancestors, ancestry.header,
+      limits.input.ancestors, ByteLimit(min(uint64(limits.input.ancestorBytes), uint64(
+          ancestry.maxBytes))))
+    if combined.error != AncestorInputError.None: return DownloadCommandResult.InvalidAncestors
+    ancestors = combined.headers
+    let reserved = uint64(ancestors.len) + uint64(requested - 1)
+    if reserved > uint64(limits.input.ancestors) or reserved >= uint64(ancestry.headers):
+      return DownloadCommandResult.InvalidPolicy # Entire local suffix plus future parents must fit before outgoing transport.
   var observed = default(ObservedDownloadHead)
   let terminal = receiveChildren(owner, options, peers, ports, keys, ancestors, limits,
     started, timeout, requested, adopted, observed)
