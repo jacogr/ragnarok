@@ -125,3 +125,10 @@ its total deadline; expiration cannot create a new budget. A later tick submits 
 prepared input, with the original request already consumed. Real TLS/worker/adoption tests prove
 one child request, zero live child peers while awaiting context, atomic quota refusal, no early
 publication and exact deadline refusal without canonical advancement.
+
+`--download-discover-ancestors COUNT` opts into child-driven discovery with one whole-run allowance
+of 1..64 headers. It is unique, canonical positive decimal, state-enabled and download-only, and
+mutually exclusive with up-front `--download-remote-ancestors`. Local/file context may still be
+supplied. Defaults and failed parses expose zero allowance; no option opens sockets by itself.
+Parser tests cover every accepted count, malformed/duplicate/foreign-command controls, both
+conflicting option orders and atomic reset. The activation field remains private.
