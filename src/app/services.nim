@@ -20,7 +20,7 @@ import ../crypto/primitives
 import ../codec/[block_codec, header, state_trie]
 import ./chain as application_chain
 import ../state/[store, disk_store, accumulation_finalization, accumulation_completion, accumulation_publication]
-import ../storage/[file_repository, node_repository, node_records, record_codec, database_identity]
+import ../storage/[file_repository, node_repository, node_records, record_codec, database_identity, managed_repository]
 import ../chain/provider
 import ../telemetry/[wire, client, chain]
 import ../quic/transport
@@ -48,7 +48,8 @@ type Services* = object ## Owns listeners/exporter; fields are borrowed by synch
   diskCommitOutcome: DiskChainResult[RepositoryGeneration]
   diskId: StorageChainId
   diskLimits: JournalLimits
-  diskEnabled, publishing, diskFaulted: bool
+  diskEnabled, publishing, diskFaulted, diskManaged: bool
+  compactBytes: ByteLimit
 
 proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not services.started.} =
   ## Only closed aggregates may relocate; native workers and callback borrows require the original stable parent address.
@@ -153,6 +154,8 @@ proc close*(services: var Services) =
   services.adoption = default(AccumulationHandoff) # Retire pending or unacknowledged immutable owners on shutdown.
   if services.disk.opened: discard services.disk.close
   services.diskEnabled = false
+  services.diskManaged = false
+  services.compactBytes = ByteLimit(0)
   services.diskFaulted = false
   services.diskTicket = default(DiskPublicationTicket)
   services.canonical = default(ApplicationChain)
@@ -230,6 +233,19 @@ proc diskJournalLimits(policy: StateStoreLimits): JournalLimits =
     records: TrieExportLimits(records: TrieNodeLimit(1048576), valueBytes: ByteLimit(4*1024*1024)),
     encoded: ByteLimit(64*1024*1024)), records: ElementLimit(4194304),
     valueBytes: ByteLimit(128*1024*1024)), bytes: ByteLimit(256*1024*1024), contextBytes: ByteLimit(4*1024*1024))
+proc managedPolicy(limits: JournalLimits): ManagedLimits =
+  ## Managed files retain the same graph/physical/journal ceilings plus bounded canonical history roots.
+  ManagedLimits(repository: limits.repository, roots: ElementLimit(MaxRetainedBlocks+1),
+    snapshotBytes: limits.bytes, journalBytes: limits.bytes, contextBytes: limits.contextBytes)
+proc initializeSelectedDisk(services: var Services, path: string): DiskChainResult[
+    RepositoryGeneration] =
+  ## Explicit layout dispatch never resets an existing path or infers migration from its shape.
+  if services.diskManaged:
+    initializeManagedDiskChain(services.disk, path, services.diskId, services.canonical,
+        managedPolicy(services.diskLimits))
+  else:
+    initializeDiskChain(services.disk, path, services.diskId, services.canonical,
+        services.diskLimits)
 proc setupDisk(services: var Services, options: Options, limits: StateStoreLimits,
     imported: bool): bool {.raises.} =
   ## Derive chain identity from the selected configured genesis; imports create exclusively and never replace a local DB.
@@ -244,20 +260,26 @@ proc setupDisk(services: var Services, options: Options, limits: StateStoreLimit
   if digest.error != CryptoError.None: return false
   services.diskId = StorageChainId(array[32, byte](digest.value))
   services.diskLimits = diskJournalLimits(limits)
+  services.diskManaged = options.managedStorage
+  services.compactBytes = if services.diskManaged: options.stateCompactionBytes else: ByteLimit(0)
   if imported:
-    if initializeDiskChain(services.disk, options.stateDatabase, services.diskId,
-        services.canonical, services.diskLimits).error != DiskChainError.None: return false
+    if services.initializeSelectedDisk(options.stateDatabase).error !=
+        DiskChainError.None: return false
   else:
-    let opened = openDiskChain(services.disk, options.stateDatabase, services.diskId,
-      seed.value.chainView.bestBlock.value.chainParameters, limits, services.diskLimits)
+    let opened = if services.diskManaged:
+      openManagedDiskChain(services.disk, options.stateDatabase, services.diskId,
+        seed.value.chainView.bestBlock.value.chainParameters, limits, managedPolicy(
+            services.diskLimits))
+    else:
+      openDiskChain(services.disk, options.stateDatabase, services.diskId,
+        seed.value.chainView.bestBlock.value.chainParameters, limits, services.diskLimits)
     if opened.error == DiskChainError.None:
       services.canonical = opened.value # Local restart preserves bounded history and explicit finality.
     else:
       if opened.error != DiskChainError.StoreFailure: return false
       if opened.storeFailure.error != DiskStoreError.FileFailure: return false
       if opened.storeFailure.fileError != FileError.IoFailure: return false
-      let created = initializeDiskChain(services.disk, options.stateDatabase, services.diskId,
-        services.canonical, services.diskLimits)
+      let created = services.initializeSelectedDisk(options.stateDatabase)
       if created.error != DiskChainError.None:
         return false # O_EXCL prevents a failed open from overwriting any existing or concurrently created file.
   services.diskEnabled = true

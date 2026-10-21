@@ -103,3 +103,14 @@ to 64 MiB, accepts explicit zero to disable automatic maintenance and is capped 
 journal headroom for a bounded publication. It does not widen write-count/value-byte defaults or
 complete-map/physical/file budgets. Invalid, duplicate, unknown and overflowing controls clear the
 entire parsed configuration. Full/light node mode remains separate from physical layout selection.
+
+## Opt-in Services startup
+
+Services dispatches disk initialization/open through the explicitly selected layout after deriving
+the same configured chain identity. Managed mode uses the same inherited graph, physical-record,
+journal and context ceilings, a bounded nine-root union and a bounded snapshot file. Normal local
+restart validates canonical context/history; imported startup still creates exclusively and never
+falls back to a local head or genesis. An existing wrong-layout path or corrupt CURRENT refuses
+without migration, overwrite or older-head fallback. The managed startup suite checks actual
+Services create/restart, lock competition, wrong-layout refusal, unchanged corrupt bytes and
+successful restart after an explicit test-owned restoration of the exact original manifest.
