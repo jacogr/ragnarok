@@ -41,7 +41,6 @@
     "crates/polkavm-common/src/abi.rs": "5c8d11c31279346032f0d0cf6e72711d4e75300a3fa182e6ca93c25bb42c92e5",
     "crates/polkavm/src/lib.rs": "162c07e71a6eab40ef152d7a0c0beba4bf73f81dfd72a5ea1974f8d29e0706c8",
     "crates/polkavm/src/sandbox/linux.rs": "bb0238d01dc8410d9dd5db567ee15303933d6cfb43087d5db82f67abde6139f4",
-    "Cargo.toml": "2f0f1176d9dfd0fd84b1b4048b0b2b4578d97f54d9597d6055281dd1cddf5daa",
-    ".github/workflows/rust.yml": "f9411fc660140269a3aaa2ea603f660a0931147bff0d9050eeb08e0c3c673d0c"
+    "Cargo.toml": "2f0f1176d9dfd0fd84b1b4048b0b2b4578d97f54d9597d6055281dd1cddf5daa"
   }
 }

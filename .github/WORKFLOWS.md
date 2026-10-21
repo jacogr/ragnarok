@@ -11,9 +11,9 @@ compilation, Python references/tooling, native units/corpora, runtime failures, 
 E2E networking, JAM Tart telemetry interoperability and the Docker image build/smoke check.
 The Docker job runs for unit/full requests and never publishes an image. A separate PVM
 reference job runs the pinned public-API probes and matching native suites for master pushes
-and full requests. The manual `pvm-compiled` scope checks the paired fixtures with the compiler backend.
-The separate manual `bench-pvm` scope requires that job, then measures validated workloads
-and publishes one speed table with raw samples; full fuzzing CI remains future work.
+and full requests. The separate manual `bench-pvm` scope measures validated workloads
+and publishes one speed table with raw samples. The current baseline compares Ragnarök
+and the PolkaVM interpreter; compiled comparisons are deferred. Full fuzzing CI remains future work.
 
 Pushes to `master` request full verification. Pull requests run checks when a maintainer adds
 `ci:unit`, `ci:e2e` or `ci:full`; opening a PR or pushing another commit does not request a run.
@@ -21,7 +21,3 @@ The workflow also supports manual dispatch with a selected scope.
 
 Jobs publish summaries and retain diagnostic logs and reports from `build/`. See
 [requesting CI](../docs/testing.md#requesting-ci) for label scopes, reruns and revision semantics.
-
-The compiled correctness and benchmark jobs use dedicated hosted Ubuntu 24.04 VMs
-with the pinned upstream sandbox prerequisites. See
-[compiled PVM verification](../spec/pvm-linux-compiled-ci.md) for scope and evidence.

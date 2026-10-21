@@ -15,7 +15,7 @@ import tomllib
 from native_checks import NativeChecks
 from native_dependencies import ROOT,require_submodule
 from pvm_reference import command
-from pvm_benchmark_report import ENGINES,parse_output,aggregate,summarize_benchmark
+from pvm_benchmark_report import ACTIVE_ENGINES,DEFERRED_COMPILER,NAMES,parse_output,aggregate,summarize_benchmark
 from setup_nimony import installed
 
 BUILD=ROOT/'build/tests/pvm-benchmark'
@@ -36,15 +36,6 @@ def cpu_model():
         for line in Path('/proc/cpuinfo').read_text().splitlines():
             if line.startswith('model name'):return line.split(':',1)[1].strip()
     return platform.machine()
-
-
-# Preserve observable sandbox prerequisites without changing a local host's kernel configuration.
-def linux_sandbox_settings():
-    values={}
-    for key in ('vm.unprivileged_userfaultfd','kernel.apparmor_restrict_unprivileged_userns'):
-        path=Path('/proc/sys')/key.replace('.','/')
-        values[key]=path.read_text().strip() if path.is_file() else None
-    return values
 
 
 # Setup owns builds; every observed duration is emitted only after that execution validates fully.
@@ -69,9 +60,6 @@ def run():
 
     save()
     try:
-        required=os.environ.get('PVM_BENCH_REQUIRE_COMPILED','0')
-        if required not in ('0','1'):raise ValueError('PVM_BENCH_REQUIRE_COMPILED must be 0 or 1')
-        report['required_compiled']=required=='1';save()
         pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text());upstream=require_submodule(pins)
         gray=json.loads((ROOT/'spec/pins.json').read_text())['graypaper']
         require_submodule(dict(gray,repository=gray['repository'].removeprefix('https://github.com/')))
@@ -97,7 +85,7 @@ def run():
         report.update(head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
             worktree_dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT)),
             hardware=dict(platform=platform.platform(),cpu=cpu_model(),logical_cpus=os.cpu_count(),
-                          load_average_start=os.getloadavg(),linux_sandbox=linux_sandbox_settings()),
+                          load_average_start=os.getloadavg()),
             rust=rust,rustc=subprocess.check_output(['rustup','run',rust,'rustc','--version','--verbose'],text=True).strip(),
             nimony_toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),
             build_environment={key:os.environ[key] for key in ('RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS','CFLAGS','LDFLAGS') if key in os.environ},
@@ -106,7 +94,8 @@ def run():
             polkavm=pins['commit'],graypaper=gray['commit'],fixture_sha256=digest(fixture),
             sources={str(p.relative_to(ROOT)):digest(p) for p in sources},warmups_per_pass=3,
             measured_samples_per_pass=10,pass_count=2,
-            pass_orders=[list(ENGINES),list(reversed(ENGINES))],
+            pass_orders=[list(ACTIVE_ENGINES),list(reversed(ACTIVE_ENGINES))],
+            compiled_comparison='deferred by maintainer; no compiler process is started',
             profile='checked release ARC/Clang LTO; pinned upstream Rust release LTO/codegen-units1/debug; JamV1 Sync/Full/L2Hit')
         save()
         native_folder=ROOT/'build/pvm-benchmark';native_folder.mkdir(exist_ok=True)
@@ -116,15 +105,15 @@ def run():
         checked(['rustup','run',rust,'cargo','build','--release','--locked','--offline',
             '--manifest-path',CRATE/'Cargo.toml','--target-dir',TARGET],'rust-build')
         arguments={'ragnarok':[binary],
-                   'polkavm_interpreter':[TARGET/'release/ragnarok-pvm-benchmark',fixture,'interpreter'],
-                   'polkavm_compiler':[TARGET/'release/ragnarok-pvm-benchmark',fixture,'compiler']}
+                   'polkavm_interpreter':[TARGET/'release/ragnarok-pvm-benchmark',fixture,'interpreter']}
         os.environ['RAGNAROK_PVM_BENCHMARK']=str(fixture)
-        for pass_index,order in enumerate((ENGINES,tuple(reversed(ENGINES)))):
+        for pass_index,order in enumerate((ACTIVE_ENGINES,tuple(reversed(ACTIVE_ENGINES)))):
             # Reversing engine order limits simple first/last bias; it does not claim host isolation.
-            observations={}
+            # Deferral is policy metadata, never a backend probe or substituted interpreter sample.
+            observations={'polkavm_compiler':[dict(samples=[],reason=DEFERRED_COMPILER,deferred=True) for _ in NAMES]}
             for engine in order:
                 output=checked(arguments[engine],f'pass{pass_index}-{engine}',timeout=300)
-                observations[engine]=parse_output(output,engine,require_compiled=report['required_compiled'])
+                observations[engine]=parse_output(output,engine)
             report['passes'].append(observations);save()
         report['cases']=aggregate(report['passes']);report['status']='checks-passed'
         report['hardware']['load_average_end']=os.getloadavg();save()

@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 from dependencies import ROOT
 from pvm_benchmark_reference import HEADER,fixtures
-from pvm_benchmark_report import ENGINES,NAMES,parse_output,aggregate,summarize_benchmark
+from pvm_benchmark_report import ACTIVE_ENGINES,DEFERRED_COMPILER,ENGINES,NAMES,parse_output,aggregate,summarize_benchmark
 
 
 # Small deterministic durations exercise report logic without running any measured engine.
@@ -62,35 +62,24 @@ class PvmBenchmarkTests(unittest.TestCase):
         with self.assertRaises(ValueError):parse_output(output(True),'polkavm_interpreter')
         with self.assertRaises(ValueError):parse_output(good,'fallback')
 
-    def test_required_compiler_cannot_be_unavailable(self):
-        """Hosted compiler jobs fail closed; unsupported local hosts retain explicit unavailable cells."""
-        parse_output(output(True),'polkavm_compiler')
-        with self.assertRaisesRegex(ValueError,'Required compiled backend unavailable'):
-            parse_output(output(True),'polkavm_compiler',require_compiled=True)
-        parse_output(output(),'polkavm_compiler',require_compiled=True)
-        one={engine:parse_output(output(engine=='polkavm_compiler'),engine) for engine in ENGINES}
-        with self.assertRaisesRegex(ValueError,'Required compiled backend unavailable'):
-            summarize_benchmark(dict(status='checks-passed',required_compiled=True,
-                                     cases=aggregate([one,deepcopy(one)])))
-
-    def test_invalid_compiler_requirement_fails_with_fresh_evidence(self):
-        """Misspelled configuration cannot silently make a required compiler optional."""
-        import pvm_benchmark
-        with tempfile.TemporaryDirectory() as temporary,patch.dict(
-                'os.environ',{'PVM_BENCH_REQUIRE_COMPILED':'yes'}),patch.object(
-                pvm_benchmark,'BUILD',Path(temporary)):
-            with self.assertRaisesRegex(ValueError,'must be 0 or 1'):pvm_benchmark.run()
-            self.assertEqual(json.loads((Path(temporary)/'results.json').read_text())['status'],'failed')
-
-    def test_kernel_metadata_is_read_only_and_bounded(self):
-        """Only the two reviewed kernel settings enter metadata; missing facilities stay explicit."""
-        import pvm_benchmark
-        with patch.object(Path,'is_file',return_value=False):
-            values=pvm_benchmark.linux_sandbox_settings()
-        self.assertEqual(values,{'vm.unprivileged_userfaultfd':None,
-                                'kernel.apparmor_restrict_unprivileged_userns':None})
-        with patch.object(Path,'is_file',return_value=True),patch.object(Path,'read_text',return_value='1\n'):
-            self.assertEqual(set(pvm_benchmark.linux_sandbox_settings().values()),{'1'})
+    def test_compiled_deferral_is_explicit_and_carries_no_timings(self):
+        """The maintainer-selected interpreter baseline cannot acquire fabricated compiler observations."""
+        one={engine:parse_output(output(),engine) for engine in ACTIVE_ENGINES}
+        one['polkavm_compiler']=[dict(samples=[],reason=DEFERRED_COMPILER,deferred=True) for _ in NAMES]
+        cases=aggregate([one,deepcopy(one)])
+        text=summarize_benchmark(dict(status='checks-passed',cases=cases))
+        self.assertEqual(text.count('| Deferred |'),5)
+        self.assertIn(DEFERRED_COMPILER,text)
+        self.assertTrue(all(row['engines']['polkavm_compiler']['status']=='deferred' for row in cases))
+        corrupt=deepcopy(one);corrupt['polkavm_compiler'][0]['samples']=[{'execution_ns':1}]
+        with self.assertRaisesRegex(ValueError,'Unmeasured backend supplied timings'):
+            aggregate([corrupt,deepcopy(corrupt)])
+        corrupt=deepcopy(cases);corrupt[0]['engines']['polkavm_compiler']['samples']=[{'execution_ns':1}]
+        with self.assertRaisesRegex(ValueError,'Unmeasured backend supplied timings'):
+            summarize_benchmark(dict(status='checks-passed',cases=corrupt))
+        corrupt=deepcopy(one);corrupt['polkavm_compiler'][0]['deferred']=False
+        with self.assertRaisesRegex(ValueError,'Inconsistent compiler deferral'):
+            aggregate([one,corrupt])
 
     def test_noise_is_flagged_without_dropping_samples(self):
         """A loaded host may pass correctness but cannot yield an apparently stable speed ratio."""
