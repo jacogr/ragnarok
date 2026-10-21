@@ -7,8 +7,8 @@ import std/assertions
 import ./[chain, disk_history]
 import ../chain/[genesis, provider, parameters]
 import ../state/[store, disk_store, accumulation_publication]
-import ../storage/[file_repository, node_repository, database_identity, managed_repository]
-import ../codec/bounded
+import ../storage/[file_repository, node_repository, database_identity, managed_repository, managed_manifest]
+import ../codec/[bounded, state_trie]
 import ../rpc/server as rpc_server
 
 type
@@ -18,14 +18,23 @@ type
     update: PreparedChainUpdate
     context, previous: seq[byte]
     next: RepositoryGeneration
+  PreparedDiskMaintenance* = object ## Exact canonical context, state revision and physical epoch authorize one excluded maintenance attempt.
+    initialized: bool
+    parent: StateStoreSnapshot
+    generation: RepositoryGeneration
+    epoch: ManagedEpoch
+    context: seq[byte]
+    roots: seq[StateRoot]
   DiskChainError* {.pure.} = enum ## Default/refused results grant no partial canonical successor.
-    Uninitialized, None, Busy, CanonicalMismatch, GenerationOverflow, StoreFailure, ContextFailure, FileFailure
+    Uninitialized, None, Busy, CanonicalMismatch, GenerationOverflow, StoreFailure, ContextFailure,
+      FileFailure, MaintenanceFailure
   DiskChainResult*[T] = object ## Preserve actual storage IO uncertainty and context refusals behind guarded access.
     case status: DiskChainError
     of None: completed: T
     of StoreFailure: storeReason: DiskStoreResult[StateStoreSnapshot]
     of ContextFailure: contextReason: DiskHistoryError
     of FileFailure: fileReason: FileError
+    of MaintenanceFailure: maintenanceReason: DiskStoreResult[ManagedCompaction]
     else: discard # Canonical mismatch and default outcomes have no candidate payload.
 
 const BootstrapMagic = "RAGNAROK-DISK-BOOTSTRAP-V1\n" # Deliberately cannot decode as a canonical disk history.
@@ -48,6 +57,11 @@ func fileError*[T](outcome: DiskChainResult[T]): FileError {.requires:
     outcome.status == DiskChainError.FileFailure.} =
   ## Inspect only an actual context-read IO failure.
   outcome.fileReason
+func maintenanceFailure*[T](outcome: DiskChainResult[T]): DiskStoreResult[
+    ManagedCompaction] {.requires:
+    outcome.status == DiskChainError.MaintenanceFailure.} =
+  ## Only an actual failed managed physical replacement exposes its guarded nested reason.
+  outcome.maintenanceReason
 proc diskSources(owner: ApplicationChain): DiskChainResult[seq[StateStoreSnapshot]] =
   ## Collect rolling roots and separated explicit finality under the existing complete-state policy.
   let current = owner.stateSnapshot
@@ -280,3 +294,68 @@ proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
   if committed.error != DiskChainError.None: return committed
   owner.installPrepared(rpc, prepared, lease) # Canonical/RPC visibility follows confirmed durability under exclusion.
   committed
+
+func ready*(maintenance: PreparedDiskMaintenance): bool =
+  ## Default/refused maintenance objects grant neither graph borrowing nor file mutation authority.
+  maintenance.initialized
+proc prepareDiskMaintenance*(disk: DiskStateStore, owner: ApplicationChain,
+    chain: StorageChainId, limit: ByteLimit): DiskChainResult[PreparedDiskMaintenance] =
+  ## Capture only the current canonical rolling/finality roots after exact disk/context binding, without IO.
+  let current = disk.snapshot
+  if current.error != DiskStoreError.None:
+    return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.StoreFailure,
+        storeReason: current)
+  let canonical = owner.stateSnapshot
+  if canonical.error != StateStoreError.None or not sameStateSnapshot(current.value,
+      canonical.value):
+    return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.CanonicalMismatch)
+  let usage = disk.managedDiskUsage
+  if usage.error != FileError.None:
+    return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.FileFailure,
+        fileReason: usage.error)
+  let context = encodeDiskHistory(owner, chain, usage.value.generation, limit)
+  if context.error != DiskHistoryError.None:
+    return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.ContextFailure,
+        contextReason: context.error)
+  let previous = disk.snapshotContext
+  if previous.error != FileError.None:
+    return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.FileFailure,
+        fileReason: previous.error)
+  if previous.value != context.value:
+    return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.CanonicalMismatch)
+  let sources = diskSources(owner)
+  if sources.error != DiskChainError.None:
+    return DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.CanonicalMismatch)
+  var roots: seq[StateRoot] = @[]
+  for source in sources.value: roots.add(source.commitment.root)
+  DiskChainResult[PreparedDiskMaintenance](status: DiskChainError.None,
+    completed: PreparedDiskMaintenance(initialized: true, parent: current.value,
+      generation: usage.value.generation, epoch: usage.value.epoch, context: context.value, roots: roots))
+proc commitDiskMaintenance*(disk: var DiskStateStore,
+    maintenance: PreparedDiskMaintenance): DiskChainResult[ManagedCompaction] =
+  ## Run only on the excluded storage worker/startup owner; physical replacement never installs a canonical successor.
+  if not maintenance.initialized:
+    return default(DiskChainResult[ManagedCompaction])
+  let current = disk.snapshot
+  if current.error != DiskStoreError.None:
+    return DiskChainResult[ManagedCompaction](status: DiskChainError.StoreFailure,
+        storeReason: current)
+  let usage = disk.managedDiskUsage
+  if usage.error != FileError.None:
+    return DiskChainResult[ManagedCompaction](status: DiskChainError.FileFailure,
+        fileReason: usage.error)
+  if not sameStateSnapshot(current.value, maintenance.parent) or
+      uint64(usage.value.generation) != uint64(maintenance.generation) or
+      uint64(usage.value.epoch) != uint64(maintenance.epoch):
+    return DiskChainResult[ManagedCompaction](status: DiskChainError.CanonicalMismatch)
+  let previous = disk.snapshotContext
+  if previous.error != FileError.None:
+    return DiskChainResult[ManagedCompaction](status: DiskChainError.FileFailure,
+        fileReason: previous.error)
+  if previous.value != maintenance.context:
+    return DiskChainResult[ManagedCompaction](status: DiskChainError.CanonicalMismatch)
+  let compacted = disk.compactDiskStateStore(maintenance.parent, maintenance.roots)
+  if compacted.error != DiskStoreError.None:
+    return DiskChainResult[ManagedCompaction](status: DiskChainError.MaintenanceFailure,
+        maintenanceReason: compacted)
+  DiskChainResult[ManagedCompaction](status: DiskChainError.None, completed: compacted.value)
