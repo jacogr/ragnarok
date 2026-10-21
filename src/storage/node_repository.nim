@@ -509,23 +509,39 @@ proc imageRecordLimits(limits: RepositoryLimits, encoded: ByteLimit): RecordLimi
     valueBytes: limits.valueBytes)
   result.encoded = encoded
 
+proc imageMetadata(generation: RepositoryGeneration, commitment: StateTrieCommitment,
+    inventory: openArray[StateRoot], limits: RepositoryLimits,
+        roots: ElementLimit): RepositoryError =
+  ## Refuse impossible caller-supplied root metadata before record allocation or integrity work.
+  if uint64(generation) == 0 or commitment.entries < 0 or inventory.len == 0:
+    return RepositoryError.InvalidGraph
+  if uint64(inventory.len) > uint64(roots) or inventory.len > high(int) div sizeof(StateRoot):
+    return RepositoryError.LimitExceeded
+  if uint64(commitment.entries) > uint64(limits.codec.trie.items) or
+      commitment.nodes > uint64(limits.codec.trie.nodes):
+    return RepositoryError.LimitExceeded
+  if array[32, byte](commitment.root) == default(array[32, byte]):
+    if commitment.entries != 0 or commitment.nodes != 0: return RepositoryError.InvalidGraph
+  elif commitment.entries == 0 or commitment.nodes < uint64(commitment.entries):
+    return RepositoryError.InvalidGraph # A nonempty complete mapping needs at least one node per entry.
+  var selected = false
+  for index, root in inventory:
+    # Root inventories must already be canonical; no serialized input is silently normalized.
+    if index > 0 and compareRoot(inventory[index-1], root) >= 0:
+      return RepositoryError.InvalidGraph
+    if compareRoot(root, commitment.root) == 0: selected = true
+  if not selected: return RepositoryError.RootMismatch
+  RepositoryError.None
+
 proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
     roots: ElementLimit, encoded: ByteLimit, decoded: bool): RepositoryResult[NodeRepository] =
   ## Private callers either validate raw records here or just decoded them under these exact limits.
   ## No public entry point accepts the decoded flag; all graph/ordering/reachability checks are shared.
-  if uint64(image.generation) == 0 or image.commitment.entries < 0 or image.roots.len == 0:
-    return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph)
-  if uint64(image.roots.len) > uint64(roots) or image.roots.len > high(int) div sizeof(StateRoot):
-    return RepositoryResult[NodeRepository](status: RepositoryError.LimitExceeded)
+  let metadata = imageMetadata(image.generation, image.commitment, image.roots, limits, roots)
+  if metadata != RepositoryError.None: return RepositoryResult[NodeRepository](status: metadata)
   let recordCount = image.collection.records.len
   if uint64(recordCount) > uint64(limits.records) or recordCount > high(int) div sizeof(TrieRecord):
     return RepositoryResult[NodeRepository](status: RepositoryError.LimitExceeded)
-  var selected = false
-  for index, root in image.roots:
-    if index > 0 and compareRoot(image.roots[index-1], root) >= 0:
-      return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph) # Root inventories are unique and canonical.
-    if compareRoot(root, image.commitment.root) == 0: selected = true
-  if not selected: return RepositoryResult[NodeRepository](status: RepositoryError.RootMismatch)
   if not decoded:
     # Mutable raw images have no integrity authority, even if a caller previously decoded them.
     let validated = validateRecordCollection(image.collection, imageRecordLimits(limits, encoded))
@@ -575,8 +591,8 @@ proc decodeRepositoryImage*(input: openArray[byte], generation: RepositoryGenera
   ## Decode a serialized physical collection and admit all complete graphs in one synchronous operation.
   ## Input bytes/root metadata remain borrowed only during this call; success owns independent records.
   ## Integrity failures retain RecordError, while topology/metadata/budget refusals use RepositoryError.
-  if uint64(roots.len) > uint64(rootLimit) or roots.len > high(int) div sizeof(StateRoot):
-    return RepositoryResult[NodeRepository](status: RepositoryError.LimitExceeded)
+  let metadata = imageMetadata(generation, commitment, roots, limits, rootLimit)
+  if metadata != RepositoryError.None: return RepositoryResult[NodeRepository](status: metadata)
   let decoded = decodeRecordCollection(input, imageRecordLimits(limits, encoded))
   if decoded.error != RecordError.None:
     return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
