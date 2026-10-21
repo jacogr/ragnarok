@@ -277,6 +277,60 @@ The local approved exception belongs to JAM preparation, with existing typed fai
 mapping and no fabricated guest panic. It does not resolve the formal upstream
 question or establish blanket PolkaVM validation precedence.
 
+## GP-PVM-005: jump-table entry widths above four bytes
+
+**Paper evidence:** the pinned [deblob equation](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L49-L56)
+encodes the table width z in one byte without a four-byte bound. Width5 with
+one zero entry, code `[10,0,50,8]`, mask `[5]`, has complete GP blob
+`[1,5,4,0,0,0,0,0,10,0,50,8,5]`. The zero target fits the register domain.
+The [raw decoder contract](pvm-program.md) deliberately retains this paper rule.
+
+**Executed pinned PolkaVM:** public `ProgramBlob::from_parts` rejects width5
+with `invalid jump table entry size`, even with an empty jump table. The
+[source check](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/program.rs#L7088-L7093)
+restricts widths to0..4. The [retained checker](../tests/reference/polkavm_memory/src/bin/jumps.rs)
+covers all256 widths with counts0/1:502 parse rejections above4. The native
+paper witness accepts all512 structurally valid blobs; these differing observations
+are explicit, not a claim of loading parity.
+
+**Upstream:** open [PR559](https://github.com/gavofyork/graypaper/pull/559)
+explicitly proposes limiting each table entry to four bytes, as well as total
+code/table limits. This is a direct proposed resolution for the width discrepancy,
+not a merged rule in our pinned paper. Do not file a duplicate issue; the
+[local draft](graypaper-discrepancy-issue-drafts.md) supplies a precise comment.
+No production acceptance rule or pin changes in this evidence layer.
+
+## GP-PVM-006: nonempty zero-width jump tables disappear in PolkaVM
+
+**Paper evidence:** the same deblob equation carries a logical table count
+independently of width z. Appendix C's E_0 permits zero, so a declared one-entry,
+zero-width table represents `[0]`, consuming no table payload bytes. Complete
+blob `[1,0,4,10,0,50,8,5]` has host0 at PC0 and jump_ind r8 at PC2.
+At entry2 with r8=2, the paper's dynamic jump selects j[0]=0, continues to PC0
+and reaches host0. The empty-table control `[0,0,4,10,0,50,8,5]` panics instead.
+A width1 zero entry is the positive control and also reaches host0.
+
+**Executed pinned PolkaVM:** all three raw blobs parse and validate. However,
+[JumpTable::len/get_by_index](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/program.rs#L5245-L5270)
+return0/None whenever the entry width is0, independently of the declared count.
+Both width0 cases therefore Trap at PC2; the width1 control returns Ecalli(0)
+at PC0. Public module loading succeeds in every case. This is an execution
+semantics difference, not merely stricter module rejection or a local resource cap.
+
+**Coverage and disposition:** the [native witness](../tests/unit/codec/test_pvm_jump_table_reference.nim)
+checks logical lookup, first-step destination, full host/panic exit and all CPU
+source aliases for widths0..255/counts0..1. The public checker verifies502 parse
+rejections,6 traps and4 host calls. Production raw execution remains paper-aligned;
+JAM normalization requires an explicit compatibility representation rather than
+mistaking this accepted program for a preparation failure. The existing final-
+terminator rejection exception alone cannot make this accepted width0 case match.
+
+**Question to raise:** should z=0 require a zero table count, preserve the declared
+number of zero entries, or define a semantically empty table regardless of count?
+Please specify deblob and dynamic-jump behavior together. Bounded Gray Paper
+issue/PR searches found no exact zero-width resolution; open559's four-byte upper
+bound alone does not settle this lower-bound case. A local issue draft is retained.
+
 ## Reproducing the local fixture evidence
 
 From a provisioned checkout with the pinned dependencies, run:
@@ -342,3 +396,22 @@ upstream dispositions; [signing domains](signing-domains.md) records token notat
 interpretation. Their historical issue statuses are not freshly rechecked by this
 PVM documentation change. This index is not a statement that every interpretation
 is an unresolved paper defect.
+
+## Required future PolkaVM fuzzing CI
+
+Maintainer requirement: integrate the pinned PolkaVM fuzzing coverage as a separate
+CI job once the differential execution boundary is ready. This is a required
+follow-up, not coverage supplied by today's deterministic public-API probes.
+The pinned [upstream driver](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/ci/jobs/fuzz.sh)
+inventories seven targets: generic allocator, shared-memory allocator, linker,
+PVM execution, program-blob parsing, extended decoding and page sets.
+
+The job must inventory every upstream target, run applicable reference targets
+with their own pinned toolchain/lockfile and Linux backend requirements, and bridge
+JAM-relevant generated programs into the Nim implementation. Running only upstream
+Rust targets is not evidence of Nim parity. Preserve exact failing inputs, seeds,
+reference profile/backend and minimized regressions; replay those deterministically
+in the ordinary native suite. Keep specification discrepancies visible and compare
+through the selected compatibility boundary. CI output must distinguish unsupported
+platforms, local limits and guest exits. Pin changes require explicit review;
+production remains independent of the Rust reference and fuzz harness.
