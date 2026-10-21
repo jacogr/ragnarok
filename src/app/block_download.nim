@@ -7,16 +7,16 @@
 import ./[chain, candidate, block_input, services, handoff, preparation_worker]
 import ../chain/[genesis, provider]
 import ../codec/[bounded, header]
-import ../state/[store, accumulation_finalization, accumulation_completion]
+import ../state/[report_anchors, store, accumulation_finalization, accumulation_completion]
 
 type
   BlockDownloadId* = distinct uint64 ## Local receiver generations are unrelated to QUIC handles and block identities.
   BlockDownloadStage* {.pure.} = enum ## Terminal empty/failure outcomes remain observable until explicit acknowledgement.
-    Idle, Receiving, Ready, Preparing, Empty, Failed
+    Idle, Receiving, Ready, Preparing, Empty, Failed, AwaitingAncestors
   BlockDownloadError* {.pure.} = enum ## Successful framing is distinct from a usable finalized successor.
     Uninitialized, None, Busy, MissingHead, ProfileMismatch, LimitExceeded, InvalidAncestor,
     Exhausted, StaleDownload, NotReady, Truncated, Trailing, EmptyResponse, InputFailure,
-    PreparationFailure, WorkerStartupFailure, WorkerFailure, Cancelled, HandoffFailure
+    PreparationFailure, WorkerStartupFailure, WorkerFailure, Cancelled, HandoffFailure, NeedsAncestors
   BlockDownloadFailure* = object ## Only the actual selected failed child is retained; no successful prefix survives refusal.
     case status: BlockDownloadError
     of InputFailure:
@@ -38,7 +38,7 @@ type
   PendingDownload = object ## Native stream ownership remains with the caller; this context retains only immutable application handles.
     id: BlockDownloadId
     case status: BlockDownloadStage
-    of Receiving, Ready, Preparing:
+    of Receiving, Ready, Preparing, AwaitingAncestors:
       original: ApplicationChain
       ancestors: seq[OwnedHeader]
       resources: BlockInputLimits
@@ -48,6 +48,7 @@ type
       headerBytes, claimed, received: int
       headerDone, requestFin, responseFin: bool
       inputId: BlockInputId
+      demand: ReportLookupDemand
     of Failed:
       refusal: BlockDownloadFailure
     else:
@@ -336,6 +337,10 @@ proc collectPreparation*(download: var BlockDownload, id: BlockDownloadId,
     discard download.fail(reason)
     return BlockDownloadResult[PreparedFinalAccumulation](successful: false, refused: reason)
   let prepared = completion.value
+  if prepared.error == BlockInputError.NeedsAncestors:
+    download.pending.demand = prepared.ancestorDemand
+    download.pending.status = BlockDownloadStage.AwaitingAncestors
+    return refused[PreparedFinalAccumulation](BlockDownloadError.NeedsAncestors) # Collection ended the lease; neither input nor original block is discarded.
   if prepared.error != BlockInputError.None:
     let reason = BlockDownloadFailure(status: BlockDownloadError.PreparationFailure,
         preparationReason: prepared)
@@ -359,3 +364,31 @@ proc retirePreparation*(download: var BlockDownload, id: BlockDownloadId,
   discard download.input.cancel(download.pending.inputId) # Joined shutdown permits either consumed or queued-cancelled raw input.
   download.pending = default(PendingDownload)
   true
+
+proc ancestorDemand*(download: BlockDownload, id: BlockDownloadId): BlockDownloadResult[
+    ReportLookupDemand] =
+  ## Observe the original certified plan only after native retirement and managed worker collection.
+  if download.pending.id != id or download.stage == BlockDownloadStage.Idle:
+    return refused[ReportLookupDemand](BlockDownloadError.StaleDownload)
+  if download.stage != BlockDownloadStage.AwaitingAncestors:
+    return refused[ReportLookupDemand](BlockDownloadError.NotReady)
+  BlockDownloadResult[ReportLookupDemand](successful: true, completed: download.pending.demand)
+
+proc resumeAncestors*(download: var BlockDownload, id: BlockDownloadId, owner: Services,
+    ancestors: openArray[OwnedHeader]): BlockDownloadResult[BlockDownloadId] =
+  ## End-to-end resumption preserves callback/input generations and does no guest execution or network work.
+  if download.pending.id != id or download.stage == BlockDownloadStage.Idle:
+    return refused[BlockDownloadId](BlockDownloadError.StaleDownload)
+  if download.stage != BlockDownloadStage.AwaitingAncestors:
+    return refused[BlockDownloadId](BlockDownloadError.NotReady)
+  if not owner.preparationAvailable: return refused[BlockDownloadId](BlockDownloadError.Busy)
+  let chain = initApplicationChain(owner.chainView)
+  if chain.error != ApplicationChainError.None: return refused[BlockDownloadId](
+      BlockDownloadError.MissingHead)
+  let resumed = download.input.resumeAncestors(download.pending.inputId, chain.value, ancestors)
+  if resumed != BlockInputError.None:
+    return BlockDownloadResult[BlockDownloadId](successful: false,
+      refused: BlockDownloadFailure(status: BlockDownloadError.InputFailure, inputReason: resumed))
+  download.pending.demand = default(ReportLookupDemand)
+  download.pending.status = BlockDownloadStage.Ready # Only a later explicit submission can borrow the prepared input again.
+  BlockDownloadResult[BlockDownloadId](successful: true, completed: id)

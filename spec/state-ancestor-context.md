@@ -97,3 +97,10 @@ awaiting context, then accepts the same generation after bounded resumption. An 
 cannot collect the second lease. Late cancellation of discovery and late cancellation after real
 guest execution both expose only `Cancelled`. Canonical state never advances in any worker stage.
 One thousand success/cancellation cycles require equal live ARC occupancy after joined cleanup.
+
+The framed `BlockDownload` owner now preserves `AwaitingAncestors` after collecting a real worker
+demand. The plain `NeedsAncestors` status carries no execution prefix; a separate successful guarded
+query retrieves the certified demand. Resumption checks the same generation and Services exclusion,
+then makes only the original prepared input Ready. Typed quota refusal leaves suspension intact.
+A real Services test verifies two managed leases, no second stream, restored host availability,
+exact demand, atomic quota refusal and canonical publication only on a later handoff tick.
