@@ -68,3 +68,9 @@ capacity before authorizing any missing-header plan. These state-only failures c
 by ancestry acquisition and therefore must not spend network attempts. The ordinary full planner
 retains its original failure ordering. Signed duplicate-package, missing-parent-queue and occupied
 core cases verify exact refusal with the entire older suffix absent; no discovery plan escapes.
+
+Dedicated source-owned rejection fixtures prevent external context/data access, result retagging,
+partial payload extraction and demand/preparation forgery. Three independently executed native
+runtime probes cover default capture, genuine constructor refusal and invalid-index extraction;
+a real canonical-header positive control uses the same accessors successfully. These checks retain
+exact diagnostic/exit predicates through the established guard and failure runners.

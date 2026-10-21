@@ -1,0 +1,40 @@
+{
+  "build_name": "state-ancestry-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "State ancestry default extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-ancestry-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "State ancestry refused extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "refused"
+      },
+      "name": "state-ancestry-refused"
+    },
+    {
+      "arguments": [
+        "index"
+      ],
+      "description": "State ancestry index extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "index"
+      },
+      "name": "state-ancestry-index"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/state_ancestry_results.nim"
+}
