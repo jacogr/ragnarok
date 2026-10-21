@@ -8,19 +8,21 @@ It changes no backend defaults, storage format, recovery authority or checkpoint
 
 `make bench-storage` owns setup and builds `tests/performance/storage_workload.nim` with pinned
 Nimony native ARC, Clang, release optimization, bounds checks and LTO, linking maintained crypto.
-Each backend runs at 1,024 and 8,192 entries with 256-byte values. Prepared identical seed and
-sixteen one-key deltas stay outside timing; every timed publication uses the public snapshot and
+Each backend runs at 1,024 and 8,192 entries with 16/256-byte values, leading/trailing key
+identities and one/four writes in each of sixteen publications. Prepared identical seeds and
+batches stay outside timing; every timed publication uses the public snapshot and
 publish API. Disk publication includes actual synchronization; memory publication is not durable.
 
 Separate phases measure 4,096 lookups cycling 128 unchanged leaf addresses, complete-map
 extraction and strict durable reopen. Returned lookup payloads and every map entry/root/generation
 are validated outside timing. Reads use resident repository views, including disk-backed views;
 the workload does not measure cold/random disk reads or evict the OS cache. Memory has no durable
-reopen and receives no invented timing. Seed creation, compaction, validation and cleanup are
-excluded from timed phases. Each sample has a fresh exclusively created namespace.
+reopen and receives no invented timing. Seed creation, validation and fixture cleanup are
+excluded from timed phases; dedicated reclamation phases include actual managed compaction. Each
+sample has a fresh exclusively created namespace.
 
-Three validated warmups precede ten measured samples per backend/size. A second pass reverses
-backend order, yielding twenty measured samples with min/median/max and visible noise flags.
+Three validated warmups precede ten measured samples per complete backend/size/topology/value/batch
+configuration. A second pass reverses backend order, yielding twenty measured samples with min/median/max and visible noise flags.
 There is no universal speed threshold or power-loss certification. Ratios are host observations,
 not interchangeable durability guarantees or production throughput claims.
 
@@ -39,7 +41,7 @@ and retains raw artifacts for thirty days. It runs on master pushes, `perf`/`ful
 by adding this job. Python safeguards cover complete coverage, invalid timing/unavailable reopen,
 forged statistics, failed reruns and adjacency/trigger/summary/artifact policy.
 
-## Local implementation verification
+## Initial local implementation verification (historical)
 
 The complete checked benchmark produced 156 validated samples and all eight operation/size rows
 on macOS ARM64. JSON, CSV and downloadable Markdown were generated; the setup-free summary
@@ -139,3 +141,13 @@ when pooled medians look equal. Common host drift may mark absolute timings nois
 ratios stable. All statistics and ratio fields are recomputed from complete raw evidence; canonical
 JSON comparison also refuses forged derived numeric types and nonfinite values. These descriptive
 ratios do not establish causality, production throughput or interchangeable durability.
+
+## Expanded workload qualification and operator guide
+
+The checked expanded workload produces 1,248 validated raw samples (960 measured), 128 operation
+comparison rows and stable selected physical evidence. All complete maps, bounded history, held
+views, strict restart and unsupported-operation sentinels are positive controls. Focused report
+tests cover late artifact refusal, typed provenance, substituted cases and unstable cross-pass
+ratios. These local results do not claim remote CI or complete protocol serialization. The
+[operator interpretation guide](../docs/storage-performance.md) explains reproduction, operation
+boundaries, unavailable cells, physical counters, noise markers and retained provenance.

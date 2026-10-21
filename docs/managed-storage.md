@@ -95,3 +95,10 @@ restart verification were unchanged. These local measurements make no general th
 Power-loss certification, production-scale layout tuning, page packing, disk caches and light-state
 proof storage require further work. The application execution checks cover the implemented signed
 execution path; they do not establish complete protocol state-transition parity.
+
+## Performance comparison
+
+The grouped Perf Storage job compares memory, synchronized journal and managed storage on fixed
+checked workloads. The [performance guide](storage-performance.md) distinguishes resident reads,
+durable publication, strict restart, bounded-history reclamation and selected-file extents. Its
+host-specific measurements never replace recovery authority or independent checkpoint trust.
