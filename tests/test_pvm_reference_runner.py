@@ -22,7 +22,7 @@ class ReferenceRunnerTests(unittest.TestCase):
         checks = runner.discover()
         self.assertEqual({item['binary'] for item in checks},
                          {'ragnarok-memory-probe', 'control', 'gas', 'hosts', 'jumps',
-                          'limits', 'registers', 'retry', 'validation'})
+                          'limits', 'memory', 'registers', 'retry', 'validation'})
         with tempfile.TemporaryDirectory(dir=ROOT/'build') as temporary:
             crate = Path(temporary)
             shutil.copytree(runner.CRATE/'src', crate/'src')

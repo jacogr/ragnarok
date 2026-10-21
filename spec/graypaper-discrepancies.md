@@ -32,6 +32,7 @@ chosen compatibility behavior as proof that the paper must change.
 | GP-PVM-005 | Paper/implementation discrepancy | Jump-entry widths above4 accepted by paper, rejected by PolkaVM | JAM rejection tested; open PR559 proposes the bound |
 | GP-PVM-006 | Paper/implementation discrepancy | Nonempty width0 table versus semantically empty table | JAM normalization and real invocation tested; upstream clarification needed |
 | GP-PVM-007 | Paper/implementation discrepancy | Code-byte and declared jump-count bounds absent from pinned deblob | JAM bounds and exact edges tested; open PR559 proposes the bounds |
+| GP-PVM-008 | Paper/implementation discrepancy | Cross-page store reports a missing higher page before a read-only lower page | Scoped scalar compatibility rule; paper expectation retained in 48 differential witnesses |
 
 ## Upstream discussion review —2026-10-21
 
@@ -373,6 +374,53 @@ proposes these exact bounds. The [local draft comment](graypaper-discrepancy-iss
 asks for exact-edge fixtures and declared-count/width-zero interaction. No duplicate
 issue is filed, and no paper/upstream revision is adopted. The ABI source digest is
 added to the existing PolkaVM source manifest at the unchanged revision.
+
+## GP-PVM-008: missing mappings precede read-only faults in cross-page stores
+
+**Classification:** paper/implementation discrepancy, independent of the protected
+low-memory and exclusive-end overflow findings. The Gray Paper prose and equation
+agree for this nonwrapping, nonprotected input.
+
+**Pinned paper:** GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+[`text/pvm.tex`, lines 168–178](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L168-L178).
+The first inaccessible write index is the minimum index outside writable memory.
+Read-only and missing mappings both fail that predicate.
+
+**Minimal witness:** store an immediate u16 zero at `0x10fff`, followed by a trap.
+Page `0x10000` is present/read-only; page `0x11000` is absent. Literal JAM code and
+mask are `[31,4,255,15,1,0,0,0,0,0,0]` and `[1,4]`; the complete blob prepends
+`[0,0,11]`. No branch, wrapping address or gas shortage is involved.
+
+| Observation | Gray Paper | Pinned PolkaVM interpreter |
+| --- | --- | --- |
+| Exit | Fault | Segfault / native Fault |
+| Fault page | `0x10000` | `0x11000` |
+| Registers and memory | Unchanged | Unchanged |
+| After mapping the higher page | Still faults on lower read-only page | Then faults on lower read-only page |
+
+The initial public checker failed at corpus row 234: actual page 69632, expected
+paper page 65536. Source evidence is
+[`DynamicMemory::store_impl`](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm/src/interpreter.rs#L1174-L1227):
+the two-page branch resolves missing mappings before testing read-only permissions.
+If both pages exist, the lower read-only page wins; if both are absent, the lower
+missing page wins. The public `Segfault.is_write_protected` bit distinguishes those
+cases and is checked in the expanded reference matrix.
+
+**Local disposition:** follow the maintainer's instruction to document discrepancies
+and match PolkaVM fixtures. Scalar stores now check missing mappings before
+writability for nonprotected, nonoverflowing two-page ranges. Existing protected-low
+and exclusive-end rules remain earlier checks. Loads, successful writes, registers,
+gas and atomic source ownership are unchanged. This is an explicit scoped exception,
+not a change to the paper-derived expected fault or general implementation precedence.
+
+The independent `pvm-memory-access.bin` corpus retains the literal GP fault and all
+original registers. Native and public probes apply an explicit GP-PVM-008 adapter
+to exactly 48 rows across all 12 multi-byte store forms. Controls include every
+permission pair, the two read-only pages case, lower-absent/higher-read-only,
+noncrossing accesses, all load forms and untouched bytes after refusal. See the
+[complete scalar memory matrix](pvm-memory-access-reference.md).
+No upstream duplicate search or issue posting is claimed for this newly found case.
+A local issue draft is prepared for the maintainer; a normative clarification remains open.
 
 ## Reproducing the local fixture evidence
 

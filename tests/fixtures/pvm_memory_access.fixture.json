@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_PVM_MEMORY_ACCESS",
+  "files": {
+    "pvm-memory-access.bin": "70f725c62dc88c1e211009fa32eb936ec057f9b6d72142775cfb3814055865c4"
+  },
+  "target": "pvm-memory-access.bin"
+}

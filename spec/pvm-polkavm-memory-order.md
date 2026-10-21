@@ -32,7 +32,8 @@ The starting effective address uses its low32 bits. Our retained inaccessible
 page images represent absent runtime pages; ReadOnly/ReadWrite images represent
 present mappings. Empty/default-owner and scalar-width validation still precede
 inspection. On nonoverflow ranges, a required low-memory byte panics and the
-first inaccessible or nonwritable page faults. Successful operations preflight
+first inaccessible or nonwritable page faults, subject to the separately documented
+[GP-PVM-008 cross-page store presence priority](pvm-memory-access-reference.md). Successful operations preflight
 every byte; failed stores publish no partial memory. Instruction gas charging,
 source alias preservation and fault repair/retry remain unchanged.
 

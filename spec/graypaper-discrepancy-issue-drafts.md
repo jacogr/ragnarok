@@ -201,3 +201,31 @@ counts instruction bytes, independently of framing/table/mask bytes. The entry
 bound must state whether it applies to the declared count before width-zero
 normalization; the current implementation checks that declaration first. This
 interacts with the separate GP-PVM-006 zero-width interpretation question.
+
+## GP-PVM-008 — Clarify missing-page versus read-only fault priority
+
+Gray Paper 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+[Single-Step State Transition](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L168-L178),
+selects the minimum required write index outside writable memory. Both read-only
+and missing pages are nonwritable under that predicate.
+
+Consider `store_imm_u16(0x10fff, 0)`: page `0x10000` is read-only and page
+`0x11000` is missing. Literal code `[31,4,255,15,1,0,0,0,0,0,0]`, mask `[1,4]`,
+blob prefix `[0,0,11]`. The final zero opcode is a real trap after the store.
+The paper selects Fault `0x10000`; pinned PolkaVM 0.37.0
+`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa` selects Segfault `0x11000`.
+Registers and memory remain unchanged in both cases.
+
+The interpreter's
+[two-page store branch](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm/src/interpreter.rs#L1174-L1227)
+checks presence of both pages before their read-only flags. With both pages present
+and read-only it selects the lower page, matching the paper. This difference occurs
+without wraparound, protected memory or exclusive-end overflow.
+
+Should missing pages take priority over an earlier read-only write fault, or should
+all nonwritable bytes participate in one minimum-index selection? Please specify the
+fault-address rule, since it determines which page the environment repairs first.
+Our local deterministic cross-check exercises all scalar memory forms and retains
+48 paper/reference differences with unchanged original paper expectations.
+
+Prepared locally only; a duplicate check is still needed before maintainer posting.
