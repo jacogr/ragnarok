@@ -210,3 +210,18 @@ execution/adoption APIs are unchanged.
 
 Local resumed RPC successor, semantic and inventory checks pass; logs use
 `build/recovery-rpc-successor*`. No transition/RPC production implementation changes.
+
+## Late resumed publication rollback
+
+A successful private application branch measures the exact native hash workload
+for a source prepared against recovered state. Refusing its last sealed-header
+hash preserves the original canonical map/history; explicit retry succeeds with
+the same measured workload and root. Separately, inherited six-write storage
+policy permits genuine preparation but refuses final consensus composition. Both
+initial and explicit repeated attempts preserve the complete imported snapshot
+and one-head view; retry never widens resource policy. No failure is synthesized
+by an invalid source or producer byte limit.
+
+Local rollback suite, semantic checks and inventory pass, including the measured
+late native refusal, genuine retry and repeated inherited quota refusal. Evidence
+uses `build/recovery-rollback*`; no production change or remote CI request.
