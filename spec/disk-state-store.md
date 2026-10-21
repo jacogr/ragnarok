@@ -261,3 +261,29 @@ value, evicted/in-window/absent finality, exact current ownership and byte-ident
 All truncations, malformed tags/lengths/root hints, trailing data, insufficient context budgets,
 wrong generations/policies and absent historical records refuse without changing durable selection.
 The local-history fixtures contain structurally authored headers, not execution certificates.
+
+## Disk-chain coordination
+
+`app/disk_chain.nim` creates a contextual database exclusively and provisions detached older
+finality followed by the retained suffix through ordinary valid single-root publications.
+At most nine bootstrap revisions are followed by a final canonical context-only publication.
+Bootstrap markers deliberately cannot decode as canonical history; interrupted initialization
+leaves forensic bytes and releases the lock, with no fallback to a partially initialized head.
+Normal strict reopen restores every retained binding under the configured profile/policy and
+closes the disk owner on any application-context failure. It performs no implicit tail repair.
+
+Opaque `PreparedDiskPublication` stages the already prepared chain update, exact original map,
+next generation and encoded context. Preparation also compares freshly encoded prior canonical
+context with the durable selected bytes, binding chain/history/finality as well as state ownership.
+This costs bounded header/context work, not full-map restoration. Commit checks the exact parent
+and generation, publishes through the existing disk store, and never accesses application/RPC.
+The synchronous convenience coordinators preflight enabled RPC/lease authority, commit first,
+then install the opaque update without repeating execution or capture. Call synchronous IO only
+at startup or under a native worker's exclusive lease, never in dispatcher callbacks. Shutdown
+must join any worker before retiring its disk/canonical graphs; cancellation cannot undo IO.
+
+`make unit SUITE=disk_chain` covers real bounded bootstrap/restart, incomplete-bootstrap refusal
+without byte changes, genuine signed successors with and without RPC, missing leases, wrong chain,
+changed durable finality, budget failures, exact owner retention and strict successor restart.
+Application options/services are not wired by this coordinator layer. External checkpoint import
+continues to require independent trust and does not inherit local history/finality.
