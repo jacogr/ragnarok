@@ -38,15 +38,18 @@ which operands are meaningful. Decoding does not validate branch destinations.
 
 The one-byte table width is not restricted to 1–4 or 1–8. The pinned definition
 uses E_z with z encoded as one byte, and Appendix C defines E_0. Thus width zero
-encodes zero entries; widths above eight require zero high bytes because elements
+encodes zero-valued entries without table payload bytes; widths above eight require zero high bytes because elements
 belong to the 64-bit register domain. Jump entries may name invalid destinations;
 the dynamic-jump execution rule, not deblob, rejects those destinations.
 These are the raw `decodeProgram` rules. The explicit `decodeJamProgram` entry
 point selects the maintainer's PolkaVM compatibility policy for JAM execution:
-[GP-PVM-004/005/006](graypaper-discrepancies.md) reject final missing successors
+[GP-PVM-004/005/006/007](graypaper-discrepancies.md) reject final missing successors
 and widths above4, and expose zero-width tables as semantically empty. It shares
 the bounded framing/ownership implementation; it is not an alternate-format
-fallback. Original input bytes remain copied verbatim and code offsets do not
+fallback. JAM code is additionally bounded to32 MiB and declared jump counts to16 Mi entries,
+before width-zero normalization. These are the pinned implementation's compatibility
+bounds, distinct from caller byte/count policies and the paper's raw decoder.
+Original input bytes remain copied verbatim and code offsets do not
 change. The declared count is checked against the local jump ceiling before
 semantic normalization. Raw and JAM program owners remain independent and
 immutable; callers choose their preparation boundary explicitly.

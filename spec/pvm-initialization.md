@@ -27,7 +27,9 @@ execute prefixes or synthesize a guest panic. Existing callers retain their type
 initialization/preparation failures. Raw `decodeProgram`, machine capture and stepping retain the paper's structural
 and runtime behavior. The JAM profile also rejects jump-entry widths above4
 (GP-PVM-005) and treats width0 tables as empty (GP-PVM-006), even when the blob
-declares entries. The same profile is used by inner-machine creation.
+declares entries. The same profile is used by inner-machine creation. GP-PVM-007 also caps instruction
+bytes at32 MiB and declared entries at16 Mi before normalization. Semantic refusals
+retain `InvalidProgram`; caller allocation-policy exhaustion remains `LimitExceeded`.
 
 It does not implement the argument-invocation wrapper, host functions, return-buffer
 extraction or invocation-level panic/gas normalization.

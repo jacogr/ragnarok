@@ -7,7 +7,9 @@ No pins change. The maintainer's discrepancy compatibility policy selects
 `decodeJamProgram` for machine creation: GP-PVM-004/005 reject a missing final
 successor or jump width above4 with the existing HUH result; GP-PVM-006 accepts
 width0 tables but gives them no dynamic entries, matching public PolkaVM behavior.
-Raw paper decoding remains separately available. See the
+GP-PVM-007 caps code at32 MiB and declared entries at16 Mi before normalization,
+with HUH for semantic refusal after existing local policy/read checks. Raw paper
+decoding remains separately available. See the
 [discrepancy register](graypaper-discrepancies.md).
 
 Scope: hosts 9 (machine) and 14 (expunge), a private immutable map of at most

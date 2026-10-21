@@ -175,3 +175,29 @@ mean an empty table? Please define both acceptance and dynamic lookup. Rejecting
 all nonempty width0 tables would itself differ from current PolkaVM's successful
 module load and later trap. [PR559](https://github.com/gavofyork/graypaper/pull/559)
 proposes an upper width bound but does not resolve this case.
+
+## GP-PVM-007 — Suggested boundary-fixture comment on existing PR559
+
+[PR559](https://github.com/gavofyork/graypaper/pull/559) proposes code and jump-count
+bounds missing from our pinned Gray Paper0.8.0
+`07f041dabd073f9018b418e9ee72e79dd2185401` deblob predicate.
+Pinned PolkaVM0.37.0 `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa` already enforces
+33554432 instruction bytes and16777216 declared entries.
+
+The smallest count witness is `[225,1,0,0,0,1,0,1]`: count16777217, width0,
+code length1, trap, mask1. The paper's raw decoder accepts its logical zero table;
+PolkaVM rejects the declared count even though width0 otherwise becomes an empty
+table. Counts16777215/16777216 parse and validate;16777217 is rejected.
+
+For the code bound, full present all-trap code and canonical all-start masks at
+33554431/33554432 bytes parse and validate in PolkaVM;33554433 is rejected. These
+are fully materialized test programs rather than truncated declared-length probes.
+Our independent raw decoder accepts all three; the JAM compatibility profile now
+follows PolkaVM. The retained public checker and native tests also cover the
+UINT64_MAX zero-width declaration without allocating a logical table.
+
+Please preserve both exact-edge fixture families and specify that the code bound
+counts instruction bytes, independently of framing/table/mask bytes. The entry
+bound must state whether it applies to the declared count before width-zero
+normalization; the current implementation checks that declaration first. This
+interacts with the separate GP-PVM-006 zero-width interpretation question.
