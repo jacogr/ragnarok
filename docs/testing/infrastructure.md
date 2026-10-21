@@ -136,7 +136,7 @@ Each driver retains its own executable and every probe remains a separate proces
 advisory lock protects shared build intermediates; other verification groups retain their existing
 per-build caches. Progress logs identify the active build and elapsed time.
 
-CI partitions the discovered ordinary contract families across two bounded jobs. Specialized
+CI partitions the discovered ordinary contract families across four bounded jobs. Specialized
 controls execute once, in the final partition. Each partition requires its exact predeclared
 identities and diagnostic predicates; the stable contract check requires all partitions to pass.
 `FAILURE_SHARD=index/count make check-failures` selects the same scope locally; plain
