@@ -1,0 +1,51 @@
+{
+  "build_name": "application-checkpoint-session-results",
+  "cases": [
+    {
+      "arguments": [
+        "unclosed"
+      ],
+      "description": "Application checkpoint session unclosed",
+      "diagnostic": "not session.active",
+      "identity": {
+        "reason": "unclosed"
+      },
+      "name": "application-checkpoint-session-unclosed"
+    },
+    {
+      "arguments": [
+        "moved"
+      ],
+      "description": "Application checkpoint session moved",
+      "diagnostic": "not session.active",
+      "identity": {
+        "reason": "moved"
+      },
+      "name": "application-checkpoint-session-moved"
+    },
+    {
+      "arguments": [
+        "shutdown"
+      ],
+      "description": "Application checkpoint session shutdown",
+      "diagnostic": "session.pending",
+      "identity": {
+        "reason": "shutdown"
+      },
+      "name": "application-checkpoint-session-shutdown"
+    },
+    {
+      "arguments": [
+        "take"
+      ],
+      "description": "Application checkpoint session take",
+      "diagnostic": "session.pending",
+      "identity": {
+        "reason": "take"
+      },
+      "name": "application-checkpoint-session-take"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/application_checkpoint_session_results.nim"
+}

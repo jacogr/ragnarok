@@ -153,3 +153,15 @@ Child-only kernel file-size ceilings cross header/profile/map context changes th
 ## Known worker process-exit boundaries
 
 Child processes exit without collection, joined close or copied-parent ARC destruction at observed Staged, Cancelled and durable Done boundaries. Across header/profile/map changes, nine boundary witnesses verify exact old/new whole envelope bytes, fresh parent cooperative lock admission and independently bound recovery, rejecting the other context. No live native owner crosses fork. Final private-directory removal detects orphan temporaries. These are known process boundaries, not mid-write interruption, power-loss or filesystem crash-consistency claims.
+
+## Managed shutdown acknowledgement
+
+ApplicationCheckpointSession privately owns one fixed-address worker and a scalar
+joined-outcome journal. Actual uncollected work or native retirement uncertainty
+survives repeated close and blocks restart until explicit takeShutdown. Collected
+work and clean idle shutdown create no duplicate receipt. Inactive ownership may
+move the fixed journal, clearing source acknowledgement authority; live parent
+relocation and implicit copies are rejected. No shutdown path silently retries a
+possible publication or adopts restored state. Native tests cross real completed
+publication, staged cancellation, retained observation, restart and repeated full
+native lifetime retirement, with strict accessor/lifecycle and copy/private checks.
