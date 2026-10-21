@@ -105,3 +105,11 @@ Admitted physical tables never contain that identity; every result must be the t
 refusal. This distinguishes successful payload extraction from negative address search without
 inventing disk IO, protocol-key absence proofs or partial-state completeness. The allocated result
 array and all refusal validation remain outside timing.
+
+## Sparse publication batch width
+
+Every comparison now has sixteen one-write or four-write publications, for sixteen or sixty-four
+changed keys respectively. The independent complete-map/history expectations use the exact chosen
+width, while preparation and Merklization remain outside publication timing. Native output, raw
+JSON, CSV and both Markdown tables retain batch width; smaller substituted batches refuse parsing
+or aggregation. Checked mutation policies bound each batch to four writes and 1,024 value bytes.
