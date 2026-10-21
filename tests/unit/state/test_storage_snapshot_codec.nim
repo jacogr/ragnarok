@@ -4,8 +4,18 @@
 ## Managed snapshots bind selected generation/root, retained complete graphs and exact context bytes.
 import std/[assertions, syncio]
 import ../../support/storage_samples
-import ../../../src/storage/[node_repository, node_records, full_state_trie, database_identity, snapshot_codec]
+import ../../../src/storage/[node_repository, node_records, full_state_trie, database_identity,
+    snapshot_codec, record_codec]
 import ../../../src/codec/[bounded, state_trie]
+import ../../../src/crypto/primitives
+proc reseal(bytes: var seq[byte]) =
+  ## A valid outer checksum cannot grant authority to corrupt records or false graph metadata.
+  assert bytes.len >= 32
+  let digest = blake2b256(bytes.toOpenArray(0, bytes.len-33))
+  assert digest.error == CryptoError.None
+  let checksum = array[32, byte](digest.value)
+  for index in 0..<32:
+    bytes[bytes.len-32+index] = checksum[index] # Keep the exact serialized extent while refreshing integrity.
 let limits = SnapshotLimits(repository: storageLimits(), roots: ElementLimit(2), context: ByteLimit(
     8), bytes: ByteLimit(1000000))
 let first = storageTrie(7)
@@ -37,6 +47,31 @@ for index in 0..<encoded.bytes.len:
   changed[index] = changed[index] xor 1
   assert decodeRepositorySnapshot(changed, default(StorageChainId), StorageSchema.FullStateV1,
       limits).error != SnapshotError.None # Metadata and raw node data share one integrity boundary.
+# These adversarial inputs carry correct outer checksums and must reach inner admission checks.
+const snapshotBase = "RAGNAROK-SNAPSHOT-V1\n".len
+const bodyStart = snapshotBase+113+2*32+2
+const recordDigest = bodyStart+"RAGNAROK-RECORDS-V1\n".len+8+1
+var corruptRecord = encoded.bytes
+corruptRecord[recordDigest] = corruptRecord[recordDigest] xor 1
+reseal(corruptRecord)
+let recordRefusal = decodeRepositorySnapshot(corruptRecord, default(StorageChainId),
+  StorageSchema.FullStateV1, limits)
+assert recordRefusal.error == SnapshotError.RecordFailure
+assert recordRefusal.recordError == RecordError.HashMismatch
+var wrongRoot = encoded.bytes
+wrongRoot[snapshotBase+41] = wrongRoot[snapshotBase+41] xor 128
+reseal(wrongRoot)
+let rootRefusal = decodeRepositorySnapshot(wrongRoot, default(StorageChainId),
+  StorageSchema.FullStateV1, limits)
+assert rootRefusal.error == SnapshotError.RepositoryFailure
+assert rootRefusal.repositoryError == RepositoryError.RootMismatch
+var wrongCount = encoded.bytes
+wrongCount[snapshotBase+81] = wrongCount[snapshotBase+81] xor 1
+reseal(wrongCount)
+let graphRefusal = decodeRepositorySnapshot(wrongCount, default(StorageChainId),
+  StorageSchema.FullStateV1, limits)
+assert graphRefusal.error == SnapshotError.RepositoryFailure
+assert graphRefusal.repositoryError == RepositoryError.InvalidGraph
 var wrongChain = default(array[32, byte])
 wrongChain[0] = 1
 assert decodeRepositorySnapshot(encoded.bytes, StorageChainId(wrongChain),
