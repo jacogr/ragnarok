@@ -201,3 +201,15 @@ metadata still requires every record hash, graph route, per-root budget and orph
 The decoder observer requires zero hashes for invalid generation, excess selected entries and
 missing selected-root membership. Existing malformed image, empty-current union and ARC coverage
 remain. Error precedence for impossible metadata is explicitly before physical transport errors.
+
+## Canonical serialized collection decoding
+
+`decodeOrderedRecordCollection` proves strict physical-address order during its borrowed extent
+pass before allocating records. Its private integrity path therefore needs no duplicate-address
+sort array. Every record still hashes exactly once. General `decodeRecordCollection` continues
+to accept unsorted unique transport without normalization; mutable raw validation remains strict.
+
+Serialized image admission now uses the ordered decoder. Descending input reports selected
+`InvalidRecords/NonCanonical` earlier, instead of the later `InvalidGraph`; duplicate identities
+remain `DuplicateNode`. No valid bytes change. Tests require zero hashes for descending/duplicate
+identities, all truncations, unchanged generic decoding and real inner hash refusal.

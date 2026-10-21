@@ -593,7 +593,7 @@ proc decodeRepositoryImage*(input: openArray[byte], generation: RepositoryGenera
   ## Integrity failures retain RecordError, while topology/metadata/budget refusals use RepositoryError.
   let metadata = imageMetadata(generation, commitment, roots, limits, rootLimit)
   if metadata != RepositoryError.None: return RepositoryResult[NodeRepository](status: metadata)
-  let decoded = decodeRecordCollection(input, imageRecordLimits(limits, encoded))
+  let decoded = decodeOrderedRecordCollection(input, imageRecordLimits(limits, encoded))
   if decoded.error != RecordError.None:
     return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
       recordReason: decoded.error)
