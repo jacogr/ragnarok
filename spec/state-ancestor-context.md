@@ -117,3 +117,11 @@ and destroys each endpoint only after its native live-connection count reaches z
 reservations survive. This is necessary before ancestry acquisition opens fresh endpoints against
 a one-peer listener. Real two-listener tests cover pending-open refusal, complete stream close,
 two graceful drain cycles, exact-pin reconnects and attempted identity replacement.
+
+Dispatcher discovery now crosses explicit `DrainingAncestors` and `AwaitingAncestors` stages.
+Collection ends the worker/RPC lease, graceful connection retirement ends all peer endpoints,
+then the host may inspect the certified demand. Resumption preserves the original attempt and
+its total deadline; expiration cannot create a new budget. A later tick submits the retained
+prepared input, with the original request already consumed. Real TLS/worker/adoption tests prove
+one child request, zero live child peers while awaiting context, atomic quota refusal, no early
+publication and exact deadline refusal without canonical advancement.

@@ -8,7 +8,7 @@ import ./[block_download_peers, block_download_session, block_download_stream]
 import ../app/[services, handoff, chain, candidate, block_input, block_download, download_schedule, preparation_worker]
 import ../codec/[bounded, header]
 import ../chain/genesis
-import ../state/[accumulation_completion, store]
+import ../state/[accumulation_completion, store, report_anchors]
 
 type
   DownloadLoopTick* = distinct uint64 ## Monotonic host milliseconds shared by all dispatcher deadlines.
@@ -21,10 +21,11 @@ type
     stream*: DownloadStreamLimits
     attemptTimeout*: DownloadAttemptTimeout
   DownloadLoopStage* {.pure.} = enum ## Adoption is terminal only after taking a successful canonical handoff result.
-    Uninitialized, Waiting, Receiving, Preparing, Cancelling, Queued, Adopted, Exhausted, Failed, Closed
+    Uninitialized, Waiting, Receiving, Preparing, Cancelling, Queued, Adopted, Exhausted, Failed,
+      Closed, DrainingAncestors, AwaitingAncestors
   DownloadLoopError* {.pure.} = enum ## Ordinary wait/retry/budget completion are stages, while refusals preserve ownership.
     None, Uninitialized, Busy, InvalidPolicy, MissingState, ServicesBusy, ClockRegression,
-    SessionFailure, LostHandoff, LostPreparation, Closed
+    SessionFailure, LostHandoff, LostPreparation, Closed, AttemptExpired
   BlockDownloadLoop* = object ## Fixed-address composite owns native callback targets and one scheduler/session lease.
     catalog: BlockDownloadPeers
     session: BlockDownloadSession
@@ -220,6 +221,18 @@ proc tick*(dispatcher: var BlockDownloadLoop, now: DownloadLoopTick): DownloadLo
     let outcome = if dispatcher.completion.error == ApplicationChainError.None:
         DownloadAttemptOutcome.Adopted else: DownloadAttemptOutcome.Retry
     return dispatcher.finish(outcome, now) # Actual refusal keeps the bounded retry plan alive.
+  if dispatcher.status in [DownloadLoopStage.DrainingAncestors,
+      DownloadLoopStage.AwaitingAncestors]:
+    if uint64(now) - dispatcher.started >= uint64(dispatcher.limits.attemptTimeout):
+      dispatcher.status = DownloadLoopStage.Failed
+      return DownloadLoopError.AttemptExpired # Acquisition cannot reset the original child attempt's total deadline.
+    if dispatcher.status == DownloadLoopStage.DrainingAncestors:
+      if dispatcher.catalog.disconnectPeers() != DownloadPeerError.None:
+        dispatcher.status = DownloadLoopStage.Failed
+        return DownloadLoopError.SessionFailure # No new endpoint may race a still-borrowed native stream.
+      if dispatcher.catalog.count == 0:
+        dispatcher.status = DownloadLoopStage.AwaitingAncestors # Actual connection close precedes exposing the host acquisition turn.
+    return DownloadLoopError.None # Host explicitly acquires context; this turn cannot submit or request another child.
   if dispatcher.status in [DownloadLoopStage.Adopted, DownloadLoopStage.Exhausted,
       DownloadLoopStage.Failed]: return DownloadLoopError.None # Terminal plans never select or prepare again.
   if dispatcher.status in [DownloadLoopStage.Preparing, DownloadLoopStage.Cancelling]:
@@ -238,6 +251,8 @@ proc tick*(dispatcher: var BlockDownloadLoop, now: DownloadLoopTick): DownloadLo
         dispatcher.limits.composition)
     if completed.error == DownloadSessionError.None:
       dispatcher.status = DownloadLoopStage.Queued # Queue now; a later Services tick alone can adopt.
+    elif dispatcher.session.stage == BlockDownloadStage.AwaitingAncestors:
+      dispatcher.status = DownloadLoopStage.DrainingAncestors # Managed collection ended every exclusive graph borrow before connection retirement.
     else:
       dispatcher.refusal = completed.failure
       return dispatcher.retry(now) # Collection already ended worker/RPC exclusion before raw/context retirement.
@@ -319,3 +334,45 @@ proc close*(dispatcher: var BlockDownloadLoop) =
   dispatcher.owner = nil
   dispatcher.current = nil
   dispatcher.status = DownloadLoopStage.Closed
+
+proc ancestorDemand*(dispatcher: BlockDownloadLoop): DownloadSessionResult[
+    ReportLookupDemand] {.requires:
+    dispatcher.status == DownloadLoopStage.AwaitingAncestors.} =
+  ## Only a collected prepared input and fully retired peer catalog can authorize host-side acquisition.
+  let token = dispatcher.current
+  if token == nil: return default(DownloadSessionResult[
+      ReportLookupDemand]) # Lost ownership never fabricates a plan.
+  dispatcher.session.ancestorDemand(token)
+
+func ancestorRemaining*(dispatcher: BlockDownloadLoop, now: DownloadLoopTick): uint64 {.requires:
+    dispatcher.status == DownloadLoopStage.AwaitingAncestors and uint64(now) >=
+        dispatcher.lastTick.} =
+  ## Return the original attempt's remaining milliseconds; a query never creates a new request budget.
+  let elapsed = uint64(now) - dispatcher.started
+  let maximum = uint64(dispatcher.limits.attemptTimeout)
+  if elapsed >= maximum: 0'u64
+  else: maximum - elapsed # Ordered monotonic ticks prove the subtraction does not wrap.
+
+proc resumeAncestors*(dispatcher: var BlockDownloadLoop, ancestors: openArray[OwnedHeader],
+    now: DownloadLoopTick): DownloadLoopError =
+  ## Resume the same token/input after host acquisition; a later tick alone may grant another worker lease.
+  if dispatcher.status != DownloadLoopStage.AwaitingAncestors: return DownloadLoopError.Busy
+  if uint64(now) < dispatcher.lastTick: return DownloadLoopError.ClockRegression
+  dispatcher.lastTick = uint64(now)
+  if uint64(now) - dispatcher.started >= uint64(dispatcher.limits.attemptTimeout):
+    dispatcher.status = DownloadLoopStage.Failed
+    return DownloadLoopError.AttemptExpired
+  let borrowed = dispatcher.owner
+  let token = dispatcher.current
+  if borrowed == nil or token == nil: return DownloadLoopError.Uninitialized
+  let owner: ptr Services = borrowed
+  if not owner[].preparationAvailable: return DownloadLoopError.ServicesBusy
+  let resumed = dispatcher.session.resumeAncestors(token, owner[], ancestors)
+  if resumed.error != DownloadSessionError.None:
+    dispatcher.refusal = resumed.failure
+    return DownloadLoopError.SessionFailure # Quota/context refusal keeps the exact suspended input available for explicit correction/close.
+  var retained = newSeq[OwnedHeader](ancestors.len)
+  for index, ancestor in ancestors: retained[index] = ancestor # Input resumption proved all descriptor/count/byte bounds before this copy.
+  dispatcher.ancestors = retained
+  dispatcher.status = DownloadLoopStage.Receiving # requested remains true: the next tick prepares Ready input without another network request.
+  DownloadLoopError.None
