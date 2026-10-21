@@ -107,3 +107,12 @@ open remains unchanged. Real child-process short-write checks exercise recovery 
 `revision_retention.nim` provides bounded explicit pins for immutable repository views. Catalog
 copies update independently; release/close never revoke held views. Tokens also retain their
 selected view until dropped. There is no automatic eviction, finality policy or disk reclamation.
+
+`synchronize` uses `StorageDurability` receipts: memory confirms only process lifetime; disk
+confirms a successful file and directory barrier. Both owners share snapshot/publication/view
+semantics while preserving their typed error distinctions. Run `storage_backend_contract` and
+`storage_disk_replay` for the common scenarios and published full/delta/inverse mapping roundtrips.
+
+The standalone roadmap stops here for maintainer evaluation. Consumer adoption, full/light startup
+configuration and workload-driven layout/reclamation need separately scoped work. Availability or
+merging of these modules does not authorize either workstream to begin integration.

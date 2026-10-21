@@ -6,7 +6,7 @@
 
 import std/assertions
 import std/posix/posix
-import ./[node_repository, node_records, record_codec, journal_codec, database_identity]
+import ./[node_repository, node_records, record_codec, journal_codec, database_identity, durability]
 import ../codec/[bounded, state_trie]
 
 type
@@ -61,7 +61,7 @@ func error*[T](outcome: FileResult[T]): FileError =
   ## Read the outer publication/lifecycle reason alone.
   outcome.status
 func value*[T](outcome: FileResult[T]): T {.inline, requires: outcome.status == FileError.None.} =
-  ## Extract only fully synchronized publication or an unpoisoned retained read view.
+  ## Extract only successful publication, retained reads or explicit synchronization receipts.
   outcome.completed
 func batchFailure*[T](outcome: FileResult[T]): RepositoryResult[RepositoryView] {.requires:
     outcome.status == FileError.InvalidBatch.} =
@@ -284,3 +284,13 @@ proc publish*(repository: var FileRepository, expected: RepositoryView,
     return FileResult[RepositoryView](status: FileError.PublishedUnsynced) # Complete bytes may be visible, but no successor is authorized.
   repository.memory = working # This is the only live head replacement, after full durable publication.
   FileResult[RepositoryView](status: FileError.None, completed: prepared.value)
+
+proc synchronize*(repository: var FileRepository): FileResult[StorageDurability] =
+  ## Confirm the current file and directory boundary; uncertainty poisons further live operations.
+  if not repository.active: return FileResult[StorageDurability](status: FileError.Uninitialized)
+  if repository.poisoned: return FileResult[StorageDurability](status: FileError.RecoveryRequired)
+  if synchronize(repository.descriptor) != 0 or synchronize(repository.directory) != 0:
+    repository.poisoned = true
+    return FileResult[StorageDurability](status: FileError.IoFailure)
+  FileResult[StorageDurability](status: FileError.None,
+    completed: StorageDurability.FileAndDirectorySynced)

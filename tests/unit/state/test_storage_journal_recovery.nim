@@ -70,6 +70,7 @@ proc attempt(extra: uint64, succeeds: bool) {.raises.} =
       if uint64(outcome.value.generation) != 2: posix.exitnow(8)
     else:
       if file.snapshot.error != FileError.RecoveryRequired: posix.exitnow(9)
+      if file.synchronize.error != FileError.RecoveryRequired: posix.exitnow(15)
       if file.publish(prior, batch).error != FileError.RecoveryRequired: posix.exitnow(10)
       if uint64(prior.generation) != 1: posix.exitnow(11)
       let held = restoreFullTrie(prior, initial.commitment.root,

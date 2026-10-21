@@ -5,7 +5,7 @@
 ## Retained immutable read views are independent of later publication and explicit owner close.
 
 import std/[algorithm, assertions]
-import ./[node_records, record_codec, full_state_trie]
+import ./[node_records, record_codec, full_state_trie, durability]
 import ../codec/[state_layout, state_trie, bounded]
 
 type
@@ -250,3 +250,10 @@ proc restoreFullTrie*(view: RepositoryView, expected: StateRoot,
   if array[32, byte](restored.value.commitment.root) != array[32, byte](expected):
     return RepositoryResult[FullStateTrie](status: RepositoryError.RootMismatch)
   RepositoryResult[FullStateTrie](status: RepositoryError.None, completed: restored.value)
+
+proc synchronize*(repository: NodeRepository): RepositoryResult[StorageDurability] =
+  ## Memory-only synchronization confirms a live owner, with no survival across process restart.
+  if not repository.opened:
+    return RepositoryResult[StorageDurability](status: RepositoryError.Uninitialized)
+  RepositoryResult[StorageDurability](status: RepositoryError.None,
+    completed: StorageDurability.ProcessLifetime)

@@ -1,0 +1,59 @@
+{
+  "source": "tests/native/storage_synchronization_results.nim",
+  "build_name": "storage-synchronization-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "memory",
+        "origin": "default"
+      },
+      "arguments": [
+        "memory",
+        "default"
+      ],
+      "name": "storage-synchronization-memory-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage synchronization memory default guard"
+    },
+    {
+      "identity": {
+        "member": "memory",
+        "origin": "failed"
+      },
+      "arguments": [
+        "memory",
+        "failed"
+      ],
+      "name": "storage-synchronization-memory-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage synchronization memory failed guard"
+    },
+    {
+      "identity": {
+        "member": "file",
+        "origin": "default"
+      },
+      "arguments": [
+        "file",
+        "default"
+      ],
+      "name": "storage-synchronization-file-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage synchronization file default guard"
+    },
+    {
+      "identity": {
+        "member": "file",
+        "origin": "failed"
+      },
+      "arguments": [
+        "file",
+        "failed"
+      ],
+      "name": "storage-synchronization-file-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage synchronization file failed guard"
+    }
+  ]
+}

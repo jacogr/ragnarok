@@ -167,3 +167,47 @@ memory and file repositories use the same catalog without a state/checkpoint ada
 `storage_retention` checks exact/zero capacity, duplicate pins, foreign tokens, copied catalog
 independence, explicit close, retained restoration and 1,000 ARC release cycles. Runtime and
 privacy probes cover failed/default payloads, count preconditions and hidden owner/token storage.
+
+## Shared disk/memory behavior and synchronization
+
+Both owners expose overloaded snapshot, publication, synchronization and close operations using
+the same immutable `RepositoryView` and detached physical batch contract. Backend-specific typed
+errors remain intact: disk preparation preserves the actual repository failure; disk IO refusal
+and uncertain durability remain separately visible. View owner identity is required even when
+another repository or reopened file has identical generation/root metadata.
+
+`synchronize` on an initialized memory owner returns `StorageDurability.ProcessLifetime`; it
+cannot establish restart survival. A live file owner synchronizes its file and directory and
+returns `FileAndDirectorySynced` only after both succeed. Sync refusal poisons that owner until
+close/reopen/recovery, returns no receipt and preserves previously retained views. Default/closed
+owners refuse. The default durability enum makes no claim. A receipt is an operation result, not
+authentication, an assertion about future writes or a hardware power-loss guarantee.
+
+`storage_backend_contract` runs the same transaction scenario against memory and real disk:
+root/count/value agreement, present-empty and missing distinctions, stale/invalid atomic refusal,
+retained pins, explicit durability, reopened owner identity and 1,000 ARC release cycles.
+`storage_disk_replay` runs all seven independently pinned pre/post pairs through full/delta/inverse
+frames with real close/reopen between revisions, checking every exact published root and value,
+and independently retained historical views. Strict synchronization result probes include real
+live file/memory controls. No state execution, checkpoint adapter or consumer API changes occur.
+
+## Stopping boundary for this standalone stack
+
+The first three incremental design stages now have storage-only implementations: immutable
+incremental full-state tries, changed-node durable publication and explicit bounded revision
+retention. The shared memory/disk behavior is checked against the published complete mappings.
+The append-only format retains physical history and reconstructs its bounded in-memory index on
+open; page packing, caching, reclamation, automatic eviction and durable pin policy remain future
+work requiring an observed workload and explicit lifetime requirements. Full/light startup paths,
+canonical heads and execution adoption require a separately authorized consumer integration.
+
+Stop independent expansion here for maintainer evaluation. Historical disk-query/proof APIs,
+non-trie metadata schemas, light-state trust rules and production failure/scale qualification must
+be scoped from actual requirements. Do not infer integration permission from this implementation
+or its merge. Existing checkpoints remain the independent recovery/export baseline. This stack
+adds no M1 progress or complete state-serialization claim.
+
+Observed final shared-contract evidence: checked optimized macOS ARM64 passes both backend
+scenarios and all seven real-file fixture pairs; 1,000 shared lifecycle cycles return to 192/192
+occupied ARC bytes. Exact-head Linux CI, hardware power-loss behavior and actual fsync-refusal
+coverage remain separate validation work. No claim extends beyond the exercised local profile.
