@@ -48,8 +48,7 @@ assert uint64(raw(missing).value.outcome.machine.machineInfo.value.registers[7])
 let starved = fixture(2, credit = 2000)
 let stopped = raw(starved).value.outcome
 assert stopped.exit == StepExit.OutOfGas
-assert uint64(stopped.machine.machineInfo.value.gasDeficit) == refinementPrice(
-    starved)+1863+396-2000
+assert uint64(stopped.machine.machineInfo.value.gasDeficit) == 0
 assert run(starved).value.refinementInfo.value.kind == WorkKind.OutOfGas
 assert uint64(run(starved).value.refinementInfo.value.gasUsed) == 2000
 # Local page-capacity and gas-representation refusals expose no normalized owner or partial metadata.

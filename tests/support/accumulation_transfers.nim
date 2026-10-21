@@ -43,15 +43,15 @@ proc transferExecution*(ending = TransferEnding.Halt, checkpoint = true,
   for index in 0..<128:
     memo[index] = byte((index*7+3) mod 256) # Raw opaque memo contains zero and non-ASCII bytes.
   var instructions = @[registerImmediate(7, uint64(service)), registerImmediate(8, 5),
-    registerImmediate(9, offeredGas), registerImmediate(10, 196608), @[10'u8, 21]]
+    registerImmediate(9, offeredGas), registerImmediate(10, 196608), @[10'u8, 22]]
   if checkpoint:
-    instructions.add(@[10'u8, 18]) # Only the first transfer and debit belong to Y.
+    instructions.add(@[10'u8, 19]) # Only the first transfer and debit belong to Y.
   if second:
     instructions.add(registerImmediate(7, uint64(service)))
     if not duplicate:
       instructions.add(registerImmediate(8, 0))
       instructions.add(registerImmediate(10, 65536)) # Zero self-transfer with a distinct read-only memo.
-    instructions.add(@[10'u8, 21]) # Duplicate mode preserves amount, gas and memo exactly.
+    instructions.add(@[10'u8, 22]) # Duplicate mode preserves amount, gas and memo exactly.
   case ending
   of TransferEnding.Halt:
     discard # Ordinary halt keeps the newer regular sequence.

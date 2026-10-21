@@ -144,7 +144,7 @@ proc entries(items: openArray[Item]): seq[StateEntry] =
       result.add(serviceMetadataEntry(ServiceIndex(item.service), ServiceMetadata(
           balance: AccountBalance(99),
         created: AccountSlot(7), lastAccumulation: AccountSlot(8)), ByteLimit(
-            89)).value) # All metadata fields must remain unchanged.
+            ServiceMetadataBytes)).value) # All metadata fields must remain unchanged.
     result.add(request(item)) # Caller supplies unique request identities in these source fixtures.
 
 ## Assert immutable root equality without invoking hashing during a failure check.

@@ -82,7 +82,7 @@ proc source(history = availableHistory(RequestSlot(4)), present = true, length =
   var input = data
   if input.len == 0:
     input = payload(lookupHash) # Vector identity and authored hashes use exactly the same capture path.
-  var instructions = @[registerImmediate(7, address), registerImmediate(8, offered), @[10'u8, 25]]
+  var instructions = @[registerImmediate(7, address), registerImmediate(8, offered), @[10'u8, 26]]
   for instruction in suffix:
     instructions.add(instruction) # Later hosts observe this exact current implication version.
   guestProgram(instructions, credit, extra = entries, writable = input, writes = writes,
@@ -248,8 +248,7 @@ for available in [0'u64, 3249, 3250, 3251]:
   let completed = run(source(credit = price(valid)+available))
   let cpu = machineInfo(completed.value.machine).value
   if available < 3250:
-    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) ==
-        3250-available and
+    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0 and
       uint64(cpu.registers[7]) == 196608 and uint64(cpu.registers[8]) == 3, "exact fee deficit preserves inputs"
   else:
     resultCode(completed, 0)
@@ -261,13 +260,13 @@ failHash(0)
 let fullCredit = run(source(credit = high(uint64)))
 assert uint64(machineInfo(fullCredit.value.machine).value.gas) == high(uint64)-price(valid)-3250, "full-width gas credit"
 let repeated = run(source(history = requestedHistory(), suffix = @[registerImmediate(7, 196608), @[
-    10'u8, 25], @[50'u8, 0]]))
+    10'u8, 26], @[50'u8, 0]]))
 resultCode(repeated, high(uint64)-8)
 assert uint32(metadata(context(repeated)).storageItems) == 0, "repeat removal cannot decrement footprint twice"
 let queried = run(source(history = requestedHistory(), suffix = @[registerImmediate(7, 196608), @[
-    10'u8, 23], @[50'u8, 0]]))
+    10'u8, 24], @[50'u8, 0]]))
 resultCode(queried, high(uint64), 0) # Current query sees removal rather than initial history.
-let restored = run(source(suffix = @[registerImmediate(7, 196608), @[10'u8, 24], @[50'u8, 0]]))
+let restored = run(source(suffix = @[registerImmediate(7, 196608), @[10'u8, 25], @[50'u8, 0]]))
 resultCode(restored, 0)
 assert context(restored).effectRequestHistory(hash, RequestLength(3)).value.state ==
     RequestState.Reavailable,
@@ -276,8 +275,8 @@ var provideInput = payload()
 for octet in blob:
   provideInput.add(octet) # Explicit byte append uses the pinned runtime's supported sequence operations.
 let resupplied = run(source(history = requestedHistory(), suffix = @[registerImmediate(7, 196608),
-    @[10'u8, 24],
-  registerImmediate(7, 42), registerImmediate(8, 196640), registerImmediate(9, 3), @[10'u8, 27], @[
+    @[10'u8, 25],
+  registerImmediate(7, 42), registerImmediate(8, 196640), registerImmediate(9, 3), @[10'u8, 28], @[
       50'u8, 0]], data = provideInput))
 assert context(resupplied).effectInfo.value.provisions == 1 and context(
     resupplied).effectProvisionAt(AccumulationProvisionIndex(0)).value.copyProvisionBytes.value == blob,
@@ -331,14 +330,14 @@ assert changed.effectContext(AccumulationDimension.Exceptional).value.effectRequ
     RequestLength(3)).value.state == RequestState.Requested,
   "checkpoint retains original request independently"
 for checkpoint in [false, true]:
-  let failed = run(source(history = requestedHistory(), suffix = (if checkpoint: @[@[10'u8, 18], @[
+  let failed = run(source(history = requestedHistory(), suffix = (if checkpoint: @[@[10'u8, 19], @[
       0'u8]] else: @[@[0'u8]])))
   let selected = normalizeAccumulationOutcome(failed).value.outcomeContext.value
   assert selected.effectRequestHistory(hash, RequestLength(3)).error ==
     (if checkpoint: AccumulationEffectError.NotRequested else: AccumulationEffectError.None), "panic chooses matching request deletion checkpoint"
   let exhausted = run(source(history = requestedHistory(), credit = price(valid)+3500, suffix = (if checkpoint:
-    @[@[10'u8, 18], registerImmediate(7, 196608), @[10'u8, 25], @[50'u8, 0]] else:
-    @[registerImmediate(7, 196608), @[10'u8, 25], @[50'u8, 0]])))
+    @[@[10'u8, 19], registerImmediate(7, 196608), @[10'u8, 26], @[50'u8, 0]] else:
+    @[registerImmediate(7, 196608), @[10'u8, 26], @[50'u8, 0]])))
   assert exhausted.value.exit == StepExit.OutOfGas, "second fixed fee is unaffordable"
   let selectedOog = normalizeAccumulationOutcome(exhausted).value.outcomeContext.value
   assert selectedOog.effectRequestHistory(hash, RequestLength(3)).error ==

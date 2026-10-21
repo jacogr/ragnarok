@@ -30,13 +30,13 @@ proc terminalProvisionExecution*(ending = TerminalProvisionEnding.Halt,
   var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 65536),
     registerImmediate(9, 1)]
   if first:
-    instructions.add(@[10'u8, 27]) # Optional first contribution distinguishes empty, X-only and shared X/Y sets.
+    instructions.add(@[10'u8, 28]) # Optional first contribution distinguishes empty, X-only and shared X/Y sets.
   if checkpoint:
-    instructions.add(@[10'u8, 18]) # Snapshot only the first provision into exceptional effects.
+    instructions.add(@[10'u8, 19]) # Snapshot only the first provision into exceptional effects.
   if second:
     instructions.add(registerImmediate(7, 99))
     instructions.add(registerImmediate(8, 196608))
-    instructions.add(@[10'u8, 27]) # RW byte 81 belongs only to the newer regular context.
+    instructions.add(@[10'u8, 28]) # RW byte 81 belongs only to the newer regular context.
   case ending
   of TerminalProvisionEnding.Halt:
     discard # r8 holds a guest address, not the exactly-32-byte return length.
@@ -51,7 +51,7 @@ proc terminalProvisionExecution*(ending = TerminalProvisionEnding.Halt,
     instructions.add(registerImmediate(8, 32)) # Adopted #533 retains regular provisions alongside the returned hash.
   instructions.add(@[50'u8, 0]) # Halt is also the paid successor of a funded final host call.
   let extra = @[serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(
-      89)).value,
+      ServiceMetadataBytes)).value,
     provisionRequest(42, @[73'u8]), provisionRequest(99, @[81'u8])]
   var prepared = guestProgram(instructions, 100000, extra = extra)
   if ending == TerminalProvisionEnding.OutOfGas:

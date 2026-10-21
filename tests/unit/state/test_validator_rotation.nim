@@ -99,7 +99,7 @@ proc scoped(): ValidatorRotation =
   let bytes = rotationBytes(actual.pending)
   for index in [0, 5]:
     for j in 0..<336:
-      assert bytes[1+index*336+j] == 0 # All key fields and every metadata byte must be zero, with count/order unchanged.
+      assert bytes[1+index*336+j] == (if j == 32: 2'u8 else: 0'u8) # Current nullvalkey has exactly one nonzero byte in its Ed25519 field.
   for index in 1..<5:
     for j in 0..<336:
       assert bytes[1+index*336+j] == before[1+index*336+j] # Non-offenders keep their exact full record.

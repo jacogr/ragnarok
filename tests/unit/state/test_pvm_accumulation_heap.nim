@@ -19,7 +19,7 @@ import ../../support/[pvm_accumulation_context, pvm_accumulation_program,
 proc instructions(request: uint64, repeat = false, panic = false): seq[seq[byte]] =
   result = @[]
   if panic:
-    result.add(@[10'u8, 18]) # Retain account checkpoint before heap growth; terminal CPU memory must still include growth.
+    result.add(@[10'u8, 19]) # Retain account checkpoint before heap growth; terminal CPU memory must still include growth.
   result.add(registerImmediate(7, request))
   result.add(@[10'u8, 1])
   if repeat:

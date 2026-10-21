@@ -35,22 +35,22 @@ let input = targetInput()
 
 # Emit one exact upgrade with distinct per-service gas fields and the actual fixed writable input pointer.
 proc upgrade(gas: uint32): seq[seq[byte]] =
-  @[registerImmediate(7, 196608), registerImmediate(8, gas), registerImmediate(9, gas+1), @[10'u8, 20]]
+  @[registerImmediate(7, 196608), registerImmediate(8, gas), registerImmediate(9, gas+1), @[10'u8, 21]]
 
 # Assemble repeated upgrade/checkpoint combinations without another bytecode framing implementation.
 proc envelope(gas: uint32, checkpoint = false, panic = false, provide = false,
     repeat = false): seq[byte] =
   var instructions = upgrade(gas)
   if checkpoint:
-    instructions.add(@[10'u8, 18]) # Select the first complete metadata/scope owner on exceptional termination.
+    instructions.add(@[10'u8, 19]) # Select the first complete metadata/scope owner on exceptional termination.
   if repeat:
     for instruction in upgrade(gas+10):
       instructions.add(instruction) # An uncheckpointed later upgrade remains regular only.
   if provide:
     instructions.add(registerImmediate(7, 196608))
-    instructions.add(@[10'u8, 26]) # Yield shares the same metadata-scope lineage before the pending provision.
+    instructions.add(@[10'u8, 27]) # Yield shares the same metadata-scope lineage before the pending provision.
     for instruction in [registerImmediate(7, 42), registerImmediate(8, 65536),
-        registerImmediate(9, 1), @[10'u8, 27]]:
+        registerImmediate(9, 1), @[10'u8, 28]]:
       instructions.add(instruction) # Pending provision must preserve the self-metadata proof.
   instructions.add(if panic: @[0'u8] else: @[50'u8, 0])
   guestEnvelope(instructions, input)
@@ -151,7 +151,7 @@ block broader_mutation_is_sticky:
         registerImmediate(9, 196608), registerImmediate(10, 1), @[10'u8, 5]] # Real self storage mutation.
     else:
       instructions = @[registerImmediate(7, 196608), registerImmediate(8, 3), @[10'u8,
-          24]] # Real request mutation.
+          25]] # Real request mutation.
     for instruction in upgrade(7):
       instructions.add(instruction) # A later upgrade cannot relabel the broader lineage as self-metadata-only.
     instructions.add(@[50'u8, 0])

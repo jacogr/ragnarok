@@ -45,7 +45,7 @@ proc source(history = requestedHistory(), present = true, length = 3'u32,
     account = ServiceMetadata(balance: AccountBalance(100)),
     suffix: seq[seq[byte]] = @[@[50'u8, 0]]): PreparedAccumulationMachine =
   var entries = @[serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(
-      89)).value,
+      ServiceMetadataBytes)).value,
     serviceRequestEntry(ServiceIndex(99), hash, RequestLength(length), availableHistory(RequestSlot(
         73)), config).value]
   if present:
@@ -53,7 +53,7 @@ proc source(history = requestedHistory(), present = true, length = 3'u32,
     if malformed:
       entry.value = wire # Genuine malformed record reaches only the production canonical decoder.
     entries.add(entry)
-  var instructions = @[registerImmediate(7, address), registerImmediate(8, offered), @[10'u8, 23]]
+  var instructions = @[registerImmediate(7, address), registerImmediate(8, offered), @[10'u8, 24]]
   for instruction in suffix:
     instructions.add(instruction) # Continue in the same immutable CPU/effect execution stream.
   guestProgram(instructions, credit, extra = entries, writable = payload(), writes = writes,
@@ -141,7 +141,7 @@ for available in [0'u64, 642, 643, 644]:
   let completed = run(source(credit = price(valid)+available))
   let cpu = machineInfo(completed.value.machine).value
   if available < 643:
-    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 643-available and
+    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0 and
       uint64(cpu.registers[7]) == 196608 and uint64(cpu.registers[8]) == 3, "exact fixed fee deficit with original registers"
   else:
     words(completed, 0, 0)
@@ -182,7 +182,7 @@ let yielded = recordAccumulationYield(advanced, default(OutputCommitment)).value
 assert uint32(yielded.effectContext(AccumulationDimension.Regular).value.effectRequestHistory(hash,
   RequestLength(high(uint32))).value.since) == 0x80000007'u32, "yield preserves the current request owner"
 for checkpoint in [false, true]:
-  let completed = run(source(suffix = (if checkpoint: @[@[10'u8, 18], @[0'u8]] else: @[@[0'u8]])))
+  let completed = run(source(suffix = (if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])))
   let selected = normalizeAccumulationOutcome(completed).value.outcomeContext.value
   assert selected.effectRequestHistory(hash, RequestLength(3)).value.state ==
       RequestState.Requested,

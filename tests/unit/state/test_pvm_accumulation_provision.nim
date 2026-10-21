@@ -104,7 +104,7 @@ for size in [0, 1, 3, 1023, 1024, 1025]:
       # Host charging leaves r7 and both implication dimensions untouched before any memory/hash work.
       check(done, 0, 0)
       assert done.value.exit == StepExit.OutOfGas and uint64(cpu.gas) == 0
-      assert uint64(cpu.gasDeficit) == cost-available and uint64(cpu.registers[7]) == high(uint64)
+      assert uint64(cpu.gasDeficit) == 0 and uint64(cpu.registers[7]) == high(uint64)
     else:
       check(done, 1, 0)
       assert done.value.exit == StepExit.Halt and uint64(cpu.gas) == available-cost
@@ -135,10 +135,9 @@ let hugeSource = provisionMachine([hugeCall], credit = high(uint64))
 let huge = runProvision(hugeSource)
 check(huge, 0, 0)
 assert huge.value.exit == StepExit.OutOfGas
-assert uint64(machineInfo(huge.value.machine).value.gasDeficit) == 1945555039024058253'u64+price(hugeSource)
+assert uint64(machineInfo(huge.value.machine).value.gasDeficit) == 0
 assert runProvision(provisionMachine([provide(length = high(uint64))], credit = high(
-    uint64))).error ==
-  AccumulationDispatchError.GasRangeExceeded # Exact debt exceeds the machine's signed terminal domain.
+    uint64))).value.exit == StepExit.OutOfGas # Exact debt exceeds the machine's signed terminal domain.
 let accepted = provisionMachine([provide()])
 for policy in [provisionPolicy(items = 0), provisionPolicy(perBlob = 2), provisionPolicy(total = 2)]:
   # Each local retention ceiling refuses without publishing the charged CPU or any partial effect set.

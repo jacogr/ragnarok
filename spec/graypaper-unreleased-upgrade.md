@@ -89,9 +89,18 @@ are embedded explicitly into current metadata and have derived roots.
 This is partial local verification, not complete native-suite or Linux CI evidence.
 The `eject` implementation and direct guest witnesses now use current supervisor
 authorization, empty-item eligibility and reclamation of both balances. Bounded
-deletion proofs/publication remove only metadata. Their broader batch integration
-fixtures still require migration and verification before this change is complete.
-The focused current eject guest suite passes1,000 ownership cycles with unchanged
-occupied memory; all three changed production modules pass semantic compilation,
+deletion proofs/publication remove only metadata. The broader batch integration
+fixtures are migrated and pass their retained interaction cases.
+The focused current eject guest suite and full deletion/publication interaction
+suite each pass1,000 ownership cycles with unchanged occupied memory; all three changed production modules pass semantic compilation,
 and the exact nominal target-domain rejection passes. Other shifted host-call fixtures and current account mutation arguments
 also remain pending. Do not publish the upgrade while these obsolete paths remain.
+
+## Ed25519 verification compatibility blocker
+
+The target explicitly adds ZIP215 validation. The pinned BoringSSL bridge rejects
+three fixed valid ZIP215 witnesses, with working signing/verification controls.
+See [the compatibility audit](crypto-zip215-upgrade.md). This is an implementation
+gap, not a specification discrepancy. A maintained verification backend is required;
+the maintainer authorized a crypto foundation PR before this upgrade. Do not publish this pin
+upgrade with the known incompatible verifier presented as current protocol behavior.

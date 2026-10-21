@@ -156,7 +156,7 @@ for selector in [1'u64, 2, 4, 6, 13]:
 # Implemented invoke underfunding is protocol OOG; unrelated IDs retain F's WHAT fallback.
 let invokeOog = run(prepare(cpu([@[10'u8, 13], @[50'u8, 0]], registers(), 0)).value).value
 assert invokeOog.outcome.exit == StepExit.OutOfGas
-assert uint64(invokeOog.outcome.machine.machineInfo.value.gasDeficit) == 968
+assert uint64(invokeOog.outcome.machine.machineInfo.value.gasDeficit) == 0
 for id in [3'u8, 6, 15, 27, 28, 127, 255]:
   for credit in [999'u64, 1000]:
     let done = run(prepare(cpu([@[10'u8, id], @[50'u8, 0]], registers(), credit)).value).value

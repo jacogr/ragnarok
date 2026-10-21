@@ -1,6 +1,16 @@
 # Positive gas domains and the already-merged upstream clarification
 
-## Pinned contract and minimal witnesses
+## Current upgrade disposition
+
+The maintainer authorized exact unreleased commit
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. The coordinated migration now
+uses its unsigned saturating host semantics and rejects nonzero compatibility
+deficits. The release-era discrepancy below is resolved by that source change;
+its witnesses remain historical evidence. See the [upgrade contract](graypaper-unreleased-upgrade.md)
+and [current host gas contract](pvm-host-gas.md) for implementation/verification.
+
+
+## Historical release contract and minimal witnesses
 
 Gray Paper 0.8.0 at `07f041dabd073f9018b418e9ee72e79dd2185401` defines
 `gas = [0, 2^64)` and `signedgas = [-2^63, 2^63)` in
@@ -18,7 +28,7 @@ mismatch, independent of any host underflow or implementation cast.
 
 A second original witness uses the pinned general host cost equation
 `gas' = gas - g` with `Omega_G` cost48. Input0 yields OutOfGas with balance-48.
-Ragnarök currently represents that as credit0/deficit48; it does not wrap or clamp.
+The release implementation represented that as credit0/deficit48 without wrapping or clamping.
 That behavior is explicitly covered by [host gas accounting](pvm-host-gas.md).
 
 PolkaVM 0.37.0 at `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa` exposes

@@ -102,7 +102,7 @@ proc bootstrap(chapters: seq[StateEntry], credit = false): PreparedAccumulationI
     servicePreimageEntry(ServiceIndex(42), ServicePreimageHash(hash), raw,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(1))).value,
     serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(balance: AccountBalance(123)), ByteLimit(
-        89)).value,
+        ServiceMetadataBytes)).value,
     servicePreimageEntry(ServiceIndex(99), default(ServicePreimageHash), [9'u8, 8, 7],
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(3))).value]
   for entry in chapters: entries.add(entry) # Complete source retains every supplied component.

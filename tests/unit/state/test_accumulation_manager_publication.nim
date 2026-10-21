@@ -51,16 +51,16 @@ proc managerProgram(changed: bool, ending: Ending, pairs: int): seq[byte] =
       uint32))),
     registerImmediate(8, 196608), registerImmediate(9, uint64(high(uint32))-1),
     registerImmediate(10, 17), registerImmediate(11, 196616), registerImmediate(12, uint64(pairs)),
-    @[10'u8, 15]]
+    @[10'u8, 16]]
   if ending == CheckpointPanic:
-    instructions.add(@[10'u8, 18]) # Freeze the changed roles, dictionary and provenance in the exceptional context.
+    instructions.add(@[10'u8, 19]) # Freeze the changed roles, dictionary and provenance in the exceptional context.
   if ending == Restore:
     instructions.add(registerImmediate(7, 42))
     instructions.add(registerImmediate(8, uint64(196608+restoreOffset)))
     instructions.add(registerImmediate(9, 0))
     instructions.add(registerImmediate(10, 0))
     instructions.add(registerImmediate(12, 0))
-    instructions.add(@[10'u8, 15]) # Original manager retained authority to restore its roles.
+    instructions.add(@[10'u8, 16]) # Original manager retained authority to restore its roles.
   if ending in {Panic, CheckpointPanic}:
     instructions.add(@[0'u8]) # Actual terminal trap chooses the retained exceptional implication.
   if ending == HashReturn:
@@ -73,7 +73,7 @@ proc assignProgram(): seq[byte] =
   var payload = newSeq[byte](96)
   for index in 64..<96: payload[index] = byte(index) # Independently observable slot-two queue hash.
   guestEnvelope([registerImmediate(7, 0), registerImmediate(8, 196608),
-    registerImmediate(9, 77), @[10'u8, 16], @[50'u8, 0]], writable = payload)
+    registerImmediate(9, 77), @[10'u8, 17], @[50'u8, 0]], writable = payload)
 proc policy(pairs, original: int): AccumulationBatchLimits =
   ## Explicit exact wire/item ceilings cover original and selected manager C(12), including cardinality changes.
   result = batchPolicy()
@@ -113,7 +113,7 @@ proc expected(fixture: BatchFixture, changed: bool, ending: Ending, pairs: int,
             ServiceMetadataBytes)).value.metadata
         account.balance = AccountBalance(if index == 0: 17 else: 31)
         row = serviceMetadataEntry(service, account, ByteLimit(
-            89)).value # Independently known incoming credits remain atomic with global writes.
+            ServiceMetadataBytes)).value # Independently known incoming credits remain atomic with global writes.
     result.add(row)
 proc check(changed: bool, ending: Ending, pairs: int, reverse = false, original = 0) =
   ## Refusal never hashes or mutates callers; exact budgets publish literal complete-map roots and release every plan owner.
@@ -244,9 +244,9 @@ proc checkStagingGate() =
   ## A real designate between two successful bless calls retains its independent staging publication budget.
   let program = guestEnvelope([registerImmediate(7, 42), registerImmediate(8, 196608),
     registerImmediate(9, 42), registerImmediate(10, 0), registerImmediate(11, 0),
-    registerImmediate(12, 0), @[10'u8, 15], registerImmediate(7, 196608),
-    registerImmediate(8, 6), @[10'u8, 17], registerImmediate(7, 42),
-    registerImmediate(8, 196608), registerImmediate(9, 0), @[10'u8, 15], @[50'u8, 0]],
+    registerImmediate(12, 0), @[10'u8, 16], registerImmediate(7, 196608),
+    registerImmediate(8, 6), @[10'u8, 18], registerImmediate(7, 42),
+    registerImmediate(8, 196608), registerImmediate(9, 0), @[10'u8, 16], @[50'u8, 0]],
     writable = @[99'u8, 0, 0, 0, 99, 0, 0, 0])
   let fixture = batchFixture(firstEnvelope = program, secondEnvelope = assignProgram(),
     manager = 42, assigners = @[ServiceIndex(99), ServiceIndex(99)])

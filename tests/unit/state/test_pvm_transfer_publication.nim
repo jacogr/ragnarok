@@ -47,7 +47,7 @@ proc profile(): Parameters =
 proc transfer(destination, amount: uint64): seq[seq[byte]] =
   ## Assemble a complete successful-row proposal; the production host supplies its verdict and debit.
   @[registerImmediate(7, destination), registerImmediate(8, amount), registerImmediate(9, 0),
-    registerImmediate(10, 196608), @[10'u8, 21]]
+    registerImmediate(10, 196608), @[10'u8, 22]]
 
 proc append(code: var seq[seq[byte]], more: seq[seq[byte]]) =
   ## Preserve authored instruction boundaries through the existing envelope builder.
@@ -59,10 +59,10 @@ proc envelope(amount = 5'u64, destination = 99'u64, checkpoint = false,
   ## Checkpoint after the first debit, then optionally duplicate it before the selected terminal.
   var code = transfer(destination, amount)
   if checkpoint:
-    code.add(@[10'u8, 18]) # Y retains the exact first debit and outgoing sequence together.
+    code.add(@[10'u8, 19]) # Y retains the exact first debit and outgoing sequence together.
   if repeat:
     code.add(registerImmediate(7, destination))
-    code.add(@[10'u8, 21]) # Same amount/gas/memo: duplicates are separate debits.
+    code.add(@[10'u8, 22]) # Same amount/gas/memo: duplicates are separate debits.
   case ending
   of DebitEnding.Halt:
     discard # Ordinary halt selects every regular append.
@@ -73,7 +73,7 @@ proc envelope(amount = 5'u64, destination = 99'u64, checkpoint = false,
   of DebitEnding.OutOfGas:
     code.add(registerImmediate(7, destination))
     code.add(registerImmediate(9, 100000))
-    code.add(@[10'u8, 21]) # Valid third proposal exceeds remaining gas before any new debit or append.
+    code.add(@[10'u8, 22]) # Valid third proposal exceeds remaining gas before any new debit or append.
   of DebitEnding.HashReturn:
     code.add(registerImmediate(7, 65536))
     code.add(registerImmediate(8, 32)) # Readable return hash overrides only the yield.
@@ -229,7 +229,7 @@ for storage in [false, true]:
     let mutation = (if storage:
       @[registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
         registerImmediate(10, 1), @[10'u8, 5]] else:
-      @[registerImmediate(7, 196608), registerImmediate(8, 7), registerImmediate(9, 9), @[10'u8, 20]])
+      @[registerImmediate(7, 196608), registerImmediate(8, 7), registerImmediate(9, 9), @[10'u8, 21]])
     var code: seq[seq[byte]] = @[]
     if before:
       append(code, mutation) # A later transfer must preserve an existing supported key proof.
@@ -263,7 +263,7 @@ for before in [false, true]:
     append(code, transfer(99, 5)) # Creation must retain an already certified self debit.
   append(code, @[registerImmediate(7, 196608), registerImmediate(8, 1), registerImmediate(9, 0),
     registerImmediate(10, 0), registerImmediate(11, 0), registerImmediate(12, high(uint64)), @[
-        10'u8, 19]])
+        10'u8, 20]])
   if not before:
     append(code, transfer(99, 5)) # Transfer must retain the earlier child's membership proof.
   code.add(@[50'u8, 0])
@@ -309,7 +309,7 @@ for before in [false, true]:
     serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(codeHash: CodeHash(identity),
         balance: AccountBalance(9),
       storageItems: AccountStorageItems(2), storageBytes: AccountStorageBytes(84)), ByteLimit(
-          89)).value,
+          ServiceMetadataBytes)).value,
     serviceRequestEntry(ServiceIndex(77), digest, RequestLength(3), unavailableHistory(RequestSlot(
         5), RequestSlot(7)),
       RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
@@ -319,7 +319,7 @@ for before in [false, true]:
   var code: seq[seq[byte]] = @[]
   if before:
     append(code, transfer(99, 5)) # A later eject must retain the prior debit's supported ancestry.
-  append(code, @[registerImmediate(7, 77), registerImmediate(8, 196608), @[10'u8, 22]])
+  append(code, @[registerImmediate(7, 77), registerImmediate(8, 196608), @[10'u8, 23]])
   if not before:
     append(code, transfer(99, 5)) # A later transfer must preserve the captured deletion facts.
   code.add(@[50'u8, 0])

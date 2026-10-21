@@ -47,20 +47,33 @@ proc original(): ServiceMetadata =
     minimumAccumulationGas: Gas(17), minimumTransferGas: Gas(19),
     created: AccountSlot(43), lastAccumulation: AccountSlot(47), parent: ServiceIndex(53))
 
+# Keep an independent current new-service request after the offered hash for upgrade/creation interaction witnesses.
+proc creationData(data: seq[byte]): seq[byte] =
+  result = newSeq[byte](max(data.len, 92))
+  for i, octet in data:
+    result[i] = octet # Preserve all authored original guest data.
+  for i in 0..<32:
+    let octet = result[i]
+    result[32+i] = octet # Bind the immutable read before borrowing the result for mutation.
+  result[64] = 5
+  result[68] = 1
+  result[76] = 2
+
 # Real guest instructions use explicit metadata/policy and the ordinary unprivileged fixture roles.
 proc source(address = 196608'u64, accumulation = 123'u64, transfer = 456'u64,
     credit = 100000'u64, data: seq[byte] = payload(), account: ServiceMetadata = original(),
     extra: seq[StateEntry] = @[], writes = 2'u64,
     suffix: seq[seq[byte]] = @[@[50'u8, 0]]): PreparedAccumulationMachine =
-  var instructions = @[registerImmediate(7, address), registerImmediate(8, accumulation),
-    registerImmediate(9, transfer), @[10'u8, 20]]
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, address),
+    registerImmediate(9, accumulation), registerImmediate(10, transfer), @[10'u8, 21]]
   for instruction in suffix:
     instructions.add(instruction) # Continue the original decoded program after its own metadata changes.
-  guestProgram(instructions, credit, account = account, writable = data, extra = extra,
+  guestProgram(instructions, credit, account = account, writable = creationData(data),
+      extra = extra,
     writes = writes, spareEntries = 2)
 
 # Copy/execution/probe policies remain explicit; no persistent successor state is published.
-proc run(prepared: PreparedAccumulationMachine, limit = 32'u64,
+proc run(prepared: PreparedAccumulationMachine, limit = 60'u64,
     params: Parameters = parameters()): AccumulationDispatchResult =
   executeAccumulationMachine(prepared, params,
     FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1),
@@ -96,16 +109,16 @@ proc checkCode(owner: AccumulationEffectContext, expected: openArray[byte], accu
   assert uint64(decoded.metadata.minimumAccumulationGas) == accumulation and
     uint64(decoded.metadata.minimumTransferGas) == transfer, "full-width gas values retained"
   for i in 0..<8:
-    assert bytes[41+i] == byte((accumulation shr (8*i)) and 255) and
-      bytes[49+i] == byte((transfer shr (8*i)) and 255), "minimum gas uses exact E8 slots"
+    assert bytes[57+i] == byte((accumulation shr (8*i)) and 255) and
+      bytes[65+i] == byte((transfer shr (8*i)) and 255), "minimum gas uses exact E8 slots"
 
 # All other metadata octets, including balances/counters/timestamps/parent, must stay identical.
 proc checkRemainder(before, after: AccumulationEffectContext) =
   let previous = accountBytes(before)
   let current = accountBytes(after)
-  assert previous.len == 89 and current.len == 89, "fixed metadata extents"
-  for i in 0..<89:
-    if i == 0 or (i >= 33 and i < 41) or i >= 57:
+  assert previous.len == ServiceMetadataBytes and current.len == ServiceMetadataBytes, "fixed metadata extents"
+  for i in 0..<ServiceMetadataBytes:
+    if i == 0 or (i >= 33 and i < 57) or i >= 73:
       assert previous[i] == current[i], "only the three pinned upgrade fields may change"
 
 let valid = source()
@@ -132,7 +145,7 @@ let other = serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(balance: Acco
 let withOther = run(source(extra = @[other]))
 assert context(withOther).effectAccounts.value.lookup(other.key).value.bytes == other.value, "upgrade cannot substitute another account target"
 let offeredHash = array[32, byte](decodeServiceMetadata(accountBytes(context(done)), ByteLimit(
-    89)).value.metadata.codeHash)
+    ServiceMetadataBytes)).value.metadata.codeHash)
 assert context(done).effectAccounts.value.lookup(servicePreimageKey(ServiceIndex(42),
   ServicePreimageHash(offeredHash), ByteLimit(32)).value).error == StateStoreError.MissingKey, "offered code need not be available"
 assert readBytes(memoryOf(valid.accumulationMachine.value).value, MemoryAddress(196608),
@@ -154,7 +167,7 @@ checkCode(context(unfunded), payload()) # Upgrade does not test funding, minimum
 for address in [0'u64, 65536'u64+4096-16, 196608'u64+8192-16, 0x100000000'u64, high(uint64)]:
   let failed = run(source(address = address))
   assert failed.error == AccumulationDispatchError.None and failed.value.exit == StepExit.Panic, "unreadable offered hash panics"
-  assert uint64(machineInfo(failed.value.machine).value.registers[7]) == address, "panic preserves full-width pointer"
+  assert uint64(machineInfo(failed.value.machine).value.registers[7]) == high(uint64), "panic preserves self selector"
   assert accountBytes(context(failed)) == accountBytes(context(failed,
       AccumulationDimension.Exceptional)), "memory failure changes no metadata"
 var ro = newSeq[byte](32)
@@ -168,8 +181,8 @@ for available in [0'u64, 1027, 1028, 1029]:
   assert completed.error == AccumulationDispatchError.None, "fixed gas boundary completes"
   let cpu = machineInfo(completed.value.machine).value
   if available < 1028:
-    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 1028-available, "exact upgrade gas deficit"
-    assert uint64(cpu.registers[7]) == 196608, "OOG preserves pointer"
+    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0, "exact upgrade gas deficit"
+    assert uint64(cpu.registers[7]) == high(uint64), "OOG preserves self selector"
     assert accountBytes(context(completed)) == accountBytes(context(completed,
         AccumulationDimension.Exceptional)), "OOG performs no metadata replacement"
   else:
@@ -179,7 +192,7 @@ assert run(source(address = high(uint64), credit = price(valid)), limit = 0).val
 let fullCredit = run(source(credit = high(uint64)))
 assert uint64(machineInfo(fullCredit.value.machine).value.gas) == high(uint64)-price(valid)-1028, "full-width credit subtraction"
 for checkpoint in [false, true]:
-  let suffix = (if checkpoint: @[@[10'u8, 18], @[0'u8]] else: @[@[0'u8]])
+  let suffix = (if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])
   let failed = run(source(suffix = suffix))
   assert failed.value.exit == StepExit.Panic, "authored terminal panic"
   let selected = normalizeAccumulationOutcome(failed).value.outcomeContext.value
@@ -190,8 +203,8 @@ for checkpoint in [false, true]:
     assert accountBytes(selected) == selected.effectInitialContext.value.contextAccounts.value.lookup(
       chapterServiceKey(StateChapter(255), ServiceIndex(42))).value.bytes, "panic selects its own original program metadata"
   let exhausted = run(source(credit = price(valid)+1200, suffix = (if checkpoint:
-    @[@[10'u8, 18], registerImmediate(7, 196608), @[10'u8, 20], @[50'u8, 0]] else:
-    @[registerImmediate(7, 196608), @[10'u8, 20], @[50'u8, 0]])))
+    @[@[10'u8, 19], registerImmediate(7, high(uint64)), @[10'u8, 21], @[50'u8, 0]] else:
+    @[registerImmediate(7, high(uint64)), @[10'u8, 21], @[50'u8, 0]])))
   assert exhausted.value.exit == StepExit.OutOfGas, "second upgrade is unaffordable"
   let retained = normalizeAccumulationOutcome(exhausted).value.outcomeContext.value
   assert accountBytes(retained) == accountBytes(context(exhausted,
@@ -199,31 +212,31 @@ for checkpoint in [false, true]:
 # Later info executes the original program while reading the newly upgraded current metadata.
 let inspected = run(source(accumulation = high(uint64), transfer = high(uint64), suffix = @[
   registerImmediate(7, high(uint64)), registerImmediate(8, 196608), registerImmediate(9, 0),
-  registerImmediate(10, 96), @[10'u8, 6], @[50'u8, 0]]), limit = 96)
+  registerImmediate(10, 112), @[10'u8, 6], @[50'u8, 0]]), limit = 112)
 assert inspected.error == AccumulationDispatchError.None and inspected.value.exit == StepExit.Halt, "original program continues after upgrade"
 let info = readBytes(memoryOf(inspected.value.machine).value, MemoryAddress(196608), MemoryLength(
-    96), MemoryByteLimit(96)).value
+    112), MemoryByteLimit(112)).value
 let expectedInfoHash = payload()
 for i in 0..<32:
   assert info[i] == expectedInfoHash[i], "info observes current upgraded code hash"
-for i in 48..<64:
+for i in 64..<80:
   assert info[i] == 255, "info observes both full-width upgraded gas fields"
 # Repeated calls can replace all three fields again using another captured memory region.
-let repeated = run(source(suffix = @[registerImmediate(7, 65536), registerImmediate(8, 0),
-  registerImmediate(9, high(uint64)), @[10'u8, 20], @[50'u8, 0]]))
+let repeated = run(source(suffix = @[registerImmediate(7, high(uint64)), registerImmediate(8, 65536),
+  registerImmediate(9, 0), registerImmediate(10, high(uint64)), @[10'u8, 21], @[50'u8, 0]]))
 checkCode(context(repeated), ro, 0, high(uint64))
 checkRemainder(initial, context(repeated))
 # Storage uses the current upgraded metadata; yield is independently retained beside it.
-let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 26],
+let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 27],
   registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
   registerImmediate(10, 3), @[10'u8, 5], @[50'u8, 0]]))
 assert uint64(machineInfo(preserved.value.machine).value.registers[7]) == high(uint64), "storage after upgrade succeeds"
 checkCode(context(preserved), payload())
 assert context(preserved).effectInfo.value.hasYield, "later yield remains present"
 # New service creation retains the upgrade and advances its independent allocation cursor.
-let created = run(source(writes = 3, suffix = @[registerImmediate(7, 196608),
-  registerImmediate(8, 5), registerImmediate(9, 1), registerImmediate(10, 2),
-  registerImmediate(11, 0), registerImmediate(12, high(uint64)), @[10'u8, 19], @[50'u8, 0]]))
+let created = run(source(writes = 3, suffix = @[registerImmediate(7, high(uint64)),
+  registerImmediate(8, high(uint64)), registerImmediate(9, 0), registerImmediate(10, 196640),
+  @[10'u8, 20], @[50'u8, 0]]))
 checkCode(context(created), payload())
 assert uint32(context(created).effectInfo.value.nextService) != uint32(
     initial.effectInfo.value.nextService), "new advances current cursor after upgrade"
@@ -231,11 +244,12 @@ let child = ServiceIndex(uint32(uint64(machineInfo(created.value.machine).value.
 assert context(created).effectAccounts.value.lookup(chapterServiceKey(StateChapter(255),
     child)).error == StateStoreError.None, "new child exists after upgrade"
 # Upgrade after creation preserves the new child and already advanced cursor.
-let beforeNew = guestProgram([registerImmediate(7, 196608), registerImmediate(8, 5),
-  registerImmediate(9, 1), registerImmediate(10, 2), registerImmediate(11, 0),
-  registerImmediate(12, high(uint64)), @[10'u8, 19], registerImmediate(7, 196608),
-  registerImmediate(8, 123), registerImmediate(9, 456), @[10'u8, 20], @[50'u8, 0]],
-  credit = 100000, account = original(), writable = payload(), writes = 3, spareEntries = 2)
+let beforeNew = guestProgram([registerImmediate(7, high(uint64)), registerImmediate(8, high(uint64)),
+  registerImmediate(9, 0), registerImmediate(10, 196640), @[10'u8, 20], registerImmediate(7, high(uint64)),
+  registerImmediate(8, 196608), registerImmediate(9, 123), registerImmediate(10, 456), @[10'u8, 21],
+      @[50'u8, 0]],
+  credit = 100000, account = original(), writable = creationData(payload()), writes = 3,
+      spareEntries = 2)
 let afterNew = run(beforeNew)
 checkCode(context(afterNew), payload())
 assert uint32(context(afterNew).effectInfo.value.nextService) == uint32(context(

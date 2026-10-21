@@ -38,8 +38,8 @@ proc checkYield(outcome: AccumulationOutcome, present: bool, first = 0'u8) =
     assert context.effectYield.error == AccumulationEffectError.YieldAbsent # Absence is never a zero commitment.
 
 let halt = @[50'u8, 0]
-let yieldCall = @[10'u8, 26]
-let checkpointCall = @[10'u8, 18]
+let yieldCall = @[10'u8, 27]
+let checkpointCall = @[10'u8, 19]
 let regular = AccumulationDimension.Regular
 let exceptional = AccumulationDimension.Exceptional
 let invalidExecution = default(AccumulationDispatchResult)
@@ -104,13 +104,13 @@ let exceptionalReturn = normalizeAccumulationOutcome(run(guestProgram([
 checkYield(exceptionalReturn, true, 73)
 # A host deficit is inspectable in raw execution but never inflates protocol gas usage above initial credit.
 let debtInstructions = [registerImmediate(7, 65536), yieldCall, checkpointCall,
-  registerImmediate(7, 196608), yieldCall, @[10'u8, 18], halt]
+  registerImmediate(7, 196608), yieldCall, @[10'u8, 19], halt]
 let prototype = guestProgram(debtInstructions).accumulationMachine.value
 let price = uint64(blockGas(programOf(prototype).value, CodeAddress(5), GasCycleLimit(1000)).value)
 let credit = price+98+103+98+102
 let debtExecution = run(guestProgram(debtInstructions, credit))
 assert debtExecution.value.exit == StepExit.OutOfGas
-assert uint64(machineInfo(debtExecution.value.machine).value.gasDeficit) == 1
+assert uint64(machineInfo(debtExecution.value.machine).value.gasDeficit) == 0
 let debt = normalizeAccumulationOutcome(debtExecution).value
 assert uint64(debt.outcomeInfo.value.gasUsed) == credit
 assert debt.outcomeInfo.value.termination == AccumulationTermination.OutOfGas

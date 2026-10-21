@@ -36,7 +36,7 @@ proc entries(): seq[StateEntry] =
   result = @[]
   for service in [0'u32, 99'u32, high(uint32)]:
     result.add(serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(), ByteLimit(
-        89)).value) # Self comes from bootstrap.
+        ServiceMetadataBytes)).value) # Self comes from bootstrap.
   for item in [(42'u32, 73'u8, 9000), (42'u32, 0'u8, 0), (99'u32, 73'u8, 17),
       (99'u32, 81'u8, 32), (0'u32, 73'u8, 5), (high(uint32), 73'u8, 7), (100'u32, 73'u8, 1)]:
     let (service, identity, size) = item
@@ -165,7 +165,7 @@ for witness in [(0'u64, 600'u64), (1'u64, 601'u64), (1023'u64, 848'u64),
     let cpu = machineInfo(done.value.machine).value
     if available < cost:
       assert done.value.exit == StepExit.OutOfGas and uint64(cpu.gas) == 0
-      assert uint64(cpu.gasDeficit) == cost-available and uint64(cpu.registers[7]) ==
+      assert uint64(cpu.gasDeficit) == 0 and uint64(cpu.registers[7]) ==
           42 # No hash/read/write before affordability.
     else:
       assert done.value.exit == StepExit.Halt and uint64(cpu.gas) == available-cost
@@ -180,8 +180,7 @@ assert uint64(machineInfo(wide.value.machine).value.gas) == high(uint64)-price(
 let unfunded = source(address = high(uint64), length = high(uint64))
 let debt = run(unfunded, limit = 0)
 assert debt.value.exit == StepExit.OutOfGas
-assert uint64(machineInfo(debt.value.machine).value.gasDeficit) == 4467570830351532632'u64-(
-    100000-price(unfunded))
+assert uint64(machineInfo(debt.value.machine).value.gasDeficit) == 0
 assert run(source(length = 65), limit = 64).error == AccumulationDispatchError.LimitExceeded
 let malformed = source(99, extra = @[StateEntry(key: chapterServiceKey(StateChapter(255),
     ServiceIndex(99)), value: @[0'u8])])

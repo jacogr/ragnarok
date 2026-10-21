@@ -76,10 +76,10 @@ block envelope_compatibility:
   assert guestEnvelope([@[50'u8, 0]]) == pvmEnvelope(), "shared framing retains the original literal halt envelope"
 
 # Request create/query/delete/query returns to equal map bytes but retains a distinct immutable account version.
-let lifecycle = guestEnvelope([registerImmediate(7, 196608), registerImmediate(8, 3), @[10'u8, 24],
-  registerImmediate(7, 196608), @[10'u8, 23], registerImmediate(7, 196608), registerImmediate(8, 3),
-      @[10'u8, 25],
-  registerImmediate(7, 196608), @[10'u8, 23], @[50'u8, 0]], input)
+let lifecycle = guestEnvelope([registerImmediate(7, 196608), registerImmediate(8, 3), @[10'u8, 25],
+  registerImmediate(7, 196608), @[10'u8, 24], registerImmediate(7, 196608), registerImmediate(8, 3),
+      @[10'u8, 26],
+  registerImmediate(7, 196608), @[10'u8, 24], @[50'u8, 0]], input)
 block request_lifecycle:
   let fixture = batchFixture(firstEnvelope = lifecycle)
   let first = execute(fixture)
@@ -103,7 +103,7 @@ var readInput = newSeq[byte](32)
 for i, octet in array[32, byte](requested):
   readInput[i] = octet # Existing service-42 request is independent from the lifecycle hash.
 let readEnvelope = guestEnvelope([registerImmediate(7, 196608), registerImmediate(8, 1), @[10'u8,
-    23], @[10'u8, 0], @[50'u8, 0]], readInput)
+    24], @[10'u8, 0], @[50'u8, 0]], readInput)
 let readable = batchFixture(firstEnvelope = readEnvelope)
 let readFirst = execute(readable)
 let readSecond = execute(readable, 1)
@@ -135,9 +135,9 @@ for amount in [0'u64, 1]:
   for checkpoint in [false, true]:
     for panic in [false, true]:
       var instructions = @[registerImmediate(7, 99), registerImmediate(8, amount),
-          registerImmediate(9, 0), registerImmediate(10, 196608), @[10'u8, 21]]
+          registerImmediate(9, 0), registerImmediate(10, 196608), @[10'u8, 22]]
       if checkpoint:
-        instructions.add(@[10'u8, 18]) # Retain the debit/outgoing owner only after its explicit checkpoint.
+        instructions.add(@[10'u8, 19]) # Retain the debit/outgoing owner only after its explicit checkpoint.
       instructions.add(if panic: @[0'u8] else: @[50'u8, 0])
       let fixture = batchFixture(firstEnvelope = guestEnvelope(instructions, input))
       let first = execute(fixture)
@@ -169,11 +169,11 @@ for amount in [0'u64, 1]:
 # Pre-mutation checkpoint retains provide/yield while later request mutation rolls back; later checkpoint gates publication.
 for retainMutation in [false, true]:
   var instructions = @[registerImmediate(7, 42), registerImmediate(8, 65536), registerImmediate(9,
-      1), @[10'u8, 27],
-    registerImmediate(7, 196608), @[10'u8, 26], @[10'u8, 18], registerImmediate(7, 196608),
-        registerImmediate(8, 3), @[10'u8, 24]]
+      1), @[10'u8, 28],
+    registerImmediate(7, 196608), @[10'u8, 27], @[10'u8, 19], registerImmediate(7, 196608),
+        registerImmediate(8, 3), @[10'u8, 25]]
   if retainMutation:
-    instructions.add(@[10'u8, 18]) # Select the new request and its footprint as well as pending outputs.
+    instructions.add(@[10'u8, 19]) # Select the new request and its footprint as well as pending outputs.
   instructions.add(@[0'u8])
   let fixture = batchFixture(firstEnvelope = guestEnvelope(instructions, input))
   let first = execute(fixture)
@@ -200,7 +200,7 @@ for retainMutation in [false, true]:
 
 block upgrade_boundary:
   let envelope = guestEnvelope([registerImmediate(7, 196608), registerImmediate(8, 7),
-      registerImmediate(9, 9), @[10'u8, 20], @[50'u8, 0]], input)
+      registerImmediate(9, 9), @[10'u8, 21], @[50'u8, 0]], input)
   let fixture = batchFixture(firstEnvelope = envelope)
   let first = execute(fixture)
   let record = context(first).effectAccounts.value.lookup(chapterServiceKey(StateChapter(255),

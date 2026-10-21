@@ -56,8 +56,7 @@ for id in [0'u8, 1, 2, 28, 255]:
     if available < cost:
       # Terminal deficits retain causing PC and preserve r7 except for F's mandatory WHAT assignment.
       assert done.value.exit == StepExit.OutOfGas
-      assert uint64(cpu.gas) == 0 and uint64(cpu.gasDeficit) == (if id ==
-          1: 0'u64 else: cost-available)
+      assert uint64(cpu.gas) == 0 and uint64(cpu.gasDeficit) == 0
       assert uint64(cpu.pc) == 5
       let expected = (if id == 28 or id == 255: high(uint64)-1 else: 0xfeff0000'u64)
       assert uint64(cpu.registers[7]) == expected
@@ -125,8 +124,8 @@ proc checkYield(done: AccumulationDispatchResult, dimension: AccumulationDimensi
     assert context.effectYield.error == AccumulationEffectError.YieldAbsent # No fabricated commitment.
 
 let halt = @[50'u8, 0]
-let yieldCall = @[10'u8, 26]
-let checkpointCall = @[10'u8, 18]
+let yieldCall = @[10'u8, 27]
+let checkpointCall = @[10'u8, 19]
 let regular = AccumulationDimension.Regular
 let exceptional = AccumulationDimension.Exceptional
 for id in [18'u8, 26]:
@@ -139,7 +138,7 @@ for id in [18'u8, 26]:
     let cpu = machineInfo(done.value.machine).value
     if available < cost:
       assert done.value.exit == StepExit.OutOfGas
-      assert uint64(cpu.gasDeficit) == (if id == 1: 0'u64 else: cost-available) and uint64(
+      assert uint64(cpu.gasDeficit) == 0 and uint64(
           cpu.gas) == 0
       assert uint64(cpu.pc) == 5 and uint64(cpu.registers[7]) == 0xfeff0000'u64
       checkYield(done, regular, false)
@@ -174,7 +173,7 @@ for finalId in [18'u8, 26]:
   let price = uint64(blockGas(programOf(prototype).value, CodeAddress(5), GasCycleLimit(1000)).value)
   let done = runEffects(guestProgram(instructions, price+98+103+98+cost-1))
   assert done.value.exit == StepExit.OutOfGas
-  assert uint64(machineInfo(done.value.machine).value.gasDeficit) == 1
+  assert uint64(machineInfo(done.value.machine).value.gasDeficit) == 0
   assert uint64(machineInfo(done.value.machine).value.registers[7]) == 0
   checkYield(done, regular, true, 81)
   checkYield(done, exceptional, true, 73)

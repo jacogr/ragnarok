@@ -57,7 +57,7 @@ proc entries(raw: seq[byte], includeCode = true): seq[StateEntry] =
     created: AccountSlot(7), lastAccumulation: AccountSlot(8), parent: ServiceIndex(9))
   result = @[serviceMetadataEntry(ServiceIndex(42), account, ByteLimit(ServiceMetadataBytes)).value,
     serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(balance: AccountBalance(123)), ByteLimit(
-        89)).value,
+        ServiceMetadataBytes)).value,
     StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 4, 2])]
   if includeCode:
     result.add(servicePreimageEntry(ServiceIndex(42), ServicePreimageHash(hash), raw,

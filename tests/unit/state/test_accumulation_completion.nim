@@ -112,7 +112,7 @@ proc checkStagingPublication(base: OwnedReport) =
     payload[index] = byte(index+1) # The rest of the six-validator raw roster comes from mapped zero padding.
   var code = @[0'u8]
   for octet in guestEnvelope([registerImmediate(7, 196608), registerImmediate(8, 6),
-    @[10'u8, 17], @[50'u8, 0]], writable = payload):
+    @[10'u8, 18], @[50'u8, 0]], writable = payload):
     code.add(octet) # Preserve ordinary metadata/envelope framing in the signed parent.
   var executionOptions0 = executionFixtureConfig()
   executionOptions0.firstProgram = code

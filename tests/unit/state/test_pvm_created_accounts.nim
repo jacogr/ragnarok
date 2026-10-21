@@ -54,23 +54,23 @@ proc envelope(checkpoint = false, panic = false, repeat = false, provide = false
     append(code, write) # An earlier unsupported storage lineage cannot regain eligibility through new.
   append(code, @[registerImmediate(7, 196608), registerImmediate(8, 1),
     registerImmediate(9, 7), registerImmediate(10, 9), registerImmediate(11, 0),
-    registerImmediate(12, high(uint64)), @[10'u8, 19]])
+    registerImmediate(12, high(uint64)), @[10'u8, 20]])
   if checkpoint:
-    code.add(@[10'u8, 18]) # Retain the first child, creator debit and allocation cursor together.
+    code.add(@[10'u8, 19]) # Retain the first child, creator debit and allocation cursor together.
   if repeat:
     append(code, @[registerImmediate(7, 196608), @[10'u8,
-        19]]) # All other creation arguments survive the preceding call.
+        20]]) # All other creation arguments survive the preceding call.
   if provide:
     append(code, @[registerImmediate(8, 196640), registerImmediate(9, 1), @[10'u8,
-        27]]) # r7 is the actual returned child ID.
+        28]]) # r7 is the actual returned child ID.
   if storage:
     append(code, write) # Self-key proof must preserve existing child provenance.
   if upgrade:
     append(code, @[registerImmediate(7, 196608), registerImmediate(8, 17),
-      registerImmediate(9, 19), @[10'u8, 20]]) # Metadata-only upgrade must not erase the child proof.
+      registerImmediate(9, 19), @[10'u8, 21]]) # Metadata-only upgrade must not erase the child proof.
   if eject:
     append(code, @[registerImmediate(7, 77), registerImmediate(8, 196608), @[10'u8,
-        22]]) # A real eligible deletion remains outside publication scope.
+        23]]) # A real eligible deletion remains outside publication scope.
   code.add(if panic: @[0'u8] else: @[50'u8, 0])
   guestEnvelope(code, input)
 

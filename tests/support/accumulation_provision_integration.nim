@@ -31,7 +31,7 @@ proc integrationEntries*(): seq[StateEntry] =
   result = @[serviceMetadataEntry(ServiceIndex(42), ServiceMetadata(balance: AccountBalance(123)),
       ByteLimit(ServiceMetadataBytes)).value,
     serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(balance: AccountBalance(456)), ByteLimit(
-        89)).value,
+        ServiceMetadataBytes)).value,
     StateEntry(key: chapterKey(StateChapter(250)), value: @[7'u8, 8]),
     serviceStorageEntry(ServiceIndex(42), @[1'u8], @[2'u8], ServiceEntryLimits(keyBytes: ByteLimit(
         1), valueBytes: ByteLimit(1))).value]

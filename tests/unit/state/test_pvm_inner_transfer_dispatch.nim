@@ -56,7 +56,7 @@ assert engine.executionError == StepError.HostCallLimitExceeded # Local host-cou
 let starved = fixture(2700)
 let stopped = raw(starved).value.outcome
 assert stopped.exit == StepExit.OutOfGas
-assert uint64(stopped.machine.machineInfo.value.gasDeficit) == refinementPrice(starved)+2937-2700
+assert uint64(stopped.machine.machineInfo.value.gasDeficit) == 0
 assert run(starved).value.refinementInfo.value.kind == WorkKind.OutOfGas
 assert uint64(run(starved).value.refinementInfo.value.gasUsed) == 2700
 # A caller write to read-only memory is protocol panic before WHO; absent inner IDs on valid caller ranges return WHO.

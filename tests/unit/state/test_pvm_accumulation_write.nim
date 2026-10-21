@@ -166,7 +166,7 @@ assert readBytes(memoryOf(readback.value.machine).value, MemoryAddress(196736), 
   MemoryByteLimit(3)).value == @[81'u8, 0, 0]
 for checkpoint in [false, true]:
   # Panic selects the retained checkpoint; prior initial provenance always stays unchanged.
-  let ending = (if checkpoint: @[@[10'u8, 18], @[0'u8]] else: @[@[0'u8]])
+  let ending = (if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])
   let done = run(source(suffix = ending))
   assert done.value.exit == StepExit.Panic
   let normalized = normalizeAccumulationOutcome(done)
@@ -175,7 +175,7 @@ for checkpoint in [false, true]:
   assert uint32(metadata(selected).storageItems) == (if checkpoint: 1'u32 else: 0'u32)
 for checkpoint in [false, true]:
   # A later host OOG follows the same checkpoint selection as panic, after a completed write.
-  let suffix = (if checkpoint: @[@[10'u8, 18], @[10'u8, 0], @[50'u8, 0]]
+  let suffix = (if checkpoint: @[@[10'u8, 19], @[10'u8, 0], @[50'u8, 0]]
     else: @[@[10'u8, 0], @[50'u8, 0]])
   let prototype = source(suffix = suffix)
   let prepared = source(suffix = suffix, credit = price(prototype)+2447+10+(
@@ -194,29 +194,28 @@ for witness in [(0'u64, 0'u64, 2442'u64), (1'u64, 1'u64, 2447'u64),
     let done = run(source(keyLength = keyLength, valueLength = valueLength,
       keyAddress = high(uint64), credit = price(prototype)+available), limit = 0)
     assert done.error == AccumulationDispatchError.None and done.value.exit == StepExit.OutOfGas
-    assert uint64(machineInfo(done.value.machine).value.gasDeficit) == cost-available
+    assert uint64(machineInfo(done.value.machine).value.gasDeficit) == 0
 for available in [2447'u64, 2448'u64]:
   let prototype = source(valueLength = 1)
   let done = run(source(valueLength = 1, credit = price(prototype)+available))
   assert done.value.exit == StepExit.Halt and uint64(machineInfo(done.value.machine).value.gas) == available-2447
-assert run(source(keyLength = high(uint64), valueLength = high(uint64)), limit = 0).error ==
-  AccumulationDispatchError.GasRangeExceeded
+assert run(source(keyLength = high(uint64), valueLength = high(uint64)), limit = 0).value.exit ==
+    StepExit.OutOfGas
 # Full-width value pricing and key-cost carry preserve exact representable debt.
 let largePrototype = source(keyLength = 5764607523034234880'u64, valueLength = high(uint64))
 let large = run(source(keyLength = 5764607523034234880'u64, valueLength = high(uint64),
     credit = high(uint64)), limit = 0)
 assert large.error == AccumulationDispatchError.None and large.value.exit == StepExit.OutOfGas
-assert uint64(machineInfo(large.value.machine).value.gasDeficit) == 4348225440226216331'u64+price(largePrototype)
+assert uint64(machineInfo(large.value.machine).value.gasDeficit) == 0
 let boundaryPrototype = source(keyLength = 3458764513820540928'u64,
     valueLength = 1152921504606846976'u64)
 let boundaryCredit = 2362138004555827594'u64+price(boundaryPrototype)
 let boundary = run(source(keyLength = 3458764513820540928'u64,
     valueLength = 1152921504606846976'u64, credit = boundaryCredit), limit = 0)
 assert boundary.error == AccumulationDispatchError.None and boundary.value.exit == StepExit.OutOfGas
-assert uint64(machineInfo(boundary.value.machine).value.gasDeficit) == 0x8000000000000000'u64
+assert uint64(machineInfo(boundary.value.machine).value.gasDeficit) == 0
 assert run(source(keyLength = 3458764513820540928'u64, valueLength = 1152921504606846976'u64,
-    credit = boundaryCredit-1), limit = 0).error ==
-  AccumulationDispatchError.GasRangeExceeded
+    credit = boundaryCredit-1), limit = 0).value.exit == StepExit.OutOfGas
 ## Prepare authentic effects for direct immutable API and malformed-footprint witnesses.
 proc initial(account: ServiceMetadata, extra: seq[StateEntry] = @[]): AccumulationEffects =
   let prepared = guestProgram([@[50'u8, 0]], account = account, extra = extra, spareEntries = 1)

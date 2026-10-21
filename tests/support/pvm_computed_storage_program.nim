@@ -42,7 +42,7 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
         @[51'u8, 10, 0], @[10'u8, 5]]:
       body.add(instruction) # Real deletion ignores the invalid value pointer; the assured parent genuinely contains the key.
     if retainedDeletion:
-      body.add(@[10'u8, 18]) # Checkpoint the absent key before any regular restoration; r6 remains the actual fetched count.
+      body.add(@[10'u8, 19]) # Checkpoint the absent key before any regular restoration; r6 remains the actual fetched count.
     let target = if retainedDeletion: 42'u8 else: 255'u8
     for instruction in [@[51'u8, 7, target], @[51'u8, 8, 0, 0, 1], @[51'u8, 9, 1],
         @[51'u8, 10, 255], @[51'u8, 11, 0], @[51'u8, 12, 3], @[10'u8, 4],
@@ -117,7 +117,7 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   let checkpoint = mode in {ComputedStorageMode.CheckpointCommit,
       ComputedStorageMode.CheckpointPanic, ComputedStorageMode.CheckpointOutOfGas}
   if checkpoint:
-    body.add(@[10'u8, 18]) # Retain the first write only after the real checkpoint precharge succeeds.
+    body.add(@[10'u8, 19]) # Retain the first write only after the real checkpoint precharge succeeds.
   if checkpoint or mode == ComputedStorageMode.OutOfGas:
     # Checkpoint changes r7, so independently reload every actual pointer/length before the later write.
     for instruction in [refinementImmediate(7, 65536), refinementImmediate(8, 1),

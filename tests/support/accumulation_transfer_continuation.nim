@@ -43,12 +43,12 @@ proc code(first: bool, stop = TransferStop.Halt, checkpoint = true, zeroGas = fa
   let gas = (if zeroGas: 0'u64 else: (if first: 3'u64 else: 7'u64))
   var instructions = @[registerImmediate(7, destination), registerImmediate(8,
       if first: 0'u64 else: 5'u64),
-    registerImmediate(9, gas), registerImmediate(10, 196608), @[10'u8, 21]]
+    registerImmediate(9, gas), registerImmediate(10, 196608), @[10'u8, 22]]
   if first and checkpoint:
-    instructions.add(@[10'u8, 18]) # Only the first record belongs to Y.
+    instructions.add(@[10'u8, 19]) # Only the first record belongs to Y.
   if first:
     instructions.add(registerImmediate(7, destination))
-    instructions.add(@[10'u8, 21]) # Duplicate records remain separate selected inputs and paid gas.
+    instructions.add(@[10'u8, 22]) # Duplicate records remain separate selected inputs and paid gas.
     case stop
     of TransferStop.Halt:
       discard # Ordinary halt retains both regular appends.
@@ -59,7 +59,7 @@ proc code(first: bool, stop = TransferStop.Halt, checkpoint = true, zeroGas = fa
     of TransferStop.OutOfGas:
       instructions.add(registerImmediate(7, destination))
       instructions.add(registerImmediate(9, 100000))
-      instructions.add(@[10'u8, 21]) # Valid offered gas cannot be funded by the remaining initial allowance.
+      instructions.add(@[10'u8, 22]) # Valid offered gas cannot be funded by the remaining initial allowance.
     of TransferStop.HashReturn:
       instructions.add(registerImmediate(7, 65536))
       instructions.add(registerImmediate(8, 32)) # Readable hash return preserves every regular transfer.

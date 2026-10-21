@@ -43,18 +43,11 @@ proc guestInput(): seq[byte] =
     result[33+index] = octet # A separate one-byte code hash tests the existing provision-copy budget.
 let input = guestInput()
 
-# Owned target metadata names the invoker by raw E32 identity and has exactly one expired request/preimage.
+# Empty junior accounts bind the invoker's actual creation slot; no request/preimage footprint remains.
 proc targetEntries(service: uint32, balance: uint64): seq[StateEntry] =
-  var identity = default(array[32, byte])
-  identity[0] = 42
-  @[serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(codeHash: CodeHash(identity),
-      balance: AccountBalance(balance), storageItems: AccountStorageItems(2),
-          storageBytes: AccountStorageBytes(84)), ByteLimit(ServiceMetadataBytes)).value,
-    serviceRequestEntry(ServiceIndex(service), hash, RequestLength(3),
-      unavailableHistory(RequestSlot(5), RequestSlot(7)), RequestEntryConfig(keyBytes: ByteLimit(32),
-        history: RequestHistoryConfig(items: ElementLimit(3), maxBytes: ByteLimit(13)))).value,
-    servicePreimageEntry(ServiceIndex(service), hash, blob,
-      ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(3))).value]
+  @[serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(balance: AccountBalance(balance),
+    supervisor: ServiceIndex(42), supervisorCreated: AccountSlot(0), created: AccountSlot(0)),
+    ByteLimit(ServiceMetadataBytes)).value]
 
 # Share instruction framing; each optional suffix tests one supported or refused interaction.
 proc append(code: var seq[seq[byte]], instructions: seq[seq[byte]]) =
@@ -77,36 +70,43 @@ proc envelope(checkpoint = false, panic = false, repeat = false, target = 77'u64
   let write = @[compactImmediate(7, 65536), compactImmediate(8, 1),
     compactImmediate(9, 196640), compactImmediate(10, 1), @[10'u8, 5]]
   if beforeCreate:
-    append(code, @[compactImmediate(7, 196608), compactImmediate(8, 3),
-      compactImmediate(9, 7), compactImmediate(10, 9), compactImmediate(11, 0),
-      compactImmediate(12, high(uint64)), @[10'u8,
-          19]]) # Eject must retain a child created earlier in this same invocation.
+    append(code, @[compactImmediate(7, high(uint64)), compactImmediate(8, high(uint64)),
+      compactImmediate(9, 0), compactImmediate(10, 196673), @[10'u8,
+          20]]) # Eject must retain a child created earlier in this same invocation.
   if beforeStorage:
     append(code, write) # A disabled earlier self trace must remain unsupported even after a traced eject.
-  append(code, @[compactImmediate(7, target), compactImmediate(8, 196608), @[10'u8, 22]])
+  append(code, @[compactImmediate(7, target), compactImmediate(8, 196608), @[10'u8, 23]])
   if checkpoint:
-    code.add(@[10'u8, 18]) # Retain the first removal and its beneficiary credit together.
+    code.add(@[10'u8, 19]) # Retain the first removal and its beneficiary credit together.
   if repeat:
-    append(code, @[compactImmediate(7, 78), @[10'u8, 22]]) # r8 still holds the exact request-hash pointer.
+    append(code, @[compactImmediate(7, 78), @[10'u8, 23]]) # r8 still holds the exact request-hash pointer.
   if storage:
     append(code, write) # Supported self-key mutation must retain deletion membership.
   if upgrade:
-    append(code, @[compactImmediate(7, 196608), compactImmediate(8, 17),
-      compactImmediate(9, 19), @[10'u8, 20]])
+    append(code, @[compactImmediate(7, high(uint64)), compactImmediate(8, 196608),
+      compactImmediate(9, 17), compactImmediate(10, 19), @[10'u8, 21]])
   if create or recreate:
-    append(code, @[compactImmediate(7, if provideRecreated: 196641'u64 else: 196608'u64),
-      compactImmediate(8, if provideRecreated: 1'u64 else: 3'u64),
-      compactImmediate(9, 7), compactImmediate(10, 9), compactImmediate(11, 0),
-      compactImmediate(12, if recreate: 77'u64 else: high(uint64)), @[10'u8,
-          19]]) # Registrar recreation changes final membership without making the foreign replacement part of n.
+    append(code, @[compactImmediate(7, high(uint64)),
+      compactImmediate(8, if recreate: 77'u64 else: high(uint64)), compactImmediate(9, 0),
+      compactImmediate(10, 196673), @[10'u8, 20]]) # Current mode0 reads the complete independent60-byte request.
+
   if provideRecreated:
     append(code, @[compactImmediate(7, 77), compactImmediate(8, 65536),
-      compactImmediate(9, 1), @[10'u8, 27]]) # The local empty replacement request is absent from the preserved prior account.
+      compactImmediate(9, 1), @[10'u8, 28]]) # The local empty replacement request is absent from the preserved prior account.
   if provide:
     append(code, @[compactImmediate(7, 42), compactImmediate(8, 65536),
-      compactImmediate(9, 1), @[10'u8, 27]]) # Unrelated requested provision must survive the account-removal phase.
+      compactImmediate(9, 1), @[10'u8, 28]]) # Unrelated requested provision must survive the account-removal phase.
   code.add(if panic: @[0'u8] else: @[50'u8, 0])
-  guestEnvelope(code, input)
+  var wire = input
+  var request = newSeq[byte](60)
+  for index in 0..<32:
+    request[index] = input[(if provideRecreated: 33 else: 0)+index] # Select the independently hashed requested code.
+  request[32] = (if provideRecreated: 1'u8 else: 3'u8)
+  request[36] = 7
+  request[44] = 9
+  for octet in request:
+    wire.add(octet) # Fixed hash/E4 length/E8 minimum gas/E8 minimum transfer/E8 gratis at writable offset65.
+  guestEnvelope(code, wire)
 
 # Build complete shared maps with real removable metadata, histories and present preimages.
 proc setup(code: seq[byte], two = false, incoming = true): BatchFixture =
@@ -130,7 +130,8 @@ proc registrarSetup(code: seq[byte]): BatchFixture =
 
 proc execute(fixture: BatchFixture, index = 0'u64, removed = 2'u64,
     keys = 1'u64): AccumulationDispatchResult =
-  batchExecution(fixture, index, slot, parameters = profile(), deletedAccounts = ElementLimit(removed),
+  batchExecution(fixture, index, slot, parameters = profile(), copyLimit = MemoryByteLimit(60),
+      deletedAccounts = ElementLimit(removed),
     createdAccounts = ElementLimit(1), accountWriteKeys = ElementLimit(keys),
         serviceProbes = ServiceProbeLimit(1))
 
@@ -187,7 +188,8 @@ proc expected(fixture: BatchFixture, removed: seq[uint32], incoming = true, stor
       balance: AccountBalance(1), storageItems: AccountStorageItems(2),
           storageBytes: AccountStorageBytes(84),
       minimumAccumulationGas: Gas(7), minimumTransferGas: Gas(9), created: AccountSlot(uint32(
-          slot)), parent: ServiceIndex(42)), ByteLimit(ServiceMetadataBytes)).value)
+          slot)), supervisor: ServiceIndex(42), supervisorCreated: AccountSlot(0),
+              parent: ServiceIndex(42)), ByteLimit(ServiceMetadataBytes)).value)
     result.add(serviceRequestEntry(child, hash, RequestLength(3), requestedHistory(),
       RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
           3), maxBytes: ByteLimit(13)))).value)
@@ -303,14 +305,16 @@ block participating_skip_conflict:
     let skipped = finishUninvokedAccumulation(service).value
     assert skipped.skipInfo.value.code == AccumulationCodeStatus.Missing, "real owned target has missing executable code"
     let credited = skipped.skipState.value.lookup(accountKey).value.bytes
+    let expectedCredit = if incoming: 31'u64 else: 20'u64
     assert uint64(decodeServiceMetadata(credited, ByteLimit(
-        ServiceMetadataBytes)).value.metadata.balance) ==(if incoming: 31'u64 else: 20'u64),
+        ServiceMetadataBytes)).value.metadata.balance) == expectedCredit,
       "missing-code skips retain actual incoming credit without executing"
     let selected = normalizeAccumulationOutcome(first).value.outcomeContext.value
     let beneficiary = selected.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255),
         ServiceIndex(42))).value.bytes
+    let expectedBeneficiary = if incoming: 37'u64 else: 30'u64
     assert uint64(decodeServiceMetadata(beneficiary, ByteLimit(
-        ServiceMetadataBytes)).value.metadata.balance) ==(if incoming: 37'u64 else: 30'u64),
+        ServiceMetadataBytes)).value.metadata.balance) == expectedBeneficiary,
       "eject reclaims only the target balance visible in the common prior"
     let complete = prepareCompleteAccumulationBatch(fixture.inputs, prior, [first], [skipped], slot,
         batchPolicy(deletedAccounts = 1))

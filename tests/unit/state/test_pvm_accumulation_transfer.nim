@@ -55,9 +55,9 @@ proc source(destination = 99'u64, amount = 5'u64, gas = 9'u64, address = 196608'
   if includeTarget:
     entries.add(serviceMetadataEntry(ServiceIndex(target), ServiceMetadata(balance: AccountBalance(77),
       minimumTransferGas: Gas(targetGas)), ByteLimit(
-          89)).value) # Destination is a real current account, not a caller-selected lookup substitute.
+          ServiceMetadataBytes)).value) # Destination is a real current account, not a caller-selected lookup substitute.
   var instructions = @[registerImmediate(7, destination), registerImmediate(8, amount),
-    registerImmediate(9, gas), registerImmediate(10, address), @[10'u8, 21]]
+    registerImmediate(9, gas), registerImmediate(10, address), @[10'u8, 22]]
   for instruction in suffix:
     instructions.add(instruction) # Later calls execute through the same decoded production stream.
   guestProgram(instructions, credit, account = account, writable = data, extra = entries,
@@ -176,7 +176,7 @@ for available in [0'u64, 574, 575, 583, 584, 585]:
   assert completed.error == AccumulationDispatchError.None, "conditional successful-row gas edge"
   let cpu = machineInfo(completed.value.machine).value
   if available < 584:
-    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 584-available, "exact full fee deficit even below base credit"
+    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0, "exact full fee deficit even below base credit"
     assert uint64(cpu.registers[7]) == 99 and context(completed).effectInfo.value.transfers == 0, "OOG wins before append capacity and publishes no transfer"
   else:
     assert completed.value.exit == StepExit.Halt and uint64(cpu.gas) == available-584, "full funded fee"
@@ -188,7 +188,7 @@ for available in [0'u64, 574, 575, 576]:
       address = (if mode == 3: high(uint64) else: 196608'u64), credit = price(valid)+available), capacity = 0)
     let cpu = machineInfo(completed.value.machine).value
     if available < 575:
-      assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 575-available, "refusal quotes exact base-only deficit"
+      assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0, "refusal quotes exact base-only deficit"
     else:
       assert uint64(cpu.gas) == available-575, "funded refusal pays base-only cost"
       if mode == 3:
@@ -198,51 +198,50 @@ for available in [0'u64, 574, 575, 576]:
             uint64)-7 else: high(uint64)-6), "funded protocol refusal priority"
 let huge = run(source(gas = high(uint64), credit = high(uint64)))
 assert huge.error == AccumulationDispatchError.None and huge.value.exit == StepExit.OutOfGas, "full fee retains the 65th bit"
-assert uint64(machineInfo(huge.value.machine).value.gasDeficit) == 575+price(valid), "exact high-limb borrowing"
-assert run(source(gas = high(uint64), credit = price(valid))).error ==
-    AccumulationDispatchError.GasRangeExceeded, "valid huge fee cannot degrade to base-only OOG"
+assert uint64(machineInfo(huge.value.machine).value.gasDeficit) == 0, "exact high-limb borrowing"
+assert run(source(gas = high(uint64), credit = price(valid))).value.exit == StepExit.OutOfGas, "valid huge fee cannot degrade to base-only OOG"
 let boundary = run(source(gas = 0x8000000000000000'u64, credit = price(valid)+575))
 assert boundary.value.exit == StepExit.OutOfGas and uint64(machineInfo(
-    boundary.value.machine).value.gasDeficit) == 0x8000000000000000'u64, "exact signed-negative boundary"
-assert run(source(gas = 0x8000000000000000'u64, credit = price(valid)+574)).error ==
-    AccumulationDispatchError.GasRangeExceeded, "unrepresentable signed debt remains explicit"
+    boundary.value.machine).value.gasDeficit) == 0, "exact signed-negative boundary"
+assert run(source(gas = 0x8000000000000000'u64, credit = price(valid)+574)).value.exit ==
+    StepExit.OutOfGas, "unrepresentable signed debt remains explicit"
 let fullCredit = run(source(credit = high(uint64)))
 assert uint64(machineInfo(fullCredit.value.machine).value.gas) == high(uint64)-price(valid)-584, "full-width funded credit"
-let duplicates = run(source(suffix = @[registerImmediate(7, 99), @[10'u8, 21], registerImmediate(7,
-    99), @[10'u8, 21], @[50'u8, 0]]))
+let duplicates = run(source(suffix = @[registerImmediate(7, 99), @[10'u8, 22], registerImmediate(7,
+    99), @[10'u8, 22], @[50'u8, 0]]))
 assert context(duplicates).effectInfo.value.transfers == 3 and uint64(metadata(context(
     duplicates)).balance) == 85, "ordered duplicates are independent deferred debits"
 for i in 0..<3:
   checkTransfer(context(duplicates), index = uint64(
       i)) # Repeated identical records are never deduplicated.
 let ordered = run(source(suffix = @[registerImmediate(7, 42), registerImmediate(8, 0),
-    registerImmediate(9, 6), registerImmediate(10, 65536), @[10'u8, 21], @[50'u8, 0]]))
+    registerImmediate(9, 6), registerImmediate(10, 65536), @[10'u8, 22], @[50'u8, 0]]))
 checkTransfer(context(ordered))
 checkTransfer(context(ordered), index = 1, destination = 42, amount = 0, gas = 6, memo = ro)
 for checkpoint in [false, true]:
-  let failed = run(source(suffix = (if checkpoint: @[@[10'u8, 18], @[0'u8]] else: @[@[0'u8]])))
+  let failed = run(source(suffix = (if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])))
   let selected = normalizeAccumulationOutcome(failed).value.outcomeContext.value
   assert selected.effectInfo.value.transfers == (if checkpoint: 1 else: 0) and uint64(metadata(
       selected).balance) == (if checkpoint: 95'u64 else: 100'u64), "panic selects matching debit/list checkpoint"
   let exhausted = run(source(credit = price(valid)+750, suffix = (if checkpoint:
-    @[@[10'u8, 18], registerImmediate(7, 99), @[10'u8, 21], @[50'u8, 0]] else:
-    @[registerImmediate(7, 99), @[10'u8, 21], @[50'u8, 0]])))
+    @[@[10'u8, 19], registerImmediate(7, 99), @[10'u8, 22], @[50'u8, 0]] else:
+    @[registerImmediate(7, 99), @[10'u8, 22], @[50'u8, 0]])))
   assert exhausted.value.exit == StepExit.OutOfGas, "second transfer unaffordable"
   let retained = normalizeAccumulationOutcome(exhausted).value.outcomeContext.value
   assert retained.effectInfo.value.transfers == (if checkpoint: 1 else: 0) and uint64(metadata(
       retained).balance) == (if checkpoint: 95'u64 else: 100'u64), "OOG selects matching debit/list checkpoint"
 # Upgrade changes the current self target's transfer minimum without changing the active program.
 let upgraded = guestProgram([registerImmediate(7, 65536), registerImmediate(8, 0),
-    registerImmediate(9, 100), @[10'u8, 20],
+    registerImmediate(9, 100), @[10'u8, 21],
   registerImmediate(7, 42), registerImmediate(8, 5), registerImmediate(9, 99), registerImmediate(10,
-      196608), @[10'u8, 21], @[50'u8, 0]],
+      196608), @[10'u8, 22], @[50'u8, 0]],
   credit = 100000, account = ServiceMetadata(balance: AccountBalance(100)), writable = payload())
 assert uint64(machineInfo(run(upgraded).value.machine).value.registers[7]) == high(uint64)-7, "LOW reads current upgraded destination minimum"
 # Newly created targets are visible immediately, but receive no immediate credit from transfer.
 let creating = guestProgram([registerImmediate(7, 65536), registerImmediate(8, 5),
     registerImmediate(9, 0),
-  registerImmediate(10, 7), registerImmediate(11, 0), registerImmediate(12, high(uint64)), @[10'u8, 19],
-  registerImmediate(8, 5), registerImmediate(9, 9), registerImmediate(10, 196608), @[10'u8, 21], @[
+  registerImmediate(10, 7), registerImmediate(11, 0), registerImmediate(12, high(uint64)), @[10'u8, 20],
+  registerImmediate(8, 5), registerImmediate(9, 9), registerImmediate(10, 196608), @[10'u8, 22], @[
       50'u8, 0]],
   credit = 100000, account = ServiceMetadata(balance: AccountBalance(100)), writable = payload(),
       writes = 3, spareEntries = 2)

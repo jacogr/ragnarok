@@ -73,7 +73,7 @@ proc source(present = false, history = requestedHistory(), length = 3'u32, offer
     entries.add(servicePreimageEntry(ServiceIndex(42), hash, blob,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(
           3))).value) # Restoration must preserve the retained unavailable blob.
-  var instructions = @[registerImmediate(7, address), registerImmediate(8, offered), @[10'u8, 24]]
+  var instructions = @[registerImmediate(7, address), registerImmediate(8, offered), @[10'u8, 25]]
   for instruction in suffix:
     instructions.add(instruction) # Later hosts observe this exact execution's current effects.
   guestProgram(instructions, credit, extra = entries, writable = data, account = metadata,
@@ -201,8 +201,7 @@ for available in [0'u64, 2192, 2193, 2194]:
   let completed = run(source(credit = price(valid)+available))
   let cpu = machineInfo(completed.value.machine).value
   if available < 2193:
-    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) ==
-        2193-available and
+    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0 and
       uint64(cpu.registers[7]) == 196608 and uint64(cpu.registers[8]) == 3, "exact fee deficit preserves original registers"
   else:
     resultCode(completed, 0)
@@ -227,20 +226,20 @@ for octets in [high(uint64)-84, high(uint64)-83, high(uint64)]:
     assert uint64(metadata(context(completed)).storageBytes) == high(uint64), "exact E8 octet addition edge"
   else:
     assert completed.error == AccumulationDispatchError.InvalidContext, "unrepresentable footprint remains local"
-let repeated = run(source(suffix = @[registerImmediate(7, 196608), @[10'u8, 24], @[50'u8, 0]]))
+let repeated = run(source(suffix = @[registerImmediate(7, 196608), @[10'u8, 25], @[50'u8, 0]]))
 resultCode(repeated, high(uint64)-8)
 assert uint32(metadata(context(repeated)).storageItems) == 2, "repeated solicitation cannot double-count footprint"
 let twice = run(source(suffix = @[registerImmediate(7, 196608), registerImmediate(8, 4), @[10'u8,
-    24], @[50'u8, 0]]))
+    25], @[50'u8, 0]]))
 resultCode(twice, 0, 4)
 assert uint32(metadata(context(twice)).storageItems) == 4 and uint64(metadata(context(
     twice)).storageBytes) == 169,
   "same hash with distinct lengths creates independent requests"
-let queried = run(source(suffix = @[registerImmediate(7, 196608), @[10'u8, 23], @[50'u8, 0]]))
+let queried = run(source(suffix = @[registerImmediate(7, 196608), @[10'u8, 24], @[50'u8, 0]]))
 resultCode(queried, 0, 0) # Current query sees new empty history rather than NONE.
 let queriedRestore = run(source(present = true, history = unavailableHistory(RequestSlot(1),
     RequestSlot(2)),
-  suffix = @[registerImmediate(7, 196608), @[10'u8, 23], @[50'u8, 0]]))
+  suffix = @[registerImmediate(7, 196608), @[10'u8, 24], @[50'u8, 0]]))
 resultCode(queriedRestore, 0x0000000100000003'u64,
     0x0000008000000002'u64) # Current query observes the appended slot 128.
 var providedInput = payload()
@@ -248,7 +247,7 @@ for octet in blob:
   providedInput.add(octet) # Real provided bytes follow the fixed solicitation hash.
 let provided = run(source(data = providedInput, suffix = @[registerImmediate(7, 42),
     registerImmediate(8, 196640),
-  registerImmediate(9, 3), @[10'u8, 27], @[50'u8, 0]]))
+  registerImmediate(9, 3), @[10'u8, 28], @[50'u8, 0]]))
 assert context(provided).effectInfo.value.provisions == 1 and
   context(provided).effectProvisionAt(AccumulationProvisionIndex(
       0)).value.copyProvisionBytes.value == blob, "provide sees newly solicited current-self request"
@@ -303,13 +302,13 @@ assert changed.effectContext(AccumulationDimension.Exceptional).value.effectRequ
     RequestLength(3)).error ==
   AccumulationEffectError.NotRequested, "exceptional history stays independent"
 for checkpoint in [false, true]:
-  let panicked = run(source(suffix = (if checkpoint: @[@[10'u8, 18], @[0'u8]] else: @[@[0'u8]])))
+  let panicked = run(source(suffix = (if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])))
   let selected = normalizeAccumulationOutcome(panicked).value.outcomeContext.value
   assert selected.effectRequestHistory(hash, RequestLength(3)).error ==
     (if checkpoint: AccumulationEffectError.None else: AccumulationEffectError.NotRequested), "panic selects matching request/footprint checkpoint"
   let exhausted = run(source(credit = price(valid)+2400, suffix = (if checkpoint:
-    @[@[10'u8, 18], registerImmediate(7, 196608), @[10'u8, 24], @[50'u8, 0]] else:
-    @[registerImmediate(7, 196608), @[10'u8, 24], @[50'u8, 0]])))
+    @[@[10'u8, 19], registerImmediate(7, 196608), @[10'u8, 25], @[50'u8, 0]] else:
+    @[registerImmediate(7, 196608), @[10'u8, 25], @[50'u8, 0]])))
   assert exhausted.value.exit == StepExit.OutOfGas, "second solicitation fee is unaffordable"
   let selectedOog = normalizeAccumulationOutcome(exhausted).value.outcomeContext.value
   assert selectedOog.effectRequestHistory(hash, RequestLength(3)).error ==

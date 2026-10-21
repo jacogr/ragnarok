@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Transport pinned Safrole roster projections; expected rotation/filtering always comes from upstream.
+"""Derive current-null-key roster projections from verified release Safrole transitions.
 
 Exposes prepare and fixture construction helpers that write trusted inputs for native tests.
 """
@@ -13,13 +13,16 @@ from state_consensus_oracle import wire as safrole_wire
 from test_support import ROOT
 
 
-# Encode a supplied ordered roster verbatim, preserving null records and every metadata octet.
+# Preserve supplied ordering/metadata; explicitly project release all-zero null keys into the current nullvalkey.
 def roster(values):
     records = []
     for value in values:
         # Field order is the normative 336-byte validator tuple, independent of JSON property order.
         raw = b''.join(bytes.fromhex(value[key][2:]) for key in ('bandersnatch', 'ed25519', 'bls', 'metadata'))
         assert len(raw) == 336
+        if raw == bytes(336):
+            # The unreleased source changes only the Ed25519 null encoding; these are derived fixtures, not new official vectors.
+            raw = raw[:32] + b'\x02' + raw[33:]
         records.append(raw)
     return (reference_encode(len(values))+b''.join(records)).hex()
 
@@ -71,6 +74,6 @@ def prepare(folder):
     path = folder/'validator-rotation.txt'
     path.write_text('\n'.join([str(len(pools))]+pools+cases)+'\n')
     evidence = dict(cases=len(cases),accepted=sum(s['accepted'] for s in sources),sources=sources,
-        vector_commit=pins['commit'],fixture_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+        vector_commit=pins['commit'],projection='current-nullvalkey-derived-from-release',fixture_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     (folder/'validator-rotation.json').write_text(json.dumps(evidence,indent=2)+'\n')
     return path,evidence

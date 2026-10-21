@@ -45,12 +45,12 @@ proc storageEnvelope(checkpoint = false, panic = false, replace = false,
     delete = false, upgrade = false): seq[byte] =
   var instructions = write()
   if checkpoint:
-    instructions.add(@[10'u8, 18]) # Retain the first stored value and its key proof together.
+    instructions.add(@[10'u8, 19]) # Retain the first stored value and its key proof together.
   if replace or delete:
     append(instructions, write(82, delete)) # Reusing one raw key must consume one trace descriptor.
   if upgrade:
     append(instructions, @[registerImmediate(7, 196608), registerImmediate(8, 7),
-      registerImmediate(9, 9), @[10'u8, 20]]) # Later metadata upgrade must retain broader supported self-entry scope.
+      registerImmediate(9, 9), @[10'u8, 21]]) # Later metadata upgrade must retain broader supported self-entry scope.
   instructions.add(if panic: @[0'u8] else: @[50'u8, 0])
   guestEnvelope(instructions, input)
 
@@ -156,14 +156,14 @@ block replacement_and_deletion:
 
 # New request, optional forgetting and optional provide use the same actual self account owner.
 proc requestEnvelope(forget = false, provide = false, checkpoint = false, panic = false): seq[byte] =
-  var instructions = @[registerImmediate(7, 196608), registerImmediate(8, 1), @[10'u8, 24]]
+  var instructions = @[registerImmediate(7, 196608), registerImmediate(8, 1), @[10'u8, 25]]
   if checkpoint:
-    instructions.add(@[10'u8, 18]) # Retain the requested history before any later regular removal.
+    instructions.add(@[10'u8, 19]) # Retain the requested history before any later regular removal.
   if forget:
-    append(instructions, @[registerImmediate(7, 196608), registerImmediate(8, 1), @[10'u8, 25]])
+    append(instructions, @[registerImmediate(7, 196608), registerImmediate(8, 1), @[10'u8, 26]])
   if provide:
     append(instructions, @[registerImmediate(7, 42), registerImmediate(8, 196640),
-      registerImmediate(9, 1), @[10'u8, 27]]) # Request creation must compose with later terminal fulfillment.
+      registerImmediate(9, 1), @[10'u8, 28]]) # Request creation must compose with later terminal fulfillment.
   instructions.add(if panic: @[0'u8] else: @[50'u8, 0])
   guestEnvelope(instructions, input)
 
@@ -194,7 +194,7 @@ block delete_existing_prior_storage:
     if array[31, byte](fixture.entries[index].key) == array[31, byte](chapterServiceKey(
         StateChapter(255), ServiceIndex(42))):
       var account = decodeServiceMetadata(fixture.entries[index].value, ByteLimit(
-          89)).value.metadata
+          ServiceMetadataBytes)).value.metadata
       account.storageItems = AccountStorageItems(1)
       account.storageBytes = AccountStorageBytes(36) # The independently seeded existing key has a real deletable footprint.
       fixture.entries[index] = serviceMetadataEntry(ServiceIndex(42), account, ByteLimit(
