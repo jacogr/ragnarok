@@ -46,3 +46,22 @@ lookup-backed TLS/disk scenarios, pre-transport refusal, shared parser behavior
 and joined shutdown remain required. Its separate 1,000-cycle policy observation
 retains 788,448 occupied bytes before/after. Pinned semantic compilation and
 whitespace checks pass. Evidence uses `build/multiblock-refactor-*`.
+
+## Genuine successive-chain fixture
+
+A separate test-only fixture derives three genuine signed children from each
+previous composed complete map. Later seals/entropy proofs bind the actual
+selected parent hash, complete root, slot and parent entropy; the authored fixture
+stays before its epoch/tail boundary. It never mints execution certificates.
+Independent re-execution matches every serialized entry and root at each step,
+retains parent history, refuses stale replay and leaves finality unset. CE128
+requests are spelled independently and change with every selected parent.
+
+The earlier one-child fixture's validator-statistics decoding budget permits one
+prior service row; execution produces two. Successive fixtures explicitly allow
+four prior rows without changing legacy defaults or production policy. The
+focused native chain suite passes with unchanged 312,160 occupied bytes across
+1,000 complete three-child execution/composition/refusal cycles. Semantic checks,
+source-owned inventory and whitespace checks pass; logs use
+`build/multiblock-chain-*`. This is local evidence, separate from Linux CI and
+complete block/epoch parity.
