@@ -29,10 +29,11 @@ chosen compatibility behavior as proof that the paper must change.
 | GP-PVM-002 | Paper/implementation discrepancy | Mapped final byte is accessible in the paper but traps in PolkaVM | Explicit compatibility exception tested; upstream clarification needed |
 | GP-PVM-003 | Missing definition | Branch gas lookup at a negative mathematical target | Wrapped-target price tested; upstream clarification needed |
 | GP-PVM-004 | Paper/implementation discrepancy | Final fallthrough/conditional: runtime panic versus module rejection | JAM preparation matches PolkaVM; raw paper witness retained |
-| GP-PVM-005 | Paper/implementation discrepancy | Jump-entry widths above4 accepted by paper, rejected by PolkaVM | JAM rejection tested; open PR559 proposes the bound |
+| GP-PVM-005 | Paper/implementation discrepancy | Jump-entry widths above4 accepted by paper, rejected by PolkaVM | JAM rejection tested; PR559 subsequently merged the bound |
 | GP-PVM-006 | Paper/implementation discrepancy | Nonempty width0 table versus semantically empty table | JAM normalization and real invocation tested; upstream clarification needed |
-| GP-PVM-007 | Paper/implementation discrepancy | Code-byte and declared jump-count bounds absent from pinned deblob | JAM bounds and exact edges tested; open PR559 proposes the bounds |
+| GP-PVM-007 | Paper/implementation discrepancy | Code-byte and declared jump-count bounds absent from pinned deblob | JAM bounds and exact edges tested; PR559 subsequently merged the bounds |
 | GP-PVM-008 | Paper/implementation discrepancy | Cross-page store reports a missing higher page before a read-only lower page | Scoped scalar compatibility rule; paper expectation retained in 48 differential witnesses |
+| GP-PVM-009 | Paper/implementation discrepancy | Three-register destination saturates whole byte versus low nibble | Raw/JAM matrix and captures tested; upstream PR554 already merged the exact clarification |
 
 ## Upstream discussion review —2026-10-21
 
@@ -56,7 +57,7 @@ a final block terminator. The remaining question is the precise validation bound
 not whether upstream had considered prevalidation at all. Preserve these links when
 raising GP-PVM-004 rather than presenting it as an entirely new topic.
 
-Other relevant proposals remain **open**:
+Other relevant proposals were **open at the initial review**; the follow-up below records later merges:
 
 - [PR555: code-blob format rework](https://github.com/gavofyork/graypaper/pull/555)
   replaces the bitmask and introduces macro blocks. It is a broader pending redesign,
@@ -72,6 +73,18 @@ validity; [PR272](https://github.com/gavofyork/graypaper/pull/272) removed wrapp
 host-function memory operations, not scalar instruction accesses. The latter should
 not be mistaken for a resolution of GP-PVM-001/002. The source/body/review snapshots
 used for this search remain locally under `build/graypaper-issue-review/`.
+
+### Follow-up disposition checks —2026-10-21
+
+Three all-state destination/register, three-register and r_D searches found merged
+[PR554](https://github.com/gavofyork/graypaper/pull/554), the exact GP-PVM-009
+clarification. Its metadata/body/patch were inspected; the merge is
+`e5375148597a45a99d31c9aa6bce6c7bf3a48998` (2026-08-26).
+A fresh status/patch check also found [PR559](https://github.com/gavofyork/graypaper/pull/559)
+merged at2026-10-21 08:45:28 UTC as `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`.
+Its width/code/count bounds match GP-PVM-005/007. The initial open-state review above
+is historical; current dispositions are updated here. No pins or unrelated cmov/gas
+changes are adopted, and no issue/comment is posted.
 
 ## Grey implementation review —2026-10-21
 
@@ -299,10 +312,10 @@ covers all256 widths with counts0/1:502 parse rejections above4. The native
 paper witness accepts all512 structurally valid blobs; these differing observations
 are explicit, not a claim of loading parity.
 
-**Upstream:** open [PR559](https://github.com/gavofyork/graypaper/pull/559)
-explicitly proposes limiting each table entry to four bytes, as well as total
-code/table limits. This is a direct proposed resolution for the width discrepancy,
-not a merged rule in our pinned paper. Do not file a duplicate issue; the
+**Upstream:** [PR559](https://github.com/gavofyork/graypaper/pull/559), initially
+reviewed while open and subsequently merged2026-10-21, explicitly adds limiting each table entry to four bytes, as well as total
+code/table limits. This directly resolves the width discrepancy in later upstream
+text; it is absent from our unchanged pinned paper. Do not file a duplicate issue; the
 [local draft](graypaper-discrepancy-issue-drafts.md) supplies a precise comment.
 The explicit `decodeJamProgram` profile now returns `InvalidProgram` for widths
 above4 at outer initialization and HUH at inner-machine creation. Raw paper decoding
@@ -340,7 +353,7 @@ respective expected observations.
 **Question to raise:** should z=0 require a zero table count, preserve the declared
 number of zero entries, or define a semantically empty table regardless of count?
 Please specify deblob and dynamic-jump behavior together. Bounded Gray Paper
-issue/PR searches found no exact zero-width resolution; open559's four-byte upper
+issue/PR searches found no exact zero-width resolution; PR559's four-byte upper
 bound alone does not settle this lower-bound case. A local issue draft is retained.
 
 ## GP-PVM-007: code-byte and declared jump-count limits
@@ -368,9 +381,9 @@ empty-map aliases and distinct local `LimitExceeded`. The existing raw decoder a
 512-case raw/JAM jump-table suites also pass. See the
 [module-limit contract](pvm-module-limits.md).
 
-**Upstream:** open [PR559](https://github.com/gavofyork/graypaper/pull/559),
-reviewed2026-10-21 at head `a279a738f43fb2399188d752c427e4901a7d1171`,
-proposes these exact bounds. The [local draft comment](graypaper-discrepancy-issue-drafts.md)
+**Upstream:** [PR559](https://github.com/gavofyork/graypaper/pull/559),
+initially reviewed2026-10-21 at head `a279a738f43fb2399188d752c427e4901a7d1171`,
+merged later that day as `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` and adds these exact bounds. The [local draft comment](graypaper-discrepancy-issue-drafts.md)
 asks for exact-edge fixtures and declared-count/width-zero interaction. No duplicate
 issue is filed, and no paper/upstream revision is adopted. The ABI source digest is
 added to the existing PolkaVM source manifest at the unchanged revision.
@@ -423,6 +436,48 @@ The [metered two-stage retry](pvm-cross-page-metered-retry.md) additionally exec
 both repair faults and final success in one prepaid block at exact and surplus gas.
 No upstream duplicate search or issue posting is claimed for this newly found case.
 A local issue draft is prepared for the maintainer; a normative clarification remains open.
+
+## GP-PVM-009: three-register destination-byte high bits
+
+**Classification:** paper/implementation discrepancy. GP0.8.0
+`07f041dabd073f9018b418e9ee72e79dd2185401`,
+[three-register operand equation](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L629-L640),
+defines D by saturating the whole byte at r12. In contrast,
+[PolkaVM RawReg::get](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/program.rs#L29-L43)
+first masks the low four bits, while
+[read_args_regs3](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/program.rs#L827-L832)
+constructs that raw destination from the second operand byte.
+
+**Minimal original blob:** `[0,0,4,190,16,16,0,9]`. Initial r0=7, r1=11,
+r12=55; other registers are irrelevant sentinels. The add32 result is 18.
+
+| Posterior register | Paper | Pinned public interpreter |
+| --- | ---: | ---: |
+| r0 | 7 | 18 |
+| r12 | 18 | 55 |
+
+The initial public arithmetic replay failed at row0/opcode190/register0: actual18,
+expected7. This is executed evidence, not merely an inference from parser source.
+A caller-like load prefix followed by return makes the effect visible as panic
+versus successful halt when r0 is overwritten. Because destination aliases affect
+pipeline dependencies, the difference also changes some block prices.
+
+**Local disposition:** retain whole-byte saturation in raw `decodeProgram` owners;
+use low-nibble saturation for three-register instructions in explicit
+`decodeJamProgram` owners. Capture the private profile in the immutable program,
+preserve original bytes and all other operand shapes, and retain it through outer
+initialization and inner-machine creation. No general register-validation, opcode,
+memory or gas-model rule is replaced.
+
+The [complete destination matrix](pvm-destination-reference.md) covers all41 opcodes,
+all256 bytes and three input/alias rotations: 31488 rows, 22140 differing indices,
+and 1050 differing gas/cycle pairs. Independent expected GP and JAM values/prices
+remain separate. Public execution and native source/owner tests verify the actual
+rule; existing fixtures retain their original bytes. The bounded all-state duplicate search found the exact upstream resolution:
+[PR554](https://github.com/gavofyork/graypaper/pull/554), merged2026-08-26 as
+`e5375148597a45a99d31c9aa6bce6c7bf3a48998`, inserts modulo16 in that equation.
+Its reviewed patch matches the scoped JAM rule exactly. The local issue draft is
+therefore a disposition note: do not file a duplicate. Our paper pin remains unchanged.
 
 ## Reproducing the local fixture evidence
 
