@@ -62,7 +62,7 @@ proc openFile(path: cstring, flags, mode: cint): cint {.importc: "open", cdecl,
   ## The real variadic SDK declaration supplies the platform-correct mode ABI.
 proc lock(fd, operation: cint): cint {.importc: "flock", cdecl, header: "<sys/file.h>".}
   ## Standard advisory inode locking arbitrates cooperating processes without waiting.
-proc synchronize(fd: cint): cint {.importc: "fsync", cdecl, header: "<unistd.h>".}
+proc syncNative(fd: cint): cint {.importc: "fsync", cdecl, header: "<unistd.h>".}
   ## Synchronize explicit file/directory descriptors without changing their namespace.
 
 func error*[T](outcome: FileResult[T]): FileError =
@@ -79,6 +79,13 @@ func frameError*[T](outcome: FileResult[T]): FrameError {.requires: outcome.stat
     FileError.InvalidFrame.} =
   ## Observe only a selected journal encoding failure.
   outcome.frameReason
+proc synchronize(fd: cint): cint =
+  ## Retry an interrupted barrier on the same live descriptor; permanent refusal remains uncertain IO.
+  while true:
+    let status = syncNative(fd)
+    if status == 0 or posix.errno() != interrupted: return status
+    # EINTR confirms no durability receipt; another real barrier must complete before success.
+
 proc managedOutcome[T](outcome: ManagedResult[T]): FileResult[T] =
   ## Translate only checked alternatives into this facade's private result domain.
   case outcome.error
