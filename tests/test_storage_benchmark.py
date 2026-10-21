@@ -89,6 +89,41 @@ class StorageBenchmarkTests(unittest.TestCase):
             self.assertIn('No usable verification report',(folder/'step.md').read_text())
             self.assertEqual((folder/'step.md').read_text(),(folder/'summary.md').read_text())
 
+    def test_builds_missing_crypto_before_native_benchmark(self):
+        """A fresh build must hash/link the newly built library rather than require a previous consumer."""
+        import storage_benchmark
+        import hashlib
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary)
+            library=folder/'crypto/library'
+            paths={'fixture':'pinned sources'}
+            def build_crypto(selected):
+                # The only provider creates the previously absent ABI, just as a fresh CI build must.
+                self.assertEqual(selected,paths)
+                self.assertFalse(library.exists())
+                library.parent.mkdir()
+                library.write_bytes(b'fresh crypto ABI')
+                return library
+            def native_build(compiler,source,name,**options):
+                # Stop after the build boundary: application workloads remain covered by the real benchmark.
+                self.assertEqual(options['crypto_library'],library)
+                self.assertEqual(library.read_bytes(),b'fresh crypto ABI')
+                return dict(exit_code=1,log='native-build.log',output='deliberate native failure'),folder/'binary'
+            with patch.object(storage_benchmark,'BUILD',folder),patch.object(
+                    storage_benchmark,'installed',return_value=(folder/'compiler',{})),patch.object(
+                    storage_benchmark,'crypto_sources',return_value=paths) as sources,patch.object(
+                    storage_benchmark,'build_crypto',side_effect=build_crypto) as crypto,patch.object(
+                    storage_benchmark.NativeChecks,'build',side_effect=native_build) as native:
+                with self.assertRaisesRegex(RuntimeError,'Storage benchmark build failed'):
+                    storage_benchmark.run()
+            sources.assert_called_once_with(False)
+            crypto.assert_called_once_with(paths)
+            native.assert_called_once()
+            report=json.loads((folder/'results.json').read_text())
+            self.assertEqual(report['crypto_sha256'],hashlib.sha256(library.read_bytes()).hexdigest())
+            self.assertEqual(report['status'],'failed')
+            self.assertIn('Storage benchmark build failed',report['error'])
+
     def test_failed_rerun_removes_stale_success(self):
         import storage_benchmark
         with tempfile.TemporaryDirectory() as temporary:

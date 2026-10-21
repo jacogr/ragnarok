@@ -12,6 +12,7 @@ import platform
 import subprocess
 import tempfile
 from native_checks import NativeChecks
+from build_crypto import dependencies as crypto_sources, build_native as build_crypto
 from pvm_reference import command
 from setup_nimony import installed
 from storage_benchmark_report import ENGINES,COUNTS,PHASES,parse_output,aggregate,summarize_benchmark
@@ -50,7 +51,8 @@ def run():
             ROOT/'tools/storage_benchmark.py',ROOT/'tools/storage_benchmark_report.py',
             ROOT/'tools/native_checks.py',ROOT/'tools/pvm_reference.py',ROOT/'spec/toolchain.json',
             ROOT/'Makefile',ROOT/'.github/workflows/ci.yml']
-        library=ROOT/'build/crypto'/('libragnarok_crypto.dylib' if platform.system()=='Darwin' else 'libragnarok_crypto.so')
+        # Build the pinned ABI before hashing/linking it; setup provisions sources, not compiled libraries.
+        library=build_crypto(crypto_sources(False))
         report.update(head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
             worktree_dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT)),
             hardware=dict(platform=platform.platform(),machine=platform.machine(),cpu=cpu_model(),logical_cpus=os.cpu_count(),
