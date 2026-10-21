@@ -7,21 +7,17 @@ This folder owns the standalone incremental complete-state trie described in
 
 ## Parallel work and integration boundary
 
-Storage and state development are independent workstreams until the maintainer explicitly
-authorizes integration. The storage workstream owns this folder and its dedicated trie tests and
-feature contract. State/checkpoint work continues with the existing `StateStore` and checkpoint
-APIs and must neither modify nor consume the new trie. This restriction also applies after the
-standalone PR merges; availability on master does not authorize adoption.
+The maintainer authorized db #1 to integrate the incremental trie into the in-memory
+`StateStore`, coordinated with idle state #5. The [integration contract](../../spec/state-store-incremental.md)
+limits this task to three PRs: public contract coverage, atomic incremental commitments with the
+existing API, and consumer validation/measurements. The storage workstream owns this folder;
+state #5 has no overlapping changes and leaves this tranche to db #1.
 
-State, PVM, checkpoint and application implementations must not import this module, add adapters
-or route execution through it yet. Storage work must likewise leave those implementations alone.
-Neither workstream should refactor the other's code in anticipation of integration. Sharing status
-or design information is welcome and grants no implementation authority across this boundary.
-
-“Future integration” describes a possible later, separately scoped task. It is not the next task
-for the state agent or permission for the storage agent to begin wiring consumers. The maintainer
-must explicitly open that task and agree its owner, current API/snapshot contracts and validation
-scope before either side crosses the boundary. See the [folder instructions](AGENTS.md).
+The exception is specific to `src/state/store.nim` and its validation. Disk adoption, canonical
+durable publication, full/light startup configuration and unrelated state/PVM/application changes
+remain separate work. Neither availability on master nor merging this tranche authorizes those
+changes. Agree the owner, current contracts and validation scope with the maintainer before
+starting another integration task. See the [folder instructions](AGENTS.md).
 
 ## Complete-state revisions
 
