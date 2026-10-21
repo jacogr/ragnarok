@@ -6,11 +6,11 @@
 
 import std/[syncio, monotimes, times]
 import std/posix/posix
-import ./[options, services, chain, download_policy, block_download, ancestor_inputs]
+import ./[options, services, chain, download_policy, block_download, ancestor_inputs, ancestor_response]
 import ./download_schedule
 import ../codec/[bounded, header]
 import ../chain/[genesis, provider]
-import ../quic/[block_download_loop, block_download_peers]
+import ../quic/[block_download_loop, block_download_peers, ancestor_peer, ancestor_stream]
 
 type DownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
   Uninitialized, Adopted, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,
@@ -74,6 +74,108 @@ proc ancestorsFit(head: OwnedHeader, older: seq[OwnedHeader], limits: DownloadLo
       if size > inputBytes: return false # Only older headers consume the receiver's separate retained-byte budget.
       inputBytes -= size
   true
+
+type RemoteAncestorResult = object ## A refused acquisition retains no decoded prefix or partially extended input list.
+  case successful: bool
+  of true:
+    captured: seq[OwnedHeader]
+  else:
+    refusal: DownloadCommandResult
+
+proc remoteAncestors(owner: var Services, options: Options, peers: seq[DownloadPeerId],
+    ports: array[16, uint16], keys: array[16, DownloadPeerKey], older: seq[OwnedHeader],
+    limits: DownloadLoopLimits, started: MonoTime,
+        timeout: uint64): RemoteAncestorResult {.raises.} =
+  ## Acquire only missing context, before any execution worker lease; native peer cleanup precedes returning copied headers.
+  let selected = owner.chainView.bestBlock
+  if selected.error != GenesisError.None or not ancestorsFit(selected.value.header, older, limits):
+    return RemoteAncestorResult(successful: false, refusal: DownloadCommandResult.InvalidAncestors)
+  let head = selected.value.header
+  let child = if older.len == 0: head else: older[older.high]
+  let request = initAncestorRequest(child, ElementLimit(options.remoteDownloadAncestors))
+  if request.error != AncestorResponseError.None:
+    return RemoteAncestorResult(successful: false, refusal: DownloadCommandResult.InvalidAncestors)
+  var inputBytes = uint64(limits.input.ancestorBytes)
+  var reportBytes = uint64(limits.candidate.reporting.reports.ancestors.maxBytes)
+  reportBytes -= uint64(head.headerInfo.value.consumed) # ancestorsFit proved all independent subtraction bounds.
+  for header in older:
+    let size = uint64(header.headerInfo.value.consumed)
+    inputBytes -= size
+    reportBytes -= size # Only parent-inclusive report bytes charge the selected head.
+  let headerBytes = ByteLimit(min(inputBytes, reportBytes))
+  var schedule = default(DownloadSchedule)
+  if schedule.configure(peers, limits.schedule, DownloadScheduleTick(0)) !=
+      DownloadScheduleError.None:
+    return RemoteAncestorResult(successful: false, refusal: DownloadCommandResult.InvalidPolicy)
+  var peer = default(AncestorPeer)
+  defer: peer.close() # No endpoint/callback borrows a header, receiver or complete canonical view after return.
+  var active = default(DownloadAttempt)
+  while true:
+    let elapsed = (getMonoTime() - started).inMilliseconds
+    if elapsed < 0: return RemoteAncestorResult(successful: false,
+        refusal: DownloadCommandResult.DispatchFailure)
+    let now = uint64(elapsed)
+    if now >= timeout: return RemoteAncestorResult(successful: false,
+        refusal: DownloadCommandResult.Timeout)
+    owner.tick(0) # No candidate is queued: optional RPC/UI continue while context acquisition owns no worker lease.
+    if not active.valid:
+      let selection = schedule.select(DownloadScheduleTick(now))
+      if selection.error == DownloadScheduleError.Exhausted:
+        return RemoteAncestorResult(successful: false, refusal: DownloadCommandResult.Exhausted)
+      if selection.error notin [DownloadScheduleError.None, DownloadScheduleError.Waiting]:
+        return RemoteAncestorResult(successful: false,
+            refusal: DownloadCommandResult.DispatchFailure)
+      if selection.error == DownloadScheduleError.None:
+        active = selection.value
+        let ordinal = uint64(active.peer) # Command preflight constructed only fixed peer IDs 1..16.
+        if ordinal == 0 or ordinal > uint64(peers.len):
+          return RemoteAncestorResult(successful: false,
+              refusal: DownloadCommandResult.DispatchFailure)
+        let index = int(ordinal - 1)
+        let duration = min(timeout - now, min(uint64(limits.attemptTimeout), uint64(
+            limits.stream.timeout)))
+        let streamLimits = AncestorStreamLimits(readBytes: limits.stream.readBytes,
+          writeBytes: limits.stream.writeBytes, timeout: AncestorTimeout(duration))
+        let opened = peer.open(request.value, limits.input.blockBytes,
+          AncestorPeerKey(array[32, byte](keys[index])), ports[index], options.argument(3),
+          options.argument(4), options.argument(6), streamLimits, AncestorTick(now))
+        if opened != AncestorPeerError.None:
+          peer.close()
+          if schedule.finish(active, DownloadAttemptOutcome.Retry, DownloadScheduleTick(now)) !=
+              DownloadScheduleError.None:
+            return RemoteAncestorResult(successful: false,
+                refusal: DownloadCommandResult.DispatchFailure)
+          active = default(DownloadAttempt) # Failed setup consumes only its explicitly reserved finite attempt.
+    if active.valid:
+      let status = peer.tick(AncestorTick(now))
+      if peer.stage == AncestorPeerStage.Ready:
+        let decoded = peer.response(limits.candidate.reporting.admission.frame, headerBytes)
+        peer.close() # Actual final native close and whole endpoint retirement precede retaining producer observations.
+        if schedule.finish(active, DownloadAttemptOutcome.Retry, DownloadScheduleTick(now)) !=
+            DownloadScheduleError.None:
+          return RemoteAncestorResult(successful: false,
+              refusal: DownloadCommandResult.DispatchFailure)
+        active = default(DownloadAttempt)
+        if decoded.error == AncestorResponseError.None:
+          let fetched = decoded.value.headers
+          var combined = newSeq[OwnedHeader](older.len + fetched.len)
+          for index, header in older: combined[index] = header # Existing explicit/local context remains the newest prefix.
+          for index, header in fetched: combined[older.len + index] = header
+          if not ancestorsFit(head, combined, limits):
+            return RemoteAncestorResult(successful: false,
+                refusal: DownloadCommandResult.InvalidAncestors)
+          return RemoteAncestorResult(successful: true, captured: combined)
+        # Empty, structurally invalid, over-budget or wrong-lineage replies release their whole prefix and consume one attempt.
+      elif status != AncestorPeerError.None:
+        peer.close()
+        if schedule.finish(active, DownloadAttemptOutcome.Retry, DownloadScheduleTick(now)) !=
+            DownloadScheduleError.None:
+          return RemoteAncestorResult(successful: false,
+              refusal: DownloadCommandResult.DispatchFailure)
+        active = default(DownloadAttempt) # Identity, reset and timeout failures cannot bypass the retry/cooldown ceiling.
+    var requestedPause = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
+    var remaining = default(Timespec)
+    discard nanosleep(requestedPause, remaining) # Bounded nonblocking turns preserve service and peer progress.
 
 type ObservedDownloadHead = object ## Fixed metadata survives joined shutdown without retaining a canonical ARC alias.
   initialized: bool
@@ -174,7 +276,10 @@ proc performDownloads(options: Options, adopted: var int): DownloadCommandResult
   let paths = options.ancestorPaths
   let ancestry = limits.candidate.reporting.reports.ancestors
   let requested = options.downloadBlocks
-  let retained = uint64(paths.len) + uint64(requested -
+  let remote = uint64(options.remoteDownloadAncestors)
+  if remote > 0 and uint64(limits.input.blockBytes) > uint64(high(uint32)):
+    return DownloadCommandResult.InvalidPolicy # Remote E4 response claims have a fixed u32 extent before any file or Services IO.
+  let retained = uint64(paths.len) + remote + uint64(requested -
       1) # Parser caps both operands, independently of wrapping arithmetic.
   if retained > uint64(limits.input.ancestors) or retained >= uint64(ancestry.headers):
     return DownloadCommandResult.InvalidPolicy # Reserve the whole finite lineage, including each future selected parent, before file/Services IO.
@@ -194,9 +299,13 @@ proc performDownloads(options: Options, adopted: var int): DownloadCommandResult
           ancestry.maxBytes))))
     if combined.error != AncestorInputError.None: return DownloadCommandResult.InvalidAncestors
     ancestors = combined.headers
-    let reserved = uint64(ancestors.len) + uint64(requested - 1)
+    let reserved = uint64(ancestors.len) + remote + uint64(requested - 1)
     if reserved > uint64(limits.input.ancestors) or reserved >= uint64(ancestry.headers):
       return DownloadCommandResult.InvalidPolicy # Entire local suffix plus future parents must fit before outgoing transport.
+  if remote > 0:
+    let acquired = remoteAncestors(owner, options, peers, ports, keys, ancestors, limits, started, timeout)
+    if not acquired.successful: return acquired.refusal # No child request follows a failed/partial ancestry capture.
+    ancestors = acquired.captured
   var observed = default(ObservedDownloadHead)
   let terminal = receiveChildren(owner, options, peers, ports, keys, ancestors, limits,
     started, timeout, requested, adopted, observed)

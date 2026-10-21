@@ -43,6 +43,7 @@ proc main(): int =
       stdout.writeLine("         Checkpoint imports require independent trusted identity/header; restart retains one unfinalized head.")
       stdout.writeLine("         --download-ancestor FILE (repeat newest-first; download only, maximum 64)")
       stdout.writeLine("         --download-local-ancestors (download only; prepend all retained local parents)")
+      stdout.writeLine("         --download-remote-ancestors COUNT (download only; fetch up to 1..64 older parents)")
       stdout.writeLine("         --download-blocks COUNT (download only, default 1, range 1..64)")
       stdout.writeLine("State limits are unsigned budgets; supplied complete state is structurally checked.")
       return 0
