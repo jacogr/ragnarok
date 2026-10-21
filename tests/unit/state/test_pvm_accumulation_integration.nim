@@ -134,8 +134,9 @@ block supported_publication:
 for amount in [0'u64, 1]:
   for checkpoint in [false, true]:
     for panic in [false, true]:
-      var instructions = @[registerImmediate(7, 99), registerImmediate(8, amount),
-          registerImmediate(9, 0), registerImmediate(10, 196608), @[10'u8, 22]]
+      var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 99),
+          @[51'u8, 9, 0], registerImmediate(10, amount), registerImmediate(11, 0),
+          registerImmediate(12, 196608), @[10'u8, 22]]
       if checkpoint:
         instructions.add(@[10'u8, 19]) # Retain the debit/outgoing owner only after its explicit checkpoint.
       instructions.add(if panic: @[0'u8] else: @[50'u8, 0])

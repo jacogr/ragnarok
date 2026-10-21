@@ -16,6 +16,20 @@ proc refinementImmediate*(register: byte, value: uint64): seq[byte] =
   ## Independent load_imm_64 encoding preserves every high address/value bit.
   result = @[20'u8, register]
   for index in 0..<8: result.add(byte((value shr (8*index)) and 255))
+proc refinementInnerCreate*(length = 6'u64, pointer = 196608'u64, entry = 0'u64, suffix: seq[seq[
+    byte]] = @[]): seq[seq[byte]] =
+  ## Literal current ABI: compile memory in mode zero, then instantiate its returned module handle.
+  result = @[@[51'u8, 7, 0], refinementImmediate(8, pointer)]
+  # Compact authored immediates keep the independently framed guest below its one-byte length bound.
+  if length < 128: result.add(@[51'u8, 9, byte(length)])
+  else: result.add(refinementImmediate(9, length))
+  result.add(@[10'u8, 9])
+  if entry < 128: result.add(@[51'u8, 8, byte(entry)])
+  else: result.add(refinementImmediate(8, entry))
+  result.add(@[10'u8, 10])
+  for instruction in suffix:
+    result.add(instruction) # Explicit appending avoids unsupported sequence concatenation in this nightly.
+
 proc refinementInputs*(): RefinementInputs =
   ## One actual package item has no extrinsic or imported-segment manifests.
   RefinementInputs(extrinsics: @[newSeq[seq[byte]]()], imports: @[newSeq[FetchSegment]()])

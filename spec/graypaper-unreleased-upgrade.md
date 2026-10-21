@@ -96,11 +96,21 @@ suite each pass1,000 ownership cycles with unchanged occupied memory; all three 
 and the exact nominal target-domain rejection passes. Other shifted host-call fixtures and current account mutation arguments
 also remain pending. Do not publish the upgrade while these obsolete paths remain.
 
-## Ed25519 verification compatibility blocker
+## Ed25519 verification compatibility resolution
 
-The target explicitly adds ZIP215 validation. The pinned BoringSSL bridge rejects
-three fixed valid ZIP215 witnesses, with working signing/verification controls.
+The target explicitly adds ZIP215 validation. The historical BoringSSL bridge rejected
+three fixed valid ZIP215 witnesses, with working signing/verification controls. The crypto
+foundation now supplies a maintained verifier; this layer activates it together with the
+new invalid null-validator key.
 See [the compatibility audit](crypto-zip215-upgrade.md). This is an implementation
-gap, not a specification discrepancy. A maintained verification backend is required;
-the maintainer authorized a crypto foundation PR before this upgrade. Do not publish this pin
-upgrade with the known incompatible verifier presented as current protocol behavior.
+gap, not a specification discrepancy. The maintainer authorized the crypto foundation PR before this upgrade. Current-policy
+corpus results explicitly record the normative ZIP215 difference in Wycheproof case151.
+
+## Remaining account-selector migration
+
+The current paper's write (5), query (24), solicit (25) and forget (26) rows add an
+account selector in r7. Their pointer/length arguments move to r8 onward. Native
+request-boundary tests now reject both reserved E4 lengths and prove storage/request
+separation, but the old guest register shape still needs migration before publication.
+Query should support current foreign-account reads; supervised foreign mutations remain
+explicit implementation gates until their account mutation/publication paths are complete.

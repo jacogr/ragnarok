@@ -41,13 +41,13 @@ proc code(first: bool, stop = TransferStop.Halt, checkpoint = true, zeroGas = fa
     memo[index] = byte((index*7+(if first: 3 else: 11)) mod 256) # Distinct opaque memos prove numeric source order.
   let destination = (if first: 99'u64 else: 77'u64)
   let gas = (if zeroGas: 0'u64 else: (if first: 3'u64 else: 7'u64))
-  var instructions = @[registerImmediate(7, destination), registerImmediate(8,
-      if first: 0'u64 else: 5'u64),
-    registerImmediate(9, gas), registerImmediate(10, 196608), @[10'u8, 22]]
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, destination),
+    @[51'u8, 9, 0], registerImmediate(10, if first: 0'u64 else: 5'u64),
+    registerImmediate(11, gas), registerImmediate(12, 196608), @[10'u8, 22]]
   if first and checkpoint:
     instructions.add(@[10'u8, 19]) # Only the first record belongs to Y.
   if first:
-    instructions.add(registerImmediate(7, destination))
+    instructions.add(registerImmediate(7, high(uint64)))
     instructions.add(@[10'u8, 22]) # Duplicate records remain separate selected inputs and paid gas.
     case stop
     of TransferStop.Halt:
@@ -57,8 +57,8 @@ proc code(first: bool, stop = TransferStop.Halt, checkpoint = true, zeroGas = fa
     of TransferStop.Fault:
       instructions.add(@[52'u8, 2, 0, 0, 4]) # Physical fault normalizes to the same exceptional projection.
     of TransferStop.OutOfGas:
-      instructions.add(registerImmediate(7, destination))
-      instructions.add(registerImmediate(9, 100000))
+      instructions.add(registerImmediate(7, high(uint64)))
+      instructions.add(registerImmediate(11, 100000))
       instructions.add(@[10'u8, 22]) # Valid offered gas cannot be funded by the remaining initial allowance.
     of TransferStop.HashReturn:
       instructions.add(registerImmediate(7, 65536))

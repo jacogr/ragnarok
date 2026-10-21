@@ -25,18 +25,24 @@ signature byte. These controls distinguish a verification-policy mismatch from
 incorrect ABI arguments or a broken backend load. Exact encodings, source pins
 and backend SHA256 are retained in `build/graypaper-zip215-audit.json`.
 
-## Required resolution before publication
+## Implemented resolution and retained evidence
 
-Keep BoringSSL's maintained signing/hash operations and use a maintained ZIP215
-verifier for the newly required verification policy, or leave this coordinated
-pin upgrade unpublished. No dependency patch or handwritten group-arithmetic
-replacement is proposed. The maintainer authorized a crypto foundation PR first, preferring reuse of the
-existing ark-vrf native dependency closure, followed by the pin upgrade on top.
-The pinned ark-vrf Ed25519 feature is an ECVRF suite, not ordinary Ed25519
-signature verification; primitive reuse must preserve the required algorithm.
+The crypto foundation introduced pinned `ed25519-zebra` 4.2.0 inside the existing Rust
+library, sharing its SHA-2 0.10 closure. This upgrade activates that maintained ZIP215
+verifier for `verify`, together with the new invalid null-validator key. Primitive
+hashing/signing/wiping already use Rust; BoringSSL remains only for QUIC/TLS. No dependency
+patch, handwritten group arithmetic, or alternate-verifier fallback is used. ark-vrf's
+Ed25519 feature is an ECVRF suite and is not enabled as a signature implementation.
 
-Verification must retain RFC8032 positives, malformed encodings and scalars,
-cofactor/noncanonical ZIP215 witnesses, existing observer failures, cross-platform
-build wiring and ownership contracts. Existing release-profile crypto successes
-cannot establish current ZIP215 compliance. The current Thin VRF gate remains
-separate and must not be hidden by this change.
+The original upstream Wycheproof fixture and hash are unchanged. Case 151 deliberately
+sets the sign bit for R with x=0; it is labeled `invalid` under RFC8032 section 5.1.3.
+ZIP215's decoding accepts this point encoding, so its expected result is explicitly
+accepted under the current policy. Every other correctly sized case retains its original
+label; wrong widths still fail typed import. The all-zero A/R, S=0 witness also changes
+to acceptance under the cofactored equation. These differences follow normative rules,
+not a blanket relaxation of invalid corpus labels.
+
+Native cases retain RFC8032 positives and altered-message rejection, A of order four,
+noncanonical identity A/R, invalid A/R, S=group order and failed equations. The primitive
+ABI retains malformed-pointer/size, ownership, observer-failure and relocation checks.
+The current Thin VRF gate remains separate: these signatures do not establish Thin parity.

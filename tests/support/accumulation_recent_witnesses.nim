@@ -23,7 +23,7 @@ proc recentPolicy*(): AccumulationRecentConfig =
 proc recentYieldProgram*(): seq[byte] =
   ## Actual guest yields the 32-byte padded bootstrap tuple and halts without a return override.
   result = @[0'u8]
-  let raw = @[0'u8, 0, 9, 0, 0, 0, 0, 0, 10, 26, 50, 0, 191, 0]
+  let raw = @[0'u8, 0, 9, 0, 0, 0, 0, 0, 10, 27, 50, 0, 191, 0]
   for octet in pvmEnvelope(raw): result.add(octet)
 proc leaf(service: uint32, count: byte): seq[byte] =
   ## Independently frame E4(service) plus the literal yielded slot/service/count and zero padding.

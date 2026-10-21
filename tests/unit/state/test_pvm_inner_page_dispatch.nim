@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # @@Verification={"arc": "pvm_inner_page_dispatch_arc_release"}
 
-## Genuine refinement bootstraps drive host-12 gas, protocol return codes and atomic normalized results.
+## Genuine refinement bootstraps drive host-13 gas, protocol return codes and atomic normalized results.
 
 import std/[assertions, syncio]
 import ../../../src/state/[refinement_bootstrap, refinement_dispatch, refinement_outcome]
@@ -18,10 +18,9 @@ proc limits(pages = 4'u32): RefinementInvocationLimits =
 proc fixture(mode: uint64, count = 1'u64, first = 16'u64, id = 0'u64,
     credit = 10000'u64): PreparedRefinementBootstrap =
   ## A literal embedded inner blob is created before the real guest's requested page operation.
-  refinementFixture([refinementImmediate(7, 196608), refinementImmediate(8, 6),
-    refinementImmediate(9, 0), @[10'u8, 9], refinementImmediate(7, id),
+  refinementFixture(refinementInnerCreate(length = 6, entry = 0, suffix = @[refinementImmediate(7, id),
     refinementImmediate(8, first), refinementImmediate(9, count), refinementImmediate(10, mode),
-    @[10'u8, 12], @[50'u8, 0]], credit = credit, writable = innerBlob())
+    @[10'u8, 13], @[50'u8, 0]]), credit = credit, writable = innerBlob())
 proc run(source: PreparedRefinementBootstrap, cap = limits()): RefinementInvocationResult[
     RefinementInvocation] =
   ## Use the original authenticated bootstrap; no terminal machine or gas tuple can be substituted.
@@ -40,9 +39,9 @@ for row in [(0'u64, 330'u64), (1'u64, 396'u64), (2'u64, 396'u64),
     (if row[0] > 2: high(uint64)-8 else: 0'u64) # Preserve modes see inaccessible RAM and return HUH.
   let normalized = run(source).value.refinementInfo.value
   assert normalized.kind == WorkKind.Success
-  assert uint64(normalized.gasUsed) == refinementPrice(source)+1863+row[
+  assert uint64(normalized.gasUsed) == refinementPrice(source)+1864+1862+row[
       1] # Literal host prices plus separately verified pipeline cost.
-# WHO precedes HUH, while host OOG retains exact debt and becomes a protocol work result.
+# WHO precedes HUH, while host OOG drains remaining credit and becomes a protocol work result.
 let missing = fixture(99, first = high(uint64), id = high(uint64))
 assert uint64(raw(missing).value.outcome.machine.machineInfo.value.registers[7]) == high(uint64)-3
 let starved = fixture(2, credit = 2000)
@@ -60,13 +59,15 @@ let capacity = run(source, limits(0))
 assert capacity.error == RefinementInvocationError.HostFailure
 assert capacity.hostError == RefinementDispatchError.LimitExceeded
 let huge = run(fixture(2, count = high(uint64)))
-assert huge.error == RefinementInvocationError.HostFailure
-assert huge.hostError == RefinementDispatchError.LimitExceeded
+assert huge.error == RefinementInvocationError.None, "wide page cost is protocol OOG before allocation"
+assert huge.value.refinementInfo.value.kind == WorkKind.OutOfGas
+assert uint64(huge.value.refinementInfo.value.gasUsed) == 10000
 # Creation, allocation and deletion compose without damaging caller RAM; every replay starts with a fresh map.
-let composed = refinementFixture([refinementImmediate(7, 196608), refinementImmediate(8, 6),
-  refinementImmediate(9, 0), @[10'u8, 9], refinementImmediate(8, 16),
-  refinementImmediate(9, 1), refinementImmediate(10, 2), @[10'u8, 12], @[10'u8, 14],
-  refinementImmediate(7, 196608), refinementImmediate(8, 6), @[50'u8, 0]], writable = innerBlob())
+let composed = refinementFixture(refinementInnerCreate(length = 6, entry = 0, suffix = @[
+    refinementImmediate(8, 16),
+  refinementImmediate(9, 1), refinementImmediate(10, 2), @[10'u8, 13], @[51'u8, 7, 0], @[51'u8, 8,
+      0], @[10'u8, 15],
+  refinementImmediate(7, 196608), refinementImmediate(8, 6), @[50'u8, 0]]), writable = innerBlob())
 for replay in 0..<2:
   let done = run(composed).value
   assert done.refinementInfo.value.kind == WorkKind.Success

@@ -77,7 +77,7 @@ proc backendRefusals() =
   assert not verifyZip215(key, signature, [byte 1])
   clearSeed(seed)
 
-# ZIP215 capability is explicit and differs from release verification for cofactored witnesses.
+# Current verification and the explicitly named ZIP215 API agree on cofactored witnesses.
 proc zip215Policy() =
   var signatureBytes: array[64, byte] = default(array[64, byte])
   signatureBytes[0] = 1 # R is identity and S is zero.
@@ -85,7 +85,7 @@ proc zip215Policy() =
   let zeroKey = checked(importPublicKey(default(array[32, byte])))             # A has order four.
   assert verifyZip215(zeroKey, signature, [])
   assert verifyZip215(zeroKey, signature, [byte 0])
-  assert not verify(zeroKey, signature, []) # Foundation preserves release policy.
+  assert verify(zeroKey, signature, []) # Current GP activates the cofactored equation.
   var noncanonical: array[32, byte] = default(array[32, byte])
   for i in 0..<32: noncanonical[i] = 255 # y = p+1 encodes identity noncanonically.
   noncanonical[0] = 238

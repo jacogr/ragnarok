@@ -19,7 +19,7 @@ proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 # Yield the actual 32-byte padded bootstrap tuple, then halt without overriding it.
 proc yieldArguments(): seq[byte] =
   result = @[0'u8]
-  let raw = @[0'u8, 0, 9, 0, 0, 0, 0, 0, 10, 26, 50, 0, 191, 0]
+  let raw = @[0'u8, 0, 9, 0, 0, 0, 0, 0, 10, 27, 50, 0, 191, 0]
   for octet in pvmEnvelope(raw): result.add(octet) # Independent literal opcode mask marks host and halt starts.
 
 # Complete both fixture services through the existing real guest dispatcher; an idle source has neither.

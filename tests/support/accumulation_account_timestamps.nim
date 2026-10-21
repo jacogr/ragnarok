@@ -12,7 +12,7 @@ proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
-proc accountPolicy*(services = 4'u64, bytes = 356'u64): AccumulationAccountConfig =
+proc accountPolicy*(services = 4'u64, bytes = 420'u64): AccumulationAccountConfig =
   ## Explicit selected-service and aggregate metadata limits do not replace inherited complete-map store limits.
   AccumulationAccountConfig(services: ElementLimit(services), metadataBytes: ByteLimit(bytes))
 
@@ -20,7 +20,7 @@ proc stamped(raw: seq[byte], slot: uint32): seq[byte] =
   ## Author the four normative E4 timestamp octets directly, independently of the production metadata codec/update.
   result = newSeq[byte](raw.len)
   for index, value in raw:
-    result[index] = (if index in 81..84: byte((slot shr ((index-81)*8)) and 255) else: value)
+    result[index] = (if index in 97..100: byte((slot shr ((index-97)*8)) and 255) else: value)
 
 proc checkAccountProjection*() =
   ## Pure projection distinguishes absent, unselected, malformed and already-current accounts without hashing.
@@ -41,7 +41,7 @@ proc checkAccountProjection*() =
   let prior = store.snapshot.value
   let services = [ServiceIndex(42), ServiceIndex(77), ServiceIndex(99), ServiceIndex(high(uint32))]
   failHash(1)
-  let projected = projectAccumulationAccounts(prior, services, AccountSlot(2), accountPolicy(4, 178)).value
+  let projected = projectAccumulationAccounts(prior, services, AccountSlot(2), accountPolicy(4, 210)).value
   assert projected.info.services == 4 and projected.info.accounts == 2 and projected.info.updates == 1
   assert uint32(projected.info.slot) == 2 and projected.writes.len == 1
   assert projected.writes[0].value == stamped(first.value, 2)
@@ -49,7 +49,7 @@ proc checkAccountProjection*() =
   assert prior.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77))).error ==
       StateStoreError.MissingKey
   assert prior.lookup(first.key).value.bytes == first.value
-  for policy in [accountPolicy(3, 178), accountPolicy(4, 177), accountPolicy(0, 0)]:
+  for policy in [accountPolicy(3, 210), accountPolicy(4, 209), accountPolicy(0, 0)]:
     assert projectAccumulationAccounts(prior, services, AccountSlot(2), policy).error ==
         AccumulationAccountError.LimitExceeded
   for identities in [@[ServiceIndex(99), ServiceIndex(42)], @[ServiceIndex(42), ServiceIndex(42)]]:
@@ -72,7 +72,7 @@ proc checkAccountProjection*() =
     var raw = first.value
     case mode
     of 0: raw = @[] # Present-empty is malformed, distinct from a missing account.
-    of 1: raw.setLen(88) # A truncated fixed record cannot be copied as valid metadata.
+    of 1: raw.setLen(104) # A truncated fixed record cannot be copied as valid metadata.
     of 2: raw.add(0) # Stored service records require exact consumption rather than prefix decoding.
     else: raw[0] = 1 # Full-width unsupported versions retain their actual decoder reason.
     let source = newStateStore([StateEntry(key: first.key, value: raw)], report_context.limits()).value
@@ -131,7 +131,7 @@ proc checkAccountTimestamps*(source: PreparedAccumulationStatistics, expected: o
     assert prepareAccumulationAccounts(source, tight).error ==
         AccumulationAccountError.LimitExceeded
     tight = accountPolicy()
-    tight.metadataBytes = ByteLimit(uint64(expected.len*89-1))
+    tight.metadataBytes = ByteLimit(uint64(expected.len*105-1))
     assert prepareAccumulationAccounts(source, tight).error ==
         AccumulationAccountError.LimitExceeded
   else:

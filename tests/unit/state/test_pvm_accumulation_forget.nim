@@ -158,12 +158,15 @@ for chapter in [2, 7, 12]:
 assert readBytes(memoryOf(done.value.machine).value, MemoryAddress(196608), MemoryLength(32),
     MemoryByteLimit(32)).value == payload(),
   "forget never writes hash input memory"
-# Exact projection of pinned vector service 0, slot 45, empty full-E4 request and literal hash.
-let vector = run(source(history = requestedHistory(), length = high(uint32), offered = uint64(high(uint32)),
-  lookupHash = vectorHash, service = 0, slot = 45, octets = 81'u64+uint64(high(uint32)),
+# The historical max-E4 vector is outside the current domain; derive a legal edge with its public hash/slot.
+assert serviceRequestKey(ServiceIndex(0), vectorHash, RequestLength(high(uint32)), ByteLimit(
+    32)).error == RequestError.InvalidLength
+let vector = run(source(history = requestedHistory(), length = high(uint32)-2, offered = (uint64(
+    high(uint32))-2),
+  lookupHash = vectorHash, service = 0, slot = 45, octets = 81'u64+(uint64(high(uint32))-2),
       preimage = false))
-resultCode(vector, 0, uint64(high(uint32)))
-removed(context(vector), lookupHash = vectorHash, length = high(uint32), service = 0)
+resultCode(vector, 0, (uint64(high(uint32))-2))
+removed(context(vector), lookupHash = vectorHash, length = high(uint32)-2, service = 0)
 assert uint32(metadata(context(vector), 0).storageItems) == 0 and uint64(metadata(context(vector),
     0).storageBytes) == 0,
   "pinned empty request drops before any possible expiry cutoff"
@@ -200,12 +203,11 @@ resultCode(run(source(history = unavailableHistory(RequestSlot(0), RequestSlot(0
   params = parameters(high(uint32))), high(uint64)-8) # Full E4 anchor plus safety margin remains widened.
 resultCode(run(source(present = false)), high(uint64)-8) # Other-service history and orphan self preimage cannot create membership.
 resultCode(run(source(offered = 4)), high(uint64)-8, 4) # Advertised length is part of exact request identity.
-for length in [0'u32, high(uint32)-1, high(uint32)]:
+for length in [0'u32, high(uint32)-2]:
   let completed = run(source(history = requestedHistory(), length = length, offered = uint64(length),
-    octets = 81'u64+uint64(length), preimage = false, writes = (if length == high(
-        uint32)-1: 2'u64 else: 3'u64)))
+    octets = 81'u64+uint64(length), preimage = false, writes = 3))
   resultCode(completed, 0, uint64(length))
-  removed(context(completed), length = length) # Equal request/preimage namespace key is deleted once under a two-write ceiling.
+  removed(context(completed), length = length) # Current request/preimage keys remain distinct and are removed atomically.
 for items in [0'u32, 1]:
   assert run(source(history = requestedHistory(), items = items)).error ==
       AccumulationDispatchError.MalformedState,
@@ -222,7 +224,7 @@ resultCode(run(valid, params = parameters(deposits = high(uint64))),
     0) # No funding check applies to history replacement.
 resultCode(run(source(history = requestedHistory()), params = parameters(deposits = high(uint64))),
     0) # Nor to removal.
-for offered in [0x100000003'u64, high(uint64)]:
+for offered in [uint64(high(uint32))-1, uint64(high(uint32)), 0x100000003'u64, high(uint64)]:
   let prepared = source(offered = offered, address = high(uint64), malformed = true)
   failHash(1)
   let completed = run(prepared, copy = 0)

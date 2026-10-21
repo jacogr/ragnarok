@@ -47,12 +47,14 @@ proc code(service, destination: uint32, amount, gas: uint64, repeat = false,
   var memo = newSeq[byte](128)
   for index in 0..<128:
     memo[index] = byte((index*7+int(service)) mod 256) # Every source has an independently recognizable complete memo.
-  var instructions = @[registerImmediate(7, uint64(destination)), registerImmediate(8, amount),
-    registerImmediate(9, gas), registerImmediate(10, 196608), @[10'u8, 22]]
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, uint64(
+      destination)),
+    @[51'u8, 9, 0], registerImmediate(10, amount), registerImmediate(11, gas),
+    registerImmediate(12, 196608), @[10'u8, 22]]
   if checkpoint:
     instructions.add(@[10'u8, 19]) # Select the first debit/outgoing record in Y before later failure.
   if repeat:
-    instructions.add(registerImmediate(7, uint64(destination)))
+    instructions.add(registerImmediate(7, high(uint64)))
     instructions.add(@[10'u8, 22]) # Preserve identical amount/gas/memo while making two separate debits.
   case stop
   of TransferStop.Halt:
@@ -62,8 +64,8 @@ proc code(service, destination: uint32, amount, gas: uint64, repeat = false,
   of TransferStop.Fault:
     instructions.add(@[52'u8, 2, 0, 0, 4]) # Unmapped load selects the same exceptional checkpoint.
   of TransferStop.OutOfGas:
-    instructions.add(registerImmediate(7, uint64(destination)))
-    instructions.add(registerImmediate(9, 20000))
+    instructions.add(registerImmediate(7, high(uint64)))
+    instructions.add(registerImmediate(11, 20000))
     instructions.add(@[10'u8, 22]) # Valid proposal exceeds the later service's remaining gas before another debit.
   of TransferStop.HashReturn:
     instructions.add(registerImmediate(7, 65536))

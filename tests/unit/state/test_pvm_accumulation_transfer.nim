@@ -44,6 +44,18 @@ proc payload(): seq[byte] =
   for i in 0..<128:
     result[i] = byte((i*7+3) mod 256) # Bounded pattern spans every memo octet.
 
+proc immediate(index: byte, value: uint64): seq[byte] =
+  ## Fixed-width authored operands preserve identical instruction pricing across full-width edge values.
+  registerImmediate(index, value)
+
+proc transferCall(destination = 99'u64, amount = 5'u64, gas = 9'u64, address = 196608'u64,
+    suffix: seq[seq[byte]] = @[]): seq[seq[byte]] =
+  ## Current liquid self-funded deferred transfer: source/destination/mode/amount/gas/memo in r7-r12.
+  result = @[immediate(7, high(uint64)), immediate(8, destination), @[51'u8, 9, 0],
+    immediate(10, amount), immediate(11, gas), immediate(12, address), @[10'u8, 22]]
+  for instruction in suffix:
+    result.add(instruction) # Explicit appending retains each current call's complete argument setup.
+
 # Build genuine host calls over current self/target accounts and independently bounded storage.
 proc source(destination = 99'u64, amount = 5'u64, gas = 9'u64, address = 196608'u64,
     credit = 100000'u64, account = ServiceMetadata(balance: AccountBalance(100),
@@ -56,8 +68,7 @@ proc source(destination = 99'u64, amount = 5'u64, gas = 9'u64, address = 196608'
     entries.add(serviceMetadataEntry(ServiceIndex(target), ServiceMetadata(balance: AccountBalance(77),
       minimumTransferGas: Gas(targetGas)), ByteLimit(
           ServiceMetadataBytes)).value) # Destination is a real current account, not a caller-selected lookup substitute.
-  var instructions = @[registerImmediate(7, destination), registerImmediate(8, amount),
-    registerImmediate(9, gas), registerImmediate(10, address), @[10'u8, 22]]
+  var instructions = transferCall(destination, amount, gas, address)
   for instruction in suffix:
     instructions.add(instruction) # Later calls execute through the same decoded production stream.
   guestProgram(instructions, credit, account = account, writable = data, extra = entries,
@@ -137,12 +148,13 @@ assert uint64(metadata(context(entireBalance)).balance) == 0 and
   uint64(metadata(context(entireBalance), 99).balance) == 77, "full-width balance debit remains deferred"
 let selfTransfer = run(source(destination = 42, gas = 6))
 checkTransfer(context(selfTransfer), destination = 42, gas = 6)
+checkTransfer(context(run(source(destination = high(uint64), gas = 6))), destination = 42, gas = 6)
 assert uint64(metadata(context(selfTransfer)).balance) == 95, "self-transfer is deferred, with no immediate credit"
 checkTransfer(context(run(source(role = 0)))) # No privileged role is required.
 for destination in [0'u64, uint64(high(uint32))]:
   checkTransfer(context(run(source(destination = destination, target = uint32(destination)))),
       destination = uint32(destination)) # Complete service domain, without sentinels.
-for destination in [123'u64, 0x100000063'u64, high(uint64)]:
+for destination in [123'u64, 0x100000063'u64, high(uint64)-1]:
   let refused = run(source(destination = destination, amount = high(uint64), gas = high(uint64)), capacity = 0)
   assert uint64(machineInfo(refused.value.machine).value.registers[7]) == high(uint64)-3, "WHO precedes LOW/CASH and append capacity"
   assert uint64(machineInfo(refused.value.machine).value.gas) == 100000-price(valid)-575, "WHO pays only base, even for huge offered gas"
@@ -153,7 +165,8 @@ assert run(source(includeTarget = false, extra = @[malformed])).error ==
 let low = run(source(gas = 6, amount = high(uint64)), capacity = 0)
 assert uint64(machineInfo(low.value.machine).value.registers[7]) == high(uint64)-7, "LOW precedes CASH and capacity"
 assert uint64(machineInfo(low.value.machine).value.gas) == 100000-price(valid)-575, "LOW pays only base"
-for address in [0'u64, 65536'u64+4096-64, 196608'u64+8192-64, 0x100000000'u64, high(uint64)]:
+assert run(source(address = 0)).error == AccumulationDispatchError.UnsupportedHostCall, "zero memo pointer selects the explicit direct-transfer gate"
+for address in [65536'u64+4096-64, 196608'u64+8192-64, 0x100000000'u64, high(uint64)]:
   let failed = run(source(address = address, destination = high(uint64), gas = high(uint64),
       amount = high(uint64)))
   assert failed.value.exit == StepExit.Panic and uint64(machineInfo(
@@ -177,12 +190,13 @@ for available in [0'u64, 574, 575, 583, 584, 585]:
   let cpu = machineInfo(completed.value.machine).value
   if available < 584:
     assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0, "exact full fee deficit even below base credit"
-    assert uint64(cpu.registers[7]) == 99 and context(completed).effectInfo.value.transfers == 0, "OOG wins before append capacity and publishes no transfer"
+    assert uint64(cpu.registers[7]) == high(uint64) and context(
+        completed).effectInfo.value.transfers == 0, "OOG wins before append capacity and publishes no transfer"
   else:
     assert completed.value.exit == StepExit.Halt and uint64(cpu.gas) == available-584, "full funded fee"
 for available in [0'u64, 574, 575, 576]:
   for mode in 0..<4:
-    let completed = run(source(destination = (if mode == 0: high(uint64) else: 99'u64),
+    let completed = run(source(destination = (if mode == 0: high(uint64)-1 else: 99'u64),
       gas = (if mode == 1: 6'u64 else: high(uint64)), amount = (if mode == 2: high(
           uint64) else: 5'u64),
       address = (if mode == 3: high(uint64) else: 196608'u64), credit = price(valid)+available), capacity = 0)
@@ -207,15 +221,15 @@ assert run(source(gas = 0x8000000000000000'u64, credit = price(valid)+574)).valu
     StepExit.OutOfGas, "unrepresentable signed debt remains explicit"
 let fullCredit = run(source(credit = high(uint64)))
 assert uint64(machineInfo(fullCredit.value.machine).value.gas) == high(uint64)-price(valid)-584, "full-width funded credit"
-let duplicates = run(source(suffix = @[registerImmediate(7, 99), @[10'u8, 22], registerImmediate(7,
-    99), @[10'u8, 22], @[50'u8, 0]]))
+let duplicates = run(source(suffix = @[immediate(7, high(uint64)), @[10'u8, 22],
+  immediate(7, high(uint64)), @[10'u8, 22], @[50'u8, 0]]))
 assert context(duplicates).effectInfo.value.transfers == 3 and uint64(metadata(context(
     duplicates)).balance) == 85, "ordered duplicates are independent deferred debits"
 for i in 0..<3:
   checkTransfer(context(duplicates), index = uint64(
       i)) # Repeated identical records are never deduplicated.
-let ordered = run(source(suffix = @[registerImmediate(7, 42), registerImmediate(8, 0),
-    registerImmediate(9, 6), registerImmediate(10, 65536), @[10'u8, 22], @[50'u8, 0]]))
+let ordered = run(source(suffix = transferCall(destination = 42, amount = 0, gas = 6,
+    address = 65536, suffix = @[@[50'u8, 0]])))
 checkTransfer(context(ordered))
 checkTransfer(context(ordered), index = 1, destination = 42, amount = 0, gas = 6, memo = ro)
 for checkpoint in [false, true]:
@@ -223,28 +237,36 @@ for checkpoint in [false, true]:
   let selected = normalizeAccumulationOutcome(failed).value.outcomeContext.value
   assert selected.effectInfo.value.transfers == (if checkpoint: 1 else: 0) and uint64(metadata(
       selected).balance) == (if checkpoint: 95'u64 else: 100'u64), "panic selects matching debit/list checkpoint"
-  let exhausted = run(source(credit = price(valid)+750, suffix = (if checkpoint:
-    @[@[10'u8, 19], registerImmediate(7, 99), @[10'u8, 22], @[50'u8, 0]] else:
-    @[registerImmediate(7, 99), @[10'u8, 22], @[50'u8, 0]])))
+  var ending: seq[seq[byte]] = @[]
+  if checkpoint:
+    ending.add(@[10'u8, 19]) # Checkpoint the first debit before the complete second transfer call.
+  for instruction in transferCall(suffix = @[@[50'u8, 0]]):
+    ending.add(instruction) # Preserve complete current arguments without relying on sequence insertion.
+  let exhausted = run(source(credit = price(valid)+750, suffix = ending))
   assert exhausted.value.exit == StepExit.OutOfGas, "second transfer unaffordable"
   let retained = normalizeAccumulationOutcome(exhausted).value.outcomeContext.value
   assert retained.effectInfo.value.transfers == (if checkpoint: 1 else: 0) and uint64(metadata(
       retained).balance) == (if checkpoint: 95'u64 else: 100'u64), "OOG selects matching debit/list checkpoint"
 # Upgrade changes the current self target's transfer minimum without changing the active program.
-let upgraded = guestProgram([registerImmediate(7, 65536), registerImmediate(8, 0),
-    registerImmediate(9, 100), @[10'u8, 21],
-  registerImmediate(7, 42), registerImmediate(8, 5), registerImmediate(9, 99), registerImmediate(10,
-      196608), @[10'u8, 22], @[50'u8, 0]],
-  credit = 100000, account = ServiceMetadata(balance: AccountBalance(100)), writable = payload())
+var upgradeInstructions = @[immediate(7, high(uint64)), immediate(8, 65536), immediate(9, 0),
+  immediate(10, 100), @[10'u8, 21]]
+for instruction in transferCall(destination = 42, gas = 99, suffix = @[@[50'u8, 0]]):
+  upgradeInstructions.add(instruction) # The transfer observes the upgraded self account immediately.
+let upgraded = guestProgram(upgradeInstructions, credit = 100000,
+  account = ServiceMetadata(balance: AccountBalance(100)), writable = payload())
 assert uint64(machineInfo(run(upgraded).value.machine).value.registers[7]) == high(uint64)-7, "LOW reads current upgraded destination minimum"
 # Newly created targets are visible immediately, but receive no immediate credit from transfer.
-let creating = guestProgram([registerImmediate(7, 65536), registerImmediate(8, 5),
-    registerImmediate(9, 0),
-  registerImmediate(10, 7), registerImmediate(11, 0), registerImmediate(12, high(uint64)), @[10'u8, 20],
-  registerImmediate(8, 5), registerImmediate(9, 9), registerImmediate(10, 196608), @[10'u8, 22], @[
-      50'u8, 0]],
-  credit = 100000, account = ServiceMetadata(balance: AccountBalance(100)), writable = payload(),
-      writes = 3, spareEntries = 2)
+var childRequest = payload()
+childRequest.setLen(188)
+childRequest[128] = 73 # Opaque code hash matches the existing read-only fixture prefix.
+childRequest[160] = 5 # E4 code length.
+childRequest[172] = 7 # E8 minimum transfer gas; all other configuration bytes remain zero.
+let creating = guestProgram([immediate(7, high(uint64)), immediate(8, high(uint64)),
+  immediate(9, 0), immediate(10, 196736), @[10'u8, 20], @[100'u8, 0x78],
+  immediate(7, high(uint64)), immediate(9, 0), immediate(10, 5), immediate(11, 9),
+  immediate(12, 196608), @[10'u8, 22], @[50'u8, 0]],
+  credit = 100000, account = ServiceMetadata(balance: AccountBalance(100)), writable = childRequest,
+  writes = 3, spareEntries = 2)
 let created = run(creating)
 assert context(created).effectInfo.value.transfers == 1 and uint64(metadata(context(
     created)).balance) == 85, "transfer sees new current account and preserves new debit"

@@ -46,7 +46,7 @@ proc state(): StateStoreSnapshot =
         ByteLimit(32)).value
     entries.add(StateEntry(key: key, value: @[1'u8, 10, 0, 0, 0])) # Available since literal timeslot ten.
   newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(8),
-      perValue: ByteLimit(100),
+      perValue: ByteLimit(105),
     totalValueBytes: ByteLimit(1000), nodes: TrieNodeLimit(200)), writes: ElementLimit(8),
     writeValueBytes: ByteLimit(1000))).value.snapshot.value
 proc inputs(): RefinementInputs =
@@ -154,10 +154,10 @@ for selector in [1'u64, 2, 4, 6, 13]:
     else: @[51'u8, 52, 0, 0]
   assert bytes == expected, "captured fetch selection and immutable input bytes"
 # Implemented invoke underfunding is protocol OOG; unrelated IDs retain F's WHAT fallback.
-let invokeOog = run(prepare(cpu([@[10'u8, 13], @[50'u8, 0]], registers(), 0)).value).value
+let invokeOog = run(prepare(cpu([@[10'u8, 14], @[50'u8, 0]], registers(), 0)).value).value
 assert invokeOog.outcome.exit == StepExit.OutOfGas
 assert uint64(invokeOog.outcome.machine.machineInfo.value.gasDeficit) == 0
-for id in [3'u8, 6, 15, 27, 28, 127, 255]:
+for id in [3'u8, 6, 16, 27, 28, 127, 255]:
   for credit in [999'u64, 1000]:
     let done = run(prepare(cpu([@[10'u8, id], @[50'u8, 0]], registers(), credit)).value).value
     assert uint64(done.outcome.machine.machineInfo.value.registers[7]) == high(uint64)-1
@@ -183,7 +183,8 @@ for kind, ending in [@[0'u8], @[10'u8, 8], @[52'u8, 0, 0, 0, 0, 1]]:
   let done = run(prepare(guest).value).value
   assert done.outcome.exit == [StepExit.Panic, StepExit.OutOfGas, StepExit.Fault][kind]
   assert uint64(done.exports.count) == 0
-let limitedInner = cpu([immediate(7, 196608), immediate(8, 3), @[10'u8, 8], @[10'u8, 9], @[50'u8,
+let limitedInner = cpu([immediate(7, 196608), immediate(8, 3), @[10'u8, 8], immediate(7, 0),
+  immediate(8, 196608), immediate(9, 3), @[10'u8, 9], @[50'u8,
     0]], registers())
 assert run(prepare(limitedInner).value).error == RefinementDispatchError.LimitExceeded
 var uncharged = multi.machineInfo.value

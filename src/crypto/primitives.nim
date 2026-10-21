@@ -24,11 +24,11 @@ proc nativePublic(seed, output: pointer): cint {.importc: "rc_ed_public", header
 # Sign an exact raw message; failure leaves no public signature value and native secret scratch is wiped.
 proc nativeSign(seed, data: pointer, length: csize_t,
     output: pointer): cint {.importc: "rc_ed_sign", header: Header, cdecl, raises: [], gcsafe.}
-# Report the pinned BoringSSL verification verdict without inventing an application domain/prehash mode.
+# Apply current Gray Paper ZIP215 rules without adding an application domain or prehash mode.
 proc nativeVerify(key, signature, data: pointer, length: csize_t): cint {.importc: "rc_ed_verify",
     header: Header, cdecl, raises: [], gcsafe.}
 
-# Explicit capability for the coordinated specification upgrade; ordinary verify keeps release policy.
+# Named ZIP215 capability shares the same maintained verifier selected by the current protocol.
 proc nativeVerifyZip215(key, signature, data: pointer,
     length: csize_t): cint {.importc: "rc_ed_verify_zip215",
 
@@ -151,7 +151,7 @@ proc sign*(seed: EdSeed, message: openArray[byte]): CryptoResult[EdSignature] {.
   CryptoResult[EdSignature](status: CryptoError.None, completed: EdSignature(output))
 
 proc verify*(key: EdPublicKey, signature: EdSignature, message: openArray[byte]): bool {.raises: [], gcsafe.} =
-  ## Return the pinned backend verdict for exact copied key/signature encodings and a borrowed raw message.
+  ## Apply ZIP215 to exact copied key/signature encodings and a borrowed raw message.
   var publicBytes = array[32, byte](key)
   var signatureBytes = array[64, byte](signature)
   nativeVerify(addr publicBytes[0], addr signatureBytes[0], dataPointer(message), csize_t(
@@ -159,7 +159,7 @@ proc verify*(key: EdPublicKey, signature: EdSignature, message: openArray[byte])
 
 proc verifyZip215*(key: EdPublicKey, signature: EdSignature, message: openArray[
     byte]): bool {.raises: [], gcsafe.} =
-  ## Check the ZIP215 equation and encoding rules explicitly; does not change release protocol verification.
+  ## Explicitly named ZIP215 verification, identical to the current protocol verify policy.
   var publicBytes = array[32, byte](key)
   var signatureBytes = array[64, byte](signature)
   nativeVerifyZip215(addr publicBytes[0], addr signatureBytes[0], dataPointer(message), csize_t(

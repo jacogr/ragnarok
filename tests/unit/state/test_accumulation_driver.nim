@@ -127,7 +127,7 @@ proc compare(source: CompletedBlockAccumulation, policy: AccumulationDriverLimit
 proc yieldProgram(): seq[byte] =
   ## Literal program yields the padded slot/service/input-count tuple and halts, exposing history union ordering.
   result = @[0'u8]
-  for octet in pvmEnvelope([0'u8, 0, 9, 0, 0, 0, 0, 0, 10, 26, 50, 0, 191, 0]):
+  for octet in pvmEnvelope([0'u8, 0, 9, 0, 0, 0, 0, 0, 10, 27, 50, 0, 191, 0]):
     result.add(octet) # Full service framing retains the zero-length metadata prefix.
 
 proc main() {.raises.} =

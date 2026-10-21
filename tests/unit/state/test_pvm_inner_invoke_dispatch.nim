@@ -26,12 +26,12 @@ proc fixture(blob = code(), fuel = 100'u64, frameOutput = true,
   for word in 0..<14:
     let value = if word == 0: fuel else: uint64(regs[word-1])
     for octet in 0..<8: writable[64+word*8+octet] = byte((value shr (octet*8)) and 255)
-  var instructions = @[refinementImmediate(7, 196608), refinementImmediate(8, uint64(blob.len)),
-    @[51'u8, 9, 0], @[10'u8, 9], refinementImmediate(8, 196672), @[10'u8, 13]]
+  var instructions = refinementInnerCreate(length = uint64(blob.len), suffix = @[
+      refinementImmediate(8, 196672), @[10'u8, 14]])
   if twice:
     instructions.add(refinementImmediate(7, 0))
     instructions.add(refinementImmediate(8, 196672))
-    instructions.add(@[10'u8, 13]) # A returned HOST does not recursively dispatch; the outer guest explicitly resumes.
+    instructions.add(@[10'u8, 14]) # A returned HOST does not recursively dispatch; the outer guest explicitly resumes.
   if frameOutput:
     instructions.add(refinementImmediate(7, 196672))
     instructions.add(refinementImmediate(8, 112)) # Return the updated frame at its exact caller address.
@@ -55,12 +55,13 @@ for replay in 0..<2:
   assert bytes.len == 112 and bytes[64] == 42 # Frame word eight is inner r7, independent of outer result registers.
   assert bytes[0] == byte(100-innerCost)
   assert done.refinementInfo.value.kind == WorkKind.Success
-  assert uint64(done.refinementInfo.value.gasUsed) == refinementPrice(source)+1863+968+innerCost
+  assert uint64(done.refinementInfo.value.gasUsed) == refinementPrice(source)+1862+(1862+(
+      264*uint64(code().len)+1023) div 1024)+968+innerCost
   assert source.bootstrapMachine.value.memoryOf.value.pageImage(PageIndex(48)).value.bytes[128] ==
       7 # Original frame r7 low byte is unchanged.
 # Inner panic/fault/host/OOG are protocol return codes and leave the outer guest able to continue.
 for row, blob in [invokeBlob([@[0'u8]]), invokeBlob([@[52'u8, 7, 0, 0, 1], @[50'u8, 0]]),
-    invokeBlob([@[10'u8, 13], @[50'u8, 0]])]:
+    invokeBlob([@[10'u8, 14], @[50'u8, 0]])]:
   let guest = fixture(blob, frameOutput = false)
   let done = raw(guest).value
   assert uint64(done.outcome.machine.machineInfo.value.registers[7]) == uint64(row+1)
@@ -68,7 +69,7 @@ for row, blob in [invokeBlob([@[0'u8]]), invokeBlob([@[52'u8, 7, 0, 0, 1], @[50'
 let oog = fixture(fuel = 0, frameOutput = false)
 assert uint64(raw(oog).value.outcome.machine.machineInfo.value.registers[7]) == 4
 assert run(oog).value.refinementInfo.value.kind == WorkKind.Success
-let resumed = fixture(invokeBlob([@[10'u8, 13], @[50'u8, 0]]), twice = true)
+let resumed = fixture(invokeBlob([@[10'u8, 14], @[50'u8, 0]]), twice = true)
 assert run(resumed).value.refinementOutput.value.len ==
     112 # Explicit outer resume preserves paid inner block state.
 # Nested local policies retain exact StepError and never masquerade as an inner OOG result or host refusal.

@@ -63,7 +63,7 @@ type
   AccumulationDesiredService* = distinct uint64 ## Full-width proposal: only registrar values below 65536 select a reserved uint32 ID.
   AccumulationNewService* = object ## Copied creation proposal; account identity, parent, slot and starting balance are derived by the state operation.
     codeHash*: CodeHash     ## Raw offered hash; creation neither requires nor publishes its preimage.
-    length*: RequestLength  ## The advertised code request length retains the entire E4 domain.
+    length*: RequestLength  ## The encoded E4 length must exclude the two reserved namespace values.
     accumulationGas*: Gas   ## Minimum per-item gas, without signed narrowing.
     transferGas*: Gas       ## Minimum per-transfer gas, without signed narrowing.
     gratis*: AccountBalance ## Nonzero offset requires the current manager.
@@ -569,8 +569,8 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
   let previous = data.regular.data
   assert previous != nil # Only private constructors publish initialized children.
   let size = uint64(bytes.len)
-  if size > uint64(high(uint32)):
-    fail(AccumulationEffectError.InvalidLength) # Keep the pinned request-length domain without namespace restrictions.
+  if size >= uint64(high(uint32))-1:
+    fail(AccumulationEffectError.InvalidLength) # Current request lengths exclude both reserved namespace prefixes.
   if size > uint64(limits.perBlob) or previous.provisions.largest > uint64(limits.perBlob) or
       previous.provisions.bytes > uint64(limits.totalBlobBytes) or
       uint64(previous.provisions.values.len) > uint64(limits.items):
@@ -1029,6 +1029,8 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
     fail(AccumulationEffectError.Uninitialized) # Defaults have no creator or allocation provenance.
   if not parameters.valid:
     fail(AccumulationEffectError.InvalidParameters) # Funding never uses a fabricated deposit schedule.
+  if uint32(source.length) >= high(uint32)-1:
+    fail(AccumulationEffectError.InvalidLength) # Validate public proposals before funding, probing or namespace hashing.
   let previous = data.regular.data
   assert previous != nil # Private pairs retain complete current contexts.
   let self = previous.initial.contextInfo.value.service
@@ -1356,6 +1358,8 @@ proc effectRequestHistory*(context: AccumulationEffectContext, hash: ServicePrei
   let data = context.data
   if data == nil:
     fail(AccumulationEffectError.Uninitialized) # No default context can supply a service identity or account backing.
+  if uint32(length) >= high(uint32)-1:
+    fail(AccumulationEffectError.InvalidLength) # Invalid E4 domains never become namespace backend failures.
   let service = data.initial.contextInfo.value.service
   let key = serviceRequestKey(service, hash, length, ByteLimit(32))
   if key.error != RequestError.None:

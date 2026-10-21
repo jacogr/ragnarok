@@ -172,11 +172,11 @@ let restoreFull = run(source(present = true, history = unavailableHistory(Reques
 resultCode(restoreFull, high(uint64)-4) # Unchanged footprint still requires current funding before resource policy.
 assert context(restoreFull).effectRequestHistory(hash, RequestLength(3)).value.state ==
     RequestState.Unavailable, "FULL does not restore history"
-for length in [0'u32, high(uint32)-1, high(uint32)]:
+for length in [0'u32, high(uint32)-2]:
   let completed = run(source(length = length, offered = uint64(length)), params = parameters(0, 0, 0))
   resultCode(completed, 0, uint64(length))
   assert uint64(metadata(context(completed)).storageBytes) == 81'u64+uint64(length), "complete E4 footprint and pinned namespace prefixes"
-for offered in [0x100000003'u64, high(uint64)]:
+for offered in [uint64(high(uint32))-1, uint64(high(uint32)), 0x100000003'u64, high(uint64)]:
   let prepared = source(offered = offered, address = high(uint64), malformed = true)
   failHash(1)
   let completed = run(prepared, copy = 0)

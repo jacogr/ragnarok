@@ -137,9 +137,9 @@ proc requests() =
   assert recordAccumulationProvision(orphan, ServiceIndex(100), bytes, policy()).error ==
       AccumulationEffectError.UnknownService
   # Corrupt target metadata remains a local refusal rather than ordinary unknown/not-requested.
-  for size in [88, 89, 90]:
+  for size in [104, 105, 106]:
     var malformed = newSeq[byte](size)
-    if size == 89: malformed[0] = 1 # Exact width with an unsupported metadata version is still corrupt.
+    if size == 105: malformed[0] = 1 # Exact width with an unsupported metadata version is still corrupt.
     let effects = prepareAccumulationEffects(preparedEffectContexts(@[
       StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(99)), value: malformed),
           request(ServiceIndex(99), bytes)])).value

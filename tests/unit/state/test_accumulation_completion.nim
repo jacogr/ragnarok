@@ -102,7 +102,7 @@ proc scenario(base: OwnedReport, guarantees = 0, available = false, blobs = fals
 proc yieldProgram(): seq[byte] =
   ## Literal host-yield/halt code exposes distinct slot/service/input-count commitments across real round history.
   result = @[0'u8]
-  for octet in pvmEnvelope([0'u8, 0, 9, 0, 0, 0, 0, 0, 10, 26, 50, 0, 191, 0]):
+  for octet in pvmEnvelope([0'u8, 0, 9, 0, 0, 0, 0, 0, 10, 27, 50, 0, 191, 0]):
     result.add(octet) # Preserve complete service metadata and JAM envelope framing.
 
 proc checkStagingPublication(base: OwnedReport) =

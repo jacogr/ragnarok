@@ -112,11 +112,11 @@ words(run(source(history = reavailableHistory(RequestSlot(high(uint32)), Request
   0xffffffff00000003'u64, 0xffffffff80000000'u64)
 words(run(source(history = reavailableHistory(RequestSlot(9), RequestSlot(3), RequestSlot(1)))),
   0x0000000900000003'u64, 0x0000000100000003'u64) # Query preserves positional shape without sorting or chronology validation.
-for length in [0'u32, high(uint32)-1, high(uint32)]:
+for length in [0'u32, high(uint32)-2]:
   words(run(source(length = length, offered = uint64(length))), 0,
-      0) # Full pinned E4 namespace includes existing overlapping prefixes.
+      0) # Current legal boundary excludes the two reserved namespace prefixes.
 words(run(source(offered = 4)), high(uint64), 0) # Exact length is part of membership.
-for offered in [0x100000003'u64, high(uint64)]:
+for offered in [uint64(high(uint32))-1, uint64(high(uint32)), 0x100000003'u64, high(uint64)]:
   let prepared = source(offered = offered, address = high(uint64), malformed = true)
   failHash(1)
   let completed = run(prepared, copy = 0)
@@ -164,23 +164,33 @@ assert owner.effectRequestHistory(hash, RequestLength(4)).error ==
 assert default(AccumulationEffectContext).effectRequestHistory(hash, RequestLength(3)).error ==
     AccumulationEffectError.Uninitialized,
   "default owner grants no request identity"
-# A pinned physical storage/request overlap provides a current-version witness without changing namespace interpretation.
-let overlapping = run(source(length = high(uint32), offered = uint64(high(uint32)), writes = 2,
-  account = ServiceMetadata(balance: AccountBalance(100), storageItems: AccountStorageItems(1),
-      storageBytes: AccountStorageBytes(67))))
-let prior = context(overlapping)
-let advanced = recordAccumulationStorage(overlapping.effects, hashBytes, [1'u8, 7, 0, 0, 128],
-    parameters(), ByteLimit(32)).value.effects
+# Storage writes and legal maximum-length requests now occupy distinct current namespaces.
+let separated = run(source(length = high(uint32)-2, offered = uint64(high(uint32))-2, writes = 2,
+  account = ServiceMetadata(balance: AccountBalance(100), storageItems: AccountStorageItems(2),
+    storageBytes: AccountStorageBytes(81'u64+uint64(high(uint32))-2))))
+let prior = context(separated)
+let advanced = recordAccumulationStorage(separated.effects, hashBytes, [1'u8, 7, 0, 0, 128],
+  parameters(), ByteLimit(32)).value.effects
 let current = advanced.effectContext(AccumulationDimension.Regular).value
-assert uint32(current.effectRequestHistory(hash, RequestLength(high(uint32))).value.since) ==
-    0x80000007'u32,
-  "query reads the current account backing, including the pinned physical namespace overlap"
-assert prior.effectRequestHistory(hash, RequestLength(high(uint32))).value.state ==
+assert current.effectRequestHistory(hash, RequestLength(high(uint32)-2)).value.state ==
     RequestState.Requested,
-  "historical context retains its old history independently"
+  "storage writes cannot overwrite a current request history"
+assert prior.effectRequestHistory(hash, RequestLength(high(uint32)-2)).value.state ==
+    RequestState.Requested,
+  "retained prior request remains independent"
 let yielded = recordAccumulationYield(advanced, default(OutputCommitment)).value
-assert uint32(yielded.effectContext(AccumulationDimension.Regular).value.effectRequestHistory(hash,
-  RequestLength(high(uint32))).value.since) == 0x80000007'u32, "yield preserves the current request owner"
+assert yielded.effectContext(AccumulationDimension.Regular).value.effectRequestHistory(hash,
+  RequestLength(high(uint32)-2)).value.state == RequestState.Requested, "yield preserves the separate request owner"
+for length in [high(uint32)-1, high(uint32)]:
+  failHash(1)
+  assert owner.effectRequestHistory(hash, RequestLength(length)).error ==
+      AccumulationEffectError.InvalidLength
+  assert recordAccumulationSolicit(done.effects, hash, RequestLength(length), parameters()).error ==
+      AccumulationEffectError.InvalidLength
+  assert recordAccumulationForget(done.effects, hash, RequestLength(length), parameters()).error ==
+      AccumulationEffectError.InvalidLength
+  assert hashCalls() == 0, "invalid public lengths precede namespace hashing"
+  failHash(0)
 for checkpoint in [false, true]:
   let completed = run(source(suffix = (if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])))
   let selected = normalizeAccumulationOutcome(completed).value.outcomeContext.value

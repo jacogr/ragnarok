@@ -342,6 +342,16 @@ assert recordAccumulationNew(default(AccumulationEffects), proposal, parameters(
     ServiceProbeLimit(1)).error == AccumulationEffectError.Uninitialized, "default pair cannot create a service"
 assert recordAccumulationNew(prepared, proposal, parameters(), ServiceProbeLimit(0)).error ==
     AccumulationEffectError.LimitExceeded, "direct probe exhaustion carries no successor"
+# Direct proposals enforce the same current length bound before backend hashing or allocation probes.
+for length in [high(uint32)-1, high(uint32)]:
+  var invalidProposal = proposal
+  invalidProposal.length = RequestLength(length)
+  failHash(1)
+  assert recordAccumulationNew(prepared, invalidProposal, parameters(), ServiceProbeLimit(
+      1)).error ==
+    AccumulationEffectError.InvalidLength
+  assert hashCalls() == 0, "reserved direct request length precedes backend work"
+  failHash(0)
 # Bless uses current authority and preserves the allocation cursor while handing manager/registrar roles off.
 let managed = run(source(manager = 42))
 var privilegePolicy = pvmContextConfig().privileges

@@ -13,7 +13,7 @@ import ./[natural, bounded, state_layout, state_trie, state_service_values]
 export ServiceIndex, ServicePreimageHash
 
 type
-  RequestLength* = distinct uint32 ## Advertised preimage length has the complete E4 domain and is distinct from timeslots or byte-policy ceilings.
+  RequestLength* = distinct uint32 ## Encoded E4 advertised length; key construction rejects the two reserved upper values.
   RequestSlot* = distinct uint32 ## Absolute request-history timeslots are independent from service IDs and advertised lengths.
   RequestState* {.pure.} = enum ## Count determines the history mode exactly: requested, supplied, removed, or restored.
     Requested, Available, Unavailable, Reavailable
