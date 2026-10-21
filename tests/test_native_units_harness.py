@@ -141,7 +141,7 @@ class NativeUnitHarness(unittest.TestCase):
                     self.assertEqual(Path(args[0]), (folder/'hastur').resolve())
                     self.assertIn('--bindir:'+str(folder.resolve()), args)
                     for flag in ('--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
-                                 '--boundchecks:on', '--passC:-flto', '--passL:-flto'):
+                                 '--boundchecks:on'):
                         # Every compiler invocation must receive the established checked build profile.
                         self.assertIn('--forward:'+flag, args)
                     self.assertEqual('--forward:--passL:-fuse-ld=lld' in args, system == 'Linux')
@@ -154,7 +154,9 @@ class NativeUnitHarness(unittest.TestCase):
             libraries = native_libraries(folder)
             commands = unit_plan(folder/'nimony', libraries)
             self.assertEqual(len(commands), 1+len(native_tests.UNIT_LINKS))
-            self.assertEqual(Path(commands[0][0]), (folder/'hastur').resolve())
+            self.assertEqual(commands[0][0], sys.executable)
+            self.assertIn(str(ROOT/'tools/native_codec.py'), commands[0])
+            self.assertIn(str((folder/'hastur').resolve()), commands[0])
             self.assertEqual(commands[0][-1], str(native_tests.UNIT_ROOT))
             self.assertFalse(any('--passL:' in arg and 'flto' not in arg and 'fuse-ld' not in arg
                                  for arg in commands[0]))
@@ -339,8 +341,8 @@ class NativeUnitHarness(unittest.TestCase):
                             self.assertIn('--forward:--passL:'+str(libraries['bandersnatch_observer'].resolve()), args)
                             for function in ('key_new', 'key_free', 'setup_new', 'setup_free'):
                                 self.assertIn('--forward:--passC:-Dbs_'+function+'=bo_'+function, args)
-                        self.assertIn('--forward:--passC:-flto', args)
-                        self.assertIn('--forward:--passL:-flto', args)
+                        self.assertNotIn('--forward:--passC:-flto', args)
+                        self.assertNotIn('--forward:--passL:-flto', args)
                         self.assertEqual('--forward:--passL:-fuse-ld=lld' in args, system == 'Linux')
                         record = native_tests.NATIVE_REQUIREMENTS[name]
                         key = json.dumps({field: record[field] for field in

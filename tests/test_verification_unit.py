@@ -20,6 +20,26 @@ from native_tests import UNIT_SUITES
 
 # Keep unit ownership and failure safeguards independent of other verification groups.
 class VerificationUnit(unittest.TestCase):
+    def test_builder_keeps_checked_non_lto_and_default_full_lto_profiles_separate(self):
+        """Fast test builds retain checks and cannot reuse full-LTO intermediates or change E2E defaults."""
+        from native_checks import NativeChecks
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            caches = []
+            for lto in (False, True):
+                checks = NativeChecks(folder, reuse_builds=True, lto=lto)
+                with patch.object(checks, 'command', return_value={'exit_code': 0, 'elapsed_seconds': 0}) as command:
+                    checks.build(Path('/compiler/nimony'), Path('/source/test.nim'), 'test')
+                arguments = command.call_args.args[0]
+                for flag in ('--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on'):
+                    self.assertIn(flag, arguments)
+                self.assertEqual('--passC:-flto' in arguments, lto)
+                self.assertEqual('--passL:-flto' in arguments, lto)
+                caches.append(next(arg for arg in arguments if str(arg).startswith('--nimcache:')))
+            self.assertNotEqual(*caches)
+            self.assertTrue(NativeChecks(folder).lto)
+
     # The native unit runner cannot silently grow another full Python discovery or live E2E invocation.
     def test_unit_group_has_no_e2e_or_discovery(self):
         tree = ast.parse((ROOT/'tools/test_runtime.py').read_text())

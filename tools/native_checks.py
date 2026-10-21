@@ -23,9 +23,10 @@ class NativeChecks:
     """Own one group's output directory; callers prepare it before running commands."""
 
     # Store a group-owned workspace without doing I/O during import or command planning.
-    def __init__(self, folder, reuse_builds=False):
+    def __init__(self, folder, reuse_builds=False, lto=True):
         self.folder = Path(folder)
         self.reuse_builds = reuse_builds
+        self.lto = lto
 
     # Retain exact arguments, elapsed time, exit status and diagnostics, including expected failures.
     def command(self, arguments, name, environment=None, cwd=ROOT, timeout=180):
@@ -54,12 +55,15 @@ class NativeChecks:
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-    # Keep ARC, Clang, guards, LTO and explicit native ABI profiles identical across verification groups.
+    # Keep ARC, Clang and checks fixed; production-like callers retain full LTO by default.
     def build(self, compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=()):
         flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
-                 '--boundchecks:on', '--passC:-flto', '--passL:-flto']
+                 '--boundchecks:on']
+        if self.lto:
+            # Units/contracts may opt out of link-time optimization without disabling runtime checks.
+            flags += ['--passC:-flto', '--passL:-flto']
         if platform.system() == 'Linux':
-            # Preserve the established Linux LTO linker choice on that host.
+            # Preserve the established Linux LLD linker choice on that host.
             flags += ['--passL:-fuse-ld=lld']
         if crypto_library is not None:
             # Crypto clients use the maintained public C header and one explicit native library.

@@ -20,8 +20,8 @@ and [infrastructure](../docs/testing/infrastructure.md) when changing the harnes
   Accept 1–4 workers;
   retain serial overrides, private caches/logs, ordered diagnostics and fresh per-suite ARC evidence.
   Keep linked profiles and network/resource scenarios sequential. Hastur scheduling artifacts belong
-  under `build/`; its successful parallel worker caches are discarded, so serial codec runs can
-  be faster on warm local repeats. Record timings without weakening test workloads or verdicts.
+  under `build/`. Codec workers reuse private caches serially across their assigned mains;
+  never share writable caches concurrently. Record timings without weakening workloads or verdicts.
 
 - Run Python reference/tooling/provenance unittest discovery once in `make check-python`.
   Native unit/corpus checks and E2E networking must not launch duplicate Python discovery or
