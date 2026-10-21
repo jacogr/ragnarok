@@ -36,3 +36,5 @@ let lockIo* {.importc: "STORAGE_IO_FLOCK", header: "observer.h".}: cint
   ## Observe the actual native lease boundary independently from read/write and durability calls.
 let renameIo* {.importc: "STORAGE_IO_RENAMEAT", header: "observer.h".}: cint
   ## Observe native namespace changes independently from data and durability operations.
+let unlinkIo* {.importc: "STORAGE_IO_UNLINKAT", header: "observer.h".}: cint
+  ## Observe native namespace changes independently from data and durability operations.

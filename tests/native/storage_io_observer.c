@@ -144,3 +144,10 @@ int storage_io_renameat(int source_directory, const char *source, int target_dir
     }
     return renameat(source_directory, source, target_directory, target);
 }
+int storage_io_unlinkat(int directory, const char *path, int flags) {
+    /* Only selected refusal bypasses the actual descriptor-relative SDK operation. */
+    if (refuse(STORAGE_IO_UNLINKAT)) {
+        return -1;
+    }
+    return unlinkat(directory, path, flags);
+}
