@@ -295,6 +295,16 @@ proc planPreparedReportLookupDemand*(prepared: PreparedReportAdmission,
   let data = prepared.data
   if data == nil:
     return ReportAdmissionResult[ReportLookupDemand](status: ReportAdmissionError.InvalidTransition)
+  let packages = checkReportPackages(data.recent, data.config.packages)
+  if packages.error != ReportPackageError.None:
+    return ReportAdmissionResult[ReportLookupDemand](status: ReportAdmissionError.PackageFailure,
+      packageReason: packages.error) # Known invalid dependencies/duplicates must not cause network acquisition.
+  let assignments = planReportAssignments(data.credentials,
+    data.staged.value.availability.assuredAssignments,
+    data.config.packages.availability)
+  if assignments.error != ReportAssignmentError.None:
+    return ReportAdmissionResult[ReportLookupDemand](status: ReportAdmissionError.AssignmentFailure,
+      assignmentReason: assignments.error) # Occupied post-assurance cores cannot be repaired by fetching older headers.
   let limits = data.config.ancestors
   let context = captureAncestorContext(data.staged.value.admitted.admittedParent, older,
     AncestorContextLimits(header: limits.header, headers: limits.headers,

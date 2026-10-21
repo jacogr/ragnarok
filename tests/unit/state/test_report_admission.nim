@@ -118,6 +118,16 @@ proc boundaries(base: OwnedReport) =
     signedOptions1.mode = mode
     let broken = authored(base, signedOptions1)
     let outcome = planBlockReports(broken.staged, broken.older, config())
+    if mode in [6, 7, 13]:
+      # Even with all lookup headers absent, known package/capacity failures refuse before requesting remote context.
+      let prepared = prepareBlockReports(broken.staged, config())
+      assert prepared.error == ReportAdmissionError.None
+      let refusedDemand = planPreparedReportLookupDemand(prepared.value, [])
+      assert refusedDemand.error == outcome.error
+      if mode == 7:
+        assert refusedDemand.assignmentError == outcome.assignmentError # Exact capacity reason survives discovery.
+      else:
+        assert refusedDemand.packageError == outcome.packageError # Missing parent queues are never fabricated.
     case mode
     of 1:
       assert outcome.error == ReportAdmissionError.PolicyFailure and outcome.policyError ==
