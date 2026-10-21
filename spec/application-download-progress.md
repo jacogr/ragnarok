@@ -141,3 +141,25 @@ requests; all child processes join and the RPC port is released. Response gates
 exist only in test responders and perform no callback file IO or production
 fault injection. Pinned semantic and native `application_download_rpc` checks
 pass; evidence uses `build/multiblock-rpc-*`.
+
+## Durable prefix, restart and explicit finality
+
+The real TLS/disk suite adopts three children, closes all command owners, resumes
+normally and adopts two further children. Per-run counts remain 3 then 2; fresh
+local startup matches all five independently composed posterior maps and retained
+parents. A stale retry sends its real selected-parent request, reports zero new
+adoptions and leaves the entire journal byte-identical.
+
+Fresh independent cases restore exactly the first confirmed child after a later
+empty response, tight evolved-statistics composition policy and missing-FIN
+command timeout. A database bootstrapped through existing public APIs with a
+genuine first child and explicitly certified original-parent finality preserves
+that exact anchor through two more real downloads. Eight successful children
+restore the bounded eight-head suffix and make the original unfinalized head
+unavailable through chain lookup. Every retained complete map/root/profile and
+queryable parent is compared with the independent manual chain. No physical
+reclamation claim follows from logical history eviction.
+
+Pinned semantic and native `application_download_disk_progress` checks pass;
+evidence uses `build/multiblock-disk-*`. Storage formats, policies, public
+interfaces and managed-maintenance adoption remain unchanged.
