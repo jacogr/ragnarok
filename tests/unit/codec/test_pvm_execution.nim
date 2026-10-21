@@ -147,6 +147,30 @@ for count in [1'u64, 2'u64, 17'u64, 10000'u64]:
   same(machineInfo(finished.machine).value, expected)
   assert uint64(machineInfo(input).value.registers[0]) == count
 
+# Repeated blocks still pay on every visit; new calls cannot inherit a previous program/limit's price.
+block priceReuseIsolation:
+  var initial = registers
+  initial[0] = RegisterValue(17)
+  let input = source(loopProgram, memory, initial, 0, loopPrice * 17 + trapPrice + 7, false)
+  let completed = execute(input, ExecutionStepLimit(35), GasCycleLimit(loopPrice + 3))
+  assert completed.error == StepError.None and completed.value.exit == StepExit.Panic
+  assert uint64(machineInfo(completed.value.machine).value.gas) == 7
+  assert uint64(machineInfo(completed.value.machine).value.registers[0]) == 0
+  # A lower policy ceiling on the identical source must refuse freshly, without progress.
+  assert execute(input, ExecutionStepLimit(35), GasCycleLimit(loopPrice + 2)).error ==
+      StepError.GasCycleLimitExceeded
+  assert uint64(machineInfo(input).value.gas) == loopPrice * 17 + trapPrice + 7
+  assert uint64(machineInfo(input).value.registers[0]) == 17
+  let different = owner([@[2'u8], @[0'u8]])
+  let differentPrice = uint64(blockGas(different, CodeAddress(0), GasCycleLimit(1000)).value)
+  let other = source(different, memory, registers, 0, differentPrice + 7, false)
+  let stopped = execute(other, ExecutionStepLimit(2), GasCycleLimit(1000)).value
+  assert stopped.exit == StepExit.Panic and uint64(machineInfo(stopped.machine).value.gas) == 7
+  # Single-step calls remain independent and cannot reuse an execution's successful simulation.
+  assert stepOnce(other, GasCycleLimit(0)).error == StepError.GasCycleLimitExceeded
+  same(machineInfo(other).value, machineInfo(source(different, memory, registers, 0,
+      differentPrice + 7, false)).value)
+
 # Out-of-gas after an earlier block returns the current causing PC and the completed prefix's state.
 let gasProgram = owner([@[51'u8, 0, 7], @[1'u8], @[0'u8]])
 let firstPrice = uint64(blockGas(gasProgram, CodeAddress(0), GasCycleLimit(1000)).value)
