@@ -232,3 +232,18 @@ calls fell respectively from 1,530 to 511 and from 6,897 to 2,300. Strict reopen
 baseline. Timing is recorded descriptively; these synthetic local measurements make no general
 throughput or power-loss guarantee. Real authenticated TLS migration/download/reclamation and
 untrusted snapshot codec regression suites also pass.
+
+## Bounded validated startup cleanup
+
+The file and state facades expose explicit managed cleanup operations for a validated live owner.
+With a positive managed maintenance threshold, Services calls them only after strict physical and
+canonical history admission and before worker/listener startup. Cleanup removes CURRENT.next and
+the immediate unselected successor, then the immediate predecessor; epoch exhaustion skips an
+unrepresentable successor. It never scans unknown files or changes the selected state. Explicit
+zero disables this automatic startup cleanup as well as automatic compaction. Live collisions
+continue to fail with the actual receipt rather than being discarded automatically.
+
+`managed_startup_cleanup` covers zero-preserved staging, corrupt-head refusal before cleanup,
+exact next/previous retirement, an untouched farther future pair, unchanged CURRENT bytes and
+symlink refusal without unlinking the alias or selected target. Real authenticated TLS migration,
+confirmed-prefix maintenance failure and ordinary managed startup regressions remain passing.

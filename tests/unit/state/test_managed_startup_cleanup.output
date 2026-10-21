@@ -1,0 +1,1 @@
+PASS managed startup cleanup: checked adjacent epochs, zero preserves staging, unknown files and aliases remain protected

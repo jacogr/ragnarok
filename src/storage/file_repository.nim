@@ -4,7 +4,7 @@
 ## Locked append-only physical node journals publish complete checked revisions after synchronization.
 ## IO is synchronous startup/storage work; callers preserve the directory and journal inode namespace.
 
-import ./[file_errors, managed_repository]
+import ./[file_errors, managed_repository, managed_manifest]
 export file_errors
 
 import std/assertions
@@ -414,3 +414,14 @@ proc managedUsage*(repository: FileRepository): FileResult[ManagedUsage] =
   if not repository.managedMode: return FileResult[ManagedUsage](
       status: FileError.UnsupportedLayout)
   managedOutcome(repository.managed.usage)
+
+proc discardManagedStaging*(repository: var FileRepository): FileError =
+  ## A checked managed owner may remove only pending CURRENT and its immediate unselected successor.
+  if not repository.active: return FileError.Uninitialized
+  if not repository.managedMode: return FileError.UnsupportedLayout
+  repository.managed.discardManagedStaging
+proc cleanupRetiredEpoch*(repository: var FileRepository, epoch: ManagedEpoch): FileError =
+  ## Explicitly retire one earlier managed pair without scanning or changing the selected revision.
+  if not repository.active: return FileError.Uninitialized
+  if not repository.managedMode: return FileError.UnsupportedLayout
+  repository.managed.cleanupRetiredEpoch(epoch)
