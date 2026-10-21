@@ -11,7 +11,8 @@ import ./[pvm_refinement_outcome, pvm_input_refinement, pvm_extrinsic_inputs, pv
 type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection; defaults preserve every earlier zero-output witness.
   Disabled, Commit, Panic, Underfunded, CheckpointCommit, CheckpointPanic, OutOfGas,
     CheckpointOutOfGas,
-  FetchFirst, FetchSecond, FetchMissing, FetchList, FetchWideOffset, FetchWideIndex, FetchTail, FetchDelete
+  FetchFirst, FetchSecond, FetchMissing, FetchList, FetchWideOffset, FetchWideIndex, FetchTail,
+    FetchDelete, FetchBranchPanic
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   ## Jump from refinement entry0 to empty output; entry5 writes RO key11 using literal or genuinely fetched RW bytes.
@@ -21,12 +22,13 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   if mode in {ComputedStorageMode.FetchFirst, ComputedStorageMode.FetchSecond,
       ComputedStorageMode.FetchMissing, ComputedStorageMode.FetchList,
       ComputedStorageMode.FetchWideOffset, ComputedStorageMode.FetchWideIndex,
-      ComputedStorageMode.FetchTail, ComputedStorageMode.FetchDelete}:
+      ComputedStorageMode.FetchTail, ComputedStorageMode.FetchDelete,
+      ComputedStorageMode.FetchBranchPanic}:
     # Compact load_imm instructions keep the real dual-entry envelope below128 bytes; fetch skips the C.2 operand tag.
     body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 1], @[51'u8, 9, 3], @[51'u8, 10, 15]]
     let wide = mode in {ComputedStorageMode.FetchWideOffset, ComputedStorageMode.FetchWideIndex}
     let returnedWord = wide or mode == ComputedStorageMode.FetchTail
-    if mode == ComputedStorageMode.FetchDelete:
+    if mode in {ComputedStorageMode.FetchDelete, ComputedStorageMode.FetchBranchPanic}:
       body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 0], @[51'u8, 9, 1], @[51'u8, 10, 14],
         refinementImmediate(11, high(uint64)), refinementImmediate(12, high(
             uint64))] # Fetch the actual compact input count; selector14 ignores both item registers.
@@ -54,6 +56,8 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
         body.add(instruction) # Real add_imm_64 derives r8=r7-1; request3 then copies only the final canonical record byte.
     if returnedWord:
       body.add(@[62'u8, 7, 3, 0, 3]) # Real store_u64 persists all eight r7 bytes atRW196611 while preserving initialRW21/22/23.
+    if mode == ComputedStorageMode.FetchBranchPanic:
+      body.add(@[52'u8, 11, 0, 0, 3]) # Preserve the actual count in r11 across the real storage write.
     let valueBytes = if returnedWord: 11'u8 else: 3'u8
     if mode == ComputedStorageMode.FetchDelete:
       for instruction in [@[52'u8, 10, 0, 0, 3], @[154'u8, 170, 2], @[150'u8, 170, 3],
@@ -74,7 +78,11 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
       refinementImmediate(9, 196609), refinementImmediate(10, 2), @[10'u8, 5]]:
       body.add(instruction) # Same raw key proves one provenance descriptor can retain multiple real mutations.
   body.add(refinementImmediate(8, 0))
-  if mode in {ComputedStorageMode.Panic, ComputedStorageMode.CheckpointPanic}:
+  if mode == ComputedStorageMode.FetchBranchPanic:
+    body.add(@[81'u8, 27, 2, 6]) # Real equality branches forward by six bytes exactly when the count is two.
+    body.add(@[50'u8, 0]) # Historical count one commits the write through the actual regular exit.
+    body.add(@[0'u8]) # The assured count two selects initial exceptional state after attempting a different write.
+  elif mode in {ComputedStorageMode.Panic, ComputedStorageMode.CheckpointPanic}:
     body.add(@[0'u8]) # The real trap selects the prior exceptional implication after a completed write.
   else:
     body.add(@[50'u8, 0]) # Halt selects regular effects, including an admitted write or unchanged FULL state.
