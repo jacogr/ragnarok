@@ -30,6 +30,45 @@ chosen compatibility behavior as proof that the paper must change.
 | GP-PVM-003 | Missing definition | Branch gas lookup at a negative mathematical target | Wrapped-target price tested; upstream clarification needed |
 | GP-PVM-004 | Paper/implementation discrepancy | Final fallthrough/conditional: runtime panic versus module rejection | Both behaviors reproduced; local policy decision pending |
 
+## Upstream discussion review —2026-10-21
+
+Reviewed565 issue/PR records across all states, targeted GitHub searches including
+comments, candidate PR patches, and129 inline review comments on PR508. This is a
+bounded search, not proof that no other discussion exists. Current PR/issue status
+was checked separately from our pinned source; merged background is not necessarily
+a resolution of the exact witness. No issue or comment was posted by this review.
+
+| Finding | Closest upstream discussion | Disposition |
+| --- | --- | --- |
+| GP-PVM-001 | [PR201](https://github.com/gavofyork/graypaper/pull/201), merged, introduced the memory exception prose/equation. [Issue446](https://github.com/gavofyork/graypaper/issues/446), closed, addresses unconditional low64KiB protection. | Related history; neither reviewed discussion explicitly settles high-address wrap ordering. |
+| GP-PVM-002 | No exact final-byte/exclusive-end report found in the reviewed records and searches. | Still a candidate for a focused report, subject to another duplicate check before posting. |
+| GP-PVM-003 | [PR508](https://github.com/gavofyork/graypaper/pull/508), merged, introduced branch-byte pricing. | Related specification history; no exact negative-index/wrapped-target clarification found. |
+| GP-PVM-004 | [PR508 prevalidation discussion](https://github.com/gavofyork/graypaper/pull/508#discussion_r2733227344), [reviewer agreement](https://github.com/gavofyork/graypaper/pull/508#discussion_r2735584016), and [final-terminator review](https://github.com/gavofyork/graypaper/pull/508#discussion_r2754119661). | Direct evidence of prevalidation intent; the exact final fallthrough/conditional predicate gap and retained-prefix witness are not explicitly resolved there. |
+
+PR508's author proposed validation before execution; the reviewer agreed. A later
+[author comment](https://github.com/gavofyork/graypaper/pull/508#issuecomment-3848643306)
+describes invalid conditional destinations as runtime traps, together with requiring
+a final block terminator. The remaining question is the precise validation boundary,
+not whether upstream had considered prevalidation at all. Preserve these links when
+raising GP-PVM-004 rather than presenting it as an entirely new topic.
+
+Other relevant proposals remain **open**:
+
+- [PR555: code-blob format rework](https://github.com/gavofyork/graypaper/pull/555)
+  replaces the bitmask and introduces macro blocks. It is a broader pending redesign,
+  not an adopted correction of these0.8.0 witnesses.
+- [PR559: blob/jump-table limits and cmov dependencies](https://github.com/gavofyork/graypaper/pull/559)
+  concerns adjacent validation and gas-model requirements, without settling these exact edges.
+- [PR531: PVM working-set](https://github.com/gavofyork/graypaper/pull/531)
+  concerns paging/working-set metering; it is not a confirmed fix for final-byte behavior.
+
+Additional **merged** background:
+[PR383](https://github.com/gavofyork/graypaper/pull/383) tightened opcode and jump-target
+validity; [PR272](https://github.com/gavofyork/graypaper/pull/272) removed wrapping from
+host-function memory operations, not scalar instruction accesses. The latter should
+not be mistaken for a resolution of GP-PVM-001/002. The source/body/review snapshots
+used for this search remain locally under `build/graypaper-issue-review/`.
+
 ## GP-PVM-001: exception ordering across the address-space boundary
 
 **Paper evidence:** Appendix PVM, Single-Step State Transition,

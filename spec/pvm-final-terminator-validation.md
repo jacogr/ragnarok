@@ -41,6 +41,17 @@ Require both actual implementations' observations, pinned sources, selected nati
 suite, reference-tool checks and inventory. M1 framing remains complete; full state
 serialization, whole-block parity and full chainspec equivalence remain open.
 
+## Upstream discussion context
+
+The2026-10-21 [upstream review](graypaper-discrepancies.md#upstream-discussion-review-2026-10-21)
+found explicit prevalidation discussion in merged PR508, including
+[the proposal](https://github.com/gavofyork/graypaper/pull/508#discussion_r2733227344)
+and [reviewer agreement](https://github.com/gavofyork/graypaper/pull/508#discussion_r2735584016).
+This establishes relevant design intent. It does not explicitly resolve why a final
+fallthrough/conditional, admitted by the pinned T-based predicate, is rejected by
+PolkaVM. The precise witness and failure-stage choice remain open; no new behavior
+or pin adoption follows from this research alone.
+
 ## Observed local evidence
 
 All three native witnesses pass, including the conditional whose taken target is
