@@ -20,19 +20,21 @@ proc finalizationFixture*(withReady = true, withComposition = false,
     # Local provenance admits one self key; only original wide-fetch guests retain eleven bytes including the full returned word.
     limits.accountWriteKeys = ElementLimit(1)
     limits.completion.batch.selfWrites = ElementLimit(1)
-    let bytes = if storage in {ComputedStorageMode.FetchWideOffset,
-        ComputedStorageMode.FetchWideIndex, ComputedStorageMode.FetchTail,
-            ComputedStorageMode.FetchReadTail, ComputedStorageMode.ReadMissing,
-                ComputedStorageMode.ReadCheckpointPanic,
-                    ComputedStorageMode.ReadCheckpointFault,
-                        ComputedStorageMode.ReadCheckpointProtection}: 11'u64 else: 3'u64
-    limits.completion.batch.selfValueBytes = ByteLimit(bytes)
+    let wideValue = storage in {ComputedStorageMode.FetchWideOffset,
+      ComputedStorageMode.FetchWideIndex, ComputedStorageMode.FetchTail,
+      ComputedStorageMode.FetchReadTail, ComputedStorageMode.ReadMissing,
+      ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
+      ComputedStorageMode.ReadCheckpointProtection, ComputedStorageMode.ReadCheckpointWrapLoad,
+      ComputedStorageMode.ReadCheckpointWrapStore}
+    limits.completion.batch.selfValueBytes = ByteLimit(if wideValue: 11'u64 else: 3'u64)
   if storage in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail,
       ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
-      ComputedStorageMode.ReadCheckpointProtection}:
+      ComputedStorageMode.ReadCheckpointProtection, ComputedStorageMode.ReadCheckpointWrapLoad,
+      ComputedStorageMode.ReadCheckpointWrapStore}:
     limits.steps = ExecutionStepLimit(32) # Admit only the longer read and checkpoint guests before their original execution.
   if storage in {ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
-      ComputedStorageMode.ReadCheckpointProtection}:
+      ComputedStorageMode.ReadCheckpointProtection, ComputedStorageMode.ReadCheckpointWrapLoad,
+      ComputedStorageMode.ReadCheckpointWrapStore}:
     limits.calls = HostCallLimit(5) # This new guest fetches, deletes, checkpoints, reads and restores before its actual terminal.
   let executed = executeComputedAccumulation(computedExecutionFixture(withReady = withReady,
       withComposition = withComposition, withChain = withChain, storage = storage), limits)
