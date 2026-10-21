@@ -29,8 +29,10 @@ or host function has complete parity.
 ## Reproducible evidence and access
 
 `make check-pvm-reference` discovers each Rust probe's source-owned declaration,
-checks pinned inputs and runs its matching native suite. The latest local runtime
-increment passes all fourteen declared pairs. This is targeted deterministic
+checks pinned inputs and runs its matching native suite.
+[Dependent chains](pvm-register-chain-reference.md) and
+[gas-domain controls](pvm-gas-domain-clarification.md) extend that discovery.
+This is targeted deterministic
 comparison, not a universal state adapter or the complete upstream test suite.
 Some backend-neutral probes inspect parsing/gas simulation rather than execution.
 Raw paper-only behavior and local resource policies retain their separate verdicts.
@@ -60,6 +62,8 @@ whole-client throughput improvements.
 - The positive `gas` versus `signedgas` domain mismatch remains explicitly open in
   [host gas accounting](pvm-host-gas.md#exact-terminal-balances). Current full uint64
   nonnegative inputs are retained; no silent signed narrowing is authorized.
+  [Merged PR533](pvm-gas-domain-clarification.md) resolves paper gas typing upstream
+  and changes host OutOfGas arithmetic; coordinated pin/consumer adoption remains pending.
 - [Dependent arithmetic chains](pvm-register-chain-reference.md) now cover all 85
   register operations across block transitions and host continuations. Broaden
   composition further and profile the resulting interpreter costs; these operation

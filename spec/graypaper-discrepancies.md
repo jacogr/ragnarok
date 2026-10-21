@@ -34,6 +34,7 @@ chosen compatibility behavior as proof that the paper must change.
 | GP-PVM-007 | Paper/implementation discrepancy | Code-byte and declared jump-count bounds absent from pinned deblob | JAM bounds and exact edges tested; PR559 subsequently merged the bounds |
 | GP-PVM-008 | Paper/implementation discrepancy | Cross-page store reports a missing higher page before a read-only lower page | Scoped scalar compatibility rule; paper expectation retained in 48 differential witnesses |
 | GP-PVM-009 | Paper/implementation discrepancy | Three-register destination saturates whole byte versus low nibble | Raw/JAM matrix and captures tested; upstream PR554 already merged the exact clarification |
+| GP-PVM-010 | Pinned internal domain mismatch and reference API limit | Unsigned input gas versus signed host-aware result; public PolkaVM Gas is i64 | Common-domain comparison and native upper-half controls; upstream PR533 already resolves paper types, coordinated adoption remains pending |
 
 ## Upstream discussion review —2026-10-21
 
@@ -540,6 +541,28 @@ charge across22 scalar repair scenarios; [host resumption](pvm-metered-host-refe
 checks nine programs with two host replies and exact shared budgets. Their contracts
 explicitly map reference causing-PC/identifier representations to GP observations.
 These results do not imply unrestricted PVM conformance.
+
+## GP-PVM-010: positive gas domain and signed host-aware output
+
+The pinned overview defines unsigned64 input gas but the host-aware executor's
+result uses signed64. Original trap blob `[0,0,1,0,1]` costs2 gas (5 pipeline cycles);
+input `2^64-1` returns `2^64-3` without any host call, outside that declared signed
+codomain. Pinned PolkaVM exposes Gas as i64, so positive upper-half u64 inputs
+cannot be supplied through its public API. Checked refusal to convert those inputs
+is not a guest execution result or evidence that the paper forbids them.
+
+The [focused contract and adoption note](pvm-gas-domain-clarification.md) records
+exact source locations, shared input fixtures, native-only upper-half controls and
+the existing signed host-debt witness. Production uint64 inputs and pinned host
+arithmetic remain unchanged. This is not an approved input-narrowing exception.
+
+[Upstream PR533](https://github.com/gavofyork/graypaper/pull/533), merged2026-07-22
+as `0c0664eb52ba92afd8d21cef96c0e1da506eddfe`, removes signedgas and uses unsigned
+host-aware outputs plus saturating host OutOfGas subtraction. It postdates our
+June3 release pin and includes wider host changes. Do not post a duplicate
+clarification issue or adopt only a clamp without coordinated pin/consumer review.
+This resolves the paper typing question upstream; the pinned public PolkaVM API's
+positive input bound remains a separately documented cross-check limitation.
 
 ## Related findings outside this PVM increment
 
