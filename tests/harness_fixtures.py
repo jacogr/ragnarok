@@ -25,7 +25,7 @@ def temporary_folder(*files):
 def native_libraries(folder):
     libraries = {'crypto': folder/'production', 'observer': folder/'observer',
                  'bandersnatch': folder/'rust', 'bandersnatch_observer': folder/'rust-observer',
-                 'quic': folder/'quic'}
+                 'quic': folder/'quic', 'storage_io': folder/'storage-io'}
     for path in libraries.values():
         # Empty files satisfy presence checks without compiling or loading a fabricated native library.
         path.touch()

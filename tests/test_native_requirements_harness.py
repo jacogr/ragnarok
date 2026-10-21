@@ -48,6 +48,14 @@ class NativeRequirementsHarness(unittest.TestCase):
             with self.subTest(field=field, value=value), self.assertRaises(ValueError):
                 validate_requirements(records)
 
+    # OS redirection needs both its own object and header and cannot reuse a crypto/Rust observer profile.
+    def test_storage_io_observer_requires_provider(self):
+        for libraries, includes in [(['crypto'], ['crypto']), (['crypto', 'storage_io'], ['crypto'])]:
+            records=deepcopy(NATIVE_REQUIREMENTS)
+            records['state_layout'].update(observers=['io_fsync'],libraries=libraries,includes=includes)
+            with self.subTest(libraries=libraries,includes=includes), self.assertRaises(ValueError):
+                validate_requirements(records)
+
     # Write isolated profiles with the actual suite contract, without invoking native setup.
     def profiles(self, folder):
         for name, record in NATIVE_REQUIREMENTS.items():

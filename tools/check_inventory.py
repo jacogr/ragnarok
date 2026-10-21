@@ -32,7 +32,7 @@ def validate_inventory():
         # Each positive native source requires its own checked-in output contract.
         if not source.with_suffix('.output').is_file():
             raise ValueError('Missing expected output: '+str(source.relative_to(ROOT)))
-    if not all(profile in (None, 'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic')
+    if not all(profile in (None, 'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io')
                for profile in UNIT_LINKS.values()):
         # Reject names for which native setup cannot supply a prepared library.
         raise ValueError('Unknown native unit linking profile')

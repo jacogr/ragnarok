@@ -92,9 +92,15 @@ def unit_command(compiler, name=None, libraries=None):
         for include in requirements['includes']:
             # Headers retain their explicit order after the ordered native library arguments.
             flags.append('--passC:-I'+str(ROOT/'native'/include))
+        if any(function.startswith('io_') for function in requirements['observers']):
+            # Real SDK declarations precede observer macros, preserving macOS assembler aliases.
+            flags.append('--passC:-include'+str(ROOT/'native/storage_io/redirect.h'))
         for function in requirements['observers']:
-            # Rename only declared test call sites; production libraries remain unchanged.
-            flags.append('--passC:-Dbs_'+function+'=bo_'+function)
+            # Only explicit test profiles redirect OS or Rust call sites; production builds stay unchanged.
+            if function.startswith('io_'):
+                flags.append('--passC:-DRAGNAROK_STORAGE_IO_'+function[3:].upper())
+            else:
+                flags.append('--passC:-Dbs_'+function+'=bo_'+function)
     for define in NATIVE_REQUIREMENTS[name]['defines'] if name is not None else ():
         # Integration remains an explicit per-suite opt-in, independent of library preparation.
         flags.append('-d:'+define)
@@ -308,6 +314,7 @@ def main():
         'crypto_native': 'preparation',
         'bandersnatch_native': 'bandersnatch-preparation',
         'quic_native': 'quic-preparation',
+        'storage_io_native': 'storage-io-preparation',
         **PROVIDERS.evidence_files(),
     }
     if arguments.suite is not None:
