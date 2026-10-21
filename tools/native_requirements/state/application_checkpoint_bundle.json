@@ -1,0 +1,16 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "application_checkpoint",
+    "application_checkpoint_bundle"
+  ],
+  "includes": [
+    "crypto"
+  ],
+  "libraries": [
+    "crypto"
+  ],
+  "observers": [],
+  "prepared": false
+}

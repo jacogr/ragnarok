@@ -1,0 +1,40 @@
+{
+  "build_name": "application-checkpoint-bundle-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Application checkpoint bundle default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-checkpoint-bundle-default"
+    },
+    {
+      "arguments": [
+        "missing"
+      ],
+      "description": "Application checkpoint bundle missing",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "missing"
+      },
+      "name": "application-checkpoint-bundle-missing"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Application checkpoint bundle reason",
+      "diagnostic": "outcome.status == IdentityFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "application-checkpoint-bundle-reason"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/application_checkpoint_bundle_results.nim"
+}

@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_APPLICATION_CHECKPOINT_BUNDLE",
+  "files": {
+    "application-checkpoint-bundle.bin": "49529affbc3737de3f878e243a63d3821fb284c17e6ef10a0237da261f0644fb"
+  },
+  "target": "application-checkpoint-bundle.bin"
+}

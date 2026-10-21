@@ -48,3 +48,15 @@ The native suite uses independently encoded hashlib bytes and existing RPC root/
 header goldens, every truncation/octet tamper, exact/short ceilings, valid-checksum
 context mismatch, invalid profiles and repeated owned-buffer release. No JAM wire
 encoding, chain identity, canonical adoption or storage backend changes.
+
+## Complete application envelope
+
+The application envelope is the fixed 238-byte identity immediately followed by
+one existing canonical RAGNAROK-FULL-V1 complete-map checkpoint. The single output
+ceiling covers both parts and is bounded by native sequence extent before allocation.
+Capture requires exact application head/map owner agreement. Missing context,
+metadata/backend failure and complete-map refusal return only selected typed reasons.
+Independent golden bytes come from original fixture keys/values and published RPC
+root/header expectations. The native suite checks exact whole bytes, every short
+output budget, context/map changes and repeated release. No file I/O, canonical
+adoption, new database schema or storage integration occurs in this layer.
