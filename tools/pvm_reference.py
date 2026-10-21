@@ -106,6 +106,7 @@ def run(folder=BUILD):
     # Append evidence before propagating a failed process; no later success can overwrite its verdict.
     def checked(arguments, name):
         evidence = command(arguments, name, folder)
+        evidence['name'] = name
         report['checks'].append(evidence)
         save()
         if evidence['exit_code'] != 0:

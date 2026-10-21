@@ -15,7 +15,9 @@ on another job's artifacts or success. The Make target provisions its own depend
 the workflow does not duplicate Cargo, source or compiler bootstrap steps. Reference
 and paired native checks remain serial within the owned workspace.
 
-An always-run artifact step retains the current structured report, reference/native
+An [always-run summary](pvm-reference-summary.md) shows each comparison directly in
+the Actions run and writes a matching downloadable Markdown table. An always-run
+artifact step retains that table, the current structured report, reference/native
 logs and selected native fixture preparation metadata for seven days. It excludes
 binaries, generated fixture bytes, dependency trees and keys. Failure before report
 creation still exposes setup logs; an absent report is never claimed as a passing
