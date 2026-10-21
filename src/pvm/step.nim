@@ -380,8 +380,8 @@ proc controlMutation(program: Program, item: Instruction,
 
 # Evaluate exactly one supported instruction with GP whole-block gas precedence.
 # limit bounds gas simulation only; finding the containing block is bounded by program byte size.
-proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
-    hostCalls: bool, cache: var BlockChargeCache): StepResult =
+proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
+    hostCalls: bool, cache: var BlockChargeCache, decoded: ProgramResult[Instruction]): StepResult =
   let captured = machineInfo(source)
   # A default machine must not become an all-zero executable state.
   if captured.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
@@ -395,7 +395,7 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
   if uint64(info.gasDeficit) != 0:
     # Terminal host debt must never be reinterpreted as executable zero gas.
     return StepResult(status: StepError.InvalidMachine)
-  let decoded = instruction(program, info.pc)
+  # Both private callers derive this result from the current machine's own program and PC.
   # Entry capture validates PC; terminal snapshots may intentionally have a non-executable PC.
   if decoded.error != ProgramError.None: return StepResult(status: StepError.InvalidMachine)
   let item = decoded.value
@@ -496,7 +496,13 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
 proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
     hostCalls: bool): StepResult =
   var cache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
-  stepImpl(source, limit, control, memoryAccess, hostCalls, cache)
+  let owner = programOf(source)
+  let current = machineInfo(source)
+  if owner.error != MachineError.None or current.error != MachineError.None:
+    # Absent roots cannot provide either a program or an executable instruction.
+    return StepResult(status: StepError.InvalidMachine)
+  let decoded = instruction(owner.value, current.value.pc)
+  stepDecoded(source, limit, control, memoryAccess, hostCalls, cache, decoded)
 
 proc stepRegisters*(source: Machine, limit: GasCycleLimit): StepResult =
   ## Preserve the register-only capability boundary for existing callers; no control opcode is accepted.
@@ -540,7 +546,8 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
     dec remaining
     let prior = machineInfo(current).value
     let priorMemory = memoryOf(current).value
-    if instruction(program, prior.pc).error != ProgramError.None:
+    let decoded = instruction(program, prior.pc)
+    if decoded.error != ProgramError.None:
       # A trusted terminal/import snapshot may have an invalid PC: Psi's deblob branch panics uncharged.
       var stopped = prior
       stopped.pc = CodeAddress(0)
@@ -550,7 +557,7 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
         return StepResult(status: StepError.InvalidMachine)
       return StepResult(status: StepError.None,
         completed: StepOutcome(kind: StepExit.Panic, machine: captured.value))
-    let evaluated = stepImpl(current, gasLimit, true, true, true, chargeCache)
+    let evaluated = stepDecoded(current, gasLimit, true, true, true, chargeCache, decoded)
     if evaluated.error != StepError.None:
       # Tentative earlier steps are private snapshots; local gates/limits discard all accumulated progress.
       return evaluated
