@@ -11,13 +11,19 @@ import ../codec/bounded
 const
   Switches = ["--with-ui", "--with-rpc", "--with-telemetry", "--with-state"]
   Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes",
-      "--state-write-bytes", "--state-checkpoint", "--state-trust", "--state-header", "--state-checkpoint-bytes"]
+      "--state-write-bytes", "--state-checkpoint", "--state-trust", "--state-header",
+      "--state-checkpoint-bytes", "--state-storage", "--state-db"]
+
+type StateStorage* {.pure.} = enum ## Backend choice is independent of future full/light node modes.
+  Memory, Disk
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
   parsed, telemetry, rpc, ui, state, recover: bool
   positional: seq[string]
   endpoint, chain, directory: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
+  backend: StateStorage
+  database: string
   rpcNumber, uiNumber: uint16
   writeCount: ElementLimit
   writeBytes, recoveryBytes: ByteLimit
@@ -42,6 +48,13 @@ proc telemetryEnabled*(options: Options): bool =
 func stateEnabled*(options: Options): bool =
   ## Only a complete explicit state policy activates canonical application ownership.
   options.parsed and options.state
+
+func diskStorage*(options: Options): bool =
+  ## Only a validated explicit disk request enables durable backend startup.
+  options.parsed and options.state and options.backend == StateStorage.Disk
+func stateDatabase*(options: Options): string {.requires: options.diskStorage.} =
+  ## Return the explicitly selected database path; no implicit location or overwrite is invented.
+  options.database
 
 func stateWrites*(options: Options): ElementLimit {.requires: options.parsed and options.state.} =
   ## Extract the caller's exact write-count budget only from a validated active policy.
@@ -145,6 +158,12 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--state-checkpoint": candidate.recoveryFile = value
       of "--state-trust": candidate.recoveryIdentity = value
       of "--state-header": candidate.recoveryHeader = value
+      of "--state-db": candidate.database = value
+      of "--state-storage":
+        case value
+        of "memory": candidate.backend = StateStorage.Memory
+        of "disk": candidate.backend = StateStorage.Disk
+        else: return false # Backend spelling has one exact representation; light is not a backend.
       of "--state-writes", "--state-write-bytes", "--state-checkpoint-bytes":
         var number = 0'u64
         if not decimalLimit(value, number): return false # No partial or wrapped budget escapes the candidate.
@@ -166,6 +185,14 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
         not hasBytes: return false # Activation requires all explicit inputs.
   elif hasWrites or hasBytes:
     return false # Unselected policy controls must not be silently ignored.
+  let hasBackend = "--state-storage" in seen
+  let hasDatabase = "--state-db" in seen
+  if (hasBackend or hasDatabase) and not candidate.state:
+    return false # Explicit backend controls must never be silently ignored.
+  if candidate.backend == StateStorage.Disk:
+    if not hasDatabase: return false # Every disk run selects its exact path before opening storage.
+  elif hasDatabase:
+    return false # A memory run cannot silently ignore a requested physical database.
   let recoveryControls = ["--state-checkpoint", "--state-trust", "--state-header", "--state-checkpoint-bytes"]
   var recoveryCount = 0
   for control in recoveryControls:

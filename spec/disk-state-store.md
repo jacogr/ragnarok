@@ -336,3 +336,13 @@ selection (`--state-storage memory|disk`, `--state-db PATH`), strict refusal of 
 DB/import combinations, RPC exclusion through native IO and joined shutdown before graph retirement.
 Full/light remains a separate future mode contract. The append-only physical store still retains all
 records under finite ceilings; page packing, reclamation and production-scale optimality are open.
+
+## Explicit backend options
+
+`--state-storage memory|disk` is independent of state activation and future full/light mode.
+Memory remains the default. Disk requires validated `--with-state`, chain and mutation policies,
+plus an explicit `--state-db PATH`; a memory run refuses an ignored database path. Parsing is
+atomic and rejects duplicate, incomplete, misspelled or disabled backend controls. External
+checkpoint controls remain an independent all-or-none trust request. This parser layer refuses
+disk service startup until the immediately following runtime layer enables it, so the flag can
+never silently execute against memory.
