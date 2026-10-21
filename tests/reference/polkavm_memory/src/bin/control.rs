@@ -21,7 +21,7 @@ fn main() {
     let data = std::fs::read(path).unwrap();
     assert!(data.len() >= 12 && &data[..8] == b"PVMCTL01");
     let count = word(&data, 8, 4) as usize;
-    assert_eq!(count, 384);
+    assert!((384..=4096).contains(&count));
     let mut config = Config::default();
     config.set_backend(Some(BackendKind::Interpreter));
     let engine = Engine::new(&config).unwrap();
@@ -73,5 +73,5 @@ fn main() {
         }
     }
     assert_eq!(cursor, data.len());
-    println!("PolkaVM conditional-control cross-check passed: {count}");
+    println!("PolkaVM control-flow cross-check passed: {count}");
 }

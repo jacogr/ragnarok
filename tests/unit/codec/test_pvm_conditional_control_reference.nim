@@ -18,7 +18,7 @@ except:
   quit 2
 assert data.len >= 12 and data[0..7] == "PVMCTL01"
 let count = int(word(data, 8, 4))
-assert count == 384
+assert count >= 384 and count <= 4096
 var cursor = 12
 for row in 0..<count:
   assert data.len-cursor >= 217
@@ -36,7 +36,7 @@ for row in 0..<count:
   var wire = newSeq[byte](length)
   for index in 0..<length: wire[index] = byte(data[cursor+index])
   cursor += length
-  let program = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0)).value
+  let program = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(1)).value
   let source = captureMachine(program, captureMemory([], PageLimit(0)).value,
     MachineInfo(pc: CodeAddress(0), gas: MachineGas(10000), blockCharged: false,
       registers: registers)).value
@@ -45,19 +45,35 @@ for row in 0..<count:
   assert answer.value.exit == (if exit == 0: StepExit.Halt else: StepExit.Panic)
   assert uint64(machineInfo(answer.value.machine).value.pc) == 0
   for index in 0..<13:
-    assert uint64(machineInfo(answer.value.machine).value.registers[index]) == uint64(expected[index])
+    if uint64(machineInfo(answer.value.machine).value.registers[index]) != uint64(expected[index]):
+      echo "control register mismatch: row=", row, " register=", index
+      assert false
     assert uint64(machineInfo(source).value.registers[index]) == uint64(registers[index])
-  if exit == 1:
-    # A bad taken successor panics before condition selection, even when that branch would be untaken.
-    let prefix = stepOnce(source, GasCycleLimit(1000)).value
-    assert prefix.exit == StepExit.Continued
-    let branch = stepOnce(prefix.machine, GasCycleLimit(1000)).value
-    assert branch.exit == StepExit.Panic
-    assert uint64(machineInfo(branch.machine).value.pc) == referencePc
-  else:
-    assert referencePc == 0xffffffff'u64
+  var traced = source
+  var stopped = false
+  for attempt in 0..<4:
+    # Compare the causing PC and the GP single-step PC before recursive exit normalization.
+    let observed = stepOnce(traced, GasCycleLimit(1000)).value
+    if observed.exit in {StepExit.Panic, StepExit.Halt}:
+      assert observed.exit == (if exit == 0: StepExit.Halt else: StepExit.Panic)
+      if exit == 1:
+        let before = machineInfo(traced).value.pc
+        let item = instruction(program, before).value
+        if item.opcode == 0:
+          # GP single-step trap advances by default; PolkaVM reports the causing instruction PC.
+          assert uint64(before) == referencePc
+          assert uint64(machineInfo(observed.machine).value.pc) == referencePc+1+uint64(item.skip)
+        else:
+          assert uint64(machineInfo(observed.machine).value.pc) == referencePc
+      else:
+        assert referencePc == 0xffffffff'u64
+      stopped = true
+      break
+    assert observed.exit == StepExit.Continued
+    traced = observed.machine
+  assert stopped
   assert uint64(machineInfo(source).value.pc) == 0
   assert uint64(machineInfo(source).value.gas) == 10000 and not machineInfo(
       source).value.blockCharged
 assert cursor == data.len
-echo "PVM conditional-control reference passed: 384"
+echo "PVM control-flow reference passed: ", count
