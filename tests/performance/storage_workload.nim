@@ -152,6 +152,20 @@ proc main() {.raises.} =
         assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
       reopenNs = elapsed(reopenStart)
       check(disk.snapshot.value, trie, count, expected, deep, valueBytes)
+    let storedNodes = view.storedNodes
+    let selectedNodes = selectRepositoryRoots(view, [expected], ElementLimit(1)).value.retainedNodes
+    var snapshotBytes = -1'i64
+    var journalBytes = -1'i64
+    var compactedSnapshotBytes = -1'i64
+    var compactedJournalBytes = -1'i64
+    if engine == "journal":
+      snapshotBytes = 0 # The legacy layout has no selected snapshot file.
+      journalBytes = int64(readFile(path).len)
+    elif engine == "managed":
+      let usage = disk.managedUsage.value
+      assert usage.snapshotBytes <= uint64(high(int64)) and usage.journalBytes <= uint64(high(int64))
+      snapshotBytes = int64(usage.snapshotBytes)
+      journalBytes = int64(usage.journalBytes)
     var retentionNs = -1'i64
     if engine == "memory":
       # Clone the same nine complete roots into an independent owner without durability claims.
@@ -195,6 +209,12 @@ proc main() {.raises.} =
       assert disk.close == FileError.None
       assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
       check(disk.snapshot.value, trie, count, expected, deep, valueBytes)
+    if engine == "managed":
+      let usage = disk.managedUsage.value
+      assert usage.storedNodes == selectedNodes
+      assert usage.snapshotBytes <= uint64(high(int64)) and usage.journalBytes <= uint64(high(int64))
+      compactedSnapshotBytes = int64(usage.snapshotBytes)
+      compactedJournalBytes = int64(usage.journalBytes)
     check(view, trie, count, expected, deep, valueBytes) # Held maps survive physical retirement and private clone close.
     if disk.opened:
       assert disk.close == FileError.None
@@ -205,7 +225,9 @@ proc main() {.raises.} =
         removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2), ManagedEpoch(3)])
     assert memory.close == RepositoryError.None
     echo "sample\t", count, "\t", topology, "\t", valueBytes, "\t", sample, "\t", publicationNs,
-        "\t", readNs, "\t", extractNs, "\t", reopenNs, "\t", maintenanceNs, "\t", retentionNs
+        "\t", readNs, "\t", extractNs, "\t", reopenNs, "\t", maintenanceNs, "\t", retentionNs, "\t",
+            storedNodes, "\t", selectedNodes, "\t", snapshotBytes,
+        "\t", journalBytes, "\t", compactedSnapshotBytes, "\t", compactedJournalBytes
   assert seed.close == RepositoryError.None
 try:
   main()

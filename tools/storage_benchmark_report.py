@@ -10,6 +10,7 @@ TOPOLOGIES=('leading','trailing')
 VALUE_BYTES=(16,256)
 CASES=tuple((count,topology,value_bytes) for count in COUNTS for topology in TOPOLOGIES for value_bytes in VALUE_BYTES)
 PHASES=('publication','reads','extraction','reopen','maintenance','retention')
+METRICS=('stored_nodes','selected_nodes','snapshot_bytes','journal_bytes','compacted_snapshot_bytes','compacted_journal_bytes')
 LABELS=('16 publications','4,096 warm-view reads','Complete-map extraction','Strict disk reopen','Current-root reclamation','Nine-root reclamation')
 
 
@@ -20,14 +21,17 @@ def parse_output(output, engine, count, topology='leading', value_bytes=256):
     rows=[]
     for line in output.splitlines():
         fields=line.split('\t')
-        if len(fields)!=11 or fields[0]!='sample':
+        if len(fields)!=5+len(PHASES)+len(METRICS) or fields[0]!='sample':
             raise ValueError('Unexpected storage benchmark output')
         size=int(fields[1])
         if fields[2]!=topology:
             raise ValueError('Wrong storage key topology')
         if int(fields[3])!=value_bytes:
             raise ValueError('Wrong storage value representation')
-        sample,*times=map(int,fields[4:])
+        sample=int(fields[4])
+        values=list(map(int,fields[5:]))
+        times=values[:len(PHASES)]
+        physical=dict(zip(METRICS,values[len(PHASES):]))
         if size!=count or not 0<=sample<13 or any(not 0<t<(1<<63) for t in times[:3]):
             raise ValueError('Invalid storage benchmark sample')
         for phase,duration in zip(PHASES,times):
@@ -35,7 +39,16 @@ def parse_output(output, engine, count, topology='leading', value_bytes=256):
             missing=(engine=='memory' and phase=='reopen') or (engine=='journal' and phase in ('maintenance','retention'))
             if (missing and duration!=-1) or (not missing and not 0<duration<(1<<63)):
                 raise ValueError('Invalid storage operation observation')
-        rows.append(dict(items=size,topology=topology,value_bytes=value_bytes,sample=sample,**dict(zip(PHASES,times))))
+        if not 0<physical['selected_nodes']<=physical['stored_nodes']<(1<<63):
+            raise ValueError('Invalid physical record observation')
+        for metric in METRICS[2:]:
+            # File metrics describe only selected files; unavailable operations have exact sentinels.
+            duration=physical[metric]
+            missing=engine=='memory' or (engine=='journal' and metric.startswith('compacted_'))
+            zero=engine=='journal' and metric=='snapshot_bytes'
+            if (missing and duration!=-1) or (zero and duration!=0) or (not missing and not zero and not 0<duration<(1<<63)):
+                raise ValueError('Invalid selected-file extent observation')
+        rows.append(dict(items=size,topology=topology,value_bytes=value_bytes,sample=sample,**dict(zip(PHASES,times)),**physical))
     if sorted(r['sample'] for r in rows)!=list(range(13)):
         raise ValueError('Missing or duplicate storage samples')
     return sorted(rows,key=lambda r:r['sample'])
@@ -57,9 +70,11 @@ def aggregate(passes):
                 for group in rows:
                     # Reparse structured evidence through the same strict native-output contract.
                     encoded=''.join('sample\t'+str(r['items'])+'\t'+r['topology']+'\t'+str(r['value_bytes'])+'\t'+str(r['sample'])+'\t'+
-                        '\t'.join(str(r[k]) for k in PHASES)+'\n' for r in group)
+                        '\t'.join(str(r[k]) for k in (*PHASES,*METRICS))+'\n' for r in group)
                     if parse_output(encoded,engine,count,topology,value_bytes)!=group:
                         raise ValueError('Noncanonical storage samples')
+                if any(any(row[k]!=rows[0][0][k] for k in METRICS) for group in rows for row in group):
+                    raise ValueError('Physical observations changed across identical samples')
                 if (phase=='reopen' and engine=='memory') or (phase in ('maintenance','retention') and engine=='journal'):
                     engines[engine]=None
                 else:
@@ -67,7 +82,7 @@ def aggregate(passes):
                     values=sorted(groups[0]+groups[1])
                     medians=[statistics.median(group) for group in groups]
                     engines[engine]=dict(median_ns=statistics.median(values),min_ns=min(values),
-                        max_ns=max(values),noisy=max(medians)/min(medians)>1.25 or values[18]/values[1]>2)
+                        max_ns=max(values),metrics={k:rows[0][0][k] for k in METRICS},noisy=max(medians)/min(medians)>1.25 or values[18]/values[1]>2)
             cases.append(dict(items=count,topology=topology,value_bytes=value_bytes,phase=phase,engines=engines))
     return cases
 
@@ -98,6 +113,17 @@ def summarize_benchmark(report):
             lines.append('| '+str(case['items'])+' | '+case['topology']+' | '+str(case['value_bytes'])+' | '+LABELS[PHASES.index(case['phase'])]+' | '+
                          ' | '.join(cells+ratios)+' |')
         lines+=['','† Noisy: pass medians differ by >25% or central sample spread exceeds 2×; ratios are provisional.']
+        lines+=['','Selected physical storage (not total directory usage or memory retained by readers):','',
+            '| Entries | Key topology | Value bytes | Backend | Stored / current records | Selected bytes before / after |',
+            '| ---: | --- | ---: | --- | ---: | ---: |']
+        for case in cases:
+            if case['phase']=='publication':
+                for engine in ENGINES:
+                    metrics=case['engines'][engine]['metrics']
+                    before='—' if engine=='memory' else str(metrics['snapshot_bytes']+metrics['journal_bytes'])
+                    after=str(metrics['compacted_snapshot_bytes']+metrics['compacted_journal_bytes']) if engine=='managed' else '—'
+                    lines.append(f'| {case["items"]} | {case["topology"]} | {case["value_bytes"]} | {engine} | '+
+                        f'{metrics["stored_nodes"]} / {metrics["selected_nodes"]} | {before} / {after} |')
     else:
         lines+=['No complete validated comparison is available.']
     if report.get('error'):
