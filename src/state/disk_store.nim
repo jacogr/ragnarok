@@ -7,7 +7,7 @@
 import std/assertions
 import ./store
 import ../storage/[file_repository, node_repository, node_records, full_state_trie,
-  database_identity, durability, managed_repository]
+  database_identity, durability, managed_repository, file_migration]
 import ../codec/[state_trie, bounded]
 
 type
@@ -348,3 +348,23 @@ proc compactDiskStateStore*(store: var DiskStateStore, expected: StateStoreSnaps
 proc managedDiskUsage*(store: DiskStateStore): FileResult[ManagedUsage] =
   ## Expose bounded selected-file counters without choosing maintenance scheduling or root authority.
   store.journal.managedUsage
+
+proc migrateDiskStateStore*(source: DiskStateStore, destination: var DiskStateStore,
+    path: string, chain: StorageChainId, roots: openArray[StateRoot],
+    limits: ManagedLimits): DiskStoreResult[StateStoreSnapshot] =
+  ## Copy an admitted locked legacy owner into an absent managed destination, preserving policy, generation and context.
+  if destination.opened: return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.Busy)
+  let selected = source.snapshot
+  if selected.error != DiskStoreError.None: return selected
+  let candidate = forkStateStore(selected.value)
+  if candidate.error != StateStoreError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.StateFailure,
+        stateReason: candidate.error)
+  let migrated = migrateFileRepository(source.journal, destination.journal, path, chain, roots, limits)
+  if migrated != FileError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+        fileReason: migrated)
+  destination.state = candidate.value
+  destination.limits = journalPolicy(limits)
+  destination.schema = source.schema
+  DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: selected.value)

@@ -156,3 +156,14 @@ IO lease is active. Explicit zero suppresses automatic maintenance; enabling the
 next local restart reclaims during startup before listeners. Both cases retain exact history/maps,
 and header-only journals do not repeatedly compact. These are checked local integration witnesses,
 not full JAM/STF parity, power-loss simulation or exact-head Linux CI evidence.
+
+## State-owner migration
+
+The explicit source-preserving migration now accepts a managed file facade destination as well as
+the original raw managed owner. Both capture the same live legacy chain/schema/revision/context
+and root union before destination creation; managed sources are refused as unsupported migration
+inputs. DiskStateStore migration forks the exact selected immutable public state, preserving its
+inherited policy, while the physical copy preserves generation and selected context. Source and
+destination may later publish independent successors. Existing targets never reset, and no step
+renames, truncates or rewrites source bytes. The state migration suite checks source-byte equality,
+retained historical map access, contextual publication requirements and independent durable forks.
