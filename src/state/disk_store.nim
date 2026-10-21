@@ -7,7 +7,7 @@
 import std/assertions
 import ./store
 import ../storage/[file_repository, node_repository, node_records, full_state_trie,
-  database_identity, durability]
+  database_identity, durability, managed_repository]
 import ../codec/[state_trie, bounded]
 
 type
@@ -122,15 +122,22 @@ proc initializeDiskStateStore*(store: var DiskStateStore, path: string, chain: S
 proc acquireDiskStateStore(store: var DiskStateStore, path: string, chain: StorageChainId,
     expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
     policy: StateStoreLimits, limits: JournalLimits, repair: bool,
-    schema: StorageSchema, local: bool): DiskStoreResult[
+    schema: StorageSchema, local: bool, managed = false,
+    managedLimits = default(ManagedLimits)): DiskStoreResult[
         StateStoreSnapshot] =
   ## Strictly replay then compare independently supplied authority before constructing writable state.
   if store.opened: return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.Busy)
-  let opened = if repair:
+  let opened = if managed:
+    if repair:
+      recoverManagedFileRepository(store.journal, path, chain, managedLimits, expectedGeneration,
+          expectedRoot, schema)
+    else:
+      openManagedFileRepository(store.journal, path, chain, managedLimits, schema)
+  elif repair:
     recoverFileRepository(store.journal, path, chain, limits, expectedGeneration, expectedRoot, schema)
   else:
     openFileRepository(store.journal, path, chain, limits,
-        schema) # Ordinary open never mutates an incomplete tail.
+        schema) # Ordinary open never mutates an incomplete tail; layout is explicitly selected.
   if opened != FileError.None:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
         fileReason: opened)
@@ -246,3 +253,83 @@ proc restoreDiskSnapshot*(store: DiskStateStore, expected: StateRoot,
   if array[32, byte](restored.commitment.root) != array[32, byte](expected):
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.TrustMismatch)
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: restored)
+
+proc journalPolicy(limits: ManagedLimits): JournalLimits =
+  ## Ordinary commit budgets stay identical when a managed layout owns the physical files.
+  JournalLimits(repository: limits.repository, bytes: limits.journalBytes,
+      contextBytes: limits.contextBytes)
+proc initializeManagedDiskStateStore*(store: var DiskStateStore, path: string,
+    chain: StorageChainId, source: StateStoreSnapshot, limits: ManagedLimits,
+        schema = StorageSchema.FullNodesV1,
+    context: openArray[byte] = []): DiskStoreResult[StateStoreSnapshot] =
+  ## Build the complete generation-one seed before managed creation; no durable empty bootstrap state exists.
+  if store.opened: return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.Busy)
+  if schema == StorageSchema.FullStateV1 and context.len == 0:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ContextRequired)
+  let candidate = forkStateStore(source)
+  if candidate.error != StateStoreError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.StateFailure,
+        stateReason: candidate.error)
+  let batch = source.exportStateSnapshot(limits.repository.codec.records)
+  if batch.error != TrieError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.ExportFailure,
+        exportReason: batch.error)
+  var seed = newNodeRepository(limits.repository)
+  defer: discard seed.close
+  let prepared = seed.publish(seed.snapshot.value, batch.value)
+  if prepared.error != RepositoryError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.RepositoryFailure,
+        repositoryReason: prepared.error)
+  let selection = selectRepositoryRoots(prepared.value, [prepared.value.commitment.root], limits.roots)
+  if selection.error != RepositoryError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.RepositoryFailure,
+        repositoryReason: selection.error)
+  let initialized = initializeManagedFileRepository(store.journal, path, chain, selection.value,
+    context, limits, schema)
+  if initialized != FileError.None:
+    return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+        fileReason: initialized)
+  store.state = candidate.value
+  store.limits = journalPolicy(limits)
+  store.schema = schema
+  DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: source)
+proc openManagedDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
+    expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
+    policy: StateStoreLimits, limits: ManagedLimits,
+    schema = StorageSchema.FullNodesV1): DiskStoreResult[StateStoreSnapshot] =
+  ## An explicitly selected managed layout still requires the supplied exact root/generation authority.
+  acquireDiskStateStore(store, path, chain, expectedRoot, expectedGeneration, policy,
+    journalPolicy(limits), false, schema, false, true, limits)
+proc openLocalManagedDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
+    policy: StateStoreLimits, limits: ManagedLimits): DiskStoreResult[StateStoreSnapshot] =
+  ## Local restart resumes its validated contextual head; application context authentication remains required.
+  acquireDiskStateStore(store, path, chain, default(StateRoot), RepositoryGeneration(0), policy,
+    journalPolicy(limits), false, StorageSchema.FullStateV1, true, true, limits)
+proc recoverManagedDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
+    expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
+    policy: StateStoreLimits, limits: ManagedLimits,
+    schema = StorageSchema.FullNodesV1): DiskStoreResult[StateStoreSnapshot] =
+  ## Recovery remains explicit and cannot discard a complete successor in either physical layout.
+  acquireDiskStateStore(store, path, chain, expectedRoot, expectedGeneration, policy,
+    journalPolicy(limits), true, schema, false, true, limits)
+proc compactDiskStateStore*(store: var DiskStateStore, expected: StateStoreSnapshot,
+    roots: openArray[StateRoot]): DiskStoreResult[ManagedCompaction] =
+  ## Physical maintenance keeps the exact public state identity and requires explicit retained roots.
+  let before = store.snapshot
+  if before.error == DiskStoreError.Uninitialized: return default(DiskStoreResult[ManagedCompaction])
+  if before.error == DiskStoreError.FileFailure:
+    return DiskStoreResult[ManagedCompaction](status: DiskStoreError.FileFailure,
+        fileReason: before.fileError)
+  if before.error == DiskStoreError.StateFailure:
+    return DiskStoreResult[ManagedCompaction](status: DiskStoreError.StateFailure,
+        stateReason: before.stateError)
+  if not sameStateSnapshot(before.value, expected):
+    return DiskStoreResult[ManagedCompaction](status: DiskStoreError.StaleSnapshot)
+  let compacted = store.journal.compact(store.journal.snapshot.value, roots)
+  if compacted.error != FileError.None:
+    return DiskStoreResult[ManagedCompaction](status: DiskStoreError.FileFailure,
+        fileReason: compacted.error)
+  DiskStoreResult[ManagedCompaction](status: DiskStoreError.None, completed: compacted.value)
+proc managedDiskUsage*(store: DiskStateStore): FileResult[ManagedUsage] =
+  ## Expose bounded selected-file counters without choosing maintenance scheduling or root authority.
+  store.journal.managedUsage

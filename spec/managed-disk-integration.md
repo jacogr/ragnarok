@@ -17,3 +17,20 @@ cycles, legacy file repository regression and actual composite owner copy reject
 layers add managed DiskStateStore creation/restoration, context/history, maintenance and worker
 boundaries before opt-in application wiring. Complete maps, inherited ceilings, exact parent
 identity, explicit IO uncertainty and external trust for checkpoint imports remain mandatory.
+
+## Explicit managed state owner
+
+Managed DiskStateStore create/open/recover entry points keep all legacy entry points and ordinary
+StateStore APIs intact. Creation builds a complete admitted generation-one seed before creating
+the directory. Trusted open still compares independently supplied exact root/generation; normal
+local open requires contextual schema and resumes its admitted local head. Application history
+binding remains a separate check. Empty context cannot publish a full-state revision.
+
+`compactDiskStateStore` requires the exact public snapshot and explicit roots. It changes the
+private physical owner without changing public snapshot identity, root, generation or context;
+ordinary commit still fetches the newly selected physical parent internally. Selected usage is
+available through the same owner. None of these operations chooses block/finality authority or
+runs synchronously inside dispatcher callbacks.
+
+`managed_disk_state_store` checks public identity, retained values, compaction, context, exact trust,
+narrow restore policy, inherited explicit zero-write policy and 1,000 composite-owner ARC cycles.
