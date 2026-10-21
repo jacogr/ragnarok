@@ -214,3 +214,21 @@ The command returns StorageMaintenanceFailure with exactly two confirmed childre
 requests, never requests the third, and strictly restores that complete prefix with automatic
 maintenance explicitly disabled. Unknown future files remain untouched. No transport, ancestry,
 execution validation or checkpoint trust shortcut is introduced.
+
+## Validated selection reuse and measured compaction cost
+
+An opaque RepositorySelection can now be cloned into an independent mutable repository without
+rehashing its already admitted immutable graph. The clone enforces identical complete-trie policy
+and the requested physical record/payload ceilings, copies only selected records, and assigns a
+fresh physical view identity. It accepts no serialized input. Managed creation and compaction
+still encode and validate every emitted record and checksum before IO; strict disk open still
+performs the original complete snapshot decoding and graph verification.
+
+`validated_selection_clone` covers closed-source plans, exact retention, independent identity,
+policy/budget refusals and 1,000 ARC release cycles. `managed_compaction_cost` measures ten runs
+each at 128 and 1,024 entries after 64 sparse updates with nine retained roots. Compaction hash
+calls fell respectively from 1,530 to 511 and from 6,897 to 2,300. Strict reopen calls remained
+1,020 and 4,598. Every persisted snapshot checksum, byte extent, root and node count matched the
+baseline. Timing is recorded descriptively; these synthetic local measurements make no general
+throughput or power-loss guarantee. Real authenticated TLS migration/download/reclamation and
+untrusted snapshot codec regression suites also pass.
