@@ -178,3 +178,22 @@ External trusted-root/generation open and explicit repair retain their existing 
 contracts. Tests change each inherited ceiling independently, reject foreign parents/context budgets,
 preserve exact prepared identity and verify context/generation across local restart. Existing hash
 failure and real partial-write recovery suites pass through the refactored node-only path.
+
+## Opaque canonical preparation
+
+`state/accumulation_publication.nim` runs the unchanged accumulation coordinator on private state
+and history handles. A successful opaque update retains the exact original parent snapshot and
+entire original ordered view, plus its private successful successor. Installation checks exact
+owners, complete profiles, retained history and finality before durability; a guarded final install
+only assigns existing handles and performs no composition, hashing or callbacks. Stable owners and
+single-threaded exclusion must span preflight, durable commit and installation.
+
+Genuine signed execution fixtures prove failed preparation leaves live owners unchanged, alternate
+finality/default preparations refuse installation, old aliases remain intact, and valid installation
+still succeeds with all hashing disabled and zero observed hash calls. Explicit parent finality is
+preserved. Compiler checks reject candidate-field and result-payload access.
+
+The maintainer selected preservation of the bounded retained history and explicit finalized block
+for normal local restart. The single-head context codec above is a building block; final disk-chain
+context must retain those additional bindings. External checkpoint imports keep their separate
+single-head/unfinalized behavior.
