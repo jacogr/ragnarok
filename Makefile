@@ -101,6 +101,11 @@ toolchain: host-tools
 	mkdir -p build/ci
 	$(PYTHON) tools/setup_nimony.py --ensure 2>&1 | tee build/ci/setup.log
 
+# Opt-in renderer parity experiment reuses Nim 2 from the existing pinned formatter archive.
+.PHONY: check-nimscript-poc
+check-nimscript-poc: toolchain
+	$(PYTHON) tools/nimscript_poc.py
+
 # Remove all generated artifacts, including the local compiler and downloaded archives.
 clean:
 	rm -rf -- build

@@ -28,3 +28,8 @@ Verification inputs and independent references live in [`tests/`](../tests/READM
 Generated tools, caches, libraries, assets and evidence stay under ignored `build/`.
 See [test registration](../docs/testing/adding-tests.md) before adding suites or probes, and
 [the agent workflow](../docs/agent-workflow.md) before branch reconciliation.
+
+The opt-in [NimScript POC](nimscript-poc/PORTING.md) compares
+[`pvm_reference_summary.nims`](pvm_reference_summary.nims) with the retained Python renderer.
+Run `make check-nimscript-poc`; it reuses Nim 2 from the pinned formatter archive and retains
+its evidence under `build/nimscript-poc/`.
