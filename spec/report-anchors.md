@@ -69,3 +69,13 @@ retained parent/post-assurance context. [Atomic report publication](report-trans
 runs that planner inside the private block transaction, preserving whole-parent rollback.
 Next plan accumulation history/queues from newly available reports. PVM execution and complete
 block execution remain later work.
+
+## Shared context and demand interface
+
+Full sealed-header capture and exact hash/slot/child-state queries now live in the
+[immutable ancestor context](state-ancestor-context.md). Existing complete lookup
+validation retains its error mapping and candidate-time check. Separate successful
+missing-context plans accept only recent/age-certified reports and a validated
+parent-linked context; they grant acquisition authority, never completed admission
+or publication. Block-bound preparation and command resumption preserve the same
+original parent, report signatures and policies across bounded acquisition.

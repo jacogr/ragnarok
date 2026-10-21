@@ -25,3 +25,8 @@ The [networking guide](../../docs/networking.md) covers commands, certificates, 
 verification. The [download-stream](../../spec/application-download-stream.md) and
 [download-loop](../../spec/application-download-loop.md) contracts describe application handoffs;
 [application services](../app/README.md) own optional RPC, UI, telemetry and canonical state.
+
+The child download dispatcher can pause for certified missing report context after
+worker collection and graceful peer connection retirement. Resumption preserves
+the original attempt, prepared block and deadline; successive children reconnect
+only the same configured pins. See [the on-demand contract](../../spec/state-ancestor-context.md).

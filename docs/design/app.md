@@ -57,6 +57,13 @@ and per-child stage/retry budgets preserve confirmed partial progress. See the
 [startup contract](../../spec/application-download-startup.md) and
 [progress contract](../../spec/application-download-progress.md) for configuration and bounds.
 
+Explicit [ancestor discovery](../../spec/state-ancestor-context.md) can retain a
+prepared exact-parent report prefix while missing lookup context is acquired.
+Worker collection ends canonical/RPC exclusion before child connections drain;
+resumption retains the original input generation and attempt deadline, then grants
+a fresh managed lease to complete lookup checks and execute. Fetched historical
+headers never become canonical history or complete historical state.
+
 `app/preparation_worker.nim` provides one reusable native execution thread and one outstanding
 input lease. Services manages that lease by pausing RPC before submission and guarding canonical
 access until collection or joined shutdown. UI and unrelated QUIC work remain available; RPC

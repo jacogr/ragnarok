@@ -93,6 +93,45 @@ starts later under the existing preparation lease. Fetched headers remain contex
 only: disk restart retains actual canonical snapshots/history and explicit
 finality, without inserting remote headers as historical state snapshots.
 
+## Discover context after receiving each child
+
+Use `--download-discover-ancestors COUNT` when you want to fetch older headers only
+if a received child's reports need them. It is an alternative to
+`--download-remote-ancestors`; supplying both controls refuses. The default is off.
+COUNT is one positive allowance of 1..64 fetched headers for the **whole command**,
+including successive children, rather than a fresh allowance per child or retry.
+
+```sh
+./build/ragnarok download 4000 node.cert.pem node.key.pem peer-public.bin \
+  "$configured_alpn" 30000 download-policy.conf \
+  --with-state --chain chain.json --state-storage disk --state-db local.db \
+  --download-local-ancestors --download-discover-ancestors 4 --download-blocks 2
+```
+
+The command receives a child and checks its supported block/report stages before
+requesting missing context. Existing local/file context is checked first. Invalid
+signatures and known package/core-capacity failures do not authorize an ancestor
+fetch. A missing older lookup can suspend the prepared child while its native
+worker and child connections retire. The command then fetches a bounded suffix
+from the pinned peers and resumes that same prepared child. It does not download,
+decode or authenticate that child again, and guests execute only after report
+lookup completion.
+
+Short valid replies consume their actual header count. If the proof still needs
+older context, another round uses the remaining whole-run allowance. Each round
+must make nonempty header progress. A wrong slot, wrong known root or missing
+newer proof child cannot be repaired by an older suffix and refuses instead.
+The original child-attempt deadline includes acquisition and never resets; the
+command's overall deadline also remains shared. Exhausting the allowance or
+refusing remote context cannot adopt that child. Earlier confirmed children
+remain adopted and are reflected in reported progress.
+
+Reserve the maximum allowance in both count policies even when no fetch is
+ultimately needed. Keep every existing response/header byte limit, and size all
+stage policies for evolved parent state when requesting several children.
+Fetched headers remain temporary lookup context: disk restart retains adopted
+canonical children, not fetched historical headers or fabricated historical maps.
+
 ## Set the existing policy ceilings
 
 All fields of `ragnarok-download-policy-v1` remain required. Set these leaves in
@@ -110,7 +149,8 @@ your complete policy to cover the supplied files and the selected head:
 For two supplied files, the count ceilings must permit at least two input headers
 and three validation headers. Byte ceilings must cover their actual complete
 encodings, including markers/offenders/seals. The fixed 64-path cap never widens
-a smaller policy. Reserve the requested remote maximum even if a peer later returns fewer headers.
+a smaller policy. Reserve the requested remote maximum or whole-run discovery allowance even if a peer returns fewer
+headers or existing context makes acquisition unnecessary.
 For N children, also reserve N−1 additional carried parents in the input count and N
 parent-inclusive validation headers, then check actual growing bytes between children.
 Without local capture or remote acquisition, an omitted list preserves the existing no-ancestor behavior;
@@ -146,7 +186,8 @@ explicit finality without external import controls. Select local capture, explic
 download when its reports need it; local restart itself needs no ancestor
 files. Disk adoption reports success only after confirmed durable publication.
 
-See the [remote acquisition contract](../spec/application-remote-ancestors.md),
+See the [on-demand context contract](../spec/state-ancestor-context.md),
+[remote acquisition contract](../spec/application-remote-ancestors.md),
 [local capture contract](../spec/application-local-ancestors.md) and the [feature contract](../spec/application-ancestors.md) for typed component
 errors, exact verification evidence and remaining scope. M1 framing is complete;
 full state serialization and whole-block JAM/STF parity remain open.
