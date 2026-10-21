@@ -1,0 +1,129 @@
+{
+  "build_name": "accumulation-pending-transfers-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Pending transfer default selected-payload guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "default"
+      },
+      "name": "pending-transfer-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Pending transfer refused selected-payload guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "refused"
+      },
+      "name": "pending-transfer-refused"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Pending transfer info selected-payload guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "info"
+      },
+      "name": "pending-transfer-info"
+    },
+    {
+      "arguments": [
+        "record"
+      ],
+      "description": "Pending transfer record selected-payload guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "record"
+      },
+      "name": "pending-transfer-record"
+    },
+    {
+      "arguments": [
+        "outgoing"
+      ],
+      "description": "Pending transfer outgoing selected-payload guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "outgoing"
+      },
+      "name": "pending-transfer-outgoing"
+    },
+    {
+      "arguments": [
+        "previous"
+      ],
+      "description": "Pending transfer previous selected-payload guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "previous"
+      },
+      "name": "pending-transfer-previous"
+    },
+    {
+      "arguments": [
+        "first-previous"
+      ],
+      "description": "Pending transfer first-previous selected-payload guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "first-previous"
+      },
+      "name": "pending-transfer-first-previous"
+    },
+    {
+      "arguments": [
+        "index"
+      ],
+      "description": "Pending transfer index selected-payload guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "index"
+      },
+      "name": "pending-transfer-index"
+    },
+    {
+      "arguments": [
+        "partition-value"
+      ],
+      "description": "Pending transfer partition-value selected-payload guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "partition-value"
+      },
+      "name": "pending-transfer-partition-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Pending transfer reason selected-payload guard",
+      "diagnostic": "outcome.status == PartitionFailure",
+      "identity": {
+        "origin": "reason"
+      },
+      "name": "pending-transfer-reason"
+    },
+    {
+      "arguments": [
+        "reason-success"
+      ],
+      "description": "Pending transfer reason-success selected-payload guard",
+      "diagnostic": "outcome.status == PartitionFailure",
+      "identity": {
+        "origin": "reason-success"
+      },
+      "name": "pending-transfer-reason-success"
+    }
+  ],
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "source": "tests/native/accumulation_pending_transfers_results.nim"
+}
