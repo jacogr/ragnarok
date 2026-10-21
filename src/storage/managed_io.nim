@@ -56,6 +56,8 @@ let again {.importc: "EAGAIN", header: "<errno.h>".}: cint
 let interrupted {.importc: "EINTR", header: "<errno.h>".}: cint
 let exists {.importc: "EEXIST", header: "<errno.h>".}: cint
 let missing {.importc: "ENOENT", header: "<errno.h>".}: cint
+proc closeNative(fd: cint): cint {.importc: "close", cdecl, header: "<unistd.h>".}
+  ## Retire a descriptor once through its SDK declaration; even EINTR must never cause a retry.
 proc openFile(path: cstring, flags, mode: cint): cint {.importc: "open", cdecl,
     header: "<fcntl.h>".}
   ## SDK variadic open preserves platform mode promotion.
@@ -169,8 +171,8 @@ proc acquire(directory: var ManagedDirectory, path: string, create: bool): FileE
   defer:
     if lockDescriptor >= 0:
       if locked: discard lockFile(lockDescriptor, unlock) # Every refused acquisition releases only its own lock.
-      discard posix.close(lockDescriptor)
-    if descriptor >= 0: discard posix.close(descriptor)
+      discard closeNative(lockDescriptor)
+    if descriptor >= 0: discard closeNative(descriptor)
   var lockName = "LOCK"
   let flags = O_RDWR or O_CLOEXEC or O_NONBLOCK or noFollow
   lockDescriptor = openAt(descriptor, lockName.toCString(), flags or (if create: O_CREAT or
@@ -187,7 +189,7 @@ proc acquire(directory: var ManagedDirectory, path: string, create: bool): FileE
     let parentDescriptor = openFile(parentPath.toCString(), O_RDONLY or O_CLOEXEC or directoryFlag, 0)
     if parentDescriptor < 0: return FileError.IoFailure
     let synced = syncFile(parentDescriptor)
-    let retired = posix.close(parentDescriptor)
+    let retired = closeNative(parentDescriptor)
     if synced != 0 or retired != 0: return FileError.IoFailure
   directory.data = DirectoryState(descriptor: descriptor, lockDescriptor: lockDescriptor,
       active: true, journals: 0)
@@ -212,8 +214,8 @@ proc close*(directory: var ManagedDirectory): FileError =
   state.lockDescriptor = -1
   directory.data = nil
   let released = lockFile(lockDescriptor, unlock)
-  let lockRetired = posix.close(lockDescriptor)
-  let retired = posix.close(descriptor)
+  let lockRetired = closeNative(lockDescriptor)
+  let retired = closeNative(descriptor)
   if released != 0 or lockRetired != 0 or retired != 0: return FileError.IoFailure
   FileError.None
 proc synchronize*(directory: ManagedDirectory): FileError =
@@ -232,12 +234,12 @@ proc readManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind, epoch:
       O_NONBLOCK or noFollow, 0)
   if descriptor < 0: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   defer:
-    if descriptor >= 0: discard posix.close(descriptor) # Refused reads never leak their exact native descriptor.
+    if descriptor >= 0: discard closeNative(descriptor) # Refused reads never leak their exact native descriptor.
   if not regular(descriptor): return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   let loaded = readAll(descriptor, limit)
   let closing = descriptor
   descriptor = -1
-  if posix.close(closing) != 0: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
+  if closeNative(closing) != 0: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   loaded
 proc createManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind, epoch: ManagedEpoch,
     bytes: openArray[byte], limit: ByteLimit): FileError =
@@ -254,11 +256,11 @@ proc createManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind, epoc
     if posix.errno() == exists: return FileError.AlreadyExists
     return FileError.IoFailure
   defer:
-    if descriptor >= 0: discard posix.close(descriptor) # Failed staged bytes remain unselected forensic files.
+    if descriptor >= 0: discard closeNative(descriptor) # Failed staged bytes remain unselected forensic files.
   if not writeAll(descriptor, bytes) or syncFile(descriptor) != 0: return FileError.IoFailure
   let closing = descriptor
   descriptor = -1
-  if posix.close(closing) != 0: return FileError.IoFailure
+  if closeNative(closing) != 0: return FileError.IoFailure
   directory.synchronize
 proc removeManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind,
     epoch: ManagedEpoch): FileError =
@@ -274,7 +276,7 @@ proc removeManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind,
     if posix.errno() == missing: return FileError.None # Retrying removal of an already absent unselected file is harmless.
     return FileError.IoFailure
   let valid = regular(descriptor)
-  let retired = posix.close(descriptor)
+  let retired = closeNative(descriptor)
   if not valid or retired != 0: return FileError.IoFailure
   if unlinkAt(directory.nativeDescriptor, name.toCString(), 0) != 0: return FileError.IoFailure
   directory.synchronize
@@ -315,7 +317,7 @@ proc close*(journal: var ManagedJournal): FileError =
   journal.descriptor = -1
   journal.state = nil
   dec state.journals
-  if posix.close(descriptor) != 0: return FileError.IoFailure
+  if closeNative(descriptor) != 0: return FileError.IoFailure
   FileError.None
 proc openManagedJournal*(journal: var ManagedJournal, directory: ManagedDirectory,
     epoch: ManagedEpoch, limit: ByteLimit): ManagedIoResult[seq[byte]] =
@@ -332,7 +334,7 @@ proc openManagedJournal*(journal: var ManagedJournal, directory: ManagedDirector
   var descriptor = openAt(state.descriptor, name.toCString(), flags, 0)
   if descriptor < 0: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   defer:
-    if descriptor >= 0: discard posix.close(descriptor)
+    if descriptor >= 0: discard closeNative(descriptor)
   if not regular(descriptor): return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   let loaded = readAll(descriptor, limit)
   if loaded.error != FileError.None: return loaded
@@ -404,7 +406,7 @@ proc discardManagedPending*(directory: ManagedDirectory): FileError =
     if posix.errno() == missing: return FileError.None
     return FileError.IoFailure
   let valid = regular(descriptor)
-  let retired = posix.close(descriptor)
+  let retired = closeNative(descriptor)
   if not valid or retired != 0: return FileError.IoFailure
   if unlinkAt(directory.nativeDescriptor, name.toCString(), 0) != 0: return FileError.IoFailure
   directory.synchronize
@@ -420,11 +422,11 @@ proc replaceManagedManifest*(directory: ManagedDirectory, bytes: openArray[byte]
     if posix.errno() == exists: return FileError.AlreadyExists
     return FileError.IoFailure
   defer:
-    if descriptor >= 0: discard posix.close(descriptor) # Incomplete staged bytes remain unselected until explicit cleanup.
+    if descriptor >= 0: discard closeNative(descriptor) # Incomplete staged bytes remain unselected until explicit cleanup.
   if not writeAll(descriptor, bytes) or syncFile(descriptor) != 0: return FileError.IoFailure
   let closing = descriptor
   descriptor = -1
-  if posix.close(closing) != 0: return FileError.IoFailure
+  if closeNative(closing) != 0: return FileError.IoFailure
   var current = "CURRENT"
   if renameAt(directory.nativeDescriptor, pending.toCString(), directory.nativeDescriptor,
       current.toCString()) != 0:

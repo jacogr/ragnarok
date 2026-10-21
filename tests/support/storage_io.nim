@@ -38,3 +38,10 @@ let renameIo* {.importc: "STORAGE_IO_RENAMEAT", header: "observer.h".}: cint
   ## Observe native namespace changes independently from data and durability operations.
 let unlinkIo* {.importc: "STORAGE_IO_UNLINKAT", header: "observer.h".}: cint
   ## Observe native namespace changes independently from data and durability operations.
+let closeIo* {.importc: "STORAGE_IO_CLOSE", header: "observer.h".}: cint
+  ## Observe descriptor retirement without introducing production retry behavior.
+proc reuseClosedDescriptor*() {.importc: "storage_io_reuse_close", cdecl, header: "observer.h".}
+  ## Reuse the exact retired number with a separately owned test resource before returning EINTR.
+proc reusedDescriptorOpen*(): cint {.importc: "storage_io_reused_open", cdecl,
+    header: "observer.h".}
+  ## Prove the caller never accidentally closed the replacement resource by retrying.

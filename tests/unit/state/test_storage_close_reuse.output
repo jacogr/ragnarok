@@ -1,0 +1,1 @@
+PASS storage close reuse: every descriptor retired once, replacement remains live and strict restart succeeds

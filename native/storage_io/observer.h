@@ -9,7 +9,7 @@
 #include <stddef.h>
 /* Exact observer operations are separate from production storage error domains. */
 enum { STORAGE_IO_READ = 1, STORAGE_IO_WRITE = 2, STORAGE_IO_FSYNC = 3, STORAGE_IO_FTRUNCATE = 4,
-       STORAGE_IO_FLOCK = 5, STORAGE_IO_RENAMEAT = 6, STORAGE_IO_UNLINKAT = 7, STORAGE_IO_LAST = STORAGE_IO_UNLINKAT };
+       STORAGE_IO_FLOCK = 5, STORAGE_IO_RENAMEAT = 6, STORAGE_IO_UNLINKAT = 7, STORAGE_IO_CLOSE = 8, STORAGE_IO_LAST = STORAGE_IO_CLOSE };
 /* Remove all fault/short-write controls and reset call counters. */
 void storage_io_reset(void);
 /* Select a bounded count of failures after a bounded number of real calls. */
@@ -38,4 +38,8 @@ int storage_io_flock(int descriptor, int operation);
 int storage_io_renameat(int source_directory, const char *source, int target_directory, const char *target);
 /* Observe namespace refusal without changing selected bytes. */
 int storage_io_unlinkat(int directory, const char *path, int flags);
+/* Model close retiring a descriptor before reporting EINTR; never retry that number. */
+int storage_io_close(int descriptor);
+void storage_io_reuse_close(void);
+int storage_io_reused_open(void);
 #endif

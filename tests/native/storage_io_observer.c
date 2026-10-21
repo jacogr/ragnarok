@@ -6,6 +6,7 @@
 #include "observer.h"
 #include <errno.h>
 #include <limits.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/file.h>
@@ -14,10 +15,17 @@
 static int selected, skipped, remaining, reason;
 static uint64_t calls[STORAGE_IO_LAST+1];
 static size_t write_limit;
+static int reuse_close, reused_descriptor = -1;
 static int zero_skip, zero_remaining;
 
 void storage_io_reset(void) {
     /* Reset every configured fault/short-write cap before unrelated fixture or runner IO. */
+    /* The controller owns only its explicitly created replacement, never an application descriptor. */
+    if (reused_descriptor >= 0) {
+        close(reused_descriptor);
+        reused_descriptor = -1;
+    }
+    reuse_close = 0;
     selected = skipped = remaining = reason = 0;
     write_limit = 0;
     zero_skip = zero_remaining = 0;
@@ -150,4 +158,35 @@ int storage_io_unlinkat(int directory, const char *path, int flags) {
         return -1;
     }
     return unlinkat(directory, path, flags);
+}
+void storage_io_reuse_close(void) {
+    /* Enable one test-owned replacement immediately after an observed real descriptor retirement. */
+    reuse_close = 1;
+}
+int storage_io_reused_open(void) {
+    /* An accidental retry of the retired descriptor would destroy this independent resource. */
+    return reused_descriptor >= 0 && fcntl(reused_descriptor, F_GETFD) >= 0;
+}
+int storage_io_close(int descriptor) {
+    /* Model the allowed retired-before-error outcome; successful paths call the real SDK exactly once. */
+    if (refuse(STORAGE_IO_CLOSE)) {
+        int error = errno;
+        if (close(descriptor) == 0 && reuse_close) {
+            int replacement = open("/dev/null", O_RDONLY | O_CLOEXEC);
+            if (replacement >= 0) {
+                /* Place a separately owned resource at exactly the retired number before returning. */
+                if (replacement == descriptor) {
+                    reused_descriptor = replacement;
+                } else {
+                    if (dup2(replacement, descriptor) >= 0) {
+                        reused_descriptor = descriptor;
+                    }
+                    close(replacement);
+                }
+            }
+        }
+        errno = error;
+        return -1;
+    }
+    return close(descriptor);
 }
