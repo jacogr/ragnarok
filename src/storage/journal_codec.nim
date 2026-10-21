@@ -13,6 +13,7 @@ type
   JournalFrame* = object ## Detached untrusted transport payload; repository admission remains separate.
     generation*: RepositoryGeneration
     batch*: TrieExport
+    context*: seq[byte] # Full-state schema binds bounded application context under the same frame checksum.
   FrameResult*[T] = object ## Guarded private alternatives retain the selected nested codec cause.
     case status: FrameError
     of None: completed: T
@@ -45,38 +46,55 @@ proc journalFrameExtent*(input: openArray[byte], limit: ByteLimit): FrameResult[
   let extent = size+48
   if extent > uint64(input.len): return FrameResult[int](status: FrameError.InvalidFormat)
   FrameResult[int](status: FrameError.None, completed: int(extent))
-proc encodeJournalFrame*(generation: RepositoryGeneration, batch: TrieExport,
+proc encodeFrame(generation: RepositoryGeneration, batch: TrieExport,
+    context: openArray[byte], contextual: bool, contextLimit: ByteLimit,
     limits: RecordLimits, limit: ByteLimit): FrameResult[seq[byte]] =
   ## Bound the inner codec before hashing/allocation, then checksum length, generation and body.
   if uint64(generation) == 0: return FrameResult[seq[byte]](status: FrameError.InvalidFormat)
   let maximum = min(uint64(limit), uint64(high(int)))
-  if maximum < 48: return FrameResult[seq[byte]](status: FrameError.LimitExceeded)
+  let overhead = if contextual: 56'u64 else: 48'u64
+  if uint64(context.len) > uint64(contextLimit) or maximum < overhead or
+      uint64(context.len) > maximum-overhead:
+    return FrameResult[seq[byte]](status: FrameError.LimitExceeded)
+  let prefix = int(overhead-32)+context.len
   var bounded = limits
-  bounded.encoded = ByteLimit(min(uint64(limits.encoded), maximum-48))
+  bounded.encoded = ByteLimit(min(uint64(limits.encoded), maximum-overhead-uint64(context.len)))
   let body = encodeTrieExport(batch, bounded)
   if body.error == RecordError.LimitExceeded: return FrameResult[seq[byte]](
       status: FrameError.LimitExceeded)
   if body.error != RecordError.None:
     return FrameResult[seq[byte]](status: FrameError.InvalidRecords, recordReason: body.error)
   let bytes = body.value
-  var output = newSeq[byte](bytes.len+48) # The narrowed inner ceiling proved the addition and allocation.
-  putNumber(output, 0, uint64(bytes.len))
+  var output = newSeq[byte](bytes.len+prefix+32) # The narrowed inner ceiling proved the addition and allocation.
+  putNumber(output, 0, uint64(bytes.len+prefix-16))
   putNumber(output, 8, uint64(generation))
-  for i, octet in bytes: output[16+i] = octet
+  if contextual:
+    putNumber(output, 16, uint64(context.len))
+    for i, octet in context: output[24+i] = octet # Context bytes share the exact generation/root integrity boundary.
+  for i, octet in bytes: output[prefix+i] = octet
   let hashed = blake2b256(output.toOpenArray(0, output.len-33))
   if hashed.error != CryptoError.None: return FrameResult[seq[byte]](
       status: FrameError.BackendFailure)
   let checksum = array[32, byte](hashed.value)
   for i in 0..<32: output[output.len-32+i] = checksum[i]
   FrameResult[seq[byte]](status: FrameError.None, completed: output)
-proc decodeJournalFrame*(input: openArray[byte], limits: RecordLimits,
-    limit: ByteLimit): FrameResult[JournalFrame] =
+proc decodeFrame(input: openArray[byte], contextual: bool, contextLimit: ByteLimit,
+    limits: RecordLimits, limit: ByteLimit): FrameResult[JournalFrame] =
   ## Require exact frame consumption and checksum before decoding any physical records.
   let extent = journalFrameExtent(input, limit)
   if extent.error != FrameError.None: return FrameResult[JournalFrame](status: extent.error)
   if extent.value != input.len or number(input, 0) == 0 or number(input, 8) == 0:
     return FrameResult[JournalFrame](status: FrameError.InvalidFormat)
-  if number(input, 0) > uint64(limits.encoded):
+  var prefix = 16
+  if contextual:
+    if input.len < 56: return FrameResult[JournalFrame](status: FrameError.InvalidFormat)
+    let length = number(input, 16)
+    if length > uint64(contextLimit): return FrameResult[JournalFrame](
+        status: FrameError.LimitExceeded)
+    if length > uint64(input.len-56): return FrameResult[JournalFrame](
+        status: FrameError.InvalidFormat)
+    prefix = 24+int(length) # Subtraction proved conversion, offset addition and complete context extent.
+  if uint64(input.len-prefix-32) > uint64(limits.encoded):
     return FrameResult[JournalFrame](status: FrameError.LimitExceeded) # Bound inner bytes before hashing the checksum prefix.
   let hashed = blake2b256(input.toOpenArray(0, input.len-33))
   if hashed.error != CryptoError.None: return FrameResult[JournalFrame](
@@ -85,11 +103,33 @@ proc decodeJournalFrame*(input: openArray[byte], limits: RecordLimits,
   for i in 0..<32:
     if input[input.len-32+i] != checksum[i]: return FrameResult[JournalFrame](
         status: FrameError.ChecksumMismatch)
-  let decoded = decodeTrieExport(input.toOpenArray(16, input.len-33), limits)
+  let decoded = decodeTrieExport(input.toOpenArray(prefix, input.len-33), limits)
   if decoded.error == RecordError.LimitExceeded: return FrameResult[JournalFrame](
       status: FrameError.LimitExceeded)
   if decoded.error != RecordError.None:
     return FrameResult[JournalFrame](status: FrameError.InvalidRecords, recordReason: decoded.error)
+  var context: seq[byte] = @[]
+  if contextual:
+    context = newSeq[byte](prefix-24)
+    for i in 0..<context.len: context[i] = input[24+i] # Never return a mutable borrow into caller bytes.
   FrameResult[JournalFrame](status: FrameError.None,
     completed: JournalFrame(generation: RepositoryGeneration(number(input, 8)),
-        batch: decoded.value))
+        batch: decoded.value, context: context))
+
+proc encodeJournalFrame*(generation: RepositoryGeneration, batch: TrieExport,
+    limits: RecordLimits, limit: ByteLimit): FrameResult[seq[byte]] =
+  ## Preserve the existing node-only physical schema byte for byte.
+  encodeFrame(generation, batch, [], false, ByteLimit(0), limits, limit)
+proc decodeJournalFrame*(input: openArray[byte], limits: RecordLimits,
+    limit: ByteLimit): FrameResult[JournalFrame] =
+  ## Node-only framing never guesses or falls back to contextual frames.
+  decodeFrame(input, false, ByteLimit(0), limits, limit)
+proc encodeContextJournalFrame*(generation: RepositoryGeneration, batch: TrieExport,
+    context: openArray[byte], contextLimit: ByteLimit,
+    limits: RecordLimits, limit: ByteLimit): FrameResult[seq[byte]] =
+  ## Bind bounded application context and changed nodes to one generation and synchronization boundary.
+  encodeFrame(generation, batch, context, true, contextLimit, limits, limit)
+proc decodeContextJournalFrame*(input: openArray[byte], contextLimit: ByteLimit,
+    limits: RecordLimits, limit: ByteLimit): FrameResult[JournalFrame] =
+  ## Explicit contextual schema checks context extents before hashing or allocating any transport bytes.
+  decodeFrame(input, true, contextLimit, limits, limit)
