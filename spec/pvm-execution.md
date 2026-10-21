@@ -110,3 +110,8 @@ Standard program/memory initialization is implemented by the separate
 [initialization adapter](pvm-initialization.md), and trusted posterior host state can be
 applied through [host-response application](pvm-host-response.md); host functions and JAM-specific
 invocation wrappers remain separate work.
+
+A private [segment-local block-price memo](pvm-interpreter-block-cache.md) reuses only
+successful immutable program/cycle-limit calculations within one execution call. Gas
+affordability/debit, local failure behavior and all exported snapshot contracts remain
+unchanged; direct single-step calls and host resumptions start with a fresh memo.

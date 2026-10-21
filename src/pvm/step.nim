@@ -11,6 +11,10 @@
 import ./[program, machine, registers, gas]
 
 type
+  BlockChargeCache = object ## Private constant-space memo bound to one execution's immutable program and cycle limit.
+    valid: bool
+    start: CodeAddress
+    charge: BlockGas
   HostCallId* = distinct uint64 ## Host identifiers occupy a register-width domain distinct from gas, addresses and step budgets.
   ExecutionStepLimit* = distinct uint64 ## Local scheduling policy bounds attempted instructions; it is not guest gas or a guest exit.
   HostCallLimit* = distinct uint64 ## Local dispatch budget, independent of attempted guest instructions and guest gas.
@@ -377,7 +381,7 @@ proc controlMutation(program: Program, item: Instruction,
 # Evaluate exactly one supported instruction with GP whole-block gas precedence.
 # limit bounds gas simulation only; finding the containing block is bounded by program byte size.
 proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
-    hostCalls: bool): StepResult =
+    hostCalls: bool, cache: var BlockChargeCache): StepResult =
   let captured = machineInfo(source)
   # A default machine must not become an all-zero executable state.
   if captured.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
@@ -404,11 +408,23 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
     # Interior entry still charges the entire containing block, including already-skipped instructions.
     let start = containingBlockStart(program, info.pc)
     if start.error != ProgramError.None: return StepResult(status: StepError.InvalidMachine)
-    let charge = blockGas(program, start.value, limit)
-    case charge.error
+    # The private caller keeps one program/limit for this cache's entire lifetime.
+    # A cache hit reuses simulation work only; affordability and debit below still run on every visit.
+    var chargeError = GasError.None
+    var needed = 0'u64
+    if cache.valid and uint64(cache.start) == uint64(start.value):
+      # A successful prior simulation in this invocation has exactly the same immutable input.
+      needed = uint64(cache.charge)
+    else:
+      # Failed or locally refused simulations never populate the cache.
+      let charge = blockGas(program, start.value, limit)
+      chargeError = charge.error
+      if chargeError == GasError.None:
+        needed = uint64(charge.value)
+        cache = BlockChargeCache(valid: true, start: start.value, charge: charge.value)
+    case chargeError
     of GasError.None:
       # Prove affordability before subtraction and before evaluating any register mutation.
-      let needed = uint64(charge.value)
       if uint64(info.gas) < needed:
         return StepResult(status: StepError.None,
           completed: StepOutcome(kind: StepExit.OutOfGas, machine: source))
@@ -476,6 +492,12 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
   StepResult(status: StepError.None,
     completed: StepOutcome(kind: outcome, machine: updated.value))
 
+# Single-step calls never inherit cached work across owners, scopes or local simulation limits.
+proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
+    hostCalls: bool): StepResult =
+  var cache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
+  stepImpl(source, limit, control, memoryAccess, hostCalls, cache)
+
 proc stepRegisters*(source: Machine, limit: GasCycleLimit): StepResult =
   ## Preserve the register-only capability boundary for existing callers; no control opcode is accepted.
   stepImpl(source, limit, false, false, false)
@@ -511,6 +533,8 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
     return StepResult(status: StepError.InvalidMachine)
   let program = owner.value
   var current = source
+  # This cache cannot escape the segment or observe a different program or cycle limit.
+  var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
   # Retain only the current immutable root; no host recursion or growing state history is required.
   while remaining > 0:
     # Consume each attempted instruction once, even when a Host exit returns to the dispatcher.
@@ -527,7 +551,7 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
         return StepResult(status: StepError.InvalidMachine)
       return StepResult(status: StepError.None,
         completed: StepOutcome(kind: StepExit.Panic, machine: captured.value))
-    let evaluated = stepOnce(current, gasLimit)
+    let evaluated = stepImpl(current, gasLimit, true, true, true, chargeCache)
     if evaluated.error != StepError.None:
       # Tentative earlier steps are private snapshots; local gates/limits discard all accumulated progress.
       return evaluated
