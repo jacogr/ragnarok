@@ -19,8 +19,10 @@ from native_preparation import prepare_libraries
 PROFILE = 'pinned Nimony ARC Clang release speed boundchecks LTO crypto observer real files'
 CASES = ((128, 1), (128, 8), (1024, 1), (1024, 8))
 FIELDS = {'entries', 'retained', 'updates', 'hash_calls', 'initialized_bytes', 'peak_bytes',
-          'retained_bytes', 'journal_bytes', 'full_frame_bytes', 'history_hash_calls', 'physical_nodes'}
-PHASES = ('publish_ns', 'reopen_ns', 'history_ns')
+          'retained_bytes', 'journal_bytes', 'full_frame_bytes', 'history_hash_calls', 'physical_nodes',
+          'union_nodes', 'reclaimable_nodes', 'union_value_bytes', 'reclaimable_value_bytes',
+          'metadata_hash_calls', 'metadata_occupied_bytes', 'metadata_journal_bytes'}
+PHASES = ('publish_ns', 'reopen_ns', 'history_ns', 'retention_ns', 'metadata_ns')
 MATCH = ('source_sha256', 'profile', 'platform', 'compiler_sha256', 'crypto_pins_sha256')
 
 
@@ -37,7 +39,10 @@ def validate_samples(samples):
                     or any(type(value) is not int or value < 0 for value in row.values())
                     or row['entries'] != entries or row['retained'] != retained or row['updates'] != 64
                     or row['peak_bytes'] < row['retained_bytes']
-                    or row['full_frame_bytes'] < row['journal_bytes']):
+                    or row['full_frame_bytes'] < row['journal_bytes']
+                    or row['history_hash_calls'] != 0 or row['metadata_hash_calls'] != 64
+                    or row['physical_nodes'] < entries or row['union_nodes'] < entries
+                    or row['union_nodes']+row['reclaimable_nodes'] != row['physical_nodes']):
                 raise ValueError('Invalid workload observation')
     return samples[0]
 

@@ -12,6 +12,8 @@ proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Delimit measured update work without counting fixture and independent reference hashing.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Include real graph/codec/frame integrity hashing as well as changed-path commitment work.
+proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
+  ## Give independent measurement processes private fixture names without touching old failure artifacts.
 proc key(index: int): StateKey =
   ## Deterministically distribute complete identities across early serialized key bits.
   var raw = default(array[31, byte])
@@ -32,7 +34,7 @@ proc sample(count, retained: int) {.raises.} =
   var entries = newSeq[StateEntry](count)
   for i in 0..<count: entries[i] = StateEntry(key: key(i), value: newSeq[byte](33))
   let seed = newStateStore(entries, policy).value.snapshot.value
-  var path = "build/tests/disk-store-workload.db"
+  var path = "build/tests/disk-store-workload-" & $int(processId()) & ".db"
   var disk = default(DiskStateStore)
   defer:
     if disk.opened: discard disk.close # Fixture failures retain the file but never leak its native owner.
@@ -95,6 +97,43 @@ proc sample(count, retained: int) {.raises.} =
   let historicalRoot = stateTrieRoot(historical, policy.trie).value
   assert array[32, byte](historicalRoot.root) == array[32, byte](seed.commitment.root)
   assert uint64(view.generation) == 65 and historyHashes == 0
+  # Measure an explicit current-plus-held root union, with all validation and export work included.
+  var roots: seq[StateRoot] = @[root]
+  for snapshot in held: roots.add(snapshot.commitment.root)
+  reset(0)
+  let retentionStarted = getMonoTime().ticks
+  let planned = selectRepositoryRoots(view, roots, ElementLimit(retained+1))
+  assert planned.error == RepositoryError.None
+  let selection = planned.value
+  let unionLimits = TrieExportLimits(records: TrieNodeLimit(uint64(limits.repository.records)),
+    valueBytes: limits.repository.valueBytes)
+  let exported = exportRepositorySelection(selection, unionLimits)
+  assert exported.error == RepositoryError.None
+  let union = exported.value
+  let retentionNanoseconds = getMonoTime().ticks-retentionStarted
+  assert hashCalls() == 0 and union.len == selection.retainedNodes
+  assert selection.retainedRoots.len == retained+1
+  assert selection.retainedNodes+selection.reclaimableNodes == view.storedNodes
+  # Metadata-only commits still consume durable generations and exact frames under an unchanged root.
+  var live = view
+  let unchanged = TrieExport(base: root, root: root, entries: uint64(view.commitment.entries),
+    nodes: view.commitment.nodes)
+  let metadataBefore = getOccupiedMem()
+  reset(0)
+  let metadataStarted = getMonoTime().ticks
+  for iteration in 0..<64:
+    live = physical.publish(live, unchanged).value # The original view/selection remain held throughout.
+  let metadataNanoseconds = getMonoTime().ticks-metadataStarted
+  let metadataHashes = hashCalls()
+  let metadataOccupied = getOccupiedMem()-metadataBefore
+  assert uint64(live.generation) == 129 and uint64(view.generation) == 65
+  assert live.storedNodes == view.storedNodes
+  assert array[32, byte](live.commitment.root) == array[32, byte](root)
+  let metadataBytes = readFile(path).len-bytes
+  assert physical.close == FileError.None
+  assert openFileRepository(physical, path, default(StorageChainId), limits) == FileError.None
+  assert uint64(physical.snapshot.value.generation) == 129
+  assert array[32, byte](physical.snapshot.value.commitment.root) == array[32, byte](root)
   assert physical.close == FileError.None
   echo "{\"entries\":" & $count & ",\"retained\":" & $retained & ",\"updates\":64,\"hash_calls\":" &
       $hashes &
@@ -103,7 +142,15 @@ proc sample(count, retained: int) {.raises.} =
     ",\"journal_bytes\":" & $bytes & ",\"full_frame_bytes\":" & $fullBytes & ",\"publish_ns\":" &
         $publishNanoseconds &
     ",\"reopen_ns\":" & $reopenNanoseconds & ",\"history_ns\":" & $historyNanoseconds &
-    ",\"history_hash_calls\":" & $historyHashes & ",\"physical_nodes\":" & $view.storedNodes & "}"
+    ",\"history_hash_calls\":" & $historyHashes & ",\"physical_nodes\":" & $view.storedNodes &
+    ",\"union_nodes\":" & $selection.retainedNodes & ",\"reclaimable_nodes\":" &
+        $selection.reclaimableNodes &
+    ",\"union_value_bytes\":" & $selection.retainedValueBytes & ",\"reclaimable_value_bytes\":" &
+        $selection.reclaimableValueBytes &
+    ",\"retention_ns\":" & $retentionNanoseconds & ",\"metadata_ns\":" & $metadataNanoseconds &
+    ",\"metadata_hash_calls\":" & $metadataHashes & ",\"metadata_occupied_bytes\":" &
+        $metadataOccupied &
+    ",\"metadata_journal_bytes\":" & $metadataBytes & "}"
 try:
   for count in [128, 1024]:
     for retained in [1, 8]: sample(count, retained) # Each fixture retires all handles before the next case.

@@ -18,7 +18,10 @@ class DiskStoreMeasurementTests(unittest.TestCase):
         """Construct one complete authored report without running the native workload."""
         rows = [dict(entries=entries, retained=retained, updates=64, hash_calls=100,
                      initialized_bytes=200, peak_bytes=400, retained_bytes=300,
-                     journal_bytes=1000, full_frame_bytes=2000, history_hash_calls=0, physical_nodes=1000) for entries, retained in CASES]
+                     journal_bytes=1000, full_frame_bytes=2000, history_hash_calls=0, physical_nodes=entries+100,
+                     union_nodes=entries+10, reclaimable_nodes=90, union_value_bytes=33*entries,
+                     reclaimable_value_bytes=33*64, metadata_hash_calls=64,
+                     metadata_occupied_bytes=200, metadata_journal_bytes=1000) for entries, retained in CASES]
         return dict(**{key: key for key in MATCH}, samples=[copy.deepcopy(rows), copy.deepcopy(rows)])
 
     def test_complete_repeated_report_and_signed_deltas(self):
@@ -33,7 +36,7 @@ class DiskStoreMeasurementTests(unittest.TestCase):
 
     def test_incomplete_duplicate_unstable_or_invalid_numeric_samples(self):
         """Malformed repetitions, workload coordinates and counters must all refuse."""
-        for mutation in ('single', 'missing', 'duplicate', 'unstable', 'bool', 'negative', 'extra', 'peak', 'disk'):
+        for mutation in ('single', 'missing', 'duplicate', 'unstable', 'bool', 'negative', 'extra', 'peak', 'disk', 'history_hash', 'metadata_hash', 'union'):
             with self.subTest(mutation=mutation):
                 samples = self.report()['samples']
                 if mutation == 'single':
@@ -50,6 +53,9 @@ class DiskStoreMeasurementTests(unittest.TestCase):
                         elif mutation == 'extra': rows[0]['unexpected'] = 0
                         elif mutation == 'peak': rows[0]['peak_bytes'] = 0
                         elif mutation == 'disk': rows[0]['full_frame_bytes'] = 0
+                        elif mutation == 'history_hash': rows[0]['history_hash_calls'] = 1
+                        elif mutation == 'metadata_hash': rows[0]['metadata_hash_calls'] = 63
+                        elif mutation == 'union': rows[0]['reclaimable_nodes'] += 1
                 with self.assertRaises(ValueError):
                     validate_samples(samples)
 
@@ -57,10 +63,10 @@ class DiskStoreMeasurementTests(unittest.TestCase):
         """Noisy durations never enter exact counter equality; malformed timing fields refuse."""
         rows = self.report()['samples'][0]
         for row in rows:
-            row.update(publish_ns=100, reopen_ns=200, history_ns=300)
+            row.update(publish_ns=100, reopen_ns=200, history_ns=300, retention_ns=400, metadata_ns=500)
         counters, timings = parse_sample('\n'.join(json.dumps(row) for row in rows))
         self.assertEqual(len(counters), 4)
-        self.assertEqual(timings[0], dict(publish_ns=100, reopen_ns=200, history_ns=300))
+        self.assertEqual(timings[0], dict(publish_ns=100, reopen_ns=200, history_ns=300, retention_ns=400, metadata_ns=500))
         for value in (True, -1, '100'):
             rows[0]['publish_ns'] = value
             with self.assertRaises(ValueError):
