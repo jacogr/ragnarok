@@ -34,6 +34,13 @@ type
     assignments: ReportAssignmentPlan
   AdmittedReports* = object ## Opaque complete report-stage plan; this is neither a published block nor full JAM execution.
     data: nil AdmissionData
+  PreparedReportData = ref object ## Block-bound credentials and recent checks survive bounded context acquisition.
+    staged: BlockTransitionResult
+    credentials: VerifiedGuaranteeCredentials
+    recent: RecentAnchoredReports
+    config: ReportAdmissionConfig
+  PreparedReportAdmission* = object ## Successful preparation grants no assignment, publication or lookup certificate.
+    data: nil PreparedReportData
   ReportAdmissionResult*[T] = object ## Exact child failures are available only from their selected alternative; ordinary errors carry reason alone.
     case status: ReportAdmissionError
     of None:
@@ -125,13 +132,13 @@ proc chapter(source: StateStoreSnapshot, number: byte, limit: ByteLimit): Report
     return ReportAdmissionResult[seq[byte]](status: ReportAdmissionError.LimitExceeded) # Check before copying retained bytes.
   ReportAdmissionResult[seq[byte]](status: ReportAdmissionError.None, completed: found.value.bytes)
 
-proc planBlockReports*(staged: BlockTransitionResult, older: openArray[OwnedHeader],
-    config: ReportAdmissionConfig): ReportAdmissionResult[AdmittedReports] =
+proc prepareBlockReports*(staged: BlockTransitionResult,
+    config: ReportAdmissionConfig): ReportAdmissionResult[PreparedReportAdmission] =
   ## Accept only the coordinator's private successful result, never a detached public BlockTransition value.
   ## Parent policy/pipeline/history come from admission; rosters/entropy/offenders/C(10) come from its completed stage.
   ## No caller-supplied reports, clock, corrected history, signatures or independently minted certificates are accepted.
   template fail(reason: ReportAdmissionError) =
-    return ReportAdmissionResult[AdmittedReports](status: reason)
+    return ReportAdmissionResult[PreparedReportAdmission](status: reason)
   if staged.error != BlockTransitionError.None:
     fail(ReportAdmissionError.InvalidTransition) # Defaults and earlier refusals cannot reach report checks.
   let frame = staged.blockTransitionProfile
@@ -189,11 +196,13 @@ proc planBlockReports*(staged: BlockTransitionResult, older: openArray[OwnedHead
   let credentials = verifyGuaranteeCredentials(guarantees, active.value.value, previous.value.value,
     entropy.value.value, slot, offenders, config.credentials)
   if credentials.error != GuaranteeCredentialError.None:
-    return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.CredentialFailure,
+    return ReportAdmissionResult[PreparedReportAdmission](
+      status: ReportAdmissionError.CredentialFailure,
       credentialReason: credentials) # Keep exact nested signature/assignment/structure refusal.
   let policy = checkReportPolicy(credentials.value, parent, config.policy)
   if policy.error != ReportPolicyError.None:
-    return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.PolicyFailure,
+    return ReportAdmissionResult[PreparedReportAdmission](
+      status: ReportAdmissionError.PolicyFailure,
       policyReason: policy.error) # Read parent pools and services, never a loose/staged substitute.
   let historyBytes = chapter(parent, 3, config.anchors.history.maxBytes)
   if historyBytes.error != ReportAdmissionError.None: fail(historyBytes.error) # Missing is not genesis history.
@@ -205,26 +214,76 @@ proc planBlockReports*(staged: BlockTransitionResult, older: openArray[OwnedHead
   let corrected = correctHistoryParent(decoded.value.snapshot,
     HistoryStateRoot(array[32, byte](parent.commitment.root)), config.anchors.history)
   if corrected.error != HistoryTransitionError.None:
-    return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.HistoryFailure,
+    return ReportAdmissionResult[PreparedReportAdmission](
+      status: ReportAdmissionError.HistoryFailure,
       historyReason: corrected.error) # Only the newest parent's state root is corrected, with no append.
   let recent = checkRecentReportAnchors(policy.value, corrected.value.value, slot, config.anchors)
   if recent.error != ReportAnchorError.None:
-    return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.AnchorFailure,
+    return ReportAdmissionResult[PreparedReportAdmission](
+      status: ReportAdmissionError.AnchorFailure,
       anchorReason: recent.error) # Corrected history and candidate time are derived, not externally supplied.
-  let anchored = checkReportLookupAnchors(recent.value, binding.admittedParent, older,
+  ReportAdmissionResult[PreparedReportAdmission](status: ReportAdmissionError.None,
+    completed: PreparedReportAdmission(data: PreparedReportData(staged: staged,
+      credentials: credentials.value, recent: recent.value, config: config)))
+
+proc completeBlockReports*(prepared: PreparedReportAdmission,
+    older: openArray[OwnedHeader]): ReportAdmissionResult[AdmittedReports] =
+  ## Complete only the original prepared block under its captured policies; no substituted reports or parent state.
+  let data = prepared.data
+  if data == nil:
+    return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.InvalidTransition)
+  let staged = data.staged
+  let step = staged.value
+  let binding = step.admitted
+  let config = data.config
+  let anchored = checkReportLookupAnchors(data.recent, binding.admittedParent, older,
       config.ancestors)
   if anchored.error != ReportAnchorError.None:
     return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.AnchorFailure,
       anchorReason: anchored.error) # Caller may supply older headers but cannot replace the actual parent endpoint.
-  let packages = checkReportPackages(recent.value, config.packages)
+  let packages = checkReportPackages(data.recent, config.packages)
   if packages.error != ReportPackageError.None:
     return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.PackageFailure,
       packageReason: packages.error) # Existing packages deliberately come from parent C(10)/C(14)/C(15).
-  let planned = planReportAssignments(credentials.value, step.availability.assuredAssignments,
+  let planned = planReportAssignments(data.credentials, step.availability.assuredAssignments,
     config.packages.availability)
   if planned.error != ReportAssignmentError.None:
     return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.AssignmentFailure,
       assignmentReason: planned.error) # Vacancy deliberately uses actual post-assurance C(10).
   ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.None,
-    completed: AdmittedReports(data: AdmissionData(staged: staged, credentials: credentials.value,
+    completed: AdmittedReports(data: AdmissionData(staged: staged, credentials: data.credentials,
       anchors: anchored.value, packages: packages.value, assignments: planned.value)))
+
+proc preparationFailure(prepared: ReportAdmissionResult[
+    PreparedReportAdmission]): ReportAdmissionResult[AdmittedReports] =
+  ## Preserve selected nested refusal exactly; this private bridge cannot convert success into a partial certificate.
+  case prepared.error
+  of ReportAdmissionError.CredentialFailure:
+    ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.CredentialFailure,
+        credentialReason: prepared.credentialError)
+  of ReportAdmissionError.PolicyFailure:
+    ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.PolicyFailure,
+        policyReason: prepared.policyError)
+  of ReportAdmissionError.HistoryFailure:
+    ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.HistoryFailure,
+        historyReason: prepared.historyError)
+  of ReportAdmissionError.AnchorFailure:
+    ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.AnchorFailure,
+        anchorReason: prepared.anchorError)
+  of ReportAdmissionError.PackageFailure:
+    ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.PackageFailure,
+        packageReason: prepared.packageError)
+  of ReportAdmissionError.AssignmentFailure:
+    ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.AssignmentFailure,
+        assignmentReason: prepared.assignmentError)
+  of ReportAdmissionError.None:
+    ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.InvalidTransition) # A successful prefix needs explicit completion.
+  else:
+    ReportAdmissionResult[AdmittedReports](status: prepared.error)
+
+proc planBlockReports*(staged: BlockTransitionResult, older: openArray[OwnedHeader],
+    config: ReportAdmissionConfig): ReportAdmissionResult[AdmittedReports] =
+  ## Compatibility coordinator preserves exact full admission and failure ordering through the two explicit stages.
+  let prepared = prepareBlockReports(staged, config)
+  if prepared.error != ReportAdmissionError.None: return preparationFailure(prepared)
+  completeBlockReports(prepared.value, older)

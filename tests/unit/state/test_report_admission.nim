@@ -44,6 +44,13 @@ proc boundaries(base: OwnedReport) =
   checkCoreSource(base)
   let context = authored(base)
   let original = context.staged.value.snapshot
+  let preparedReports = prepareBlockReports(context.staged, config())
+  assert preparedReports.error == ReportAdmissionError.None
+  let completedReports = completeBlockReports(preparedReports.value, context.older)
+  assert completedReports.error == ReportAdmissionError.None
+  assert completedReports.value.reportCredentials.value.verifiedGuaranteeCount.value == 2
+  assert completeBlockReports(default(PreparedReportAdmission), context.older).error ==
+      ReportAdmissionError.InvalidTransition
   let admitted = planBlockReports(context.staged, context.older, config())
   assert admitted.error == ReportAdmissionError.None, $admitted.error
   let certificate = admitted.value
@@ -59,6 +66,7 @@ proc boundaries(base: OwnedReport) =
   assert fields.stateRoot.bytes == array[32, byte](
       context.staged.value.admitted.admittedState.commitment.root) # Real correction is necessary: stored latest root is zero.
   let missing = BlockTransitionResult()
+  assert prepareBlockReports(missing, config()).error == ReportAdmissionError.InvalidTransition
   assert planBlockReports(missing, [], config()).error == ReportAdmissionError.InvalidTransition
   assert default(AdmittedReports).reportAssignments.error == ReportAdmissionError.Uninitialized
   assert default(AdmittedReports).reportCredentials.error == ReportAdmissionError.Uninitialized
