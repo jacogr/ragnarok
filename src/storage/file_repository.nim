@@ -13,6 +13,7 @@ type
   JournalLimits* = object ## Bound complete/accumulated node storage and the whole physical journal.
     repository*: RepositoryLimits
     bytes*: ByteLimit
+    contextBytes*: ByteLimit # Independent per-frame application metadata ceiling; zero for node-only journals.
   FileError* {.pure.} = enum ## Partial/uncertain writes never expose a successful successor view.
     Uninitialized, None, Busy, InvalidPath, AlreadyExists, IoFailure, LimitExceeded,
     WrongIdentity, InvalidJournal, InvalidBatch, InvalidFrame, PublishedUnsynced, RecoveryRequired,
@@ -29,6 +30,8 @@ type
     size: uint64
     limits: JournalLimits
     memory: NodeRepository
+    schema: StorageSchema
+    context: seq[byte] # Private selected bytes advance only with their durable memory revision.
 
 proc `=copy`*(destination: var FileRepository, source: FileRepository) {.error.}
   ## A file descriptor and its cooperative lock may have only one retirement owner.
@@ -41,6 +44,7 @@ proc `=destroy`*(repository: FileRepository) =
   ## Check native retirement before the managed immutable memory head is released.
   requireClosed(repository)
   `=destroy`(repository.memory)
+  `=destroy`(repository.context)
 
 let noFollow {.importc: "O_NOFOLLOW", header: "<fcntl.h>".}: cint
 let exclusive {.importc: "LOCK_EX", header: "<sys/file.h>".}: cint
@@ -113,27 +117,29 @@ proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
 proc truncateFile(fd: cint, extent: int64): cint {.importc: "ftruncate", cdecl,
     header: "<unistd.h>".}
   ## Supported native Linux/macOS SDKs use 64-bit off_t; host-bounded extents are proved before conversion.
-proc incompleteTail(bytes: openArray[byte], offset: int, limit: ByteLimit): bool =
+proc incompleteTail(bytes: openArray[byte], offset: int, limit: ByteLimit, contextual: bool): bool =
   ## Admit only an incomplete final frame, never a complete corrupt frame or oversized length attack.
   let remaining = bytes.len-offset
   if remaining < 8: return true # A torn length prefix cannot be decoded but can be explicitly discarded.
   var length = 0'u64
   for i in 0..<8: length = length or (uint64(bytes[offset+i]) shl (8*i))
   let maximum = min(uint64(limit), uint64(high(int)))
-  if maximum < 48 or length < uint64(TrieExportHeaderBytes) or length > maximum-48:
+  let minimumBody = uint64(TrieExportHeaderBytes)+(if contextual: 8'u64 else: 0'u64)
+  if maximum < 48 or length < minimumBody or length > maximum-48:
     return false # Unknown/impossible complete lengths require operator investigation, not truncation.
   length+48 > uint64(remaining)
 
 proc acquire(repository: var FileRepository, path: string, chain: StorageChainId,
     limits: JournalLimits, create: bool, repair = false,
-    expectedGeneration = RepositoryGeneration(0), expectedRoot = default(StateRoot)): FileError =
+    expectedGeneration = RepositoryGeneration(0), expectedRoot = default(StateRoot),
+    schema = StorageSchema.FullNodesV1): FileError =
   ## Own no resources on failure; adoption follows shape/chain/graph and synchronization checks.
   if repository.active: return FileError.Busy
   if not validPath(path): return FileError.InvalidPath
   if uint64(limits.bytes) < uint64(StorageIdentityBytes): return FileError.LimitExceeded
   var identityBytes: seq[byte] = @[]
   if create:
-    let encoded = encodeDatabaseIdentity(fullStateIdentity(chain), limits.bytes)
+    let encoded = encodeDatabaseIdentity(fullStateIdentity(chain, schema), limits.bytes)
     if encoded.error == IdentityError.BackendFailure: return FileError.BackendFailure
     if encoded.error != IdentityError.None: return FileError.WrongIdentity
     identityBytes = encoded.value # Validate bootstrap bytes before creating any filesystem resource.
@@ -167,6 +173,7 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
       directoryMetadata.st_mode): return FileError.IoFailure
   var memory = newNodeRepository(limits.repository)
   var size = 0'u64
+  var context: seq[byte] = @[]
   if create:
     if not writeAll(descriptor, identityBytes): return FileError.IoFailure
     size = uint64(identityBytes.len) # Failed initialization preserves its file for explicit operator recovery.
@@ -176,7 +183,7 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
     let bytes = loaded.value
     if bytes.len < StorageIdentityBytes: return FileError.WrongIdentity
     let identity = decodeDatabaseIdentity(bytes.toOpenArray(0, StorageIdentityBytes-1), chain,
-      ByteLimit(StorageIdentityBytes))
+      ByteLimit(StorageIdentityBytes), schema)
     if identity.error == IdentityError.BackendFailure: return FileError.BackendFailure
     if identity.error != IdentityError.None: return FileError.WrongIdentity
     var offset = StorageIdentityBytes
@@ -184,12 +191,17 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
     while offset < bytes.len:
       let extent = journalFrameExtent(bytes.toOpenArray(offset, bytes.high), limits.bytes)
       if extent.error != FrameError.None:
-        if repair and incompleteTail(bytes, offset, limits.bytes):
+        if repair and incompleteTail(bytes, offset, limits.bytes, schema ==
+            StorageSchema.FullStateV1):
           partial = true
           break # Only explicit recovery can stop at a verified prefix preceding an incomplete final frame.
         return FileError.InvalidJournal
-      let frame = decodeJournalFrame(bytes.toOpenArray(offset, offset+extent.value-1),
-        limits.repository.codec, limits.bytes)
+      let frame = if schema == StorageSchema.FullStateV1:
+        decodeContextJournalFrame(bytes.toOpenArray(offset, offset+extent.value-1),
+          limits.contextBytes, limits.repository.codec, limits.bytes)
+      else:
+        decodeJournalFrame(bytes.toOpenArray(offset, offset+extent.value-1),
+          limits.repository.codec, limits.bytes) # Schema is independently selected before any frame interpretation.
       if frame.error == FrameError.BackendFailure: return FileError.BackendFailure
       if frame.error != FrameError.None: return FileError.InvalidJournal
       let current = memory.snapshot.value
@@ -198,6 +210,7 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
         return FileError.InvalidJournal
       if memory.publish(current, frame.value.batch).error !=
           RepositoryError.None: return FileError.InvalidJournal
+      context = frame.value.context # Only a fully admitted frame can select its context.
       offset += extent.value # Extent validation proved exact bounded forward progress.
     if repair:
       let selected = memory.snapshot.value
@@ -216,6 +229,8 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
   repository.descriptor = descriptor
   repository.directory = directory
   repository.memory = memory
+  repository.schema = schema
+  repository.context = context
   repository.limits = limits
   repository.size = size
   repository.poisoned = false
@@ -224,18 +239,18 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
   directory = -1
   FileError.None
 proc initializeFileRepository*(repository: var FileRepository, path: string, chain: StorageChainId,
-    limits: JournalLimits): FileError =
+    limits: JournalLimits, schema = StorageSchema.FullNodesV1): FileError =
   ## Explicitly create an absent full-state journal; existing files are never reset or converted.
-  acquire(repository, path, chain, limits, true)
+  acquire(repository, path, chain, limits, true, schema = schema)
 proc openFileRepository*(repository: var FileRepository, path: string, chain: StorageChainId,
-    limits: JournalLimits): FileError =
+    limits: JournalLimits, schema = StorageSchema.FullNodesV1): FileError =
   ## Strictly reopen every complete frame with the independently selected chain and new ceilings.
-  acquire(repository, path, chain, limits, false)
+  acquire(repository, path, chain, limits, false, schema = schema)
 proc recoverFileRepository*(repository: var FileRepository, path: string, chain: StorageChainId,
     limits: JournalLimits, expectedGeneration: RepositoryGeneration,
-        expectedRoot: StateRoot): FileError =
+        expectedRoot: StateRoot, schema = StorageSchema.FullNodesV1): FileError =
   ## Explicitly truncate only an incomplete final append after independently verifying its exact durable prefix.
-  acquire(repository, path, chain, limits, false, true, expectedGeneration, expectedRoot)
+  acquire(repository, path, chain, limits, false, true, expectedGeneration, expectedRoot, schema)
 proc snapshot*(repository: FileRepository): FileResult[RepositoryView] =
   ## Uncertain/partial publication requires reopening or explicit recovery before new reads.
   if not repository.active: return FileResult[RepositoryView](status: FileError.Uninitialized)
@@ -250,24 +265,34 @@ proc close*(repository: var FileRepository): FileError =
   repository.descriptor = -1
   repository.directory = -1
   discard repository.memory.close
+  repository.context = @[] # Retained detached contexts have their own byte owners.
   let released = lock(descriptor, unlock)
   let retired = posix.close(descriptor)
   let parentRetired = posix.close(directory)
   if released != 0 or retired != 0 or parentRetired != 0: return FileError.IoFailure
   FileError.None
 proc publish*(repository: var FileRepository, expected: RepositoryView,
-    batch: TrieExport): FileResult[RepositoryView] =
+    batch: TrieExport, context: openArray[byte] = []): FileResult[RepositoryView] =
   ## Prepare privately, bound physical growth, append/sync, then adopt the exact prepared view.
   if not repository.active: return FileResult[RepositoryView](status: FileError.Uninitialized)
   if repository.poisoned: return FileResult[RepositoryView](status: FileError.RecoveryRequired)
+  if uint64(context.len) > uint64(repository.limits.contextBytes) or
+      (repository.schema == StorageSchema.FullNodesV1 and context.len != 0):
+    return FileResult[RepositoryView](status: FileError.LimitExceeded)
+  var selectedContext = newSeq[byte](context.len)
+  for index, octet in context: selectedContext[index] = octet # Input mutation cannot affect a published context.
   var working = repository.memory
   let prepared = working.publish(expected, batch)
   if prepared.error != RepositoryError.None:
     return FileResult[RepositoryView](status: FileError.InvalidBatch, batchReason: prepared)
   let maximum = min(uint64(repository.limits.bytes), uint64(high(int)))
   let remaining = maximum-repository.size
-  let frame = encodeJournalFrame(prepared.value.generation, batch,
-    repository.limits.repository.codec, ByteLimit(remaining))
+  let frame = if repository.schema == StorageSchema.FullStateV1:
+    encodeContextJournalFrame(prepared.value.generation, batch, selectedContext,
+      repository.limits.contextBytes, repository.limits.repository.codec, ByteLimit(remaining))
+  else:
+    encodeJournalFrame(prepared.value.generation, batch,
+      repository.limits.repository.codec, ByteLimit(remaining)) # Node-only publication stays byte-compatible.
   if frame.error == FrameError.LimitExceeded: return FileResult[RepositoryView](
       status: FileError.LimitExceeded)
   if frame.error != FrameError.None:
@@ -282,6 +307,7 @@ proc publish*(repository: var FileRepository, expected: RepositoryView,
   if synchronize(repository.descriptor) != 0:
     repository.poisoned = true
     return FileResult[RepositoryView](status: FileError.PublishedUnsynced) # Complete bytes may be visible, but no successor is authorized.
+  repository.context = selectedContext
   repository.memory = working # This is the only live head replacement, after full durable publication.
   FileResult[RepositoryView](status: FileError.None, completed: prepared.value)
 
@@ -294,3 +320,11 @@ proc synchronize*(repository: var FileRepository): FileResult[StorageDurability]
     return FileResult[StorageDurability](status: FileError.IoFailure)
   FileResult[StorageDurability](status: FileError.None,
     completed: StorageDurability.FileAndDirectorySynced)
+
+proc snapshotContext*(repository: FileRepository): FileResult[seq[byte]] =
+  ## Return detached context from the same single-threaded selected revision; poison refuses new reads.
+  if not repository.active: return FileResult[seq[byte]](status: FileError.Uninitialized)
+  if repository.poisoned: return FileResult[seq[byte]](status: FileError.RecoveryRequired)
+  var bytes = newSeq[byte](repository.context.len)
+  for index, octet in repository.context: bytes[index] = octet # No mutable alias to selected metadata escapes.
+  FileResult[seq[byte]](status: FileError.None, completed: bytes)
