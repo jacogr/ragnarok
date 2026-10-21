@@ -195,10 +195,10 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         os: *ci-os
-        shard: ["1/2", "2/2"]
+        shard: ["1/4", "2/4", "3/4", "4/4"]
     env:
       FAILURE_SHARD: ${{ matrix.shard }}
     runs-on: ${{ matrix.os }}
