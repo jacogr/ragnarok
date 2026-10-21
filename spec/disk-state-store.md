@@ -147,3 +147,17 @@ The real kernel write-limit matrix also runs through contextual frames, proving 
 survives refused/partial publication, exact/ample writes select the new context, trusted repair
 retains the matching complete prefix, and node-only open refuses the contextual database identity.
 Dedicated budget and input/output mutation cases check metadata ownership independently.
+
+## Local application-head context
+
+`app/disk_head.nim` encodes exact chain identity, nonzero journal generation, existing full
+ApplicationCheckpointIdentity and one exact sealed-header extent. The enclosing contextual frame
+checksums all fields. Restore compares configured chain/profile, frame generation and complete
+posterior map before structural capture, then verifies exact block identity/time/root/profile.
+It retains the same StateStore snapshot and reconstructs one unfinalized anchor. Header prior-state
+root is never substituted for posterior state root. This codec is a local restart path, not an
+external checkpoint import certificate or seal/consensus verifier.
+
+Tests preserve exact snapshot ownership and encoding roundtrips, and refuse wrong chains, complete
+profiles, posterior maps, generations, sealed headers, truncated contexts and oversized extents.
+Historical/finality persistence beyond the selected anchor remains a separate explicit contract.
