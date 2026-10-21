@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Negative runtime fixture for memory-step fault-page and local-result selection contracts.
-## Chooses a non-fault outcome or ambiguous local error and attempts its forbidden accessor.
+## Chooses a non-fault outcome or local simulation refusal and attempts its forbidden accessor.
 
 import std/cmdline
 import ../../src/pvm/[program, machine, gas, step]
@@ -17,8 +17,8 @@ if selection != "default":
   if selection == "panic":
     # Absolute zero remains protected regardless of supplied memory access.
     code[4] = 0
-  elif selection == "ambiguous":
-    # A two-byte read wraps from an inaccessible high page into protected low memory.
+  elif selection == "fault":
+    # The approved PolkaVM overflow read supplies a genuine fault-page positive control.
     code = @[55'u8, 0, 255, 255, 255, 255, 0]
   elif selection == "halt":
     # The dynamic sentinel yields a real Halt outcome with no fault metadata.
@@ -32,10 +32,11 @@ if selection != "default":
   let program = decodeProgram(bytes, CodeAddress(0), ProgramByteLimit(32), JumpCountLimit(0)).value
   let memory = captureMemory([PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
     bytes: default(array[4096, byte]))], PageLimit(1)).value
-  let source = captureMachine(program, memory, MachineInfo(pc: CodeAddress(0), gas: MachineGas(0),
-    blockCharged: selection != "oog", registers: registers)).value
-  let evaluated = stepMemory(source, GasCycleLimit(100))
-  # Ambiguity fails at value selection; the remaining cases reach forbidden fault-page selection.
+  let source = captureMachine(program, memory, MachineInfo(pc: CodeAddress(0), gas: MachineGas(
+      if selection == "cycle_limit": 1000 else: 0),
+    blockCharged: selection notin ["oog", "cycle_limit"], registers: registers)).value
+  let evaluated = stepMemory(source, GasCycleLimit(if selection == "cycle_limit": 0 else: 100))
+  # The local simulation refusal fails at value selection; non-fault exits fail at fault-page selection, while fault succeeds.
   outcome = evaluated.value
 else:
   # A default outcome has no fault reason and cannot provide an invented zero page.

@@ -6,7 +6,12 @@ Language selection is complete; the foundation is not a production validator or 
 ## Authority and scope
 
 Use the pinned Gray Paper, recorded `davxy/jam-test-vectors`, then pinned JAMNP-S. Other clients
-are cross-checks. Follow published vector encoding widths, document discrepancies and accept one
+are cross-checks. The Gray Paper remains the primary PVM specification; implement independently
+and use pinned PolkaVM to check fixture compatibility. Document each discrepancy or ambiguity
+in `spec/graypaper-discrepancies.md`, with exact evidence and focused fixtures. Previously approved
+exceptions are scoped to their feature contracts, not a blanket precedence rule. Do not silently
+change pins.
+Follow published vector encoding widths, document discrepancies and accept one
 representation without fallback. Never guess protocol semantics: record ambiguity and a focused
 failing/pending test. Keep upstream sources, submodule gitlinks and toolchains pristine and pinned;
 no private-runtime hooks, compiler patches or unapproved dependency upgrades.

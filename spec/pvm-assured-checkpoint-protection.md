@@ -22,8 +22,8 @@ full state composition/publication/history/activity/finality and alias assertion
 Each executes1000 full successor ARC cycles. Check affected computed-storage and
 assured-outcome consumers, inventory, harness tests and pinned formatting.
 
-Next: verify propagation of the existing scalar wrapping-access specification
-gate through real checkpointed assured execution. M1 framing complete; full state
+Wrapping successors now follow [the approved PolkaVM memory ordering](pvm-polkavm-memory-order.md)
+through real checkpointed assured execution. M1 framing complete; full state
 serialization, whole-block parity and full chainspec equivalence remain open.
 
 Observed: the protection suite and both extracted predecessor suites pass1000

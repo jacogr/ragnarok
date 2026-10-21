@@ -72,7 +72,7 @@ literal bytes and expected operands; a compatible execution corpus remains a gat
 for the interpreter increment. No upstream pins are advanced.
 
 The [machine/memory increment](pvm-machine.md) now supplies immutable snapshots and
-scalar memory access, with an explicit unresolved wrapping-access gate. Gas charging,
+scalar memory access, with the approved PolkaVM memory exception ordering. Gas charging,
 instruction execution, standard program initialization,
 host calls, invocation wrappers and whole JAM execution remain unimplemented.
 Next bounded increment: instruction execution and gas accounting.

@@ -132,9 +132,9 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
     body.add(@[81'u8, 22, 2, 6]) # Compare preserved r6 with two and branch forward past the historical regular halt.
     body.add(@[50'u8, 0]) # One genuine input commits the actual regular restoration.
     if mode == ComputedStorageMode.ReadCheckpointWrapLoad:
-      body.add(@[55'u8, 7, 255]) # Signed load_i16 atMAX64 touches inaccessible physical0xffffffff then protected0, retaining the pinned ambiguity gate.
+      body.add(@[55'u8, 7, 255]) # Signed load_i16 atMAX64 touches inaccessible physical0xffffffff then protected0, faulting at the first absent high page under the approved PolkaVM rule.
     elif mode == ComputedStorageMode.ReadCheckpointWrapStore:
-      body.add(@[60'u8, 7, 255]) # The corresponding store_u16 must refuse locally before publishing any scalar memory or completed accumulation.
+      body.add(@[60'u8, 7, 255]) # The corresponding store_u16 faults atomically at the same absent high page, then selects the retained checkpoint.
     elif mode == ComputedStorageMode.ReadCheckpointProtection:
       body.add(@[52'u8, 7, 0]) # A real byte load from address0 must panic under unconditional low-memory protection.
     elif mode == ComputedStorageMode.ReadCheckpointFault:

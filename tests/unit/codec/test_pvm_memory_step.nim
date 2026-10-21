@@ -79,7 +79,7 @@ proc samePages(memory: Memory, expected: openArray[PageImage]) =
 # Run a witness with prepaid, exact and insufficient gas, comparing complete retained snapshots.
 # Expected exceptions are supplied by the caller's boundary/permission matrix.
 proc witness(op: byte, width: int, address, base, offset: uint64, alias: bool,
-    pages: openArray[PageImage], exit: StepExit, fault: uint32, ambiguous = false) =
+    pages: openArray[PageImage], exit: StepExit, fault: uint32) =
   let program = owner(op, address, offset, alias)
   let memory = captureMemory(pages, PageLimit(4)).value
   var regs = default(RegisterFile)
@@ -104,17 +104,13 @@ proc witness(op: byte, width: int, address, base, offset: uint64, alias: bool,
     same(machineInfo(source).value, initial)
     samePages(memoryOf(source).value, pages)
     if mode == 2:
-      # Gas refusal precedes even protected, inaccessible or ambiguous memory access.
+      # Gas refusal precedes even protected or inaccessible memory access.
       assert answer.error == StepError.None and answer.value.exit == StepExit.OutOfGas
       same(machineInfo(answer.value.machine).value, initial)
       samePages(memoryOf(answer.value.machine).value, pages)
       assert executed.value.exit == StepExit.OutOfGas
       same(machineInfo(executed.value.machine).value, initial)
       samePages(memoryOf(executed.value.machine).value, pages)
-      continue
-    if ambiguous:
-      # The pinned ambiguity must never publish a charged snapshot or a consensus fault/panic.
-      assert answer.error == StepError.AmbiguousAccessOrder
       continue
     assert answer.error == StepError.None and answer.value.exit == exit
     var expected = initial
@@ -216,13 +212,13 @@ for row in 0..<ops.len:
     [page(15, PageAccess.ReadWrite, 127), page(16, PageAccess.ReadWrite, 128)], StepExit.Panic, 0)
   # An absent page faults just like an explicitly inaccessible page.
   witness(op, width, 65536, 65537, high(uint64), false, [], StepExit.Fault, 65536)
-  if width > 1:
-    # A high inaccessible page followed by protected wrapped bytes retains the explicit local gate.
+  # PolkaVM exclusive-end overflow applies even to width1 atMAX32 and precedes read-only checks.
+  witness(op, width, 0xffffffff'u64, 0x100000000'u64, high(uint64), false,
+    [], StepExit.Fault, 0xfffff000'u32)
+  for access in [PageAccess.ReadOnly, PageAccess.ReadWrite]:
+    # Both kinds of present final page trap, including a wrapping store to a read-only page.
     witness(op, width, 0xffffffff'u64, 0x100000000'u64, high(uint64), false,
-      [], StepExit.Panic, 0, true)
-    # With an accessible high page, wrap into low memory has an unambiguous protected-memory panic.
-    witness(op, width, 0xffffffff'u64, 0x100000000'u64, high(uint64), false,
-      [page(0xfffff, PageAccess.ReadWrite, 128)], StepExit.Panic, 0)
+      [page(0xfffff, access, 128)], StepExit.Panic, 0)
 
 # A fault preserves the already-charged block; repairing memory retries without another gas simulation.
 proc retryCycle() =

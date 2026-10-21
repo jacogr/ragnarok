@@ -47,7 +47,8 @@ only the private `Fault` alternative stores a physical page, exposed by a guarde
 `faultPage` accessor. Only `Host` carries a nominal identifier, exposed by guarded
 `hostCall`. Local errors carry no machine or tentative gas debit:
 `InvalidMachine`, `UnsupportedInstruction`, `GasCycleLimitExceeded` and the inherited
-`NegativeBranchTarget` and `AmbiguousAccessOrder` specification gates. Bounded
+`NegativeBranchTarget` specification gate. `AmbiguousAccessOrder` is retained as
+a historical reason; current scalar inspection does not emit it. Bounded
 `execute` also returns local `StepLimitExceeded`. Default
 results are `Uninitialized`.
 Guest out-of-gas is a completed evaluation, not one of those local errors.
@@ -147,11 +148,12 @@ subtraction on both repeated faults and repaired retries, including zero gas and
 a zero local simulation limit. This is state repair through existing trusted APIs,
 not a host allocator or standard JAM initialization implementation.
 
-For the existing ambiguous high-page-fault/low-page-wrap case, the step returns
-local `AmbiguousAccessOrder` with no machine or gas progress. It does not turn the
-pinned prose/equation disagreement into a guest fault or panic. Out-of-gas still
-wins before inspection. See [the memory gate](pvm-machine.md#explicit-unresolved-specification-gate)
-for the exact conflicting witness and behavior when the high page is accessible.
+For the former high-page-fault/low-page-wrap gate, scalar inspection now follows
+[the maintainer-approved PolkaVM rule](pvm-polkavm-memory-order.md). Exclusive-end
+overflow faults at0xfffff000 when the final page is absent and panics when it is
+present, before write-protection checks. Paid block gas and charged flags survive
+these exits, with no partial registers or memory. Out-of-gas still wins before
+inspection; the raw interpreter no longer emits AmbiguousAccessOrder.
 
 ## Evidence
 
@@ -199,7 +201,7 @@ repaired store/load retries, saturated indices and address sums exceeding 64 bit
 The existing independent arithmetic traces and control witnesses also execute through
 `stepMemory`. Compiler guards protect outcome state/page privacy and nominal limits;
 isolated runtime probes reject fault-page access on every non-fault alternative and
-value access on the ambiguity gate. ARC release cycles include source/fault/repair/
+value access on a local simulation-limit refusal. ARC release cycles include source/fault/repair/
 success graphs. Inputs are original native witnesses; no upstream implementation,
 licence or binary fixture is copied into the project.
 
@@ -208,5 +210,6 @@ licence or binary fixture is copied into the project.
 Host suspension and bounded recursive `Psi` are implemented in the
 [execution contract](pvm-execution.md). Next: standard program/memory initialization.
 Host functions and complete JAM invocation remain unimplemented. The negative
-branch-price and wrapping-memory specification gates remain unresolved.
+branch-price specification gate remains unresolved; wrapping-memory ordering
+follows the approved PolkaVM adoption.
 These APIs do not establish full JAM parity or unrestricted PVM conformance.
