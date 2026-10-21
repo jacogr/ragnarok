@@ -36,8 +36,10 @@ project edits are built and appear in the binary's dirty revision marker.
 The [multi-stage build](https://docs.docker.com/build/building/multi-stage/) keeps the compilers,
 Git metadata and dependency sources in the `builder` stage. The final Ubuntu runtime contains
 the peer, maintained crypto/Bandersnatch/QUIC shared libraries, CA certificates and system runtime
-libraries. `LD_LIBRARY_PATH` resolves the packaged native libraries instead of build-directory
-rpaths. The final-stage version check catches missing loader dependencies during the build.
+libraries. Packaging uses [patchelf](https://github.com/NixOS/patchelf) to replace absolute
+build-directory dependencies with library names and a binary-relative runpath into the packaged
+library directory. The full-LTO compiled code and checks remain unchanged. The final-stage
+version check catches missing loader dependencies during the build.
 
 The entry point is `ragnarok`; the default command prints help. It runs as UID/GID **10001:10001**
 with working directory `/data`. Bind-mount writable state/configuration directories as needed,

@@ -24,6 +24,14 @@ WORKDIR /src
 # Retain only source Git objects/index/refs; Make initializes pristine pinned submodules itself.
 COPY . .
 RUN git rev-parse --verify HEAD && make build
+# C ABI libraries have absolute DT_NEEDED entries; package names and a binary-relative runpath.
+RUN apt-get update && apt-get install --no-install-recommends -y patchelf \
+    && patchelf \
+      --replace-needed /src/build/crypto/libragnarok_crypto.so libragnarok_crypto.so \
+      --replace-needed /src/build/bandersnatch/target/release/libragnarok_bandersnatch.so libragnarok_bandersnatch.so \
+      --replace-needed /src/build/quic/libquic_proof.so libquic_proof.so \
+      --set-rpath '$ORIGIN/../lib/ragnarok' /src/build/ragnarok \
+    && rm -rf /var/lib/apt/lists/*
 
 # Ship only the peer, its maintained native ABIs and the required system runtime libraries.
 FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS runtime
@@ -38,8 +46,6 @@ COPY --from=builder /src/build/ragnarok /usr/local/bin/ragnarok
 COPY --from=builder /src/build/crypto/libragnarok_crypto.so /usr/local/lib/ragnarok/
 COPY --from=builder /src/build/bandersnatch/target/release/libragnarok_bandersnatch.so /usr/local/lib/ragnarok/
 COPY --from=builder /src/build/quic/libquic_proof.so /usr/local/lib/ragnarok/
-# The development binary records build-directory rpaths; resolve the packaged libraries explicitly.
-ENV LD_LIBRARY_PATH=/usr/local/lib/ragnarok
 LABEL org.opencontainers.image.source="https://github.com/jacogr/ragnarok" \
     org.opencontainers.image.licenses="MIT OR Apache-2.0"
 WORKDIR /data
