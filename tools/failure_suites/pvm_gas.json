@@ -39,14 +39,14 @@
     },
     {
       "identity": {
-        "origin": "negative"
+        "origin": "interior"
       },
       "arguments": [
-        "negative"
+        "interior"
       ],
-      "name": "pvm-gas-negative",
+      "name": "pvm-gas-interior",
       "diagnostic": "r.status == None",
-      "description": "PVM gas result selection negative"
+      "description": "PVM gas result selection at an unmarked operand start"
     }
   ]
 }

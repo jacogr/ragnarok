@@ -162,12 +162,15 @@ assert not machineInfo(exhausted.machine).value.blockCharged
 # UINT64_MAX is an admissible local budget and cannot overflow the attempted-instruction counter.
 assert execute(trapSource, ExecutionStepLimit(high(uint64)), GasCycleLimit(0)).value.exit == StepExit.Panic
 
-# Local specification gates after a completed store still expose no partial machine or source mutation.
+# Completed negative-target panic and wrapping-memory fault retain successful prefixes without mutating source aliases.
 let negativeProgram = owner([@[51'u8, 0, 7], @[62'u8, 0, 0, 0, 1, 0], @[1'u8],
   @[82'u8, 16, 0, 128], @[0'u8]])
 let negativeSource = source(negativeProgram, memory, registers, 0, high(uint64), false)
-assert execute(negativeSource, ExecutionStepLimit(4), GasCycleLimit(1000)).error ==
-  StepError.NegativeBranchTarget
+let negative = execute(negativeSource, ExecutionStepLimit(4), GasCycleLimit(1000))
+assert negative.error == StepError.None and negative.value.exit == StepExit.Panic
+assert uint64(machineInfo(negative.value.machine).value.registers[0]) == 7
+assert uint64(load(memoryOf(negative.value.machine).value, MemoryAddress(65536), AccessWidth(
+    8)).value) == 7
 let wrappingProgram = owner([@[51'u8, 0, 7], @[62'u8, 0, 0, 0, 1, 0],
   @[55'u8, 0, 255, 255, 255, 255], @[0'u8]])
 let wrappingSource = source(wrappingProgram, memory, registers, 0, high(uint64), false)

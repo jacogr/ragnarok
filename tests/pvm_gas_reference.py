@@ -94,10 +94,8 @@ def cost(raw, code, pc, definitions):
             break
     row = row.replace('$\\mathfrak{m}$', '25')
     if '$\\mathfrak{b}$' in row:
-        # Negative indices have no definition in the pinned one-sided byte sequence.
-        target = pc + int.from_bytes(raw[-4:], 'little', signed=True)
-        if target < 0:
-            raise ValueError('negative branch target')
+        # Pinned PolkaVM wraps decoded offsets to u32 before pricing the raw target byte.
+        target = (pc + int.from_bytes(raw[-4:], 'little', signed=True)) % (1 << 32)
         fetch = lambda at:code[at] if at < len(code) else 0
         latency = 1 if {fetch(pc+len(raw)), fetch(target)} & {0, 2} else 20
         row = row.replace('$\\mathfrak{b}$', str(latency))
@@ -298,6 +296,10 @@ def fixtures():
         # Positive branch targets cover raw unmarked operand bytes and the zero suffix.
         for displacement in (0, 1, 2, 6, 7, 100000):
             cases.append([instruction(170, a=marker % 13, displacement=displacement), instruction(marker), instruction(0)])
+    for op in [*range(81, 91), *range(170, 176)]:
+        # A noncheap fallthrough makes the wrapped absent target itself determine the cheap branch latency.
+        for displacement in (-1, -128, -(1 << 31)):
+            cases.append([instruction(op, displacement=displacement), instruction(100), instruction(0)])
     out = bytearray(b'PVMGAS01'+struct.pack('<I', len(cases)))
     for index, sequence in enumerate(cases):
         # Relocate alternate blocks behind a completed trap; pricing depends on relative raw targets.

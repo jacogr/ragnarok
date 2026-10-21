@@ -32,6 +32,7 @@
     "guest-programs/riscv-tests/tests/rv64um/remuw.S": "cf99595b875b12670eef32396d762ffb6f86002d699bf08598e7c9f31637bd71",
     "guest-programs/riscv-tests/tests/LICENSE": "43b7309213293b4323d65301a90e05472579abcd51feb260a850354bcb49ff8f",
     "guest-programs/riscv-tests/tests/macros/scalar/test_macros.h": "529d4d37924feca45c04f2f406fa9e7bf0e116407b5d352c50d73d3143cabaf2",
+    "crates/polkavm-common/src/program.rs": "b50fac865cb3af5c249dcce941afd8f0a68cd4d91e6192b2968cdfb7a6ff7b12",
     "crates/polkavm-common/src/simulator.rs": "6c0017184bf415d87426375d7dc65955300e75d34fc3e6e8ec5ca11a0cf0abba",
     "LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
   }

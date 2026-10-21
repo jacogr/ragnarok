@@ -46,9 +46,8 @@ Successful evaluation carries a copied `StepOutcome` with `Continued`, `OutOfGas
 only the private `Fault` alternative stores a physical page, exposed by a guarded
 `faultPage` accessor. Only `Host` carries a nominal identifier, exposed by guarded
 `hostCall`. Local errors carry no machine or tentative gas debit:
-`InvalidMachine`, `UnsupportedInstruction`, `GasCycleLimitExceeded` and the inherited
-`NegativeBranchTarget` specification gate. `AmbiguousAccessOrder` is retained as
-a historical reason; current scalar inspection does not emit it. Bounded
+`InvalidMachine`, `UnsupportedInstruction`, `GasCycleLimitExceeded` and the historical `NegativeBranchTarget` and `AmbiguousAccessOrder` identifiers.
+Current PolkaVM-aligned pricing and scalar inspection emit neither. Bounded
 `execute` also returns local `StepLimitExceeded`. Default
 results are `Uninitialized`.
 Guest out-of-gas is a completed evaluation, not one of those local errors.
@@ -110,11 +109,11 @@ Passing a terminal snapshot with an invalid PC to either step API returns local
 `InvalidMachine`, not a claimed recursive-`Psi` result. Read-only snapshot access
 remains available, and no mutable owner storage escapes.
 
-The inherited negative conditional-target **gas** gate remains: uncharged execution
-returns local `NegativeBranchTarget`, because the pinned price definition does not
-define negative byte indices. A trusted prepaid snapshot bypasses pricing and the
-instruction itself correctly panics on the invalid destination. Static unconditional
-negative targets have no such pricing dependency and panic after normal charging.
+Conditional branches now use [PolkaVM wrapped-target pricing](pvm-polkavm-branch-cost.md)
+under both uncharged and trusted prepaid execution. Pricing no longer blocks on
+negative mathematical targets; actual out-of-program destinations still panic
+under the independent jump-validity check. Out-of-gas precedes instruction
+mutation, and local simulation limits remain failures with no partial snapshot.
 
 ## Memory instructions and exceptions
 
@@ -167,8 +166,8 @@ step. It also checks one-less-than-required gas, exact simulation limits, unchan
 source snapshots and retained memory bytes.
 
 Additional native cases cover every unsupported valid opcode at both charged-flag
-values; default owners/results; raw containing-block boundaries; propagation of a
-later negative branch's gas gate before an earlier register write; trusted prepaid
+values; default owners/results; raw containing-block boundaries; whole-block pricing of a
+later wrapped negative branch before an earlier register write; trusted prepaid
 bypass; maximum unsigned gas subtraction; copied-result isolation; and 1,000 complete
 ARC release cycles. Four compiler guards protect result privacy and the nominal
 work limit. Five isolated runtime probes reject value access on each local failure
@@ -209,7 +208,6 @@ licence or binary fixture is copied into the project.
 
 Host suspension and bounded recursive `Psi` are implemented in the
 [execution contract](pvm-execution.md). Next: standard program/memory initialization.
-Host functions and complete JAM invocation remain unimplemented. The negative
-branch-price specification gate remains unresolved; wrapping-memory ordering
-follows the approved PolkaVM adoption.
+Host functions and complete JAM invocation remain unimplemented. Branch pricing and wrapping-memory ordering follow the approved PolkaVM
+adoptions.
 These APIs do not establish full JAM parity or unrestricted PVM conformance.

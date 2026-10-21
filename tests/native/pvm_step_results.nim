@@ -4,7 +4,7 @@
 ## Negative runtime fixture for local stepping-result success preconditions.
 ## The executable selects a failure by command-line argument and attempts forbidden result access.
 
-import std/cmdline
+import std/[cmdline, assertions]
 import ../../src/pvm/[program, machine, gas, step]
 let selection = paramStr(1)
 var outcome = default(StepResult)
@@ -18,16 +18,22 @@ elif selection != "default":
   if selection == "unsupported":
     # Executing the trap is outside this bounded register-only API.
     pc = CodeAddress(2)
-  elif selection == "negative":
-    # A later negative branch target gates charging before the current load can commit.
-    bytes = @[0'u8, 0, 7, 51, 170, 0, 254, 255, 255, 255, 3]
+  elif selection in ["negative", "scan_limit"]:
+    # The former negative target now prices successfully; a short scan limit still refuses before the first mutation.
+    bytes = @[0'u8, 0, 6, 51, 0, 7, 170, 0, 252, 9]
   let owner = decodeProgram(bytes, pc, ProgramByteLimit(32), JumpCountLimit(0)).value
   let memory = captureMemory([], PageLimit(0)).value
   let info = MachineInfo(pc: pc, gas: MachineGas(1000), blockCharged: false,
     registers: default(RegisterFile))
   let source = captureMachine(owner, memory, info).value
-  outcome = stepRegisters(source, GasCycleLimit(if selection == "limit": 0 else: 1000))
+  outcome = stepRegisters(source, GasCycleLimit(if selection == "limit": 0 elif selection ==
+      "scan_limit": 4 else: 1000))
 else:
   # The uninitialized alternative never contains a guest outcome or machine handle.
   discard
-discard outcome.value
+if selection == "negative":
+  assert outcome.value.exit == StepExit.Continued # The same binary must accept the approved former-gate program.
+  assert uint64(machineInfo(outcome.value.machine).value.pc) == 3
+  assert uint64(machineInfo(outcome.value.machine).value.registers[0]) == 7
+else:
+  discard outcome.value # Declared local failures must still enforce the checked success precondition.

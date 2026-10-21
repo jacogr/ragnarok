@@ -31,7 +31,7 @@ class GasReferenceTests(unittest.TestCase):
         data, count = fixtures()
         self.assertGreater(count, 1000)
         self.assertEqual(hashlib.sha256(data).hexdigest(),
-                         'f82132da32266d6ed08252cde48cc1c725a97e23ab3948881b8ac9217b635209')
+                         '238efdc7d487763e9c50b109b5d43c2543dd05cb2db621e11f4b83d88050e255')
         with tempfile.TemporaryDirectory() as folder:
             # Native input is generated under a caller-owned build directory, never checked in.
             path, evidence = prepare(folder)
@@ -63,15 +63,20 @@ class GasReferenceTests(unittest.TestCase):
             raw = instruction(207, 0, 1, destination)
             self.assertEqual(cost(raw, raw+b'\0', 0, definitions)[3], slots)
 
-    # The independent model refuses negative target indexing instead of using Python's wraparound indexing.
-    def test_negative_target_gate(self):
-        with self.assertRaisesRegex(ValueError, 'negative branch target'):
-            simulate([instruction(170, displacement=-1), instruction(0)], tables())
+    # Pinned PolkaVM wraps static targets to u32; Python negative indexing must never select a trailing byte.
+    def test_wrapped_negative_targets(self):
+        definitions = tables()
+        for op in [*range(81, 91), *range(170, 176)]:
+            # All immediate/register conditional forms receive the same absent-target prediction hit.
+            for displacement in (-1, -128, -(1 << 31)):
+                sequence = [instruction(op, displacement=displacement), instruction(100), instruction(0)]
+                self.assertEqual(cost(sequence[0], b''.join(sequence), 0, definitions)[2], 1)
+                self.assertEqual(simulate(sequence, definitions), (1, 4))
 
-    @unittest.skip('GP 0.8.0 branch-cost byte lookup has no definition for a negative target; upgrade/clarification required')
+    # The former pending consensus charge now has an explicit first-block cost and independent cycle count.
     def test_negative_target_consensus_charge(self):
-        # This scope gate must be resolved before claiming pricing for every admissible program.
-        self.fail('A normative negative-index branch gas cost is required')
+        sequence = [instruction(170, displacement=-1), instruction(100), instruction(0)]
+        self.assertEqual(simulate(sequence, tables()), (1, 4))
 
 
 # Direct invocation checks provenance and expectations without rewriting the fixture.

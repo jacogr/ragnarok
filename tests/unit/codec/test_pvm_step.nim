@@ -161,21 +161,35 @@ for op in 0..255:
         assert stepControl(source, GasCycleLimit(0)).error == StepError.UnsupportedInstruction
       same(machineInfo(source).value, info)
 
-# Gas scanning includes a later branch's specification gate before committing an earlier register write.
-let gated = smallProgram([51'u8, 170, 0, 254, 255, 255, 255], 3)
-let gatedInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), blockCharged: false,
-  registers: default(RegisterFile))
-let gatedMachine = captureMachine(gated, memory, gatedInfo).value
-assert stepRegisters(gatedMachine, GasCycleLimit(1000)).error == StepError.NegativeBranchTarget
-same(machineInfo(gatedMachine).value, gatedInfo)
-# A trusted prepaid snapshot follows the GP charged-flag rule even when recomputation would hit the gate.
-var prepaidInfo = gatedInfo
+# Whole-block scanning prices a later wrapped negative target before committing the first register mutation.
+let scanned = smallProgram([51'u8, 0, 7, 170, 0, 252], 9)
+var scannedRegisters = default(RegisterFile)
+scannedRegisters[0] = RegisterValue(99)
+let scannedInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), blockCharged: false,
+  registers: scannedRegisters)
+let scannedMachine = captureMachine(scanned, memory, scannedInfo).value
+let scannedPrice = blockGas(scanned, CodeAddress(0), GasCycleLimit(5))
+assert scannedPrice.error == GasError.None and uint64(scannedPrice.value) == 2
+assert blockGas(scanned, CodeAddress(0), GasCycleLimit(4)).error == GasError.CycleLimitExceeded
+let scannedStep = stepRegisters(scannedMachine, GasCycleLimit(1000))
+assert scannedStep.error == StepError.None and scannedStep.value.exit == StepExit.Continued
+var scannedExpected = scannedInfo
+scannedExpected.pc = CodeAddress(3)
+scannedExpected.registers[0] = RegisterValue(7)
+scannedExpected.gas = MachineGas(1000 - uint64(scannedPrice.value))
+scannedExpected.blockCharged = true
+same(machineInfo(scannedStep.value.machine).value, scannedExpected)
+same(machineInfo(scannedMachine).value, scannedInfo)
+# A trusted prepaid snapshot still bypasses pricing and preserves zero gas while performing the same mutation.
+var prepaidInfo = scannedInfo
 prepaidInfo.blockCharged = true
 prepaidInfo.gas = MachineGas(0)
-let prepaid = captureMachine(gated, memory, prepaidInfo).value
+let prepaid = captureMachine(scanned, memory, prepaidInfo).value
 let resumed = stepRegisters(prepaid, GasCycleLimit(0))
 assert resumed.error == StepError.None and resumed.value.exit == StepExit.Continued
-assert uint64(machineInfo(resumed.value.machine).value.pc) == 1
+assert uint64(machineInfo(resumed.value.machine).value.pc) == 3
+assert uint64(machineInfo(resumed.value.machine).value.registers[0]) == 7
+assert uint64(machineInfo(resumed.value.machine).value.gas) == 0
 
 # Boundary lookup must ignore terminator-valued operand bytes and reject unmarked/out-of-range PCs.
 let boundaries = smallProgram([0'u8, 51, 0, 100, 0, 0], 43)
@@ -211,22 +225,16 @@ proc controlProgram(parts: openArray[seq[byte]], jumps: openArray[uint32]): Prog
   assert decoded.error == ProgramError.None
   decoded.value
 
-# Check a control witness at prepaid zero gas and, when defined, charged/insufficient gas.
+# Check every control witness at prepaid zero gas and charged/insufficient gas.
 # Expected register/PC values are supplied independently by each test, not derived from execution.
 proc controlCase(owner: Program, entry: uint64, registers: RegisterFile,
     expectedExit: StepExit, expectedPc: uint64, expectedRegisters: RegisterFile,
     continuedCharged = false) =
   let start = containingBlockStart(owner, CodeAddress(entry)).value
   let price = blockGas(owner, start, GasCycleLimit(1000))
-  # Prepaid execution also covers negative static targets whose gas price is a documented local gate.
+  assert price.error == GasError.None
+  # The PolkaVM adoption gives negative targets a defined price before the independent jump-validity check.
   for prepaid in [true, false]:
-    if not prepaid and price.error != GasError.None:
-      # Undefined negative branch pricing stays a local gate, with no published partial state.
-      assert price.error == GasError.NegativeBranchTarget
-      let gatedSource = captureMachine(owner, memory, MachineInfo(pc: CodeAddress(entry),
-        gas: MachineGas(10000), blockCharged: false, registers: registers)).value
-      assert stepControl(gatedSource, GasCycleLimit(1000)).error == StepError.NegativeBranchTarget
-      continue
     let initial = MachineInfo(pc: CodeAddress(entry), gas: MachineGas(
         if prepaid: 0'u64 else: 10000'u64),
       blockCharged: prepaid, registers: registers)
@@ -333,7 +341,7 @@ for op in 170..175:
   controlCase(controlProgram([@[byte(op), 16'u8, 0]], []), 0,
     zeroRegisters, StepExit.Panic, 0, zeroRegisters)
 
-# Negative conditional targets panic when prepaid but retain the undefined-price gate when uncharged.
+# Negative conditional targets now panic consistently under prepaid and freshly charged execution.
 controlCase(controlProgram([@[81'u8, 16, 1, 255], @[0'u8]], []), 0,
   zeroRegisters, StepExit.Panic, 0, zeroRegisters)
 controlCase(controlProgram([@[170'u8, 16, 255], @[0'u8]], []), 0,

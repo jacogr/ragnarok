@@ -418,7 +418,7 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
       # Local simulation exhaustion is not guest out-of-gas and carries no partial debit.
       return StepResult(status: StepError.GasCycleLimitExceeded)
     of GasError.NegativeBranchTarget:
-      # Preserve the pinned gas model's explicit negative-target specification gate.
+      # Retain the historical error alternative; current PolkaVM-aligned pricing does not emit it.
       return StepResult(status: StepError.NegativeBranchTarget)
     else:
       # A captured valid PC must have a valid containing block.
