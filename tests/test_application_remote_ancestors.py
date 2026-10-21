@@ -38,6 +38,25 @@ class RemoteAncestorObserver(unittest.TestCase):
         process.kill.assert_called_once_with()
         process.wait.assert_called_once_with()
 
+    def test_discovery_uses_explicit_mode_and_reaps_timeout(self):
+        """Discovery selects its own CLI and independent witness mode while retaining strict cleanup."""
+        process = Mock()
+        process.poll.return_value = None
+        with tempfile.TemporaryDirectory() as directory, patch(
+                'application_remote_ancestors.ready_port', return_value=1234), patch(
+                'application_remote_ancestors.subprocess.Popen', return_value=process) as start, patch(
+                'application_remote_ancestors.subprocess.run',
+                side_effect=subprocess.TimeoutExpired('/peer', 20)) as run:
+            # No timeout may leak a native responder or fall back to up-front acquisition.
+            with self.assertRaises(subprocess.TimeoutExpired):
+                observe(Path('/peer'), Path('/witness'), Path(directory), self.environment(), discovery=True)
+            arguments = run.call_args.args[0]
+            self.assertIn('--download-discover-ancestors', arguments)
+            self.assertNotIn('--download-remote-ancestors', arguments)
+            self.assertEqual(start.call_args.kwargs['env']['RAGNAROK_ANCESTOR_DISCOVERY'], '1')
+        process.kill.assert_called_once_with()
+        process.wait.assert_called_once_with()
+
     def test_cli_success_cannot_hide_failed_witness(self):
         """A zero process exit and success marker cannot replace the independent protocol/map verdict."""
         process = Mock()

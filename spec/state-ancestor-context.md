@@ -148,3 +148,11 @@ already supplied context (zero ancestry requests), invalid child seal (zero ance
 empty/wrong-parent/suffixed/no-FIN/byte refusals, pin/count preflight, finite two-peer fallback and
 real durable adoption/restart with complete-map/history/finality checks. Refused remote context
 never reaches canonical publication.
+
+The registered `application_discovery_ancestors` E2E workload reuses the existing production
+executable runner and independent native TLS/map witness. It requires journal and managed success,
+byte-identical existing journal preservation on wrong-parent refusal, timeout with no adoption,
+and a two-child run whose exact request order is child, missing ancestor, next child. The latter
+proves exact-pin reconnect after both child and ancestor connection retirement, preserved context,
+confirmed progress and every restored map entry/history/finality expectation. The observer requires
+both CLI and native witness success, and reaps the native process after exceptions/timeouts.

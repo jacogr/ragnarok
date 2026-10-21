@@ -10,6 +10,7 @@ import ../../src/chain/[genesis, provider]
 import ../../src/codec/[bounded, header, block_codec, report_owned]
 import ../../src/state/[store, accumulation_finalization]
 import ../support/[application_candidate_context, accumulation_completion_context, block_download_transport]
+import ../support/application_download_chain
 import ../support/report_admission_context as report_context
 
 proc frame(payload: seq[byte]): seq[byte] =
@@ -42,7 +43,9 @@ proc pause() =
 proc main() {.raises.} =
   ## Genuine report/guest preparation defines expected state without using the production command's success status.
   let mode = getEnv("RAGNAROK_REMOTE_ANCESTOR_CASE")
-  assert mode in ["complete", "managed", "wrong-parent", "timeout"]
+  let discovery = getEnv("RAGNAROK_ANCESTOR_DISCOVERY") == "1"
+  assert mode in ["complete", "managed", "wrong-parent", "timeout", "sequence"]
+  assert mode != "sequence" or discovery # Only child-driven acquisition exercises post-fetch successive children.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var bytes = newSeq[byte](raw.len)
   for index, octet in raw: bytes[index] = byte(octet)
@@ -53,7 +56,7 @@ proc main() {.raises.} =
   let original = source.chainView.bestBlock.value
   let prepared = prepareCandidate(source, candidateBlock(context), [ancestor], preparationLimits())
   assert prepared.error == ApplicationCandidateError.None
-  let expected = source.applyAccumulation(prepared.value, completionLimits().composition)
+  var expected = source.applyAccumulation(prepared.value, completionLimits().composition)
   assert expected.error == ApplicationChainError.None
   var limits = DownloadLoopLimits(schedule: DownloadScheduleLimits(peers: ElementLimit(1),
       attempts: 1,
@@ -62,6 +65,8 @@ proc main() {.raises.} =
     composition: completionLimits().composition, stream: DownloadStreamLimits(readBytes: ByteLimit(4096),
     writeBytes: ByteLimit(42), timeout: DownloadTimeout(20000)),
         attemptTimeout: DownloadAttemptTimeout(30000))
+  if mode == "sequence":
+    limits.composition = chainCompositionLimits() # The evolved parent legitimately has more service-statistics rows than the legacy single-child fixture.
   writeFile("sequence-policy.conf", encodeDownloadPolicy(limits))
   var historical = newSeq[byte](ancestor.headerInfo.value.consumed)
   assert encodeOwnedHeader(ancestor, historical).error == HeaderError.None
@@ -73,6 +78,29 @@ proc main() {.raises.} =
   assert encodeOwnedBlock(candidate, child).error == FrameError.None
   let remoteRequest = request(array[32, byte](original.header.headerInfo.value.unsigned.parent), 1)
   let childRequest = request(array[32, byte](original.blockHash), 0)
+  var requests = @[remoteRequest, childRequest]
+  var responses = @[frame(historical), frame(child)]
+  let behavior = if mode == "timeout": NoFin else: DownloadTransferMode.Healthy
+  var behaviors = @[behavior, DownloadTransferMode.Healthy]
+  if discovery:
+    requests = @[childRequest, remoteRequest]
+    responses = @[frame(child), frame(historical)]
+    behaviors = @[DownloadTransferMode.Healthy, behavior] # The original child must arrive before the missing-context request.
+  if mode == "sequence":
+    let second = signedChild(expected.value)
+    let preparedSecond = prepareCandidate(source, second, [original.header, ancestor],
+        preparationLimits())
+    assert preparedSecond.error == ApplicationCandidateError.None,
+        "second candidate preparation: " & $preparedSecond.error
+    let secondRequest = request(array[32, byte](expected.value.blockHash), 0)
+    expected = source.applyAccumulation(preparedSecond.value, chainCompositionLimits())
+    assert expected.error == ApplicationChainError.None, "second candidate adoption: " &
+        $expected.error
+    var secondWire = newSeq[byte](second.blockInfo.value.consumed)
+    assert encodeOwnedBlock(second, secondWire).error == FrameError.None
+    requests.add(secondRequest)
+    responses.add(frame(secondWire))
+    behaviors.add(DownloadTransferMode.Healthy) # A fresh exact-pin child endpoint follows graceful remote endpoint retirement.
   var before = ""
   if mode == "wrong-parent":
     var seed = default(Services)
@@ -80,20 +108,19 @@ proc main() {.raises.} =
     seed.close()
     before = readFile("sequence-state.db") # Failed acquisition must preserve an already existing durable journal byte-for-byte.
   var servers = default(DownloadResponders)
-  let behavior = if mode == "timeout": NoFin else: DownloadTransferMode.Healthy
-  assert servers.openSequenceResponders(@[remoteRequest, childRequest], @[frame(historical), frame(child)],
-    @[behavior, DownloadTransferMode.Healthy])
+  assert servers.openSequenceResponders(requests, responses, behaviors)
   writeFile("sequence-ready", $servers.port(true))
   let started = getMonoTime()
   while not fileExists("sequence-stop"):
     assert (getMonoTime() - started).inMilliseconds < 20000
     assert servers.poll()
     pause() # Native responder owns all network assertions; Python owns only process/CLI checks.
-  let requests = servers.requestCount(true)
+  let observedRequests = servers.requestCount(true)
   assert servers.requestCount(false) == 0
   servers.close()
-  let adopted = mode in ["complete", "managed"]
-  assert requests == (if adopted: 2 else: 1)
+  let adopted = mode in ["complete", "managed", "sequence"]
+  let adoptedCount = if mode == "sequence": 2 elif adopted: 1 else: 0
+  assert observedRequests == (if mode == "sequence": 3 elif adopted or discovery: 2 else: 1)
   if mode == "wrong-parent": assert readFile("sequence-state.db") == before
   var resumed = default(Services)
   defer: resumed.close()
@@ -111,11 +138,11 @@ proc main() {.raises.} =
     let key = wantedState.keyAt(StateEntryIndex(index)).value
     assert actualState.lookup(key).value.bytes == wantedState.lookup(
         key).value.bytes # Every restored serialized entry has an independent composition witness.
-  assert view.retainedCount == (if adopted: 2 else: 1)
+  assert view.retainedCount == adoptedCount + 1
   assert view.finalizedBlock.error == GenesisError.Unavailable
   assert view.blockAt(BlockHash(array[32, byte](original.parentHash))).error ==
       GenesisError.Unavailable
-  echo "REMOTE_ANCESTORS_VERIFIED adopted=" & $(if adopted: 1 else: 0) & " requests=" & $requests
+  echo "REMOTE_ANCESTORS_VERIFIED adopted=" & $adoptedCount & " requests=" & $observedRequests
 try:
   main() # Native/backend/protocol/assertion failures remain a nonzero independent process result.
 except:

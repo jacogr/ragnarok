@@ -54,10 +54,10 @@ class VerificationE2E(unittest.TestCase):
         self.assertFalse(set(UNIT_SUITES) & set(test_e2e.SELFTESTS))
 
     def test_download_workloads_refuse_failed_peer_or_witness_build(self):
-        """Stale executable/witness binaries cannot satisfy either independent download workload."""
+        """Stale executable/witness binaries cannot satisfy each independent download workload."""
         from unittest.mock import Mock, patch
         import e2e_checks
-        for workload in ('application_download_sequence', 'application_remote_ancestors'):
+        for workload in ('application_download_sequence', 'application_remote_ancestors', 'application_discovery_ancestors'):
             for peer_code in (0, 1):
                 # Each declared workload must own its build failure and skip process observation entirely.
                 checks = SimpleNamespace(folder=ROOT/'build/tests/e2e',
@@ -65,8 +65,9 @@ class VerificationE2E(unittest.TestCase):
                 context = SimpleNamespace(peer=({'exit_code': peer_code}, Path('/stale-peer')),
                     compiler=Path('/compiler'), crypto=Path('/crypto'), bs=Path('/bandersnatch'),
                     quic=Path('/quic'), checks=checks)
+                observer_module = 'application_remote_ancestors' if workload == 'application_discovery_ancestors' else workload
                 with self.subTest(workload=workload, peer_code=peer_code), patch(
-                        'e2e_checks.announce'), patch(workload+'.observe') as observe:
+                        'e2e_checks.announce'), patch(observer_module+'.observe') as observe:
                     self.assertFalse(getattr(e2e_checks, workload)(context)['passed'])
                     observe.assert_not_called()
                     if peer_code:
@@ -74,7 +75,7 @@ class VerificationE2E(unittest.TestCase):
                     else:
                         checks.build.assert_called_once()
                         self.assertEqual(checks.build.call_args.args[1],
-                                         ROOT/('tests/native/'+workload+'.nim'))
+                                         ROOT/('tests/native/'+observer_module+'.nim'))
 
 
 # Direct execution uses the same safeguards as normal unittest discovery.
