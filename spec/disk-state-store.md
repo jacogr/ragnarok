@@ -497,3 +497,13 @@ one regular database file instead leads to an offline compact-to-new-file operat
 in-place allocator/reuse design. This operator/layout choice must be resolved before implementing
 physical replacement. No file replacement, format migration, automatic reclamation or consumer
 integration is introduced by this tranche.
+
+## Authorized managed storage and record collections
+
+The maintainer selected managed multi-file storage for online reclamation, with explicit migration
+of existing single-file databases. The existing single-file owner/format remains a migration source.
+`RecordCollection` carries only physical records under the exact `RAGNAROK-RECORDS-V1\n` domain,
+an E8 record count and the existing physical record forms. It has no target-root authority. Its
+aggregate value ceiling is the explicit union budget; per-value ceilings remain inherited. The
+original target-bearing codec retains its bytes and complete-map aggregate ceilings. Cross-domain
+decoding refuses, and full graph/current-root validation remains a separate admission boundary.
