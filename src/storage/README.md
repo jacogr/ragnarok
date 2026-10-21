@@ -156,3 +156,8 @@ refuse the selected pair and avoid directory scanning. Unknown epochs remain unt
 directory, preserving admitted chain/schema, generation, selected context and explicit retained
 roots. The source remains unchanged and independently usable. Startup never implicitly migrates an
 existing file, and migration supplies no external checkpoint trust.
+
+Managed `usage` reports cached selected-file extents and revision metadata without IO or graph
+copying. It excludes unknown/staged/retired files and retained reader memory. The fixed native
+`storage_managed_usage` workload records reclamation and elapsed cost for 64 commits retaining nine
+explicit roots; its measurements are descriptive local evidence, not performance thresholds.

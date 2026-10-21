@@ -19,6 +19,12 @@ type
     of InvalidBatch: batchReason: RepositoryResult[RepositoryView]
     of InvalidFrame: frameReason: FrameError
     else: discard
+  ManagedUsage* = object ## Copied selected-file extents exclude unknown/staged/retired files and retained reader memory.
+    epoch*: ManagedEpoch
+    generation*: RepositoryGeneration
+    root*: StateRoot
+    storedNodes*: int
+    snapshotBytes*, journalBytes*: uint64
   ManagedCompaction* = object ## Successful durable replacement reports deferred old-file cleanup separately.
     epoch*: ManagedEpoch
     generation*: RepositoryGeneration
@@ -33,6 +39,7 @@ type
     chain: StorageChainId
     schema: StorageSchema
     epoch: ManagedEpoch
+    snapshotBytes: uint64
     limits: ManagedLimits
     active, poisoned: bool
 
@@ -147,6 +154,7 @@ proc initializeManagedRepository*(repository: var ManagedRepository, path: strin
   repository.chain = chain
   repository.schema = schema
   repository.epoch = ManagedEpoch(1)
+  repository.snapshotBytes = uint64(encoded.value.bytes.len)
   repository.limits = limits
   repository.poisoned = false
   repository.active = true # Only the synchronized manifest grants a selected live revision.
@@ -238,6 +246,7 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
   repository.chain = chain
   repository.schema = schema
   repository.epoch = manifest.epoch
+  repository.snapshotBytes = uint64(bytes.value.len)
   repository.limits = limits
   repository.poisoned = false
   repository.active = true
@@ -365,6 +374,7 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   repository.memory = restored.value.repository
   repository.context = restored.value.context
   repository.epoch = next
+  repository.snapshotBytes = uint64(encoded.value.bytes.len)
   if closed != FileError.None or moved != FileError.None:
     repository.poisoned = true
     return ManagedResult[ManagedCompaction](status: FileError.RecoveryRequired)
@@ -394,3 +404,14 @@ proc discardManagedStaging*(repository: var ManagedRepository): FileError =
   let journal = removeManagedFile(repository.directory, ManagedFileKind.Journal, next)
   if journal != FileError.None: return journal
   removeManagedFile(repository.directory, ManagedFileKind.Snapshot, next)
+proc usage*(repository: ManagedRepository): ManagedResult[ManagedUsage] =
+  ## Inspect cached selected extents and scalar revision metadata without IO, hashing or graph detachment.
+  if not repository.active: return ManagedResult[ManagedUsage](status: FileError.Uninitialized)
+  if repository.poisoned: return ManagedResult[ManagedUsage](status: FileError.RecoveryRequired)
+  let journal = managedJournalBytes(repository.journal)
+  if journal.error != FileError.None: return ManagedResult[ManagedUsage](status: journal.error)
+  let view = repository.memory.snapshot.value
+  ManagedResult[ManagedUsage](status: FileError.None, completed: ManagedUsage(
+    epoch: repository.epoch,
+    generation: view.generation, root: view.commitment.root, storedNodes: view.storedNodes,
+    snapshotBytes: repository.snapshotBytes, journalBytes: journal.value))

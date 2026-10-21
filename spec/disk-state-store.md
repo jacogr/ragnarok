@@ -634,3 +634,18 @@ trust, choose block/finality policy or silently change normal startup layout.
 
 Run `make unit SUITE=storage_file_migration` for source-byte equality, chain rejection, retained
 history/context/generation preservation, existing-target refusal and independent subsequent owners.
+
+## Selected usage and bounded maintenance evidence
+
+`usage` returns copied selected snapshot/journal extents, epoch, state generation/root and stored
+record count from cached ownership metadata. It performs no filesystem IO, hashing or graph copy.
+The counters exclude unrelated/staged/retired files and immutable reader memory; they are not a
+whole-directory quota or logical state size. Reopen and compaction update the cached snapshot
+extent, while the journal lease accounts for every confirmed append.
+
+`storage_managed_usage` records a fixed checked workload of 64 changed-root commits, followed by
+retention of the last eight roots plus one explicit older root. It checks all nine complete maps,
+records before/after selected-file extents and compaction time under the native evidence directory,
+and checks 1,000 allocation-free usage queries. Timing is descriptive local evidence, with no
+cross-host threshold or performance claim. This workload does not model random disk access, SSD
+wear, power-loss guarantees or production cache behavior.
