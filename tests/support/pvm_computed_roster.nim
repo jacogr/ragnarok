@@ -3,6 +3,7 @@
 
 ## Genuine three-core signed contexts distinguish configured ceilings, parent population and posterior eligibility.
 
+import ./pvm_computed_storage_program
 import std/assertions
 import ../../src/state/[computed_transition, computed_profile, computed_lookup, computed_recent,
   computed_state, computed_links, computed_guarantee, computed_report, block_transition,
@@ -12,7 +13,7 @@ import ../../src/state/[computed_transition, computed_profile, computed_lookup, 
 import ../../src/chain/[genesis, parameters]
 import ../../src/codec/[assurances, bounded, header, block_codec, work_package, work_report, composite,
   state_safrole, state_layout, state_trie, state_availability, state_authorization, state_disputes,
-  state_privileges, state_statistics]
+  state_privileges, state_statistics, state_accounts]
 import ../../src/crypto/primitives
 import ../../src/bandersnatch/bandersnatch
 import ./[pvm_computed_transition, report_admission_context, pvm_input_refinement,
@@ -53,10 +54,10 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
     additionalCores: openArray[uint64] = [], distinctPackages = false,
         withReady = false, withRound = false, withExecution = false,
             invalidEntry = false, withComposition = false,
-                withChain = false): ComputedRosterFixture =
+                withChain = false, storage = ComputedStorageMode.Disabled): ComputedRosterFixture =
   ## Re-author a three-core complete signed prefix; optional parent9 -> posterior6 is a real epoch transition.
   let base = transitionFixture(epoch = shrink, withReady = withReady, withExecution = withExecution,
-      invalidEntry = invalidEntry)
+      invalidEntry = invalidEntry, storage = storage)
   let cfg = rosterTransitionConfig()
   var original = base.context.original
   let assignments = availabilityStateEntry(newSeq[AvailabilityAssignment](3),
@@ -79,6 +80,15 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
   var writes = @[StateWrite(kind: StateWriteKind.Put, key: assignments.key,
       value: assignments.value),
     StateWrite(kind: StateWriteKind.Put, key: poolEntry.key, value: poolEntry.value)]
+  if storage != ComputedStorageMode.Disabled:
+    # Canonical original self-account funding enters the map before root/signing/current computation; other metadata stays exact.
+    let accountKey = chapterServiceKey(StateChapter(255), ServiceIndex(42))
+    var metadata = decodeServiceMetadata(original.snapshot.value.lookup(accountKey).value.bytes,
+        ByteLimit(89)).value.metadata
+    metadata.balance = AccountBalance(if storage ==
+        ComputedStorageMode.Underfunded: 49'u64 else: 50'u64)
+    let account = serviceMetadataEntry(ServiceIndex(42), metadata, ByteLimit(89)).value
+    writes.add(StateWrite(kind: StateWriteKind.Put, key: account.key, value: account.value))
   if withComposition:
     # Parent statistics are genuine original serialized input, before the final root, signing and current PVM work.
     let currentCount = if withChain: 9 else: 6

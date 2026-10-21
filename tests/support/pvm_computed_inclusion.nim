@@ -3,6 +3,7 @@
 
 ## Author a real guarantee-bearing candidate, authenticate its prefix, then bind and verify the original computations anew.
 
+import ./pvm_computed_storage_program
 import std/assertions
 import ../../src/state/[computed_batch, computed_envelope, computed_credentials,
   computed_guarantors,
@@ -18,11 +19,12 @@ import ./[pvm_computed_batch, pvm_computed_roster, pvm_computed_credentials,
 
 proc inclusionFixture*(changed = false, distinctPackages = false,
     withReady = false, withRound = false, withExecution = false,
-        invalidEntry = false, withComposition = false, withChain = false): ComputedGuaranteeBatch =
+        invalidEntry = false, withComposition = false, withChain = false,
+            storage = ComputedStorageMode.Disabled): ComputedGuaranteeBatch =
   ## Raw proposals author the candidate only; returned authority is rederived from its actual signed prefix.
   let proposals = batchEnvelopes(distinctPackages = distinctPackages, withReady = withReady,
       withRound = withRound, withExecution = withExecution, invalidEntry = invalidEntry,
-      withComposition = withComposition, withChain = withChain)
+      withComposition = withComposition, withChain = withChain, storage = storage)
   let proposed = prepareComputedBatch(proposals, batchLimits()).value
   let first = proposals[0].computedEnvelopeSource.value.computedCredentialSource.value.computedGuarantorSource.value.computedRosterSource.value
   let original = first.computedTransitionSource.value.computedProfileContext.value

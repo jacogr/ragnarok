@@ -3,6 +3,7 @@
 
 ## Coherent original nine-validator computed chain fixtures retain exact parent maps, headers and complete parameters.
 
+import ./pvm_computed_storage_program
 import std/[assertions, syncio]
 import ../../src/state/[computed_composition, computed_finalization, computed_execution,
     computed_round, accumulation_completion, accumulation_finalization, accumulation_consensus,
@@ -15,9 +16,9 @@ proc chainHeaderBytes*(header: OwnedHeader): seq[byte] =
   ## Re-encode the actual owner-bound sealed header without modifying its signed bytes.
   result = newSeq[byte](header.headerInfo.value.consumed)
   assert encodeOwnedHeader(header, result).error == HeaderError.None
-proc chainFixture*(coherent = true): ComposedComputedState =
+proc chainFixture*(coherent = true, storage = ComputedStorageMode.Disabled): ComposedComputedState =
   ## Author actual original nine-active keys/statistics/shards before signing; existing bounded defaults remain separately testable.
-  let final = compositionFixture(withChain = coherent)
+  let final = compositionFixture(withChain = coherent, storage = storage)
   var limits = computedCompositionLimits()
   limits.validators.projection.rows = ElementLimit(18)
   let composed = composeComputedState(final, limits)
