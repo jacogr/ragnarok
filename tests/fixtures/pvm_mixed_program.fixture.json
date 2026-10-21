@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_PVM_MIXED_PROGRAM",
+  "files": {
+    "pvm-mixed-program.bin": "13a5be9ff1c65e08869dbe31c0ab5b49fa8593a7adfbdc4b32b4e0bbd521cf09"
+  },
+  "target": "pvm-mixed-program.bin"
+}
