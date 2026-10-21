@@ -23,3 +23,13 @@ API, sorted iteration, retained values/forks and atomic publication; validate ex
 This narrow authorization supersedes the earlier isolation gate for that task only. Disk adoption,
 canonical durable heads, startup configuration and unrelated state/PVM work remain gated.
 See [the integration contract](../../spec/state-store-incremental.md).
+
+## Authorized disk-storage tranche
+
+The maintainer authorized db #1 to implement disk storage after the in-memory tranche merged,
+including an application backend flag. db #1 owns storage internals, disk-store ownership and
+minimal StateStore snapshot transport APIs. State #5 owns checkpoint recovery/application startup;
+coordinate concrete interfaces and file ownership before wiring that boundary. Preserve JAM roots,
+immutable readers, exact inherited limits, atomic publication and explicit IO uncertainty. Measure
+fixed checked workloads before choosing layout changes. Full/light mode remains separate from
+memory/disk backend selection; no partial-light full-state API is authorized.

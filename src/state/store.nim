@@ -10,7 +10,7 @@
 
 import std/[algorithm, assertions]
 import ../codec/[state_trie, state_layout, bounded]
-import ../storage/full_state_trie
+import ../storage/[full_state_trie, node_records]
 
 type
   StateEntryIndex* = distinct int ## Sorted ordinal interpreted only against the supplied immutable complete-map snapshot.
@@ -314,3 +314,18 @@ proc apply*(store: var StateStore, writes: openArray[StateWrite]): StateStoreRes
   store.head = data # This is the sole publication point, reached only after complete success.
   StateStoreResult[StateStoreSnapshot](status: StateStoreError.None,
     completed: StateStoreSnapshot(data: data))
+
+proc exportStateSnapshot*(snapshot: StateStoreSnapshot,
+    limits: TrieExportLimits): TrieResult[TrieExport] =
+  ## Copy bounded full physical records from the cached immutable trie without rehashing state.
+  let data = snapshot.data
+  if data == nil: return default(TrieResult[TrieExport])
+  exportFullTrie(data.trie, limits)
+
+proc exportStateChanges*(base, target: StateStoreSnapshot,
+    limits: TrieExportLimits): TrieResult[TrieExport] =
+  ## Export detached changed nodes; the caller must separately authorize the selected base owner.
+  let before = base.data
+  let after = target.data
+  if before == nil or after == nil: return default(TrieResult[TrieExport])
+  exportTrieChanges(before.trie, after.trie, limits)
