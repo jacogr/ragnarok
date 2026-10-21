@@ -268,3 +268,18 @@ Independent offline verification succeeds after retirement.
 Local recovered verification-lease suite, semantic checks and inventory pass,
 including actual wrong-context/matching completions and exact file preservation.
 Evidence uses `build/recovery-verify-lease*`; no production worker changes.
+
+## Authenticated child download from imported state
+
+The production download command loads the explicit checkpoint/trust controls,
+requests the restored parent's exact child through real pinned TLS/CE 128 framing,
+prepares the genuine two-guest block on its native worker and reports Adopted only
+after actual deferred canonical adoption. A corrupted import refuses before any
+outgoing request; a valid response with insufficient guest-preparation policy
+reports exhaustion rather than adoption. Independent responder request counts
+distinguish these paths. Each bounded responder process is reaped and all parent
+command workers join before the next fork.
+
+Local real TLS download scenarios, semantic checks and inventory pass. Actual
+responder counts are one for genuine adoption/guest refusal and zero for invalid
+import before transport. Evidence uses `build/recovery-download*`.
