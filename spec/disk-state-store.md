@@ -49,3 +49,18 @@ This first owner exposes durable state revisions only. It is not yet wired into 
 adoption, canonical block metadata or a startup flag. Those require atomic publication of the
 matching application context and coordination with state #5's startup/recovery layer. A successful
 storage receipt cannot silently advance the application head or choose consensus authority.
+
+## Publication failures and explicit recovery
+
+`recoverDiskStateStore` wraps the existing independently trusted prefix repair; ordinary open
+never repairs. Tests constrain actual child-process writes with `RLIMIT_FSIZE`: zero bytes, one
+byte, half a frame and one byte short must fail; exact and ample ceilings are genuine controls.
+Poisoned owners refuse new reads, updates and synchronization while held values remain readable.
+Strict open preserves incomplete bytes. Wrong trusted generations preserve every byte. Authorized
+repair restores the exact complete prefix, permits resumed append, and refuses complete visible
+successors or complete checksum corruption. Repair may already be durable if subsequent policy or
+cryptographic StateStore restoration fails; no writable owner escapes that later failure.
+
+A separate maintained-crypto-observer suite refuses each required hash stage before update
+publication. Every refusal preserves journal bytes, generation and exact old snapshot identity;
+the same workload also completes with real successful controls.

@@ -1,0 +1,1 @@
+PASS disk store hash failures: every required stage preserves prior bytes and snapshot identity
