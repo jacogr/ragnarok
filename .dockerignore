@@ -1,0 +1,30 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Generated host binaries, dependency checkouts and local configuration never enter the build.
+build
+vendor
+**/nimcache
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.DS_Store
+.idea
+.vscode
+.agents
+.codex
+.aws
+.env
+.env.*
+
+# Make needs committed gitlinks and revision metadata, but no local Git configuration/hooks/modules.
+# Ordinary clones are supported; linked worktrees need a standalone clone as their build context.
+.git/*
+!.git/HEAD
+!.git/index
+!.git/objects
+!.git/objects/**
+!.git/refs
+!.git/refs/**
+!.git/packed-refs
+!.git/shallow

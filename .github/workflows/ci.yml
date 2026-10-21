@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [unit, e2e, full]
+        options: [unit, e2e, docker, full]
         default: full
         required: true
 
@@ -318,3 +318,26 @@ jobs:
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
             build/quic/build.log
+
+  # Build locally and execute the final image; no registry credentials or image publishing.
+  docker:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
+    name: Docker image
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Build and smoke-test Docker image
+        run: make check-docker
+      - name: Retain Docker build diagnostics
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: docker-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/docker-build.log
+            build/ci/docker-smoke.log

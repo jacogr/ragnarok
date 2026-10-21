@@ -22,12 +22,28 @@ export UI_MINIFY ?= $(if $(filter 1 true,$(CI)),1,0)
 # Optional one-suite selection is passed through the environment, never interpolated as shell code.
 export SUITE ?=
 SUMMARY_OUTPUT ?= build/ci/summary.md
+# The pinned compiler supports Linux x86-64; Docker can emulate it on an ARM development host.
+DOCKER ?= docker
+DOCKER_IMAGE ?= ragnarok:local
+DOCKER_PLATFORM ?= linux/amd64
 
 .PHONY: ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
 	$(PYTHON) tools/build.py
+
+# Docker owns an isolated setup/build; do not provision host compilers or reuse host artifacts.
+.PHONY: docker-build check-docker
+docker-build:
+	mkdir -p build/ci
+	$(DOCKER) build --platform "$(DOCKER_PLATFORM)" --tag "$(DOCKER_IMAGE)" . 2>&1 | tee build/ci/docker-build.log
+
+# Exercise the packaged ABI closure and checked peer selftests as its non-root runtime user.
+check-docker: docker-build
+	@for option in --version --help --selftest --integration-selftest --offload-selftest; do \
+	  $(DOCKER) run --rm --network none "$(DOCKER_IMAGE)" "$$option"; \
+	done 2>&1 | tee build/ci/docker-smoke.log
 
 # Every native build/test target owns its source and pinned Rust/Cargo preparation.
 setup: check-inventory toolchain sources rust-tools ui-assets build-info
@@ -179,6 +195,8 @@ summary-e2e:
 help:
 	@printf '%s\n' 'make / make build  Provision dependencies and build build/ragnarok' \
 	  'make setup         Provision pinned toolchains, submodules and Cargo dependencies' \
+	  'make docker-build  Build the Linux amd64 runtime image (DOCKER_IMAGE=ragnarok:local)' \
+	  'make check-docker  Build and smoke-test the image locally; never publish it' \
 	  'make ui-assets     Stage/embed UI assets (UI_MINIFY=1 minifies JS/CSS; default in CI)' \
 	  'make check-ui      Run the compiled UI against production WebSocket RPC in a browser' \
 	  'make clean         Remove build/ completely' \

@@ -21,6 +21,9 @@ and `make modules` aliases `check-modules`. The additional `check-telemetry-inte
 builds the pinned JAM Tart collector and verifies interoperability, including failed handshakes
 and restart/replay behavior; see [telemetry verification](../spec/telemetry.md).
 
+The additional `check-docker` job builds and smoke-tests the [container image](containers.md)
+on unit/full requests, retaining logs without publishing an image.
+
 Each group writes `results.json` and diagnostic logs in its evidence directory. Use
 `make summary-unit`, `make summary-failures`, `make summary-guards`, `make summary-python`,
 `make summary-modules` or `make summary-e2e` to summarize completed reports. A missing report
@@ -33,7 +36,7 @@ request verification of the current PR merge revision:
 
 | Label | Requested checks |
 | --- | --- |
-| `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation |
+| `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation, Docker build/smoke |
 | `ci:e2e` | End-to-end networking tests only |
 | `ci:full` | All verification groups, including compiler guards, runtime contracts and JAM Tart interoperability |
 
@@ -54,7 +57,7 @@ not claim the deferred groups passed. Master pushes/merges always request full v
 newer master runs supersede older ones.
 
 For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
-choose `unit`, `e2e` or `full` (the default). CLI equivalent:
+choose `unit`, `e2e`, `docker` or `full` (the default). CLI equivalent:
 
 ```sh
 gh workflow run ci.yml --ref <branch> -f suite=full

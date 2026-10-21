@@ -30,6 +30,8 @@ make check   # Provision dependencies and run complete verification.
 make         # Build the development proof peer as build/ragnarok.
 ```
 
+A [Docker build and runtime image](docs/containers.md) is also available via `make check-docker`.
+
 Make provisions the pinned Nimony compiler and formatter, Rust toolchain and dependency sources.
 A global Nim installation is not required. Generated tools, binaries, fixtures and logs stay
 under ignored `build/`.

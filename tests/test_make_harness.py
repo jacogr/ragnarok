@@ -25,6 +25,43 @@ import setup_nimony
 
 # Tooling checks run no native code or download; executable validation is a separate smoke test.
 class MakeHarness(unittest.TestCase):
+    def test_docker_build_and_smoke_failures_remain_authoritative(self):
+        """The isolated image path never provisions the host or hides build/runtime failure behind tee."""
+        for failure in ('', 'build', '--selftest'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temporary:
+                folder = Path(temporary)
+                shutil.copyfile(ROOT/'Makefile', folder/'Makefile')
+                (folder/'spec').mkdir()
+                shutil.copyfile(ROOT/'spec/bandersnatch-pins.json', folder/'spec/bandersnatch-pins.json')
+                docker = folder/'docker'
+                docker.write_text('#!'+sys.executable+'\n'+"""import json, os, sys
+from pathlib import Path
+with Path('calls').open('a') as output:
+    output.write(json.dumps(sys.argv[1:])+'\\n')
+# Refuse the selected build or smoke operation; later successful commands cannot hide it.
+failure = os.environ.get('FAIL_DOCKER')
+sys.exit(7 if failure and failure in sys.argv[1:] else 0)
+""")
+                docker.chmod(0o755)
+                environment = dict(os.environ, FAIL_DOCKER=failure)
+                result = subprocess.run(['make', 'check-docker', 'DOCKER='+str(docker)],
+                                        cwd=folder, env=environment, capture_output=True, text=True)
+                calls = [json.loads(line) for line in (folder/'calls').read_text().splitlines()]
+                self.assertEqual(result.returncode == 0, not failure, result.stdout+result.stderr)
+                self.assertEqual(calls[0], ['build', '--platform', 'linux/amd64',
+                                            '--tag', 'ragnarok:local', '.'])
+                if failure == 'build':
+                    # A failed image build prevents every runtime invocation.
+                    self.assertEqual(len(calls), 1)
+                else:
+                    options = ['--version', '--help', '--selftest', '--integration-selftest', '--offload-selftest']
+                    if failure:
+                        # Stop at the failed selftest, including when commands write through a log pipe.
+                        options = options[:options.index(failure)+1]
+                    self.assertEqual(calls[1:], [['run', '--rm', '--network', 'none',
+                                                  'ragnarok:local', option] for option in options])
+                self.assertTrue((folder/'build/ci/docker-build.log').is_file())
+
     # Production dependency preparation must not load reference suites or test-process orchestration.
     def test_build_imports_without_test_harnesses(self):
         script = """
