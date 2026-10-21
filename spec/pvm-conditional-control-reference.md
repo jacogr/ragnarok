@@ -12,9 +12,10 @@ past-end destinations. A successful prefix writes r7=7 over99. Distinct successo
 blocks write r8=21/42 and halt through r0. Invalid destinations panic before
 condition selection, including untaken branches, retaining only the prefix write.
 
-The frozen PVMCTL01 corpus has384 rows, each containing a bounded raw program,
+The frozen PVMCTL01 corpus now has1800 rows, including the384 original conditional
+cases and1416 [load-and-jump cases](pvm-load-jump-reference.md), each containing a bounded raw program,
 expected exit/reference trap PC and all13 initial/expected registers. SHA-256:
-`30a0ee5ee6f45d394c69dd246dfb865a73d33ca2b80f869935d8da9cb3e7356a`.
+`877eef02d3e691abb7357c5167aa6ade65091055470f84261218bfc1cb8fdf6e`.
 The [native replay](../tests/unit/codec/test_pvm_conditional_control_reference.nim)
 uses the explicit JAM profile, exact four-step path budget, complete register/source
 checks and single-step panic PC3. Recursive halt/panic PC0 follows the paper.
@@ -34,7 +35,7 @@ rustup run 1.99.0 cargo run --release --locked --offline --manifest-path tests/r
 PYTHONPATH=tests python3 -m unittest discover -s tests -p test_pvm_control_reference.py
 ```
 
-All384 native and public reference rows pass; two independent Python provenance/
+All1800 native and public reference rows pass; three independent Python provenance/
 signed-boundary tests pass. Corrupting expected r8 fails at row0/register8;
 oversized record length refuses before extraction. No source patches, private
 features or dependency/pin changes. This extends executed control-flow evidence

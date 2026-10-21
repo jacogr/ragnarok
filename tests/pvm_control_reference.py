@@ -40,7 +40,7 @@ def taken(opcode, left, right):
 
 def fixtures():
     """Frame literal branches with distinct path writes and three invalid-destination classes."""
-    count = len(OPS)*len(VALUES)*4
+    count = len(OPS)*len(VALUES)*4 + 6*4*5 + 6*6*6*3*2
     out = bytearray(b'PVMCTL01'+struct.pack('<I', count))
     for opcode in OPS:
         for left in VALUES:
@@ -65,6 +65,38 @@ def fixtures():
                 out += struct.pack('<IBI26Q', len(wire), int(mode != 0),
                                    3 if mode else 0xffffffff, *registers, *expected)
                 out += wire
+    for destination in (0, 1, 7, 8, 12, 15):
+        for value in (0, 7, 0x80000000, 0xffffffff):
+            for target in (13, 1, 3, 127, -125):
+                # Static load/jump writes even when destination validation causes panic.
+                code = bytes([51,7,7,80,64+destination])+value.to_bytes(4,'little')
+                code += ((target-3) & 0xffffffff).to_bytes(4,'little')+bytes([0])
+                wire = bytes([0,0,14])+code+bytes([9,32])
+                registers = [0x1020304050607000+i for i in range(13)]
+                registers[0] = 0xffff0000
+                expected = registers.copy()
+                expected[7] = 7
+                expected[min(12,destination)] = (value if value < 1 << 31 else value-(1 << 32)) & ((1 << 64)-1)
+                out += struct.pack('<IBI26Q',len(wire),1,13 if target == 13 else 3,*registers,*expected)+wire
+    for destination in (0, 1, 7, 8, 12, 15):
+        for base in (0, 1, 7, 8, 12, 15):
+            for initial in (0, 1, 2, 4, 0xffff0000, 0xabcdef0100000002):
+                for offset in (0, 1, 0xffffffff):
+                    for value in (7, 0x80000000):
+                        # Inputs are read before the write, including saturated aliases and upper address bits.
+                        code = bytes([51,7,7,180,destination+16*base,4])+value.to_bytes(4,'little')
+                        code += offset.to_bytes(4,'little')+bytes([0])
+                        wire = bytes([1,1,15,14])+code+bytes([9,64])
+                        registers = [0x1020304050607000+i for i in range(13)]
+                        registers[0] = 0xffff0000
+                        registers[min(12,base)] = initial
+                        expected = registers.copy()
+                        expected[7] = 7
+                        effective = (expected[min(12,base)]+(offset if offset < 1 << 31 else offset-(1 << 32))) & 0xffffffff
+                        expected[min(12,destination)] = value if value < 1 << 31 else value-(1 << 32)+(1 << 64)
+                        halt = effective == 0xffff0000
+                        stop = 0xffffffff if halt else (14 if effective == 2 else 3)
+                        out += struct.pack('<IBI26Q',len(wire),int(not halt),stop,*registers,*expected)+wire
     return bytes(out), count
 
 
