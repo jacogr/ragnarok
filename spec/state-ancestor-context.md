@@ -25,3 +25,9 @@ all prior context aliases. Count/host descriptor bounds precede allocation. Comp
 under the supplied current limits prevents a formerly permissive profile from bypassing a stricter
 consumer. Empty extension revalidates; default context, bad link and late quota failures expose
 no extended prefix. The focused suite checks these refusal and ownership boundaries.
+
+`findLookupAnchor` returns a newest-first ordinal only after matching full sealed hash and lookup
+slot and comparing the lookup posterior root with its retained child's prior-state commitment.
+The selected parent itself lacks a retained newer child and cannot satisfy this proof. Missing
+hash, wrong slot, absent child and wrong state have distinct typed refusals. The focused suite
+covers each case and both valid child positions. No candidate header is used as the proof child.

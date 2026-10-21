@@ -89,5 +89,20 @@ proc main() =
   assert extended.value.len == 3 and prefix.len == 1
   limits.header.maxBytes = ByteLimit(1)
   assert extendAncestorContext(context, [], limits).error == AncestorContextError.LimitExceeded
+  let root = default(PriorStateRoot)
+  assert context.findLookupAnchor(digest(oldest), HeaderSlot(3), root).value == 2
+  assert context.findLookupAnchor(digest(middle), HeaderSlot(10), root).value == 1
+  assert context.findLookupAnchor(digest(oldest), HeaderSlot(4), root).error ==
+      AncestorContextError.WrongLookupSlot
+  assert context.findLookupAnchor(digest(parent), HeaderSlot(11), root).error ==
+      AncestorContextError.MissingLookupChild
+  assert prefix.findLookupAnchor(digest(oldest), HeaderSlot(3), root).error ==
+      AncestorContextError.MissingLookupAnchor
+  var wrong = default(array[32, byte])
+  wrong[31] = 1
+  assert context.findLookupAnchor(digest(oldest), HeaderSlot(3), PriorStateRoot(wrong)).error ==
+      AncestorContextError.WrongLookupState
+  assert empty.findLookupAnchor(digest(oldest), HeaderSlot(3), root).error ==
+      AncestorContextError.Uninitialized
   echo "ancestor-context: ok"
 main()
