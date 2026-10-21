@@ -73,3 +73,15 @@ and inherit only the caller's explicit policy; no header/history or canonical
 application owner is adopted. The native suite checks every cut/tamper, every
 context mismatch, complete original entries/counts/roots, input detachment and
 1,000 complete-graph release cycles.
+
+## Exclusive prepared application envelopes
+
+PreparedApplicationCheckpoint retains sole encoded bytes plus fixed context and
+no canonical graph. Preparation is synchronous computation outside transport
+callbacks. Copy/duplication is rejected during actual ARC lowering; a public move
+hook resets source status without freeing destination bytes. Only successful
+preparation exposes extent/context. Failed/default/moved owners cannot touch a
+publication path. Ready publication delegates the existing atomic raw primitive,
+including exact/narrower limits and visible-but-unsynced outcomes. Native witnesses
+cover detached source lifetime, exact bytes, moved-source refusal, old-file
+preservation and 1,000 preparation/transfer release cycles.
