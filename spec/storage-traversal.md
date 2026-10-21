@@ -263,3 +263,17 @@ legacy/managed frame writes. Publication returns PublishedUnsynced, poisons furt
 and preserves old readers. Independent old-prefix recovery refuses the complete visible successor;
 strict reopen admits its complete map. Separate file and directory sync refusals also poison without appending; the file must remain byte-identical.
 This is deterministic syscall-failure evidence, not device/filesystem power-loss certification.
+
+## Interrupted bounded reads
+
+Physical loaders retry only native EINTR results, which transfer no bytes. They retain the same
+offset, buffer extent, one-byte-overrun probe and configured ceiling. Other native refusals remain
+IoFailure; no alternate file/head or partial result is selected. `storage_interrupted_reads`
+strictly reopens both real layouts after two consumed EINTR results, compares complete maps and
+exact journal bytes, then proves a single EIO is not retried and leaves no live owner.
+
+Storage reads use a narrow explicit SDK-header binding with size_t extents and signed-long
+ssize_t results on supported Linux/macOS. This preserves the existing ABI and lets the test-only
+header observer target those call sites. The pinned header-free std/posix binding uses mangled
+assembler aliases that cannot be redirected by C macros; it and the runtime remain untouched.
+The consumed-fault assertion caught that missing observation before any false pass was accepted.

@@ -53,6 +53,7 @@ let nonblocking {.importc: "LOCK_NB", header: "<sys/file.h>".}: cint
 let unlock {.importc: "LOCK_UN", header: "<sys/file.h>".}: cint
 let wouldBlock {.importc: "EWOULDBLOCK", header: "<errno.h>".}: cint
 let again {.importc: "EAGAIN", header: "<errno.h>".}: cint
+let interrupted {.importc: "EINTR", header: "<errno.h>".}: cint
 let exists {.importc: "EEXIST", header: "<errno.h>".}: cint
 let missing {.importc: "ENOENT", header: "<errno.h>".}: cint
 proc openFile(path: cstring, flags, mode: cint): cint {.importc: "open", cdecl,
@@ -99,6 +100,9 @@ proc writeAll(fd: cint, bytes: openArray[byte]): bool =
     if count <= 0 or count > bytes.len-offset: return false
     offset += count
   true
+proc readNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "read", cdecl,
+    header: "<unistd.h>".}
+  ## Supported Linux/macOS SDKs return signed-long ssize_t; explicit headers preserve the native ABI.
 proc readAll(fd: cint, limit: ByteLimit): ManagedIoResult[seq[byte]] =
   ## Detect one excess byte without trusting file-size metadata or allocating beyond the configured limit.
   let maximum = min(uint64(limit), uint64(high(int)))
@@ -106,8 +110,10 @@ proc readAll(fd: cint, limit: ByteLimit): ManagedIoResult[seq[byte]] =
   var buffer = default(array[4096, byte])
   while true:
     let requested = int(min(maximum-uint64(bytes.len), 4095'u64))+1
-    let count = posix.read(fd, addr buffer[0], requested)
-    if count < 0: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
+    let count = readNative(fd, addr buffer[0], csize_t(requested))
+    if count < 0:
+      if posix.errno() == interrupted: continue # Interrupted reads transfer no bytes; retry the same bounded extent.
+      return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
     if count == 0: break # Regular-file EOF alone authorizes a complete detached result.
     if uint64(count) > maximum-uint64(bytes.len):
       return ManagedIoResult[seq[byte]](status: FileError.LimitExceeded)

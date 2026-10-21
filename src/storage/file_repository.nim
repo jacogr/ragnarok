@@ -55,6 +55,7 @@ let nonblocking {.importc: "LOCK_NB", header: "<sys/file.h>".}: cint
 let unlock {.importc: "LOCK_UN", header: "<sys/file.h>".}: cint
 let wouldBlock {.importc: "EWOULDBLOCK", header: "<errno.h>".}: cint
 let again {.importc: "EAGAIN", header: "<errno.h>".}: cint
+let interrupted {.importc: "EINTR", header: "<errno.h>".}: cint
 let exists {.importc: "EEXIST", header: "<errno.h>".}: cint
 proc openFile(path: cstring, flags, mode: cint): cint {.importc: "open", cdecl,
     header: "<fcntl.h>".}
@@ -112,6 +113,9 @@ proc writeAll(fd: cint, bytes: openArray[byte]): bool =
     if count <= 0 or count > bytes.len-offset: return false
     offset += count
   true
+proc readNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "read", cdecl,
+    header: "<unistd.h>".}
+  ## Supported Linux/macOS SDKs return signed-long ssize_t; explicit headers preserve the native ABI.
 proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
   ## Fixed chunks detect one excess byte without trusting file-size metadata for allocation.
   let maximum = min(uint64(limit), uint64(high(int)))
@@ -120,8 +124,10 @@ proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
   while true:
     let remaining = maximum-uint64(bytes.len)
     let requested = int(min(remaining, 4095'u64))+1
-    let count = posix.read(fd, addr buffer[0], requested)
-    if count < 0: return FileResult[seq[byte]](status: FileError.IoFailure)
+    let count = readNative(fd, addr buffer[0], csize_t(requested))
+    if count < 0:
+      if posix.errno() == interrupted: continue # Interrupted reads transfer no bytes; retry the same bounded extent.
+      return FileResult[seq[byte]](status: FileError.IoFailure)
     if count == 0: break # Only regular-file EOF authorizes a complete byte sequence.
     if uint64(count) > remaining: return FileResult[seq[byte]](status: FileError.LimitExceeded)
     for i in 0..<count: bytes.add(buffer[i])
