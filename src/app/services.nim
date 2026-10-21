@@ -346,6 +346,9 @@ proc setupDisk(services: var Services, options: Options, limits: StateStoreLimit
   services.maintenanceAdmission = DiskWorkerError.Uninitialized
   services.startupMaintenance = default(DiskChainResult[ManagedCompaction])
   services.maintaining = false
+  if services.diskManaged and uint64(services.compactBytes) > 0:
+    # Physical and canonical validation precede bounded cleanup; zero preserves staged forensic files.
+    if services.disk.cleanupManagedDiskFiles != FileError.None: return false
   if services.maintenanceDue():
     let prepared = prepareDiskMaintenance(services.disk, services.canonical, services.diskId,
       services.diskLimits.contextBytes)

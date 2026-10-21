@@ -7,7 +7,7 @@
 import std/assertions
 import ./store
 import ../storage/[file_repository, node_repository, node_records, full_state_trie,
-  database_identity, durability, managed_repository, file_migration]
+  database_identity, durability, managed_repository, file_migration, managed_manifest]
 import ../codec/[state_trie, bounded]
 
 type
@@ -368,3 +368,15 @@ proc migrateDiskStateStore*(source: DiskStateStore, destination: var DiskStateSt
   destination.limits = journalPolicy(limits)
   destination.schema = source.schema
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: selected.value)
+
+proc cleanupManagedDiskFiles*(store: var DiskStateStore): FileError =
+  ## Startup or an excluded IO owner may remove only the immediate successor and predecessor of a checked head.
+  let selected = store.managedDiskUsage
+  if selected.error != FileError.None: return selected.error
+  let epoch = uint64(selected.value.epoch)
+  if epoch < high(uint64):
+    let staged = store.journal.discardManagedStaging
+    if staged != FileError.None: return staged
+  if epoch > 1:
+    return store.journal.cleanupRetiredEpoch(ManagedEpoch(epoch-1))
+  FileError.None
