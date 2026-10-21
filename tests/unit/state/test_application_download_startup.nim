@@ -90,6 +90,29 @@ proc peerPreflight(peer: string) {.raises.} =
   assert runDownload(peerOptions(1, peer, extra)) == DownloadCommandResult.InvalidOptions,
     "seventeenth peer refused before file or native work"
 
+proc ancestorPreflight(peer: string) {.raises.} =
+  ## Invalid ancestry cannot open listeners, create a disk path or fall through to canonical startup.
+  var configured = policy()
+  configured.input.ancestors = ElementLimit(1)
+  configured.input.ancestorBytes = ByteLimit(100000)
+  writeFile("download-startup-policy.conf", encodeDownloadPolicy(configured))
+  var args = arguments(1, peer)
+  for value in ["--state-storage", "disk", "--state-db", "download-ancestor-preflight.db",
+      "--download-ancestor", "missing-ancestor-header"]:
+    args.add(value) # The selected nonexistent file must refuse before the fresh disk startup side effect.
+  var selected = default(Options)
+  assert parseOptions(args, selected)
+  assert runDownload(selected) == DownloadCommandResult.InvalidAncestors
+  assert not fileExists("download-ancestor-preflight.db")
+  configured.input.ancestors = ElementLimit(0)
+  writeFile("download-startup-policy.conf", encodeDownloadPolicy(configured))
+  assert runDownload(selected) == DownloadCommandResult.InvalidPolicy
+  configured.input.ancestors = ElementLimit(1)
+  configured.candidate.reporting.reports.ancestors.headers = ElementLimit(1)
+  writeFile("download-startup-policy.conf", encodeDownloadPolicy(configured))
+  assert runDownload(selected) == DownloadCommandResult.InvalidPolicy
+  writeFile("download-startup-policy.conf", encodeDownloadPolicy(policy()))
+
 proc pause() =
   ## Bounded child polling mirrors the production command's host pause without background threads.
   var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
@@ -245,6 +268,7 @@ proc main() {.raises.} =
     telemetry.add(control) # Append explicit controls without relying on unsupported sequence concatenation.
   assert not parseOptions(telemetry, selected), "unwired outgoing telemetry refused"
   peerPreflight(peer)
+  ancestorPreflight(peer)
   var owner = default(Services)
   var initial = default(Options)
   assert parseOptions(@["server", "--with-state", "--chain", "download-startup-chain.json",

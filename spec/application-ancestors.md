@@ -42,3 +42,30 @@ path mutation, complete sealed decoding and nonregular/NUL-path refusal. Its
 and after. All four strict runtime extraction guards, genuine positive controls,
 four compiler privacy rejections and source-owned inventory pass. Logs are under
 `build/ancestor-inputs-*`; these local checks are separate from Linux CI.
+
+## Download controls and lifecycle
+
+`--download-ancestor FILE` is repeatable, ordered newest-first and valid only for
+state-enabled `download`. Parsing is atomic; reject empty/missing/option-valued
+paths, duplicate paths, embedded NULs and more than 64 files. The fixed path cap
+does not widen the explicit v1 policy: `input.ancestors` and `input.ancestorBytes`
+bound retained input, while `candidate.reporting.reports.ancestors` independently
+bounds validation. Its `headers` count includes the selected parent. The loader
+uses the smaller input/report byte ceiling and the report's per-header profile;
+report validation additionally charges the actual parent.
+
+The command validates path counts and captures all files before starting Services,
+opening listeners, creating/opening a disk database or dialing peers. Structural
+failure reports InvalidAncestors; count-policy failure reports InvalidPolicy.
+Success passes the exact captured headers to raw-input preflight and the existing
+native download/preparation owner. The command keeps external aliases untouched
+through execution/durable publication, and dispatcher teardown joins before those
+aliases retire. An ancestry failure during report validation remains an ordinary
+failed attempt; structural capture alone never promises an adopted child.
+
+The new option suite and existing app, disk-storage and recovery-option suites
+pass. The real pinned-TLS startup suite passes its existing scenarios plus missing
+ancestor/count-policy refusals before fresh disk creation; 1,000 policy cycles
+retain 264,448 occupied bytes before/after. The parser privacy rejection, semantic
+checks and source-owned inventory pass. Logs use `build/ancestor-{options,app-options,
+disk-options,recovery-options,startup}*`.

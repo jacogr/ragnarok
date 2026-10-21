@@ -38,6 +38,7 @@ proc main(): int =
       stdout.writeLine("         --state-storage memory|disk --state-db PATH (disk requires --with-state)")
       stdout.writeLine("         --state-checkpoint FILE --state-trust FILE --state-header FILE --state-checkpoint-bytes BYTES")
       stdout.writeLine("         Checkpoint imports require independent trusted identity/header; restart retains one unfinalized head.")
+      stdout.writeLine("         --download-ancestor FILE (repeat newest-first; download only, maximum 64)")
       stdout.writeLine("State limits are unsigned budgets; supplied complete state is structurally checked.")
       return 0
     if options.argumentCount() >= 1 and options.argument(1) == "download":

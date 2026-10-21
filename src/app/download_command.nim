@@ -6,13 +6,14 @@
 
 import std/[syncio, monotimes, times]
 import std/posix/posix
-import ./[options, services, download_policy, block_download]
+import ./[options, services, download_policy, block_download, ancestor_inputs]
 import ./download_schedule
+import ../codec/bounded
 import ../quic/[block_download_loop, block_download_peers]
 
 type DownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
   Uninitialized, Adopted, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,
-  StartupFailure, AdmissionFailure, TransportFailure, DispatchFailure, Exhausted, Timeout
+  InvalidAncestors, StartupFailure, AdmissionFailure, TransportFailure, DispatchFailure, Exhausted, Timeout
 
 proc number(text: string, maximum: uint64): uint64 =
   ## Positive canonical decimal parsing proves arithmetic/conversion bounds before native setup.
@@ -68,16 +69,26 @@ proc runDownload*(options: Options): DownloadCommandResult {.raises.} =
       if keys[previous] == keys[index]: return DownloadCommandResult.InvalidIdentity # Aliases cannot multiply scheduler weight.
       if ports[previous] == ports[index]: return DownloadCommandResult.InvalidEndpoint # One loopback endpoint has one configured principal.
     peers.add(DownloadPeerId(uint64(index + 1))) # The shape cap proves IDs 1..16 and all argument arithmetic.
+  let paths = options.ancestorPaths
+  let ancestry = limits.candidate.reporting.reports.ancestors
+  if paths.len > 0 and (uint64(paths.len) > uint64(limits.input.ancestors) or
+      uint64(paths.len) >= uint64(ancestry.headers)):
+    return DownloadCommandResult.InvalidPolicy # The report policy additionally reserves one header for the selected parent.
+  let loaded = loadAncestorInputs(paths, ancestry.header, limits.input.ancestors,
+    ByteLimit(min(uint64(limits.input.ancestorBytes), uint64(ancestry.maxBytes))))
+  if loaded.error != AncestorInputError.None:
+    return DownloadCommandResult.InvalidAncestors # No Services/listener/database/outgoing TLS work follows partial capture.
+  let ancestors = loaded.headers
   var owner = default(Services)
   defer: owner.close() # Dispatcher teardown below must end every Services borrow first.
   if not owner.start(options, "download"): return DownloadCommandResult.StartupFailure
   var preflight = default(BlockDownload)
-  let admitted = preflight.begin(owner, [], limits.input, limits.candidate)
+  let admitted = preflight.begin(owner, ancestors, limits.input, limits.candidate)
   if admitted.error != BlockDownloadError.None: return DownloadCommandResult.AdmissionFailure
   discard preflight.cancel(admitted.value) # Exact raw admission is checked before any outgoing TLS engine opens.
   var dispatcher = default(BlockDownloadLoop)
   defer: dispatcher.close() # Stable stack owner remains alive during native close callbacks on every exit.
-  if dispatcher.configure(owner, peers, [], limits, DownloadLoopTick(0)) !=
+  if dispatcher.configure(owner, peers, ancestors, limits, DownloadLoopTick(0)) !=
       DownloadLoopError.None: return DownloadCommandResult.InvalidPolicy
   for index in 0..<count:
     if dispatcher.openPeer(peers[index], keys[index], ports[index], options.argument(3),
