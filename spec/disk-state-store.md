@@ -621,3 +621,16 @@ staging without widening startup trust or allowing deletion of arbitrary future 
 
 Run `make unit SUITE=storage_managed_staging` for staged-name collision, strict restart amid partial
 candidates, selected/future deletion refusal, repeated cleanup and preservation of unrelated epochs.
+
+## Explicit legacy-file migration
+
+`file_migration.nim` copies a live locked legacy repository into an absent managed directory. It
+checks the source's already admitted chain identity and schema, selects an explicit complete root
+union including the current root, and preserves the selected generation and context. All existing
+source bytes and its lock remain untouched. The destination is a separately admitted owner; later
+source publication cannot change it. Wrong identity, missing roots, policy mismatch or an existing
+destination refuse without conversion or overwrite. Migration does not grant checkpoint import
+trust, choose block/finality policy or silently change normal startup layout.
+
+Run `make unit SUITE=storage_file_migration` for source-byte equality, chain rejection, retained
+history/context/generation preservation, existing-target refusal and independent subsequent owners.

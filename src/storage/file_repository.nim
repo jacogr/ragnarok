@@ -29,6 +29,7 @@ type
     size: uint64
     limits: JournalLimits
     memory: NodeRepository
+    chain: StorageChainId
     schema: StorageSchema
     context: seq[byte] # Private selected bytes advance only with their durable memory revision.
 
@@ -228,6 +229,7 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
   repository.descriptor = descriptor
   repository.directory = directory
   repository.memory = memory
+  repository.chain = chain
   repository.schema = schema
   repository.context = context
   repository.limits = limits
@@ -327,3 +329,14 @@ proc snapshotContext*(repository: FileRepository): FileResult[seq[byte]] =
   var bytes = newSeq[byte](repository.context.len)
   for index, octet in repository.context: bytes[index] = octet # No mutable alias to selected metadata escapes.
   FileResult[seq[byte]](status: FileError.None, completed: bytes)
+
+proc chainIdentity*(repository: FileRepository): FileResult[StorageChainId] =
+  ## Read only the chain admitted while acquiring this live source; callers cannot rebind migration identity.
+  if not repository.active: return FileResult[StorageChainId](status: FileError.Uninitialized)
+  if repository.poisoned: return FileResult[StorageChainId](status: FileError.RecoveryRequired)
+  FileResult[StorageChainId](status: FileError.None, completed: repository.chain)
+proc storageSchema*(repository: FileRepository): FileResult[StorageSchema] =
+  ## Preserve the source's explicitly selected schema across source-preserving migration.
+  if not repository.active: return FileResult[StorageSchema](status: FileError.Uninitialized)
+  if repository.poisoned: return FileResult[StorageSchema](status: FileError.RecoveryRequired)
+  FileResult[StorageSchema](status: FileError.None, completed: repository.schema)

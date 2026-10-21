@@ -151,3 +151,8 @@ Compaction does not choose canonical roots/finality or schedule application main
 `discardManagedStaging` explicitly removes only the next unselected epoch and pending manifest.
 `cleanupRetiredEpoch` retries cleanup of one earlier epoch. Both require a validated live owner,
 refuse the selected pair and avoid directory scanning. Unknown epochs remain untouched.
+
+`file_migration.nim` explicitly copies a locked legacy single-file repository into a new managed
+directory, preserving admitted chain/schema, generation, selected context and explicit retained
+roots. The source remains unchanged and independently usable. Startup never implicitly migrates an
+existing file, and migration supplies no external checkpoint trust.
