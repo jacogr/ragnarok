@@ -13,7 +13,7 @@ type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection;
     CheckpointOutOfGas,
   FetchFirst, FetchSecond, FetchMissing, FetchList, FetchWideOffset, FetchWideIndex, FetchTail,
     FetchDelete, FetchBranchPanic, FetchReadBack, FetchReadTail, ReadMissing, ReadCheckpointPanic,
-      ReadCheckpointFault, ReadCheckpointProtection
+      ReadCheckpointFault, ReadCheckpointProtection, ReadCheckpointWrapLoad, ReadCheckpointWrapStore
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   ## Jump from refinement entry0 to empty output; entry5 writes RO key11 using literal or genuinely fetched RW bytes.
@@ -21,9 +21,13 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   var body = @[refinementImmediate(7, 65536), refinementImmediate(8, 1),
     refinementImmediate(9, 196608), refinementImmediate(10, 3), @[10'u8, 5]]
   if mode in {ComputedStorageMode.ReadMissing, ComputedStorageMode.ReadCheckpointPanic,
-      ComputedStorageMode.ReadCheckpointFault, ComputedStorageMode.ReadCheckpointProtection}:
+      ComputedStorageMode.ReadCheckpointFault, ComputedStorageMode.ReadCheckpointProtection,
+      ComputedStorageMode.ReadCheckpointWrapLoad,
+      ComputedStorageMode.ReadCheckpointWrapStore}:
     let retainedDeletion = mode in {ComputedStorageMode.ReadCheckpointPanic,
-      ComputedStorageMode.ReadCheckpointFault, ComputedStorageMode.ReadCheckpointProtection}
+      ComputedStorageMode.ReadCheckpointFault, ComputedStorageMode.ReadCheckpointProtection,
+      ComputedStorageMode.ReadCheckpointWrapLoad,
+      ComputedStorageMode.ReadCheckpointWrapStore}
     body = @[]
     if retainedDeletion:
       body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 0], @[51'u8, 9, 1],
@@ -116,15 +120,22 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
       body.add(instruction) # Same raw key proves one provenance descriptor can retain multiple real mutations.
   if mode in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail,
       ComputedStorageMode.ReadMissing, ComputedStorageMode.ReadCheckpointPanic,
-      ComputedStorageMode.ReadCheckpointFault, ComputedStorageMode.ReadCheckpointProtection}:
+      ComputedStorageMode.ReadCheckpointFault, ComputedStorageMode.ReadCheckpointProtection,
+      ComputedStorageMode.ReadCheckpointWrapLoad,
+      ComputedStorageMode.ReadCheckpointWrapStore}:
     body.add(@[51'u8, 8, 0]) # Only the read-back and missing-read guests use compact empty-yield setup to keep the authored code below128 bytes.
   else:
     body.add(refinementImmediate(8, 0)) # Preserve every predecessor guest byte and its instruction boundaries.
   if mode in {ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
-      ComputedStorageMode.ReadCheckpointProtection}:
+      ComputedStorageMode.ReadCheckpointProtection, ComputedStorageMode.ReadCheckpointWrapLoad,
+      ComputedStorageMode.ReadCheckpointWrapStore}:
     body.add(@[81'u8, 22, 2, 6]) # Compare preserved r6 with two and branch forward past the historical regular halt.
     body.add(@[50'u8, 0]) # One genuine input commits the actual regular restoration.
-    if mode == ComputedStorageMode.ReadCheckpointProtection:
+    if mode == ComputedStorageMode.ReadCheckpointWrapLoad:
+      body.add(@[55'u8, 7, 255]) # Signed load_i16 atMAX64 touches inaccessible physical0xffffffff then protected0, retaining the pinned ambiguity gate.
+    elif mode == ComputedStorageMode.ReadCheckpointWrapStore:
+      body.add(@[60'u8, 7, 255]) # The corresponding store_u16 must refuse locally before publishing any scalar memory or completed accumulation.
+    elif mode == ComputedStorageMode.ReadCheckpointProtection:
       body.add(@[52'u8, 7, 0]) # A real byte load from address0 must panic under unconditional low-memory protection.
     elif mode == ComputedStorageMode.ReadCheckpointFault:
       body.add(@[52'u8, 7, 0, 0, 2]) # Actual load_u8 from the unmapped guard at131072 faults after the regular restoration.
