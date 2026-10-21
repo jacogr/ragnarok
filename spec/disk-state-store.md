@@ -275,7 +275,7 @@ closes the disk owner on any application-context failure. It performs no implici
 Opaque `PreparedDiskPublication` stages the already prepared chain update, exact original map,
 next generation and encoded context. Preparation also compares freshly encoded prior canonical
 context with the durable selected bytes, binding chain/history/finality as well as state ownership.
-This costs bounded header/context work, not full-map restoration. Commit checks the exact parent
+This costs bounded header/context work, not full-map restoration. Commit checks the exact parent, selected context
 and generation, publishes through the existing disk store, and never accesses application/RPC.
 The synchronous convenience coordinators preflight enabled RPC/lease authority, commit first,
 then install the opaque update without repeating execution or capture. Call synchronous IO only

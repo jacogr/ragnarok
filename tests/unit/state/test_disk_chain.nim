@@ -72,6 +72,19 @@ proc publicationWitness() {.raises.} =
     let before = initializeDiskChain(disk, path, chain, owner, limits).value
     defer: discard posix.unlink(path.toCString())
     let journal = readFile(path)
+    # Shared seed identity and generation cannot authorize another journal's different context.
+    let staged = prepareDiskPublication(disk, owner, prepared, chain, limits.contextBytes).value
+    var foreign = default(DiskStateStore)
+    var otherPath = "disk-chain-foreign.db"
+    discard initializeDiskStateStore(foreign, otherPath, chain, owner.stateSnapshot.value,
+      limits, StorageSchema.FullStateV1, [1'u8]).value
+    discard foreign.commit(foreign.snapshot.value, owner.stateSnapshot.value, [2'u8]).value
+    assert uint64(foreign.generation.value) == uint64(before)
+    let otherBytes = readFile(otherPath)
+    assert commitDiskPublication(foreign, staged).error == DiskChainError.CanonicalMismatch
+    assert readFile(otherPath) == otherBytes
+    assert foreign.close == FileError.None
+    assert posix.unlink(otherPath.toCString()) == 0
     var wrong = default(array[32, byte])
     wrong[0] = 1
     assert publishDiskChain(disk, owner, prepared, StorageChainId(wrong),

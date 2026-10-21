@@ -15,7 +15,7 @@ type
     initialized: bool
     parent: StateStoreSnapshot
     update: PreparedChainUpdate
-    context: seq[byte]
+    context, previous: seq[byte]
     next: RepositoryGeneration
   DiskChainError* {.pure.} = enum ## Default/refused results grant no partial canonical successor.
     Uninitialized, None, Busy, CanonicalMismatch, GenerationOverflow, StoreFailure, ContextFailure, FileFailure
@@ -174,13 +174,19 @@ proc prepareDiskPublication*(disk: DiskStateStore, owner: ApplicationChain,
       return DiskChainResult[PreparedDiskPublication](status: DiskChainError.CanonicalMismatch)
   DiskChainResult[PreparedDiskPublication](status: DiskChainError.None,
     completed: PreparedDiskPublication(initialized: true, parent: owner.stateSnapshot.value,
-      update: prepared, context: context.value,
+      update: prepared, context: context.value, previous: disk.snapshotContext.value,
       next: RepositoryGeneration(uint64(disk.generation.value)+1)))
 proc commitDiskPublication*(disk: var DiskStateStore,
     publication: PreparedDiskPublication): DiskChainResult[RepositoryGeneration] =
   ## Perform synchronous IO only under exclusive ownership; this never touches application or RPC objects.
   ## A reused context-only parent still requires the exact expected journal generation.
   if not publication.initialized:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let selected = disk.snapshotContext
+  if selected.error != FileError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.FileFailure,
+        fileReason: selected.error)
+  if selected.value != publication.previous:
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
   let generation = disk.generation
   if generation.error != DiskStoreError.None or uint64(generation.value) != uint64(
