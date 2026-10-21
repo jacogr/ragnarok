@@ -1,9 +1,9 @@
 # Executed block-gas cross-check
 
 Gray Paper0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401` remains primary.
-The [independent gas corpus](pvm-gas.md) retains all1776 blocks and its existing
-expected prices/cycle ceilings. No record, expectation, production profile or
-fixture generator changes in this layer.
+The [independent gas corpus](pvm-gas.md) retains all1776 original blocks and their expected prices/cycle ceilings, then
+adds eight [raw gas-boundary cases](pvm-gas-block-boundaries.md) inspired by Grey's
+transpiler-masking report. Production pricing remains unchanged.
 
 The optional [public-API checker](../tests/reference/polkavm_memory/src/bin/gas.rs)
 uses pristine pinned PolkaVM `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`.
@@ -33,9 +33,10 @@ make unit SUITE=pvm_gas
 rustup run 1.99.0 cargo fmt --manifest-path tests/reference/polkavm_memory/Cargo.toml -- --check
 ```
 
-The original corpus SHA-256 remains
-`238efdc7d487763e9c50b109b5d43c2543dd05cb2db621e11f4b83d88050e255`.
-Require all1776 prices, exact consumption without trailing bytes, default memory
+The current1784-row corpus SHA-256 is
+`9c048aa7dbe706ce8072047473203a45e6db16900a4330dc0c4127ecf1ec1797`.
+The original1776 records remain byte-identical after the count header.
+Require all1784 prices, exact consumption without trailing bytes, default memory
 CLI compatibility and unchanged upstream-lock identities. Corrupted price and
 record-length controls must reject; never change an expectation to obtain parity.
 This result is bounded price evidence, not full execution or gas-model equivalence.
@@ -44,10 +45,9 @@ full chainspec equivalence remain open.
 
 ## Observed local evidence
 
-All1776 public simulator prices and native gas rows pass. Native replay retains
+All1784 public simulator prices and native gas rows pass. Native replay retains
 its exact/one-less/maximum cycle-limit assertions. A corrupted price fails at row0,
-and an oversized record length fails before program extraction. Corpus SHA-256 is
-unchanged; upstream-lock checks and pinned Rust formatting pass. No new gas
+and an oversized record length fails before program extraction. The eight added rows preserve the original1776 expectations; upstream-lock checks and pinned Rust formatting pass. No new gas
 discrepancy or expectation adjustment was needed. Local checked-release
 macOS/ARC/Clang LTO and pinned Rust release evidence; no remote CI or full upstream
 Rust test-suite run is claimed. Logs and tampering controls remain under

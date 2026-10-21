@@ -31,7 +31,7 @@ class GasReferenceTests(unittest.TestCase):
         data, count = fixtures()
         self.assertGreater(count, 1000)
         self.assertEqual(hashlib.sha256(data).hexdigest(),
-                         '238efdc7d487763e9c50b109b5d43c2543dd05cb2db621e11f4b83d88050e255')
+                         '9c048aa7dbe706ce8072047473203a45e6db16900a4330dc0c4127ecf1ec1797')
         with tempfile.TemporaryDirectory() as folder:
             # Native input is generated under a caller-owned build directory, never checked in.
             path, evidence = prepare(folder)

@@ -5,7 +5,7 @@
 ## The executable reads RAGNAROK_PVM_GAS, checks blockGas and reports a failing exit on mismatch.
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, gas]
+import ../../../src/pvm/[program, gas, machine, step]
 
 # Decode a bounded little-endian test word without using production codecs.
 proc word(data: string, at, width: int): uint64 =
@@ -81,4 +81,40 @@ let backwardCost = blockGas(backward.value, CodeAddress(0), GasCycleLimit(43))
 assert backwardCost.error == GasError.None and uint64(backwardCost.value) == 40
 assert blockGas(backward.value, CodeAddress(0), GasCycleLimit(42)).error ==
   GasError.CycleLimitExceeded
+# Grey issue155: only post-terminator PCs define gas blocks, even if later jumps name interior opcodes.
+for target in [0, 1, 2, 3, 4, 8, 9, 100]:
+  let displacement = byte((target - 9 + 256) mod 256)
+  let wire = [0'u8, 0, 11, 51, 7, 7, 59, 7, 0, 0, 3, 0, 40, displacement, 9, 3]
+  let boundary = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0)).value
+  assert not basicBlockStart(boundary, CodeAddress(3)).value
+  assert uint64(containingBlockStart(boundary, CodeAddress(3)).value) == 0
+  assert blockGas(boundary, CodeAddress(3), GasCycleLimit(100)).error == GasError.InvalidStart
+  assert uint64(blockGas(boundary, CodeAddress(0), GasCycleLimit(29)).value) == 26
+  assert blockGas(boundary, CodeAddress(0), GasCycleLimit(28)).error == GasError.CycleLimitExceeded
+  var image = PageImage(index: PageIndex(48), access: PageAccess.ReadWrite,
+    bytes: default(array[4096, byte]))
+  image.bytes[0] = 11
+  let memory = captureMemory([image], PageLimit(1)).value
+  var registers = default(RegisterFile)
+  registers[7] = RegisterValue(99)
+  for fuel in [25'u64, 26]:
+    let source = captureMachine(boundary, memory, MachineInfo(pc: CodeAddress(0), gas: MachineGas(fuel),
+      blockCharged: false, registers: registers)).value
+    let result = execute(source, ExecutionStepLimit(3), GasCycleLimit(29)).value
+    if fuel == 25:
+      # Whole-block affordability precedes even the successful prefix load and the later store.
+      assert result.exit == StepExit.OutOfGas
+      assert uint64(machineInfo(result.machine).value.gas) == 25
+      assert uint64(machineInfo(result.machine).value.registers[7]) == 99
+      assert uint64(load(memoryOf(result.machine).value, MemoryAddress(196608), AccessWidth(
+          1)).value) == 11
+    else:
+      assert result.exit == StepExit.Panic
+      assert uint64(machineInfo(result.machine).value.gas) == 0
+      assert uint64(machineInfo(result.machine).value.registers[7]) == 7
+      assert uint64(load(memoryOf(result.machine).value, MemoryAddress(196608), AccessWidth(
+          1)).value) == 7
+    assert uint64(machineInfo(source).value.registers[7]) == 99
+    assert uint64(load(memory, MemoryAddress(196608), AccessWidth(1)).value) == 11
+
 echo "PVM gas tests passed"

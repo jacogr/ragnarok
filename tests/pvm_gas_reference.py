@@ -300,6 +300,10 @@ def fixtures():
         # A noncheap fallthrough makes the wrapped absent target itself determine the cheap branch latency.
         for displacement in (-1, -128, -(1 << 31)):
             cases.append([instruction(op, displacement=displacement), instruction(100), instruction(0)])
+    for target in (0, 1, 2, 3, 4, 8, 9, 100):
+        # Grey issue155: an unreachable jump must not split the earlier load/store gas block.
+        cases.append([bytes([51, 7, 7]), bytes([59, 7, 0, 0, 3]), bytes([0]),
+                      instruction(40, displacement=target-9)])
     out = bytearray(b'PVMGAS01'+struct.pack('<I', len(cases)))
     for index, sequence in enumerate(cases):
         # Relocate alternate blocks behind a completed trap; pricing depends on relative raw targets.
