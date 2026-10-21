@@ -1,0 +1,286 @@
+{
+  "source": "tests/native/pvm_assured_composition.nim",
+  "build_name": "pvm-assured-composition",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-assured-composition-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured composition default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-assured-composition-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured composition source"
+    },
+    {
+      "identity": {
+        "origin": "driver"
+      },
+      "arguments": [
+        "driver"
+      ],
+      "name": "pvm-assured-composition-driver",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured composition driver"
+    },
+    {
+      "identity": {
+        "origin": "finalization"
+      },
+      "arguments": [
+        "finalization"
+      ],
+      "name": "pvm-assured-composition-finalization",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured composition finalization"
+    },
+    {
+      "identity": {
+        "origin": "composition"
+      },
+      "arguments": [
+        "composition"
+      ],
+      "name": "pvm-assured-composition-composition",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured composition composition"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-assured-composition-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured composition owner"
+    },
+    {
+      "identity": {
+        "origin": "stopped"
+      },
+      "arguments": [
+        "stopped"
+      ],
+      "name": "pvm-assured-composition-stopped",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured composition stopped"
+    },
+    {
+      "identity": {
+        "origin": "final"
+      },
+      "arguments": [
+        "final"
+      ],
+      "name": "pvm-assured-composition-final",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured composition final"
+    },
+    {
+      "identity": {
+        "origin": "plan"
+      },
+      "arguments": [
+        "plan"
+      ],
+      "name": "pvm-assured-composition-plan",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured composition plan"
+    },
+    {
+      "identity": {
+        "origin": "parameters"
+      },
+      "arguments": [
+        "parameters"
+      ],
+      "name": "pvm-assured-composition-parameters",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured composition parameters"
+    },
+    {
+      "identity": {
+        "origin": "driverFailure-default"
+      },
+      "arguments": [
+        "driverFailure-default"
+      ],
+      "name": "pvm-assured-composition-driverFailure-default",
+      "diagnostic": "outcome.status == DriverFailure",
+      "description": "Assured composition driverFailure-default"
+    },
+    {
+      "identity": {
+        "origin": "driverFailure-success"
+      },
+      "arguments": [
+        "driverFailure-success"
+      ],
+      "name": "pvm-assured-composition-driverFailure-success",
+      "diagnostic": "outcome.status == DriverFailure",
+      "description": "Assured composition driverFailure-success"
+    },
+    {
+      "identity": {
+        "origin": "driverFailure-source"
+      },
+      "arguments": [
+        "driverFailure-source"
+      ],
+      "name": "pvm-assured-composition-driverFailure-source",
+      "diagnostic": "outcome.status == DriverFailure",
+      "description": "Assured composition driverFailure-source"
+    },
+    {
+      "identity": {
+        "origin": "driverFailure-finalization"
+      },
+      "arguments": [
+        "driverFailure-finalization"
+      ],
+      "name": "pvm-assured-composition-driverFailure-finalization",
+      "diagnostic": "outcome.status == DriverFailure",
+      "description": "Assured composition driverFailure-finalization"
+    },
+    {
+      "identity": {
+        "origin": "driverFailure-composition"
+      },
+      "arguments": [
+        "driverFailure-composition"
+      ],
+      "name": "pvm-assured-composition-driverFailure-composition",
+      "diagnostic": "outcome.status == DriverFailure",
+      "description": "Assured composition driverFailure-composition"
+    },
+    {
+      "identity": {
+        "origin": "finalizationFailure-default"
+      },
+      "arguments": [
+        "finalizationFailure-default"
+      ],
+      "name": "pvm-assured-composition-finalizationFailure-default",
+      "diagnostic": "outcome.status == FinalizationFailure",
+      "description": "Assured composition finalizationFailure-default"
+    },
+    {
+      "identity": {
+        "origin": "finalizationFailure-success"
+      },
+      "arguments": [
+        "finalizationFailure-success"
+      ],
+      "name": "pvm-assured-composition-finalizationFailure-success",
+      "diagnostic": "outcome.status == FinalizationFailure",
+      "description": "Assured composition finalizationFailure-success"
+    },
+    {
+      "identity": {
+        "origin": "finalizationFailure-source"
+      },
+      "arguments": [
+        "finalizationFailure-source"
+      ],
+      "name": "pvm-assured-composition-finalizationFailure-source",
+      "diagnostic": "outcome.status == FinalizationFailure",
+      "description": "Assured composition finalizationFailure-source"
+    },
+    {
+      "identity": {
+        "origin": "finalizationFailure-driver"
+      },
+      "arguments": [
+        "finalizationFailure-driver"
+      ],
+      "name": "pvm-assured-composition-finalizationFailure-driver",
+      "diagnostic": "outcome.status == FinalizationFailure",
+      "description": "Assured composition finalizationFailure-driver"
+    },
+    {
+      "identity": {
+        "origin": "finalizationFailure-composition"
+      },
+      "arguments": [
+        "finalizationFailure-composition"
+      ],
+      "name": "pvm-assured-composition-finalizationFailure-composition",
+      "diagnostic": "outcome.status == FinalizationFailure",
+      "description": "Assured composition finalizationFailure-composition"
+    },
+    {
+      "identity": {
+        "origin": "compositionFailure-default"
+      },
+      "arguments": [
+        "compositionFailure-default"
+      ],
+      "name": "pvm-assured-composition-compositionFailure-default",
+      "diagnostic": "outcome.status == CompositionFailure",
+      "description": "Assured composition compositionFailure-default"
+    },
+    {
+      "identity": {
+        "origin": "compositionFailure-success"
+      },
+      "arguments": [
+        "compositionFailure-success"
+      ],
+      "name": "pvm-assured-composition-compositionFailure-success",
+      "diagnostic": "outcome.status == CompositionFailure",
+      "description": "Assured composition compositionFailure-success"
+    },
+    {
+      "identity": {
+        "origin": "compositionFailure-source"
+      },
+      "arguments": [
+        "compositionFailure-source"
+      ],
+      "name": "pvm-assured-composition-compositionFailure-source",
+      "diagnostic": "outcome.status == CompositionFailure",
+      "description": "Assured composition compositionFailure-source"
+    },
+    {
+      "identity": {
+        "origin": "compositionFailure-driver"
+      },
+      "arguments": [
+        "compositionFailure-driver"
+      ],
+      "name": "pvm-assured-composition-compositionFailure-driver",
+      "diagnostic": "outcome.status == CompositionFailure",
+      "description": "Assured composition compositionFailure-driver"
+    },
+    {
+      "identity": {
+        "origin": "compositionFailure-finalization"
+      },
+      "arguments": [
+        "compositionFailure-finalization"
+      ],
+      "name": "pvm-assured-composition-compositionFailure-finalization",
+      "diagnostic": "outcome.status == CompositionFailure",
+      "description": "Assured composition compositionFailure-finalization"
+    }
+  ]
+}
