@@ -109,3 +109,8 @@ The [consolidated benchmark](pvm-benchmark-comparison.md) now measures the verif
 arithmetic, memory and host-loop subset with Ragnarök/interpreter/compiled columns,
 explicit availability, raw samples and Actions summaries. This does not replace the
 correctness runner or close the remaining conformance/fuzzing gates.
+
+The backend-neutral [operand matrix](pvm-operand-reference.md) checks all thirteen
+operand shapes through the public parser and both native owned decode profiles.
+Its source declaration joins the ordinary discovery path; no new central dispatch
+entry or upstream engine dependency is required.
