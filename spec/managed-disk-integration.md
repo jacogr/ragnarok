@@ -67,3 +67,18 @@ legacy local startup after physical admission. There is no checkpoint-import fal
 implicit migration, repair or overwrite. Existing `initializeDiskChain`/`openDiskChain` contracts
 remain unchanged. The managed chain suite checks selected context, all retained root identities,
 finality, exclusive creation, chain refusal and absence of intermediate bootstrap frames.
+
+## Opaque canonical maintenance
+
+`prepareDiskMaintenance` checks that the exact public disk snapshot is canonical, its selected
+context equals the encoded canonical history at the admitted generation, and managed usage is
+available. It captures only the bounded rolling roots plus explicit finality. The opaque request
+binds the snapshot, context, generation and physical epoch. It does not choose finality or touch
+files. `commitDiskMaintenance` rechecks every binding before physical compaction; reuse after an
+ordinary commit or prior compaction refuses. Default requests grant no operation authority.
+
+The maintenance plan suite provisions an unselected old map, restores the exact canonical context,
+then checks reclaimed records, all rolling roots/finality after restart, unchanged public identity,
+context/generation preservation and stale generation/epoch refusal. No canonical successor is
+installed by physical maintenance. Callers must run IO on the excluded storage worker or startup
+owner, keeping all shared ARC aliases stable throughout that lease.
