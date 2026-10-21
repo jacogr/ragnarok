@@ -66,6 +66,6 @@ proc canInstallChainUpdate*(state: StateStore, view: ChainView,
 proc installChainUpdate*(state: var StateStore, view: var ChainView,
     prepared: PreparedChainUpdate) {.requires: canInstallChainUpdate(state, view, prepared).} =
   ## Single-threaded stable owners cannot change between preflight/durability/installation.
-  ## Both replacements retain existing immutable owners; no hashing, allocation, composition or callback runs.
+  ## Both replacements retain existing immutable owners; no hashing, composition or callback runs.
   state = prepared.state
   view = prepared.view
