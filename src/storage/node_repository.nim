@@ -202,6 +202,11 @@ proc storedNodes*(view: RepositoryView): int {.requires: view.data != nil.} =
   let data = view.data
   assert data != nil
   data.table.records.len
+proc repositoryLimits*(view: RepositoryView): RepositoryLimits {.requires: view.data != nil.} =
+  ## Copy the exact immutable physical/codec policy for bounded consumers; no record storage escapes.
+  let data = view.data
+  assert data != nil
+  data.limits
 proc lookupNode*(view: RepositoryView, digest: StateNodeHash): RepositoryResult[TrieRecord] =
   ## Missing physical data is distinct from an empty child and from a default read view.
   let data = view.data
