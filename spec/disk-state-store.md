@@ -421,3 +421,15 @@ On the same checked macOS ARM64 workload, ten-run median extraction times change
 The larger case is close to timing noise; no general throughput claim follows. Every deterministic
 counter, physical byte count and hash count stayed identical. Repository rejection/1,000-cycle ARC,
 real disk replay and bounded application-history suites pass with the shared traversal change.
+
+## Explicit reachability inventory
+
+`selectRepositoryRoots` accepts an explicit bounded list that must include the current root.
+Every input slot consumes the root budget, duplicates coalesce, and empty roots need no records.
+Each requested complete graph is validated under the source's complete-state ceilings. The opaque
+immutable plan retains the exact physical source and reports unique retained/reclaimable node and
+payload totals. Shared subtrees count once. Detached root identities grant no block/finality trust.
+Missing roots, absent current selection and short budgets refuse without changing any owner.
+Plans survive later publication and owner close; there is no eviction or reclamation side effect.
+The dedicated suite checks exact counts, default/empty plans, duplicates, foreign owners, detached
+root mutation, narrow budgets and 1,000 balanced ARC lifetimes; privacy rejects internal access.

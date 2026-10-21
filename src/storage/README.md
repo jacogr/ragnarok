@@ -113,3 +113,9 @@ semantics while preserving their typed error distinctions. Run `storage_backend_
 The authorized complete-state memory/disk consumer boundary is recorded above. Full/light startup
 and workload-driven layout/reclamation remain separate work. Availability of these primitives does
 not authorize unrelated consumers to change their state or trust contracts.
+
+`selectRepositoryRoots` builds an immutable reachability inventory for explicitly selected roots,
+including the current head. It validates each complete graph and counts shared records once, exposing
+retained and reclaimable node/value-byte totals without deleting anything. Plans bind the exact
+source view and remain usable after publication or close. Root membership is physical reachability,
+not block/finality authority. Run `storage_retention_plan` for its ownership and limit checks.
