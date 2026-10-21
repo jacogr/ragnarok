@@ -16,6 +16,7 @@ import platform
 import subprocess
 import sys
 import time
+import tempfile
 from native_checks import NativeChecks, ROOT, announce
 from runtime_provenance import runtime_sources
 from native_tests import unit_jobs
@@ -23,7 +24,7 @@ from setup_nimony import cache_directory
 from compiler_fixtures import PRIVATE, NOMINAL, CONTRACTS, EARLY_NOMINAL, SCHEMAS, OWNERSHIP
 
 BUILD = ROOT/'build/tests/guards'
-checks = NativeChecks(BUILD)
+checks = NativeChecks(BUILD, reuse_builds=True)
 command, build = checks.command, checks.build
 COUNTS = dict(privacy=len(PRIVATE), nominal=len(NOMINAL), contracts=len(CONTRACTS),
               schemas=len(SCHEMAS), ownership_compile=len(OWNERSHIP))
@@ -36,19 +37,45 @@ def passed(report):
                and all(row['passed'] for row in report[key]) for key, count in COUNTS.items())
 
 
-# Compile independent rejection probes in private caches; consume results in original registry order.
+# Each worker serializes a private cache; successful initialization enables normal import reuse.
 def compile_rejections(compiler, expectations):
-    # A worker owns one compiler process, output log and cache; diagnostic interpretation stays on the caller.
-    def check(item):
-        name, expected = item
-        result = command([compiler, 'check', '--mm:arc', '--cc:clang',
-                          f'--nimcache:{cache_directory(compiler, BUILD, name)}',
-                          ROOT/f'tests/native/compile_fail/{name}.nim'], name)
-        return name, expected, result
+    """Check every main afresh while reusing imports through the pinned compiler's public cache API."""
+    jobs = unit_jobs()
+    items = list(expectations.items())
+    if not items:
+        return
+    BUILD.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='rejection-caches-', dir=BUILD) as temporary:
+        # Every invocation starts clean; no other job, worker or prior run can modify these caches.
+        folder = Path(temporary)
+        control = folder/'cache_control.nim'
+        control.write_text('# Copyright (c) 2026 Ragnarök contributors\n'
+                           '# SPDX-License-Identifier: MIT OR Apache-2.0\n'
+                           '## Successful frontend configuration control.\ndiscard\n')
 
-    with ThreadPoolExecutor(max_workers=unit_jobs()) as executor:
-        # Ordered consumption preserves the historical evidence layout even when processes finish out of order.
-        yield from executor.map(check, expectations.items())
+        def check_batch(batch):
+            """Own one compiler cache and preserve each fixture's independent diagnostic/log identity."""
+            worker, selected = batch
+            cache = cache_directory(compiler, folder, 'worker-'+str(worker))
+            arguments = [compiler, 'check', '--mm:arc', '--cc:clang', f'--nimcache:{cache}']
+            initialized = command([*arguments, control], 'cache-control-'+selected[0][0])
+            if initialized['exit_code'] != 0:
+                # A failed control cannot authorize cached rejection evidence.
+                raise ValueError('Compiler cache control failed: '+selected[0][0])
+            rows = []
+            for name, expected in selected:
+                # Failed mains are never accepted by exit status alone; callers require exact diagnostics.
+                result = command([*arguments, ROOT/f'tests/native/compile_fail/{name}.nim'], name)
+                rows.append((name, expected, result))
+            return rows
+
+        count = min(jobs, len(items))
+        batches = [(worker, items[worker*len(items)//count:(worker+1)*len(items)//count])
+                   for worker in range(count)]
+        with ThreadPoolExecutor(max_workers=count) as executor:
+            # Contiguous lexical batches improve locality and concatenate back into declaration order.
+            for rows in executor.map(check_batch, batches):
+                yield from rows
 
 
 # Keep the original diagnostics and lowering checks in this group's private workspace.

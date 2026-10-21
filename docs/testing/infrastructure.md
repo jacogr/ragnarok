@@ -28,6 +28,21 @@ metadata and unsupported fields/profiles fail before setup; discovering a file n
 a generic compiler error for its intended rejection. Fixture sources and their loader are hashed
 in guard and runtime provenance.
 
+Semantic rejection checks use fresh per-invocation worker caches. Each bounded worker checks a
+contiguous lexical batch serially; concurrent workers never share a writable cache. A successful
+`check` control initializes the frontend configuration before expected failures, allowing the
+pinned compiler's normal import reuse. Without that control, a failing first build clears the
+configuration memo and the next fixture rebuilds its import graph. The compiler owns dependency
+invalidation; no compiler metadata is edited. Every fixture keeps its own process, exact diagnostic
+predicate and retained log, and results retain declaration order. Failed controls fail the group;
+temporary worker caches are discarded after the invocation.
+
+Ownership guards retain real lowering builds and their original ABI/define profiles, using the
+existing serial profile cache and compiler-owned lock. Different profiles remain isolated and
+every main keeps its own output identity. Cache validation must cover imported and main-source edits
+as well as private worker ownership; ownership failures still require the intended lowering
+diagnostic rather than a semantic-only rejection.
+
 `tools/native_requirements/<source-family>/<suite>.json` declares one suite's source directory,
 ordered libraries, headers, observer call-site renames, compiler defines, fresh-fixture
 requirement and optional static `fixtures` dependencies.

@@ -48,6 +48,32 @@ class VerificationGuards(unittest.TestCase):
         self.assertNotIn('compile_rejections', functions)
 
 
+# Cache controls must enable ordinary import reuse without sharing concurrent compiler state.
+class CompilerCacheChecks(unittest.TestCase):
+    """Protect per-worker ownership, independent diagnostics and failure of successful controls."""
+
+    def test_private_worker_cache_reuse_and_control_failure(self):
+        """One worker reuses its own cache, keeps separate fixture logs and refuses failed controls."""
+        calls = []
+        def command(arguments, name):
+            """Record command planning without running a compiler or synthesizing real diagnostics."""
+            calls.append((name, arguments))
+            return dict(exit_code=0 if name.startswith('cache-control-') else 1, output=name)
+        cases = {'first': 'one', 'second': 'two', 'third': 'three'}
+        with patch.dict(test_guards.os.environ, {'COMPILE_CHECK_JOBS': '1'}), \
+             patch.object(test_guards, 'command', side_effect=command):
+            rows = list(test_guards.compile_rejections(Path('/fixture/nimony'), cases))
+        self.assertEqual([row[0] for row in rows], list(cases))
+        self.assertEqual([name for name, _ in calls], ['cache-control-first', *cases])
+        caches = {arg for _, arguments in calls for arg in arguments
+                  if str(arg).startswith('--nimcache:')}
+        self.assertEqual(len(caches), 1)
+        with patch.object(test_guards, 'command', return_value={'exit_code': 1}) as command:
+            with self.assertRaisesRegex(ValueError, 'cache control failed'):
+                list(test_guards.compile_rejections(Path('/fixture/nimony'), cases))
+        self.assertTrue(all(call.args[1].startswith('cache-control-') for call in command.call_args_list))
+
+
 # Lowering fixtures retain their original native ABI, feature flags and build/log identities.
 class CompilerFixtureExecution(unittest.TestCase):
     # Metadata selects real compilation rather than semantic-only checks for every composite owner.
