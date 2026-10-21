@@ -19,3 +19,9 @@ Completion checks: `make unit SUITE=ancestor_context` and registration inventory
 sealed chains cover skipped slots, order/duplicate/gap refusal, defaults, exact and exceeded quotas,
 invalid indices and source-sequence replacement. Consumer migration and missing-context planning
 remain later layers. M1 framing is complete; complete state serialization/JAM parity remain open.
+
+`extendAncestorContext` appends an older suffix atomically, preserving the selected parent and
+all prior context aliases. Count/host descriptor bounds precede allocation. Complete recapture
+under the supplied current limits prevents a formerly permissive profile from bypassing a stricter
+consumer. Empty extension revalidates; default context, bad link and late quota failures expose
+no extended prefix. The focused suite checks these refusal and ownership boundaries.

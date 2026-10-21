@@ -72,5 +72,22 @@ proc main() =
   assert captureAncestorContext(parent, [], limits).value.len == 1
   limits.headers = ElementLimit(0)
   assert captureAncestorContext(parent, [], limits).error == AncestorContextError.LimitExceeded
+  limits.headers = ElementLimit(3)
+  let prefix = captureAncestorContext(parent, [], limits).value
+  let extended = extendAncestorContext(prefix, [middle, oldest], limits)
+  assert extended.error == AncestorContextError.None and extended.value.len == 3
+  assert prefix.len == 1 # Publication creates a new immutable context, leaving all prior aliases intact.
+  assert extended.value.serializedBytes == bytes
+  assert extendAncestorContext(prefix, [oldest], limits).error ==
+      AncestorContextError.BrokenAncestry
+  assert extendAncestorContext(empty, [oldest], limits).error == AncestorContextError.Uninitialized
+  assert extendAncestorContext(context, [oldest], limits).error ==
+      AncestorContextError.LimitExceeded
+  limits.maxBytes = ByteLimit(bytes - 1)
+  assert extendAncestorContext(prefix, [middle, oldest], limits).error ==
+      AncestorContextError.LimitExceeded
+  assert extended.value.len == 3 and prefix.len == 1
+  limits.header.maxBytes = ByteLimit(1)
+  assert extendAncestorContext(context, [], limits).error == AncestorContextError.LimitExceeded
   echo "ancestor-context: ok"
 main()
