@@ -70,3 +70,7 @@ is project-local and claims no JAMNP-S proof interoperability.
 Decoding validates magic, count/value extents, exact total length and canonical path
 structure before publishing a copied witness. Every truncated prefix, suffix, unknown
 version, over-limit count and malformed terminal padding refuses. Decode grants no trust.
+
+Strict source-owned runtime extraction probes cover default, capture, verification,
+node index, batch, lookup index, encoding and decoding refusals, with the same real
+successful accessors as positive controls. A failed build cannot count as a rejection.
