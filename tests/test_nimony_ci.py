@@ -57,7 +57,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [unit, e2e, docker, pvm-bench, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [unit, e2e, docker, bench-pvm, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         self.assertNotIn('synchronize', triggers)
         self.assertNotIn('opened', triggers)
@@ -165,13 +165,13 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(definition.strip(),
                          'name: Validate verification inventory\n        run: make check-inventory')
         jobs = ('modules', 'python', 'guards', 'unit', 'failures', 'e2e', 'telemetry-interop', 'docker', 'pvm-reference')
-        for job in (*jobs, 'pvm-benchmark'):
+        for job in (*jobs, 'bench-pvm'):
             # Exact job boundaries keep an appended independent workload from entering its neighbor's scope.
             with self.subTest(job=job):
                 section = re.search(r'^  '+job+r':\n(.*?)(?=^  [\w-]+:|\Z)',
                                     text, re.MULTILINE | re.DOTALL).group(1)
                 preflight = '- &inventory' if job == 'modules' else '- *inventory'
-                target = 'bench-pvm' if job == 'pvm-benchmark' else 'check-'+job
+                target = 'bench-pvm' if job == 'bench-pvm' else 'check-'+job
                 self.assertEqual(section.count(preflight), 1)
                 self.assertLess(section.index(preflight), section.index('run: make '+target))
         self.assertNotIn('continue-on-error:', text)
@@ -198,8 +198,8 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_benchmark_is_manual_and_retains_raw_data(self):
         """Timing never becomes an automatic correctness gate or runs after an unrelated request."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = text.split('  pvm-benchmark:\n', 1)[1]
-        self.assertIn("if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'pvm-bench' }}", section)
+        section = text.split('  bench-pvm:\n', 1)[1]
+        self.assertIn("if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'bench-pvm' }}", section)
         self.assertEqual(section.count('run: make bench-pvm\n'), 1)
         self.assertLess(section.index('- *inventory'), section.index('run: make bench-pvm'))
         self.assertIn('summary-pvm-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', section)

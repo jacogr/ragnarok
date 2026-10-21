@@ -87,7 +87,7 @@ No production optimization or weaker checking profile was used to obtain results
 
 ## Actions delivery and reproduction
 
-The canonical workflow has a separate manually selected `pvm-bench` scope. It is
+The canonical workflow has a separate manually selected `bench-pvm` scope. It is
 excluded from normal unit/full/PR-label verification, and has its own inventory,
 setup and strict execution verdict. Its Actions summary shows the consolidated table;
 the artifact retains raw JSON/CSV, Markdown and build/run logs for thirty days.
@@ -97,7 +97,7 @@ adding the job.
 ```sh
 make bench-pvm
 make summary-pvm-benchmark SUMMARY_OUTPUT=build/pvm-speed-summary.md
-gh workflow run ci.yml --ref <branch> -f suite=pvm-bench
+gh workflow run ci.yml --ref <branch> -f suite=bench-pvm
 ```
 
 Benchmark/oracle/lock/profile/report guards, existing CI/summary/Make safeguards,
