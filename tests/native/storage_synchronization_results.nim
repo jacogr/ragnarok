@@ -19,7 +19,8 @@ proc main() =
     echo ord(selected.value)
     if repository.opened: discard repository.close
   else:
-    let path = "build/tests/storage_synchronization/guard.db"
+    # Use the standard runner parent, independent of earlier per-family local checks.
+    let path = "build/tests/storage-synchronization-guard.db"
     var nativePath = path
     discard posix.unlink(nativePath.toCString())
     var repository = default(FileRepository)
