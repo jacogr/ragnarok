@@ -344,6 +344,17 @@
     },
     {
       "arguments": [
+        "supervisor"
+      ],
+      "description": "Accumulation supervisor selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "supervisor"
+      },
+      "name": "accumulation-effect-supervisor"
+    },
+    {
+      "arguments": [
         "transfer"
       ],
       "description": "Accumulation transfer selected-success guard",

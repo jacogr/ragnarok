@@ -32,7 +32,7 @@ type
       TransferGasLow         ## Offered deferred gas is below the current destination minimum.
   AccumulationAccountScope* {.pure.} = enum ## Conservative mutation provenance since the credited initial context; equal bytes never reset it.
     Initial,         ## No account mutation occurred on this retained lineage.
-    SelfMetadata,    ## Only upgrade or transfer changed the invoking service's metadata.
+    SelfMetadata,    ## Only supported metadata operations changed the invoking service's record.
     SelfEntries,     ## Bounded unique self storage/request keys accompany selected metadata.
     CreatedAccounts, ## Bounded creation proofs accompany supported self metadata/entries.
     DeletedAccounts, ## Bounded ejection proofs accompany supported self/created account changes.
@@ -162,7 +162,7 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
     selfMetadata = false, globalOnly = false): EffectData =
   var scope = previous.accountScope
   if not globalOnly and not sameStateSnapshot(previous.accounts, accounts):
-    # Only upgrade and transfer commits certify self-only metadata successors; unsupported ancestry is sticky.
+    # Only explicit metadata operations certify self-only successors; unsupported ancestry is sticky.
     if selfMetadata and scope != AccumulationAccountScope.Unsupported:
       if scope notin {AccumulationAccountScope.SelfEntries,
           AccumulationAccountScope.CreatedAccounts, AccumulationAccountScope.DeletedAccounts}:
@@ -1194,6 +1194,89 @@ proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash
   assert current != nil # Private effect pairs retain both initialized dimensions.
   recordAccumulationUpgrade(effects, codeHash, accumulationGas, transferGas,
       current.initial.contextInfo.value.service)
+
+# Decode one bounded current record without hashing or fabricating a missing participant.
+proc currentAccountMetadata(accounts: StateStoreSnapshot, service: ServiceIndex):
+    AccumulationEffectResult[ServiceMetadata] =
+  let found = accounts.lookup(chapterServiceKey(StateChapter(255), service))
+  if found.error == StateStoreError.MissingKey:
+    return AccumulationEffectResult[ServiceMetadata](
+        status: AccumulationEffectError.UnknownService) # Existence precedes authority.
+  if found.error != StateStoreError.None:
+    return AccumulationEffectResult[ServiceMetadata](
+        status: AccumulationEffectError.InvalidState) # Invalid snapshots cannot prove absence.
+  if found.value.byteLength != ServiceMetadataBytes:
+    return AccumulationEffectResult[ServiceMetadata](
+        status: AccumulationEffectError.MalformedState) # Bound the canonical metadata copy first.
+  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
+  if decoded.error != ServiceMetadataError.None:
+    return AccumulationEffectResult[ServiceMetadata](
+        status: AccumulationEffectError.MalformedState) # No malformed identity may authorize reassignment.
+  AccumulationEffectResult[ServiceMetadata](status: AccumulationEffectError.None,
+      completed: decoded.value.metadata)
+
+# Effective supervision binds the designated service incarnation; missing/recreated accounts fall back to self.
+proc effectiveSupervisor(accounts: StateStoreSnapshot, service: ServiceIndex,
+    metadata: ServiceMetadata): AccumulationEffectResult[ServiceIndex] =
+  if uint32(metadata.supervisor) == uint32(service):
+    return AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None,
+        completed: service) # Self designation and fallback select the same authority.
+  let designated = currentAccountMetadata(accounts, metadata.supervisor)
+  if designated.error == AccumulationEffectError.UnknownService:
+    return AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None,
+        completed: service) # A missing designation grants no authority to a future account.
+  if designated.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[ServiceIndex](
+        status: designated.error) # Malformed backing is a local refusal, not a guessed fallback.
+  let selected = if uint32(designated.value.created) == uint32(metadata.supervisorCreated):
+    metadata.supervisor
+  else:
+    service # Reusing an ID with a different creation slot cannot inherit authority.
+  AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None, completed: selected)
+
+proc recordAccumulationSupervisor*(effects: AccumulationEffects, target, supervisor: ServiceIndex):
+    AccumulationEffectResult[AccumulationEffects] =
+  ## Reassign only an effectively supervised target, after checking both current nominal account identities.
+  ## UnknownService maps to WHO, NotRequested to HUH; every local failure retains the original account/checkpoint owners.
+  template fail(reason: AccumulationEffectError) =
+    return AccumulationEffectResult[AccumulationEffects](status: reason)
+  let data = effects.data
+  if data == nil:
+    fail(AccumulationEffectError.Uninitialized) # A default pair owns no invocation authority.
+  let previous = data.regular.data
+  assert previous != nil # Private pairs retain complete initialized dimensions.
+  let self = previous.initial.contextInfo.value.service
+  let selected = currentAccountMetadata(previous.accounts, target)
+  if selected.error != AccumulationEffectError.None:
+    fail(selected.error) # Target existence/canonicality is established before any authority check.
+  let nominee = currentAccountMetadata(previous.accounts, supervisor)
+  if nominee.error != AccumulationEffectError.None:
+    fail(nominee.error) # Even an unauthorized caller receives WHO for a missing nominee.
+  let authority = effectiveSupervisor(previous.accounts, target, selected.value)
+  if authority.error != AccumulationEffectError.None:
+    fail(authority.error) # Keep malformed supervisor provenance as a local refusal.
+  if uint32(authority.value) != uint32(self):
+    fail(AccumulationEffectError.NotRequested) # Only effective supervision authorizes this host, including a self target.
+  var metadata = selected.value
+  metadata.supervisor = supervisor
+  metadata.supervisorCreated = nominee.value.created
+  let encoded = serviceMetadataEntry(target, metadata, ByteLimit(ServiceMetadataBytes)).value
+  var working = forkStateStore(previous.accounts).value
+  let changed = working.apply([StateWrite(key: encoded.key, kind: StateWriteKind.Put,
+      value: encoded.value)])
+  case changed.error
+  of StateStoreError.None:
+    discard # Both supervisor fields are one fully Merklized metadata successor.
+  of StateStoreError.LimitExceeded:
+    fail(AccumulationEffectError.LimitExceeded) # Local policy cannot become a fabricated guest code.
+  of StateStoreError.BackendFailure:
+    fail(AccumulationEffectError.BackendFailure) # No partial target or effect version escapes hash refusal.
+  else:
+    fail(AccumulationEffectError.InvalidState) # Preserve every retained owner on other store invariants.
+  let candidate = successorData(previous, changed.value, selfMetadata = uint32(target) == uint32(self))
+  AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
+    completed: AccumulationEffects(data: PairData(source: data.source,
+      regular: AccumulationEffectContext(data: candidate), exceptional: data.exceptional)))
 
 proc effectTransferAt*(context: AccumulationEffectContext, index: AccumulationTransferIndex):
     AccumulationEffectResult[DeferredTransfer] =
