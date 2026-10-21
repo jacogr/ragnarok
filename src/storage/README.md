@@ -119,3 +119,7 @@ including the current head. It validates each complete graph and counts shared r
 retained and reclaimable node/value-byte totals without deleting anything. Plans bind the exact
 source view and remain usable after publication or close. Root membership is physical reachability,
 not block/finality authority. Run `storage_retention_plan` for its ownership and limit checks.
+
+`exportRepositorySelection` copies a plan's retained physical union under explicit record/value
+ceilings. The sorted detached result is maintenance transport, not an ordinary single-root batch.
+It performs no file replacement, generation reset, context rewrite or reclamation.

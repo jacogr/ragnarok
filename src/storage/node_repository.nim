@@ -381,3 +381,32 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
   RepositoryResult[RepositorySelection](status: RepositoryError.None,
     completed: RepositorySelection(data: RepositorySelectionData(source: view, roots: unique,
       indices: indices, valueBytes: bytes)))
+
+proc commitment*(selection: RepositorySelection): StateTrieCommitment {.requires: selection.initialized.} =
+  ## Copy the selected current complete commitment from this plan's immutable source.
+  let data = selection.data
+  assert data != nil
+  data.source.commitment
+proc generation*(selection: RepositorySelection): RepositoryGeneration {.requires: selection.initialized.} =
+  ## Copy the source generation without creating a new publication or chain identity.
+  let data = selection.data
+  assert data != nil
+  data.source.generation
+proc exportRepositorySelection*(selection: RepositorySelection,
+    limits: TrieExportLimits): RepositoryResult[seq[TrieRecord]] =
+  ## Detach the validated root union in physical address order after exact descriptor/payload preflight.
+  ## This multi-root union is not a single-target TrieExport and cannot bypass its orphan checks.
+  let data = selection.data
+  if data == nil: return RepositoryResult[seq[TrieRecord]](status: RepositoryError.Uninitialized)
+  let maximum = min(uint64(limits.records), uint64(high(int) div sizeof(TrieRecord)))
+  if uint64(data.indices.len) > maximum or data.valueBytes > uint64(limits.valueBytes):
+    return RepositoryResult[seq[TrieRecord]](status: RepositoryError.LimitExceeded)
+  let source = data.source.data
+  assert source != nil
+  var indices = newSeq[int](data.indices.len)
+  for index, position in data.indices: indices[index] = position # Sorting must not mutate the immutable plan.
+  indices.sort() # Source record indices have the same unique lexical order as their full physical addresses.
+  var records = newSeq[TrieRecord](indices.len)
+  for index, position in indices:
+    records[index] = copyRecord(source.records[position]) # Never export shared mutable payload bytes.
+  RepositoryResult[seq[TrieRecord]](status: RepositoryError.None, completed: records)

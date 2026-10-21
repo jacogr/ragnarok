@@ -433,3 +433,13 @@ Missing roots, absent current selection and short budgets refuse without changin
 Plans survive later publication and owner close; there is no eviction or reclamation side effect.
 The dedicated suite checks exact counts, default/empty plans, duplicates, foreign owners, detached
 root mutation, narrow budgets and 1,000 balanced ARC lifetimes; privacy rejects internal access.
+
+## Bounded retained-record transport
+
+`exportRepositorySelection` preflights exact retained record/value extents, then detaches the union
+in unique physical-address order, independently of requested-root order. Source generation and
+current commitment remain available from the immutable plan. Multi-root records are explicitly
+not a single-target `TrieExport`; ordinary publication still rejects unrelated orphan records.
+No journal format or application context is rewritten. Tests witness every retained record against
+independent complete exports, exclude unselected revisions, exercise exact/one-short budgets and
+empty unions, and prove repeated detached mutation/owner close preserve plans with balanced ARC.
