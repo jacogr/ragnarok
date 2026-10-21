@@ -144,3 +144,15 @@ Explicit zero disables these automatic paths while retaining the explicit mainte
 The Services maintenance suite uses a real RPC listener, observes pause/resume, checks unchanged
 public snapshot identity and publication outcome, and verifies retained maintenance receipts across
 joined shutdown and strict local restart.
+
+## Genuine execution and automatic policy evidence
+
+`managed_automatic_maintenance` executes the existing signed two-guest fixture against an actual
+Services owner, prepares an independent in-memory chain update, then enqueues the certified child
+through normal durable publication. A one-byte threshold forces maintenance before acknowledgement;
+the publication generation stays two, maintenance changes only the epoch, and every complete state
+entry matches the in-memory candidate. Public adoption readiness remains Publishing while either
+IO lease is active. Explicit zero suppresses automatic maintenance; enabling the threshold at the
+next local restart reclaims during startup before listeners. Both cases retain exact history/maps,
+and header-only journals do not repeatedly compact. These are checked local integration witnesses,
+not full JAM/STF parity, power-loss simulation or exact-head Linux CI evidence.
