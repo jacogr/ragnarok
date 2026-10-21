@@ -49,9 +49,10 @@ proc rosterTransitionConfig*(): BlockReportConfig =
   cfg
 proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 65535'u16,
     target = 0'u32, offender = false, repeatReporter = false,
-    additionalCores: openArray[uint64] = [], distinctPackages = false): ComputedRosterFixture =
+    additionalCores: openArray[uint64] = [], distinctPackages = false,
+        withReady = false): ComputedRosterFixture =
   ## Re-author a three-core complete signed prefix; optional parent9 -> posterior6 is a real epoch transition.
-  let base = transitionFixture(epoch = shrink)
+  let base = transitionFixture(epoch = shrink, withReady = withReady)
   let cfg = rosterTransitionConfig()
   var original = base.context.original
   let assignments = availabilityStateEntry(newSeq[AvailabilityAssignment](3),

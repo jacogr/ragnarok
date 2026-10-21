@@ -10,7 +10,7 @@ import ../../src/state/[computed_profile, computed_lookup, computed_recent, comp
   erasure_layout, erasure_words, auditable_bundle, extrinsic_inputs, import_inputs, import_justification]
 import ../../src/chain/[genesis, parameters]
 import ../../src/codec/[bounded, header, block_codec, work_package, work_report, composite,
-  report_owned, state_layout, state_trie]
+  report_owned, state_layout, state_trie, state_workqueues]
 import ../../src/crypto/primitives
 import ./[pvm_input_refinement, pvm_report_results, pvm_refinement_outcome, pvm_computed_report,
   pvm_export_erasure, pvm_extrinsic_inputs, pvm_import_inputs, pvm_computed_lookup,
@@ -69,7 +69,7 @@ proc transitionSource*(context: Context, original: InputFixture,
       fixture.parameters)
   assert configured.error == GenesisError.None, "genuine configured signed parent"
   bindComputedProfile(lookup, configured).value
-proc transitionFixture*(epoch = false): ComputedTransitionFixture =
+proc transitionFixture*(epoch = false, withReady = false): ComputedTransitionFixture =
   ## Preserve real signing and original map ownership; no fake keys or forged successful transition result.
   let halt = @[50'u8, 0]
   let guest = reportGuest([refinementImmediate(8, 0), halt])
@@ -80,6 +80,9 @@ proc transitionFixture*(epoch = false): ComputedTransitionFixture =
   let duplicates = entriesFor([reportFor(base, 0, [10'u64])])
   var options = signedBlockFixtureConfig()
   options.reports = 0
+  if withReady:
+    # Historical ready work is part of the actual original committed parent, before any current computation/signing.
+    options.ready = @[ReadyItem(report: base, dependencies: @[])]
   options.targetSlot = if epoch: 12'u32 else: 2'u32
   options.shiftPending = epoch
   var histories = 0
