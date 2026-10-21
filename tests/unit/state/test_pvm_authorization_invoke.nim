@@ -157,6 +157,21 @@ assert authorizationRun(authorizationFixture([halt], overrideBytes = @[128'u8]))
 let malformed = authorizationRun(authorizationFixture([halt], overrideBytes = @[0'u8, 1]))
 assert malformed.error == AuthorizationInvocationError.InitializationFailure and
     malformed.initializationError == InitializationError.InvalidEnvelope
+# Authenticated authorizers with missing final successors refuse before an invocation can execute.
+for terminal in [@[1'u8], @[170'u8, 0, 253]]:
+  let refused = authorizationRun(authorizationFixture([@[51'u8, 7, 7], terminal]))
+  assert refused.error == AuthorizationInvocationError.InitializationFailure
+  assert refused.initializationError == InitializationError.InvalidProgram
+  # Even an unreachable malformed suffix prevents whole-module preparation.
+  let unreachable = authorizationRun(authorizationFixture([halt, terminal]))
+  assert unreachable.error == AuthorizationInvocationError.InitializationFailure
+  assert unreachable.initializationError == InitializationError.InvalidProgram
+  # An explicit trap successor restores preparation; the trap is an actual guest work result.
+  let safeTerminal = if terminal.len == 1: terminal else: @[171'u8, 0, 253]
+  let completed = authorizationRun(authorizationFixture([@[51'u8, 7, 7], safeTerminal, @[0'u8]]))
+  assert completed.error == AuthorizationInvocationError.None
+  assert completed.value.authorizationInfo.value.kind == WorkKind.Panic
+
 let lookup = authorizationRun(authorizationFixture([halt], malformedState = true))
 assert lookup.error == AuthorizationInvocationError.LookupFailure and lookup.lookupError ==
     HistoricalLookupError.MalformedState

@@ -111,6 +111,23 @@ for raw in [@[0'u8, 0, 1, 0, 1], @[255'u8], newSeq[byte](0), @[0'u8, 0, 7, 0, 0,
   # Valid entry-zero code is insufficient: accumulation's required PC 5 must also exist and be valid.
   assert initializeAccumulationMachine(pvmBootstrap(pvmEnvelope(raw)), wide).error ==
     AccumulationMachineError.InvalidProgram
+# The mandatory accumulation entry5 exists; only the final missing successor causes rejection.
+var validationPolicy = wide
+validationPolicy.program = ProgramByteLimit(64)
+for program in [@[0'u8, 0, 9, 0, 0, 0, 0, 0, 51, 7, 7, 1, 63, 1],
+    @[0'u8, 0, 11, 0, 0, 0, 0, 0, 51, 7, 7, 170, 0, 253, 63, 1]]:
+  let bootstrap = pvmBootstrap(pvmEnvelope(program))
+  let code = bootstrap.bootstrapService.value.serviceCode.value
+  assert initializeAccumulationMachine(bootstrap, validationPolicy).error ==
+      AccumulationMachineError.InvalidProgram
+  assert bootstrap.bootstrapService.value.serviceCode.value == code
+# A trailing trap restores preparation at the same accumulation entry; raw execution still panics normally.
+let successor = pvmEnvelope([0'u8, 0, 10, 0, 0, 0, 0, 0, 51, 7, 7, 1, 0, 63, 3])
+let successorCpu = initializeAccumulationMachine(pvmBootstrap(successor),
+    validationPolicy).value.accumulationMachine.value
+assert execute(successorCpu, ExecutionStepLimit(3), GasCycleLimit(100)).value.exit == StepExit.Panic
+assert uint64(machineInfo(successorCpu).value.registers[7]) == 0xfeff0000'u64
+
 let panic = pvmEnvelope([0'u8, 0, 6, 0, 0, 0, 0, 0, 0, 63])
 let trapping = initializeAccumulationMachine(pvmBootstrap(panic),
     wide).value.accumulationMachine.value
