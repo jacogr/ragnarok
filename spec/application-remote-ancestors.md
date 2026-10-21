@@ -109,3 +109,32 @@ duplicate/late-failure reset and unrelated-command refusal. Existing app, explic
 ancestor, disk-storage and recovery option suites, the private activation-field
 rejection and inventory pass (`build/remote-ancestor-options-*.log`). Parsing alone
 does not start remote acquisition; command wiring is the next layer.
+
+## Download command integration
+
+Before any ancestor/child request, reserve explicit-file/local count plus requested
+remote maximum plus all future selected parents. Bound E4 response capacity before
+Services/file IO. After startup, extend the oldest captured prefix header (or selected
+head when none exists) with a descending request. The remote response total uses
+`input.blockBytes`; per-block codec limits and remaining input/report header bytes
+remain independent. Parent-inclusive report bytes charge the selected head once.
+
+Acquisition uses the existing finite round-robin scheduler/cooldown and configured
+TLS pins. Empty, malformed, over-budget, reset or wrong-lineage responses consume
+one attempt without a prefix. A shorter nonempty valid response may supply context;
+normal report admission still decides whether the later candidate has every needed
+lookup proof. No child request follows an exhausted/refused acquisition. Existing
+explicit/local inputs remain the newest prefix and complete report admission still
+validates their links. RPC/UI tick while acquisition owns no execution worker lease.
+One monotonic command deadline includes acquisition and all later children.
+Graceful ancestor connection retirement precedes a fresh child endpoint, preserving
+a single-peer listener's capacity. Teardown joins before captured aliases retire.
+
+`application_remote_ancestor_command` passes actual forked TLS responders with a
+newly guaranteed report and two guest executions: omitted ancestry independently
+fails MissingLookupAnchor; fetched context permits real adoption. Independent literal
+requests require descending-before-ascending order. Empty, changed seal, suffix,
+missing FIN, wrong pin and quota failures issue no child request; wrong pin and
+count preflight issue zero requests. Two pinned peers each observe one ancestry
+and one child request during empty-first fallback. Legacy startup/progress suites
+and inventory pass (`build/remote-ancestor-command-*.log`).
