@@ -14,6 +14,7 @@ feature contracts, pinned source identities and unresolved protocol interpretati
 | [Disk storage](disk-storage.md) | Backend flags, local restart, imports, durability and bounds |
 | [Checkpoint imports](checkpoint-import.md) | Explicit trusted full-state startup inputs and operation |
 | [Download ancestry](download-ancestors.md) | Bounded sealed ancestor inputs for report lookup validation |
+| [Download progress](download-progress.md) | Finite successive children, partial progress, deadlines and restart |
 | [Testing](testing.md) | Verification groups, evidence and requesting CI |
 | [GitHub automation](../.github/WORKFLOWS.md) | Workflow jobs, CI labels and retained evidence |
 | [Design](design.md) | Module boundaries and links to the pages in [`design/`](design/) |
