@@ -35,7 +35,8 @@ let input = targetInput()
 
 # Emit one exact upgrade with distinct per-service gas fields and the actual fixed writable input pointer.
 proc upgrade(gas: uint32): seq[seq[byte]] =
-  @[registerImmediate(7, 196608), registerImmediate(8, gas), registerImmediate(9, gas+1), @[10'u8, 21]]
+  @[@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, gas), registerImmediate(10,
+      gas+1), @[10'u8, 21]]
 
 # Assemble repeated upgrade/checkpoint combinations without another bytecode framing implementation.
 proc envelope(gas: uint32, checkpoint = false, panic = false, provide = false,
@@ -147,11 +148,11 @@ block broader_mutation_is_sticky:
   for storage in [false, true]:
     var instructions: seq[seq[byte]] = @[]
     if storage:
-      instructions = @[registerImmediate(7, 65536), registerImmediate(8, 1),
-        registerImmediate(9, 196608), registerImmediate(10, 1), @[10'u8, 5]] # Real self storage mutation.
+      instructions = @[@[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1),
+        registerImmediate(10, 196608), registerImmediate(11, 1), @[10'u8, 5]] # Real self storage mutation.
     else:
-      instructions = @[registerImmediate(7, 196608), registerImmediate(8, 3), @[10'u8,
-          25]] # Real request mutation.
+      instructions = @[@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 3), @[
+          10'u8, 25]] # Real request mutation.
     for instruction in upgrade(7):
       instructions.add(instruction) # A later upgrade cannot relabel the broader lineage as self-metadata-only.
     instructions.add(@[50'u8, 0])

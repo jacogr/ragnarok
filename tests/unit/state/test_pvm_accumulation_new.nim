@@ -44,7 +44,7 @@ proc source(length = 5'u64, address = 196608'u64, accumulation = 123'u64, transf
     gratis = 0'u64, desired = high(uint64), manager = 0'u32, registrar = 0'u32,
     credit = 100000'u64, account = ServiceMetadata(balance: AccountBalance(1000)),
     data: seq[byte] = offered(), extra: seq[StateEntry] = @[], spareEntries = 6,
-    writes = 3'u64, bootstrapProbes = 1'u64,
+    writes = 3'u64, bootstrapProbes = 1'u64, mode = 0'u64,
     suffix: seq[seq[byte]] = @[@[50'u8, 0]]): PreparedAccumulationMachine =
   assert length <= uint64(high(uint32)) # The current request carries a canonical E4 length, never a truncated E8.
   assert data.len >= 32 # This fixture borrows a complete opaque code hash before packing the current request.
@@ -59,7 +59,7 @@ proc source(length = 5'u64, address = 196608'u64, accumulation = 123'u64, transf
   for i in 32..<data.len:
     wire.add(data[i]) # Preserve trailing authored preimage bytes after the fixed current request.
   var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, desired),
-    registerImmediate(9, 0), registerImmediate(10, address), @[10'u8, 20]]
+    registerImmediate(9, mode), registerImmediate(10, address), @[10'u8, 20]]
   for instruction in suffix:
     instructions.add(instruction) # Later effects execute through the same decoded production guest stream.
   guestProgram(instructions, credit, manager = manager, registrar = registrar, delegator = 42,
@@ -197,6 +197,21 @@ for length in [0'u64, uint64(high(uint32))-2]:
       params = parameters(0, 0, 0))
   checkChild(context(completed), selected, childBalance = 0, length = uint32(length),
     accumulation = high(uint64), transfer = high(uint64)) # Current maximal valid length and full-width gas fields remain representable.
+# Undefined current modes are protocol HUH refusals after request capture, with no account mutation.
+for mode in [4'u64, high(uint64)]:
+  let prepared = source(mode = mode)
+  let refused = run(prepared)
+  assert refused.error == AccumulationDispatchError.None and refused.value.exit == StepExit.Halt, "undefined creation mode completes with a guest refusal"
+  assert uint64(machineInfo(refused.value.machine).value.registers[7]) == high(uint64)-8, "undefined creation mode returns HUH"
+  assert uint64(machineInfo(refused.value.machine).value.gas) == 100000-price(prepared)-3855, "undefined mode charges only the fixed creation fee"
+  assert uint64(metadata(context(refused), ServiceIndex(42)).balance) == 1000 and uint32(context(
+      refused).effectInfo.value.nextService) == uint32(selected), "undefined mode preserves creator balance and allocation cursor"
+  assert run(source(mode = mode, address = high(uint64))).value.exit == StepExit.Panic, "complete request capture precedes undefined-mode HUH"
+  assert run(source(mode = mode, address = high(uint64), credit = price(prepared)+3854),
+      limit = 0).value.exit == StepExit.OutOfGas, "unaffordable undefined mode drains gas before capture"
+# Valid alternate modes remain explicit implementation gates until their funding paths are proven.
+for mode in [1'u64, 2, 3]:
+  assert run(source(mode = mode)).error == AccumulationDispatchError.UnsupportedHostCall, "valid alternate creation funding is gated"
 assert run(valid, limit = 59).error == AccumulationDispatchError.LimitExceeded, "complete current request capture ceiling"
 for available in [0'u64, 3854, 3855, 3856]:
   let completed = run(source(credit = price(valid)+available))
@@ -286,8 +301,8 @@ for checkpoint in [false, true]:
       selected) else: selected), "OOG selects matching cursor checkpoint"
 # Later regular mutations retain both the created child and the advanced cursor.
 let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 27],
-  registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
-  registerImmediate(10, 3), @[10'u8, 5], @[50'u8, 0]]))
+  @[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1), registerImmediate(10, 196608),
+  registerImmediate(11, 3), @[10'u8, 5], @[50'u8, 0]]))
 assert uint64(machineInfo(preserved.value.machine).value.registers[7]) == high(uint64), "storage write succeeds after creation"
 assert context(preserved).effectInfo.value.hasYield and uint32(context(
     preserved).effectInfo.value.nextService) == uint32(advance(selected)), "yield/storage retain advanced cursor"

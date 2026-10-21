@@ -31,8 +31,11 @@ checkStage(refused, RefinementInvocationError.InvalidBootstrap)
 let capture = runRefinementInvocation(source, [], default(RefinementInputs), ExportOffset(7),
     refinementLimits())
 checkStage(capture, RefinementInvocationError.BootstrapFailure)
-let host = run(refinementFixture([@[10'u8, 9], halt]))
+# A nonempty current memory compile exceeds the fixture's zero program-byte budget.
+let host = run(refinementFixture([refinementImmediate(7, 0), refinementImmediate(8, 65536),
+  refinementImmediate(9, 1), @[10'u8, 9], halt]))
 checkStage(host, RefinementInvocationError.HostFailure)
+assert host.hostError == RefinementDispatchError.LimitExceeded, "actual current compile byte-policy refusal"
 var limited = refinementLimits()
 limited.steps = ExecutionStepLimit(0)
 let engine = run(source, limited)

@@ -179,8 +179,8 @@ for checkpoint in [false, true]:
     (if checkpoint: 99'u32 else: 42'u32), (if checkpoint: payload() else: zeros)) # OOG selects the exact complete checkpoint.
 # Preserve accepted queues across later storage and yield mutations through all EffectData constructors.
 let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 27],
-  registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
-  registerImmediate(10, 3), @[10'u8, 5], @[50'u8, 0]]))
+  @[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1), registerImmediate(10, 196608),
+  registerImmediate(11, 3), @[10'u8, 5], @[50'u8, 0]]))
 assert preserved.error == AccumulationDispatchError.None, "assign/yield/storage execution succeeds"
 checkState(context(preserved), 0, 99, payload())
 assert context(preserved).effectInfo.value.hasYield, "yield remains present after storage"

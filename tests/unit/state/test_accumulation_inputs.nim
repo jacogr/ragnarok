@@ -49,8 +49,8 @@ proc empty(): PreparedAccumulationOperands =
 proc bytes(input: InvocationInput): seq[byte] =
   case input.kind
   of AccumulationKind.Transfer:
-    result = newSeq[byte](153) # Standalone transfer includes its actual C.2 discriminator.
-    assert encodeTransfer(input.transfer, ByteLimit(153), result).value == result.len
+    result = newSeq[byte](154) # Standalone transfer includes its actual C.2 discriminator.
+    assert encodeTransfer(input.transfer, ByteLimit(154), result).value == result.len
   of AccumulationKind.Operand:
     let owner = input.operand # Select before retaining the active payload owner.
     result = newSeq[byte](operandInfo(owner).value.consumed)
@@ -76,7 +76,7 @@ proc projections() {.raises.} =
     var transfers: seq[DeferredTransfer] = @[]
     if f[8] != "-":
       for raw in f[8].split(','):
-        transfers.add(decodeTransfer(unhex(raw), ByteLimit(153)).value.value) # Fixed copied transfers.
+        transfers.add(decodeTransfer(unhex(raw), ByteLimit(154)).value.value) # Fixed copied transfers.
     var allowances: seq[AlwaysAccumulate] = @[]
     if f[9] != "-":
       for raw in f[9].split(','):

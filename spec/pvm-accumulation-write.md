@@ -1,5 +1,16 @@
 # Accumulation storage write host
 
+## Current unreleased Gray Paper contract
+
+Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `pvm_invocations.tex`,
+selects write as host 5. Register r7 selects an account (all ones means self).
+Key pointer/length and value pointer/length occupy r8-r11. Current self writes
+accept the sentinel or explicit self ID. Foreign supervised mutations remain a typed
+`UnsupportedHostCall` implementation gate. Dynamic fees use the current length registers.
+
+The sections below preserve historical release implementation and verification records.
+
+
 ## Scope and authority
 
 Implement write (5), Omega_W, against GP 0.8.0 revision

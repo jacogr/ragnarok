@@ -52,8 +52,13 @@ proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
     for index, octet in instruction:
       code.add(octet)
       starts.add(index == 0) # Only actual instruction starts enter the independently assembled mask.
-  assert code.len > 0 and code.len < 128
-  var raw = @[0'u8, 0, byte(code.len)]
+  assert code.len > 0 and code.len < 192
+  var raw = @[0'u8, 0]
+  if code.len < 128:
+    raw.add(byte(code.len)) # One-byte canonical natural preserves all earlier small guests.
+  else:
+    raw.add(128'u8)
+    raw.add(byte(code.len)) # For 128..191 the canonical natural is prefix128 followed by the low byte.
   for octet in code: raw.add(octet)
   var mask = newSeq[byte]((code.len+7) div 8)
   for index, marked in starts:
@@ -96,7 +101,7 @@ proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
     RefinementBootstrapLimits(preimage: ByteLimit(4000000), package: ByteLimit(4096),
         arguments: ByteLimit(64),
       initialization: InitializationLimits(envelope: InitializationByteLimit(512),
-          program: ProgramByteLimit(160),
+          program: ProgramByteLimit(256),
         jumps: JumpCountLimit(0), pages: PageLimit(pages)))).value
 proc refinementPrice*(bootstrap: PreparedRefinementBootstrap): uint64 =
   ## Reuse the separately verified gas component for block pricing; host prices/normalization expectations are literal.

@@ -57,10 +57,11 @@ proc official(): OwnedReport {.raises.} =
       offenders[i] = OffenderKey(key)
     let decoded = decodeGuarantees(unhex(f[9]), GuaranteeConfig(cores: CoreCount(cores),
       validators: ValidatorCount(cores*3), maxBytes: config.maxBytes))
-    assert decoded.error == GuaranteeError.None, f[1]
+    assert decoded.error == GuaranteeError.None, f[1] & " decode " & $decoded.error
     let credentials = verifyGuaranteeCredentials(records(decoded.value), active, previous, entropy,
       StateTime(parseInt(f[4])), offenders, config)
-    assert credentials.error == GuaranteeCredentialError.None, f[1]
+    assert credentials.error == GuaranteeCredentialError.None, f[1] & " credentials " &
+        $credentials.error
     var entries = @[StateEntry(key: chapterKey(StateChapter(1)), value: unhex(f[10]))]
     if f[11] != "-":
       for account in f[11].split(','):
@@ -70,11 +71,11 @@ proc official(): OwnedReport {.raises.} =
           value: unhex(parts[1]))) # Keep exact account identity with its metadata.
     let parent = newStateStore(entries, limits()).value.snapshot.value
     let checked = checkReportPolicy(credentials.value, parent, policy(cores))
-    assert checked.error == ReportPolicyError.None, f[1]
+    assert checked.error == ReportPolicyError.None, f[1] & " policy " & $checked.error
     let outcome = checkRecentReportAnchors(checked.value, unhex(f[12]), StateTime(parseInt(f[4])),
         anchorConfig(cores))
     if f[3] == "ok":
-      assert outcome.error == ReportAnchorError.None, f[1]
+      assert outcome.error == ReportAnchorError.None, f[1] & " anchor " & $outcome.error
       inc accepted
       result = credentials.value.verifiedGuaranteeAt(0).value.report # Survives every local fixture owner.
     else:

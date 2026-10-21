@@ -49,9 +49,10 @@ proc immediate(index: byte, value: uint64): seq[byte] =
   registerImmediate(index, value)
 
 proc transferCall(destination = 99'u64, amount = 5'u64, gas = 9'u64, address = 196608'u64,
-    suffix: seq[seq[byte]] = @[]): seq[seq[byte]] =
+    suffix: seq[seq[byte]] = @[], mode = 0'u64): seq[seq[byte]] =
   ## Current liquid self-funded deferred transfer: source/destination/mode/amount/gas/memo in r7-r12.
-  result = @[immediate(7, high(uint64)), immediate(8, destination), @[51'u8, 9, 0],
+  result = @[immediate(7, high(uint64)), immediate(8, destination), (if mode == 0: @[51'u8, 9,
+      0] else: immediate(9, mode)),
     immediate(10, amount), immediate(11, gas), immediate(12, address), @[10'u8, 22]]
   for instruction in suffix:
     result.add(instruction) # Explicit appending retains each current call's complete argument setup.
@@ -62,13 +63,13 @@ proc source(destination = 99'u64, amount = 5'u64, gas = 9'u64, address = 196608'
         minimumTransferGas: Gas(6)),
     target = 99'u32, targetGas = 7'u64, includeTarget = true, role = 42'u32,
     data: seq[byte] = payload(), extra: seq[StateEntry] = @[], writes = 3'u64,
-    suffix: seq[seq[byte]] = @[@[50'u8, 0]]): PreparedAccumulationMachine =
+    suffix: seq[seq[byte]] = @[@[50'u8, 0]], mode = 0'u64): PreparedAccumulationMachine =
   var entries = extra
   if includeTarget:
     entries.add(serviceMetadataEntry(ServiceIndex(target), ServiceMetadata(balance: AccountBalance(77),
       minimumTransferGas: Gas(targetGas)), ByteLimit(
           ServiceMetadataBytes)).value) # Destination is a real current account, not a caller-selected lookup substitute.
-  var instructions = transferCall(destination, amount, gas, address)
+  var instructions = transferCall(destination, amount, gas, address, mode = mode)
   for instruction in suffix:
     instructions.add(instruction) # Later calls execute through the same decoded production stream.
   guestProgram(instructions, credit, account = account, writable = data, extra = entries,
@@ -172,6 +173,28 @@ for address in [65536'u64+4096-64, 196608'u64+8192-64, 0x100000000'u64, high(uin
   assert failed.value.exit == StepExit.Panic and uint64(machineInfo(
       failed.value.machine).value.registers[7]) == high(uint64), "memo failure precedes WHO/LOW/CASH and preserves r7"
   assert uint64(machineInfo(failed.value.machine).value.gas) == 100000-price(valid)-575, "panic charges base only"
+# Undefined modes preserve gas, memo and service-existence precedence without producing outgoing work.
+for mode in [4'u64, high(uint64)]:
+  let prepared = source(mode = mode, gas = high(uint64))
+  let refused = run(prepared, capacity = 0)
+  assert refused.error == AccumulationDispatchError.None and refused.value.exit == StepExit.Halt, "undefined transfer mode completes with a refusal"
+  assert uint64(machineInfo(refused.value.machine).value.registers[7]) == high(uint64)-8, "existing accounts precede undefined-mode HUH"
+  assert uint64(machineInfo(refused.value.machine).value.gas) == 100000-price(prepared)-575, "undefined mode never charges deferred gas"
+  assert context(refused).effectInfo.value.transfers == 0 and uint64(metadata(context(
+      refused)).balance) == 100, "undefined mode never debits or appends"
+  assert run(source(mode = mode, address = high(uint64), includeTarget = false)).value.exit ==
+      StepExit.Panic, "unreadable memo precedes missing-service WHO"
+  let absent = run(source(mode = mode, includeTarget = false))
+  assert uint64(machineInfo(absent.value.machine).value.registers[7]) == high(uint64)-3, "missing destination precedes undefined-mode HUH"
+  let wide = run(source(mode = mode, destination = 0x100000063'u64))
+  assert uint64(machineInfo(wide.value.machine).value.registers[7]) == high(uint64)-3, "full-width destination never aliases the existing low E4 account"
+  let direct = run(source(mode = mode, address = 0), limit = 0)
+  assert uint64(machineInfo(direct.value.machine).value.registers[7]) == high(uint64)-8, "undefined direct mode skips memo capture and returns HUH"
+  assert run(source(mode = mode, address = high(uint64), credit = price(prepared)+574),
+      limit = 0).value.exit == StepExit.OutOfGas, "base-fee underfunding precedes invalid-mode memory checks"
+# Defined alternative balance modes remain separate typed gates rather than fabricated guest refusals.
+for mode in [1'u64, 2, 3]:
+  assert run(source(mode = mode)).error == AccumulationDispatchError.UnsupportedHostCall, "valid alternate transfer funding is gated"
 var ro = newSeq[byte](128)
 ro[0] = 73
 checkTransfer(context(run(source(address = 65536))), memo = ro) # Read-only memo input is valid.

@@ -27,16 +27,19 @@ proc profile(): Parameters =
   bytes[16] = 1
   for index in 0..<4:
     bytes[74+index] = byte((14400'u32 shr (8*index)) and
-        255) # Standard lookup age permits the independently aged eject witness.
+        255) # Retain the validated standard lookup age; current eject uses supervisor/empty-account eligibility.
   decodeParameters(bytes).value
 
 let hash = ServicePreimageHash(array[32, byte](blake2b256([81'u8]).value))
 # Offer a genuine one-byte preimage hash plus the actual raw byte for later provision to the child.
 proc guestInput(): seq[byte] =
-  result = newSeq[byte](33)
+  result = newSeq[byte](61)
   for index, octet in array[32, byte](hash):
     result[index] = octet # Code availability is deliberately not required by creation.
-  result[32] = 81
+  result[32] = 1 # E4 code length.
+  result[36] = 7 # E8 minimum accumulation gas.
+  result[44] = 9 # E8 minimum transfer gas.
+  result[60] = 81 # Provision bytes follow the complete current request.
 let input = guestInput()
 
 # Preserve every authored opcode boundary through the shared fixed envelope builder.
@@ -44,30 +47,29 @@ proc append(code: var seq[seq[byte]], instructions: seq[seq[byte]]) =
   for instruction in instructions:
     code.add(instruction) # No upstream assembler or replacement execution verdict.
 
-# One real creation initializes its six protocol registers; a repeated call reuses preserved arguments.
+# One real creation reads the packed current request; a repeated call reuses preserved arguments.
 proc envelope(checkpoint = false, panic = false, repeat = false, provide = false,
     storage = false, upgrade = false, beforeStorage = false, eject = false): seq[byte] =
   var code: seq[seq[byte]] = @[]
-  let write = @[registerImmediate(7, 65536), registerImmediate(8, 1),
-    registerImmediate(9, 196640), registerImmediate(10, 1), @[10'u8, 5]]
+  let write = @[@[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1),
+    registerImmediate(10, 196668), registerImmediate(11, 1), @[10'u8, 5]]
   if beforeStorage:
     append(code, write) # An earlier unsupported storage lineage cannot regain eligibility through new.
-  append(code, @[registerImmediate(7, 196608), registerImmediate(8, 1),
-    registerImmediate(9, 7), registerImmediate(10, 9), registerImmediate(11, 0),
-    registerImmediate(12, high(uint64)), @[10'u8, 20]])
+  append(code, @[@[51'u8, 7, 255], registerImmediate(8, high(uint64)),
+    @[51'u8, 9, 0], registerImmediate(10, 196608), @[10'u8, 20]])
   if checkpoint:
     code.add(@[10'u8, 19]) # Retain the first child, creator debit and allocation cursor together.
   if repeat:
-    append(code, @[registerImmediate(7, 196608), @[10'u8,
+    append(code, @[@[51'u8, 7, 255], @[10'u8,
         20]]) # All other creation arguments survive the preceding call.
   if provide:
-    append(code, @[registerImmediate(8, 196640), registerImmediate(9, 1), @[10'u8,
+    append(code, @[registerImmediate(8, 196668), registerImmediate(9, 1), @[10'u8,
         28]]) # r7 is the actual returned child ID.
   if storage:
     append(code, write) # Self-key proof must preserve existing child provenance.
   if upgrade:
-    append(code, @[registerImmediate(7, 196608), registerImmediate(8, 17),
-      registerImmediate(9, 19), @[10'u8, 21]]) # Metadata-only upgrade must not erase the child proof.
+    append(code, @[@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 17),
+      registerImmediate(10, 19), @[10'u8, 21]]) # Metadata-only upgrade must not erase the child proof.
   if eject:
     append(code, @[registerImmediate(7, 77), registerImmediate(8, 196608), @[10'u8,
         23]]) # A real eligible deletion remains outside publication scope.
@@ -84,8 +86,8 @@ proc entropy(counter: uint32): StateEntropyWord =
 # Keep creation capacity, self-key tracing and automatic-allocation probing separate.
 proc execute(fixture: BatchFixture, index = 0'u64, children = 2'u64, keys = 1'u64,
     word = default(StateEntropyWord), slot = HeaderSlot(128)): AccumulationDispatchResult =
-  batchExecution(fixture, index, slot, parameters = profile(), createdAccounts = ElementLimit(
-      children),
+  batchExecution(fixture, index, slot, copyLimit = MemoryByteLimit(60), parameters = profile(),
+      createdAccounts = ElementLimit(children),
     accountWriteKeys = ElementLimit(keys), serviceProbes = ServiceProbeLimit(1), entropy = word)
 
 # Complete coverage still uses only the exact shared inputs/prior; a slot is checked independently by terminal normalization.
@@ -134,7 +136,8 @@ proc addChild(expected: var seq[StateEntry], service: ServiceIndex, parent: uint
   expected.add(serviceMetadataEntry(service, ServiceMetadata(codeHash: CodeHash(array[32, byte](hash)),
     balance: AccountBalance(1), storageItems: AccountStorageItems(2),
         storageBytes: AccountStorageBytes(82),
-    minimumAccumulationGas: Gas(7), minimumTransferGas: Gas(9), created: AccountSlot(uint32(slot)),
+    minimumAccumulationGas: Gas(7), minimumTransferGas: Gas(9), supervisor: ServiceIndex(parent),
+        created: AccountSlot(uint32(slot)),
     parent: ServiceIndex(parent)), ByteLimit(ServiceMetadataBytes)).value)
   expected.add(serviceRequestEntry(service, hash, RequestLength(1),
     (if provided: availableHistory(RequestSlot(uint32(slot))) else: requestedHistory()),
@@ -207,15 +210,12 @@ block creation_without_incoming:
 # Ejection really deletes an old eligible account locally, but only a pre-deletion checkpoint permits publication.
 for checkpoint in [false, true]:
   var identity = default(array[32, byte])
-  identity[0] = 42 # E32 owner identity, independent from the offered request hash.
+  identity[0] = 42 # Opaque code hash; the current supervisor fields authorize ejection.
   let target = serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(codeHash: CodeHash(identity),
-    balance: AccountBalance(5), storageItems: AccountStorageItems(2),
-        storageBytes: AccountStorageBytes(84)), ByteLimit(ServiceMetadataBytes)).value
-  let request = serviceRequestEntry(ServiceIndex(77), hash, RequestLength(3),
-    unavailableHistory(RequestSlot(5), RequestSlot(7)), RequestEntryConfig(keyBytes: ByteLimit(32),
-      history: RequestHistoryConfig(items: ElementLimit(3), maxBytes: ByteLimit(13)))).value
+    supervisor: ServiceIndex(42), balance: AccountBalance(5)), ByteLimit(
+        ServiceMetadataBytes)).value
   let fixture = batchFixture(firstEnvelope = envelope(checkpoint, checkpoint, eject = true),
-    secondEnvelope = guestEnvelope([@[50'u8, 0]]), extra = @[target, request])
+    secondEnvelope = guestEnvelope([@[50'u8, 0]]), extra = @[target])
   let first = execute(fixture, slot = HeaderSlot(50000))
   let second = execute(fixture, 1, slot = HeaderSlot(50000))
   let regular = first.effects.effectContext(AccumulationDimension.Regular).value

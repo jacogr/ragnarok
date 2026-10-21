@@ -20,8 +20,9 @@ PR533, merged at `0c0664eb52ba92afd8d21cef96c0e1da506eddfe`, resolves the
 unsigned gas result-domain issue (GP-PVM-010): host underfunding now clamps to zero,
 and host mutators cannot return Halt. These are resolved historical discrepancies,
 not continuing exceptions to the current paper. The independent destination corpus
-now expects zero scoped paper/JAM differences; compatibility evidence must be rerun
-against the unchanged pinned PolkaVM implementation before publishing this upgrade.
+now checks zero scoped paper/JAM differences. The16 interpreted comparison pairs pass
+against the unchanged pinned PolkaVM implementation; this is scoped fixture evidence,
+not a full upstream Rust/fuzz-suite run.
 
 PR542 also bounds `preimagelen` below2^32−2, excluding the two request-key aliases
 recorded by the historical M1 namespace witnesses. Current production rejects these

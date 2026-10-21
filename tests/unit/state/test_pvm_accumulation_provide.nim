@@ -178,7 +178,8 @@ for length in [31'u64, 32, 33]:
     assert array[32, byte](original.effectYield.value)[0] == 81,
       "returned-hash normalization does not replace the original execution's yield"
 for witness in [(0'u64, 3980'u64), (1'u64, 3983'u64), (1023'u64, 6242'u64),
-    (1024'u64, 6244'u64), (1025'u64, 6247'u64), (4294967295'u64, 9495908234'u64),
+    (1024'u64, 6244'u64), (1025'u64, 6247'u64), (4294967293'u64, 9495908230'u64),
+    (4294967294'u64, 9495908232'u64), (4294967295'u64, 9495908234'u64),
     (4294967296'u64, 9495908236'u64)]:
   let (size, expectedCost) = witness
   # Frozen GP formula witnesses cover exact multiples, rounding and the uint32-length boundary.
@@ -196,7 +197,7 @@ for witness in [(0'u64, 3980'u64), (1'u64, 3983'u64), (1023'u64, 6242'u64),
     let done = run(source(42, size = size, credit = price+available))
     let cpu = machineInfo(done.value.machine).value
     assert uint64(cpu.gas) == available-expectedCost and uint64(cpu.gasDeficit) == 0
-    if size == 4294967295'u64:
+    if size == 4294967293'u64:
       assert done.value.exit == StepExit.Panic and uint64(cpu.registers[7]) ==
           42 # Natural address interval crosses 2^32.
       assert count(done) == 0
@@ -206,7 +207,8 @@ for witness in [(0'u64, 3980'u64), (1'u64, 3983'u64), (1023'u64, 6242'u64),
       assert uint64(cpu.registers[7]) == (if accepted: 0'u64 else: huh)
       assert count(done) == (if accepted: 1 else: 0)
 # Funded invalid lengths return HUH before unreadable pointers or exhausted copy/provision budgets.
-for witness in [(4294967296'u64, 9495908236'u64),
+for witness in [(4294967294'u64, 9495908232'u64), (4294967295'u64, 9495908234'u64),
+    (4294967296'u64, 9495908236'u64),
     (4611686018427387904'u64, 10196149556366806924'u64)]:
   let (size, expectedCost) = witness
   let prototype = source(42, high(uint64), size)
@@ -215,14 +217,14 @@ for witness in [(4294967296'u64, 9495908236'u64),
   assert uint64(machineInfo(done.value.machine).value.registers[7]) == huh
   assert uint64(machineInfo(done.value.machine).value.gas) == high(uint64)-blockPrice(
       prototype)-expectedCost
-# A cost above uint64 can still produce representable terminal debt after subtracting the full initial credit.
+# A cost above uint64 is always unaffordable, even with the complete unsigned initial credit.
 let wide = source(42, size = 9223372036854775808'u64, credit = high(uint64))
 let wideDone = run(wide, copyLimit = 0)
 assert wideDone.value.exit == StepExit.OutOfGas
 assert uint64(machineInfo(wideDone.value.machine).value.gasDeficit) ==
   0
 assert uint64(normalizeAccumulationOutcome(wideDone).value.outcomeInfo.value.gasUsed) == high(uint64)
-# The exact negative-domain boundary is supported; one extra debt unit and 66-bit excess refuse locally.
+# Previously signed-debt boundary witnesses now all produce unsigned zero-gas OutOfGas.
 let largeSize = 4611686018427387904'u64
 let largeCost = 10196149556366806924'u64
 let largePrice = blockPrice(source(42, size = largeSize))

@@ -1,5 +1,17 @@
 # Request-length namespace admissibility review
 
+## Current adopted resolution
+
+The authorized unreleased pin `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`
+includes PR542. Current request lengths are strictly below2^32−2. Both reserved
+prefixes are rejected; maximal valid length2^32−3 remains accepted. Native
+key/host witnesses and the independent Python boundary check exercise this domain.
+The former pending namespace-policy test is active. The review below retains its
+historical release source, arithmetic and counterexamples; those are no longer
+admissible current request lengths. See [the upgrade record](graypaper-unreleased-upgrade.md).
+
+## Historical release review
+
 Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`; source hashes are
 in [pins.json](pins.json). This review reads `text/accounts.tex` service/request domains,
 `eq:preimageconstraints` and `eq:deposits`; `text/definitions.tex` domains/deposit/gas constants;
@@ -12,8 +24,8 @@ No dependency/toolchain pin or production behavior changes.
 Gray Paper [#542](https://github.com/gavofyork/graypaper/pull/542) is merged as
 [07aee1e](https://github.com/gavofyork/graypaper/commit/07aee1ef23b63f93d0e2f29e53560cbc7c8c767c).
 It excludes both marker lengths from the request domain. This supports the overlap finding below;
-the fix has not been adopted into our pinned 0.8.0 target. Preserve the witnesses and current
-behavior until the [release/vector checkpoint](state-clarifications.md). The analysis below is
+at this historical review checkpoint the fix had not yet been adopted into the release pin.
+The current resolution is recorded above; preserve these release-era witnesses. The analysis below is
 about the pinned rules, not a claim that current upstream main still has this omission.
 
 ## Finding

@@ -12,7 +12,7 @@ import ../../src/codec/[state_trie, state_accounts, header]
 
 proc guestEnvelope*(instructions: openArray[seq[byte]], writable: seq[byte] = @[81'u8]): seq[byte] =
   ## Copy authored instructions into the bounded entry-5 envelope; exact opcode masks and framing match guestProgram.
-  ## Code remains below 128 bytes, retaining the existing raw-program budget and default writable input.
+  ## Code remains below 192 bytes; independently framed one/two-byte lengths cover current account-selector guests.
   var code = @[0'u8, 0, 0, 0, 0]
   var starts = @[true, true, true, true, true]
   for instruction in instructions:
@@ -21,8 +21,13 @@ proc guestEnvelope*(instructions: openArray[seq[byte]], writable: seq[byte] = @[
     for i, octet in instruction:
       code.add(octet)
       starts.add(i == 0)
-  assert code.len < 128
-  var raw = @[0'u8, 0, byte(code.len)]
+  assert code.len < 192
+  var raw = @[0'u8, 0]
+  if code.len < 128:
+    raw.add(byte(code.len)) # One-byte canonical natural preserves all earlier small guests.
+  else:
+    raw.add(128'u8)
+    raw.add(byte(code.len)) # For 128..191 the canonical natural is prefix128 followed by the low byte.
   for octet in code:
     raw.add(octet) # Instruction data precedes the packed LSB-first bitmask.
   var mask = newSeq[byte]((code.len+7) div 8)
@@ -40,11 +45,11 @@ proc guestProgram*(instructions: openArray[seq[byte]], credit = 10000'u64,
 
 writable: seq[byte] = @[81'u8], service = ServiceIndex(42)): PreparedAccumulationMachine =
   ## Assemble authored instruction sequences at the fixed entry; mask bits mark exact opcode bytes.
-  ## No upstream assembler runs, and each single-byte code count is proven before narrowing.
+  ## No upstream assembler runs; independently framed code lengths are bounded before narrowing.
   ## service selects the nominal invoking identity; the default preserves existing authored programs.
   ## slot forwards the nominal invocation header time; existing callers retain the same default.
   ## Forward initial roles, account metadata, bounded inputs/profile, store/probe policy and spare map capacity.
-  ## The 160-byte raw-program budget includes framing/mask for the independently bounded (<128-byte) code.
+  ## The 160-byte caller budget includes framing/mask; larger integration guests use explicit initialization profiles.
   initializeAccumulationMachine(pvmBootstrap(guestEnvelope(instructions, writable), credit,
     includeContexts = includeContexts, extra = extra, account = account, serviceId = uint32(
         service), spareEntries = spareEntries, manager = manager, assigner = assigner,

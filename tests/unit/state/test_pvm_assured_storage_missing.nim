@@ -31,6 +31,7 @@ proc storage(state: StateStoreSnapshot) =
 proc config(fixture: AssuredOutcomeFixture): AssuredExecutionConfig =
   ## Match original eleven-byte capture without changing protocol gas, instruction scheduling or host calls.
   result = assuredExecutionConfig(fixture.queue)
+  result.runner.steps = ExecutionStepLimit(22) # Two explicit current write selectors extend the original twenty-step path.
   result.runner.completion.batch.selfValueBytes = ByteLimit(11)
 proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
   ## Execute actual deletion, absent read and return-word storage under the original parameters and local ceilings.
@@ -79,7 +80,7 @@ storage(selected.outcomeContext.value.effectAccounts.value)
 let policy = config(fixture)
 var minimal = policy
 minimal.runner.copyBytes = MemoryByteLimit(11)
-minimal.runner.steps = ExecutionStepLimit(20)
+minimal.runner.steps = ExecutionStepLimit(22) # Exact current path includes both write account selectors.
 let exact = executeAssuredAccumulation(fixture.queue, minimal)
 assert exact.error == AssuredExecutionError.None
 assert exact.value.assuredExecutionCompleted.value.executionInfo.value.batch.selfWrites == 1
@@ -95,7 +96,7 @@ for ceiling in 1..2:
   assert calls.runnerFailure.dispatchFailure.error == AccumulationDispatchError.ExecutionFailure
   assert calls.runnerFailure.dispatchFailure.executionError == StepError.HostCallLimitExceeded
 var short = minimal
-short.runner.steps = ExecutionStepLimit(19)
+short.runner.steps = ExecutionStepLimit(21)
 let steps = executeAssuredAccumulation(fixture.queue, short)
 assert steps.error == AssuredExecutionError.RunnerFailure
 assert steps.runnerFailure.error == AccumulationRunnerError.DispatchFailure

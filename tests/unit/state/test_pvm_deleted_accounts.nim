@@ -67,8 +67,8 @@ proc envelope(checkpoint = false, panic = false, repeat = false, target = 77'u64
     beforeStorage = false, recreate = false, beforeCreate = false,
     provideRecreated = false): seq[byte] =
   var code: seq[seq[byte]] = @[]
-  let write = @[compactImmediate(7, 65536), compactImmediate(8, 1),
-    compactImmediate(9, 196640), compactImmediate(10, 1), @[10'u8, 5]]
+  let write = @[@[51'u8, 7, 255], compactImmediate(8, 65536), compactImmediate(9, 1),
+    compactImmediate(10, 196640), compactImmediate(11, 1), @[10'u8, 5]]
   if beforeCreate:
     append(code, @[compactImmediate(7, high(uint64)), compactImmediate(8, high(uint64)),
       compactImmediate(9, 0), compactImmediate(10, 196673), @[10'u8,

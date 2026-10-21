@@ -25,7 +25,8 @@ let original = fixture.authorization
 let complete = prepareAuthorizedRefinement(original, fixture.inputs, authorizedLimits()).value
 let info = complete.authorizedInfo.value
 assert uint64(info.core) == 0x1234 and uint32(info.host) == 77 and uint32(info.anchor) == 20
-assert info.items == 2 and uint64(info.exports) == 1 and info.traceBytes == 3 and info.blobBytes == 9
+assert info.items == 2 and uint64(info.exports) == 1 and info.traceBytes == 3 and info.blobBytes ==
+    9, "initial report projection"
 assert uint64(info.authorizationGasUsed) == uint64(original.authorizationInfo.value.gasUsed)
 let digests = complete.authorizedDigests.value
 let report = digests.digestReport.value
@@ -33,7 +34,8 @@ assert uint64(report.reportInfo.value.core) == 0x1234
 assert report.reportTrace.value == @[11'u8, 12, 13]
 for index in 0..<2:
   let digest = digests.digestAt(FetchItemIndex(uint64(index))).value
-  assert digest.digestInfo.value.kind == WorkKind.Success
+  assert digest.digestInfo.value.kind == WorkKind.Success, "item " & $index & " kind " &
+      $digest.digestInfo.value.kind
   assert uint32(digest.digestInfo.value.service) == uint32(42+index)
   assert digest.digestOutput.value == @[11'u8, 12,
       13] # RO auth bytes differ from the refinement fixture's original RW bytes 21/22/23.
@@ -82,12 +84,15 @@ for variant in 0..<4:
   let expected = if variant == 0: WorkKind.Bad elif variant == 1: WorkKind.Big
     elif variant == 2: WorkKind.Panic else: WorkKind.OutOfGas
   assert result.error == AuthorizedRefinementError.AuthorizationRejected and
-      result.authorizationKind == expected
+      result.authorizationKind == expected, "authorization refusal variant " & $variant &
+          " error " & $result.error & " kind " & $result.authorizationKind
 for size in [49152, 49153]:
   let large = authorizedFixture([refinementImmediate(7, 196608), refinementImmediate(8, uint64(
       size)), halt],
     [reportGuest(emptyItem)], authCodeSize = 64000)
-  assert large.authorization.authorizationInfo.value.kind == WorkKind.Success
+  assert large.authorization.authorizationInfo.value.kind == WorkKind.Success,
+      "large authorization size " & $size & " kind " &
+      $large.authorization.authorizationInfo.value.kind
   if size == 49152:
     let done = prepareAuthorizedRefinement(large.authorization, large.inputs, authorizedLimits()).value
     assert done.authorizedInfo.value.blobBytes == 49152
@@ -121,9 +126,12 @@ cap.refinement.bootstrap.preimage = ByteLimit(0)
 let bootstrap = prepareAuthorizedRefinement(original, fixture.inputs, cap)
 assert bootstrap.error == AuthorizedRefinementError.RefinementFailure
 assert bootstrap.refinementError.bootstrapError == RefinementBootstrapError.LimitExceeded
-let late = authorizedFixture(authCode, [reportGuest(fetchTrace), reportGuest([@[10'u8, 9], halt])])
+# Select current memory compilation explicitly so the nonempty zero-byte-policy witness reaches its intended local refusal.
+let late = authorizedFixture(authCode, [reportGuest(fetchTrace), reportGuest([refinementImmediate(7,
+    0), refinementImmediate(8, 65536), refinementImmediate(9, 1), @[10'u8, 9], halt])])
 let host = prepareAuthorizedRefinement(late.authorization, late.inputs, authorizedLimits())
-assert host.error == AuthorizedRefinementError.RefinementFailure
+assert host.error == AuthorizedRefinementError.RefinementFailure,
+    "nonempty compile exceeds the zero program-byte policy: " & $host.error
 assert host.refinementError.invocationError.error == RefinementInvocationError.HostFailure
 assert host.refinementError.invocationError.hostError == RefinementDispatchError.LimitExceeded
 cap = authorizedLimits()

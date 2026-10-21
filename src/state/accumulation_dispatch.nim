@@ -200,8 +200,8 @@ proc provideResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
 ## The key rate exceeds 1024, so a full-width cost must retain its upper limb.
 proc storageCharge(cpu: MachineInfo, memory: Memory, writing: bool): HostResult[
     AccumulationDispatchError] {.raises: [].} =
-  let size = uint64(cpu.registers[if writing: 8 else: 9])
-  let requested = uint64(cpu.registers[if writing: 10 else: 12])
+  let size = uint64(cpu.registers[9])
+  let requested = uint64(cpu.registers[if writing: 11 else: 12])
   let keyRate = (if writing: 3358'u64 else: 1736'u64)
   let valueRate = (if writing: 216'u64 else: 248'u64)
   let base = (if writing: 2442'u64 else: 2407'u64)
@@ -317,8 +317,8 @@ proc writeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
   var response = charged.value
   if response.action == HostAction.OutOfGas:
     return charged # No memory checks or storage hashing before affordability.
-  let key = readBytes(memory, MemoryAddress(uint64(cpu.registers[7])),
-    MemoryLength(uint64(cpu.registers[8])), context.copyLimit)
+  let key = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])),
+    MemoryLength(uint64(cpu.registers[9])), context.copyLimit)
   if key.error in {MachineError.Fault, MachineError.InvalidRange}:
     response.action = HostAction.Panic # Charged panic preserves r7 and all prior account versions.
     return hostSuccess[AccumulationDispatchError](response)
@@ -326,8 +326,8 @@ proc writeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.LimitExceeded) # Local capture budget is not guest panic.
   if key.error != MachineError.None:
     return hostFailure(AccumulationDispatchError.InvalidContext) # Require authentic readable memory.
-  let value = readBytes(memory, MemoryAddress(uint64(cpu.registers[9])),
-    MemoryLength(uint64(cpu.registers[10])), context.copyLimit)
+  let value = readBytes(memory, MemoryAddress(uint64(cpu.registers[10])),
+    MemoryLength(uint64(cpu.registers[11])), context.copyLimit)
   if value.error in {MachineError.Fault, MachineError.InvalidRange}:
     response.action = HostAction.Panic # Zero length accepts every pointer; nonempty invalid ranges panic.
     return hostSuccess[AccumulationDispatchError](response)
@@ -335,6 +335,10 @@ proc writeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.LimitExceeded) # No state change on partial capture.
   if value.error != MachineError.None:
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid owners never authorize state writes.
+  let current = context.effects.effectContext(AccumulationDimension.Regular).value
+  let self = uint64(uint32(current.effectInfo.value.service))
+  if uint64(cpu.registers[7]) != high(uint64) and uint64(cpu.registers[7]) != self:
+    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Foreign supervised writes require their mutation/publication path.
   let changed = recordAccumulationStorage(context.effects, key.value, value.value,
     context.parameters, ByteLimit(uint64(context.copyLimit)))
   case changed.error
@@ -626,8 +630,6 @@ proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory)
   let self = uint64(uint32(current.effectInfo.value.service))
   if uint64(cpu.registers[7]) != high(uint64) and uint64(cpu.registers[7]) != self:
     return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Foreign funding needs supervised account mutation tracking.
-  if uint64(cpu.registers[9]) != 0:
-    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # The implemented path funds a liquid child from the caller's liquid balance.
   let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[10])), MemoryLength(60),
       context.copyLimit)
   case captured.error
@@ -645,6 +647,12 @@ proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory)
     response.registers[7] = RegisterValue(high(uint64)-8)
     return hostSuccess[AccumulationDispatchError](
         response) # Current preimagelen excludes both reserved namespace prefixes.
+  if uint64(cpu.registers[9]) > 3:
+    response.registers[7] = RegisterValue(high(uint64)-8)
+    return hostSuccess[AccumulationDispatchError](
+        response) # Undefined modes are HUH after complete memory/length validation.
+  if uint64(cpu.registers[9]) != 0:
+    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Valid alternative funding modes need their balance/provenance path.
   var hash = default(array[32, byte])
   for i in 0..<32: hash[i] = captured.value[i] # Complete fixed capture proves all hash coordinates.
   let proposal = AccumulationNewService(codeHash: CodeHash(hash),
@@ -719,8 +727,54 @@ proc upgradeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
   hostSuccess[AccumulationDispatchError](response)
 
 # Transfer quotes the conditional fee from pure row validation before charging or publishing any debit.
+proc invalidTransferModeResponse(context: DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Undefined transfer modes quote only the base fee, preserving memory/WHO precedence without creating a proposal.
+  let charged = chargedResponse(cpu, memory, 575, 0)
+  if charged.kind != HostResultKind.Response: return charged # Invalid charge inputs never expose a partial response.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas: return charged # The minimum fee proves no row input can matter.
+  if uint64(cpu.registers[12]) != 0:
+    let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[12])), MemoryLength(128),
+        context.copyLimit)
+    case captured.error
+    of MachineError.None: discard # Complete memo readability precedes both service existence checks.
+    of MachineError.Fault, MachineError.InvalidRange:
+      response.action = HostAction.Panic
+      return hostSuccess[AccumulationDispatchError](response) # Memo panic precedes service selection.
+    of MachineError.LimitExceeded:
+      return hostFailure(AccumulationDispatchError.LimitExceeded) # Local copy ceilings are distinct from guest refusals.
+    else:
+      return hostFailure(AccumulationDispatchError.InvalidContext) # Only an initialized memory owner can supply a memo.
+  let current = context.effects.effectContext(AccumulationDimension.Regular).value
+  let self = uint64(uint32(current.effectInfo.value.service))
+  let accounts = current.effectAccounts.value
+  # Validate source and destination independently before returning the invalid-mode verdict.
+  for index in 7..8:
+    let raw = uint64(cpu.registers[index])
+    let selected = if raw == high(uint64): self else: raw
+    if selected > uint64(high(uint32)):
+      response.registers[7] = RegisterValue(high(uint64)-3)
+      return hostSuccess[AccumulationDispatchError](response) # Out-of-domain IDs cannot alias their low E4 bits.
+    let account = accounts.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(uint32(selected))))
+    if account.error == StateStoreError.MissingKey:
+      response.registers[7] = RegisterValue(high(uint64)-3)
+      return hostSuccess[AccumulationDispatchError](response) # WHO precedes undefined-mode HUH.
+    if account.error != StateStoreError.None or account.value.byteLength != ServiceMetadataBytes:
+      return hostFailure(AccumulationDispatchError.MalformedState) # Malformed account backing cannot become a guest HUH.
+    if decodeServiceMetadata(account.value.bytes, ByteLimit(ServiceMetadataBytes)).error !=
+        ServiceMetadataError.None:
+      return hostFailure(AccumulationDispatchError.MalformedState) # Malformed account backing cannot become a guest HUH.
+  response.registers[7] = RegisterValue(high(uint64)-8)
+  hostSuccess[AccumulationDispatchError](response) # Both services exist; invalid mode never incurs deferred gas.
+
 proc transferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  if uint64(cpu.gas) < 575:
+    return chargedResponse(cpu, memory, 575, 0) # All transfer rows cost at least the base fee, even unsupported forms.
+  if uint64(cpu.registers[9]) > 3:
+    return invalidTransferModeResponse(context, cpu,
+        memory) # Undefined modes are protocol refusals, not valid unimplemented funding paths.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let self = uint64(uint32(current.effectInfo.value.service))
   if (uint64(cpu.registers[7]) != high(uint64) and uint64(cpu.registers[7]) != self) or
@@ -835,11 +889,11 @@ proc queryResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
   var response = charged.value
   if response.action == HostAction.OutOfGas:
     return charged # No row validation, input copy or namespace hashing before affordability.
-  let length = uint64(cpu.registers[8])
+  let length = uint64(cpu.registers[9])
   if length >= uint64(high(uint32))-1:
     response.registers[7] = RegisterValue(high(uint64)-8)
     return hostSuccess[AccumulationDispatchError](response) # HUH preserves r8 and precedes memory/copy policy.
-  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[7])), MemoryLength(32),
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),
       context.copyLimit)
   case captured.error
   of MachineError.None:
@@ -856,8 +910,20 @@ proc queryResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
   for i in 0..<32:
     hash[i] = captured.value[i] # Fixed copied hash cannot alias mutable guest memory.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
-  let found = current.effectRequestHistory(ServicePreimageHash(hash), RequestLength(uint32(length)))
+  let rawTarget = uint64(cpu.registers[7])
+  var target = current.effectInfo.value.service
+  if rawTarget != high(uint64):
+    if rawTarget > uint64(high(uint32)):
+      response.registers[7] = RegisterValue(high(uint64)-3)
+      return hostSuccess[AccumulationDispatchError](
+          response) # WHO follows length/memory validation without narrowing aliases.
+    target = ServiceIndex(uint32(rawTarget))
+  let found = current.effectServiceRequestHistory(target, ServicePreimageHash(hash), RequestLength(
+      uint32(length)))
   case found.error
+  of AccumulationEffectError.UnknownService:
+    response.registers[7] = RegisterValue(high(uint64)-3)
+    return hostSuccess[AccumulationDispatchError](response) # Preserve r8's original pointer for WHO.
   of AccumulationEffectError.NotRequested:
     response.registers[7] = RegisterValue(high(uint64))
     response.registers[8] = RegisterValue(0)
@@ -897,12 +963,12 @@ proc solicitResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
   var response = charged.value
   if response.action == HostAction.OutOfGas:
     return charged # No length, memory, namespace or funding work before affordability.
-  let length = uint64(cpu.registers[8])
+  let length = uint64(cpu.registers[9])
   if length >= uint64(high(uint32))-1:
     response.registers[7] = RegisterValue(high(uint64)-8)
     return hostSuccess[AccumulationDispatchError](
         response) # HUH precedes memory/local copy policy and preserves r8.
-  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[7])), MemoryLength(32),
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),
       context.copyLimit)
   case captured.error
   of MachineError.None:
@@ -918,6 +984,10 @@ proc solicitResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
   var hash = default(array[32, byte])
   for i in 0..<32:
     hash[i] = captured.value[i] # Copied fixed input cannot alias guest memory in a published successor.
+  let current = context.effects.effectContext(AccumulationDimension.Regular).value
+  let self = uint64(uint32(current.effectInfo.value.service))
+  if uint64(cpu.registers[7]) != high(uint64) and uint64(cpu.registers[7]) != self:
+    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Foreign supervised request mutation is an explicit implementation gate.
   let changed = recordAccumulationSolicit(context.effects, ServicePreimageHash(hash), RequestLength(
       uint32(length)), context.parameters)
   case changed.error
@@ -947,11 +1017,11 @@ proc forgetResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memo
   var response = charged.value
   if response.action == HostAction.OutOfGas:
     return charged # No validation, memory, namespace or expiry work before affordability.
-  let length = uint64(cpu.registers[8])
+  let length = uint64(cpu.registers[9])
   if length >= uint64(high(uint32))-1:
     response.registers[7] = RegisterValue(high(uint64)-8)
     return hostSuccess[AccumulationDispatchError](response) # HUH precedes memory/copy policy and retains r8.
-  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[7])), MemoryLength(32),
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),
       context.copyLimit)
   case captured.error
   of MachineError.None:
@@ -967,6 +1037,10 @@ proc forgetResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memo
   var hash = default(array[32, byte])
   for i in 0..<32:
     hash[i] = captured.value[i] # Fixed independent input cannot alias guest memory in a published owner.
+  let current = context.effects.effectContext(AccumulationDimension.Regular).value
+  let self = uint64(uint32(current.effectInfo.value.service))
+  if uint64(cpu.registers[7]) != high(uint64) and uint64(cpu.registers[7]) != self:
+    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Foreign supervised request mutation is an explicit implementation gate.
   let changed = recordAccumulationForget(context.effects, ServicePreimageHash(hash), RequestLength(
       uint32(length)), context.parameters)
   case changed.error

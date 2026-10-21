@@ -50,7 +50,7 @@ proc provisionMachine*(calls: openArray[ProvisionGuestCall], data: seq[byte] = @
   var starts = @[0, 1, 2, 3, 4]
   # Extended-immediate opcodes set all uint64 bits without relying on signed four-byte immediate inference.
   for call in calls:
-    let count = if call.id == 27: 3 elif call.id == 26: 1 else: 0
+    let count = if call.id == 28: 3 elif call.id == 27: 1 else: 0
     let registers = [call.r7, call.r8, call.r9]
     for ordinal in 0..<count:
       starts.add(code.len)

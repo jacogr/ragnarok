@@ -205,9 +205,9 @@ assert initialized.effectAccountInfo(ServiceIndex(99), default(Parameters)).erro
 assert initialized.effectAccountInfo(ServiceIndex(100), schedule()).error ==
     AccumulationEffectError.UnknownService
 # A prior storage write changes the footprint and therefore info's dependent minimum balance.
-let written = guestProgram([registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(
-    9, 196608),
-  registerImmediate(10, 3), @[10'u8, 5], registerImmediate(7, high(uint64)), registerImmediate(8, 196736),
+let written = guestProgram([@[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1),
+    registerImmediate(10, 196608),
+  registerImmediate(11, 3), @[10'u8, 5], registerImmediate(7, high(uint64)), registerImmediate(8, 196736),
   registerImmediate(9, 0), registerImmediate(10, 112), @[10'u8, 6], @[50'u8, 0]],
   100000, account = ServiceMetadata(balance: AccountBalance(10000)), spareEntries = 1)
 let current = run(written)

@@ -43,7 +43,7 @@ proc source(history = requestedHistory(), present = true, length = 3'u32,
     offered = 3'u64, address = 196608'u64, credit = 100000'u64,
     malformed = false, wire: seq[byte] = @[], writes = 0'u64,
     account = ServiceMetadata(balance: AccountBalance(100)),
-    suffix: seq[seq[byte]] = @[@[50'u8, 0]]): PreparedAccumulationMachine =
+    selector = high(uint64), suffix: seq[seq[byte]] = @[@[50'u8, 0]]): PreparedAccumulationMachine =
   var entries = @[serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(
       ServiceMetadataBytes)).value,
     serviceRequestEntry(ServiceIndex(99), hash, RequestLength(length), availableHistory(RequestSlot(
@@ -53,7 +53,8 @@ proc source(history = requestedHistory(), present = true, length = 3'u32,
     if malformed:
       entry.value = wire # Genuine malformed record reaches only the production canonical decoder.
     entries.add(entry)
-  var instructions = @[registerImmediate(7, address), registerImmediate(8, offered), @[10'u8, 24]]
+  var instructions = @[registerImmediate(7, selector), registerImmediate(8, address),
+    registerImmediate(9, offered), @[10'u8, 24]]
   for instruction in suffix:
     instructions.add(instruction) # Continue in the same immutable CPU/effect execution stream.
   guestProgram(instructions, credit, extra = entries, writable = payload(), writes = writes,
@@ -122,12 +123,20 @@ for offered in [uint64(high(uint32))-1, uint64(high(uint32)), 0x100000003'u64, h
   let completed = run(prepared, copy = 0)
   assert hashCalls() == 0, "HUH precedes memory policy and namespace hashing"
   failHash(0)
-  words(completed, high(uint64)-8, offered)
+  words(completed, high(uint64)-8, high(uint64))
+# Current selection supports explicit self, foreign reads, absent service and non-narrowing WHO.
+words(run(source(selector = 42)), 0, 0)
+words(run(source(selector = 99)), 1'u64 + (73'u64 shl 32), 0)
+words(run(source(selector = 99, offered = 4)), high(uint64), 0)
+words(run(source(selector = 99, malformed = true)), 1'u64 + (73'u64 shl 32), 0)
+for selector in [0'u64, 0x100000063'u64]:
+  words(run(source(selector = selector)), high(uint64)-3, 196608)
 for address in [0'u64, 65536'u64+4096-16, 196608'u64+8192-16, 0x100000000'u64, high(uint64)]:
   let completed = run(source(address = address))
   let cpu = machineInfo(completed.value.machine).value
-  assert completed.value.exit == StepExit.Panic and uint64(cpu.registers[7]) == address and uint64(
-      cpu.registers[8]) == 3,
+  assert completed.value.exit == StepExit.Panic and uint64(cpu.registers[7]) == high(uint64) and
+      uint64(cpu.registers[8]) == address and
+    uint64(cpu.registers[9]) == 3,
     "valid length memory panic preserves both inputs"
   assert uint64(cpu.gas) == 100000-price(valid)-643, "memory panic pays fixed fee"
 words(run(source(address = 65536)), high(uint64), 0) # Readable RO hash is absent, rather than panic.
@@ -142,7 +151,8 @@ for available in [0'u64, 642, 643, 644]:
   let cpu = machineInfo(completed.value.machine).value
   if available < 643:
     assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0 and
-      uint64(cpu.registers[7]) == 196608 and uint64(cpu.registers[8]) == 3, "exact fixed fee deficit with original registers"
+      uint64(cpu.registers[7]) == high(uint64) and uint64(cpu.registers[8]) == 196608 and uint64(
+          cpu.registers[9]) == 3, "exact fixed fee deficit with original registers"
   else:
     words(completed, 0, 0)
     assert uint64(cpu.gas) == available-643, "funded exact fee boundary"

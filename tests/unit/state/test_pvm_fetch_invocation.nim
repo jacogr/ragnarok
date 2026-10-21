@@ -75,11 +75,11 @@ proc base(): FetchContext =
 proc record(i: int): seq[byte] =
   if i < 2:
     # Complete fixed transfer: discriminator, IDs and final fixed-width gas.
-    result = newSeq[byte](153)
+    result = newSeq[byte](154)
     result[0] = 1
     result[1] = (if i == 0: 9'u8 else: 3'u8)
     result[5] = 42
-    result[145] = 128
+    result[146] = 128 # The preceding supervisor-credit flag is explicit zero.
   else:
     # Compact gas 128 occupies two bytes; success/error variants have distinct framing.
     result = newSeq[byte](if i == 2: 139 elif i == 3: 135 else: 136)
@@ -136,7 +136,7 @@ let empty = withInvocationFetch(context, inputs, InvocationServiceIndex(2), limi
 fetched(empty, 14, 0, @[0'u8])
 fetched(context, 14, 0, whole) # Replacing a child handle cannot mutate the original capture.
 let foreign = withInvocationFetch(base(), inputs, InvocationServiceIndex(0), limits()).value
-var foreignTransfer = newSeq[byte](153)
+var foreignTransfer = newSeq[byte](154)
 foreignTransfer[0] = 1
 foreignTransfer[1] = 8
 foreignTransfer[5] = 7
@@ -163,7 +163,7 @@ for field in 0..<6:
   of 2: tight.operand.outputBytes = ByteLimit(2) # Three-byte successful output.
   of 3: tight.operand.authBytes = ByteLimit(1) # Two-byte authorization trace.
   of 4: tight.operand.totalBlobBytes = ByteLimit(4) # Combined output and trace.
-  else: tight.operand.maxBytes = ByteLimit(152) # Fixed transfer must also fit record policy.
+  else: tight.operand.maxBytes = ByteLimit(153) # Fixed transfer must also fit record policy.
   assert withInvocationFetch(base(), inputs, InvocationServiceIndex(1), tight).error ==
     InvocationFetchError.LimitExceeded
 exact.items = ElementLimit(0)

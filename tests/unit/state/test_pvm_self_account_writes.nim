@@ -31,9 +31,9 @@ let input = guestInput()
 
 # Both services address the same raw key 73; canonical service key derivation must keep their writes disjoint.
 proc write(value = 81'u32, delete = false): seq[seq[byte]] =
-  @[registerImmediate(7, 65536), registerImmediate(8, 1),
-    registerImmediate(9, if value == 81: 196640'u64 else: 196641'u64),
-    registerImmediate(10, if delete: 0'u64 else: 1'u64), @[10'u8, 5]]
+  @[@[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1),
+    registerImmediate(10, if value == 81: 196640'u64 else: 196641'u64),
+    registerImmediate(11, if delete: 0'u64 else: 1'u64), @[10'u8, 5]]
 
 # Append authored instruction sequences without duplicating framing, masks or the production engine.
 proc append(instructions: var seq[seq[byte]], more: seq[seq[byte]]) =
@@ -49,8 +49,8 @@ proc storageEnvelope(checkpoint = false, panic = false, replace = false,
   if replace or delete:
     append(instructions, write(82, delete)) # Reusing one raw key must consume one trace descriptor.
   if upgrade:
-    append(instructions, @[registerImmediate(7, 196608), registerImmediate(8, 7),
-      registerImmediate(9, 9), @[10'u8, 21]]) # Later metadata upgrade must retain broader supported self-entry scope.
+    append(instructions, @[@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 7),
+      registerImmediate(10, 9), @[10'u8, 21]]) # Later metadata upgrade must retain broader supported self-entry scope.
   instructions.add(if panic: @[0'u8] else: @[50'u8, 0])
   guestEnvelope(instructions, input)
 
@@ -156,11 +156,13 @@ block replacement_and_deletion:
 
 # New request, optional forgetting and optional provide use the same actual self account owner.
 proc requestEnvelope(forget = false, provide = false, checkpoint = false, panic = false): seq[byte] =
-  var instructions = @[registerImmediate(7, 196608), registerImmediate(8, 1), @[10'u8, 25]]
+  var instructions = @[@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 1), @[
+      10'u8, 25]]
   if checkpoint:
     instructions.add(@[10'u8, 19]) # Retain the requested history before any later regular removal.
   if forget:
-    append(instructions, @[registerImmediate(7, 196608), registerImmediate(8, 1), @[10'u8, 26]])
+    append(instructions, @[@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 1),
+        @[10'u8, 26]])
   if provide:
     append(instructions, @[registerImmediate(7, 42), registerImmediate(8, 196640),
       registerImmediate(9, 1), @[10'u8, 28]]) # Request creation must compose with later terminal fulfillment.

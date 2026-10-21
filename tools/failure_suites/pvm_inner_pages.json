@@ -39,14 +39,14 @@
     },
     {
       "identity": {
-        "origin": "gas-representation"
+        "origin": "oog-reason"
       },
       "arguments": [
-        "gas-representation"
+        "oog-reason"
       ],
-      "name": "pvm-inner-pages-gas-representation",
-      "diagnostic": "outcome.status == None",
-      "description": "Inner pages gas-representation"
+      "name": "pvm-inner-pages-oog-reason",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Completed unsigned OOG has no engine-failure reason"
     }
   ]
 }

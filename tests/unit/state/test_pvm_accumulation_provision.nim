@@ -19,7 +19,7 @@ proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 ## Give every tested request a genuinely initialized full-width call descriptor.
 func provide(service = high(uint64), address = 65536'u64, length = 3'u64): ProvisionGuestCall =
-  ProvisionGuestCall(id: 27, r7: service, r8: address, r9: length)
+  ProvisionGuestCall(id: 28, r7: service, r8: address, r9: length)
 
 ## Isolate the independent instruction-block price so exact host costs do not depend on code length assumptions.
 proc price(source: PreparedAccumulationMachine): uint64 =
@@ -149,8 +149,8 @@ failHash(0)
 hashAfter(1)
 assert runProvision(accepted).error == AccumulationDispatchError.BackendFailure
 failHash(0)
-let mixedSource = provisionMachine([ProvisionGuestCall(id: 26, r7: 65536), provide(),
-  ProvisionGuestCall(id: 18), provide(99)], data = newSeq[byte](32),
+let mixedSource = provisionMachine([ProvisionGuestCall(id: 27, r7: 65536), provide(),
+  ProvisionGuestCall(id: 19), provide(99)], data = newSeq[byte](32),
   extra = @[provisionRequest(42, @[0'u8, 0, 0]), provisionRequest(99, @[0'u8, 0, 0])])
 let mixed = runProvision(mixedSource)
 check(mixed, 2, 1)
@@ -159,7 +159,7 @@ for dimension in [AccumulationDimension.Regular, AccumulationDimension.Exception
   let current = mixed.effects.effectContext(dimension).value
   assert current.effectInfo.value.hasYield
   assert array[32, byte](current.effectYield.value) == default(array[32, byte])
-let latePanic = runProvision(provisionMachine([provide(), ProvisionGuestCall(id: 18), provide(99,
+let latePanic = runProvision(provisionMachine([provide(), ProvisionGuestCall(id: 19), provide(99,
     address = high(uint64))]))
 check(latePanic, 1, 1)
 assert latePanic.value.exit == StepExit.Panic

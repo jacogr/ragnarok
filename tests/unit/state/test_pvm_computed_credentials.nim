@@ -19,9 +19,10 @@ proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse new Blake2b hashing after original computation, planning and test signatures complete.
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count actual report rehash attempts rather than simulating crypto success.
-proc expect[T](outcome: ComputedCredentialResult[T], reason: ComputedCredentialError) =
+proc expect[T](outcome: ComputedCredentialResult[T], reason: ComputedCredentialError, label = "") =
   ## Compare precise successful/refused alternatives before extraction.
-  assert outcome.error == reason, "computed credential reason: " & $outcome.error
+  assert outcome.error == reason, "computed credential " & label & " reason: " & $outcome.error &
+      " expected: " & $reason
 proc assignment[T](outcome: ComputedCredentialResult[T], reason: ComputedGuarantorError) =
   ## Inspect a nested assignment cause only in its selected failure alternative.
   expect(outcome, ComputedCredentialError.AssignmentFailure)
@@ -40,9 +41,10 @@ let done = verifyComputedCredentials(source, GuaranteeSlot(2), records).value
 assert done.computedCredentialInfo.value.credentials == 2
 assert uint32(done.computedCredentialInfo.value.slot) == 2
 assert uint16(done.computedCredentialAt(ComputedCredentialIndex(1)).value.validator) == 2
-expect(verifyComputedCredentials(source, GuaranteeSlot(2), three), ComputedCredentialError.None)
+expect(verifyComputedCredentials(source, GuaranteeSlot(2), three), ComputedCredentialError.None, "three signers")
 # A slot inside the same rotation changes metadata but never the signed message.
-expect(verifyComputedCredentials(source, GuaranteeSlot(1), two), ComputedCredentialError.None)
+expect(verifyComputedCredentials(source, GuaranteeSlot(1), two), ComputedCredentialError.None,
+    "same rotation")
 let reverse = [two[1], two[0]]
 let duplicate = [two[0], two[0]]
 expect(verifyComputedCredentials(source, GuaranteeSlot(2), reverse),
@@ -135,7 +137,7 @@ assert uint32(done.computedCredentialInfo.value.slot) == 2 and
 let original = source.computedGuarantorSource.value.computedRosterSource.value.computedTransitionSource.value.computedProfileContext.value.state
 assert sameStateSnapshot(done.computedCredentialSource.value.computedGuarantorSource.value.computedRosterSource.value.computedTransitionSource.value.computedProfileContext.value.state, original)
 reset(1)
-expect(verifyComputedCredentials(source, GuaranteeSlot(2), two), ComputedCredentialError.None)
+expect(verifyComputedCredentials(source, GuaranteeSlot(2), two), ComputedCredentialError.None, "hash-refusal control")
 expect(verifyComputedCredentials(source, GuaranteeSlot(2), damaged),
     ComputedCredentialError.InvalidSignature)
 assignment(verifyComputedCredentials(source, GuaranteeSlot(2), lateWrongCore),

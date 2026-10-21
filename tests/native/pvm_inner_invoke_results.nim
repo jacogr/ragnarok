@@ -24,15 +24,17 @@ let refused = innerInvokeResponse(default(InnerMachines), MachineGas(10000), inv
 check(refused, InnerMachineError.InvalidContext)
 let invalid = innerInvokeResponse(source, MachineGas(10000), invokeArgs(), default(Memory))
 check(invalid, InnerMachineError.InvalidMemory)
-let debt = innerInvokeResponse(source, MachineGas(0), invokeArgs(), invokeMemory(fuel = high(uint64)))
-check(debt, InnerMachineError.LimitExceeded)
+let underfunded = innerInvokeResponse(source, MachineGas(0), invokeArgs(), invokeMemory(fuel = high(uint64)))
+check(underfunded, InnerMachineError.None)
+assert underfunded.value.response.action == HostAction.OutOfGas and uint64(
+    underfunded.value.response.gas) == 0, "wide unaffordable reservation produces completed zero-gas OOG"
 let missing = default(InnerMachineResult[InnerMachineTransition])
 check(missing, InnerMachineError.Uninitialized)
 case paramStr(1)
 of "engine": discard engine.value # Inner engine limits carry no completed frame or map.
 of "owner": discard refused.value # Invalid map ownership carries no host response.
 of "memory": discard invalid.value # Missing caller memory carries no charged protocol result.
-of "debt": discard debt.value # Unrepresentable reservation debt cannot fabricate an OOG owner.
+of "oog-reason": discard underfunded.executionError # A valid OOG response has no local engine-failure reason.
 of "success-reason": discard success.executionError # A successful inner halt has no local engine reason.
 of "owner-reason": discard refused.executionError # Local context refusal cannot fabricate StepError.
 else: discard missing.executionError # A default alternative has no nested engine reason.

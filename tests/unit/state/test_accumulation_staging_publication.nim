@@ -196,8 +196,8 @@ proc checkStoreLimit() =
   assert sameStateSnapshot(caller.snapshot.value, source.state.snapshot.value)
 proc checkUnsupported() =
   ## An untracked storage write followed by designate cannot erase unsupported account ancestry.
-  let code = guestEnvelope([registerImmediate(7, 196608), registerImmediate(8, 1),
-    registerImmediate(9, 196609), registerImmediate(10, 1), @[10'u8, 5],
+  let code = guestEnvelope([@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 1),
+    registerImmediate(10, 196609), registerImmediate(11, 1), @[10'u8, 5],
     registerImmediate(7, 196608), registerImmediate(8, 9), @[10'u8, 18], @[50'u8, 0]],
     writable = payload(9, 41))
   let source = batchFixture(firstEnvelope = code, secondEnvelope = guestEnvelope([@[50'u8, 0]]),

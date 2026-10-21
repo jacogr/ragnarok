@@ -217,8 +217,8 @@ for checkpoint in [false, true]:
     (if checkpoint: payload() else: zeros)) # OOG retains the same exact exceptional checkpoint.
 # Later yield, storage and assign publish new versions without losing the accepted staging roster.
 let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 27],
-  registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
-  registerImmediate(10, 3), @[10'u8, 5], @[50'u8, 0]]))
+  @[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1), registerImmediate(10, 196608),
+  registerImmediate(11, 3), @[10'u8, 5], @[50'u8, 0]]))
 checkStaging(context(preserved), payload())
 assert context(preserved).effectInfo.value.hasStaging, "yield/storage preserve designation provenance"
 assert context(preserved).effectInfo.value.hasYield, "yield preserved beside staging and storage"

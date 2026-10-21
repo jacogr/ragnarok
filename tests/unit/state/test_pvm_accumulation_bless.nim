@@ -208,8 +208,8 @@ assert uint64(machineInfo(handed.value.machine).value.registers[7]) == high(uint
 checkRoles(context(handed), 99, singleton)
 # Later yield and storage mutations must retain the accepted current privilege snapshot and C(12).
 let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 27],
-  registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
-  registerImmediate(10, 3), @[10'u8, 5], @[50'u8, 0]]))
+  @[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1), registerImmediate(10, 196608),
+  registerImmediate(11, 3), @[10'u8, 5], @[50'u8, 0]]))
 assert preserved.error == AccumulationDispatchError.None and preserved.value.exit == StepExit.Halt, "preserved.error == AccumulationDispatchError.None and pres"
 checkRoles(context(preserved), 42, singleton)
 assert context(preserved).effectInfo.value.hasPrivileges, "yield and storage retain successful bless provenance"

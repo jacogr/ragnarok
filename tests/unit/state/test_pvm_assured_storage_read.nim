@@ -79,7 +79,7 @@ storage(selected.outcomeContext.value.effectAccounts.value, 2)
 let policy = config(fixture)
 var minimal = policy
 minimal.runner.copyBytes = MemoryByteLimit(3)
-minimal.runner.steps = ExecutionStepLimit(24)
+minimal.runner.steps = ExecutionStepLimit(26) # Two current account-selector instructions are included.
 let exact = executeAssuredAccumulation(fixture.queue, minimal)
 assert exact.error == AssuredExecutionError.None
 assert exact.value.assuredExecutionCompleted.value.executionInfo.value.batch.selfWrites == 1
@@ -95,7 +95,7 @@ for ceiling in 2..3:
   assert calls.runnerFailure.dispatchFailure.error == AccumulationDispatchError.ExecutionFailure
   assert calls.runnerFailure.dispatchFailure.executionError == StepError.HostCallLimitExceeded
 var short = minimal
-short.runner.steps = ExecutionStepLimit(23)
+short.runner.steps = ExecutionStepLimit(25)
 let steps = executeAssuredAccumulation(fixture.queue, short)
 assert steps.error == AssuredExecutionError.RunnerFailure
 assert steps.runnerFailure.error == AccumulationRunnerError.DispatchFailure

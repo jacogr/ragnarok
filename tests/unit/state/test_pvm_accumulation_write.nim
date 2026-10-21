@@ -36,10 +36,11 @@ proc entries(): seq[StateEntry] =
 ## Build real guest instructions; optional suffixes witness state visibility and terminal normalization.
 proc source(keyAddress = 65536'u64, keyLength = 1'u64, valueAddress = 196608'u64,
     valueLength = 3'u64, credit = 100000'u64, existing = false, balance = 10000'u64,
-    gratis = 0'u64, spare = 1, suffix: seq[seq[byte]] = @[@[50'u8,
+    gratis = 0'u64, spare = 1, selector = high(uint64), suffix: seq[seq[byte]] = @[@[50'u8,
         0]]): PreparedAccumulationMachine =
-  var code = @[registerImmediate(7, keyAddress), registerImmediate(8, keyLength),
-    registerImmediate(9, valueAddress), registerImmediate(10, valueLength), @[10'u8, 5]]
+  var code = @[registerImmediate(7, selector), registerImmediate(8, keyAddress),
+    registerImmediate(9, keyLength), registerImmediate(10, valueAddress),
+    registerImmediate(11, valueLength), @[10'u8, 5]]
   for instruction in suffix:
     code.add(instruction) # Every authored instruction retains its real opcode boundary.
   guestProgram(code, credit, extra = (if existing: entries() else: @[]),
@@ -140,10 +141,16 @@ for address in [0'u64, 196608'u64+8192-1, 0x100000000'u64, high(uint64)]:
 for address in [0'u64, 0x100010000'u64, high(uint64)]:
   let failed = run(source(keyAddress = address))
   assert failed.value.exit == StepExit.Panic and uint64(machineInfo(
-      failed.value.machine).value.registers[7]) == address
+      failed.value.machine).value.registers[7]) == high(uint64)
 assert run(source(keyLength = 65), limit = 64).error == AccumulationDispatchError.LimitExceeded
 assert run(source(valueLength = 65), limit = 64).error == AccumulationDispatchError.LimitExceeded
 assert run(source(spare = 0)).error == AccumulationDispatchError.LimitExceeded
+# Explicit self selection succeeds; supervised foreign writes remain typed implementation gates.
+let selectedSelf = run(source(selector = 42))
+assert selectedSelf.error == AccumulationDispatchError.None and selectedSelf.value.exit == StepExit.Halt
+for selector in [99'u64, 0x10000002a'u64]:
+  assert run(source(selector = selector)).error == AccumulationDispatchError.UnsupportedHostCall
+
 let valid = source()
 failHash(1)
 assert run(valid).error == AccumulationDispatchError.BackendFailure and hashCalls() == 1

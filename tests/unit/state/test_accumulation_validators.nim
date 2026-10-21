@@ -12,7 +12,8 @@ import ../../../src/state/[accumulation_validators, validator_projection, accumu
   accumulation_round, accumulation_inputs, accumulation_service, accumulation_skip,
   accumulation_queue, report_admission, guarantee_credentials, block_transition, block_admission, store]
 import ../../../src/codec/[bounded, header, owned, report_owned, guarantees, block_codec,
-  state_safrole, state_statistics, state_outputs, state_workqueues, state_history, state_layout, state_trie]
+  state_safrole, state_accounts, state_statistics, state_outputs, state_workqueues, state_history,
+  state_layout, state_trie]
 import ../../support/[accumulation_execution_context, report_context, arc_evidence]
 
 # Fault injection starts only after real signatures, accumulation and complete-map construction.

@@ -100,7 +100,7 @@ proc verifyCheckpointDeletion*(mode: ComputedStorageMode, evidenceName: string) 
   let policy = config(fixture)
   var minimal = policy
   minimal.runner.copyBytes = MemoryByteLimit(11)
-  minimal.runner.steps = ExecutionStepLimit(28)
+  minimal.runner.steps = ExecutionStepLimit(30) # Two current write selectors add two actual guest instructions.
   let exact = executeAssuredAccumulation(fixture.queue, minimal)
   assert exact.error == AssuredExecutionError.None
   assert exact.value.assuredExecutionCompleted.value.executionInfo.value.batch.selfWrites == 1
@@ -116,7 +116,7 @@ proc verifyCheckpointDeletion*(mode: ComputedStorageMode, evidenceName: string) 
     assert calls.runnerFailure.dispatchFailure.error == AccumulationDispatchError.ExecutionFailure
     assert calls.runnerFailure.dispatchFailure.executionError == StepError.HostCallLimitExceeded
   var short = minimal
-  short.runner.steps = ExecutionStepLimit(27)
+  short.runner.steps = ExecutionStepLimit(29) # One below the independently counted thirty-instruction path.
   let steps = executeAssuredAccumulation(fixture.queue, short)
   assert steps.error == AssuredExecutionError.RunnerFailure
   assert steps.runnerFailure.error == AccumulationRunnerError.DispatchFailure

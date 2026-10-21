@@ -1348,9 +1348,10 @@ proc recordAccumulationEject*(effects: AccumulationEffects, target: Accumulation
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
 
-proc effectRequestHistory*(context: AccumulationEffectContext, hash: ServicePreimageHash,
+proc effectServiceRequestHistory*(context: AccumulationEffectContext, service: ServiceIndex,
+    hash: ServicePreimageHash,
     length: RequestLength): AccumulationEffectResult[RequestHistory] =
-  ## Copy the invoking service's current exact request history; NotRequested distinguishes absence from a present empty history.
+  ## Copy the selected current service's exact request history; NotRequested distinguishes absence from a present empty history.
   ## Captures at most thirteen canonical bytes; malformed/trailing state and namespace backend failures expose no history.
   # Default and failed reads carry only their reason, never a fabricated requested state.
   template fail(reason: AccumulationEffectError) =
@@ -1360,7 +1361,14 @@ proc effectRequestHistory*(context: AccumulationEffectContext, hash: ServicePrei
     fail(AccumulationEffectError.Uninitialized) # No default context can supply a service identity or account backing.
   if uint32(length) >= high(uint32)-1:
     fail(AccumulationEffectError.InvalidLength) # Invalid E4 domains never become namespace backend failures.
-  let service = data.initial.contextInfo.value.service
+  let account = data.accounts.lookup(chapterServiceKey(StateChapter(255), service))
+  if account.error == StateStoreError.MissingKey:
+    fail(AccumulationEffectError.UnknownService) # Missing service is distinct from an absent request.
+  if account.error != StateStoreError.None or account.value.byteLength != ServiceMetadataBytes:
+    fail(AccumulationEffectError.MalformedState) # No malformed account may supply a request namespace.
+  if decodeServiceMetadata(account.value.bytes, ByteLimit(ServiceMetadataBytes)).error !=
+      ServiceMetadataError.None:
+    fail(AccumulationEffectError.MalformedState) # Keep canonical metadata checks independent of history decoding.
   let key = serviceRequestKey(service, hash, length, ByteLimit(32))
   if key.error != RequestError.None:
     fail(AccumulationEffectError.BackendFailure) # Namespace hashing refusal cannot turn into NONE.
@@ -1375,6 +1383,14 @@ proc effectRequestHistory*(context: AccumulationEffectContext, hash: ServicePrei
     fail(AccumulationEffectError.MalformedState) # Prefix acceptance cannot hide trailing or malformed canonical state.
   AccumulationEffectResult[RequestHistory](status: AccumulationEffectError.None,
     completed: decoded.value.history)
+
+proc effectRequestHistory*(context: AccumulationEffectContext, hash: ServicePreimageHash,
+    length: RequestLength): AccumulationEffectResult[RequestHistory] =
+  ## Select the invocation's actual self service while retaining the same current immutable account backing.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[RequestHistory](status: AccumulationEffectError.Uninitialized)
+  effectServiceRequestHistory(context, data.initial.contextInfo.value.service, hash, length)
 
 proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreimageHash,
     length: RequestLength, parameters: Parameters): AccumulationEffectResult[AccumulationEffects] =

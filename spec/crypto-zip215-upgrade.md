@@ -3,12 +3,12 @@
 ## Authority and implementation gap
 
 Gray Paper commit `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` adds an explicit
-ZIP215 requirement to `notation.tex`, Signing Schemes. The existing crypto
-bridge uses `ED25519_verify` from BoringSSL commit
-`88341070936d28e08f82db1326c73d67962cd043`. Its RFC8032 acceptance policy is
+ZIP215 requirement to `notation.tex`, Signing Schemes. The historical crypto
+bridge used `ED25519_verify` from BoringSSL commit
+`88341070936d28e08f82db1326c73d67962cd043`. Its RFC8032 acceptance policy was
 not equivalent to the newly required [ZIP215 policy](https://zips.z.cash/zip-0215).
 This is an implementation upgrade requirement, not a Gray Paper discrepancy
-or ambiguity. Do not report the current backend as ZIP215 compatible.
+or ambiguity. The current upgrade activates the maintained ZIP215 verifier described below.
 
 ## Minimal fixed public witnesses
 
@@ -16,7 +16,7 @@ Use public key32 zero bytes, signature `01` followed by63 zero bytes, and any
 of the messages empty, `00`, or ASCII `ragnarok`. In Edwards coordinates this
 key has order4, signature R is the identity, and S=0. Thus all terms in ZIP215's
 cofactor-multiplied verification equation are the identity for every message.
-ZIP215 accepts all three witnesses. The pinned C bridge rejects all three.
+ZIP215 accepts all three witnesses. The historical pinned C bridge rejected all three.
 The corresponding reduced challenge residues modulo4 are1,2,1.
 
 The same loaded bridge successfully derived a public key, signed and verified

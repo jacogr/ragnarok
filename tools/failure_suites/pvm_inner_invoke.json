@@ -39,14 +39,14 @@
     },
     {
       "identity": {
-        "origin": "debt"
+        "origin": "oog-reason"
       },
       "arguments": [
-        "debt"
+        "oog-reason"
       ],
-      "name": "pvm-inner-invoke-debt",
-      "diagnostic": "outcome.status == None",
-      "description": "Inner invoke debt"
+      "name": "pvm-inner-invoke-oog-reason",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Completed unsigned OOG has no engine-failure reason"
     },
     {
       "identity": {

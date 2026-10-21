@@ -38,10 +38,11 @@ proc batchEnvelope*(ending: BatchEnding): seq[byte] =
     registerImmediate(8, 196608), @[10'u8, 28]]
   if ending in {BatchEnding.StorageHalt, BatchEnding.StoragePanic,
       BatchEnding.StorageCheckpointPanic}:
-    instructions.add(registerImmediate(7, 65536))
-    instructions.add(registerImmediate(8, 1))
-    instructions.add(registerImmediate(9, 196608))
-    instructions.add(registerImmediate(10, 1))
+    instructions.add(@[51'u8, 7, 255]) # Current self selector is independent of the preceding provide verdict.
+    instructions.add(registerImmediate(8, 65536))
+    instructions.add(registerImmediate(9, 1))
+    instructions.add(registerImmediate(10, 196608))
+    instructions.add(registerImmediate(11, 1))
     instructions.add(@[10'u8, 5]) # Existing PVM write PR: one-byte raw key/value in the invoking service.
     if ending == BatchEnding.StorageCheckpointPanic:
       instructions.add(@[10'u8, 19]) # A checkpoint now retains the storage mutation as exceptional state.

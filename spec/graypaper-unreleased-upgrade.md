@@ -46,7 +46,7 @@ fallback is permitted. Do not copy upstream runtime code or patch dependencies.
 
 No merge, upstream issue/comment or unrelated toolchain upgrade is authorized.
 The maintainer confirmed the previous batch merged on2026-10-21 and lifted the
-publication hold. The first upgrade PR starts a fresh stack with a20-PR limit.
+publication hold. The crypto foundation and this upgrade begin the fresh stack with a30-PR limit.
 Complete the coordinated migration and required checks before publishing it.
 
 ## Explicit incomplete capabilities during migration
@@ -77,24 +77,32 @@ construction preserves identical gas checks and releases all owners in1,000 fres
 compile/instantiate/catalogue-removal/instance-removal cycles. Inner page and invoke
 cycles retain their independent release checks. No runtime/compiler dependency is patched.
 
-## Current local migration checkpoint
+## Current local verification
 
-Focused native suites `pvm_fetch_accumulation`, `pvm_accumulation_info` and
-`accumulation_credit` pass with1,000 ownership cycles each. Transfer capture uses
-154-byte records and account-info uses112 bytes. Incoming-credit witnesses exercise
-separate full-width liquid/supervisor balances and independent overflow refusal.
-The independent credit fixture checks pass; historical release balance projections
-are embedded explicitly into current metadata and have derived roots.
+The broad checked native sweep executed463 suites:435 passed initially and28 exposed
+remaining release-era fixtures or the computed-guarantor null-key predicate. All28
+now have passing focused reruns, retained separately from the original failed report.
+All41 independent corpora passed. Affected ARC suites retain fresh1,000-cycle release
+observations. This is aggregate local regression evidence, not a claim that the original
+failed invocation passed or that exact-head Linux CI ran.
 
-This is partial local verification, not complete native-suite or Linux CI evidence.
-The `eject` implementation and direct guest witnesses now use current supervisor
-authorization, empty-item eligibility and reclamation of both balances. Bounded
-deletion proofs/publication remove only metadata. The broader batch integration
-fixtures are migrated and pass their retained interaction cases.
-The focused current eject guest suite and full deletion/publication interaction
-suite each pass1,000 ownership cycles with unchanged occupied memory; all three changed production modules pass semantic compilation,
-and the exact nominal target-domain rejection passes. Other shifted host-call fixtures and current account mutation arguments
-also remain pending. Do not publish the upgrade while these obsolete paths remain.
+All264 production modules pass semantic compilation after the eligibility correction.
+Python provenance/tooling checks cover639 tests. The obsolete namespace-policy skip
+is replaced by an active current-domain boundary test; remaining skips are individually
+documented implementation/specification gates. The16 interpreted
+PolkaVM comparison pairs passed; subsequent changes affect state adapters and fixtures,
+with their covered interpreter/reference inputs unchanged. Compiler rejection guards pass.
+The full runtime-failure sweep plus source-owned repaired-family reruns validate all
+planned current cases, retaining the original failed reports. The production build and
+fresh-process runtime load pass. The interpreted benchmark validates equivalent results
+before timing. All17 E2E workloads and6 selftests pass across the full sweep and the
+complete RPC rerun after its authored account-fixture projection.
+
+Current105-byte accounts and154-byte transfers are used by the tested consumers.
+Release account/marker witnesses are explicitly projected into current supervisor/null-key
+fields while retaining their original upstream source hashes. Request boundaries exclude
+both reserved E4 prefixes. Integration guests use current selectors and independently
+counted instruction ceilings, including exact and one-short refusal cases.
 
 ## Ed25519 verification compatibility resolution
 
@@ -106,11 +114,37 @@ See [the compatibility audit](crypto-zip215-upgrade.md). This is an implementati
 gap, not a specification discrepancy. The maintainer authorized the crypto foundation PR before this upgrade. Current-policy
 corpus results explicitly record the normative ZIP215 difference in Wycheproof case151.
 
-## Remaining account-selector migration
+## Current account-selector migration
 
 The current paper's write (5), query (24), solicit (25) and forget (26) rows add an
 account selector in r7. Their pointer/length arguments move to r8 onward. Native
-request-boundary tests now reject both reserved E4 lengths and prove storage/request
-separation, but the old guest register shape still needs migration before publication.
-Query should support current foreign-account reads; supervised foreign mutations remain
+request-boundary tests reject both reserved E4 lengths and prove storage/request
+separation. Production and guest programs use the current register layout.
+Query supports current foreign-account reads; supervised foreign mutations remain
 explicit implementation gates until their account mutation/publication paths are complete.
+
+Undefined `new`/`transfer` modes return protocol HUH after the applicable memory and
+service-existence checks. Transfer refusals charge only575 gas and never enqueue or
+debit; defined alternate funding modes remain explicit implementation gates.
+
+## Runtime probe migration
+
+Runtime probes use current154-byte transfer controls and explicit memory-compilation
+arguments. Host Halt now fails response validation. Overwide page/invoke/provide prices
+produce completed unsigned OOG, so their misuse probes reject engine-reason extraction
+instead of incorrectly rejecting the valid OOG owner. Positive controls check the exact
+alternative before the intentional misuse; helper procedures preserve dynamic guard
+checks rather than accepting a compiler rejection as runtime evidence. Source-owned
+case identities and exact assertion diagnostics changed together.
+
+## Publication evidence and remaining boundaries
+
+Checks ran locally on macOS with the pinned toolchain; production uses checked release
+ARC/Clang LTO. Full-sweep failure reports are preserved alongside focused repaired-case
+results. They are aggregate regression evidence, not rewritten green reports or exact-head
+Linux CI. The interpreted benchmark retains raw measurements/environment metadata and
+keeps compiled comparisons deferred by maintainer direction.
+
+M1 framing is complete. Full state serialization, whole-block parity, current Thin VRF
+parity and the explicitly gated host capabilities above remain separate work. Full
+upstream PolkaVM fuzzing remains a required future independent CI job.

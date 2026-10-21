@@ -1,5 +1,20 @@
 # Accumulation query host
 
+## Current unreleased Gray Paper contract
+
+Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `pvm_invocations.tex`,
+selects query as host 24. Register r7 selects an account (all ones means self).
+Hash pointer and advertised request length occupy r8/r9. Lengths must be strictly
+below 2^32-2; both reserved E4 values return HUH before memory/backend work. Public
+effect APIs reject the same values as `InvalidLength`. Legal request keys stay separate
+from storage/preimage namespaces.
+Current query supports self and foreign-account reads. Missing and out-of-domain
+services return WHO without truncation, after length/memory validation. WHO preserves
+r8; successful query words retain the paper's exact packed shape.
+
+The sections below preserve historical release implementation and verification records.
+
+
 ## Scope and authority
 
 Implement query (23), Omega_Q, against GP 0.8.0 revision

@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Transport unchanged pinned report-policy inputs; native tests own all policy verdicts.
+"""Project pinned report-policy accounts into current metadata; native tests own policy verdicts.
 
 Exposes prepare and fixture construction helpers that write trusted inputs for native tests.
 """
@@ -60,8 +60,8 @@ def prepare(folder, cases=CASES, filename="report-policy", include_history=False
                 value = account['data']['service']
                 assert value['version'] == 0
                 source = (bytes.fromhex(value['code_hash'][2:]),
-                    tuple(value[k] for k in ('balance', 'min_item_gas', 'min_memo_gas', 'bytes', 'deposit_offset')),
-                    tuple(value[k] for k in ('items', 'creation_slot', 'last_accumulation_slot', 'parent_service')))
+                    (value['balance'], 0, *(value[k] for k in ('min_item_gas', 'min_memo_gas', 'bytes', 'deposit_offset'))),
+                    (*tuple(value[k] for k in ('items', 'creation_slot', 'last_accumulation_slot', 'parent_service')), 0, 0))
                 accounts.append(str(account['id'])+':'+account_wire(source).hex())
             auth = pool_wire(0, [b''.join(bytes.fromhex(v[2:]) for v in row) for row in state['auth_pools']])
             expected = case['output'].get('err', 'ok')
@@ -78,6 +78,7 @@ def prepare(folder, cases=CASES, filename="report-policy", include_history=False
     path = folder/(filename+'.txt')
     path.write_text('\n'.join(['pool '+value for value in pools]+rows)+'\n')
     evidence = dict(cases=len(rows), sources=sources, vector_commit=pins['commit'],
+                    projection='release-account-metadata-to-current-zero-supervisor-fields',
                     fixture_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     (folder/(filename+'.json')).write_text(json.dumps(evidence, indent=2)+'\n')
     return path, evidence

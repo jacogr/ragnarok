@@ -18,10 +18,10 @@ type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection;
     ReadCheckpointNegativeBranch, ReadCheckpointUntakenBranch
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
-  ## Jump from refinement entry0 to empty output; entry5 writes RO key11 using literal or genuinely fetched RW bytes.
+  ## Jump from refinement entry0 to empty output; entry5 uses current write arguments with literal or genuinely fetched RW bytes.
   assert mode != ComputedStorageMode.Disabled
-  var body = @[refinementImmediate(7, 65536), refinementImmediate(8, 1),
-    refinementImmediate(9, 196608), refinementImmediate(10, 3), @[10'u8, 5]]
+  var body = @[@[51'u8, 7, 255], refinementImmediate(8, 65536), refinementImmediate(9, 1),
+    refinementImmediate(10, 196608), refinementImmediate(11, 3), @[10'u8, 5]]
   if mode in {ComputedStorageMode.ReadMissing, ComputedStorageMode.ReadCheckpointPanic,
       ComputedStorageMode.ReadCheckpointFault, ComputedStorageMode.ReadCheckpointProtection,
       ComputedStorageMode.ReadCheckpointWrapLoad,
@@ -38,16 +38,16 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
       body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 0], @[51'u8, 9, 1],
         @[51'u8, 10, 14], @[10'u8, 2], @[52'u8, 6, 0, 0,
             3]] # Fetch the actual count and preserve it in r6 across all later hosts.
-    for instruction in [@[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 255],
-        @[51'u8, 10, 0], @[10'u8, 5]]:
+    for instruction in [@[51'u8, 7, 255], @[51'u8, 8, 0, 0, 1], @[51'u8, 9, 1], @[51'u8, 10, 255],
+        @[51'u8, 11, 0], @[10'u8, 5]]:
       body.add(instruction) # Real deletion ignores the invalid value pointer; the assured parent genuinely contains the key.
     if retainedDeletion:
       body.add(@[10'u8, 19]) # Checkpoint the absent key before any regular restoration; r6 remains the actual fetched count.
     let target = if retainedDeletion: 42'u8 else: 255'u8
     for instruction in [@[51'u8, 7, target], @[51'u8, 8, 0, 0, 1], @[51'u8, 9, 1],
         @[51'u8, 10, 255], @[51'u8, 11, 0], @[51'u8, 12, 3], @[10'u8, 4],
-        @[62'u8, 7, 3, 0, 3], @[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1],
-        @[51'u8, 9, 0, 0, 3], @[51'u8, 10, 11], @[10'u8, 5]]:
+        @[62'u8, 7, 3, 0, 3], @[51'u8, 7, 255], @[51'u8, 8, 0, 0, 1], @[51'u8, 9, 1],
+        @[51'u8, 10, 0, 0, 3], @[51'u8, 11, 11], @[10'u8, 5]]:
       body.add(instruction) # Read current absence into an ignored MAX destination, then persist its full NONE word in regular state.
   if mode in {ComputedStorageMode.FetchFirst, ComputedStorageMode.FetchSecond,
       ComputedStorageMode.FetchMissing, ComputedStorageMode.FetchList,
@@ -91,16 +91,17 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
     if returnedWord:
       body.add(@[62'u8, 7, 3, 0, 3]) # Real store_u64 persists all eight r7 bytes atRW196611 while preserving initialRW21/22/23.
     if mode == ComputedStorageMode.FetchBranchPanic:
-      body.add(@[52'u8, 11, 0, 0, 3]) # Preserve the actual count in r11 across the real storage write.
+      body.add(@[52'u8, 6, 0, 0, 3]) # Preserve the actual count in r6; current write arguments occupy r11.
     let valueBytes = if returnedWord: 11'u8 else: 3'u8
     if mode == ComputedStorageMode.FetchDelete:
       for instruction in [@[52'u8, 10, 0, 0, 3], @[154'u8, 170, 2], @[150'u8, 170, 3],
           @[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], refinementImmediate(9, high(uint64)),
-          @[148'u8, 169, 0, 0, 3], @[10'u8, 5]]:
+          @[148'u8, 169, 0, 0, 3], @[100'u8, 0xab], @[100'u8, 0x9a],
+          @[100'u8, 0x89], @[100'u8, 0x78], @[51'u8, 7, 255], @[10'u8, 5]]:
         body.add(instruction) # Derive len=(2-count)*3; real cmov selects RW only for a nonempty value, leaving MAX ignored on deletion.
     else:
-      for instruction in [@[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 0, 0, 3],
-          @[51'u8, 10, valueBytes], @[10'u8, 5]]:
+      for instruction in [@[51'u8, 7, 255], @[51'u8, 8, 0, 0, 1], @[51'u8, 9, 1], @[51'u8, 10, 0, 0,
+          3], @[51'u8, 11, valueBytes], @[10'u8, 5]]:
         body.add(instruction) # Fetch returns a length in r7, so reload every storage pointer and length independently.
   if mode in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail}:
     let offset = if mode == ComputedStorageMode.FetchReadTail: 2'u8 else: 0'u8
@@ -111,8 +112,8 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
       body.add(instruction) # Read current regular self storage into disjoint zeroed RW+3; clipping leaves the remaining bytes untouched.
     if mode == ComputedStorageMode.FetchReadTail:
       body.add(@[62'u8, 7, 6, 0, 3]) # Preserve all eight returned length bytes atRW+6 before reloading the final storage arguments.
-    for instruction in [@[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 3, 0, 3],
-        @[51'u8, 10, length], @[10'u8, 5]]:
+    for instruction in [@[51'u8, 7, 255], @[51'u8, 8, 0, 0, 1], @[51'u8, 9, 1], @[51'u8, 10, 3, 0,
+        3], @[51'u8, 11, length], @[10'u8, 5]]:
       body.add(instruction) # Persist only actual read bytes, including the full return word in the clipped-read mode.
   let checkpoint = mode in {ComputedStorageMode.CheckpointCommit,
       ComputedStorageMode.CheckpointPanic, ComputedStorageMode.CheckpointOutOfGas}
@@ -120,8 +121,8 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
     body.add(@[10'u8, 19]) # Retain the first write only after the real checkpoint precharge succeeds.
   if checkpoint or mode == ComputedStorageMode.OutOfGas:
     # Checkpoint changes r7, so independently reload every actual pointer/length before the later write.
-    for instruction in [refinementImmediate(7, 65536), refinementImmediate(8, 1),
-      refinementImmediate(9, 196609), refinementImmediate(10, 2), @[10'u8, 5]]:
+    for instruction in [@[51'u8, 7, 255], refinementImmediate(8, 65536), refinementImmediate(9, 1),
+      refinementImmediate(10, 196609), refinementImmediate(11, 2), @[10'u8, 5]]:
       body.add(instruction) # Same raw key proves one provenance descriptor can retain multiple real mutations.
   if mode in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail,
       ComputedStorageMode.ReadMissing, ComputedStorageMode.ReadCheckpointPanic,
@@ -155,7 +156,7 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
     else:
       body.add(@[0'u8]) # Two genuine inputs select the retained checkpoint deletion after that restoration.
   elif mode == ComputedStorageMode.FetchBranchPanic:
-    body.add(@[81'u8, 27, 2, 6]) # Real equality branches forward by six bytes exactly when the count is two.
+    body.add(@[81'u8, 22, 2, 6]) # Real equality branches forward by six bytes exactly when the count is two.
     body.add(@[50'u8, 0]) # Historical count one commits the write through the actual regular exit.
     body.add(@[0'u8]) # The assured count two selects initial exceptional state after attempting a different write.
   elif mode in {ComputedStorageMode.Panic, ComputedStorageMode.CheckpointPanic}:
@@ -164,8 +165,12 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
     body.add(@[50'u8, 0]) # Halt selects regular effects, including an admitted write or unchanged FULL state.
   var refineEntry = 5
   for instruction in body: refineEntry += instruction.len # Five explicit bytes reserve the fixed accumulation entry.
-  assert refineEntry < 128
-  result = @[@[40'u8, byte(refineEntry)], @[1'u8], @[1'u8], @[1'u8]]
+  assert refineEntry < 180 # The complete two-entry guest remains below the shared 192-byte fixture ceiling.
+  if refineEntry < 128:
+    result = @[@[40'u8, byte(refineEntry)], @[1'u8], @[1'u8], @[1'u8]]
+  else:
+    result = @[@[40'u8, byte(refineEntry), 0], @[1'u8], @[
+        1'u8]] # Positive two-byte displacement preserves accumulation entry5.
   for instruction in body: result.add(instruction) # Every operand remains unmarked in the real program mask.
   result.add(refinementImmediate(8, 0))
   result.add(@[50'u8, 0])
