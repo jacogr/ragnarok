@@ -10,15 +10,17 @@ import ../codec/bounded
 
 const
   Switches = ["--with-ui", "--with-rpc", "--with-telemetry", "--with-state"]
-  Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes", "--state-write-bytes"]
+  Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes",
+      "--state-write-bytes", "--state-checkpoint", "--state-trust", "--state-header", "--state-checkpoint-bytes"]
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
-  parsed, telemetry, rpc, ui, state: bool
+  parsed, telemetry, rpc, ui, state, recover: bool
   positional: seq[string]
   endpoint, chain, directory: string
+  recoveryFile, recoveryIdentity, recoveryHeader: string
   rpcNumber, uiNumber: uint16
   writeCount: ElementLimit
-  writeBytes: ByteLimit
+  writeBytes, recoveryBytes: ByteLimit
 
 proc valid*(options: Options): bool =
   ## A failed/default configuration has no executable command or enabled services.
@@ -48,6 +50,24 @@ func stateWrites*(options: Options): ElementLimit {.requires: options.parsed and
 func stateWriteBytes*(options: Options): ByteLimit {.requires: options.parsed and options.state.} =
   ## Extract the independent write-value byte budget; zero permits no written value bytes.
   options.writeBytes
+
+func recoveryEnabled*(options: Options): bool =
+  ## Only a complete explicit external-checkpoint request selects recovery.
+  options.parsed and options.recover
+func recoveryPath*(options: Options): string {.requires: options.parsed and options.recover.} =
+  ## The checkpoint being imported is distinct from independently supplied trust paths.
+  options.recoveryFile
+func recoveryTrustPath*(options: Options): string {.requires: options.parsed and options.recover.} =
+  ## Select the operator's independent fixed identity file.
+  options.recoveryIdentity
+func recoveryHeaderPath*(options: Options): string {.requires: options.parsed and
+    options.recover.} =
+  ## Select exact independently trusted sealed-header bytes.
+  options.recoveryHeader
+func recoveryByteLimit*(options: Options): ByteLimit {.requires: options.parsed and
+    options.recover.} =
+  ## Preserve the full unsigned explicit checkpoint ceiling; zero is a valid refusal policy.
+  options.recoveryBytes
 
 proc rpcPort*(options: Options): uint16 =
   ## UI implies RPC; configuration alone leaves the listener disabled.
@@ -122,11 +142,15 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--telemetry": candidate.endpoint = value
       of "--chain": candidate.chain = value
       of "--dev-ui-dir": candidate.directory = value
-      of "--state-writes", "--state-write-bytes":
+      of "--state-checkpoint": candidate.recoveryFile = value
+      of "--state-trust": candidate.recoveryIdentity = value
+      of "--state-header": candidate.recoveryHeader = value
+      of "--state-writes", "--state-write-bytes", "--state-checkpoint-bytes":
         var number = 0'u64
         if not decimalLimit(value, number): return false # No partial or wrapped budget escapes the candidate.
         if name == "--state-writes": candidate.writeCount = ElementLimit(number)
-        else: candidate.writeBytes = ByteLimit(number)
+        elif name == "--state-write-bytes": candidate.writeBytes = ByteLimit(number)
+        else: candidate.recoveryBytes = ByteLimit(number)
       of "--rpc-port", "--ui-port":
         let port = portValue(value)
         if port == 0: return false # Never narrow a malformed or overflowing port.
@@ -142,6 +166,14 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
         not hasBytes: return false # Activation requires all explicit inputs.
   elif hasWrites or hasBytes:
     return false # Unselected policy controls must not be silently ignored.
+  let recoveryControls = ["--state-checkpoint", "--state-trust", "--state-header", "--state-checkpoint-bytes"]
+  var recoveryCount = 0
+  for control in recoveryControls:
+    if control in seen: inc recoveryCount # Seen uniqueness bounds this count to the fixed four controls.
+  if recoveryCount > 0:
+    if not candidate.state or recoveryCount != recoveryControls.len:
+      return false # Partial/disabled external imports cannot activate or reuse an earlier successful parse.
+    candidate.recover = true
   if candidate.telemetry and (candidate.endpoint.len == 0 or candidate.chain.len == 0): return false
   if candidate.chain.len > 0 and not (candidate.telemetry or candidate.rpc or
       candidate.ui or candidate.state): return false
