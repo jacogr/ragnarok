@@ -3,6 +3,7 @@
 
 ## Bounded immutable path witnesses for the pinned state trie. Capture validates structure only;
 ## independently supplied roots and keys grant lookup authority through a separate verifier.
+import std/algorithm
 import ../codec/[bounded, state_layout, state_trie]
 
 type
@@ -11,7 +12,7 @@ type
     valueBytes*: ByteLimit
   StateProofError* {.pure.} = enum ## Failure alternatives never expose a proof prefix or lookup payload.
     Uninitialized, None, LimitExceeded, InvalidProof, InvalidIndex, RootMismatch,
-    KeyMismatch, BackendFailure, MissingValue, StoreFailure
+    KeyMismatch, BackendFailure, MissingValue, StoreFailure, DuplicateKey, LengthOverflow
   ProofData = ref object ## Private acyclic ownership freezes copied canonical nodes and supplied bytes.
     nodes: seq[EncodedStateNode]
     value: seq[byte]
@@ -177,3 +178,123 @@ proc verifyStateProof*(proof: StateProof, expectedRoot: StateRoot, query: StateK
   StateProofResult[VerifiedStateLookup](status: StateProofError.None,
     completed: VerifiedStateLookup(proof: proof, rootIdentity: expectedRoot,
       keyIdentity: query, found: true))
+
+type
+  ProofKey = object ## Fixed private identities retain only indices into synchronously borrowed entries.
+    key: StateKey
+    index: int
+func compare(left, right: ProofKey): int =
+  ## Lexicographic key order agrees with MSB-first trie partitions.
+  let a = array[31, byte](left.key)
+  let b = array[31, byte](right.key)
+  for i in 0..<31:
+    # Stop at the first differing byte; no payload data participates in ordering.
+    if a[i] < b[i]: return -1
+    if a[i] > b[i]: return 1
+  0
+func partition(keys: seq[ProofKey], first, stop, depth: int): int =
+  ## Locate the first one bit in a sorted range sharing all preceding bits.
+  var low = first
+  var high = stop
+  while low < high:
+    # Subtraction bounds midpoint arithmetic within the existing range.
+    let middle = low + (high-low) div 2
+    if keys[middle].key.bit(depth): high = middle
+    else: low = middle + 1
+  low
+proc planProof(keys: seq[ProofKey], first, stop, depth: int, selected: bool,
+    query: StateKey, limits: StateTrieLimits, proofLimits: StateProofLimits,
+    used: var uint64, pathNodes: var int, valueIndex: var int): StateProofError =
+  ## Count the complete topology and selected path before any cryptographic call.
+  if first == stop: return StateProofError.None
+  if used >= uint64(limits.nodes): return StateProofError.LimitExceeded
+  inc used
+  if selected:
+    # At most 249 fixed nodes may be retained, independent of complete-map topology.
+    if uint64(pathNodes) >= uint64(proofLimits.nodes): return StateProofError.LimitExceeded
+    inc pathNodes
+  if stop-first == 1:
+    # Only an exact key match authorizes retaining the source value.
+    if selected and array[31, byte](keys[first].key) == array[31, byte](query):
+      valueIndex = keys[first].index
+    return StateProofError.None
+  if depth >= 248: return StateProofError.DuplicateKey
+  let middle = partition(keys, first, stop, depth)
+  let right = query.bit(depth)
+  let leftError = planProof(keys, first, middle, depth+1, selected and not right,
+    query, limits, proofLimits, used, pathNodes, valueIndex)
+  if leftError != StateProofError.None: return leftError
+  planProof(keys, middle, stop, depth+1, selected and right,
+    query, limits, proofLimits, used, pathNodes, valueIndex)
+proc buildProof(entries: openArray[StateEntry], keys: seq[ProofKey], first, stop,
+    depth: int, selected: bool, query: StateKey, perValue: ByteLimit,
+    path: var seq[EncodedStateNode]): StateProofResult[StateNodeHash] =
+  ## Commit each complete-map node once while retaining only the queried path.
+  if first == stop:
+    return StateProofResult[StateNodeHash](status: StateProofError.None,
+      completed: default(StateNodeHash))
+  let position = path.len
+  if selected:
+    path.add(default(EncodedStateNode)) # Reserve parent-before-child order without moving ancestors.
+  var encoded = default(EncodedStateNode)
+  if stop-first == 1:
+    # Use the canonical shared leaf encoder; no independently invented node framing.
+    let leaf = encodeStateLeaf(keys[first].key, entries[keys[first].index].value, perValue)
+    if leaf.error != StateLayoutError.None:
+      return StateProofResult[StateNodeHash](status: StateProofError.BackendFailure)
+    encoded = leaf.value
+  else:
+    # Each branch preserves unary topology and the exact pinned left commitment truncation.
+    let middle = partition(keys, first, stop, depth)
+    let rightSide = query.bit(depth)
+    let left = buildProof(entries, keys, first, middle, depth+1,
+      selected and not rightSide, query, perValue, path)
+    if left.error != StateProofError.None: return left
+    let right = buildProof(entries, keys, middle, stop, depth+1,
+      selected and rightSide, query, perValue, path)
+    if right.error != StateProofError.None: return right
+    encoded = encodeStateBranch(left.value, right.value)
+  if selected:
+    path[position] = encoded # Publish into private scratch only after both children complete.
+  let hashed = hashStateNode(encoded)
+  if hashed.error != StateLayoutError.None:
+    return StateProofResult[StateNodeHash](status: StateProofError.BackendFailure)
+  StateProofResult[StateNodeHash](status: StateProofError.None, completed: hashed.value)
+proc generateStateProof*(entries: openArray[StateEntry], query: StateKey,
+    mapLimits: StateTrieLimits, limits: StateProofLimits): StateProofResult[StateProof] =
+  ## Generate from one complete borrowed map; all quotas and duplicate keys refuse before hashing.
+  if uint64(entries.len) > uint64(mapLimits.items):
+    return StateProofResult[StateProof](status: StateProofError.LimitExceeded)
+  if entries.len > high(int) div sizeof(ProofKey):
+    return StateProofResult[StateProof](status: StateProofError.LengthOverflow)
+  var total = 0'u64
+  for entry in entries:
+    # Aggregate subtraction is safe because each preceding successful addition stayed within policy.
+    let size = uint64(entry.value.len)
+    if size > uint64(mapLimits.perValue) or size > uint64(mapLimits.totalValueBytes)-total:
+      return StateProofResult[StateProof](status: StateProofError.LimitExceeded)
+    total += size
+  var keys = newSeq[ProofKey](entries.len)
+  for i, entry in entries:
+    keys[i] = ProofKey(key: entry.key, index: i) # Caller order and values remain untouched.
+  keys.sort(compare)
+  for i in 1..<keys.len:
+    # Equal and unequal duplicate values are equally invalid mapping inputs.
+    if compare(keys[i-1], keys[i]) == 0:
+      return StateProofResult[StateProof](status: StateProofError.DuplicateKey)
+  var used = 0'u64
+  var pathNodes = 0
+  var valueIndex = -1
+  let planned = planProof(keys, 0, keys.len, 0, true, query,
+    mapLimits, limits, used, pathNodes, valueIndex)
+  if planned != StateProofError.None:
+    return StateProofResult[StateProof](status: planned)
+  if valueIndex >= 0 and uint64(entries[valueIndex].value.len) > uint64(limits.valueBytes):
+    return StateProofResult[StateProof](status: StateProofError.LimitExceeded)
+  var path: seq[EncodedStateNode] = @[]
+  let built = buildProof(entries, keys, 0, keys.len, 0, true, query, mapLimits.perValue, path)
+  if built.error != StateProofError.None:
+    return StateProofResult[StateProof](status: built.error)
+  if valueIndex >= 0:
+    return captureStateProof(path, entries[valueIndex].value, limits)
+  captureStateProof(path, [], limits) # Absence never copies the neighboring value.
