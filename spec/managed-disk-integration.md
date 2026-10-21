@@ -167,3 +167,10 @@ inherited policy, while the physical copy preserves generation and selected cont
 destination may later publish independent successors. Existing targets never reset, and no step
 renames, truncates or rewrites source bytes. The state migration suite checks source-byte equality,
 retained historical map access, contextual publication requirements and independent durable forks.
+
+## Explicit migration startup intent
+
+`--state-migrate-from LEGACY_PATH` requires a distinct destination selected with disk/managed mode.
+It is unique, never inferred from an existing path and cannot be mixed with external checkpoint
+import controls. Missing/duplicate/NUL-containing sources, in-place requests and unselected backend
+controls refuse atomically before IO. Failed/default Options expose no migration source authority.

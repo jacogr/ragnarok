@@ -19,6 +19,7 @@ const
   Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes",
       "--state-write-bytes", "--state-checkpoint", "--state-trust", "--state-header",
       "--state-checkpoint-bytes", "--state-storage", "--state-db", "--state-layout",
+      "--state-migrate-from",
       "--state-compact-bytes", "--download-ancestor", "--download-blocks"]
 
 type StateStorage* {.pure.} = enum ## Backend choice is independent of future full/light node modes.
@@ -37,7 +38,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   backend: StateStorage
   layout: StateDiskLayout
   compactBytes: ByteLimit
-  database: string
+  database, migrateFrom: string
   rpcNumber, uiNumber: uint16
   writeCount: ElementLimit
   writeBytes, recoveryBytes: ByteLimit
@@ -82,6 +83,12 @@ func managedStorage*(options: Options): bool =
 func stateCompactionBytes*(options: Options): ByteLimit {.requires: options.managedStorage.} =
   ## Return the managed soft journal threshold; explicit zero disables automatic maintenance.
   options.compactBytes
+func stateMigration*(options: Options): bool =
+  ## Only an explicit valid managed migration request grants source-file startup intent.
+  options.managedStorage and options.migrateFrom.len > 0
+func stateMigrationSource*(options: Options): string {.requires: options.stateMigration.} =
+  ## Return the explicitly selected legacy source path; destination remains the separately selected state database.
+  options.migrateFrom
 func stateDatabase*(options: Options): string {.requires: options.diskStorage.} =
   ## Return the explicitly selected database path; no implicit location or overwrite is invented.
   options.database
@@ -190,6 +197,10 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--state-checkpoint": candidate.recoveryFile = value
       of "--state-trust": candidate.recoveryIdentity = value
       of "--state-header": candidate.recoveryHeader = value
+      of "--state-migrate-from":
+        for character in value:
+          if character == char(0): return false # Native path truncation cannot select a different source identity.
+        candidate.migrateFrom = value
       of "--state-layout":
         case value
         of "journal": candidate.layout = StateDiskLayout.Journal
@@ -246,11 +257,16 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
   if "--state-layout" in seen and candidate.backend != StateStorage.Disk: return false
   if "--state-compact-bytes" in seen and not (candidate.backend == StateStorage.Disk and
       candidate.layout == StateDiskLayout.Managed): return false # Never silently ignore maintenance controls.
+  if "--state-migrate-from" in seen:
+    if candidate.backend != StateStorage.Disk or candidate.layout != StateDiskLayout.Managed or
+        candidate.migrateFrom == candidate.database:
+      return false # Local migration is explicit, managed-only and never an in-place conversion.
   let recoveryControls = ["--state-checkpoint", "--state-trust", "--state-header", "--state-checkpoint-bytes"]
   var recoveryCount = 0
   for control in recoveryControls:
     if control in seen: inc recoveryCount # Seen uniqueness bounds this count to the fixed four controls.
   if recoveryCount > 0:
+    if candidate.migrateFrom.len > 0: return false # Imported external authority and local migration are separate startup intentions.
     if not candidate.state or recoveryCount != recoveryControls.len:
       return false # Partial/disabled external imports cannot activate or reuse an earlier successful parse.
     candidate.recover = true
