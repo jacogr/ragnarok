@@ -113,3 +113,17 @@ after 1,000 aggregate lifetimes. Existing application Services startup/adoption
 and checkpoint-capture suites also pass, preserving their own ARC evidence.
 Focused module/test semantic checks, inventory and complete pinned formatting
 pass. Logs use `build/recovery-services*`; exact-head Linux CI is separate.
+
+## Real RPC selected-view verification
+
+A real ephemeral loopback WebSocket checks a recovered anchor whose sealed hash
+differs from configured genesis. Best block, posterior root, exact sealed bytes
+and best subscription match the recovered owner. Parent lookup, finalized block
+and finalized subscription remain unavailable; client info reports null finality.
+No request replaces or mutates the map. Shared bounded socket controls preserve
+the existing Services adoption suite's transport and listener-retirement witnesses.
+
+Local real recovered-head RPC suite passes, and the original Services startup/
+adoption suite passes with the shared socket controls, including 1,000 ownership
+cycles at 141,936 occupied bytes before/after. Focused semantic checking and
+source-owned inventory pass. Logs use `build/recovery-rpc*`; CI is unrequested.
