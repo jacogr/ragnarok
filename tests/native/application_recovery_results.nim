@@ -18,6 +18,9 @@ proc inspectState(outcome: ApplicationRecoveryResult) =
 proc inspectEnvelope(outcome: ApplicationRecoveryResult) =
   ## Envelope reasons are inaccessible on default or successful recovery.
   discard outcome.envelopeFailure
+proc inspectFile(outcome: ApplicationRecoveryResult) =
+  ## A file failure reason requires that exact alternative.
+  discard outcome.fileFailure
 proc main() {.raises.} =
   ## Genuine binding and missing-map controls exercise both guarded helpers.
   let mode = paramStr(1)
@@ -26,6 +29,8 @@ proc main() {.raises.} =
   elif mode == "missing":
     extract(recoverApplicationChain(default(StateStoreSnapshot), [], default(
         ApplicationCheckpointIdentity)))
+  elif mode == "wrong-file":
+    inspectFile(default(ApplicationRecoveryResult)) # Defaults contain no file read receipt.
   elif mode == "wrong-envelope":
     inspectEnvelope(default(ApplicationRecoveryResult)) # Default status grants no decoder reason.
   elif mode == "wrong-reason":
@@ -38,6 +43,7 @@ proc main() {.raises.} =
     assert encodeOwnedHeader(header, wire).error == HeaderError.None
     extract(recoverApplicationChain(owner.stateSnapshot.value, wire, expected))
     inspectEnvelope(decodeRecoveryCheckpoint([], wire, expected, genesisStoreLimits(), ByteLimit(238)))
+    inspectFile(loadRecoveryCheckpoint("", wire, expected, genesisStoreLimits(), ByteLimit(238)))
     inspectState(recoverApplicationChain(default(StateStoreSnapshot), wire, expected))
 try:
   main() # Native fixture errors remain distinct from assertion failures.

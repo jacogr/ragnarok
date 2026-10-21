@@ -49,3 +49,17 @@ Local envelope and affected binding suites pass under checked ARC. Envelope
 release retains 20,704 bytes before/after 1,000 cycles; binding retains 47,728.
 Four runtime refusal cases, genuine success/error controls, four private-result
 compiler probes and source-owned inventory pass. Logs use `build/recovery-envelope*`.
+
+## Bounded selected-file recovery
+
+`loadRecoveryCheckpoint` refuses absent independent trust before opening a path,
+then uses the existing bounded regular-file/true-EOF/checked-close application
+envelope loader and exact head binder. FileFailure retains precise native, byte,
+context and checkpoint reasons. Recovery is synchronous startup work, reads only
+the selected file, and never repairs corruption, scans alternatives or widens
+limits. No file or canonical graph is changed on refusal.
+
+Local selected-file native verification passes with 28,560 occupied bytes before/
+after 1,000 full recovery cycles. Five runtime refusal cases, genuine success/
+error controls, all five private-result compiler probes and inventory pass.
+Evidence is under `build/recovery-file*`; CI remains unrequested.

@@ -5,14 +5,15 @@
 ## Recovery creates one retained head with unset finality; no ancestor or consensus proof is inferred.
 
 import std/assertions
-import ./[chain, checkpoint_identity, checkpoint_codec]
+import ./[chain, checkpoint_identity, checkpoint_codec, checkpoint_file]
 import ../codec/bounded
 import ../chain/[genesis, provider]
 import ../state/store
 
 type
   ApplicationRecoveryError* {.pure.} = enum ## Refusals expose no partial canonical owner.
-    Uninitialized, None, MissingTrust, StateFailure, ContextMismatch, HeaderFailure, HeaderMismatch, EnvelopeFailure
+    Uninitialized, None, MissingTrust, StateFailure, ContextMismatch, HeaderFailure, HeaderMismatch,
+      EnvelopeFailure, FileFailure
   ApplicationRecoveryResult* = object ## Only an exact trusted head/map pair grants an independent application branch.
     case status: ApplicationRecoveryError
     of None:
@@ -21,6 +22,8 @@ type
       stateReason: StateStoreError
     of EnvelopeFailure:
       envelopeReason: ApplicationCheckpointResult[StateStore]
+    of FileFailure:
+      fileReason: ApplicationCheckpointFileResult[StateStore]
     else:
       discard # Missing trust and mismatches retain no recovered graph.
 func error*(outcome: ApplicationRecoveryResult): ApplicationRecoveryError =
@@ -70,4 +73,20 @@ proc decodeRecoveryCheckpoint*(bytes, sealedHeader: openArray[byte],
   if restored.error != ApplicationCheckpointError.None:
     return ApplicationRecoveryResult(status: ApplicationRecoveryError.EnvelopeFailure,
       envelopeReason: restored) # Failure owns only typed reasons; no decoded map is retained.
+  recoverApplicationChain(restored.value.snapshot.value, sealedHeader, expected)
+
+func fileFailure*(outcome: ApplicationRecoveryResult): ApplicationCheckpointFileResult[
+    StateStore] {.inline, requires: outcome.status == ApplicationRecoveryError.FileFailure.} =
+  ## Preserve bounded native/context/map read errors without granting a recovered owner.
+  outcome.fileReason
+proc loadRecoveryCheckpoint*(path: string, sealedHeader: openArray[byte],
+    expected: ApplicationCheckpointIdentity, limits: StateStoreLimits,
+    limit: ByteLimit): ApplicationRecoveryResult =
+  ## Startup alone schedules synchronous bounded reads; default trust refuses before opening any path.
+  if not expected.ready:
+    return ApplicationRecoveryResult(status: ApplicationRecoveryError.MissingTrust)
+  let restored = loadApplicationCheckpoint(path, expected, limits, limit)
+  if restored.error != ApplicationCheckpointFileError.None:
+    return ApplicationRecoveryResult(status: ApplicationRecoveryError.FileFailure,
+      fileReason: restored) # Read failures never trigger repair, fallback or canonical replacement.
   recoverApplicationChain(restored.value.snapshot.value, sealedHeader, expected)
