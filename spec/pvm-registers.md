@@ -65,7 +65,8 @@ implementation. It emits the checked-in `tests/fixtures/pvm-registers.bin`:
 
 `spec/polkavm-pins.json` hashes the complete consumed source files, the assembly
 macro definitions and original license. Upstream sources remain pristine in the
-pinned submodule; none of their code or build scripts is executed. These are
+pinned submodule; the original fixture extraction executes no upstream code or
+build scripts. These are
 compatible scalar value witnesses, **not** RISC-V instruction encodings, complete
 PolkaVM programs, gas vectors or saved fuzz crash results. The `TEST_RR_OP` result
 and operand order is verified against the pinned `test_macros.h`. The bundled
@@ -81,6 +82,12 @@ register, including preservation of the input. Every valid out-of-scope opcode
 and invalid/default address is checked separately. Four compiler guards protect
 payload/status/accessor privacy and the nominal PC; three isolated misuse processes
 must fail at the exact success-access contract.
+
+A later [public interpreter cross-check](pvm-register-reference-crosscheck.md)
+executes all38977 unchanged independent rows across85 register opcodes against
+pinned PolkaVM JamV1 and compares every register plus the trap PC. It preserves
+these independent expectations and their source-only extraction; Rust is optional
+test tooling, with no production integration or full-VM conformance claim.
 
 ## Remaining execution work
 
