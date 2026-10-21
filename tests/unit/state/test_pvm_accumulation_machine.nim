@@ -128,6 +128,24 @@ let successorCpu = initializeAccumulationMachine(pvmBootstrap(successor),
 assert execute(successorCpu, ExecutionStepLimit(3), GasCycleLimit(100)).value.exit == StepExit.Panic
 assert uint64(machineInfo(successorCpu).value.registers[7]) == 0xfeff0000'u64
 
+# Entry5 loads the dynamic address2; width0 has no usable entry and must panic within two steps.
+for width in [0'u8, 5]:
+  var tableProgram = @[1'u8, width, 10]
+  for index in 0..<int(width): tableProgram.add(0)
+  for octet in [0'u8, 0, 0, 0, 0, 51, 8, 2, 50, 8, 63, 1]: tableProgram.add(octet)
+  let bootstrap = pvmBootstrap(pvmEnvelope(tableProgram))
+  var tableLimits = validationPolicy
+  tableLimits.jumps = JumpCountLimit(1)
+  let checked = initializeAccumulationMachine(bootstrap, tableLimits)
+  if width == 0:
+    assert checked.error == AccumulationMachineError.None
+    let execution = execute(checked.value.accumulationMachine.value, ExecutionStepLimit(2),
+        GasCycleLimit(100))
+    assert execution.error == StepError.None and execution.value.exit == StepExit.Panic
+    assert uint64(machineInfo(execution.value.machine).value.registers[8]) == 2
+  else:
+    assert checked.error == AccumulationMachineError.InvalidProgram
+
 let panic = pvmEnvelope([0'u8, 0, 6, 0, 0, 0, 0, 0, 0, 63])
 let trapping = initializeAccumulationMachine(pvmBootstrap(panic),
     wide).value.accumulationMachine.value

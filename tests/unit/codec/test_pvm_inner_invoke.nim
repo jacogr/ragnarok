@@ -36,6 +36,20 @@ let panicked = run(trap, invokeMemory(trapBlob)).value
 assert uint64(panicked.response.registers[7]) == 1 and panicked.response.action ==
     HostAction.Continue
 assert uint64(panicked.machines.innerMachine(InnerMachineId(0)).value.pc) == 0
+# Real inner invocation observes a semantically empty width-zero table, preserving the completed load.
+let zeroTableBlob = @[1'u8, 0, 5, 51, 8, 2, 50, 8, 9]
+let zeroTableMap = invokeMachines(zeroTableBlob)
+let zeroTableMemory = invokeMemory(zeroTableBlob)
+let zeroTableRun = run(zeroTableMap, zeroTableMemory).value
+assert zeroTableRun.response.action == HostAction.Continue
+assert uint64(zeroTableRun.response.registers[7]) == 1
+assert invokeFrame(zeroTableRun.response.memory)[9] == 2
+assert invokeFrame(zeroTableRun.response.memory)[0] == 100-price(zeroTableMap)
+assert uint64(zeroTableRun.response.gas) == 10000'u64-968-price(zeroTableMap)
+assert invokeFrame(zeroTableMemory)[9] == uint64(invokeRegisters()[8])
+assert uint64(zeroTableMap.innerMachine(InnerMachineId(0)).value.pc) == 0
+assert not zeroTableMap.innerMachine(InnerMachineId(0)).value.blockCharged
+
 let underfunded = run(source, invokeMemory(fuel = price(source)-1)).value
 assert uint64(underfunded.response.registers[7]) == 4
 assert uint64(underfunded.response.gas) == 9032 # No inner block charge on OOG, so all reserved fuel is refunded.
