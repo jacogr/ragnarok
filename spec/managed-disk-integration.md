@@ -57,3 +57,13 @@ history slots count against the root ceiling before graph/export work, including
 finalized root from one epoch, compares every complete retained map and checks that the journal
 contains only its paired header at creation. Insufficient root capacity refuses before IO. The
 fixture's modified seals exercise local capture/history structure, not execution authenticity.
+
+## Canonical managed startup
+
+`initializeManagedDiskChain` collects the same rolling history and separated explicit finality as
+the legacy initializer, binds their final generation in the canonical context and publishes one
+managed seed. `openManagedDiskChain` applies the same chain/profile/history/full-map binding as
+legacy local startup after physical admission. There is no checkpoint-import fallback and no
+implicit migration, repair or overwrite. Existing `initializeDiskChain`/`openDiskChain` contracts
+remain unchanged. The managed chain suite checks selected context, all retained root identities,
+finality, exclusive creation, chain refusal and absence of intermediate bootstrap frames.
