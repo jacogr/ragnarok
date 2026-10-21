@@ -299,3 +299,11 @@ interruption. Initialization, strict reopen, post-append confirmation and direct
 consume two injected interruptions before genuine success; maps and bytes remain exact. Existing
 EIO poisoning and PublishedUnsynced boundaries remain independently covered. Descriptor close is
 never retried, since an interrupted close can already have retired its descriptor.
+
+## Interrupted epoch replacement
+
+A real managed compaction baseline determines its file and namespace barrier count. Each boundary
+is then independently interrupted twice before forwarding a genuine successful barrier. Every
+case must consume its faults, select epoch two with unchanged generation/root, reclaim obsolete
+records, strictly reopen the complete map and preserve earlier held readers after owner close.
+The loop is bounded by an explicit upper limit and includes predecessor retirement barriers.
