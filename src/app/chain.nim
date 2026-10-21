@@ -5,7 +5,8 @@
 ## Explicit RPC publication joins only matching histories; copies form independent immutable-parent branches.
 
 import ../chain/[genesis, provider, parameters]
-import ../state/[store, accumulation_chain, accumulation_finalization, accumulation_completion]
+import ../state/[store, accumulation_chain, accumulation_finalization, accumulation_completion,
+  accumulation_publication]
 import ../rpc/server as rpc_server
 from ../rpc/protocol import configuredParameters, configuredGenesis
 
@@ -115,3 +116,24 @@ proc applyAccumulation*(chain: var ApplicationChain, rpc: var rpc_server.Server,
       rpcReason: published) # Explicit enabled publication cannot silently degrade to independent adoption.
   ApplicationChainResult[BlockSnapshot](status: ApplicationChainError.None,
       completed: published.value)
+
+proc prepareAccumulation*(chain: ApplicationChain, source: PreparedFinalAccumulation,
+    limits: AccumulationCompositionLimits): ChainPreparationResult =
+  ## Stage existing fallible adoption privately while retaining the exact original application authority.
+  prepareChainUpdate(chain.state, chain.view, source, limits)
+proc canInstallPrepared*(chain: ApplicationChain, prepared: PreparedChainUpdate): bool =
+  ## Check original state and entire history/finality before starting any durable publication.
+  canInstallChainUpdate(chain.state, chain.view, prepared)
+proc installPrepared*(chain: var ApplicationChain, prepared: PreparedChainUpdate) {.requires:
+    canInstallPrepared(chain, prepared).} =
+  ## Assignment-only canonical replacement occurs after confirmed durability and under host exclusion.
+  installChainUpdate(chain.state, chain.view, prepared)
+proc canInstallPrepared*(chain: ApplicationChain, rpc: rpc_server.Server,
+    prepared: PreparedChainUpdate, lease: nil rpc_server.RpcChainLease = nil): bool =
+  ## Enabled RPC must retain the exact same ordered history and the caller's optional exclusive lease.
+  rpc.canInstallPreparedAccumulation(chain.state, chain.view, prepared, lease)
+proc installPrepared*(chain: var ApplicationChain, rpc: var rpc_server.Server,
+    prepared: PreparedChainUpdate, lease: nil rpc_server.RpcChainLease = nil) {.requires:
+      canInstallPrepared(chain, rpc, prepared, lease).} =
+  ## Join canonical and RPC owners before subscriber work; no execution/capture/hash is repeated.
+  rpc.installPreparedAccumulation(chain.state, chain.view, prepared, lease)

@@ -10,7 +10,8 @@ import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ./[wire, protocol]
 import ../chain/[parameters, genesis, provider]
-import ../state/[store, accumulation_chain, accumulation_completion, accumulation_finalization]
+import ../state/[store, accumulation_chain, accumulation_completion, accumulation_finalization,
+  accumulation_publication]
 
 const MaxConnections* = 8
 
@@ -246,6 +247,20 @@ proc publishAccumulation*(server: var Server, state: var StateStore, view: var C
   server.chain = view # State and application view already own this child; no fallible work precedes the third replacement.
   server.queueBestUpdates(server.chain.bestBlock)
   RpcAccumulationResult(status: RpcAccumulationError.None, completed: adopted.value)
+
+proc canInstallPreparedAccumulation*(server: Server, state: StateStore, view: ChainView,
+    prepared: PreparedChainUpdate, lease: nil RpcChainLease = nil): bool =
+  ## Preflight exact canonical/RPC history and optional exclusive lease before durability begins.
+  server.opened and server.lease == lease and canInstallChainUpdate(state, view, prepared) and
+    sameChainView(server.chain, view)
+proc installPreparedAccumulation*(server: var Server, state: var StateStore, view: var ChainView,
+    prepared: PreparedChainUpdate, lease: nil RpcChainLease = nil) {.requires:
+      canInstallPreparedAccumulation(server, state, view, prepared, lease).} =
+  ## Install existing immutable handles before bounded subscriber work, without repeating composition/capture.
+  ## Exclusive lease authority, when supplied, remains held until its owner explicitly resumes RPC.
+  installChainUpdate(state, view, prepared)
+  server.chain = view
+  server.queueBestUpdates(server.chain.bestBlock) # Subscriber refusal/overflow cannot roll back the installed head.
 
 proc publishFinalized*(server: var Server, hash: BlockHash): ViewFinalizeError =
   ## Record caller-certified finality between ticks on the same dispatcher thread, without inferring it.

@@ -197,3 +197,17 @@ The maintainer selected preservation of the bounded retained history and explici
 for normal local restart. The single-head context codec above is a building block; final disk-chain
 context must retain those additional bindings. External checkpoint imports keep their separate
 single-head/unfinalized behavior.
+
+## Canonical/RPC prepared installation
+
+Application and RPC adapters share the opaque prepared update without circular imports. RPC
+preflight requires an open listener, exact full history/finality agreement and either no active
+lease or the exact caller-held exclusion token. Installation replaces canonical state, application
+history and RPC history before bounded subscriber work; it does not repeat state execution or
+header capture. An explicit lease remains held until its owner resumes RPC. Subscriber validation
+or queue overflow keeps existing client-retirement semantics and cannot roll back the durable head.
+
+The real WebSocket application suite now prepares a genuine source once, refuses missing lease
+and mismatched-finality publication, installs under the correct lease with zero observed hash calls
+for the best-block subscription, and then observes the matching notification and query reply.
+Existing application-chain failure, owner-identity and 1,000-cycle ARC checks still pass.
