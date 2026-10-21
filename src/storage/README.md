@@ -141,3 +141,9 @@ Managed `publish` exposes a prepared revision only after its paired journal fram
 IO uncertainty requires reopening. `recoverManagedRepository` is an explicit operation requiring an
 independent exact generation/root token; normal startup never repairs a tail or rolls back a
 complete successor. Context and retained readers follow the existing immutable publication contract.
+
+Managed `compact(expected, roots)` replaces the physical epoch while preserving the current state
+root, generation and context. It retains the explicit complete-root union, durably switches CURRENT,
+then retires the previous selected files. Its receipt distinguishes confirmed selection from deferred
+cleanup. Old readers remain valid; callers obtain a fresh physical view before another publication.
+Compaction does not choose canonical roots/finality or schedule application maintenance.

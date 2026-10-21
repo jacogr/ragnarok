@@ -19,6 +19,12 @@ type
     of InvalidBatch: batchReason: RepositoryResult[RepositoryView]
     of InvalidFrame: frameReason: FrameError
     else: discard
+  ManagedCompaction* = object ## Successful durable replacement reports deferred old-file cleanup separately.
+    epoch*: ManagedEpoch
+    generation*: RepositoryGeneration
+    reclaimedNodes*: int
+    reclaimedValueBytes*: uint64
+    cleanup*: FileError
   ManagedRepository* = object ## One explicit retirement owner serializes snapshot, append and epoch selection.
     directory: ManagedDirectory
     journal: ManagedJournal
@@ -295,3 +301,76 @@ proc synchronize*(repository: var ManagedRepository): ManagedResult[StorageDurab
     return ManagedResult[StorageDurability](status: reason)
   ManagedResult[StorageDurability](status: FileError.None,
       completed: StorageDurability.FileAndDirectorySynced)
+proc compact*(repository: var ManagedRepository, expected: RepositoryView,
+    roots: openArray[StateRoot]): ManagedResult[ManagedCompaction] =
+  ## Replace the physical epoch under one stable lease; state root/generation/context never advance.
+  if not repository.active: return ManagedResult[ManagedCompaction](status: FileError.Uninitialized)
+  if repository.poisoned: return ManagedResult[ManagedCompaction](
+      status: FileError.RecoveryRequired)
+  let selected = repository.memory.snapshot.value
+  let currentPlan = selectRepositoryRoots(selected, [selected.commitment.root], ElementLimit(1))
+  if currentPlan.error != RepositoryError.None:
+    return ManagedResult[ManagedCompaction](status: FileError.InvalidRetention)
+  if not currentPlan.value.matches(expected):
+    return ManagedResult[ManagedCompaction](status: FileError.StaleView)
+  if uint64(repository.epoch) == high(uint64):
+    return ManagedResult[ManagedCompaction](status: FileError.EpochExhausted)
+  let retained = selectRepositoryRoots(selected, roots, repository.limits.roots)
+  if retained.error != RepositoryError.None:
+    return ManagedResult[ManagedCompaction](status: FileError.InvalidRetention)
+  let plan = retained.value
+  let encoded = encodeRepositorySnapshot(plan, repository.chain, repository.schema,
+    repository.context, snapshotLimits(repository.limits))
+  if encoded.error != SnapshotError.None:
+    return ManagedResult[ManagedCompaction](status: snapshotFailure(encoded.error))
+  let restored = decodeRepositorySnapshot(encoded.value.bytes, repository.chain, repository.schema,
+    snapshotLimits(repository.limits))
+  if restored.error != SnapshotError.None:
+    return ManagedResult[ManagedCompaction](status: snapshotFailure(restored.error))
+  let next = ManagedEpoch(uint64(repository.epoch)+1)
+  let manifest = encodeManagedManifest(repository.chain, repository.schema, next,
+    selected.generation,
+    selected.commitment.root, encoded.value.checksum, ByteLimit(ManagedManifestBytes))
+  if manifest.error != ManifestError.None:
+    return ManagedResult[ManagedCompaction](status: FileError.BackendFailure)
+  let header = encodeManagedJournalHeader(manifest.value.checksum, repository.limits.journalBytes)
+  if header.error != ManifestError.None:
+    return ManagedResult[ManagedCompaction](status: FileError.LimitExceeded)
+  var journal = default(ManagedJournal)
+  defer:
+    if journal.opened: discard journal.close # Staging never retires the selected old journal on failure.
+  var reason = createManagedFile(repository.directory, ManagedFileKind.Snapshot, next,
+    encoded.value.bytes, repository.limits.snapshotBytes)
+  if reason == FileError.None:
+    reason = createManagedFile(repository.directory, ManagedFileKind.Journal, next,
+      header.value, repository.limits.journalBytes)
+  if reason != FileError.None:
+    if reason != FileError.AlreadyExists: repository.poisoned = true
+    return ManagedResult[ManagedCompaction](status: reason)
+  let opened = openManagedJournal(journal, repository.directory, next,
+      repository.limits.journalBytes)
+  if opened.error != FileError.None:
+    repository.poisoned = true
+    return ManagedResult[ManagedCompaction](status: opened.error)
+  if opened.value != header.value:
+    repository.poisoned = true
+    return ManagedResult[ManagedCompaction](status: FileError.InvalidJournal)
+  reason = replaceManagedManifest(repository.directory, manifest.value.bytes, ByteLimit(ManagedManifestBytes))
+  if reason != FileError.None:
+    repository.poisoned = true # A visible replacement without confirmation never grants a live candidate.
+    return ManagedResult[ManagedCompaction](status: reason)
+  let prior = repository.epoch
+  let closed = repository.journal.close
+  let moved = moveManagedJournal(repository.journal, journal)
+  repository.memory = restored.value.repository
+  repository.context = restored.value.context
+  repository.epoch = next
+  if closed != FileError.None or moved != FileError.None:
+    repository.poisoned = true
+    return ManagedResult[ManagedCompaction](status: FileError.RecoveryRequired)
+  var cleanup = removeManagedFile(repository.directory, ManagedFileKind.Journal, prior)
+  let removed = removeManagedFile(repository.directory, ManagedFileKind.Snapshot, prior)
+  if cleanup == FileError.None: cleanup = removed # Cleanup cannot roll back a confirmed manifest selection.
+  ManagedResult[ManagedCompaction](status: FileError.None, completed: ManagedCompaction(epoch: next,
+    generation: selected.generation, reclaimedNodes: plan.reclaimableNodes,
+    reclaimedValueBytes: plan.reclaimableValueBytes, cleanup: cleanup))
