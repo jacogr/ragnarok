@@ -10,7 +10,7 @@
 # @@Verification={"arc": "report_anchors_arc_release"}
 
 import std/[assertions, envvars, strutils, syncio]
-import ../../../src/state/[report_anchors, report_policy, guarantee_credentials, store]
+import ../../../src/state/[ancestor_context, report_anchors, report_policy, guarantee_credentials, store]
 import ../../../src/codec/[bounded, guarantees, assurances, state_safrole, disputes, header,
   state_layout, state_trie, state_history, report_owned, owned, work_report, composite]
 import ../../../src/crypto/primitives
@@ -159,6 +159,28 @@ proc boundaries(base: OwnedReport) =
   var history = historyBytes(fields)
   let config = anchorConfig(2)
   let recent = checkRecentReportAnchors(policy, history, StateTime(14), config).value
+  let contextLimits = AncestorContextLimits(header: ancestors().header,
+    headers: ancestors().headers, maxBytes: ancestors().maxBytes)
+  let parentContext = captureAncestorContext(parent, [], contextLimits).value
+  let fullContext = captureAncestorContext(parent, [oldest], contextLimits).value
+  let missing = planReportLookupDemand(recent, parentContext)
+  assert missing.error == ReportAnchorError.None and missing.value.missingLookups.value == 1
+  assert uint32(missing.value.lookupDemandChild.value.headerInfo.value.unsigned.slot) == 12
+  assert uint64(missing.value.lookupDemandMaximum(ElementLimit(64)).value) == 2
+  assert uint64(missing.value.lookupDemandMaximum(ElementLimit(1)).value) == 1
+  assert missing.value.lookupDemandMaximum(ElementLimit(0)).error == ReportAnchorError.LimitExceeded
+  let satisfied = planReportLookupDemand(recent, fullContext).value
+  assert satisfied.missingLookups.value == 0
+  assert uint64(satisfied.lookupDemandMaximum(ElementLimit(0)).value) == 0
+  assert satisfied.lookupDemandChild.error == ReportAnchorError.MissingLookupAnchor
+  assert planReportLookupDemand(default(RecentAnchoredReports), fullContext).error ==
+      ReportAnchorError.InvalidRecent
+  assert planReportLookupDemand(recent, default(AncestorContext)).error ==
+      ReportAnchorError.InvalidHeader
+  assert default(ReportLookupDemand).missingLookups.error == ReportAnchorError.Uninitialized
+  assert default(ReportLookupDemand).lookupDemandChild.error == ReportAnchorError.Uninitialized
+  assert default(ReportLookupDemand).lookupDemandMaximum(ElementLimit(1)).error ==
+      ReportAnchorError.Uninitialized
   let completed = checkReportLookupAnchors(recent, parent, [oldest], ancestors())
   assert completed.error == ReportAnchorError.None
   assert checkReportLookupAnchors(recent, parent, [], ancestors()).error ==
@@ -240,12 +262,17 @@ proc boundaries(base: OwnedReport) =
       StateTime(14), config).value
   assert checkReportLookupAnchors(wrong, parent, [oldest], ancestors()).error ==
       ReportAnchorError.MissingLookupAnchor
+  assert planReportLookupDemand(wrong, fullContext).error == ReportAnchorError.MissingLookupAnchor
   wrongFields = fields
   wrongFields.lookupSlot = LookupSlot(15)
   let future = checkRecentReportAnchors(checked([withContext(report, wrongFields)]), history,
       StateTime(14), config).value
   assert checkReportLookupAnchors(future, parent, [oldest], ancestors()).error ==
       ReportAnchorError.MissingLookupAnchor
+  assert planReportLookupDemand(future, parentContext).error ==
+      ReportAnchorError.MissingLookupAnchor
+  let badRootContext = captureAncestorContext(wrongParent, [oldest], contextLimits).value
+  assert planReportLookupDemand(recent, badRootContext).error == ReportAnchorError.WrongLookupState
   let emptyPolicy = checkReportPolicy(certify([]), policy.policyParent.value, report_context.policy(2)).value
   let empty = checkRecentReportAnchors(emptyPolicy, [0'u8, 0], StateTime(14), config).value
   assert checkReportLookupAnchors(empty, parent, [], ancestors()).error == ReportAnchorError.None
