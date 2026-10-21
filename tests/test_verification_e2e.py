@@ -53,26 +53,28 @@ class VerificationE2E(unittest.TestCase):
         self.assertFalse(test_e2e.passed({**report, 'suites': [dict(name='replacement', passed=True)]+report['suites'][1:]}))
         self.assertFalse(set(UNIT_SUITES) & set(test_e2e.SELFTESTS))
 
-    def test_download_sequence_refuses_failed_peer_or_witness_build(self):
-        """A stale executable or responder must never satisfy the independently registered workload."""
+    def test_download_workloads_refuse_failed_peer_or_witness_build(self):
+        """Stale executable/witness binaries cannot satisfy either independent download workload."""
         from unittest.mock import Mock, patch
-        from e2e_checks import application_download_sequence
-        for peer_code in (0, 1):
-            checks = SimpleNamespace(folder=ROOT/'build/tests/e2e',
-                build=Mock(return_value=({'exit_code': 1}, Path('/stale-responder'))))
-            context = SimpleNamespace(peer=({'exit_code': peer_code}, Path('/stale-peer')),
-                compiler=Path('/compiler'), crypto=Path('/crypto'), bs=Path('/bandersnatch'),
-                quic=Path('/quic'), checks=checks)
-            with self.subTest(peer_code=peer_code), patch('e2e_checks.announce'), patch(
-                    'application_download_sequence.observe') as observe:
-                self.assertFalse(application_download_sequence(context)['passed'])
-                observe.assert_not_called()
-                if peer_code:
-                    checks.build.assert_not_called()
-                else:
-                    checks.build.assert_called_once()
-                    self.assertEqual(checks.build.call_args.args[1],
-                                     ROOT/'tests/native/application_download_sequence.nim')
+        import e2e_checks
+        for workload in ('application_download_sequence', 'application_remote_ancestors'):
+            for peer_code in (0, 1):
+                # Each declared workload must own its build failure and skip process observation entirely.
+                checks = SimpleNamespace(folder=ROOT/'build/tests/e2e',
+                    build=Mock(return_value=({'exit_code': 1}, Path('/stale-responder'))))
+                context = SimpleNamespace(peer=({'exit_code': peer_code}, Path('/stale-peer')),
+                    compiler=Path('/compiler'), crypto=Path('/crypto'), bs=Path('/bandersnatch'),
+                    quic=Path('/quic'), checks=checks)
+                with self.subTest(workload=workload, peer_code=peer_code), patch(
+                        'e2e_checks.announce'), patch(workload+'.observe') as observe:
+                    self.assertFalse(getattr(e2e_checks, workload)(context)['passed'])
+                    observe.assert_not_called()
+                    if peer_code:
+                        checks.build.assert_not_called()
+                    else:
+                        checks.build.assert_called_once()
+                        self.assertEqual(checks.build.call_args.args[1],
+                                         ROOT/('tests/native/'+workload+'.nim'))
 
 
 # Direct execution uses the same safeguards as normal unittest discovery.

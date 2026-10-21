@@ -150,3 +150,28 @@ acquired report context grants no state snapshot or persistence authority.
 `build/remote-ancestor-durable-unit.log` records the focused native pass. The test
 starts with an explicitly fresh generated database, so prior interrupted invocations
 cannot replace its source head or contaminate expected request identities.
+
+## Actual executable and physical layouts
+
+The registered `application_remote_ancestors` E2E workload uses the current Make-built
+production executable and an independent native TLS/protocol/complete-map witness.
+Journal and managed-layout commands each fetch the genuine lookup context, execute
+the signed two-guest child, exit successfully and restore every expected serialized
+entry/root/hash through normal disk startup. Both retain exactly seed/child history,
+leave finality unavailable and keep fetched historical headers outside canonical
+snapshot lookup. Literal requests prove descending-then-ascending ordering.
+
+A changed historical seal returns Exhausted without a child request; a pre-existing
+journal remains byte-identical and restores its original complete head. Missing FIN
+returns the total-command Timeout without adoption. The native witness independently
+verifies one request and the retained original state in both refusal cases. Actual
+application exit codes are 0/0/2/2, and all four independent native witnesses exit 0.
+The single-child CLI preserves its existing status-only output.
+
+Production Make build, all four focused registered E2E cases, failed peer/witness
+build safeguards, timeout cleanup and independent-verdict safeguards pass locally.
+Full pinned formatting and source-owned inventory also pass. Evidence is under
+`build/remote-ancestor-e2e/results.json`, `build/remote-ancestor-executable-run.log`,
+`build/remote-ancestor-production-build.log` and `build/remote-ancestor-*-tests.log`.
+This integrates master a000136 after native rebasing with unchanged layer patches;
+no storage/Services API, upstream pins, remote CI labels or merge action changed.
