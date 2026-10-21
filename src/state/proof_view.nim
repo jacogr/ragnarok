@@ -91,3 +91,21 @@ proc lookupAt*(view: ProofView, index: int): ProofViewResult[VerifiedStateLookup
   if index < 0 or index >= data.entries.len:
     return ProofViewResult[VerifiedStateLookup](status: ProofViewError.InvalidIndex)
   ProofViewResult[VerifiedStateLookup](status: ProofViewError.None, completed: data.entries[index])
+
+proc lookup*(view: ProofView, query: StateKey): ProofViewResult[VerifiedStateLookup] =
+  ## Resolve exact retained evidence; an unknown key is not a proof of absence.
+  let data = view.data
+  if data == nil:
+    return ProofViewResult[VerifiedStateLookup](status: ProofViewError.Uninitialized)
+  var first = 0
+  var stop = data.entries.len
+  while first < stop:
+    # Overflow-safe binary search never decodes or copies authenticated payloads.
+    let middle = first + (stop-first) div 2
+    let order = compareKey(data.entries[middle].key, query)
+    if order < 0: first = middle+1
+    elif order > 0: stop = middle
+    else:
+      return ProofViewResult[VerifiedStateLookup](status: ProofViewError.None,
+        completed: data.entries[middle])
+  ProofViewResult[VerifiedStateLookup](status: ProofViewError.MissingWitness)

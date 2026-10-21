@@ -16,3 +16,7 @@ authenticated witness export, local collection encoding/decoding, a typed C(11)
 reader, strict authority guards and usage/evidence documentation. No storage API,
 Services lifecycle, proof RPC, network protocol or light-node database changes.
 M1 framing remains complete; full state serialization and whole-block parity remain open.
+
+Exact-key binary lookup now returns a verified fact only for a retained key.
+Unknown keys, including all keys in an explicit empty view, return MissingWitness.
+A retained absence fact succeeds with present=false; no missing value is fabricated.
