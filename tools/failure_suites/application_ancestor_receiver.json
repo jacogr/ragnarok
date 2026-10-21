@@ -1,0 +1,62 @@
+{
+  "build_name": "application-ancestor-receiver-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Ancestor receiver extraction default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-ancestor-receiver-default"
+    },
+    {
+      "arguments": [
+        "response"
+      ],
+      "description": "Ancestor receiver extraction response",
+      "diagnostic": "receiver.state == Ready",
+      "identity": {
+        "reason": "response"
+      },
+      "name": "application-ancestor-receiver-response"
+    },
+    {
+      "arguments": [
+        "receiving"
+      ],
+      "description": "Ancestor receiver extraction receiving",
+      "diagnostic": "receiver.state == Ready",
+      "identity": {
+        "reason": "receiving"
+      },
+      "name": "application-ancestor-receiver-receiving"
+    },
+    {
+      "arguments": [
+        "cancelled"
+      ],
+      "description": "Ancestor receiver extraction cancelled",
+      "diagnostic": "receiver.state == Ready",
+      "identity": {
+        "reason": "cancelled"
+      },
+      "name": "application-ancestor-receiver-cancelled"
+    },
+    {
+      "arguments": [
+        "failure"
+      ],
+      "description": "Ancestor receiver extraction failure",
+      "diagnostic": "receiver.state == Failed",
+      "identity": {
+        "reason": "failure"
+      },
+      "name": "application-ancestor-receiver-failure"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/application_ancestor_receiver_results.nim"
+}

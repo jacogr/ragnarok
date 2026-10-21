@@ -39,3 +39,20 @@ bytes before/after. Four strict runtime extraction failures with genuine positiv
 controls, six private-field rejections and verification inventory pass locally.
 Evidence: `build/remote-ancestors-{unit,guards,inventory}.log`. This is local
 macOS/ARC evidence, without a Linux CI or complete JAM parity claim.
+
+## Fragmented receiver
+
+`AncestorReceiver` owns one E4-framed payload and monotonically increasing local
+generation. It checks the complete u32 claim against the explicit host-sized
+response ceiling before allocating. Callbacks copy only the declared body;
+truncated framing, trailing bytes and oversized claims release the entire buffer.
+Both request FIN and actual response FIN are required before explicit producer
+decoding. Late/foreign generations cannot append, finish or cancel a reused owner.
+Native consumers must retire their stream callback binding before decoding/reuse.
+
+`application_ancestor_receiver` passes every split, byte-at-a-time reception,
+both FIN orders, all early EOF offsets, empty reply, extra bytes, quota refusal,
+stale/cancelled generations and detached response ownership. Five runtime
+extraction failures/positive controls, three privacy checks, actual `=dup`
+lowering rejection and inventory pass. Its 1,000-cycle ARC observation holds
+276,576 occupied bytes before/after (`build/ancestor-receiver-*.log`).
