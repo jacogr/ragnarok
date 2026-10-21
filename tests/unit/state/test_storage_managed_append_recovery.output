@@ -1,0 +1,1 @@
+PASS storage managed append recovery: exact parent, durable context, explicit prefix and corrupt-tail refusal

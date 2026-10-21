@@ -577,3 +577,17 @@ Run `make unit SUITE=storage_managed_repository` for real locking/reopen, retain
 chain/schema rejection, detached context and repeated ARC retirement. This component does not
 change StateStore or select the application's backend. Append, explicit tail repair, epoch
 replacement, migration and app adoption remain separate bounded increments.
+
+## Managed append and explicit recovery
+
+Managed publication prepares against the exact current immutable parent, checks remaining journal
+capacity, synchronizes the prior boundary, then appends/synchronizes one existing schema frame.
+Only that confirmation advances memory/context. Partial or uncertain IO poisons fresh operations;
+held views remain valid. An explicit synchronize receipt confirms journal and stable directory.
+
+Normal reopen rejects every incomplete tail. `recoverManagedRepository` additionally requires the
+independently retained generation and root of the entire verified prefix. It may truncate only a
+plausibly incomplete final frame; complete corrupt frames, impossible lengths, generation gaps and
+complete visible successors are never discarded. Wrong recovery tokens leave bytes untouched.
+Run `make unit SUITE=storage_managed_append_recovery` for real append/restart/context, stale parent,
+torn-tail repair, refusal to roll back a complete successor and corrupt-tail preservation.

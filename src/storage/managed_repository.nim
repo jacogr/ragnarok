@@ -5,7 +5,7 @@
 ## Opening validates every selected byte and graph; no directory scan or older-epoch fallback grants authority.
 import std/assertions
 import ./[file_errors, managed_io, managed_manifest, snapshot_codec, node_repository,
-  node_records, journal_codec, database_identity, durability]
+  node_records, record_codec, journal_codec, database_identity, durability]
 import ../codec/[bounded, state_trie]
 
 type
@@ -146,8 +146,19 @@ proc initializeManagedRepository*(repository: var ManagedRepository, path: strin
   repository.active = true # Only the synchronized manifest grants a selected live revision.
   adopted = true
   FileError.None
-proc openManagedRepository*(repository: var ManagedRepository, path: string, chain: StorageChainId,
-    limits: ManagedLimits, schema = StorageSchema.FullNodesV1): FileError =
+proc incompleteTail(bytes: openArray[byte], offset: int, limit: ByteLimit, contextual: bool): bool =
+  ## Explicit repair permits only a plausible incomplete final frame, never complete corrupt bytes.
+  let remaining = bytes.len-offset
+  if remaining < 8: return true
+  var length = 0'u64
+  for index in 0..<8: length = length or (uint64(bytes[offset+index]) shl (8*index))
+  let maximum = min(uint64(limit), uint64(high(int)))
+  let minimumBody = uint64(TrieExportHeaderBytes)+(if contextual: 8'u64 else: 0'u64)
+  if maximum < 48 or length < minimumBody or length > maximum-48: return false
+  length+48 > uint64(remaining)
+proc acquire(repository: var ManagedRepository, path: string, chain: StorageChainId,
+    limits: ManagedLimits, schema: StorageSchema, repair: bool,
+    expectedGeneration: RepositoryGeneration, expectedRoot: StateRoot): FileError =
   ## Strictly validate exactly CURRENT's epoch; unknown and staged files are never recovery authority.
   if repository.active: return FileError.Busy
   var adopted = false
@@ -184,9 +195,15 @@ proc openManagedRepository*(repository: var ManagedRepository, path: string, cha
       manifest.checksum) != ManifestError.None: return FileError.InvalidJournal
   var offset = ManagedJournalHeaderBytes
   var context = restored.value.context
+  var partial = false
   while offset < frames.len:
     let extent = journalFrameExtent(frames.toOpenArray(offset, frames.high), limits.journalBytes)
-    if extent.error != FrameError.None: return FileError.InvalidJournal
+    if extent.error != FrameError.None:
+      if repair and incompleteTail(frames, offset, limits.journalBytes, schema ==
+          StorageSchema.FullStateV1):
+        partial = true
+        break # The verified prefix still needs independent exact authorization before truncation.
+      return FileError.InvalidJournal
     let frame = if schema == StorageSchema.FullStateV1:
       decodeContextJournalFrame(frames.toOpenArray(offset, offset+extent.value-1),
         limits.contextBytes, limits.repository.codec, limits.journalBytes)
@@ -202,6 +219,14 @@ proc openManagedRepository*(repository: var ManagedRepository, path: string, cha
       return FileError.InvalidJournal
     context = frame.value.context # Only a completely admitted contiguous frame selects context.
     offset += extent.value
+  if repair:
+    let selected = memory.snapshot.value
+    if uint64(selected.generation) != uint64(expectedGeneration) or
+        array[32, byte](selected.commitment.root) != array[32, byte](expectedRoot):
+      return FileError.RecoveryMismatch
+    if partial:
+      let truncated = truncateManagedJournal(repository.journal, uint64(offset))
+      if truncated != FileError.None: return truncated # No unverified suffix is ever silently discarded.
   repository.memory = memory
   repository.context = context
   repository.chain = chain
@@ -212,3 +237,61 @@ proc openManagedRepository*(repository: var ManagedRepository, path: string, cha
   repository.active = true
   adopted = true
   FileError.None
+proc openManagedRepository*(repository: var ManagedRepository, path: string, chain: StorageChainId,
+    limits: ManagedLimits, schema = StorageSchema.FullNodesV1): FileError =
+  ## Normal restart requires every selected frame; incomplete tails require an explicit recovery call.
+  acquire(repository, path, chain, limits, schema, false, RepositoryGeneration(0), default(StateRoot))
+proc recoverManagedRepository*(repository: var ManagedRepository, path: string,
+    chain: StorageChainId, limits: ManagedLimits, expectedGeneration: RepositoryGeneration,
+        expectedRoot: StateRoot,
+    schema = StorageSchema.FullNodesV1): FileError =
+  ## Authorize only an exact independently retained complete prefix before truncating an incomplete append.
+  acquire(repository, path, chain, limits, schema, true, expectedGeneration, expectedRoot)
+proc publish*(repository: var ManagedRepository, expected: RepositoryView, batch: TrieExport,
+    context: openArray[byte] = []): ManagedResult[RepositoryView] =
+  ## Prepare privately, append and synchronize the bound journal, then expose the exact prepared revision.
+  if not repository.active: return ManagedResult[RepositoryView](status: FileError.Uninitialized)
+  if repository.poisoned: return ManagedResult[RepositoryView](status: FileError.RecoveryRequired)
+  if uint64(context.len) > uint64(repository.limits.contextBytes) or
+      (repository.schema == StorageSchema.FullNodesV1 and context.len != 0):
+    return ManagedResult[RepositoryView](status: FileError.LimitExceeded)
+  var selectedContext = newSeq[byte](context.len)
+  for index, octet in context: selectedContext[index] = octet
+  var working = repository.memory
+  let prepared = working.publish(expected, batch)
+  if prepared.error != RepositoryError.None:
+    return ManagedResult[RepositoryView](status: FileError.InvalidBatch, batchReason: prepared)
+  let size = managedJournalBytes(repository.journal)
+  if size.error != FileError.None: return ManagedResult[RepositoryView](status: size.error)
+  let maximum = min(uint64(repository.limits.journalBytes), uint64(high(int)))
+  let remaining = ByteLimit(maximum-size.value) # The journal lease admitted its size under this ceiling.
+  let frame = if repository.schema == StorageSchema.FullStateV1:
+    encodeContextJournalFrame(prepared.value.generation, batch, selectedContext,
+      repository.limits.contextBytes, repository.limits.repository.codec, remaining)
+  else:
+    encodeJournalFrame(prepared.value.generation, batch, repository.limits.repository.codec, remaining)
+  if frame.error == FrameError.LimitExceeded:
+    return ManagedResult[RepositoryView](status: FileError.LimitExceeded)
+  if frame.error != FrameError.None:
+    return ManagedResult[RepositoryView](status: FileError.InvalidFrame, frameReason: frame.error)
+  var reason = synchronize(repository.directory)
+  if reason == FileError.None: reason = appendManagedJournal(repository.journal, [])
+  if reason == FileError.None: reason = appendManagedJournal(repository.journal, frame.value)
+  if reason != FileError.None:
+    repository.poisoned = true # Partial/uncertain bytes revoke fresh live operations until explicit reopen.
+    return ManagedResult[RepositoryView](status: reason)
+  repository.memory = working
+  repository.context = selectedContext
+  ManagedResult[RepositoryView](status: FileError.None, completed: prepared.value)
+proc synchronize*(repository: var ManagedRepository): ManagedResult[StorageDurability] =
+  ## Reconfirm the journal and stable directory boundaries; uncertainty requires reopening.
+  if not repository.active: return ManagedResult[StorageDurability](status: FileError.Uninitialized)
+  if repository.poisoned: return ManagedResult[StorageDurability](
+      status: FileError.RecoveryRequired)
+  var reason = appendManagedJournal(repository.journal, [])
+  if reason == FileError.None: reason = synchronize(repository.directory)
+  if reason != FileError.None:
+    repository.poisoned = true
+    return ManagedResult[StorageDurability](status: reason)
+  ManagedResult[StorageDurability](status: FileError.None,
+      completed: StorageDurability.FileAndDirectorySynced)

@@ -136,3 +136,8 @@ scans for a fallback head. Retained views and detached context survive explicit 
 This standalone component is not yet used by StateStore or application startup. Managed append,
 reclamation, explicit migration and consumer adoption are subsequent storage-owned layers; other
 workstreams should continue through their existing APIs until a coordinated integration lands.
+
+Managed `publish` exposes a prepared revision only after its paired journal frame is synchronized.
+IO uncertainty requires reopening. `recoverManagedRepository` is an explicit operation requiring an
+independent exact generation/root token; normal startup never repairs a tail or rolls back a
+complete successor. Context and retained readers follow the existing immutable publication contract.
