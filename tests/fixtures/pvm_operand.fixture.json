@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_PVM_OPERAND",
+  "files": {
+    "pvm-operand.bin": "f1274c907a5aacba815eec6cce8bc8aefab40a650d80a380b20722f5dca9ea24"
+  },
+  "target": "pvm-operand.bin"
+}
