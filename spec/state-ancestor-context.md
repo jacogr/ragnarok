@@ -38,3 +38,13 @@ wrong slot or absent proof child remains `MissingLookupAnchor`, and incorrect ch
 remains `WrongLookupState`. Candidate-time ordering remains a report-stage check. Existing
 signed projections, authored ancestry cases, all-owner preflight and later backend failure/ARC
 witnesses run unchanged through the extracted implementation.
+
+`planReportLookupDemand` accepts only a recent/age-certified report owner and a validated context.
+It checks every existing lookup proof before publishing a missing-context plan. Missing hashes
+strictly older than the retained tail may request extension; equal/newer slots, wrong slots,
+missing newer proof children and wrong roots cannot be repaired by an older suffix and refuse.
+The plan retains its original certificates. Its next child is always the context tail; useful
+request count is capped by strict slot distance to the oldest missing lookup and explicit remaining
+header allowance. No numeric distance is treated as a required chain length: skipped slots remain
+valid. Complete plans require no request; zero remaining allowance refuses incomplete plans.
+Focused signed/authored tests cover complete/missing/default/permanent-refusal and quota cases.

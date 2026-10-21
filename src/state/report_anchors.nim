@@ -38,6 +38,13 @@ type
     context: AncestorContext
   AnchoredReports* = object ## Complete anchors still require later package/dependency/capacity admission.
     data: nil AnchorData
+  LookupDemandData = ref object ## Exact recent certificate and immutable context bind all missing requirements.
+    recent: RecentAnchoredReports
+    context: AncestorContext
+    missing: int
+    oldest: HeaderSlot
+  ReportLookupDemand* = object ## Read-only discovery plan is separate from completed lookup certification.
+    data: nil LookupDemandData
   ReportAnchorResult*[T] = object ## Success-only payload extraction uses the supported checked-build contract.
     case status: ReportAnchorError
     of None:
@@ -156,3 +163,60 @@ proc checkReportLookupAnchors*(recent: RecentAnchoredReports, parent: OwnedHeade
       return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.MissingLookupAnchor)
   ReportAnchorResult[AnchoredReports](status: ReportAnchorError.None,
     completed: AnchoredReports(data: AnchorData(recent: recent, context: context)))
+
+proc missingLookups*(demand: ReportLookupDemand): ReportAnchorResult[int] =
+  ## Default discovery cannot masquerade as a complete zero-report proof.
+  let data = demand.data
+  if data == nil: return ReportAnchorResult[int](status: ReportAnchorError.Uninitialized)
+  ReportAnchorResult[int](status: ReportAnchorError.None, completed: data.missing)
+proc lookupDemandChild*(demand: ReportLookupDemand): ReportAnchorResult[OwnedHeader] =
+  ## Missing context starts at the oldest retained child's parent, never at an arbitrary report hash.
+  let data = demand.data
+  if data == nil: return ReportAnchorResult[OwnedHeader](status: ReportAnchorError.Uninitialized)
+  if data.missing == 0:
+    return ReportAnchorResult[OwnedHeader](status: ReportAnchorError.MissingLookupAnchor)
+  ReportAnchorResult[OwnedHeader](status: ReportAnchorError.None,
+    completed: data.context.headerAt(data.context.len - 1).value)
+proc lookupDemandMaximum*(demand: ReportLookupDemand, available: ElementLimit): ReportAnchorResult[ElementLimit] =
+  ## Strict slot descent bounds potentially useful headers independently of the operator's remaining count.
+  let data = demand.data
+  if data == nil: return ReportAnchorResult[ElementLimit](status: ReportAnchorError.Uninitialized)
+  if data.missing == 0:
+    return ReportAnchorResult[ElementLimit](status: ReportAnchorError.None, completed: ElementLimit(0))
+  if uint64(available) == 0:
+    return ReportAnchorResult[ElementLimit](status: ReportAnchorError.LimitExceeded)
+  let child = data.context.headerAt(data.context.len - 1).value.headerInfo.value.unsigned
+  let distance = uint64(uint32(child.slot)) - uint64(uint32(data.oldest))
+  ReportAnchorResult[ElementLimit](status: ReportAnchorError.None,
+    completed: ElementLimit(min(distance, uint64(available))))
+
+proc planReportLookupDemand*(recent: RecentAnchoredReports,
+    context: AncestorContext): ReportAnchorResult[ReportLookupDemand] =
+  ## Only certified recent/age-valid reports can request older context; no failed-prefix certificate is exposed.
+  let data = recent.data
+  if data == nil:
+    return ReportAnchorResult[ReportLookupDemand](status: ReportAnchorError.InvalidRecent)
+  if not context.valid:
+    return ReportAnchorResult[ReportLookupDemand](status: ReportAnchorError.InvalidHeader)
+  if uint32(context.headerAt(0).value.headerInfo.value.unsigned.slot) >= uint32(data.slot):
+    return ReportAnchorResult[ReportLookupDemand](status: ReportAnchorError.InvalidSlot)
+  let oldest = uint32(context.headerAt(context.len - 1).value.headerInfo.value.unsigned.slot)
+  let credentials = data.policy.policyCredentials.value
+  var missing = 0
+  var minimum = oldest
+  for index in 0..<credentials.verifiedGuaranteeCount.value:
+    # Query every report before exposing any demand: a later permanent mismatch refuses the entire plan.
+    let report = ownedReportInfo(credentials.verifiedGuaranteeAt(index).value.report).value.header
+    let slot = uint32(report.lookupSlot)
+    let found = context.findLookupAnchor(HeaderParent(report.lookupAnchor.bytes), HeaderSlot(slot),
+      PriorStateRoot(report.lookupStateRoot.bytes))
+    if found.error == AncestorContextError.None: continue # Existing complete proof needs no acquisition.
+    if found.error == AncestorContextError.WrongLookupState:
+      return ReportAnchorResult[ReportLookupDemand](status: ReportAnchorError.WrongLookupState)
+    if found.error != AncestorContextError.MissingLookupAnchor or slot >= oldest:
+      return ReportAnchorResult[ReportLookupDemand](status: ReportAnchorError.MissingLookupAnchor)
+    inc missing # Credential count is already bounded by the retained complete report batch.
+    minimum = min(minimum, slot)
+  ReportAnchorResult[ReportLookupDemand](status: ReportAnchorError.None,
+    completed: ReportLookupDemand(data: LookupDemandData(recent: recent, context: context,
+      missing: missing, oldest: HeaderSlot(minimum))))
