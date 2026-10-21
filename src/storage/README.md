@@ -13,11 +13,12 @@ limits this task to three PRs: public contract coverage, atomic incremental comm
 existing API, and consumer validation/measurements. The storage workstream owns this folder;
 state #5 has no overlapping changes and leaves this tranche to db #1.
 
-The exception is specific to `src/state/store.nim` and its validation. Disk adoption, canonical
-durable publication, full/light startup configuration and unrelated state/PVM/application changes
-remain separate work. Neither availability on master nor merging this tranche authorizes those
-changes. Agree the owner, current contracts and validation scope with the maintainer before
-starting another integration task. See the [folder instructions](AGENTS.md).
+The maintainer subsequently authorized db #1's disk backend and application flag, coordinated
+against state #5's now-merged checkpoint startup work. Disk owners, exact durable chain context,
+native publication and memory/disk startup are covered by the [disk contract](../../spec/disk-state-store.md)
+and [operator guide](../../docs/disk-storage.md). External checkpoint trust remains independent;
+normal local restart preserves bounded history and explicit finality. Unrelated state/PVM work,
+full/light semantics and layout/reclamation changes still require their own scope.
 
 ## Complete-state revisions
 
@@ -109,7 +110,6 @@ confirms a successful file and directory barrier. Both owners share snapshot/pub
 semantics while preserving their typed error distinctions. Run `storage_backend_contract` and
 `storage_disk_replay` for the common scenarios and published full/delta/inverse mapping roundtrips.
 
-The standalone roadmap stopped for maintainer evaluation; the explicitly authorized in-memory
-StateStore tranche is recorded above and in its integration contract. Other consumer adoption,
-full/light startup configuration and workload-driven layout/reclamation still need separately scoped
-work. Availability or merging of these modules does not authorize those further changes.
+The authorized complete-state memory/disk consumer boundary is recorded above. Full/light startup
+and workload-driven layout/reclamation remain separate work. Availability of these primitives does
+not authorize unrelated consumers to change their state or trust contracts.

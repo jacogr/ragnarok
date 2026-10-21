@@ -5,7 +5,7 @@
 
 ## Service-owned configured state, exact RPC seeding, adoption and shutdown/restart without a running peer.
 
-import std/[assertions, syncio, envvars, strutils, monotimes, times]
+import std/[assertions, syncio, envvars, strutils, monotimes, times, base64]
 import std/posix/posix
 import ../../../src/app/[services, options, disk_chain, handoff]
 import ../../../src/storage/node_repository
@@ -325,11 +325,26 @@ proc diskLifecycle(context: SeedFixture, withRpc: bool) {.raises.} =
   let child = owner.chainView.bestBlock.value.blockHash
   owner.close()
   assert owner.diskPublicationOutcome.error == DiskChainError.None
-  assert owner.start(options, "local disk restart")
+  var restartedPort = 0'u16
+  if withRpc:
+    restartedPort = owner.listener(viaCli = true, withDisk = true)
+  else:
+    assert owner.start(options, "local disk restart")
   assert array[32, byte](owner.chainView.bestBlock.value.blockHash) == array[32, byte](child)
   assert owner.chainView.retainedCount == 2
   assert array[32, byte](owner.chainView.parentOf(child).value.blockHash) ==
     array[32, byte](parentHash)
+  if withRpc:
+    let peer = client(restartedPort)
+    defer: discard posix.close(peer)
+    var pending = ""
+    owner.rpc.upgrade(peer, pending)
+    let head = base64.encode(array[32, byte](child))
+    sendText(peer, "{\"jsonrpc\":\"2.0\",\"method\":\"parent\",\"params\":[\"" & head & "\"],\"id\":4}")
+    assert base64.encode(array[32, byte](parentHash)) in readPacket(owner.rpc, peer, pending)
+    let prior = base64.encode(array[32, byte](parentHash))
+    sendText(peer, "{\"jsonrpc\":\"2.0\",\"method\":\"stateRoot\",\"params\":[\"" & prior & "\"],\"id\":5}")
+    assert base64.encode(array[32, byte](parent.commitment.root)) in readPacket(owner.rpc, peer, pending)
   owner.close()
 
 proc main() {.raises.} =

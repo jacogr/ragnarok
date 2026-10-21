@@ -10,6 +10,7 @@ import ../../../src/app/[services, options, download_command, download_policy, d
 import ../../../src/quic/[block_download_loop, block_download_stream]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/lib/atomic_file
+import ../../../src/chain/[genesis, provider]
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context
 import ../../support/[application_recovery_execution, block_download_transport]
@@ -20,8 +21,9 @@ const HeaderPath = "application-recovery-download-header"
 const PolicyPath = "application-recovery-download-policy"
 const StopPath = "application-recovery-download-stop"
 const CountPath = "application-recovery-download-count"
+const DiskPath = "application-recovery-download.db" # Import creates this exclusively; later runs resume it without trust files.
 type Scenario = enum ## Each case changes only import validity or actual guest preparation budget.
-  Valid, InvalidImport, GuestRefusal
+  Valid, InvalidImport, GuestRefusal, DiskInvalidImport, DiskValid, DiskExistingImport
 proc pause() =
   ## Yield between bounded real responder polls without introducing a background thread.
   var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
@@ -35,16 +37,19 @@ proc limits(): DownloadLoopLimits =
     stream: DownloadStreamLimits(readBytes: ByteLimit(4096), writeBytes: ByteLimit(42),
         timeout: DownloadTimeout(5000)),
     attemptTimeout: DownloadAttemptTimeout(8000))
-proc selectedOptions(port: uint16): Options =
+proc selectedOptions(port: uint16, disk = false): Options =
   ## The production command receives the same complete atomic import group as the executable entry.
   result = default(Options)
-  assert parseOptions(@["download", $port, getEnv("RAGNAROK_TEST_CERT"), getEnv(
+  var arguments = @["download", $port, getEnv("RAGNAROK_TEST_CERT"), getEnv(
       "RAGNAROK_TEST_KEY"),
     getEnv("RAGNAROK_TEST_PEER_B"), "jamnp-s/1/00000000", "10000", PolicyPath,
     "--with-state", "--chain", ChainPath, "--state-writes", "1000", "--state-write-bytes",
         "1000000",
     "--state-checkpoint", CheckpointPath, "--state-trust", TrustPath, "--state-header", HeaderPath,
-    "--state-checkpoint-bytes", "1000000"], result)
+    "--state-checkpoint-bytes", "1000000"]
+  if disk:
+    for value in ["--state-storage", "disk", "--state-db", DiskPath]: arguments.add(value)
+  assert parseOptions(arguments, result)
 proc scenario(expected: array[42, byte], frame: seq[byte], fixture: RecoveryExecutionFixture,
     mode: Scenario) {.raises.} =
   ## Each fork starts before parent command workers exist; command teardown joins them before the next fork.
@@ -76,12 +81,14 @@ proc scenario(expected: array[42, byte], frame: seq[byte], fixture: RecoveryExec
     configured.candidate.execution.preimageBytes = ByteLimit(
         0) # Raw reception fits but genuine guest preparation must refuse.
   writeFile(PolicyPath, encodeDownloadPolicy(configured))
-  let bytes = if mode == InvalidImport: @[255'u8] else: fixture.envelope
+  let bytes = if mode in [InvalidImport, DiskInvalidImport]: @[255'u8] else: fixture.envelope
   assert replaceAtomicFile(CheckpointPath, bytes, ByteLimit(1000000)) == AtomicFileError.None
-  let result = runDownload(selectedOptions(port))
-  if mode == Valid:
+  let before = if mode == DiskExistingImport: readFile(DiskPath) else: ""
+  let result = runDownload(selectedOptions(port, mode in [DiskInvalidImport, DiskValid,
+      DiskExistingImport]))
+  if mode in [Valid, DiskValid]:
     assert result == DownloadCommandResult.Adopted # Only actual deferred Services adoption grants this command result.
-  elif mode == InvalidImport:
+  elif mode in [InvalidImport, DiskInvalidImport, DiskExistingImport]:
     assert result == DownloadCommandResult.StartupFailure # Invalid imports must fail before outgoing TLS opens.
   else:
     assert result == DownloadCommandResult.Exhausted # Valid bytes/framing cannot masquerade as successful guest execution.
@@ -90,11 +97,29 @@ proc scenario(expected: array[42, byte], frame: seq[byte], fixture: RecoveryExec
   assert posix.waitpid(child, status, 0) == child
   reaped = true
   assert WIFEXITED(status) and WEXITSTATUS(status) == 0
-  assert readFile(CountPath) == (if mode == InvalidImport: "0" else: "1")
+  assert readFile(CountPath) == (if mode in [InvalidImport, DiskInvalidImport,
+      DiskExistingImport]: "0" else: "1")
+  if mode == DiskInvalidImport:
+    assert not fileExists(DiskPath) # Failed trust/import creates no new disk database.
+  elif mode == DiskExistingImport:
+    assert readFile(DiskPath) == before # Import cannot replace or roll back an existing durable successor.
+  elif mode == DiskValid:
+    var selected = default(Options)
+    assert parseOptions(@["server", "--with-state", "--chain", ChainPath, "--state-writes", "1000",
+      "--state-write-bytes", "1000000", "--state-storage", "disk", "--state-db", DiskPath], selected)
+    var owner = default(Services)
+    defer: owner.close()
+    assert owner.start(selected, "resume durable downloaded child")
+    assert owner.chainView.retainedCount == 2
+    let childHash = owner.chainView.bestBlock.value.blockHash
+    assert array[32, byte](owner.chainView.parentOf(childHash).value.blockHash) ==
+      array[32, byte](fixture.expected.blockHash)
+    assert owner.chainView.finalizedBlock.error == GenesisError.Unavailable
 proc main() {.raises.} =
   ## A genuine signed child and independently captured import context drive all three production command outcomes.
   defer:
-    for selected in [ChainPath, CheckpointPath, TrustPath, HeaderPath, PolicyPath, StopPath, CountPath]:
+    for selected in [ChainPath, CheckpointPath, TrustPath, HeaderPath, PolicyPath, StopPath,
+        CountPath, DiskPath]:
       var path = selected
       discard posix.unlink(path.toCString()) # No command/responder worker remains when test paths retire.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

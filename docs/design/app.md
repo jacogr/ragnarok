@@ -23,6 +23,14 @@ shapes call this same startup path. Individual native callbacks borrow fields of
 owner; every transport/dispatcher ends its borrows before aggregate cleanup. Explicit close and
 destruction handle partial startup and disabled fields without retaining descriptors or strings.
 
+Complete-state services select memory by default or an explicit disk backend/path. Disk startup
+validates the configured genesis/profile identity and restores the bounded local view before RPC
+starts. Queued disk adoption has a Publishing stage: one native worker owns exclusive graph access
+while the host polls scalar state, then the host installs the confirmed durable successor and resumes
+RPC. Shutdown joins before input/canonical retirement. External checkpoint imports keep their own
+trust boundary and create a fresh disk path exclusively. See [disk operation](../disk-storage.md)
+and [the feature contract](../../spec/disk-state-store.md).
+
 `app/chain.nim` owns the canonical complete state and selected history independently of
 optional listener lifetime. It inherits an explicitly supplied head's store policy and accepts
 opaque finalized successors through state-owned adoption. Enabled RPC joins only an identical

@@ -45,10 +45,9 @@ refuse until close and explicit trusted recovery; already retained snapshots rem
 Failed initialization/open releases its lock, preserving any created bytes for explicit diagnosis.
 Normal forks remain independent in-memory execution branches, never duplicate descriptor owners.
 
-This first owner exposes durable state revisions only. It is not yet wired into normal application
-adoption, canonical block metadata or a startup flag. Those require atomic publication of the
-matching application context and coordination with state #5's startup/recovery layer. A successful
-storage receipt cannot silently advance the application head or choose consensus authority.
+This low-level owner exposes durable state revisions only. The application layers below bind
+matching canonical metadata, the startup flag and state #5's recovery boundary. A successful
+storage receipt alone cannot silently advance the application head or choose consensus authority.
 
 ## Publication failures and explicit recovery
 
@@ -285,7 +284,7 @@ must join any worker before retiring its disk/canonical graphs; cancellation can
 `make unit SUITE=disk_chain` covers real bounded bootstrap/restart, incomplete-bootstrap refusal
 without byte changes, genuine signed successors with and without RPC, missing leases, wrong chain,
 changed durable finality, budget failures, exact owner retention and strict successor restart.
-Application options/services are not wired by this coordinator layer. External checkpoint import
+Application options/services use this coordinator through the runtime layer below. External checkpoint import
 continues to require independent trust and does not inherit local history/finality.
 
 ## Native disk-publication worker
@@ -326,16 +325,13 @@ only that incomplete tail. A complete successor always refuses prior-generation 
 byte-identical. No implicit repair, guessed rollback, new import authority or production fault hook
 is introduced. The parent's resource and signal policies are unchanged.
 
-## Remaining backend startup boundary
+## Backend startup ownership
 
-The storage stack now provides bounded durable context, synchronous coordination, native publication
-offload and local restart/crash witnesses. It does not yet select disk through CLI options/services.
-That wiring must use state #5's agreed checkpoint-startup boundary (PR #473 / `81a092ab`) once its
-branch dependency is resolved. Preserve independent external import trust, explicit memory/disk
-selection (`--state-storage memory|disk`, `--state-db PATH`), strict refusal of incompatible existing
-DB/import combinations, RPC exclusion through native IO and joined shutdown before graph retirement.
-Full/light remains a separate future mode contract. The append-only physical store still retains all
-records under finite ceilings; page packing, reclamation and production-scale optimality are open.
+The maintainer confirmed state #5's checkpoint startup stack merged and explicitly authorized
+continuing backend wiring. Services/options use that merged boundary; imports retain independent
+external trust and single-head/unfinalized semantics. Normal disk restart preserves its bounded
+local history and explicit finality. Full/light, layout/reclamation and production-scale tuning
+remain separately scoped work.
 
 ## CLI mutation-budget defaults
 
@@ -348,7 +344,7 @@ still refuse atomically. Component APIs with explicit StateStoreLimits retain th
 ## Explicit backend options
 
 `--state-storage memory|disk` is independent of state activation and future full/light mode.
-Memory remains the default. Disk requires validated `--with-state`, chain and mutation policies,
+Memory remains the default. Disk requires validated `--with-state`, a chain and resolved mutation budgets,
 plus an explicit `--state-db PATH`; a memory run refuses an ignored database path. Parsing is
 atomic and rejects duplicate, incomplete, misspelled or disabled backend controls. External
 checkpoint controls remain an independent all-or-none trust request. The runtime layer opens the selected backend before listeners, so a disk flag never silently
@@ -389,3 +385,14 @@ The application_services suite retains its original memory-mode 1,000-cycle bala
 and adds signed disk execution with and without RPC, paused publication, competing-lock refusal,
 exact prepared ownership, persisted child/parent restart and explicit synchronous bypass refusal.
 The executable semantic check and actual composite Services ownership rejection pass.
+
+## Runtime consumer verification
+
+The final consumer layer extends the real pinned-TLS download command with fresh disk import,
+durable signed-child adoption, local restart without external trust files, malformed-import refusal
+before transport and refusal to overwrite an existing durable database. Service boundary tests join
+an immediately pending publication, reopen the actual previous/successor selection, and use a real
+child-only kernel file-size limit to preserve typed IO uncertainty, the exact prior canonical owner,
+write refusal after uncertainty and unchanged bytes on strict incomplete-tail startup failure.
+The [operator guide](../docs/disk-storage.md) records supported controls, trust separation, fixed
+ceilings, explicit recovery limits and remaining performance/layout work.

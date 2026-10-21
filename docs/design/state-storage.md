@@ -1,6 +1,8 @@
 # State storage direction
 
-Status: design note for discussion; no backend or dependency has been selected.
+Status: storage direction with an initial checked append-only complete-state backend implemented.
+See [disk operation](../disk-storage.md) and [its contract](../../spec/disk-state-store.md); layout,
+reclamation and light-state work remain open.
 
 Ragnarök should grow a small Merkle-aware storage implementation as concrete needs arise.
 Firewood, NOMT and ParityDB are useful design references. Adopting an existing engine remains

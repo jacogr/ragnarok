@@ -121,7 +121,8 @@ and direct original block provenance. See [the repeated reentry contract](../../
 The client will support full and light operation selected by a command-line mode flag. Startup
 will choose the corresponding mode-specific database; full and light data/schema requirements
 must remain separate. In-memory backends may also differ, sharing only operations with matching
-semantics. No database backend or mode flag is implemented by the current storage increment.
+semantics. Complete-state application startup now selects memory or an explicit disk backend/path;
+see [disk operation](../disk-storage.md). That backend flag does not select full/light mode.
 
 `src/state/store.nim` is a complete-map in-memory execution store. Light-node verified roots,
 partial state and proofs require a separate appropriate contract; hashing partial data through
