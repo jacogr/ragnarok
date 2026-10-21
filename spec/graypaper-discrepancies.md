@@ -28,6 +28,7 @@ chosen compatibility behavior as proof that the paper must change.
 | GP-PVM-001 | Internal ambiguity | Wrapping access: protected-low-memory prose versus minimum-index fault equation | Scoped compatibility rule tested; upstream clarification needed |
 | GP-PVM-002 | Paper/implementation discrepancy | Mapped final byte is accessible in the paper but traps in PolkaVM | Explicit compatibility exception tested; upstream clarification needed |
 | GP-PVM-003 | Missing definition | Branch gas lookup at a negative mathematical target | Wrapped-target price tested; upstream clarification needed |
+| GP-PVM-004 | Paper/implementation discrepancy | Final fallthrough/conditional: runtime panic versus module rejection | Both behaviors reproduced; local policy decision pending |
 
 ## GP-PVM-001: exception ordering across the address-space boundary
 
@@ -154,6 +155,50 @@ lookup, or should the instruction sequence explicitly define negative-index byte
 Specify the price before invalid-target panic and retain an executable malformed-
 destination witness. The paper's memory latency25 is retained; generic PolkaVM
 cache models and its default gas mode are not alternative protocol specifications.
+
+## GP-PVM-004: final fallthrough and conditional rejected before execution
+
+**Paper evidence:** Appendix PVM Basic Definition,
+[text/pvm.tex lines51–70](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L51-L70),
+accepts a valid instruction partition whose final opcode belongs to T.
+[Basic Blocks, lines106–138](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L106-L138)
+includes fallthrough and conditional branches in T.
+[Static/conditional checks, lines246–260](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L246-L260)
+then panic during execution when a successor is not a basic-block start.
+
+**Minimal witnesses:** code `[51,7,7,1]`, mask `[9]`, or
+`[51,7,7,170,0,253]`, mask `[9]`. The first instruction loads r7=7; the final
+instruction is fallthrough or register equality targeting entry0 with a missing
+fallthrough. For the paper's complete framing, prepend `[0,0,4]` or `[0,0,6]`
+respectively to code, then append mask. Entry0 is valid. With prepaid gas and
+r7 initially99, the paper permits the prefix then returns Panic with r7=7.
+`[51,7,7,0]`, mask `[9]`, is the matching trap-ending positive control.
+
+**Executed pinned PolkaVM evidence:** public ProgramParts/ProgramBlob parsing
+succeeds for all three; `validate_code_with_isa(ISA_JamV1)` returns Err at4/6 for
+the two missing-successor programs. `Module::from_blob` returns ValidationFailed,
+so no guest instance executes. The trap control validates, executes and traps at3
+with A0/r7=7. The public-API reproducer is retained in the
+[validation contract](pvm-final-terminator-validation.md).
+Source evidence: [module validation](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm/src/api.rs#L445-L449),
+[code validation](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/program.rs#L7420-L7432),
+and upstream `jam_validate_invalid_fallthrough` in tests.rs. The latter was
+source-inspected; our independent public-API witness was executed.
+
+**Ragnarök disposition and coverage:** preserve current paper behavior pending a
+scoped decision. Three active native cases verify successful decoding, the actual
+prefix, single-step and recursive panic state, exact2/1 step budgets and original
+aliases. The separate reference checker requires both observed module rejections
+and the successful control. No private feature or upstream/source pin change.
+Do not claim these differing expected observations establish loading parity.
+
+**Question to raise:** should a structurally valid final terminator with a missing
+successor be rejected by deblob, or admitted and panic when reached? Clarify the
+validation rule and preservation of earlier register/memory/host effects.
+Locally, choosing strict rejection also requires deciding whether it belongs in
+raw decoding, JAM preparation or an explicit reference-loader adapter, and how
+that failure is represented. This choice remains pending; prior approved memory
+and gas exceptions do not settle it.
 
 ## Reproducing the local fixture evidence
 
