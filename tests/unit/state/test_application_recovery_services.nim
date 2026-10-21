@@ -33,6 +33,16 @@ proc main() {.raises.} =
   var options = default(Options)
   assert parseOptions(@["server", "--with-state", "--chain", getEnv(
       "RAGNAROK_APPLICATION_CHECKPOINT"), "--state-writes", "0", "--state-write-bytes", "0"], options)
+  var importOptions = default(Options)
+  assert parseOptions(@["server", "--with-state", "--chain", getEnv(
+      "RAGNAROK_APPLICATION_CHECKPOINT"),
+    "--state-writes", "0", "--state-write-bytes", "0", "--state-checkpoint", "missing-state",
+        "--state-trust", "missing-trust",
+    "--state-header", "missing-header", "--state-checkpoint-bytes", "100000"], importOptions)
+  var denied = default(Services)
+  assert not denied.start(importOptions, "no silent genesis")
+  assert denied.chainView.retainedCount == 0
+  denied.close()
   let restored = recovered(CheckpointFixtureVariant.Header)
   let expected = captureApplicationCheckpointIdentity(restored.value).value
   let original = captureApplicationCheckpointIdentity(checkpointFixture()).value

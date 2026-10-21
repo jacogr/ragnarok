@@ -127,3 +127,23 @@ Local real recovered-head RPC suite passes, and the original Services startup/
 adoption suite passes with the shared socket controls, including 1,000 ownership
 cycles at 141,936 occupied bytes before/after. Focused semantic checking and
 source-owned inventory pass. Logs use `build/recovery-rpc*`; CI is unrequested.
+
+## Atomic external recovery controls
+
+The parser accepts `--state-checkpoint FILE --state-trust FILE --state-header FILE
+--state-checkpoint-bytes N` only together and with existing explicit `--with-state`,
+`--chain` and both mutation budgets. All partial subsets, duplicates, missing values,
+disabled use and malformed/overflowing ceilings refuse atomically. Byte policy
+retains uint64 including explicit zero; no listener is implied. Private guarded
+getters expose only complete active requests. Normal startup refuses import intent
+without an explicit recovered owner, preventing silent genesis fallback while the
+dependent startup dispatcher is integrated. Backend `--state-storage`/`--state-db`
+names are reserved for db #1 and acquire no placeholder behavior here.
+
+Local recovery and legacy option suites pass; the affected Services suite proves
+parsed recovery intent cannot fall back to genesis and retains unchanged occupied
+bytes through 1,000 close/restart cycles. Eight strict default/inactive getter
+refusals, genuine positive controls, five private-option compiler rejections,
+semantic checking and inventory pass. The pinned runtime checks conjunctions as
+separate parsed/active assertions; exact diagnostics are recorded per origin.
+Evidence uses `build/recovery-options*`; CI is unrequested.

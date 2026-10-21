@@ -1,0 +1,110 @@
+{
+  "build_name": "application-recovery-options-results",
+  "cases": [
+    {
+      "arguments": [
+        "default",
+        "path"
+      ],
+      "description": "Recovery options default path",
+      "diagnostic": "options.parsed",
+      "identity": {
+        "origin": "default",
+        "field": "path"
+      },
+      "name": "application-recovery-options-default-path"
+    },
+    {
+      "arguments": [
+        "default",
+        "trust"
+      ],
+      "description": "Recovery options default trust",
+      "diagnostic": "options.parsed",
+      "identity": {
+        "origin": "default",
+        "field": "trust"
+      },
+      "name": "application-recovery-options-default-trust"
+    },
+    {
+      "arguments": [
+        "default",
+        "header"
+      ],
+      "description": "Recovery options default header",
+      "diagnostic": "options.parsed",
+      "identity": {
+        "origin": "default",
+        "field": "header"
+      },
+      "name": "application-recovery-options-default-header"
+    },
+    {
+      "arguments": [
+        "default",
+        "bytes"
+      ],
+      "description": "Recovery options default bytes",
+      "diagnostic": "options.parsed",
+      "identity": {
+        "origin": "default",
+        "field": "bytes"
+      },
+      "name": "application-recovery-options-default-bytes"
+    },
+    {
+      "arguments": [
+        "disabled",
+        "path"
+      ],
+      "description": "Recovery options disabled path",
+      "diagnostic": "options.recover",
+      "identity": {
+        "origin": "disabled",
+        "field": "path"
+      },
+      "name": "application-recovery-options-disabled-path"
+    },
+    {
+      "arguments": [
+        "disabled",
+        "trust"
+      ],
+      "description": "Recovery options disabled trust",
+      "diagnostic": "options.recover",
+      "identity": {
+        "origin": "disabled",
+        "field": "trust"
+      },
+      "name": "application-recovery-options-disabled-trust"
+    },
+    {
+      "arguments": [
+        "disabled",
+        "header"
+      ],
+      "description": "Recovery options disabled header",
+      "diagnostic": "options.recover",
+      "identity": {
+        "origin": "disabled",
+        "field": "header"
+      },
+      "name": "application-recovery-options-disabled-header"
+    },
+    {
+      "arguments": [
+        "disabled",
+        "bytes"
+      ],
+      "description": "Recovery options disabled bytes",
+      "diagnostic": "options.recover",
+      "identity": {
+        "origin": "disabled",
+        "field": "bytes"
+      },
+      "name": "application-recovery-options-disabled-bytes"
+    }
+  ],
+  "source": "tests/native/application_recovery_options_results.nim"
+}
