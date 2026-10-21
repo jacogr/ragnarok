@@ -43,3 +43,17 @@ and complete corrupt frames without fallback. An independently authorized tail r
 durable before a subsequently narrower map policy refuses restoration; that refusal still releases
 the owner. Successful read-only restoration preserves explicit zero-write limits. Already retained
 public snapshots remain readable after repair, refused startup and owner close.
+
+## Atomic retained-root bootstrap
+
+Managed creation optionally accepts bounded older snapshots with the same exact StateStore policy.
+It admits them in caller order and the selected source last into an independent memory repository,
+then publishes one snapshot containing their complete root union and the supplied selected context.
+No intermediate bootstrap context or head is ever durable. There are `history.len + 1` admitted
+state generations; this ordinal remains independent of block slots and physical epochs. All
+history slots count against the root ceiling before graph/export work, including duplicate roots.
+
+`managed_retained_bootstrap` restores an eight-block rolling history and a separated explicit
+finalized root from one epoch, compares every complete retained map and checks that the journal
+contains only its paired header at creation. Insufficient root capacity refuses before IO. The
+fixture's modified seals exercise local capture/history structure, not execution authenticity.
