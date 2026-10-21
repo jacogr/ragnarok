@@ -33,6 +33,39 @@
         "reason": "reason"
       },
       "name": "application-checkpoint-bundle-reason"
+    },
+    {
+      "arguments": [
+        "default-store"
+      ],
+      "description": "Application checkpoint decode default-store",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default-store"
+      },
+      "name": "application-checkpoint-bundle-default-store"
+    },
+    {
+      "arguments": [
+        "default-context"
+      ],
+      "description": "Application checkpoint decode default-context",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default-context"
+      },
+      "name": "application-checkpoint-bundle-default-context"
+    },
+    {
+      "arguments": [
+        "checkpoint-reason"
+      ],
+      "description": "Application checkpoint decode checkpoint-reason",
+      "diagnostic": "outcome.status == CheckpointFailure",
+      "identity": {
+        "reason": "checkpoint-reason"
+      },
+      "name": "application-checkpoint-bundle-checkpoint-reason"
     }
   ],
   "crypto_library": "crypto",
