@@ -291,7 +291,20 @@ proc inspect(memory: Memory, address: MemoryAddress, width: AccessWidth,
         data.pages[at].image.access != PageAccess.Inaccessible:
       return MachineResult[bool](status: MachineError.Panic) # Present final pages trap before write-protection checks, matching PolkaVM.
     return MachineResult[bool](status: MachineError.Fault, failedPage: PageAddress(0xfffff000'u32))
-  # At most eight checks preflight every successful scalar; the first failed byte determines the exit.
+  # GP-PVM-008: for a nonprotected cross-page store, missing mappings precede read-only faults.
+  # The exclusive-end proof above bounds the inclusive end; scalar widths touch at most two pages.
+  if writing and start >= 0x10000'u64:
+    let firstPage = uint32(start div 4096)
+    let lastPage = uint32((start + uint64(byte(width)) - 1) div 4096)
+    if firstPage != lastPage:
+      # Check presence before writability without cloning pages or publishing any partial write.
+      for index in firstPage..lastPage:
+        let at = lowerBound(data, index)
+        if at >= data.pages.len or uint32(data.pages[at].image.index) != index or
+            data.pages[at].image.access == PageAccess.Inaccessible:
+          return MachineResult[bool](status: MachineError.Fault,
+            failedPage: PageAddress(index * 4096'u32))
+  # After presence priority, at most eight byte checks select the first remaining access failure.
   for i in 0..<int(byte(width)):
     let physical = byteAddress(address, i)
     if physical < 0x10000'u32:

@@ -1,0 +1,11 @@
+{
+  "defines": [],
+  "directory": "codec",
+  "fixtures": [
+    "pvm_memory_access"
+  ],
+  "includes": [],
+  "libraries": [],
+  "observers": [],
+  "prepared": false
+}

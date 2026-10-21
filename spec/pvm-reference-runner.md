@@ -25,6 +25,7 @@ separate list of executable identities in the runner.
 | Reference probe | Native suite | Boundary checked |
 | --- | --- | --- |
 | Memory generator | `pvm_memory_boundary_reference` | Exact regenerated frozen bytes; scalar address/protection edges |
+| `memory` | `pvm_memory_access_reference` | Complete scalar forms, signed values, aliases and cross-page permissions with explicit GP-PVM-008 adaptation |
 | `registers` | `pvm_registers` | Independent arithmetic expectations, all posterior registers and trap PC |
 | `gas` | `pvm_gas` | Independent GP block prices versus public pipeline simulator; native affordability/cycles |
 | `control` | `pvm_conditional_control_reference` | Branch/load-jump programs, registers and exits with explicit PC representation |
@@ -75,7 +76,9 @@ Start with a meaningful common subset once its correctness comparisons pass; ful
 PVM completion is not a prerequisite. Validate equivalent results before timing,
 record hardware/toolchain/source pins and execution profiles, separate preparation
 or compilation from execution, and mark unavailable backends explicitly. A separate
-benchmark CI job can follow once measurements are reproducible. Do not split a
+benchmark CI job can follow once measurements are reproducible. The maintainer selected
+the GitHub Actions run summary as the primary Markdown table, with downloadable raw
+measurements and environment metadata alongside it. Do not split a
 coherent table into one PR per result or backend.
 
 The required [future fuzzing CI](graypaper-discrepancies.md#required-future-polkavm-fuzzing-ci)

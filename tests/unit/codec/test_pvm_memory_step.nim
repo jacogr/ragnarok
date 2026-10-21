@@ -190,7 +190,9 @@ for row in 0..<ops.len:
           let crossed = offset + uint64(width) > 4096
           let exit = (if not firstOk or (crossed and not secondOk): StepExit.Fault
             else: StepExit.Continued)
-          let fault = (if not firstOk: 65536'u32 else: 69632'u32)
+          let fault = (if not loading and crossed and first == PageAccess.ReadOnly and
+              second == PageAccess.Inaccessible: 69632'u32
+            elif not firstOk: 65536'u32 else: 69632'u32)
           witness(op, width, address, address + 1, high(uint64), false,
             [page(16, first, pattern), page(17, second, pattern)], exit, fault)
   # Distinct neighboring bytes catch wrong effective addresses, byte order and cross-page load assembly.

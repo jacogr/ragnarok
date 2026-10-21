@@ -109,6 +109,7 @@ for leftAccess in [PageAccess.Inaccessible, PageAccess.ReadOnly, PageAccess.Read
           var writeError = MachineError.None
           var readFault = 0'u32
           var writeFault = 0'u32
+          var missingFault = 0'u32
           var expected = 0'u64
           # The dense reference evaluates bytes in ascending order without production helper calls.
           for offset in 0..<width:
@@ -117,6 +118,9 @@ for leftAccess in [PageAccess.Inaccessible, PageAccess.ReadOnly, PageAccess.Read
             var access = PageAccess.Inaccessible
             # Only the two fixture pages are present; all others are independently inaccessible.
             if ordinal == 16 or ordinal == 17: access = inputs[ordinal - 16].access
+            # Presence priority is independent of writability: retain the first absent page separately.
+            if address >= 65536 and access == PageAccess.Inaccessible and missingFault == 0:
+              missingFault = uint32(ordinal * 4096)
             # Protected accesses dominate at these non-wrapping boundaries.
             if address < 65536:
               readError = MachineError.Panic
@@ -133,6 +137,9 @@ for leftAccess in [PageAccess.Inaccessible, PageAccess.ReadOnly, PageAccess.Read
                 # Expected bytes come directly from the input fixture, not a production load.
                 expected = expected or (uint64(inputs[ordinal - 16].bytes[address mod 4096]) shl (
                     8 * offset))
+          # GP-PVM-008 gives missing pages priority over an earlier read-only page for scalar writes.
+          if start >= 65536 and missingFault != 0:
+            writeFault = missingFault
           let read = load(memory, MemoryAddress(uint64(start)), AccessWidth(byte(width)))
           let written = store(memory, MemoryAddress(uint64(start)), AccessWidth(byte(width)),
               RegisterValue(0x8877665544332211'u64))
@@ -143,7 +150,7 @@ for leftAccess in [PageAccess.Inaccessible, PageAccess.ReadOnly, PageAccess.Read
             # Fault metadata is part of the reason, selected only after establishing Fault.
             assert uint32(read.faultPage) == readFault
           if writeError == MachineError.Fault:
-            # Failed cross-page stores expose no new snapshot and retain the earliest fault.
+            # Failed cross-page stores expose no new snapshot and retain the selected fault.
             assert uint32(written.faultPage) == writeFault
           # Both old pages remain byte-for-byte unchanged after success or failure.
           for i in 0..1:
