@@ -73,7 +73,43 @@ proc backendRefusals() =
   let key = checked(publicKey(seed))
   let signature = checked(sign(seed, []))
   assert verify(key, signature, [])
+  assert verifyZip215(key, signature, [])
+  assert not verifyZip215(key, signature, [byte 1])
   clearSeed(seed)
+
+# ZIP215 capability is explicit and differs from release verification for cofactored witnesses.
+proc zip215Policy() =
+  var signatureBytes: array[64, byte] = default(array[64, byte])
+  signatureBytes[0] = 1 # R is identity and S is zero.
+  let signature = checked(importSignature(signatureBytes))
+  let zeroKey = checked(importPublicKey(default(array[32, byte])))             # A has order four.
+  assert verifyZip215(zeroKey, signature, [])
+  assert verifyZip215(zeroKey, signature, [byte 0])
+  assert not verify(zeroKey, signature, []) # Foundation preserves release policy.
+  var noncanonical: array[32, byte] = default(array[32, byte])
+  for i in 0..<32: noncanonical[i] = 255 # y = p+1 encodes identity noncanonically.
+  noncanonical[0] = 238
+  noncanonical[31] = 127
+  let identity = checked(importPublicKey(noncanonical))
+  assert verifyZip215(identity, signature, [byte 7])
+  var invalid: array[32, byte] = default(array[32, byte])
+  invalid[0] = 2 # Current-upgrade null key is not a curve point.
+  assert not verifyZip215(checked(importPublicKey(invalid)), signature, [])
+  let order: array[32, byte] = [byte 0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58,
+    0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10]
+  for i in 0..<32: signatureBytes[i+32] = order[i] # S must be strictly below the group order.
+  assert not verifyZip215(identity, checked(importSignature(signatureBytes)), [])
+  for i in 32..<64: signatureBytes[i] = 0 # Restore the identity equation before testing R encoding.
+  for i in 0..<32: signatureBytes[i] = noncanonical[i]
+  assert verifyZip215(identity, checked(importSignature(signatureBytes)), [])
+  for i in 0..<32: signatureBytes[i] = 0
+  signatureBytes[0] = 2 # Invalid R must fail even with a valid identity public key.
+  assert not verifyZip215(identity, checked(importSignature(signatureBytes)), [])
+  signatureBytes[0] = 1
+  signatureBytes[32] = 1 # Nonzero S cannot satisfy the identity equation.
+  assert not verifyZip215(identity, checked(importSignature(signatureBytes)), [])
+
+zip215Policy()
 
 lastOwner()
 explicitClear()

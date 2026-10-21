@@ -19,6 +19,8 @@ int rc_ed_public(const uint8_t seed[32], uint8_t out[32]);
 int rc_ed_sign(const uint8_t seed[32], const uint8_t *message, size_t length, uint8_t out[64]);
 /* Return 1 for accepted fixed encodings/message, 0 for invalid signatures or missing nonempty input. */
 int rc_ed_verify(const uint8_t public_key[32], const uint8_t signature[64], const uint8_t *message, size_t length);
+/* Explicit ZIP215 verification; release protocol selection remains rc_ed_verify. */
+int rc_ed_verify_zip215(const uint8_t public_key[32], const uint8_t signature[64], const uint8_t *message, size_t length);
 /* Erase caller-owned storage explicitly; no pointer is retained. */
 void rc_wipe(void *data, size_t length);
 #endif

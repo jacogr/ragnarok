@@ -15,7 +15,7 @@ proc wipe(bytes: pointer, length: csize_t) {.importc: "rc_wipe", header: Header,
 # The bridge owns only ephemeral native scratch and copies a complete 32-byte digest to output.
 proc nativeBlake(data: pointer, length: csize_t, output: pointer): cint {.importc: "rc_blake2b256",
     header: Header, cdecl, raises: [], gcsafe.}
-# Legacy Keccak parameters and opaque native state stay on the C stack.
+# Legacy Keccak parameters and opaque native state stay behind the synchronous Rust ABI.
 proc nativeKeccak(data: pointer, length: csize_t, output: pointer): cint {.importc: "rc_keccak256",
     header: Header, cdecl, raises: [], gcsafe.}
 # Derive public bytes from a borrowed 32-byte seed; expanded secret scratch is erased before return.
@@ -27,6 +27,12 @@ proc nativeSign(seed, data: pointer, length: csize_t,
 # Report the pinned BoringSSL verification verdict without inventing an application domain/prehash mode.
 proc nativeVerify(key, signature, data: pointer, length: csize_t): cint {.importc: "rc_ed_verify",
     header: Header, cdecl, raises: [], gcsafe.}
+
+# Explicit capability for the coordinated specification upgrade; ordinary verify keeps release policy.
+proc nativeVerifyZip215(key, signature, data: pointer,
+    length: csize_t): cint {.importc: "rc_ed_verify_zip215",
+
+header: Header, cdecl, raises: [], gcsafe.}
 
 type
   Blake2bHash* = distinct array[32, byte] ## Nominal 32-byte Blake2b digest; not interchangeable with a Keccak hash or signing key.
@@ -139,7 +145,7 @@ proc sign*(seed: EdSeed, message: openArray[byte]): CryptoResult[EdSignature] {.
   if storage == nil or not storage.alive: return CryptoResult[EdSignature](
       status: CryptoError.InvalidSeed)
   var output: array[64, byte] = default(array[64, byte])
-  # Allocation/backend failures have no signature payload; all expanded secret scratch is wiped in C.
+  # Allocation/backend failures have no signature payload; all expanded secret scratch is wiped by Rust drop guards.
   if nativeSign(addr storage.bytes[0], dataPointer(message), csize_t(message.len), addr output[0]) != 1:
     return CryptoResult[EdSignature](status: CryptoError.BackendFailure)
   CryptoResult[EdSignature](status: CryptoError.None, completed: EdSignature(output))
@@ -149,4 +155,12 @@ proc verify*(key: EdPublicKey, signature: EdSignature, message: openArray[byte])
   var publicBytes = array[32, byte](key)
   var signatureBytes = array[64, byte](signature)
   nativeVerify(addr publicBytes[0], addr signatureBytes[0], dataPointer(message), csize_t(
+      message.len)) == 1
+
+proc verifyZip215*(key: EdPublicKey, signature: EdSignature, message: openArray[
+    byte]): bool {.raises: [], gcsafe.} =
+  ## Check the ZIP215 equation and encoding rules explicitly; does not change release protocol verification.
+  var publicBytes = array[32, byte](key)
+  var signatureBytes = array[64, byte](signature)
+  nativeVerifyZip215(addr publicBytes[0], addr signatureBytes[0], dataPointer(message), csize_t(
       message.len)) == 1

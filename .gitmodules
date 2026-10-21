@@ -4,9 +4,6 @@
 [submodule "vendor/boringssl"]
 	path = vendor/boringssl
 	url = https://github.com/vacp2p/boringssl.git
-[submodule "vendor/xkcp"]
-	path = vendor/xkcp
-	url = https://github.com/XKCP/XKCP.git
 [submodule "vendor/ark-vrf"]
 	path = vendor/ark-vrf
 	url = https://github.com/davxy/ark-vrf.git

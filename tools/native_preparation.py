@@ -29,7 +29,7 @@ def prepare_libraries(folder, record=None, required=None):
     sys.path.insert(0, str(ROOT/'tests'))
     libraries, evidence, certificates = {}, {}, None
     if requested.intersection({'crypto', 'observer'}):
-        # Production and observed crypto share one provider; skip unrelated Rust/transport providers.
+        # Production and observed crypto share one provider; also checks the shared Rust primitive closure; skip transport preparation.
         from nimony_crypto import prepare as prepare_crypto
         crypto, observer, evidence['crypto_native'] = prepare_crypto(folder)
         record_evidence(record, 'crypto_native', evidence['crypto_native'])

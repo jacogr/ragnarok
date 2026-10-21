@@ -10,8 +10,7 @@ python3 tools/setup_submodules.py
 | Submodule | Purpose |
 | --- | --- |
 | `vendor/lsquic` | QUIC transport, including its recorded QPACK/HPACK children |
-| `vendor/boringssl` | TLS, Blake2b-256 and Ed25519 |
-| `vendor/xkcp` | Legacy Keccak-256 and its recorded build-tool sources |
+| `vendor/boringssl` | TLS and release-policy Ed25519 verification |
 | `vendor/ark-vrf` | Draft-29 release-reference ark-vrf 0.2.2 backend |
 | `vendor/bandersnatch-vrf-spec` | Published historical suite vectors and SRS |
 | `vendor/graypaper` | Pinned Gray Paper specification |
@@ -32,7 +31,7 @@ provisioning. `--fetch` initializes required submodules and permits missing lock
 to be downloaded. No test runner silently advances gitlinks or patches upstream code.
 
 Project bridges live under `native/`: C handles primitive/transport integration, Rust handles
-Bandersnatch primitives, and Nim under `src/` owns JAM codec/domain/identity policy. Upstream licenses
+Bandersnatch and ordinary crypto primitives, and Nim under `src/` owns JAM codec/domain/identity policy. Upstream licenses
 remain in the source submodules; project-authored boundary and derived fixtures stay under `vectors/`.
 Derived JAM fixtures are checked against their complete original upstream cases.
 

@@ -6,6 +6,8 @@
 //!
 //! Exposes bs_* C ABI functions for owned keys/setups, signing, verification and ring
 //! commitments; Rust allocations remain behind opaque handles.
+mod primitives;
+
 use ark_vrf::{
     reexports::ark_serialize::{CanonicalDeserialize, CanonicalSerialize},
     suites::bandersnatch as bs,

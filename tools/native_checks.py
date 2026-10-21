@@ -68,7 +68,8 @@ class NativeChecks:
             flags += ['--passL:-fuse-ld=lld']
         if crypto_library is not None:
             # Crypto clients use the maintained public C header and one explicit native library.
-            flags += [f'--passC:-I{ROOT/"native/crypto"}', f'--passL:{crypto_library}']
+            flags += [f'--passC:-I{ROOT/"native/crypto"}', f'--passL:{crypto_library}',
+                      f'--passL:-Wl,-rpath,{crypto_library.parent}']
         if quic_library is not None:
             # QUIC clients use the unchanged maintained bridge and its public headers.
             flags += [f'--passC:-I{ROOT/"native/quic"}', f'--passL:{quic_library}',

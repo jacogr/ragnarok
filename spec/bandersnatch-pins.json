@@ -40,7 +40,7 @@
     "sha256": "1d7d27e4f5f3c6190989bea58803180d3e19f725a57069392a405ac78b233c7d",
     "provenance": "Specification public SRS derived from the Zcash Powers of Tau ceremony; 6145 G1 and 2 G2 points; no insecure seed-generated setup."
   },
-  "cargo_lock_sha256": "5deddfc63338641c19f6056ba7450962d569d1773be5e4ff0856479f1abbf173",
+  "cargo_lock_sha256": "a52edd626c9df025ed40306081132d7adaf4cdbb170d8221c006b41529583806",
   "official_jam": {
     "repository": "davxy/jam-test-vectors",
     "commit": "d3c089c9a1d5352ad353626d7a2db8589f137b2a",

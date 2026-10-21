@@ -12,3 +12,6 @@ nimcache/
 __pycache__/
 *.pyc
 *.pyo
+
+# Retired dependency checkout may remain locally; it is no longer provisioned.
+/vendor/xkcp/
