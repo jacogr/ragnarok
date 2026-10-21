@@ -217,8 +217,7 @@ def application_download_sequence(context):
     return observed
 
 
-@PLAN.workload
-def application_remote_ancestors(context):
+def ancestor_executable(context, *, discovery=False):
     """Verify real executable ancestor acquisition, complete maps, managed restart and atomic refusal."""
     import hashlib
     import os
@@ -241,13 +240,25 @@ def application_remote_ancestors(context):
                     raise ValueError('Remote ancestry fixture mismatch: '+str(path))
             environment = dict(os.environ, **{name: str(path) for name, path in inputs.items()})
             try:
-                result = observe(peer, responder, context.checks.folder/'remote-ancestor-work', environment)
+                result = observe(peer, responder, context.checks.folder/('discovery-ancestor-work' if discovery else 'remote-ancestor-work'), environment, discovery=discovery)
                 observed.update(run=result, fixtures={str(path): digest for path, digest in files},
                     passed=result['passed'])
             except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
                 observed['failure'] = str(error) # Protocol, CLI, process and cleanup failures remain this workload's own verdict.
-    announce('executable remote ancestor context', observed['passed'])
+    announce('executable on-demand ancestor context' if discovery else 'executable remote ancestor context', observed['passed'])
     return observed
+
+
+@PLAN.workload
+def application_remote_ancestors(context):
+    """Verify explicit up-front acquisition through the shared actual executable/map witness."""
+    return ancestor_executable(context)
+
+
+@PLAN.workload
+def application_discovery_ancestors(context):
+    """Verify child-driven acquisition, deadline/refusal, managed restart and successive-child reconnect."""
+    return ancestor_executable(context, discovery=True)
 
 
 # Preserve this task and its original checks in dependency order.
