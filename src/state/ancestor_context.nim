@@ -13,7 +13,8 @@ type
     headers*: ElementLimit
     maxBytes*: ByteLimit
   AncestorContextError* {.pure.} = enum ## Refusal contains no validated prefix or fabricated chain.
-    Uninitialized, None, LimitExceeded, InvalidHeader, BrokenAncestry, BackendFailure, InvalidIndex
+    Uninitialized, None, LimitExceeded, InvalidHeader, BrokenAncestry, BackendFailure, InvalidIndex,
+    MissingLookupAnchor, WrongLookupSlot, MissingLookupChild, WrongLookupState
   AncestorContextData = ref object ## Private acyclic immutable owners and corresponding full sealed identities.
     headers: seq[OwnedHeader]
     hashes: seq[HeaderParent]
@@ -130,3 +131,22 @@ proc extendAncestorContext*(context: AncestorContext, older: openArray[OwnedHead
   for index, owner in older:
     combined[retained - 1 + index] = owner # Count proof bounds every descriptor before allocation/indexing.
   captureAncestorContext(data.headers[0], combined, limits)
+
+proc findLookupAnchor*(context: AncestorContext, hash: HeaderParent, slot: HeaderSlot,
+    root: PriorStateRoot): AncestorContextResult[int] =
+  ## Locate the exact sealed hash/slot and prove its posterior root using the retained newer child's prior root.
+  let data = context.data
+  if data == nil:
+    return AncestorContextResult[int](status: AncestorContextError.Uninitialized)
+  for index, identity in data.hashes:
+    # A hash with the wrong slot or no retained child is a permanent mismatch, never an older-header hint.
+    if array[32, byte](identity) != array[32, byte](hash): continue
+    if uint32(data.headers[index].headerInfo.value.unsigned.slot) != uint32(slot):
+      return AncestorContextResult[int](status: AncestorContextError.WrongLookupSlot)
+    if index == 0:
+      return AncestorContextResult[int](status: AncestorContextError.MissingLookupChild)
+    if array[32, byte](data.headers[index - 1].headerInfo.value.unsigned.priorState) != array[32,
+        byte](root):
+      return AncestorContextResult[int](status: AncestorContextError.WrongLookupState)
+    return AncestorContextResult[int](status: AncestorContextError.None, completed: index)
+  AncestorContextResult[int](status: AncestorContextError.MissingLookupAnchor)
