@@ -1,0 +1,187 @@
+{
+  "source": "tests/native/pvm_assured_execution.nim",
+  "build_name": "pvm-assured-execution",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-assured-execution-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured execution default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-assured-execution-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured execution source"
+    },
+    {
+      "identity": {
+        "origin": "profile"
+      },
+      "arguments": [
+        "profile"
+      ],
+      "name": "pvm-assured-execution-profile",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured execution profile"
+    },
+    {
+      "identity": {
+        "origin": "round"
+      },
+      "arguments": [
+        "round"
+      ],
+      "name": "pvm-assured-execution-round",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured execution round"
+    },
+    {
+      "identity": {
+        "origin": "runner"
+      },
+      "arguments": [
+        "runner"
+      ],
+      "name": "pvm-assured-execution-runner",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured execution runner"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-assured-execution-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured execution owner"
+    },
+    {
+      "identity": {
+        "origin": "completed"
+      },
+      "arguments": [
+        "completed"
+      ],
+      "name": "pvm-assured-execution-completed",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured execution completed"
+    },
+    {
+      "identity": {
+        "origin": "parameters"
+      },
+      "arguments": [
+        "parameters"
+      ],
+      "name": "pvm-assured-execution-parameters",
+      "diagnostic": "outcome.status == None",
+      "description": "Assured execution parameters"
+    },
+    {
+      "identity": {
+        "origin": "roundFailure-default"
+      },
+      "arguments": [
+        "roundFailure-default"
+      ],
+      "name": "pvm-assured-execution-roundFailure-default",
+      "diagnostic": "outcome.status == RoundFailure",
+      "description": "Assured execution roundFailure-default"
+    },
+    {
+      "identity": {
+        "origin": "roundFailure-success"
+      },
+      "arguments": [
+        "roundFailure-success"
+      ],
+      "name": "pvm-assured-execution-roundFailure-success",
+      "diagnostic": "outcome.status == RoundFailure",
+      "description": "Assured execution roundFailure-success"
+    },
+    {
+      "identity": {
+        "origin": "roundFailure-source"
+      },
+      "arguments": [
+        "roundFailure-source"
+      ],
+      "name": "pvm-assured-execution-roundFailure-source",
+      "diagnostic": "outcome.status == RoundFailure",
+      "description": "Assured execution roundFailure-source"
+    },
+    {
+      "identity": {
+        "origin": "roundFailure-other"
+      },
+      "arguments": [
+        "roundFailure-other"
+      ],
+      "name": "pvm-assured-execution-roundFailure-other",
+      "diagnostic": "outcome.status == RoundFailure",
+      "description": "Assured execution roundFailure-other"
+    },
+    {
+      "identity": {
+        "origin": "runnerFailure-default"
+      },
+      "arguments": [
+        "runnerFailure-default"
+      ],
+      "name": "pvm-assured-execution-runnerFailure-default",
+      "diagnostic": "outcome.status == RunnerFailure",
+      "description": "Assured execution runnerFailure-default"
+    },
+    {
+      "identity": {
+        "origin": "runnerFailure-success"
+      },
+      "arguments": [
+        "runnerFailure-success"
+      ],
+      "name": "pvm-assured-execution-runnerFailure-success",
+      "diagnostic": "outcome.status == RunnerFailure",
+      "description": "Assured execution runnerFailure-success"
+    },
+    {
+      "identity": {
+        "origin": "runnerFailure-source"
+      },
+      "arguments": [
+        "runnerFailure-source"
+      ],
+      "name": "pvm-assured-execution-runnerFailure-source",
+      "diagnostic": "outcome.status == RunnerFailure",
+      "description": "Assured execution runnerFailure-source"
+    },
+    {
+      "identity": {
+        "origin": "runnerFailure-other"
+      },
+      "arguments": [
+        "runnerFailure-other"
+      ],
+      "name": "pvm-assured-execution-runnerFailure-other",
+      "diagnostic": "outcome.status == RunnerFailure",
+      "description": "Assured execution runnerFailure-other"
+    }
+  ]
+}
