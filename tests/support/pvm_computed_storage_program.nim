@@ -9,15 +9,21 @@ import ../../src/codec/[bounded, composite, work_package, work_digest]
 import ./[pvm_refinement_outcome, pvm_input_refinement, pvm_extrinsic_inputs, pvm_import_inputs]
 
 type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection; defaults preserve every earlier zero-output witness.
-  Disabled, Commit, Panic, Underfunded
+  Disabled, Commit, Panic, Underfunded, CheckpointCommit, CheckpointPanic
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   ## Jump from refinement entry0 to its own empty output; real accumulation entry5 writes RO key11 and RW value21/22/23.
   assert mode != ComputedStorageMode.Disabled
   var body = @[refinementImmediate(7, 65536), refinementImmediate(8, 1),
-    refinementImmediate(9, 196608), refinementImmediate(10, 3), @[10'u8, 5],
-    refinementImmediate(8, 0)]
-  if mode == ComputedStorageMode.Panic:
+    refinementImmediate(9, 196608), refinementImmediate(10, 3), @[10'u8, 5]]
+  if mode in {ComputedStorageMode.CheckpointCommit, ComputedStorageMode.CheckpointPanic}:
+    # Checkpoint changes r7, so independently reload every actual pointer/length before the later write.
+    body.add(@[10'u8, 18])
+    for instruction in [refinementImmediate(7, 65536), refinementImmediate(8, 1),
+      refinementImmediate(9, 196609), refinementImmediate(10, 2), @[10'u8, 5]]:
+      body.add(instruction) # Same raw key proves one provenance descriptor can retain multiple real mutations.
+  body.add(refinementImmediate(8, 0))
+  if mode in {ComputedStorageMode.Panic, ComputedStorageMode.CheckpointPanic}:
     body.add(@[0'u8]) # The real trap selects the prior exceptional implication after a completed write.
   else:
     body.add(@[50'u8, 0]) # Halt selects regular effects, including an admitted write or unchanged FULL state.
