@@ -282,6 +282,7 @@ proc decodeProofView*(input: openArray[byte], expectedRoot: StateRoot,
   var queries = newSeq[StateProofQuery](int(count))
   var offset = 8
   var bytes = 0'u64
+  var nodes = 0'u64
   for i in 0..<int(count):
     # Every fixed record header and variable witness extent is checked before access or slicing.
     if input.len-offset < 35:
@@ -298,6 +299,18 @@ proc decodeProofView*(input: openArray[byte], expectedRoot: StateRoot,
     let query = StateKey(key)
     if i > 0 and compareKey(queries[i-1].key, query) >= 0:
       return ProofViewResult[ProofView](status: ProofViewError.NonCanonical)
+    # Preflight remaining aggregate allowances from the fixed inner header before copying this witness.
+    let declaredNodes = uint64(input[offset+4]) or (uint64(input[offset+5]) shl 8)
+    var declaredBytes = 0'u64
+    for j in 0..<4:
+      declaredBytes = declaredBytes or (uint64(input[offset+6+j]) shl (8*j))
+    if declaredNodes > uint64(aggregate.nodes)-nodes or
+        declaredBytes > uint64(aggregate.valueBytes)-bytes:
+      return ProofViewResult[ProofView](status: ProofViewError.ProofFailure,
+        proofReason: StateProofError.LimitExceeded)
+    if declaredBytes > uint64(limits.valueBytes)-bytes:
+      return ProofViewResult[ProofView](status: ProofViewError.LimitExceeded)
+    nodes += declaredNodes
     let decoded = decodeStateProof(input.toOpenArray(offset, offset+int(size)-1), perProof, wireBytes)
     if decoded.error != StateProofError.None:
       return ProofViewResult[ProofView](status: ProofViewError.ProofFailure,

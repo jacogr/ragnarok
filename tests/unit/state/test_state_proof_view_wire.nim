@@ -66,5 +66,15 @@ proc main() =
     aggregate, ByteLimit(300)).error == ProofViewError.LimitExceeded
   assert decodeProofView(encodeProofView(empty, budget, limits, ByteLimit(8)).value,
     root, budget, limits, aggregate, ByteLimit(8)).value.valid
+  var shortAggregate = aggregate
+  shortAggregate.nodes = ElementLimit(1)
+  let shortNodes = decodeProofView(encoded, root, budget, limits, shortAggregate, ByteLimit(300))
+  assert shortNodes.error == ProofViewError.ProofFailure and shortNodes.proofError ==
+      StateProofError.LimitExceeded
+  shortAggregate = aggregate
+  shortAggregate.valueBytes = ByteLimit(0)
+  let shortBytes = decodeProofView(encoded, root, budget, limits, shortAggregate, ByteLimit(300))
+  assert shortBytes.error == ProofViewError.ProofFailure and shortBytes.proofError ==
+      StateProofError.LimitExceeded
   echo "state-proof-view-wire: ok"
 main()

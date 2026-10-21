@@ -40,7 +40,8 @@ Encoding preflights per-proof and aggregate output extents before allocation and
 preserves the precise nested proof refusal. No network protocol is introduced.
 
 Collection decoding bounds declared counts by both policy and minimum physical input
-size before allocating scratch. It requires strictly sorted unique keys, canonical
+size before allocating scratch. Aggregate node/value allowances must fit before each
+individual witness is copied. It requires strictly sorted unique keys, canonical
 inner witnesses and exact EOF, then verifies every proof under the separately supplied
 root atomically. Wrong roots/values preserve precise nested reasons; no verified
 prefix escapes a later failure. Every truncated original prefix is a negative witness.
