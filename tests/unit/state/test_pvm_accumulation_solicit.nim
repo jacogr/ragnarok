@@ -81,14 +81,15 @@ proc source(present = false, history = requestedHistory(), length = 3'u32, offer
     writes = writes, slot = HeaderSlot(slot), spareEntries = 4)
 
 # Independent bounded policy grants only this invocation's actual mutation/provision capacities.
-proc run(prepared: PreparedAccumulationMachine, copy = 128'u64, params = parameters()): AccumulationDispatchResult =
+proc run(prepared: PreparedAccumulationMachine, copy = 128'u64, params = parameters(),
+    traces = 0'u64): AccumulationDispatchResult =
   executeAccumulationMachine(prepared, params,
     FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1), operand: OperandLimits(
         maxBytes: ByteLimit(132))),
     MemoryByteLimit(copy), ExecutionStepLimit(100), HostCallLimit(10), GasCycleLimit(1000),
         pvmContextConfig(),
     provisionLimits = AccumulationProvisionLimits(items: ElementLimit(1), perBlob: ByteLimit(3),
-        totalBlobBytes: ByteLimit(3)))
+        totalBlobBytes: ByteLimit(3)), accountWriteKeys = ElementLimit(traces))
 
 # Basic-block instruction prices remain independent from the fixed 2193 host fee.
 proc price(prepared: PreparedAccumulationMachine): uint64 =
@@ -115,10 +116,9 @@ proc resultCode(done: AccumulationDispatchResult, code: uint64, second = 196608'
         $uint64(cpu.registers[8])
 
 
-# Foreign supervised mutations are explicit local gates; current self selection remains executable.
-assert run(source(selector = 99)).error == AccumulationDispatchError.UnsupportedHostCall
-assert run(source(selector = 0x10000002a'u64)).error ==
-    AccumulationDispatchError.UnsupportedHostCall
+# An existing unsupervised foreign account is HUH; full-width out-of-domain selection is WHO.
+resultCode(run(source(selector = 99)), high(uint64)-8)
+resultCode(run(source(selector = 0x10000002a'u64)), high(uint64)-3)
 resultCode(run(source(selector = 42)), 0)
 let valid = source()
 let done = run(valid)
@@ -333,10 +333,104 @@ for checkpoint in [false, true]:
   let selectedOog = normalizeAccumulationOutcome(exhausted).value.outcomeContext.value
   assert selectedOog.effectRequestHistory(hash, RequestLength(3)).error ==
     (if checkpoint: AccumulationEffectError.None else: AccumulationEffectError.NotRequested), "OOG selects matching request/footprint checkpoint"
+# Foreign request fixtures use the same hash but independent account, history and preimage namespaces.
+proc foreignRows(present = false, history = requestedHistory(), supervisor = 42'u32,
+    incarnation = 0'u32, balance = 1000'u64, protected = 17'u64): seq[StateEntry] =
+  ## The invoker was created at slot0; target timestamps are deliberately different from invocation time.
+  result = @[serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(supervisor: ServiceIndex(
+      supervisor), supervisorCreated: AccountSlot(incarnation), balance: AccountBalance(balance),
+          supervisorBalance: AccountBalance(protected),
+      storageItems: AccountStorageItems(if present: 2'u32 else: 0'u32),
+      storageBytes: AccountStorageBytes(if present: 84'u64 else: 0'u64),
+      created: AccountSlot(7), lastAccumulation: AccountSlot(11), parent: ServiceIndex(13)),
+          ByteLimit(ServiceMetadataBytes)).value]
+  if present:
+    result.add(serviceRequestEntry(ServiceIndex(77), hash, RequestLength(3), history, config).value)
+    result.add(servicePreimageEntry(ServiceIndex(77), hash, blob,
+        ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(
+            3))).value) # Stored bytes expose accidental cross-namespace deletion.
+let targetKey = chapterServiceKey(StateChapter(255), ServiceIndex(77))
+let targetPreimage = servicePreimageKey(ServiceIndex(77), hash, ByteLimit(32)).value
+# Invalid lengths remain HUH before memory and target selection; valid memory faults precede WHO.
+for selector in [100'u64, 0x10000002a'u64]:
+  let unknown = source(selector = selector)
+  failHash(1)
+  let rejected = run(unknown)
+  resultCode(rejected, high(uint64)-3)
+  assert hashCalls() == 0, "WHO precedes namespace work"
+  failHash(0)
+  let invalid = run(source(selector = selector, offered = high(uint64), address = high(uint64)), copy = 0)
+  resultCode(invalid, high(uint64)-8, high(uint64))
+  assert run(source(selector = selector, address = high(uint64))).value.exit == StepExit.Panic,
+      "valid-length memory panic precedes target WHO"
+for rows in [foreignRows(supervisor = 77), foreignRows(incarnation = 1)]:
+  let prepared = source(selector = 77, extra = rows)
+  failHash(1)
+  resultCode(run(prepared), high(uint64)-8)
+  assert hashCalls() == 0, "foreign authority refusal precedes request hashing"
+  failHash(0)
+# Creation and restoration use only target funding/counters and append the actual invocation slot128.
+for present in [false, true]:
+  let rows = foreignRows(present, unavailableHistory(RequestSlot(4), RequestSlot(7)))
+  let completed = run(source(selector = 77, extra = rows))
+  resultCode(completed, 0)
+  let selected = context(completed)
+  let history = selected.effectServiceRequestHistory(ServiceIndex(77), hash, RequestLength(3)).value
+  assert history.state == (if present: RequestState.Reavailable else: RequestState.Requested),
+      "target creation/restoration selects exact history shape"
+  if present:
+    assert uint32(history.originalFrom) == 4 and uint32(history.removedAt) == 7 and uint32(
+        history.restoredAt) == 128,
+        "restoration uses invocation time rather than target timestamps"
+    assert selected.effectAccounts.value.lookup(targetPreimage).value.bytes == blob,
+        "restoration retains target preimage"
+  let facts = decodeServiceMetadata(selected.effectAccounts.value.lookup(targetKey).value.bytes,
+      ByteLimit(ServiceMetadataBytes)).value.metadata
+  assert uint32(facts.storageItems) == 2 and uint64(facts.storageBytes) == 84,
+      "target reservation footprint is exact"
+  let selfKey = chapterServiceKey(StateChapter(255), ServiceIndex(42))
+  assert selected.effectAccounts.value.lookup(selfKey).value.bytes == context(completed,
+      AccumulationDimension.Exceptional).effectAccounts.value.lookup(selfKey).value.bytes,
+      "foreign request leaves invoker metadata unchanged"
+  assert selected.effectAccountScope.value == AccumulationAccountScope.Unsupported,
+      "foreign requests require parallel modified-account selection"
+for protected in [265'u64, 266]:
+  let completed = run(source(selector = 77, extra = foreignRows(balance = 0,
+      protected = protected)))
+  resultCode(completed, if protected == 266: 0'u64 else: high(uint64)-4)
+  assert uint64(decodeServiceMetadata(context(completed).effectAccounts.value.lookup(
+      targetKey).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata.supervisorBalance) ==
+          protected,
+      "target funding combines balances without debiting protected funds"
+let foreignSource = source(selector = 77, extra = foreignRows())
+let tracedForeign = run(foreignSource, traces = 1)
+let laterSelf = recordAccumulationSolicit(tracedForeign.effects, hash, RequestLength(3), parameters()).value
+assert laterSelf.effectContext(AccumulationDimension.Regular).value.effectAccountScope.value ==
+    AccumulationAccountScope.Unsupported,
+    "enabled self tracing cannot erase foreign request ancestry"
+for checkpoint in [false, true]:
+  let failed = run(source(selector = 77, extra = foreignRows(), suffix = (if checkpoint:
+    @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])))
+  let selected = normalizeAccumulationOutcome(failed).value.outcomeContext.value
+  assert (selected.effectServiceRequestHistory(ServiceIndex(77), hash, RequestLength(3)).error ==
+      AccumulationEffectError.None) == checkpoint,
+      "panic retains precisely the selected foreign creation checkpoint"
+let foreignPair = prepareAccumulationEffects(prepareAccumulationContexts(
+    foreignSource.machineBootstrap.value, pvmContextConfig()).value).value
+for successful in [0, 1, 3]:
+  failAfter(cint(successful))
+  let refused = recordAccumulationSolicit(foreignPair, hash, RequestLength(3), parameters(),
+      ServiceIndex(77))
+  assert refused.error == AccumulationEffectError.BackendFailure, "foreign request namespace/store refusal is atomic"
+  failHash(0)
+assert run(source(selector = 77, extra = foreignRows(), writes = 1)).error ==
+    AccumulationDispatchError.LimitExceeded,
+    "fresh foreign reservation requires both request and metadata writes"
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let completed = run(valid)
   resultCode(completed, 0) # Release request/metadata candidates, CPU and complete-map snapshots every cycle.
+  resultCode(run(foreignSource), 0) # Release the target account/history successor alongside the self successor.
 let after = getOccupiedMem()
 assert before == after, "solicit releases all ARC-owned versions"
 recordArcRelease("pvm_accumulation_solicit", 1000, before, after)

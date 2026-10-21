@@ -64,7 +64,7 @@ proc source(history = availableHistory(RequestSlot(4)), present = true, length =
     credit = 100000'u64, slot = 20000'u32, writes = 3'u64,
     items = 2'u32, octets = 84'u64, preimage = true, malformed = false,
     wire: seq[byte] = @[], data: seq[byte] = @[], suffix: seq[seq[byte]] = @[@[50'u8, 0]],
-    extra: seq[StateEntry] = @[]): PreparedAccumulationMachine =
+    extra: seq[StateEntry] = @[], host = 26'u8): PreparedAccumulationMachine =
   var entries = extra
   entries.add(serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(
       ServiceMetadataBytes)).value)
@@ -84,7 +84,7 @@ proc source(history = availableHistory(RequestSlot(4)), present = true, length =
   if input.len == 0:
     input = payload(lookupHash) # Vector identity and authored hashes use exactly the same capture path.
   var instructions = @[registerImmediate(7, selector), registerImmediate(8, address),
-    registerImmediate(9, offered), @[10'u8, 26]]
+    registerImmediate(9, offered), @[10'u8, host]]
   for instruction in suffix:
     instructions.add(instruction) # Later hosts observe this exact current implication version.
   guestProgram(instructions, credit, extra = entries, writable = input, writes = writes,
@@ -93,14 +93,15 @@ proc source(history = availableHistory(RequestSlot(4)), present = true, length =
     slot = HeaderSlot(slot), spareEntries = 4, service = ServiceIndex(service))
 
 # Explicit capture and execution capacities keep protocol HUH separate from local refusal.
-proc run(prepared: PreparedAccumulationMachine, copy = 128'u64, params = parameters()): AccumulationDispatchResult =
+proc run(prepared: PreparedAccumulationMachine, copy = 128'u64, params = parameters(),
+    traces = 0'u64): AccumulationDispatchResult =
   executeAccumulationMachine(prepared, params,
     FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1), operand: OperandLimits(
         maxBytes: ByteLimit(132))),
     MemoryByteLimit(copy), ExecutionStepLimit(100), HostCallLimit(10), GasCycleLimit(1000),
         pvmContextConfig(),
     provisionLimits = AccumulationProvisionLimits(items: ElementLimit(1), perBlob: ByteLimit(3),
-        totalBlobBytes: ByteLimit(3)))
+        totalBlobBytes: ByteLimit(3)), accountWriteKeys = ElementLimit(traces))
 
 # Inspect basic-block instruction pricing independently of fixed forget gas.
 proc price(prepared: PreparedAccumulationMachine): uint64 =
@@ -128,19 +129,18 @@ proc resultCode(done: AccumulationDispatchResult, code: uint64, second = 196608'
         $uint64(cpu.registers[8])
 
 
-# A removal makes both selected maps absent and subtracts only that request's footprint.
+# A removal drops its request and only the preimage selected by the current Omega_F row.
 proc removed(owner: AccumulationEffectContext, lookupHash = authoredHash(), length = 3'u32,
-    service = 42'u32) =
+    service = 42'u32, preimageRemoved = true) =
   assert owner.effectRequestHistory(lookupHash, RequestLength(length)).error ==
       AccumulationEffectError.NotRequested, "request is absent after removal"
   assert owner.effectAccounts.value.lookup(servicePreimageKey(ServiceIndex(service), lookupHash,
-      ByteLimit(32)).value).error == StateStoreError.MissingKey,
-    "retained preimage is absent after removal"
+      ByteLimit(32)).value).error == (if preimageRemoved: StateStoreError.MissingKey else: StateStoreError.None),
+    "preimage presence follows the selected current-paper row"
 
-# Foreign supervised mutations are explicit local gates; current self selection remains executable.
-assert run(source(selector = 99)).error == AccumulationDispatchError.UnsupportedHostCall
-assert run(source(selector = 0x10000002a'u64)).error ==
-    AccumulationDispatchError.UnsupportedHostCall
+# An existing unsupervised foreign account is HUH; full-width out-of-domain selection is WHO.
+resultCode(run(source(selector = 99)), high(uint64)-8)
+resultCode(run(source(selector = 0x10000002a'u64)), high(uint64)-3)
 resultCode(run(source(selector = 42)), 0)
 let valid = source()
 let done = run(valid)
@@ -182,7 +182,7 @@ assert uint32(metadata(context(vector), 0).storageItems) == 0 and uint64(metadat
 for slot in [0'u32, 128, high(uint32)]:
   let empty = run(source(history = requestedHistory(), slot = slot))
   resultCode(empty, 0)
-  removed(context(empty)) # Immediate empty deletion has no invented timestamp or age condition.
+  removed(context(empty), preimageRemoved = false) # Empty deletion removes only the request without an age condition.
   let available = run(source(history = availableHistory(RequestSlot(high(uint32))), slot = slot, writes = 1))
   let history = context(available).effectRequestHistory(hash, RequestLength(3)).value
   assert uint32(history.availableFrom) == high(uint32) and uint32(history.unavailableFrom) == slot,
@@ -317,10 +317,15 @@ for successful in [0, 1, 2, 4]:
   assert owner.effectRequestHistory(hash, RequestLength(3)).value.state ==
       RequestState.Requested and uint32(metadata(owner).storageItems) == 2,
     "failed removal retains history and footprint"
-for writes in [0'u64, 1, 2]:
+for writes in [0'u64, 1]:
   assert run(source(history = requestedHistory(), writes = writes)).error ==
       AccumulationDispatchError.LimitExceeded,
-    "distinct-key removal requires atomic three-write policy"
+    "empty request removal requires its metadata and request writes"
+resultCode(run(source(history = requestedHistory(), writes = 2)), 0)
+assert run(source(history = unavailableHistory(RequestSlot(4), RequestSlot(799)),
+    writes = 2)).error ==
+
+AccumulationDispatchError.LimitExceeded, "expired two-slot removal requires atomic three-write policy"
 assert run(source(writes = 0)).error == AccumulationDispatchError.LimitExceeded, "history replacement needs one write"
 resultCode(run(source(writes = 1)), 0)
 # Pending transfer/provision/yield owners survive deletion even when their source request is forgotten later.
@@ -336,7 +341,7 @@ let sent = commitAccumulationTransfer(plan, ElementLimit(1)).value
 let checkpointed = checkpointAccumulationEffects(sent).value
 let changed = recordAccumulationForget(checkpointed, hash, RequestLength(3), parameters()).value
 let retained = changed.effectContext(AccumulationDimension.Regular).value
-removed(retained)
+removed(retained, preimageRemoved = false)
 assert retained.effectInfo.value.transfers == 1 and retained.effectInfo.value.provisions == 1 and
     retained.effectInfo.value.hasYield,
   "forget preserves all nonempty implication owners"
@@ -360,10 +365,125 @@ for checkpoint in [false, true]:
   let selectedOog = normalizeAccumulationOutcome(exhausted).value.outcomeContext.value
   assert selectedOog.effectRequestHistory(hash, RequestLength(3)).error ==
     (if checkpoint: AccumulationEffectError.NotRequested else: AccumulationEffectError.None), "OOG chooses matching deletion checkpoint"
+# A real two-host sequence preserves an available blob while refunding a different advertised length.
+let roundtripSource = source(host = 25, offered = 4, suffix = @[registerImmediate(7, high(uint64)),
+    registerImmediate(8, 196608), @[10'u8, 26], @[50'u8, 0]])
+let roundtrip = run(roundtripSource, traces = 1)
+resultCode(roundtrip, 0)
+let roundtripContext = context(roundtrip)
+assert roundtripContext.effectRequestHistory(hash, RequestLength(3)).value.state ==
+    RequestState.Available,
+    "forgetting an extra length cannot erase the actual available request"
+assert roundtripContext.effectRequestHistory(hash, RequestLength(4)).error ==
+    AccumulationEffectError.NotRequested,
+    "extra advertised length is removed"
+assert roundtripContext.effectAccounts.value.lookup(servicePreimageKey(ServiceIndex(42), hash,
+    ByteLimit(32)).value).value.bytes == blob,
+    "empty-request removal preserves the available blob at another length"
+assert uint32(metadata(roundtripContext).storageItems) == 2 and uint64(metadata(
+    roundtripContext).storageBytes) == 84,
+    "only the extra reservation is refunded"
+assert roundtripContext.effectAccountWriteCount.value == 1,
+    "bounded tracing needs only the touched extra request, not an unchanged preimage"
+assert array[32, byte](roundtripContext.effectAccounts.value.commitment.root) == array[32, byte](
+    context(roundtrip, AccumulationDimension.Exceptional).effectAccounts.value.commitment.root),
+    "solicit and forget restore the complete original map without deleting another length's blob"
+# Foreign request fixtures use the same hash but independent account, history and preimage namespaces.
+proc foreignRows(present = false, history = requestedHistory(), supervisor = 42'u32,
+    incarnation = 0'u32, balance = 1000'u64, protected = 17'u64): seq[StateEntry] =
+  ## The invoker was created at slot0; target timestamps are deliberately different from invocation time.
+  result = @[serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(supervisor: ServiceIndex(
+      supervisor), supervisorCreated: AccountSlot(incarnation), balance: AccountBalance(balance),
+          supervisorBalance: AccountBalance(protected),
+      storageItems: AccountStorageItems(if present: 2'u32 else: 0'u32),
+      storageBytes: AccountStorageBytes(if present: 84'u64 else: 0'u64),
+      created: AccountSlot(7), lastAccumulation: AccountSlot(11), parent: ServiceIndex(13)),
+          ByteLimit(ServiceMetadataBytes)).value]
+  if present:
+    result.add(serviceRequestEntry(ServiceIndex(77), hash, RequestLength(3), history, config).value)
+    result.add(servicePreimageEntry(ServiceIndex(77), hash, blob,
+        ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(
+            3))).value) # Stored bytes expose accidental cross-namespace deletion.
+let targetKey = chapterServiceKey(StateChapter(255), ServiceIndex(77))
+let targetPreimage = servicePreimageKey(ServiceIndex(77), hash, ByteLimit(32)).value
+# Invalid lengths remain HUH before memory and target selection; valid memory faults precede WHO.
+for selector in [100'u64, 0x10000002a'u64]:
+  let unknown = source(selector = selector)
+  failHash(1)
+  let rejected = run(unknown)
+  resultCode(rejected, high(uint64)-3)
+  assert hashCalls() == 0, "WHO precedes namespace work"
+  failHash(0)
+  let invalid = run(source(selector = selector, offered = high(uint64), address = high(uint64)), copy = 0)
+  resultCode(invalid, high(uint64)-8, high(uint64))
+  assert run(source(selector = selector, address = high(uint64))).value.exit == StepExit.Panic,
+      "valid-length memory panic precedes target WHO"
+for rows in [foreignRows(supervisor = 77), foreignRows(incarnation = 1)]:
+  let prepared = source(selector = 77, extra = rows)
+  failHash(1)
+  resultCode(run(prepared), high(uint64)-8)
+  assert hashCalls() == 0, "foreign authority refusal precedes request hashing"
+  failHash(0)
+# Each history row uses the target namespace and the invocation's slot20000, with no funding condition.
+for history in [requestedHistory(), availableHistory(RequestSlot(4)), unavailableHistory(
+    RequestSlot(4), RequestSlot(7)), reavailableHistory(RequestSlot(1), RequestSlot(7), RequestSlot(11))]:
+  let completed = run(source(selector = 77, extra = foreignRows(true, history, balance = 0,
+      protected = 0)))
+  resultCode(completed, 0)
+  let selected = context(completed)
+  let found = selected.effectServiceRequestHistory(ServiceIndex(77), hash, RequestLength(3))
+  let removes = history.state in {RequestState.Requested, RequestState.Unavailable}
+  if removes:
+    assert found.error == AccumulationEffectError.NotRequested, "target request is removed only in removal rows"
+  else:
+    assert found.value.state == RequestState.Unavailable and uint32(found.value.unavailableFrom) ==
+        20000,
+        "target replacement uses actual invocation time"
+  assert selected.effectAccounts.value.lookup(targetPreimage).error ==
+      (if history.state == RequestState.Unavailable: StateStoreError.MissingKey else: StateStoreError.None),
+      "only expired two-slot forgetting deletes the target preimage"
+  let facts = decodeServiceMetadata(selected.effectAccounts.value.lookup(targetKey).value.bytes,
+      ByteLimit(ServiceMetadataBytes)).value.metadata
+  assert uint32(facts.storageItems) == (if removes: 0'u32 else: 2'u32) and
+      uint64(facts.storageBytes) == (if removes: 0'u64 else: 84'u64), "target refund follows exact row footprint"
+  let selfKey = chapterServiceKey(StateChapter(255), ServiceIndex(42))
+  assert selected.effectAccounts.value.lookup(selfKey).value.bytes == context(completed,
+      AccumulationDimension.Exceptional).effectAccounts.value.lookup(selfKey).value.bytes,
+      "forgetting foreign requests never changes invoker metadata"
+  assert selected.effectRequestHistory(hash, RequestLength(3)).value.state ==
+      RequestState.Available,
+      "same-hash invoker history remains available"
+  assert selected.effectAccountScope.value == AccumulationAccountScope.Unsupported,
+      "foreign forgetting retains publication gate"
+let foreignSource = source(selector = 77, extra = foreignRows(true))
+let tracedForeign = run(foreignSource, traces = 1)
+let laterSelf = recordAccumulationForget(tracedForeign.effects, hash, RequestLength(3), parameters()).value
+assert laterSelf.effectContext(AccumulationDimension.Regular).value.effectAccountScope.value ==
+    AccumulationAccountScope.Unsupported,
+    "later bounded self forgetting cannot erase foreign ancestry"
+for checkpoint in [false, true]:
+  let failed = run(source(selector = 77, extra = foreignRows(true), suffix = (if checkpoint:
+    @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])))
+  let selected = normalizeAccumulationOutcome(failed).value.outcomeContext.value
+  assert (selected.effectServiceRequestHistory(ServiceIndex(77), hash, RequestLength(3)).error ==
+      AccumulationEffectError.NotRequested) == checkpoint,
+      "panic selects matching foreign deletion checkpoint"
+let foreignPair = prepareAccumulationEffects(prepareAccumulationContexts(
+    foreignSource.machineBootstrap.value, pvmContextConfig()).value).value
+for successful in [0, 1, 3]:
+  failAfter(cint(successful))
+  let refused = recordAccumulationForget(foreignPair, hash, RequestLength(3), parameters(),
+      ServiceIndex(77))
+  assert refused.error == AccumulationEffectError.BackendFailure, "foreign removal namespace/store refusal is atomic"
+  failHash(0)
+assert run(source(selector = 77, extra = foreignRows(true), writes = 1)).error ==
+    AccumulationDispatchError.LimitExceeded,
+    "empty foreign removal still needs metadata and request writes"
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let completed = run(valid)
   resultCode(completed, 0) # Release every history/CPU/map candidate while retaining only immutable original fixtures.
+  resultCode(run(foreignSource), 0) # Release the target account/history successor alongside the self successor.
 let after = getOccupiedMem()
 assert before == after, "forget releases all ARC-owned versions"
 recordArcRelease("pvm_accumulation_forget", 1000, before, after)

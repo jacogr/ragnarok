@@ -8,7 +8,7 @@ import std/[assertions, syncio]
 import ../../../src/state/[accumulation_batch, accumulation_dispatch, accumulation_effects,
   accumulation_context, accumulation_outcome, accumulation_provisions, store]
 import ../../../src/codec/[bounded, composite, header, state_accounts, state_service_values,
-  state_layout, state_trie]
+  state_layout, state_trie, state_requests]
 import ../../../src/pvm/machine
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_batch_context, accumulation_provision_integration,
@@ -252,6 +252,36 @@ block foreign_storage_publication:
       "foreign storage still needs parallel modified-account conflict selection"
   assert fixture.state.snapshot.value.lookup(key).error == StateStoreError.MissingKey,
       "refused foreign storage publication retains the prior namespace"
+
+# Supervised request creation/removal remains an explicit foreign-account publication boundary.
+block foreign_request_publication:
+  for host in [25'u8, 26]:
+    let instructions = @[registerImmediate(7, 77), registerImmediate(8, 196608), registerImmediate(
+        9, 3), @[10'u8, host], @[50'u8, 0]]
+    let removal = host == 26
+    var extra = @[serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(supervisor: ServiceIndex(
+        42), supervisorCreated: AccountSlot(0), storageItems: AccountStorageItems(
+            if removal: 2'u32 else: 0'u32),
+        storageBytes: AccountStorageBytes(if removal: 84'u64 else: 0'u64)), ByteLimit(
+            ServiceMetadataBytes)).value]
+    if removal:
+      extra.add(serviceRequestEntry(ServiceIndex(77), ServicePreimageHash(digest), RequestLength(3),
+          requestedHistory(), RequestEntryConfig(keyBytes: ByteLimit(32),
+              history: RequestHistoryConfig(items: ElementLimit(3), maxBytes: ByteLimit(13)))).value)
+    let fixture = batchFixture(incoming = false, firstEnvelope = guestEnvelope(instructions, input),
+        secondEnvelope = guestEnvelope(@[@[50'u8, 0]], input), extra = extra)
+    let first = batchExecution(fixture, 0)
+    let selected = first.effects.effectContext(AccumulationDimension.Regular).value
+    let history = selected.effectServiceRequestHistory(ServiceIndex(77), ServicePreimageHash(
+        digest), RequestLength(3))
+    let expected = if removal: AccumulationEffectError.NotRequested else: AccumulationEffectError.None
+    assert history.error == expected,
+        "foreign request operation actually executes in the selected target namespace"
+    assert selected.effectAccountScope.value == AccumulationAccountScope.Unsupported,
+        "foreign request mutation cannot fabricate a self-key publication proof"
+    assert prepare(fixture, first, batchExecution(fixture, 1)).error ==
+        AccumulationBatchError.UnsupportedAccountEffects,
+        "foreign request publication requires modified-account conflict selection"
 
 # Provide/yield versions preserve scope, and a refusal after preparation never publishes the earlier metadata candidate.
 let fixture = batchFixture(firstEnvelope = envelope(7, provide = true), secondEnvelope = envelope(19))

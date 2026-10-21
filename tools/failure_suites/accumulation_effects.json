@@ -443,6 +443,17 @@
     },
     {
       "arguments": [
+        "solicit-target"
+      ],
+      "description": "Accumulation target solicit selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "solicit-target"
+      },
+      "name": "accumulation-effect-solicit-target"
+    },
+    {
+      "arguments": [
         "forget"
       ],
       "description": "Accumulation forget selected-success guard",
@@ -451,6 +462,17 @@
         "origin": "forget"
       },
       "name": "accumulation-effect-forget"
+    },
+    {
+      "arguments": [
+        "forget-target"
+      ],
+      "description": "Accumulation target forget selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "forget-target"
+      },
+      "name": "accumulation-effect-forget-target"
     }
   ],
   "crypto_library": "crypto",
