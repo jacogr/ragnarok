@@ -31,3 +31,7 @@ chain root binding; chain lifecycle witnesses; documentation.
 
 M1 framing is complete. Full state serialization and whole-block JAM/STF parity
 remain open under the existing pinned request-namespace disposition.
+
+Membership verification now authenticates every selected edge and the exact leaf preimage,
+including present-empty and the 32/33-byte boundary. Verified lookups retain root/key authority
+and expose only detached bytes. Wrong roots, keys, values and backend refusal expose no lookup.

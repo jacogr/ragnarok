@@ -3,7 +3,7 @@
 
 ## Bounded immutable path witnesses for the pinned state trie. Capture validates structure only;
 ## independently supplied roots and keys grant lookup authority through a separate verifier.
-import ../codec/[bounded, state_layout]
+import ../codec/[bounded, state_layout, state_trie]
 
 type
   StateProofLimits* = object ## Independent ceilings apply before path/value copying or hashing.
@@ -17,6 +17,11 @@ type
     value: seq[byte]
   StateProof* = object ## An unverified path witness is deliberately distinct from a verified lookup.
     data: nil ProofData
+  VerifiedStateLookup* = object ## Immutable verified evidence is bound to the independently supplied root and key.
+    proof: StateProof
+    rootIdentity: StateRoot
+    keyIdentity: StateKey
+    found: bool
   StateProofResult*[T] = object ## Success alone owns a complete checked result.
     case status: StateProofError
     of None:
@@ -79,3 +84,69 @@ proc captureStateProof*(nodes: openArray[EncodedStateNode], supplied: openArray[
     copiedValue[i] = octet # Capture never shares mutable caller sequences.
   StateProofResult[StateProof](status: StateProofError.None,
     completed: StateProof(data: ProofData(nodes: copiedNodes, value: copiedValue)))
+
+func valid*(lookup: VerifiedStateLookup): bool =
+  ## A default lookup never grants access, even if all-zero identities were supplied elsewhere.
+  lookup.proof.valid
+func present*(lookup: VerifiedStateLookup): bool {.requires: lookup.valid.} =
+  ## Presence distinguishes a present-empty value from authenticated absence.
+  lookup.found
+func root*(lookup: VerifiedStateLookup): StateRoot {.requires: lookup.valid.} =
+  ## Preserve complete root identity rather than exposing a partial child commitment.
+  lookup.rootIdentity
+func key*(lookup: VerifiedStateLookup): StateKey {.requires: lookup.valid.} =
+  ## Lookup authority is restricted to the exact requested serialized key.
+  lookup.keyIdentity
+proc bytes*(lookup: VerifiedStateLookup): seq[byte] {.requires: lookup.valid and lookup.present.} =
+  ## Return detached authenticated bytes only for a present value.
+  lookup.proof.suppliedValue.value
+func bit(key: StateKey, depth: int): bool =
+  ## Internal callers prove 0..247 before selecting an MSB-first key bit.
+  let bytes = array[31, byte](key)
+  (bytes[depth div 8] and byte(128 shr (depth mod 8))) != 0
+proc verifyStateProof*(proof: StateProof, expectedRoot: StateRoot, query: StateKey,
+    limits: StateProofLimits): StateProofResult[VerifiedStateLookup] =
+  ## Check a complete membership path against caller trust; no supplied root travels inside the proof.
+  let data = proof.data
+  if data == nil:
+    return StateProofResult[VerifiedStateLookup](status: StateProofError.Uninitialized)
+  if uint64(data.nodes.len) > uint64(limits.nodes) or
+      uint64(data.value.len) > uint64(limits.valueBytes):
+    return StateProofResult[VerifiedStateLookup](status: StateProofError.LimitExceeded)
+  if data.nodes.len == 0:
+    return StateProofResult[VerifiedStateLookup](status: StateProofError.InvalidProof)
+  var expected = array[32, byte](expectedRoot)
+  var partial = false
+  for depth, node in data.nodes:
+    # Authenticate root or selected edge without fabricating a left child's discarded high bit.
+    let hashed = hashStateNode(node)
+    if hashed.error != StateLayoutError.None:
+      return StateProofResult[VerifiedStateLookup](status: StateProofError.BackendFailure)
+    var actual = array[32, byte](hashed.value)
+    if partial:
+      actual[0] = actual[0] and 127 # Left comparison uses exactly its committed 255 bits.
+    if actual != expected:
+      return StateProofResult[VerifiedStateLookup](status: StateProofError.RootMismatch)
+    let info = decodeStateNode(array[64, byte](node)).value.node
+    case info.kind
+    of StateNodeKind.Branch:
+      # Captured paths have at most 248 branches, each before the final leaf.
+      if query.bit(depth):
+        expected = array[32, byte](info.right)
+        partial = false
+      else:
+        expected = array[32, byte](info.left)
+        partial = true
+    of StateNodeKind.EmbeddedLeaf, StateNodeKind.HashedLeaf:
+      # Structural capture guarantees this is the terminal; require exact key and value preimage.
+      let leafKey = if info.kind == StateNodeKind.EmbeddedLeaf: info.embeddedKey else: info.hashedKey
+      if array[31, byte](leafKey) != array[31, byte](query):
+        return StateProofResult[VerifiedStateLookup](status: StateProofError.KeyMismatch)
+      let encoded = encodeStateLeaf(query, data.value, limits.valueBytes)
+      if encoded.error != StateLayoutError.None:
+        return StateProofResult[VerifiedStateLookup](status: StateProofError.BackendFailure)
+      if array[64, byte](encoded.value) != array[64, byte](node):
+        return StateProofResult[VerifiedStateLookup](status: StateProofError.MissingValue)
+  StateProofResult[VerifiedStateLookup](status: StateProofError.None,
+    completed: VerifiedStateLookup(proof: proof, rootIdentity: expectedRoot,
+      keyIdentity: query, found: true))
