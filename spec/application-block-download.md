@@ -5,8 +5,10 @@
 Use pinned JAMNP-S `439c45aad135dc654b3de6f56d7d694fd02b7aa8`, `simple.md`
 Streams, Messages, Notation and CE 128. Request bytes are stream kind 128,
 E4(37), the selected sealed-header hash, direction 0 and E4(1). This bounded
-producer requests one ascending exclusive child; descending and multi-block
-downloads are not implemented. Responses contain one E4-framed sequence of GP
+producer requests one ascending exclusive child.
+[Separate bounded ancestor acquisition](application-remote-ancestors.md) uses
+descending responses for immutable report context. This producer does not adopt
+backwards or request multiple canonical children in a single response. Responses contain one E4-framed sequence of GP
 blocks, without a compact element-count prefix. GP 0.8.0 and vector pins remain
 those in the existing block-input/candidate contracts.
 

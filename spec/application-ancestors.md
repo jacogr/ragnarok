@@ -102,9 +102,10 @@ The [operator guide](../docs/download-ancestors.md) describes ordering, exact fi
 content, count/byte policy accounting and import/disk operation. Existing trusted
 checkpoint/disk download regression passes unchanged. The actual executable
 build and help expose the repeatable control. No trie/storage/PVM implementation
-or interface changed; db #1 retains ownership of storage internals. Automatic
-ancestor acquisition, discovery/non-loopback peers, multi-child synchronization,
-fork choice and full/light database selection remain separate bounded work.
+or interface changed; db #1 retains ownership of storage internals. [Explicit remote acquisition](application-remote-ancestors.md) and
+[successive child downloads](application-download-progress.md) have their own bounded
+contracts. On-demand ancestry discovery, peer discovery/non-loopback endpoints,
+fork choice and full/light database selection remain separate work.
 
 Final local documentation-link checks, actual executable help, full pinned
 Nim/Rust formatting, verification inventory and Git whitespace checks pass.
