@@ -173,3 +173,15 @@ same independent exact generation/root token and refuses complete corrupt/succes
 
 Required local regressions include real managed append recovery, corruption/short-write failures
 and application-level explicit managed recovery. Snapshot admission and worker ownership stay intact.
+
+## Exact real-file replay cost
+
+`storage_replay_cost` closes/reopens both physical layouts with both full-node schemas,16/64-byte
+values,16 sparse updates and three repetitions. The independently counted35 physical record
+checks plus18 identity/frame/snapshot checks require53 real hashes for inline values and70
+when17 distinct long values each require their separate value hash. All journal bytes remain
+identical; complete maps, generation17, context and retained readers are checked after close.
+
+The1K/8K managed workload additionally asserts replay hashes equal stored physical nodes plus
+18 outer checks and any long-value hashes. Compacted reopen requires selected nodes plus two
+outer checks and the same retained value hashes. Persisted checksums/bytes remain baseline-bound.

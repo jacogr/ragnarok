@@ -94,6 +94,8 @@ proc workload(count, size, sample: int): string {.raises.} =
     StorageSchema.FullStateV1) == FileError.None
   let replayNs = (getMonoTime()-replayStart).inNanoseconds
   let replayHashes = int(calls())
+  let extraValues = if size > 32: count+16 else: 0
+  assert replayHashes == before.storedNodes+18+extraValues # One physical integrity pass plus16 frame and2 selected-file checks.
   reset(0)
   let extractionStart = getMonoTime()
   for index, root in roots:
@@ -119,6 +121,7 @@ proc workload(count, size, sample: int): string {.raises.} =
     StorageSchema.FullStateV1) == FileError.None
   let reopenNs = (getMonoTime()-reopenStart).inNanoseconds
   let reopenHashes = int(calls())
+  assert reopenHashes == after.storedNodes+2+extraValues # Compacted header-only journals add no revision-frame hashes.
   for index, root in roots:
     checkMap(repository.snapshot.value, root, trie, count, size, applied[index])
   assert repository.close == FileError.None
