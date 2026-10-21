@@ -22,7 +22,7 @@ def output(engine,count,topology='leading',value_bytes=256):
     # Unsupported reopen/reclamation operations remain explicit sentinels in otherwise complete samples.
     return ''.join(f'sample\t{count}\t{topology}\t{value_bytes}\t{s}\t'+
         '\t'.join(map(str,[100+s,200+s,300+s,-1 if engine=='memory' else 400+s,
-                           -1 if engine=='journal' else 500+s,-1 if engine=='journal' else 600+s,count*3+100,count*3,
+                           -1 if engine=='journal' else 500+s,-1 if engine=='journal' else 600+s,700+s,count*3+100,count*3,
             -1 if engine=='memory' else (0 if engine=='journal' else 100),
             -1 if engine=='memory' else 200,90 if engine=='managed' else -1,72 if engine=='managed' else -1]))+'\n' for s in range(13))
 
@@ -45,7 +45,7 @@ class StorageBenchmarkTests(unittest.TestCase):
         self.assertIn('Strict disk reopen | — |',text)
         self.assertIn('memory publication is not durable',text)
         self.assertIn('warm resident',text)
-        self.assertEqual(len(report['cases']),48)
+        self.assertEqual(len(report['cases']),56)
         self.assertEqual(report['cases'][0]['engines']['memory']['median_ns'],107.5)
 
     def test_missing_duplicate_or_wrong_sample(self):

@@ -62,7 +62,7 @@ def run():
             profile='checked native ARC/Clang release opt:speed boundchecks:on LTO',
             sources={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources},
             crypto_sha256=hashlib.sha256(library.read_bytes()).hexdigest(),
-            schema_version=6,value_sizes=list(VALUE_BYTES),key_topologies=list(TOPOLOGIES),warmups_per_pass=3,measured_samples_per_pass=10,pass_count=2,
+            schema_version=7,value_sizes=list(VALUE_BYTES),key_topologies=list(TOPOLOGIES),warmups_per_pass=3,measured_samples_per_pass=10,pass_count=2,
             pass_orders=[list(ENGINES),list(reversed(ENGINES))])
         save()
         build,binary=NativeChecks(BUILD).build(compiler,source,'storage-native',crypto_library=library)
