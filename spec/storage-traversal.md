@@ -234,3 +234,18 @@ is still a locally possible branch; complete-map canonical topology remains the 
 Observer controls cover target, unordered collection and canonical collection decoders, requiring
 zero hashes for both malformed forms and genuine hashing for intact or subtly corrupt records.
 Raw mutable validation retains its original independent shape and integrity checks.
+
+## Physical file read ceilings and rejected growth experiment
+
+`storage_file_read_bounds` covers0/1/4095/4096/4097/8192/exact/excess/full-width limits on real
+managed files, detached returned mutation, and strict legacy reopen of a multi-chunk journal at
+its exact ceiling versus one byte short. The fixed4096-byte loaders retain their existing
+per-byte append implementation and one-excess-byte refusal; file metadata never selects allocation.
+
+A checked full-LTO experiment extended buffers once per chunk before filling them. Matching
+20-sample reopen medians did not improve: journal6.16→6.27ms and managed5.63→5.89ms at1K;
+journal60.71→61.68ms and managed54.72→56.69ms at8K. The1K candidate journal was noise-flagged;
+these are descriptive local observations. The implementation was reverted. Pinned byte/ARC
+sequence fences compile away, so entering them was not an actual per-byte runtime cost.
+No speedup or retained optimization is claimed. Baseline source/configuration identity is checked
+after reversion, and the new exact-boundary suite runs against that retained implementation.
