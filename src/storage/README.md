@@ -91,3 +91,10 @@ state/checkpoint integration.
 in-memory publication, immutable reads and independently trusted restoration to the standalone
 `FullStateTrie`. Restoration preserves caller-selected mutation limits and never constructs a
 `StateStore` or changes a canonical consumer. These are storage workstream APIs only.
+
+`database_identity.nim` binds the full-state physical schema to an independently selected chain.
+`journal_codec.nim` defines checksummed revision frames. `file_repository.nim` adds an explicitly
+closed, noncopyable append-only owner: each durable frame contains changed records and its root.
+Strict reopen validates the whole journal and refuses partial tails. Retained read views remain
+valid after file close. All calls are synchronous storage work; run them outside networking
+callbacks. See the record contract for bounded IO, cooperative inode locking and uncertainty rules.

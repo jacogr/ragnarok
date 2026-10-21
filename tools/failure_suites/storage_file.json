@@ -1,0 +1,72 @@
+{
+  "source": "tests/native/storage_file_results.nim",
+  "build_name": "storage-file-results",
+  "crypto_library": "observer",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-file-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage file result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-file-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage file result failed guard"
+    },
+    {
+      "identity": {
+        "member": "batch",
+        "origin": "default"
+      },
+      "arguments": [
+        "batch",
+        "default"
+      ],
+      "name": "storage-file-batch-default",
+      "diagnostic": "outcome.status == InvalidBatch",
+      "description": "Storage file batch default guard"
+    },
+    {
+      "identity": {
+        "member": "frame",
+        "origin": "default"
+      },
+      "arguments": [
+        "frame",
+        "default"
+      ],
+      "name": "storage-file-frame-default",
+      "diagnostic": "outcome.status == InvalidFrame",
+      "description": "Storage file frame default guard"
+    },
+    {
+      "identity": {
+        "member": "retire",
+        "origin": "default"
+      },
+      "arguments": [
+        "retire",
+        "default"
+      ],
+      "name": "storage-file-retire-default",
+      "diagnostic": "not repository.active",
+      "description": "Storage file retire default guard"
+    }
+  ]
+}

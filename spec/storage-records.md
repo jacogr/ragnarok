@@ -97,3 +97,38 @@ checks integrity before allocating records, and preserves selected physical code
 `storage_journal_codec` checks an independent complete struct/hashlib witness, every prefix and
 every octet corrupted, max-width length attacks, exact/short ceilings, zero generations and
 multiple-frame splitting without accepting trailers as one frame. No disk IO occurs in this layer.
+
+## Exclusive append-only disk repository
+
+`file_repository.nim` implements the same physical revision publication/read contract using one
+append-only regular file. Explicit creation uses 0600 `O_EXCL`; reopening requires the full-mode
+identity and independently expected chain. The journal inode itself holds a nonblocking exclusive
+advisory lock for its entire owner lifetime; cooperating callers preserve its directory/inode
+namespace. FIFO/device/directory/symlink paths cannot become owners. Owners are independently
+noncopyable and require explicit close, including after uncertainty. Calls are synchronous storage
+work, not networking callbacks; no wall-clock IO deadline is claimed.
+
+Open bounds bytes by actual chunked reads, verifies every complete frame, consecutive local
+generations and complete graph admission, then synchronizes file and directory before adoption.
+A corrupt/partial tail refuses the whole open; no prefix fallback or implicit truncation occurs.
+Publication privately prepares the memory successor, bounds journal growth, anchors the previous
+file/directory boundary, appends one exact frame and fsyncs before replacing the live memory head.
+Changed records and their selected root share one checksummed transaction frame.
+
+Partial writes return IO failure and poison the owner; complete writes followed by failed fsync
+return `PublishedUnsynced`. Neither exposes a successor. Further reads/publications require
+reopening/recovery; previously held views stay valid. Strict reopening can anchor a complete visible
+frame from prior uncertainty, but its local root still grants no chain authority. Failed bootstrap
+may leave a file requiring explicit operator recovery. No automatic deletion/conversion occurs.
+
+`storage_file_repository` uses real file/directory synchronization and tests delta publication,
+strict reopen, chain mismatch, cooperative contention, stale refusal, retained views after close
+and 1,000 isolated ARC cycles. These are real OS behavior checks, not power-loss simulation.
+
+Observed disk-layer evidence: checked optimized macOS ARM64 `storage_file_repository` passes
+1,000 real synchronized publication/reopen cycles at 192/192 occupied ARC bytes.
+`storage_file_admission` verifies exact 0600 creation under a restored umask, bounded reads,
+unchanged partial/corrupt files, FIFO/directory/regular-target/dangling symlink refusal and
+subsequent valid reacquisition. Five strict runtime guards, four valid controls, four privacy
+rejections and actual `'=dup' is not available for type <FileRepository>` lowering pass.
+Power-loss behavior and actual file/directory-sync refusal remain separate evidence gaps.
