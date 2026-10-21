@@ -46,6 +46,19 @@ proc boundaries(base: OwnedReport) =
   let original = context.staged.value.snapshot
   let preparedReports = prepareBlockReports(context.staged, config())
   assert preparedReports.error == ReportAdmissionError.None
+  let demand = planPreparedReportLookupDemand(preparedReports.value, [])
+  assert demand.error == ReportAdmissionError.None
+  assert demand.value.missingLookups.value == 2
+  assert uint64(demand.value.lookupDemandMaximum(ElementLimit(64)).value) == 1
+  let completeDemand = planPreparedReportLookupDemand(preparedReports.value, context.older)
+  assert completeDemand.error == ReportAdmissionError.None and
+      completeDemand.value.missingLookups.value == 0
+  assert planPreparedReportLookupDemand(default(PreparedReportAdmission), []).error ==
+      ReportAdmissionError.InvalidTransition
+  let wrongContext = planPreparedReportLookupDemand(preparedReports.value, [
+      context.staged.value.admitted.admittedParent])
+  assert wrongContext.error == ReportAdmissionError.AnchorFailure and wrongContext.anchorError ==
+      ReportAnchorError.BrokenAncestry
   let completedReports = completeBlockReports(preparedReports.value, context.older)
   assert completedReports.error == ReportAdmissionError.None
   assert completedReports.value.reportCredentials.value.verifiedGuaranteeCount.value == 2

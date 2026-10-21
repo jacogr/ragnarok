@@ -56,3 +56,9 @@ Completion accepts only that opaque preparation plus older headers and performs 
 capacity checks. The original `planBlockReports` composes both and preserves nested refusal causes.
 Existing signed composition and ARC tests run through that wrapper; explicit preparation/completion
 positive and default negative controls cover the new boundary.
+
+`planPreparedReportLookupDemand` binds the query to the prepared block's actual admitted parent
+and captured limits. Callers cannot substitute a parent, slot, policy certificate or history.
+All older inputs undergo complete structural capture. Defaults and broken supplied context refuse;
+missing and satisfied signed report batches return explicit plans. Existing admission tests verify
+two genuine reports need one older linked header and become complete with that exact suffix.

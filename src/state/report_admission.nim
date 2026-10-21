@@ -10,7 +10,8 @@
 
 import ../codec/[block_codec, header, bounded, guarantees, assurances, state_safrole,
   state_disputes, state_history, state_layout, state_availability]
-import ./[store, block_transition, block_admission, guarantee_credentials, report_policy,
+import ./[ancestor_context, store, block_transition, block_admission, guarantee_credentials,
+  report_policy,
   report_anchors, report_packages, report_assignments, availability, history]
 
 type
@@ -287,3 +288,29 @@ proc planBlockReports*(staged: BlockTransitionResult, older: openArray[OwnedHead
   let prepared = prepareBlockReports(staged, config)
   if prepared.error != ReportAdmissionError.None: return preparationFailure(prepared)
   completeBlockReports(prepared.value, older)
+
+proc planPreparedReportLookupDemand*(prepared: PreparedReportAdmission,
+    older: openArray[OwnedHeader]): ReportAdmissionResult[ReportLookupDemand] =
+  ## Bind discovery to the actual admitted parent and original policy; callers supply only an older suffix.
+  let data = prepared.data
+  if data == nil:
+    return ReportAdmissionResult[ReportLookupDemand](status: ReportAdmissionError.InvalidTransition)
+  let limits = data.config.ancestors
+  let context = captureAncestorContext(data.staged.value.admitted.admittedParent, older,
+    AncestorContextLimits(header: limits.header, headers: limits.headers,
+        maxBytes: limits.maxBytes))
+  if context.error != AncestorContextError.None:
+    var reason = ReportAnchorError.InvalidHeader
+    case context.error
+    of AncestorContextError.LimitExceeded: reason = ReportAnchorError.LimitExceeded # Preserve independent resource refusals.
+    of AncestorContextError.BrokenAncestry: reason = ReportAnchorError.BrokenAncestry # A supplied gap is never repaired by remote extension.
+    of AncestorContextError.BackendFailure: reason = ReportAnchorError.BackendFailure # No fabricated digest or fallback.
+    else: discard # Invalid/default header alternatives carry no context.
+    return ReportAdmissionResult[ReportLookupDemand](status: ReportAdmissionError.AnchorFailure,
+        anchorReason: reason)
+  let demand = planReportLookupDemand(data.recent, context.value)
+  if demand.error != ReportAnchorError.None:
+    return ReportAdmissionResult[ReportLookupDemand](status: ReportAdmissionError.AnchorFailure,
+        anchorReason: demand.error)
+  ReportAdmissionResult[ReportLookupDemand](status: ReportAdmissionError.None,
+      completed: demand.value)
