@@ -156,3 +156,39 @@ proc finalizeView*(view: ChainView, hash: BlockHash): ViewFinalizeResult =
       return ViewFinalizeResult(status: ViewFinalizeError.Regression) # The linear history already proves increasing slots.
   ViewFinalizeResult(status: ViewFinalizeError.None,
     completed: ChainView(snapshot: view.snapshot, finalized: selected))
+
+type RetainedBlockIndex* = distinct int ## Oldest-to-newest ordinal belongs only to this immutable retained view.
+func retainedBlockAt*(view: ChainView, index: RetainedBlockIndex): BlockSnapshotResult =
+  ## Copy an owner-bound retained block; defaults and out-of-window ordinals remain unavailable.
+  if int(index) < 0 or int(index) >= view.snapshot.len: return unavailableGenesis()
+  view.snapshot[int(index)]
+proc restoreLocalChainView*(history: openArray[BlockSnapshotResult],
+    finalized = unavailableGenesis()): ViewAdvanceResult =
+  ## Restore a previously validated local bounded history; this is not a consensus or import verifier.
+  ## Evicted finality is an explicit trusted local anchor: its ancestry predates the retained window.
+  if history.len == 0 or history.len > MaxRetainedBlocks:
+    return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot)
+  for saved in history:
+    if saved.error != GenesisError.None:
+      return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot) # No default/failed slot can become a historical block.
+  var restored = genesisView(history[0])
+  for index in 1..<history.len:
+    let advanced = restored.advanceView(history[index])
+    if advanced.error != ViewAdvanceError.None:
+      return ViewAdvanceResult(status: advanced.error) # Reuse exact direct-child, prior-root, slot and full-profile checks.
+    restored = advanced.value
+  if finalized.error == GenesisError.None:
+    let known = restored.blockAt(finalized.value.blockHash)
+    if known.error == GenesisError.None:
+      if not sameRetainedBlock(known.value, finalized.value):
+        return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot) # Equal header/root cannot substitute another map owner.
+      restored.finalized = known # Preserve the identical restored in-window snapshot owner.
+    else:
+      if not finalized.value.sameParameters(history[0].value):
+        return ViewAdvanceResult(status: ViewAdvanceError.ParametersMismatch)
+      if finalized.value.slot >= history[0].value.slot:
+        return ViewAdvanceResult(status: ViewAdvanceError.SlotNotIncreasing) # An unknown finality anchor must predate the retained suffix.
+      restored.finalized = finalized # Caller-local durable authority supplies the evicted ancestry binding.
+  elif finalized.error != GenesisError.Unavailable:
+    return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot) # A failed finality result is not an explicit absent selection.
+  ViewAdvanceResult(status: ViewAdvanceError.None, completed: restored)

@@ -222,3 +222,18 @@ and independently checks the requested historical root under an explicit policy,
 snapshot identity/generation untouched. Empty complete roots and missing physical roots remain
 distinct cases. Real restart tests compare every historical value and independently recomputed root,
 check narrow ceilings and unknown roots, and preserve current selection and held readers.
+
+## Local history/finality reconstruction
+
+The provider exposes bounded oldest-to-newest retained-block access and an explicit local-history
+restoration boundary. It reuses direct-child header/prior-root/time/profile checks, refuses empty
+or oversized windows and failed slots, and restores finality separately. In-window finality must
+reuse the identical map owner; header/root equality cannot replace it. An evicted finalized anchor
+must have the same full profile and predate the retained suffix. Its earlier ancestry is supplied
+by the previously validated local durable context, not re-proved from an unavailable archive.
+This is not a consensus verifier or the externally trusted checkpoint-import constructor.
+
+Structurally authored local histories exceed the retention window and exercise evicted finality,
+in-window owner sharing, duplicate/reversed/oversized histories and root-equal foreign map owners.
+Modified fixture seals never stand in for execution certificates; live publication tests use the
+separate genuine signed execution fixtures.
