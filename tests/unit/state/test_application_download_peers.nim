@@ -178,6 +178,52 @@ proc transfer(owner: var Services, frame: seq[byte], keyA, keyB: DownloadPeerKey
     assert session.finish(token, DownloadAttemptOutcome.Adopted, DownloadScheduleTick(0)).error ==
         DownloadSessionError.None
 
+proc graceful(owner: Services, frame: seq[byte], keyA, keyB: DownloadPeerKey) =
+  ## Both one-peer listeners must accept fresh exact-pin reconnects after actual graceful connection closure.
+  var session = default(BlockDownloadSession)
+  let token = session.begin(owner, DownloadPeerId(22))
+  var servers = default(DownloadResponders)
+  assert servers.openResponders(session.request(token).value, frame)
+  defer: servers.close()
+  var catalog = default(BlockDownloadPeers)
+  defer: catalog.close()
+  assert catalog.disconnectPeers() == DownloadPeerError.Uninitialized
+  assert catalog.configure(ElementLimit(2)) == DownloadPeerError.None
+  assert catalog.open(11, keyA, servers.port(false)) == DownloadPeerError.None
+  assert catalog.open(22, keyB, servers.port(true)) == DownloadPeerError.None
+  authenticate(catalog, servers)
+  assert catalog.requestStream(session, token, limits(), DownloadTick(100)) ==
+      DownloadPeerError.None
+  assert catalog.disconnectPeers() == DownloadPeerError.Busy # A pending native open still owns the session mapping.
+  var received = false
+  for tick in 0..<4000:
+    step(catalog, servers)
+    if not catalog.busy and not session.streamActive:
+      received = session.stage == BlockDownloadStage.Ready
+      break # Both the E4/FIN payload and actual stream close precede graceful connection retirement.
+  assert received
+  for round in 0..<2:
+    # Complete two disconnect cycles; the second uses brand-new handshakes on the same server slots.
+    var retired = false
+    for tick in 0..<4000:
+      assert servers.poll()
+      assert catalog.disconnectPeers() == DownloadPeerError.None
+      assert catalog.readyPeers.len == 0
+      if catalog.count == 0:
+        retired = true
+        break
+      assert catalog.open(11, keyA, servers.port(false)) == DownloadPeerError.Busy
+    assert retired and not catalog.busy
+    if round == 0:
+      assert catalog.open(11, keyB, servers.port(false)) == DownloadPeerError.DuplicatePeer
+      assert catalog.open(11, keyA, servers.port(false)) == DownloadPeerError.None
+      assert catalog.open(22, keyB, servers.port(true)) == DownloadPeerError.None
+      authenticate(catalog, servers) # Success proves both listener slots were actually released.
+  assert catalog.disconnectPeers() == DownloadPeerError.None and catalog.count == 0
+  assert session.discardInput(token).error == DownloadSessionError.None
+  assert session.finish(token, DownloadAttemptOutcome.Retry, DownloadScheduleTick(0)).error ==
+      DownloadSessionError.None
+
 proc cycle(key: DownloadPeerKey) =
   ## Every iteration opens a real endpoint and retires its pending connection before native callback storage leaves scope.
   var catalog = default(BlockDownloadPeers)
@@ -214,6 +260,7 @@ proc main() {.raises.} =
   assert owner.start(options, "test")
   defer: owner.close()
   registration(keyA, keyB)
+  graceful(owner, frame, keyA, keyB)
   wrongKey(owner, frame, keyA)
   transfer(owner, frame, keyA, keyB, true)
   cycle(keyA)

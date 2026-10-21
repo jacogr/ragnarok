@@ -35,7 +35,7 @@ type
   BlockDownloadPeers* = object ## Each known identity reserves one fixed slot for this catalog's entire lifetime.
     slots: array[16, PeerSlot]
     limit, count: int
-    configured: bool
+    configured, draining: bool
 
 proc `=copy`*(destination: var BlockDownloadPeers, source: BlockDownloadPeers) {.
     error: "BlockDownloadPeers owns native transports and callback addresses".}
@@ -152,6 +152,7 @@ proc openPeer*(catalog: var BlockDownloadPeers, id: DownloadPeerId, expected: Do
     port: uint16, certificate, key, alpn: string): DownloadPeerError =
   ## Allocate one outgoing endpoint only after bounded identity, duplicate and endpoint preflight.
   if not catalog.configured: return DownloadPeerError.Uninitialized
+  if catalog.draining: return DownloadPeerError.Busy # Reopening cannot race unfinished native connection retirement.
   if uint64(id) == 0: return DownloadPeerError.InvalidPeer # Zero cannot become a scheduler identity.
   if port == 0: return DownloadPeerError.InvalidEndpoint # This API names an explicit existing loopback listener.
   var selected = -1
@@ -264,3 +265,25 @@ proc close*(catalog: var BlockDownloadPeers) =
     if catalog.slots[index].registered:
       let id = catalog.slots[index].id
       discard catalog.retire(id) # Copy the scalar identity before mutating its owning catalog.
+  catalog.draining = false # Joined endpoint teardown also completes any interrupted graceful retirement.
+
+proc disconnectPeers*(catalog: var BlockDownloadPeers): DownloadPeerError =
+  ## One bounded graceful retirement turn; keep polling until count is zero before opening replacement endpoints.
+  if not catalog.configured: return DownloadPeerError.Uninitialized
+  if catalog.busy: return DownloadPeerError.Busy # Native stream/input callbacks must retire before a connection may drain.
+  catalog.draining = true
+  for index in 0..<catalog.limit:
+    # Mark stopping before requesting close, so no new authenticated request can attach to a draining connection.
+    let slot = addr catalog.slots[index]
+    if slot.registered and not slot.stopping:
+      slot.stopping = true
+      slot.transport.disconnectTransport()
+  discard catalog.poll() # One native turn sends close packets and observes real connection close callbacks.
+  for index in 0..<catalog.limit:
+    # Engine destruction follows native connection retirement, preserving a single-peer listener's reusable slot.
+    let slot = addr catalog.slots[index]
+    if slot.registered and slot.transport.peerMetric(0) == 0:
+      let id = slot.id
+      discard catalog.retire(id)
+  if catalog.count == 0: catalog.draining = false # Fixed ID/key reservations survive completed retirement for exact-pin reconnects.
+  DownloadPeerError.None

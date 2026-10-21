@@ -110,3 +110,10 @@ without an active native stream or queued adoption. Resumption retains the origi
 reservation and input generation. Foreign/stale tokens, still-live streams and queued successors
 cannot substitute context. A real TLS exchange plus two Services worker leases verifies stream
 retirement, missing context, atomic quota refusal, later adoption and final token retirement.
+
+Outgoing peer catalogs now support bounded `disconnectPeers` turns after all stream callbacks
+retire. Draining disables readiness/reopening, sends actual QUIC connection closure, polls once
+and destroys each endpoint only after its native live-connection count reaches zero. Exact ID/key
+reservations survive. This is necessary before ancestry acquisition opens fresh endpoints against
+a one-peer listener. Real two-listener tests cover pending-open refusal, complete stream close,
+two graceful drain cycles, exact-pin reconnects and attempted identity replacement.
