@@ -16,10 +16,12 @@ proc finalizationFixture*(withReady = true, withComposition = false,
   ## Execute the actual selected guest before any stopped-history/final-state construction.
   var limits = computedExecutionLimits()
   if storage != ComputedStorageMode.Disabled:
-    # Local provenance/publication policies admit exactly one self key and its three guest-memory bytes.
+    # Local provenance admits one self key; only original wide-fetch guests retain eleven bytes including the full returned word.
     limits.accountWriteKeys = ElementLimit(1)
     limits.completion.batch.selfWrites = ElementLimit(1)
-    limits.completion.batch.selfValueBytes = ByteLimit(3)
+    let bytes = if storage in {ComputedStorageMode.FetchWideOffset,
+        ComputedStorageMode.FetchWideIndex}: 11'u64 else: 3'u64
+    limits.completion.batch.selfValueBytes = ByteLimit(bytes)
   let executed = executeComputedAccumulation(computedExecutionFixture(withReady = withReady,
       withComposition = withComposition, withChain = withChain, storage = storage), limits)
   if executed.error != ComputedExecutionError.None:

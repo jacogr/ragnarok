@@ -11,7 +11,7 @@ import ./[pvm_refinement_outcome, pvm_input_refinement, pvm_extrinsic_inputs, pv
 type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection; defaults preserve every earlier zero-output witness.
   Disabled, Commit, Panic, Underfunded, CheckpointCommit, CheckpointPanic, OutOfGas,
     CheckpointOutOfGas,
-  FetchFirst, FetchSecond, FetchMissing, FetchList
+  FetchFirst, FetchSecond, FetchMissing, FetchList, FetchWideOffset, FetchWideIndex
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   ## Jump from refinement entry0 to empty output; entry5 writes RO key11 using literal or genuinely fetched RW bytes.
@@ -19,10 +19,18 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   var body = @[refinementImmediate(7, 65536), refinementImmediate(8, 1),
     refinementImmediate(9, 196608), refinementImmediate(10, 3), @[10'u8, 5]]
   if mode in {ComputedStorageMode.FetchFirst, ComputedStorageMode.FetchSecond,
-      ComputedStorageMode.FetchMissing, ComputedStorageMode.FetchList}:
+      ComputedStorageMode.FetchMissing, ComputedStorageMode.FetchList,
+      ComputedStorageMode.FetchWideOffset, ComputedStorageMode.FetchWideIndex}:
     # Compact load_imm instructions keep the real dual-entry envelope below128 bytes; fetch skips the C.2 operand tag.
     body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 1], @[51'u8, 9, 3], @[51'u8, 10, 15]]
-    if mode == ComputedStorageMode.FetchList:
+    let wide = mode in {ComputedStorageMode.FetchWideOffset, ComputedStorageMode.FetchWideIndex}
+    if wide:
+      # Values2^32 have zero low bits: narrowing would incorrectly select offset/index0 and copy into an invalid destination.
+      let offset = if mode == ComputedStorageMode.FetchWideOffset: 4294967296'u64 else: 0'u64
+      let index = if mode == ComputedStorageMode.FetchWideIndex: 4294967296'u64 else: 0'u64
+      body = @[refinementImmediate(7, high(uint64)), refinementImmediate(8, offset),
+        @[51'u8, 9, 3], @[51'u8, 10, 15], refinementImmediate(11, index)]
+    elif mode == ComputedStorageMode.FetchList:
       body = @[@[51'u8, 7, 0, 0, 3], @[51'u8, 8, 0], @[51'u8, 9, 3], @[51'u8, 10, 14],
         refinementImmediate(11, high(uint64)), refinementImmediate(12, high(
             uint64))] # Complete-list fetch ignores both full-width item registers and starts at the count prefix.
@@ -31,9 +39,12 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
     else:
       let index = if mode == ComputedStorageMode.FetchSecond: 1'u8 else: 0'u8
       body.add(@[51'u8, 11, index]) # Both genuine report positions are selected by the guest, not by fixture injection.
-    body.add(@[10'u8, 2]) # Fetch actual invocation record bytes into RW196608 before the storage host reads them.
+    body.add(@[10'u8, 2]) # Actual input capture returns a full length or NONE; wide zero intervals must tolerate the invalid destination.
+    if wide:
+      body.add(@[62'u8, 7, 3, 0, 3]) # Real store_u64 persists all eight r7 bytes atRW196611 while preserving initialRW21/22/23.
+    let valueBytes = if wide: 11'u8 else: 3'u8
     for instruction in [@[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 0, 0, 3],
-        @[51'u8, 10, 3], @[10'u8, 5]]:
+        @[51'u8, 10, valueBytes], @[10'u8, 5]]:
       body.add(instruction) # Fetch returns a length in r7, so reload every storage pointer and length independently.
   let checkpoint = mode in {ComputedStorageMode.CheckpointCommit,
       ComputedStorageMode.CheckpointPanic, ComputedStorageMode.CheckpointOutOfGas}
