@@ -112,12 +112,16 @@ proc initializeDiskStateStore*(store: var DiskStateStore, path: string, chain: S
   store.state = candidate.value
   store.limits = limits
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: source)
-proc openDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
+proc acquireDiskStateStore(store: var DiskStateStore, path: string, chain: StorageChainId,
     expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
-    policy: StateStoreLimits, limits: JournalLimits): DiskStoreResult[StateStoreSnapshot] =
+    policy: StateStoreLimits, limits: JournalLimits, repair: bool): DiskStoreResult[
+        StateStoreSnapshot] =
   ## Strictly replay then compare independently supplied authority before constructing writable state.
   if store.opened: return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.Busy)
-  let opened = openFileRepository(store.journal, path, chain, limits)
+  let opened = if repair:
+    recoverFileRepository(store.journal, path, chain, limits, expectedGeneration, expectedRoot)
+  else:
+    openFileRepository(store.journal, path, chain, limits) # Ordinary open never mutates an incomplete tail.
   if opened != FileError.None:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
         fileReason: opened)
@@ -143,6 +147,19 @@ proc openDiskStateStore*(store: var DiskStateStore, path: string, chain: Storage
   store.limits = limits
   adopted = true
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: restored)
+proc openDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
+    expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
+    policy: StateStoreLimits, limits: JournalLimits): DiskStoreResult[StateStoreSnapshot] =
+  ## Read strictly without repair; independently supplied root/generation choose the only admissible head.
+  acquireDiskStateStore(store, path, chain, expectedRoot, expectedGeneration, policy, limits, false)
+proc recoverDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
+    expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
+    policy: StateStoreLimits, limits: JournalLimits): DiskStoreResult[StateStoreSnapshot] =
+  ## Explicitly truncate only a plausible incomplete final frame after exact trusted-prefix validation.
+  ## Complete successors and complete corrupt frames are never discarded; later restore failure may
+  ## leave the authorized repair durable even though no writable StateStore has been adopted.
+  acquireDiskStateStore(store, path, chain, expectedRoot, expectedGeneration, policy, limits, true)
+
 proc apply*(store: var DiskStateStore,
     writes: openArray[StateWrite]): DiskStoreResult[StateStoreSnapshot] =
   ## Validate/hash a private fork, append and synchronize its delta, then replace the live state once.
