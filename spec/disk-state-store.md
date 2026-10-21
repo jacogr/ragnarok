@@ -547,3 +547,13 @@ only CURRENT or fixed-width lowercase epoch-derived snapshot/journal names. New 
 exclusive, privately permissioned and synced before namespace synchronization. CURRENT/LOCK cannot
 be reclamation targets. Missing unselected epoch removal is idempotent; wrong kinds are refused.
 Callers retain ownership of the external directory namespace, matching the existing file contract.
+
+## Manifest publication and journal leases
+
+A stable shared lease state prevents directory lock retirement while any managed journal is open.
+Journal transfer explicitly disarms the old slot; ARC lowering rejects duplication. Appends check
+remaining capacity, write exact frames and synchronize before success; uncertainty poisons fresh
+journal observations. CURRENT publication uses exclusive CURRENT.next, file synchronization,
+descriptor-relative rename and directory synchronization. A post-rename barrier failure is explicit
+PublishedUnsynced. Pending cleanup requires a previously validated CURRENT and never follows links.
+No low-level append/truncation operation supplies graph, canonical-head or rollback authority.
