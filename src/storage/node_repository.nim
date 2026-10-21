@@ -28,8 +28,14 @@ type
     of InvalidRecords: recordReason: RecordError
     of TrieFailure: trieReason: TrieError
     else: discard               # Default and ordinary refusals retain no graph owner.
-  RepositoryTable = ref object ## Immutable physical records can be shared by unchanged-root generations.
-    records: seq[TrieRecord]
+  StoredRecord = ref object ## Private immutable cell owns bytes once; revision tables share only this ARC owner.
+    kind: TrieRecordKind
+    digest: StateNodeHash
+    key: StateKey
+    payload: seq[byte]
+    left, right: StateNodeHash
+  RepositoryTable = ref object ## Immutable sorted cell inventories remain independent for changed revisions.
+    records: seq[StoredRecord]
   RepositoryData = ref object ## Published metadata retains an immutable table, never a previous revision owner.
     table: RepositoryTable
     commitment: StateTrieCommitment
@@ -79,21 +85,33 @@ func compareHash(left, right: StateNodeHash): int =
     if a[i] < b[i]: return -1 # First different byte fixes address order.
     if a[i] > b[i]: return 1
   0
-proc compareRecord(left, right: TrieRecord): int =
+proc compareRecord(left, right: StoredRecord): int =
   ## Sort records without comparing or copying raw payloads in the comparator.
   compareHash(left.digest, right.digest)
-func sameRecord(left, right: TrieRecord): bool =
+func sameRecord(left: StoredRecord, right: TrieRecord): bool =
   ## A digest collision must not silently replace different physical navigation or values.
   left.kind == right.kind and compareHash(left.digest, right.digest) == 0 and
     array[31, byte](left.key) == array[31, byte](right.key) and left.payload == right.payload and
     compareHash(left.left, right.left) == 0 and compareHash(left.right, right.right) == 0
-proc copyRecord(source: TrieRecord): TrieRecord =
+proc storeRecord(source: TrieRecord): StoredRecord =
+  ## Admit copied transport bytes into a private cell that no public API can mutate or expose.
+  var bytes = newSeq[byte](source.payload.len)
+  for index, octet in source.payload:
+    bytes[index] = octet # Borrowed transport must not become a mutable alias of an admitted record.
+  StoredRecord(kind: source.kind, digest: source.digest, key: source.key, payload: bytes,
+    left: source.left, right: source.right)
+proc consumeRecord(source: var TrieRecord): StoredRecord =
+  ## Transfer only module-owned detached transport bytes; callers' raw images still use storeRecord.
+  let bytes = move(source.payload)
+  StoredRecord(kind: source.kind, digest: source.digest, key: source.key, payload: bytes,
+    left: source.left, right: source.right)
+proc copyRecord(source: StoredRecord): TrieRecord =
   ## Deep-copy only mutable byte storage; fixed addresses and keys copy by value.
   var bytes = newSeq[byte](source.payload.len)
   for i, octet in source.payload: bytes[i] = octet
   TrieRecord(kind: source.kind, digest: source.digest, key: source.key, payload: bytes,
     left: source.left, right: source.right)
-proc position(records: seq[TrieRecord], digest: StateNodeHash): int =
+proc position(records: seq[StoredRecord], digest: StateNodeHash): int =
   ## Binary search uses subtraction-based midpoints and full address equality.
   var first = 0
   var stop = records.len
@@ -104,7 +122,7 @@ proc position(records: seq[TrieRecord], digest: StateNodeHash): int =
     elif order > 0: stop = middle # Search only smaller remaining addresses.
     else: return middle
   -1
-proc graph(records: seq[TrieRecord], digest: StateNodeHash, depth: int,
+proc graph(records: seq[StoredRecord], digest: StateNodeHash, depth: int,
     prefix: array[31, byte], limits: StateTrieLimits, visit: var GraphVisit,
     counts: var GraphCounts): RepositoryError =
   ## Verify complete reachability, bounded acyclic topology and every full key's MSB route.
@@ -226,28 +244,26 @@ proc publish*(repository: var NodeRepository, expected: RepositoryView,
     repository.head = data # A new exact view identity/generation still invalidates old publication handles.
     return RepositoryResult[RepositoryView](status: RepositoryError.None,
       completed: RepositoryView(data: data))
-  var added = newSeq[TrieRecord](count-head.table.records.len)
-  var next = 0
+  var added = newSeqOfCap[StoredRecord](count-head.table.records.len)
   for record in batch.records:
     let old = position(head.table.records, record.digest)
     if old >= 0:
       if not sameRecord(head.table.records[old], record):
         return RepositoryResult[RepositoryView](status: RepositoryError.RecordConflict)
     else:
-      added[next] = copyRecord(record) # Raw transport mutations cannot alter the accepted candidate.
-      inc next
+      added.add(storeRecord(record)) # Append only initialized nonnil cells; raw transport stays detached.
   added.sort(compareRecord) # Only newly admitted records require sorting; the published table is already ordered.
-  var records = newSeq[TrieRecord](count)
+  var records = newSeqOfCap[StoredRecord](count)
   var prior = 0
   var fresh = 0
   for index in 0..<count:
     # Merge disjoint sorted addresses linearly, retaining old private payload owners without copying bytes.
     if fresh >= added.len or (prior < head.table.records.len and
         compareHash(head.table.records[prior].digest, added[fresh].digest) < 0):
-      records[index] = head.table.records[prior]
+      records.add(head.table.records[prior])
       inc prior
     else:
-      records[index] = added[fresh]
+      records.add(added[fresh])
       inc fresh
   var visit = GraphVisit(seen: newSeq[bool](records.len))
   var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
@@ -484,12 +500,12 @@ proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
     if validated != RecordError.None:
       return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
         recordReason: validated)
-  var records = newSeq[TrieRecord](recordCount)
+  var records = newSeqOfCap[StoredRecord](recordCount)
   var bytes = 0'u64
   for index, record in image.collection.records:
     if index > 0 and compareHash(image.collection.records[index-1].digest, record.digest) >= 0:
       return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph) # Persisted address order is exact, not silently normalized.
-    records[index] = copyRecord(record)
+    records.add(storeRecord(record))
     bytes += uint64(record.payload.len) # Collection preflight proved the aggregate physical byte bound.
   var retained = newSeq[bool](records.len)
   var count = 0
@@ -595,7 +611,10 @@ proc cloneRepositorySelection*(selection: RepositorySelection,
     records: TrieNodeLimit(uint64(limits.records)), valueBytes: limits.valueBytes))
   if detached.error != RepositoryError.None:
     return RepositoryResult[NodeRepository](status: detached.error)
-  let cloned = RepositoryData(table: RepositoryTable(records: move(detached.completed)),
+  var records = newSeqOfCap[StoredRecord](detached.completed.len)
+  for index in 0..<detached.completed.len:
+    records.add(consumeRecord(detached.completed[index])) # Transfer detached bytes into initialized cells.
+  let cloned = RepositoryData(table: RepositoryTable(records: records),
     commitment: source.commitment, generation: source.generation, valueBytes: data.valueBytes,
         limits: limits)
   RepositoryResult[NodeRepository](status: RepositoryError.None, completed: NodeRepository(head: cloned))
