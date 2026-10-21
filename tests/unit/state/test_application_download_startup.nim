@@ -10,12 +10,18 @@ import std/posix/posix
 import ../../../src/app/[download_policy, download_command, options, services, block_download]
 import ../../../src/quic/[block_download_loop, block_download_stream]
 import ../../../src/app/[block_input, download_schedule]
-import ../../../src/codec/[bounded, block_codec, report_owned]
+import ../../../src/codec/[bounded, block_codec, report_owned, header]
+import ../../../src/lib/atomic_file
+import ../../../src/state/[store, report_admission, report_anchors]
+import ../../../src/app/[chain, candidate]
+import ../../../src/chain/[genesis, provider]
+import ../../support/report_admission_context as report_context
 import ../../support/[application_candidate_context, accumulation_completion_context,
   block_download_transport, arc_evidence]
 
 type Scenario = enum ## Each child process serves one explicitly selected wire outcome or identity pin.
-  Healthy, WrongKey, MissingFin, Empty, PreparationRefusal, Fallback
+  Healthy, WrongKey, MissingFin, Empty, PreparationRefusal, Fallback,
+  AncestorHealthy, AncestorMissing, AncestorBroken, AncestorSuffix, AncestorDisk
 
 proc policy(): DownloadLoopLimits =
   ## The fixture supplies every stage policy explicitly; command pauses require independent real-time budgets.
@@ -207,13 +213,30 @@ proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario) 
   elif scenario == PreparationRefusal:
     configured.candidate.execution.preimageBytes = ByteLimit(
         0) # Raw admission succeeds; real guest preparation must refuse.
+  if scenario >= AncestorHealthy:
+    configured.input.ancestors = ElementLimit(1)
+    configured.input.ancestorBytes = ByteLimit(100000) # Explicit v1 budgets remain required for every supplied header.
   writeFile("download-startup-policy.conf", encodeDownloadPolicy(configured))
   let peer = getEnv(if scenario == WrongKey: "RAGNAROK_TEST_PEER_A" else: "RAGNAROK_TEST_PEER_B")
   var selected = options(port, peer)
   if scenario == Fallback:
     selected = peerOptions(firstPort, getEnv("RAGNAROK_TEST_PEER_A"), [$port, peer])
+  if scenario >= AncestorHealthy:
+    var args = arguments(port, peer)
+    if scenario != AncestorMissing:
+      args.add("--download-ancestor")
+      args.add(if scenario == AncestorBroken: "download-startup-ancestor-broken"
+        elif scenario == AncestorSuffix: "download-startup-ancestor-suffix"
+        else: "download-startup-ancestor") # Structurally valid wrong seals reach report admission; suffixes refuse before transport.
+    if scenario == AncestorDisk:
+      for value in ["--state-storage", "disk", "--state-db", "download-startup-ancestor.db"]:
+        args.add(value) # Genuine report/guest success must wait for confirmed durable publication.
+    assert parseOptions(args, selected)
   let outcome = runDownload(selected)
-  let wanted = if scenario in [Healthy, Fallback]: DownloadCommandResult.Adopted else: DownloadCommandResult.Exhausted
+  let wanted = if scenario in [Healthy, Fallback, AncestorHealthy,
+      AncestorDisk]: DownloadCommandResult.Adopted
+    elif scenario == AncestorSuffix: DownloadCommandResult.InvalidAncestors
+    else: DownloadCommandResult.Exhausted
   assert outcome == wanted, "actual command terminal outcome"
   writeFile("download-startup-stop", "stop")
   var status = 0.cint
@@ -221,27 +244,48 @@ proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario) 
   reaped = true
   assert WIFEXITED(status) and WEXITSTATUS(status) == 0, "responder successful exit"
   let requests = readFile("download-startup-requests")
-  assert requests == (if scenario == WrongKey: "0:0" elif scenario == Fallback: "1:1" else: "0:1"), "actual pinned target request count"
+  assert requests == (if scenario in [WrongKey, AncestorSuffix]: "0:0" elif scenario ==
+      Fallback: "1:1" else: "0:1"), "actual pinned target request count"
+
+proc responseFrame(context: SeedFixture): seq[byte] =
+  ## Independently encode one complete CE response from the signed fixture, without a transport verdict hook.
+  let blockOwner = candidateBlock(context)
+  let body = blockOwner.blockInfo.value.consumed
+  result = newSeq[byte](body + 4)
+  for index in 0..<4: result[index] = byte((uint64(body) shr (8 * index)) and 255)
+  assert encodeBlock(Block(header: blockOwner.blockHeader.value,
+      extrinsic: blockOwner.blockExtrinsic.value), preparationLimits().reporting.admission.frame,
+    result.toOpenArray(4, result.high)).error == FrameError.None
+
+proc independentRequest(): array[42, byte] {.raises.} =
+  ## Fresh canonical admission derives the expected request, then retires all owners before responder forks.
+  var owner = default(Services)
+  defer: owner.close()
+  var initial = default(Options)
+  assert parseOptions(@["server", "--with-state", "--chain", "download-startup-chain.json",
+    "--state-writes", "1000", "--state-write-bytes", "1000000"], initial)
+  assert owner.start(initial, "test")
+  var request = default(BlockDownload)
+  let admitted = request.begin(owner, [], policy().input, policy().candidate)
+  assert admitted.error == BlockDownloadError.None
+  result = request.request(admitted.value).value
+  assert request.cancel(admitted.value)
 
 proc main() {.raises.} =
   ## Prepare a genuinely signed child/complete-map seed independently of the command's private canonical owner.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var report = newSeq[byte](raw.len)
   for index, octet in raw: report[index] = byte(octet) # Preserve every frozen report byte.
-  let context = fixture(decodeOwnedReport(report, 2).value)
-  let blockOwner = candidateBlock(context)
-  let body = blockOwner.blockInfo.value.consumed
-  var frame = newSeq[byte](body + 4)
-  for index in 0..<4: frame[index] = byte((uint64(body) shr (8 * index)) and 255)
-  assert encodeBlock(Block(header: blockOwner.blockHeader.value,
-      extrinsic: blockOwner.blockExtrinsic.value),
-    preparationLimits().reporting.admission.frame, frame.toOpenArray(4, frame.high)).error ==
-        FrameError.None,
-    "independent response frame"
+  let base = decodeOwnedReport(report, 2).value
+  let context = fixture(base)
+  let frame = responseFrame(context)
   writeFile("download-startup-chain.json", context.text)
   defer:
     for name in ["download-startup-chain.json", "download-startup-policy.conf",
-        "download-startup-stop", "download-startup-requests", "download-startup-identity"]:
+        "download-startup-stop", "download-startup-requests", "download-startup-identity",
+        "download-startup-ancestor", "download-startup-ancestor-broken",
+        "download-startup-ancestor-suffix",
+        "download-startup-ancestor.db"]:
       var path = name
       discard posix.unlink(path.toCString()) # All generated files stay inside the runner's ignored work directory.
   let text = encodeDownloadPolicy(policy())
@@ -269,18 +313,61 @@ proc main() {.raises.} =
   assert not parseOptions(telemetry, selected), "unwired outgoing telemetry refused"
   peerPreflight(peer)
   ancestorPreflight(peer)
-  var owner = default(Services)
-  var initial = default(Options)
+  let expected = independentRequest()
+  for scenario in Scenario.Healthy..Scenario.Fallback: roundTrip(expected, frame, scenario)
+  let anchored = fixture(base, guarantees = 1)
+  writeFile("download-startup-chain.json", anchored.text)
+  let ancestor = report_context.authored(base).older[0]
+  var wire = newSeq[byte](ancestor.headerInfo.value.consumed)
+  assert encodeOwnedHeader(ancestor, wire).error == HeaderError.None
+  assert replaceAtomicFile("download-startup-ancestor", wire, ByteLimit(100000)) ==
+      AtomicFileError.None
+  let selectedParent = initialized(anchored)
+  let omitted = prepareCandidate(selectedParent, candidateBlock(anchored), [], preparationLimits())
+  assert omitted.error == ApplicationCandidateError.ReportFailure
+  assert omitted.reportFailure.error == ReportAdmissionError.AnchorFailure
+  assert omitted.reportFailure.anchorError == ReportAnchorError.MissingLookupAnchor
+  wire[wire.high] = wire[wire.high] xor 1
+  let broken = decodeHeader(wire, preparationLimits().reporting.reports.ancestors.header).value.owner
+  let forked = prepareCandidate(selectedParent, candidateBlock(anchored), [broken],
+      preparationLimits())
+  assert forked.error == ApplicationCandidateError.ReportFailure
+  assert forked.reportFailure.anchorError == ReportAnchorError.BrokenAncestry
+  assert replaceAtomicFile("download-startup-ancestor-broken", wire, ByteLimit(100000)) ==
+      AtomicFileError.None
+  wire.add(0)
+  assert replaceAtomicFile("download-startup-ancestor-suffix", wire, ByteLimit(100000)) ==
+      AtomicFileError.None
+  let anchoredRequest = independentRequest()
+  let anchoredFrame = responseFrame(anchored)
+  for scenario in AncestorHealthy..AncestorDisk: roundTrip(anchoredRequest, anchoredFrame, scenario)
+  var reference = initialized(anchored)
+  let prepared = prepareCandidate(reference, candidateBlock(anchored), [ancestor],
+      preparationLimits())
+  assert prepared.error == ApplicationCandidateError.None
+  let expectedChild = reference.applyAccumulation(prepared.value, completionLimits().composition)
+  assert expectedChild.error == ApplicationChainError.None
+  var diskOptions = default(Options)
   assert parseOptions(@["server", "--with-state", "--chain", "download-startup-chain.json",
-    "--state-writes", "1000", "--state-write-bytes", "1000000"], initial), "seed options"
-  assert owner.start(initial, "test"), "canonical seed for independent request"
-  var request = default(BlockDownload)
-  let admitted = request.begin(owner, [], policy().input, policy().candidate)
-  assert admitted.error == BlockDownloadError.None, "independent request admission"
-  let expected = request.request(admitted.value).value
-  assert request.cancel(admitted.value), "independent request retirement"
-  owner.close() # No parent canonical listeners or workers remain across responder forks.
-  for scenario in low(Scenario)..high(Scenario): roundTrip(expected, frame, scenario)
+    "--state-writes", "1000", "--state-write-bytes", "1000000", "--state-storage", "disk",
+    "--state-db", "download-startup-ancestor.db"], diskOptions)
+  var resumed = default(Services)
+  assert resumed.start(diskOptions, "resume anchored download")
+  assert resumed.chainView.retainedCount == 2
+  let head = resumed.chainView.bestBlock.value
+  assert array[32, byte](head.blockHash) == array[32, byte](expectedChild.value.blockHash)
+  assert array[32, byte](head.stateSnapshot.commitment.root) == array[32, byte](
+      expectedChild.value.stateSnapshot.commitment.root)
+  let actualState = head.stateSnapshot
+  let expectedState = expectedChild.value.stateSnapshot
+  assert actualState.commitment.entries == expectedState.commitment.entries
+  for index in 0..<expectedState.commitment.entries:
+    let key = expectedState.keyAt(StateEntryIndex(index)).value
+    assert actualState.lookup(key).value.bytes == expectedState.lookup(
+        key).value.bytes # Durable restart preserves every independently composed serialized entry.
+  assert resumed.chainView.parentOf(head.blockHash).error == GenesisError.None
+  assert resumed.chainView.finalizedBlock.error == GenesisError.Unavailable
+  resumed.close() # Restart preserves durable lookup-backed state/history without importing external finality.
   cycle(text)
   let before = getOccupiedMem()
   for iteration in 0..<1000: cycle(text) # Complete and failed policy owners must retire without retained strings or partial snapshots.
