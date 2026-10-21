@@ -41,7 +41,15 @@ uses E_z with z encoded as one byte, and Appendix C defines E_0. Thus width zero
 encodes zero entries; widths above eight require zero high bytes because elements
 belong to the 64-bit register domain. Jump entries may name invalid destinations;
 the dynamic-jump execution rule, not deblob, rejects those destinations.
-No narrower tooling convention is imposed as an extra consensus restriction.
+These are the raw `decodeProgram` rules. The explicit `decodeJamProgram` entry
+point selects the maintainer's PolkaVM compatibility policy for JAM execution:
+[GP-PVM-004/005/006](graypaper-discrepancies.md) reject final missing successors
+and widths above4, and expose zero-width tables as semantically empty. It shares
+the bounded framing/ownership implementation; it is not an alternate-format
+fallback. Original input bytes remain copied verbatim and code offsets do not
+change. The declared count is checked against the local jump ceiling before
+semantic normalization. Raw and JAM program owners remain independent and
+immutable; callers choose their preparation boundary explicitly.
 
 Caller policy uses separate nominal blob-byte and jump-count limits. A zero-width
 table is never expanded, even with a large permitted logical count. All lengths,

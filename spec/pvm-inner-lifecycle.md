@@ -3,7 +3,12 @@
 Pins: GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `pvm_invocations.tex` Omega_M/Omega_X and fnmemgas, `definitions.tex` M/X gas,
 `pvm.tex` deblob; vectors `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
-No pin or established interpretation changes.
+No pins change. The maintainer's discrepancy compatibility policy selects
+`decodeJamProgram` for machine creation: GP-PVM-004/005 reject a missing final
+successor or jump width above4 with the existing HUH result; GP-PVM-006 accepts
+width0 tables but gives them no dynamic entries, matching public PolkaVM behavior.
+Raw paper decoding remains separately available. See the
+[discrepancy register](graypaper-discrepancies.md).
 
 Scope: hosts 9 (machine) and 14 (expunge), a private immutable map of at most
 63 inner machines, and dispatcher/invocation integration. Each run starts empty.

@@ -100,7 +100,7 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
   # Check the complete allocation, including zero pages, before building any page image.
   if pageCount > uint64(uint32(limits.pages)):
     return InitializationResult(status: InitializationError.LimitExceeded)
-  let decoded = decodeProgram(input.toOpenArray(codeOffset, input.len - 1), entry,
+  let decoded = decodeJamProgram(input.toOpenArray(codeOffset, input.len - 1), entry,
     limits.program, limits.jumps)
   # Program policy exhaustion is local; malformed code or an invalid entry is separately rejected.
   if decoded.error == ProgramError.LimitExceeded:
@@ -108,15 +108,6 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
   elif decoded.error != ProgramError.None:
     # Standard Y itself does not validate code; this executable-machine adapter deliberately does.
     return InitializationResult(status: InitializationError.InvalidProgram)
-  var cursor = 0'u64
-  let length = decoded.value.codeLength.value
-  # GP-PVM-004: JAM preparation rejects a final successor-dependent terminator before execution.
-  while cursor < length:
-    let item = instruction(decoded.value, CodeAddress(cursor)).value
-    cursor += 1 + uint64(item.skip)
-    # Raw decoding still follows the paper's T predicate; this scoped check belongs to preparation.
-    if cursor == length and item.opcode notin {0'u8, 40'u8, 50'u8, 80'u8, 180'u8}:
-      return InitializationResult(status: InitializationError.InvalidProgram)
   var pages = newSeqOfCap[PageImage](int(pageCount))
   region(pages, 65536, roSize, PageAccess.ReadOnly, input, 11, int(readOnlyLength))
   region(pages, 131072 + rounded(readOnlyLength, 65536), rwSize, PageAccess.ReadWrite,

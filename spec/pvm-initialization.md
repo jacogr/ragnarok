@@ -19,13 +19,15 @@ and machine capture. Y alone may return a malformed raw program; this adapter
 returns `InvalidProgram` for it rather than claiming that Y rejects its envelope.
 The maintainer-approved [GP-PVM-004 exception](pvm-final-terminator-validation.md)
 also rejects a final successor-dependent terminator as `InvalidProgram` at this
-shared JAM preparation boundary. Among final members of T, only trap, static jump,
+shared JAM preparation boundary through `decodeJamProgram`. Among final members of T, only trap, static jump,
 indirect jump, load-immediate/static jump and load-immediate/indirect jump require
-no fallthrough. The check scans the entire decoded program, including unreachable
+no fallthrough. The check scans the entire program during decoding, including unreachable
 suffixes, before page materialization. It does not prevalidate branch destinations,
 execute prefixes or synthesize a guest panic. Existing callers retain their typed
-initialization/preparation failures. Raw `decodeProgram`, machine capture, stepping
-and inner-machine decoding retain the paper's structural and runtime behavior.
+initialization/preparation failures. Raw `decodeProgram`, machine capture and stepping retain the paper's structural
+and runtime behavior. The JAM profile also rejects jump-entry widths above4
+(GP-PVM-005) and treats width0 tables as empty (GP-PVM-006), even when the blob
+declares entries. The same profile is used by inner-machine creation.
 
 It does not implement the argument-invocation wrapper, host functions, return-buffer
 extraction or invocation-level panic/gas normalization.

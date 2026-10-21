@@ -68,6 +68,21 @@ for blob in [@[0'u8], @[0'u8, 0, 2, 50, 0, 0], @[0'u8, 0, 1, 2, 1]]:
   assert bad.machines.innerMachineCount.value == 0
 for entry in [1'u64, 2, high(uint64)]:
   assert uint64(create(empty, innerRegisters(entry = entry)).value.response.registers[7]) == high(uint64)-8
+# Inner-machine creation selects the same JAM profile as outer guest initialization.
+for blob in [@[0'u8, 0, 1, 1, 1], @[0'u8, 0, 3, 170, 0, 0, 1],
+    @[0'u8, 5, 1, 0, 1]]:
+  let refused = create(empty, innerRegisters(uint64(blob.len)), memory = innerMemory(blob)).value
+  assert uint64(refused.response.registers[7]) == high(uint64)-8
+  assert refused.machines.innerMachineCount.value == 0
+# A nonempty zero-width table still creates an inner machine, with no usable dynamic entries.
+let zeroWidth = @[1'u8, 0, 4, 10, 0, 50, 8, 5]
+let zeroCreated = create(empty, innerRegisters(uint64(zeroWidth.len), entry = 2),
+  memory = innerMemory(zeroWidth)).value
+assert uint64(zeroCreated.response.registers[7]) == 0 and
+    zeroCreated.machines.innerMachineCount.value == 1
+let zeroProgram = zeroCreated.machines.innerMachine(InnerMachineId(0)).value.program
+assert jumpTarget(zeroProgram, JumpIndex(0)).error == ProgramError.InvalidIndex
+
 # Populate every slot, delete a middle hole, reuse the minimum hole and retain earlier snapshots unchanged.
 var full = empty
 for id in 0..<63:
