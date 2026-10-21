@@ -324,3 +324,10 @@ witness. Both layouts terminate immediately on zero progress before or after a r
 write. The owner is poisoned in either case; strict reopen accepts only an unchanged complete
 prefix. A partial tail still requires the independent exact generation/root repair token. After
 repair, a genuine successor append succeeds and every earlier complete reader remains valid.
+
+## Staged epoch write refusal
+
+Independent real compaction cases refuse the snapshot, new journal and CURRENT.next write in turn.
+Each consumes its intended fault, poisons the live owner and leaves CURRENT byte-identical. Strict
+startup admits the original selected epoch and complete map; staged files supply no alternate-head
+authority. Test cleanup names only the fixture's exact old/new epochs and fixed pending manifest.
