@@ -13,6 +13,7 @@ adoption remain explicit Nim decisions.
 | [`session.nim`](session.nim) | Retained peer/mesh sessions and private stream owners |
 | [`integration.nim`](integration.nim) | CE 143 proof workloads over complete C.2 digest captures |
 | [`offload.nim`](offload.nim) | Fixed two-worker proof queue with owned inputs, bounded capacity and explicit completion/cancellation |
+| `ancestor_stream.nim`, `ancestor_peer.nim` | Bounded descending CE 128 context, explicit TLS pins and stream/connection retirement before header decoding |
 | `block_download_*` | CE 128 stream reception, pinned outgoing peers, attempt/session ownership and the one-child download dispatcher |
 
 Callbacks borrow stable owners only during the documented lifetime; teardown retires callbacks

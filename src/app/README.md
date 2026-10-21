@@ -29,3 +29,12 @@ The [application contract](../../spec/application.md), [chain contract](../../sp
 [preparation lease](../../spec/application-preparation-lease.md) and
 [checkpoint contract](../../spec/application-checkpoint.md) record exact ownership, verification
 and remaining integration boundaries.
+
+[`ancestor_response.nim`](ancestor_response.nim) validates bounded descending block
+responses against a known child's exact sealed parent chain;
+[`ancestor_receiver.nim`](ancestor_receiver.nim) owns fragmented E4 bytes and both
+FIN gates. The download command can extend local/file inputs with explicit
+`--download-remote-ancestors COUNT` context before child requests. See the
+[remote acquisition contract](../../spec/application-remote-ancestors.md) and
+[operator guide](../../docs/download-ancestors.md) for bounds, retry behavior and
+canonical-history separation.

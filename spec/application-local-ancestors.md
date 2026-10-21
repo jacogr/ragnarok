@@ -54,6 +54,7 @@ No storage, trie, Services, finality or checkpoint trust interface changes are r
   Existing success/replay/timeout cases remain required.
 
 M1 framing is complete. Full state serialization and whole-block JAM/STF parity
-remain open. Remote ancestor acquisition, history beyond bounded retention, fork
-choice, discovery and production node lifecycle remain separate work. This is
+remain open. [Remote ancestor acquisition](application-remote-ancestors.md) now has
+its own bounded interface. History beyond bounded retention, fork choice, discovery
+and production node lifecycle remain separate work. This is
 focused local evidence, not exact-head Linux CI or whole-suite parity.
