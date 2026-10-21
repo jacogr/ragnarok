@@ -163,3 +163,19 @@ reclamation claim follows from logical history eviction.
 Pinned semantic and native `application_download_disk_progress` checks pass;
 evidence uses `build/multiblock-disk-*`. Storage formats, policies, public
 interfaces and managed-maintenance adoption remain unchanged.
+
+## Trusted checkpoint progression
+
+The independent-import suite refuses separately damaged identity, sealed header
+and checkpoint bytes before any outgoing request or fresh disk creation. Valid
+operator-selected inputs then permit three genuine successive children in memory
+and in a freshly created disk database. All trust files are deleted before normal
+local restart, complete-map comparison and a further genuine child download.
+
+Recreating the original valid external import inputs cannot overwrite the now
+four-child durable prefix: startup reports failure with zero requests/adoptions,
+the entire journal remains byte-identical, and normal restart still matches every
+retained independent map with finality unset. Pinned semantic/native
+`application_download_import_progress` checks pass; logs use
+`build/multiblock-import-*`. External imports still begin with one unfinalized
+head; local durable history/finality recovery remains a distinct authority.
