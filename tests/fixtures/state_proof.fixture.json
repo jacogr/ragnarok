@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_STATE_PROOF",
+  "files": {
+    "state-proofs.txt": "af17d2b75fad7215e858a6e941c76303dfc02dfae2478716855abb2970be806c"
+  },
+  "target": "state-proofs.txt"
+}

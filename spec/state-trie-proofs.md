@@ -78,3 +78,8 @@ successful accessors as positive controls. A failed build cannot count as a reje
 Compiler privacy probes reject witness owners, result tags/payloads, verified presence,
 root/key identities and batch/set owners. External callers cannot fabricate verified
 evidence or replace the root after verification.
+
+Independent unsorted-list/hashlib reference evidence freezes 45 complete inputs, raw
+paths and roots under an exact SHA-256 fixture descriptor. Native verification and
+generation each compare the frozen commitments and every path node; literal empty
+and singleton controls protect oracle behavior. No reference code enters production.
