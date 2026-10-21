@@ -35,3 +35,6 @@ component coverage does not imply complete JAM state serialization or a producti
 
 Bounded immutable state trie membership/absence interfaces are documented in the
 [state proof guide](../../docs/state-proofs.md) and [feature contract](../../spec/state-trie-proofs.md).
+
+[Verified partial read views](../../docs/state-proof-views.md) retain exact-key evidence
+under one root, with explicit unknown/absent/present outcomes and no complete-map conversion.
