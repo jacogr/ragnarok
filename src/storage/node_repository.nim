@@ -23,8 +23,10 @@ type
     of InvalidRecords: recordReason: RecordError
     of TrieFailure: trieReason: TrieError
     else: discard               # Default and ordinary refusals retain no graph owner.
-  RepositoryData = ref object ## Published immutable node table retains no previous revision owner.
+  RepositoryTable = ref object ## Immutable physical records can be shared by unchanged-root generations.
     records: seq[TrieRecord]
+  RepositoryData = ref object ## Published metadata retains an immutable table, never a previous revision owner.
+    table: RepositoryTable
     commitment: StateTrieCommitment
     generation: RepositoryGeneration
     valueBytes: uint64
@@ -139,7 +141,7 @@ proc graph(records: seq[TrieRecord], digest: StateNodeHash, depth: int,
 
 proc newNodeRepository*(limits: RepositoryLimits): NodeRepository =
   ## Open an initialized empty in-memory owner; allocation exhaustion keeps the fail-stop policy.
-  NodeRepository(head: RepositoryData(limits: limits))
+  NodeRepository(head: RepositoryData(table: RepositoryTable(records: @[]), limits: limits))
 func opened*(repository: NodeRepository): bool =
   ## Observe lifecycle without exporting the mutable publication handle.
   repository.head != nil
@@ -170,14 +172,15 @@ proc storedNodes*(view: RepositoryView): int {.requires: view.data != nil.} =
   ## Count retained physical addresses, including nodes of prior revisions pending explicit reclamation.
   let data = view.data
   assert data != nil
-  data.records.len
+  data.table.records.len
 proc lookupNode*(view: RepositoryView, digest: StateNodeHash): RepositoryResult[TrieRecord] =
   ## Missing physical data is distinct from an empty child and from a default read view.
   let data = view.data
   if data == nil: return RepositoryResult[TrieRecord](status: RepositoryError.Uninitialized)
-  let index = position(data.records, digest)
+  let index = position(data.table.records, digest)
   if index < 0: return RepositoryResult[TrieRecord](status: RepositoryError.MissingNode)
-  RepositoryResult[TrieRecord](status: RepositoryError.None, completed: copyRecord(data.records[index]))
+  RepositoryResult[TrieRecord](status: RepositoryError.None, completed: copyRecord(
+      data.table.records[index]))
 
 proc publish*(repository: var NodeRepository, expected: RepositoryView,
     batch: TrieExport): RepositoryResult[RepositoryView] =
@@ -193,10 +196,10 @@ proc publish*(repository: var NodeRepository, expected: RepositoryView,
   let limits = head.limits
   if uint64(batch.records.len) > uint64(limits.codec.records.records):
     return RepositoryResult[RepositoryView](status: RepositoryError.LimitExceeded)
-  var count = head.records.len
+  var count = head.table.records.len
   var bytes = head.valueBytes
   for record in batch.records:
-    if position(head.records, record.digest) < 0:
+    if position(head.table.records, record.digest) < 0:
       if uint64(count) >= uint64(limits.records) or count >= high(int) div sizeof(TrieRecord):
         return RepositoryResult[RepositoryView](status: RepositoryError.LimitExceeded)
       if uint64(record.payload.len) > uint64(limits.valueBytes)-bytes:
@@ -207,12 +210,23 @@ proc publish*(repository: var NodeRepository, expected: RepositoryView,
   if validated != RecordError.None:
     return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
         recordReason: validated)
-  var added = newSeq[TrieRecord](count-head.records.len)
+  if batch.records.len == 0 and array[32, byte](batch.root) == array[32, byte](
+      head.commitment.root):
+    # Immutable current graphs need no traversal or table copy; exact metadata remains mandatory.
+    if batch.entries != uint64(head.commitment.entries) or batch.nodes != head.commitment.nodes:
+      return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph)
+    let data = RepositoryData(table: head.table, commitment: head.commitment,
+      generation: RepositoryGeneration(uint64(head.generation)+1), valueBytes: head.valueBytes,
+      limits: limits)
+    repository.head = data # A new exact view identity/generation still invalidates old publication handles.
+    return RepositoryResult[RepositoryView](status: RepositoryError.None,
+      completed: RepositoryView(data: data))
+  var added = newSeq[TrieRecord](count-head.table.records.len)
   var next = 0
   for record in batch.records:
-    let old = position(head.records, record.digest)
+    let old = position(head.table.records, record.digest)
     if old >= 0:
-      if not sameRecord(head.records[old], record):
+      if not sameRecord(head.table.records[old], record):
         return RepositoryResult[RepositoryView](status: RepositoryError.RecordConflict)
     else:
       added[next] = copyRecord(record) # Raw transport mutations cannot alter the accepted candidate.
@@ -223,9 +237,9 @@ proc publish*(repository: var NodeRepository, expected: RepositoryView,
   var fresh = 0
   for index in 0..<count:
     # Merge disjoint sorted addresses linearly, retaining old private payload owners without copying bytes.
-    if fresh >= added.len or (prior < head.records.len and
-        compareHash(head.records[prior].digest, added[fresh].digest) < 0):
-      records[index] = head.records[prior]
+    if fresh >= added.len or (prior < head.table.records.len and
+        compareHash(head.table.records[prior].digest, added[fresh].digest) < 0):
+      records[index] = head.table.records[prior]
       inc prior
     else:
       records[index] = added[fresh]
@@ -240,7 +254,8 @@ proc publish*(repository: var NodeRepository, expected: RepositoryView,
   for record in batch.records:
     if not visit.seen[position(records, record.digest)]:
       return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph) # Do not admit unrelated orphan records through a revision batch.
-  let data = RepositoryData(records: records, commitment: StateTrieCommitment(root: batch.root,
+  let data = RepositoryData(table: RepositoryTable(records: records),
+      commitment: StateTrieCommitment(root: batch.root,
     entries: int(counts.entries), nodes: counts.nodes), generation: RepositoryGeneration(uint64(
         head.generation)+1),
     valueBytes: bytes, limits: limits)
@@ -257,9 +272,10 @@ proc collectStateEntries(view: RepositoryView, expected: StateRoot,
   if selected and (uint64(data.commitment.entries) > uint64(limits.items) or data.commitment.nodes >
       uint64(limits.nodes)):
     return RepositoryResult[seq[StateEntry]](status: RepositoryError.LimitExceeded) # Reject narrower fixed ceilings before traversal scratch.
-  var visit = GraphVisit(seen: newSeq[bool](data.records.len), collect: GraphCollection.Leaves)
+  var visit = GraphVisit(seen: newSeq[bool](data.table.records.len),
+      collect: GraphCollection.Leaves)
   var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
-  let checked = graph(data.records, StateNodeHash(array[32, byte](expected)), 0,
+  let checked = graph(data.table.records, StateNodeHash(array[32, byte](expected)), 0,
     default(array[31, byte]), limits, visit, counts)
   if checked != RepositoryError.None: return RepositoryResult[seq[StateEntry]](status: checked)
   if counts.entries > uint64(high(int) div sizeof(StateEntry)):
@@ -268,7 +284,7 @@ proc collectStateEntries(view: RepositoryView, expected: StateRoot,
   var next = 0
   for index in visit.leaves:
     # Left-before-right traversal yields full keys in canonical order, independent of physical history.
-    let copied = copyRecord(data.records[index])
+    let copied = copyRecord(data.table.records[index])
     entries[next] = StateEntry(key: copied.key, value: copied.payload)
     inc next # Complete graph validation proved the exact reachable leaf count.
   RepositoryResult[seq[StateEntry]](status: RepositoryError.None, completed: entries)
@@ -362,14 +378,15 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
     if not duplicate: unique.add(root)
   if not selected: return RepositoryResult[RepositorySelection](
       status: RepositoryError.RootMismatch)
-  var retained = newSeq[bool](source.records.len)
+  var retained = newSeq[bool](source.table.records.len)
   var indices: seq[int] = @[]
   var bytes = 0'u64
   for root in unique:
     # Each complete root gets independent cycle/route checks; shared records count once in the union.
-    var visit = GraphVisit(seen: newSeq[bool](source.records.len), collect: GraphCollection.Records)
+    var visit = GraphVisit(seen: newSeq[bool](source.table.records.len),
+        collect: GraphCollection.Records)
     var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
-    let checked = graph(source.records, StateNodeHash(array[32, byte](root)), 0,
+    let checked = graph(source.table.records, StateNodeHash(array[32, byte](root)), 0,
       default(array[31, byte]), source.limits.codec.trie, visit, counts)
     if checked != RepositoryError.None:
       return RepositoryResult[RepositorySelection](status: checked)
@@ -377,7 +394,7 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
       if not retained[index]:
         retained[index] = true
         indices.add(index)
-        bytes += uint64(source.records[index].payload.len) # Unique source records are bounded by source.valueBytes.
+        bytes += uint64(source.table.records[index].payload.len) # Unique source records are bounded by source.valueBytes.
   RepositoryResult[RepositorySelection](status: RepositoryError.None,
     completed: RepositorySelection(data: RepositorySelectionData(source: view, roots: unique,
       indices: indices, valueBytes: bytes)))
@@ -408,5 +425,5 @@ proc exportRepositorySelection*(selection: RepositorySelection,
   indices.sort() # Source record indices have the same unique lexical order as their full physical addresses.
   var records = newSeq[TrieRecord](indices.len)
   for index, position in indices:
-    records[index] = copyRecord(source.records[position]) # Never export shared mutable payload bytes.
+    records[index] = copyRecord(source.table.records[position]) # Never export shared mutable payload bytes.
   RepositoryResult[seq[TrieRecord]](status: RepositoryError.None, completed: records)
