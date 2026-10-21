@@ -59,6 +59,14 @@ proc cycle() =
   let selected = selectRepositoryRoots(next, [first.commitment.root, next.commitment.root],
       ElementLimit(2)).value
   var detached = exportRepositoryImage(selected, limits.codec.records, ElementLimit(2)).value
+  let canonical = exportRepositorySelection(selected, limits.codec.records).value
+  let reversed = selectRepositoryRoots(next, [next.commitment.root, first.commitment.root],
+      ElementLimit(2)).value
+  let reordered = exportRepositorySelection(reversed, limits.codec.records).value
+  assert canonical.len == reordered.len
+  for index in 0..<canonical.len:
+    # Independently ordered root requests produce the same canonical detached physical transport.
+    assert array[32, byte](canonical[index].digest) == array[32, byte](reordered[index].digest)
   for index in 0..<detached.collection.records.len:
     if detached.collection.records[index].kind == TrieRecordKind.Leaf:
       detached.collection.records[index].payload[0] = 77 # Exported transport cannot mutate any shared cell.
