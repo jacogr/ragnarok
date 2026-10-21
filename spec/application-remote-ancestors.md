@@ -74,3 +74,22 @@ The independent primitive observer reports zero hash calls during reception;
 producer decoding occurs only after native teardown. Ownership rejection and
 inventory pass (`build/ancestor-stream-*.log`). Peer pin selection and command
 integration remain subsequent layers; no remote CI was requested.
+
+## Pinned outgoing peer
+
+`AncestorPeer` owns one outgoing endpoint, receiver and stable callback aggregate.
+It checks the actual TLS certificate against the selected Ed25519 pin before
+opening one local stream. A host-supplied monotonic total deadline covers handshake,
+transfer and final stream retirement. Backward ticks reject without changing the
+captured deadline. An unsolicited/late open cannot replace a live binding. Ready
+requires both FINs, actual stream close and graceful native connection retirement; only then may the host decode headers.
+Explicit close retires callbacks before buffer release/reuse or aggregate destruction.
+
+`application_ancestor_peer` passes actual pinned TLS healthy/empty replies, wrong-key
+zero-request refusal, oversized/premature responses, no-FIN timeout, backward time,
+invalid policy/endpoint/request, partial startup, explicit idempotent retirement and a fresh second connection to
+the same single-peer listener after graceful slot release.
+Captured immutable headers survive full endpoint/receiver cleanup. Four privacy
+checks, actual composite duplication lowering rejection and inventory pass locally
+(`build/ancestor-peer-{unit,guards,inventory}.log`). Command acquisition and existing
+report-admission integration remain subsequent work.
