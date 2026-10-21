@@ -134,3 +134,16 @@ allocation. Truncation, every single-byte mutation, huge lengths, exact/short bu
 cross-decoding are exercised; a frozen independent Python struct/hashlib checksum covers the
 combined generation/context/record representation. Application decoding remains responsible for
 validating context semantics and its match to the selected complete root.
+
+## Contextual file publication
+
+The existing explicit-close file owner accepts an explicitly selected physical schema and an
+independent context-byte ceiling. Contextual frames restore the selected context only after node
+graph admission succeeds. Publication copies context before append and replaces context and node
+head only after successful synchronization; new context reads refuse on poisoned owners. Returned
+contexts are detached and remain owned after close. Node-only owners refuse nonempty context.
+
+The real kernel write-limit matrix also runs through contextual frames, proving old context
+survives refused/partial publication, exact/ample writes select the new context, trusted repair
+retains the matching complete prefix, and node-only open refuses the contextual database identity.
+Dedicated budget and input/output mutation cases check metadata ownership independently.
