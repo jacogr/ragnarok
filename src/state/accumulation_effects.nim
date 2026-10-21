@@ -1126,8 +1126,9 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
     PairData(source: data.source, regular: current, exceptional: data.exceptional))))
 
 proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash,
-    accumulationGas, transferGas: Gas): AccumulationEffectResult[AccumulationEffects] =
-  ## Replace only self's current code hash and minimum gas fields, preserving every other implication and checkpoint.
+    accumulationGas, transferGas: Gas, target: ServiceIndex): AccumulationEffectResult[
+        AccumulationEffects] =
+  ## Replace a current self/supervised account's code hash and minimum gas fields, preserving other implications and checkpoints.
   ## Inputs are copied nominal values; no offered preimage, privilege or funding condition is required.
   ## Canonical metadata and inherited store policy are checked before one complete successor can escape.
   # Refusals expose neither a partial account map nor an alternative effect version.
@@ -1139,18 +1140,31 @@ proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash
   let previous = data.regular.data
   assert previous != nil # Private pairs retain complete current versions.
   let self = previous.initial.contextInfo.value.service
-  let key = chapterServiceKey(StateChapter(255), self)
+  let key = chapterServiceKey(StateChapter(255), target)
   let found = previous.accounts.lookup(key)
+  if found.error == StateStoreError.MissingKey and uint32(target) != uint32(self):
+    fail(AccumulationEffectError.UnknownService) # A genuinely absent foreign target selects protocol WHO.
   if found.error != StateStoreError.None or found.value.byteLength != ServiceMetadataBytes:
-    fail(AccumulationEffectError.MalformedState) # Never fabricate or repair the actual caller's metadata.
+    fail(AccumulationEffectError.MalformedState) # Never fabricate or repair the selected account's metadata.
   let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
   if decoded.error != ServiceMetadataError.None:
     fail(AccumulationEffectError.MalformedState) # Only canonical complete metadata may be changed.
   var metadata = decoded.value.metadata
+  if uint32(target) != uint32(self):
+    # Effective supervision binds the current invoker's incarnation, not merely its reusable service ID.
+    let invoker = previous.accounts.lookup(chapterServiceKey(StateChapter(255), self))
+    if invoker.error != StateStoreError.None or invoker.value.byteLength != ServiceMetadataBytes:
+      fail(AccumulationEffectError.MalformedState) # No malformed current identity may authorize a mutation.
+    let identity = decodeServiceMetadata(invoker.value.bytes, ByteLimit(ServiceMetadataBytes))
+    if identity.error != ServiceMetadataError.None:
+      fail(AccumulationEffectError.MalformedState) # Preserve canonical metadata requirements for both participants.
+    if uint32(metadata.supervisor) != uint32(self) or
+        uint32(metadata.supervisorCreated) != uint32(identity.value.metadata.created):
+      fail(AccumulationEffectError.NotRequested) # A missing/recreated supervisor falls back to the foreign target, so this invoker gets HUH.
   metadata.codeHash = codeHash
   metadata.minimumAccumulationGas = accumulationGas
   metadata.minimumTransferGas = transferGas
-  let encoded = serviceMetadataEntry(self, metadata, ByteLimit(ServiceMetadataBytes)).value
+  let encoded = serviceMetadataEntry(target, metadata, ByteLimit(ServiceMetadataBytes)).value
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply([StateWrite(key: key, kind: StateWriteKind.Put,
       value: encoded.value)])
@@ -1163,11 +1177,23 @@ proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash
     fail(AccumulationEffectError.BackendFailure) # Existing accounts and every retained owner survive hashing refusal.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
-  let candidate = successorData(previous, changed.value, selfMetadata = true)
+  let candidate = successorData(previous, changed.value, selfMetadata = uint32(target) == uint32(self))
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
+
+proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash,
+    accumulationGas, transferGas: Gas): AccumulationEffectResult[AccumulationEffects] =
+  ## Preserve the self-only API while sharing the target operation's canonical metadata and atomicity checks.
+  let data = effects.data
+  if data == nil:
+    return AccumulationEffectResult[AccumulationEffects](
+        status: AccumulationEffectError.Uninitialized) # Defaults own no invoker identity.
+  let current = data.regular.data
+  assert current != nil # Private effect pairs retain both initialized dimensions.
+  recordAccumulationUpgrade(effects, codeHash, accumulationGas, transferGas,
+      current.initial.contextInfo.value.service)
 
 proc effectTransferAt*(context: AccumulationEffectContext, index: AccumulationTransferIndex):
     AccumulationEffectResult[DeferredTransfer] =

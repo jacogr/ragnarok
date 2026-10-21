@@ -58,8 +58,10 @@ with anchor-time lookup and clipped interpreted module capture; see
 remain outside this interpreted-engine work.
 
 Self-funded liquid `new`, self `upgrade`, and liquid deferred `transfer` use current
-argument layouts. Foreign supervised mutations, alternative funding modes, direct
-transfers, and supervisor reassignment are explicit `UnsupportedHostCall` gates while
+argument layouts. Supervised upgrade now executes against retained invocation state;
+its parallel batch publication still requires modified-account conflict selection.
+Other foreign supervised mutations, alternative funding modes, direct transfers,
+and supervisor reassignment are explicit `UnsupportedHostCall` gates while
 their account mutation/publication proofs are migrated. The previous argument layout
 is never accepted as a production fallback. These gates are incomplete implementation,
 not discrepancies in the normative paper.

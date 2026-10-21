@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # @@Verification={"arc": "pvm_accumulation_upgrade_arc_release"}
 
-## Authored upgrade programs verify self-only metadata replacement and unchanged current execution/checkpoints.
+## Authored upgrade programs verify self/supervised metadata replacement and unchanged current execution/checkpoints.
 
 import std/[assertions, syncio]
 import ../../../src/chain/parameters
@@ -309,7 +309,7 @@ assert run(noRead).value.exit == StepExit.Panic and hashCalls() == 0, "bad memor
 failHash(0)
 # Explicit self and the sentinel share the same successful metadata transition.
 checkCode(context(run(source(target = 42))), payload())
-# Current target selection preserves memory, WHO and HUH ordering before the remaining authorized-mutation gate.
+# Current target selection preserves memory, WHO and HUH ordering before authorized mutation.
 for target in [99'u64, uint64(high(uint32)), uint64(high(uint32))+43]:
   let missing = source(target = target)
   failHash(1)
@@ -333,13 +333,95 @@ for supervisor in [ServiceIndex(99), ServiceIndex(42)]:
   assert context(rejected).effectAccounts.value.lookup(foreign.key).value.bytes == foreign.value
   assert accountBytes(context(rejected)) == accountBytes(context(rejected,
       AccumulationDimension.Exceptional)), "HUH never mutates self"
-# A matching supervisor creation slot reaches the explicit implementation gate rather than a false HUH.
+# Matching effective supervision permits one atomic foreign metadata update without altering self or checkpoints.
 let supervised = serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(supervisor: ServiceIndex(
-    42), supervisorCreated: AccountSlot(43)), ByteLimit(ServiceMetadataBytes)).value
-assert run(source(target = 99, extra = @[supervised])).error ==
-    AccumulationDispatchError.UnsupportedHostCall
+    42), supervisorCreated: AccountSlot(43), balance: AccountBalance(91),
+    supervisorBalance: AccountBalance(17), depositOffset: AccountBalance(13),
+    created: AccountSlot(7), lastAccumulation: AccountSlot(9), parent: ServiceIndex(11)),
+    ByteLimit(ServiceMetadataBytes)).value
+let foreignCall = source(target = 99, extra = @[supervised], accumulation = high(uint64),
+    transfer = 0x8000000000000000'u64)
+let foreignDone = run(foreignCall)
+assert foreignDone.error == AccumulationDispatchError.None and foreignDone.value.exit ==
+    StepExit.Halt,
+    "effective supervisor upgrades the foreign target"
+assert uint64(machineInfo(foreignDone.value.machine).value.registers[7]) == 0, "supervised upgrade returns OK"
+let foreignContext = context(foreignDone)
+let foreignBytes = foreignContext.effectAccounts.value.lookup(supervised.key).value.bytes
+let foreignMetadata = decodeServiceMetadata(foreignBytes, ByteLimit(
+    ServiceMetadataBytes)).value.metadata
+var expectedHash = default(array[32, byte])
+for index, octet in payload():
+  expectedHash[index] = octet # Freeze the independently authored offered bytes.
+assert array[32, byte](foreignMetadata.codeHash) == expectedHash, "only selected target receives offered code"
+assert uint64(foreignMetadata.minimumAccumulationGas) == high(uint64) and
+    uint64(foreignMetadata.minimumTransferGas) == 0x8000000000000000'u64, "foreign minimum gas retains every bit"
+for index in 0..<ServiceMetadataBytes:
+  if index notin 1..32 and index notin 57..72:
+    assert foreignBytes[index] == supervised.value[index], "foreign non-upgrade metadata remains byte-identical"
+assert accountBytes(foreignContext) == accountBytes(context(foreignDone,
+    AccumulationDimension.Exceptional)), "foreign upgrade leaves all self metadata unchanged"
+assert context(foreignDone, AccumulationDimension.Exceptional).effectAccounts.value.lookup(
+    supervised.key).value.bytes == supervised.value, "prior checkpoint keeps original foreign bytes"
+assert foreignContext.effectAccountScope.value == AccumulationAccountScope.Unsupported,
+    "foreign execution does not fabricate a parallel publication proof"
+# Restoring identical account bytes cannot erase unsupported mutation ancestry.
+let restored = recordAccumulationUpgrade(foreignDone.effects, default(CodeHash), Gas(0), Gas(0),
+    ServiceIndex(99)).value
+let restoredContext = restored.effectContext(AccumulationDimension.Regular).value
+assert restoredContext.effectAccounts.value.lookup(supervised.key).value.bytes == supervised.value,
+    "foreign restoration is a new immutable version"
+assert restoredContext.effectAccountScope.value == AccumulationAccountScope.Unsupported,
+    "restored bytes cannot erase foreign ancestry"
+let selfAfterForeign = recordAccumulationUpgrade(restored, default(CodeHash), Gas(0), Gas(0)).value
+assert selfAfterForeign.effectContext(AccumulationDimension.Regular).value.effectAccountScope.value ==
+    AccumulationAccountScope.Unsupported, "a later self upgrade cannot erase foreign ancestry"
+# Panic selects the exact checkpoint, including whether that checkpoint retained a foreign mutation.
+for checkpoint in [false, true]:
+  let failed = run(source(target = 99, extra = @[supervised], suffix = (if checkpoint:
+    @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])))
+  assert failed.value.exit == StepExit.Panic, "foreign upgrade continues the original guest to panic"
+  let selected = context(failed, AccumulationDimension.Exceptional)
+  let bytes = selected.effectAccounts.value.lookup(supervised.key).value.bytes
+  assert (bytes != supervised.value) == checkpoint, "checkpoint owns precisely its selected foreign metadata"
+  assert (selected.effectAccountScope.value == AccumulationAccountScope.Unsupported) == checkpoint,
+      "checkpoint and publication ancestry remain paired"
+# State API authority is independently enforced even when bypassing the guest adapter.
+assert recordAccumulationUpgrade(prepared, default(CodeHash), Gas(0), Gas(0), ServiceIndex(
+    99)).error ==
+
+AccumulationEffectError.UnknownService, "direct caller cannot fabricate a foreign account"
+assert recordAccumulationUpgrade(default(AccumulationEffects), default(CodeHash), Gas(0), Gas(0),
+    ServiceIndex(99)).error == AccumulationEffectError.Uninitialized, "default effects own no target"
+# A service may still upgrade itself while a different present service effectively supervises it.
+var externallySupervised = original()
+externallySupervised.supervisor = ServiceIndex(99)
+externallySupervised.supervisorCreated = AccountSlot(7)
+checkCode(context(run(source(account = externallySupervised, extra = @[supervised]))), payload())
+let staleAccount = serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(supervisor: ServiceIndex(
+    42), supervisorCreated: AccountSlot(44)), ByteLimit(ServiceMetadataBytes)).value
+let staleSource = source(extra = @[staleAccount])
+let staleEffects = prepareAccumulationEffects(prepareAccumulationContexts(
+    staleSource.machineBootstrap.value, pvmContextConfig()).value).value
+failHash(1)
+let staleUpgrade = recordAccumulationUpgrade(staleEffects, default(CodeHash), Gas(0), Gas(0),
+    ServiceIndex(99))
+assert staleUpgrade.error == AccumulationEffectError.NotRequested, "direct state API refuses stale supervision"
+assert hashCalls() == 0, "authority refusal precedes state hashing"
+failHash(0)
+let supervisedEffects = prepareAccumulationEffects(prepareAccumulationContexts(
+    foreignCall.machineBootstrap.value, pvmContextConfig()).value).value
+for successful in [0, 2]:
+  failAfter(cint(successful))
+  let refused = recordAccumulationUpgrade(supervisedEffects, CodeHash(expectedHash), Gas(1), Gas(2),
+      ServiceIndex(99))
+  assert refused.error == AccumulationEffectError.BackendFailure, "foreign hash failure exposes no partial successor"
+  failHash(0)
+  assert supervisedEffects.effectContext(AccumulationDimension.Regular).value.effectAccounts.value.lookup(
+      supervised.key).value.bytes == supervised.value, "failed foreign mutation preserves original accounts"
+assert run(source(target = 99, extra = @[supervised], writes = 0)).error ==
+    AccumulationDispatchError.LimitExceeded, "foreign write budget refuses atomically"
 # Gas and local capture limits precede even a genuinely authorized foreign mutation.
-let foreignCall = source(target = 99, extra = @[supervised])
 let foreignCost = price(foreignCall)+1028
 assert run(source(target = 99, credit = foreignCost-1, extra = @[supervised])).value.exit ==
     StepExit.OutOfGas
@@ -352,6 +434,8 @@ let before = getOccupiedMem()
 for iteration in 0..<1000:
   let completed = run(valid)
   checkCode(context(completed), payload()) # Release every map, metadata and guest successor.
+  let supervisedDone = run(foreignCall)
+  assert supervisedDone.error == AccumulationDispatchError.None, "release each foreign successor with the self successor"
 let after = getOccupiedMem()
 assert before == after, "upgrade releases all ARC-owned successor versions"
 recordArcRelease("pvm_accumulation_upgrade", 1000, before, after)
