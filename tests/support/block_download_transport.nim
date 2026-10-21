@@ -11,7 +11,7 @@ import ../../src/quic/[transport, protocol, block_download_stream, block_downloa
 
 type
   DownloadTransferMode* = enum ## Each fixture mode changes only server wire/lifecycle behavior.
-    Healthy, EmptyReply, Oversized, PrematureClose, NoFin, Deadline, ResetEvent
+    Healthy, EmptyReply, Oversized, PrematureClose, NoFin, Deadline, ResetEvent, Gated
   DownloadClient = object ## Stable callback owner borrows the producer until both engines finish native teardown.
     transport: Transport
     download: nil ptr BlockDownload
@@ -29,7 +29,7 @@ type
     modeSeries: seq[DownloadTransferMode]
     received, offset, requests: int
     mode: DownloadTransferMode
-    requestFin, writeFin, reset, allowCancelled: bool
+    requestFin, writeFin, reset, allowCancelled, responsePaused: bool
 
 proc `=copy`(destination: var DownloadClient, source: DownloadClient) {.error: "Test client owns transport".}
   ## Callback addresses stay stable while native streams borrow this owner.
@@ -144,6 +144,8 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
       wantRead(stream, 0)
       if server.mode == PrematureClose:
         streamAbort(stream) # Closing without an E4 message is a truncated response, not a valid empty sequence.
+      elif server.mode == Gated:
+        server.responsePaused = true # Independent RPC/process observers explicitly release this response outside native callbacks.
       else:
         wantWrite(stream, 1) # Response emission follows the complete request and its clean half-close.
     else:
@@ -390,6 +392,18 @@ proc openSequenceResponders*(servers: var DownloadResponders, expected: seq[arra
     servers.first.responseSeries.add(if emptyFirst: @[0'u8, 0, 0,
         0] else: response) # Fallback still consumes a real request per child.
   true
+
+proc resumeResponse(server: var DownloadServer) =
+  ## Release only an explicitly gated already-received request; no bytes or FIN are fabricated.
+  if server.responsePaused:
+    server.responsePaused = false
+    if server.stream != NativeStream(nil) and server.requestFin and not server.writeFin:
+      wantWrite(server.stream, 1)
+
+proc resumeResponses*(servers: var DownloadResponders) =
+  ## Test host signals release between polls, retaining the original response bytes and callback addresses.
+  servers.first.resumeResponse()
+  servers.second.resumeResponse()
 
 proc port*(servers: DownloadResponders, second: bool): uint16 =
   ## Return only the bound scalar endpoint selected by the test's explicit identity.
