@@ -5,11 +5,11 @@
 ## Existing state/PVM stages retain authority; private prefixes never publish until a later handoff tick.
 
 import ./[chain, handoff]
-import ../chain/[genesis, provider]
+import ../chain/[genesis, provider, parameters]
 import ../codec/[block_codec, header]
 import ../state/[store, block_transition, report_transition, report_admission, accumulation_queue,
   accumulation_round, accumulation_runner, accumulation_driver, accumulation_finalization,
-  accumulation_outputs, accumulation_completion]
+  accumulation_outputs, accumulation_completion, report_anchors]
 
 type
   ApplicationCandidateLimits* = object ## Caller-owned bounded stage policies, including explicit trusted round gas configuration.
@@ -22,7 +22,7 @@ type
   ApplicationCandidateError* {.pure.} = enum ## Defaults and failures never expose an earlier successfully prepared prefix.
     Uninitialized, None, Busy, MissingHead, ProfileMismatch, StateFailure, BlockFailure,
     ReportFailure, QueueFailure, RoundFailure, RunnerFailure, DriverFailure,
-    FinalizationFailure, EnqueueFailure
+    FinalizationFailure, EnqueueFailure, StateChanged
   ApplicationCandidateResult* = object ## Only complete finalized success retains a usable execution certificate.
     case status: ApplicationCandidateError
     of None:
@@ -47,6 +47,20 @@ type
       enqueueReason: AccumulationEnqueueError
     else:
       discard # Defaults, Busy, missing heads and profile refusal retain no candidate data.
+
+  CandidateReportData = ref object ## Immutable exact-parent block/report preparation waits without running accumulation guests.
+    original: ChainView
+    parameters: Parameters
+    reports: PreparedReportAdmission
+    limits: ApplicationCandidateLimits
+  PreparedCandidateReports* = object ## A successful prefix is distinct from a finalized/adoptable execution certificate.
+    data: nil CandidateReportData
+  CandidateReportPreparation* = object ## Complete preparation or original typed pipeline refusal, never a failed partial owner.
+    case successful: bool
+    of true:
+      prepared: PreparedCandidateReports
+    else:
+      refusal: ApplicationCandidateResult
 
 func error*(outcome: ApplicationCandidateResult): ApplicationCandidateError =
   ## Inspect selected preparation/admission status without exposing its mutable discriminator.
@@ -106,35 +120,84 @@ func enqueueError*(outcome: ApplicationCandidateResult): AccumulationEnqueueErro
   ## Inspect only the actual selected EnqueueFailure cause, without earlier successful owners.
   outcome.enqueueReason
 
-proc prepareCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
-    ancestors: openArray[OwnedHeader], limits: ApplicationCandidateLimits): ApplicationCandidateResult =
+
+func valid*(prepared: PreparedCandidateReports): bool =
+  ## Distinguish a successful opaque prefix from an uninitialized owner.
+  prepared.data != nil
+
+func error*(outcome: CandidateReportPreparation): ApplicationCandidateError =
+  ## Preparation success grants only the report-prefix owner; error retains the original selected stage reason.
+  if outcome.successful: ApplicationCandidateError.None
+  else: outcome.refusal.error # Default refusal stays Uninitialized.
+func value*(outcome: CandidateReportPreparation): PreparedCandidateReports {.inline,
+    requires: outcome.successful.} =
+  ## Retain only a genuinely prepared original block context.
+  outcome.prepared
+func failure*(outcome: CandidateReportPreparation): ApplicationCandidateResult {.inline,
+    requires: not outcome.successful.} =
+  ## Preserve the exact existing pipeline failure without converting a prefix into final success.
+  outcome.refusal
+proc refusedReportPreparation(reason: ApplicationCandidateResult): CandidateReportPreparation =
+  ## Internal bridge retains only a failed existing pipeline alternative.
+  CandidateReportPreparation(successful: false, refusal: reason)
+
+proc candidateLookupDemand*(prepared: PreparedCandidateReports,
+    ancestors: openArray[OwnedHeader]): ReportAdmissionResult[ReportLookupDemand] =
+  ## Discover only against the original block-bound report owner; no canonical access or guest execution occurs.
+  let data = prepared.data
+  if data == nil:
+    return planPreparedReportLookupDemand(default(PreparedReportAdmission), ancestors)
+  planPreparedReportLookupDemand(data.reports, ancestors)
+proc prepareCandidateReports*(chain: ApplicationChain, candidate: OwnedBlock,
+    limits: ApplicationCandidateLimits): CandidateReportPreparation =
   ## Execute existing implemented stages privately with parent/header/parameters selected from this exact canonical head.
   ## Preparation is synchronous and belongs outside transport callbacks; only later adoption is dispatched.
   let selected = chain.chainView.bestBlock
   if selected.error != GenesisError.None:
-    return ApplicationCandidateResult(status: ApplicationCandidateError.MissingHead) # No implicit empty parent.
+    return refusedReportPreparation(ApplicationCandidateResult(
+        status: ApplicationCandidateError.MissingHead)) # No implicit empty parent.
   let head = selected.value
   let frame = limits.reporting.admission.frame
   if uint64(frame.cores) != uint64(head.cores) or
       uint64(frame.validators) != uint64(head.activeValidators) or
       uint64(frame.epochSlots) != uint64(head.epochSlots):
-    return ApplicationCandidateResult(status: ApplicationCandidateError.ProfileMismatch) # Reject unrelated chain domains before native work.
+    return refusedReportPreparation(ApplicationCandidateResult(
+        status: ApplicationCandidateError.ProfileMismatch)) # Reject unrelated chain domains before native work.
   let current = chain.stateSnapshot
   if current.error != StateStoreError.None:
-    return ApplicationCandidateResult(status: ApplicationCandidateError.StateFailure,
-        stateReason: current.error)
+    return refusedReportPreparation(ApplicationCandidateResult(
+        status: ApplicationCandidateError.StateFailure, stateReason: current.error))
   let forked = forkStateStore(current.value)
   if forked.error != StateStoreError.None:
-    return ApplicationCandidateResult(status: ApplicationCandidateError.StateFailure,
-        stateReason: forked.error)
+    return refusedReportPreparation(ApplicationCandidateResult(
+        status: ApplicationCandidateError.StateFailure, stateReason: forked.error))
   var working = forked.value
   let config = limits.reporting
   let staged = advanceBlockState(working, candidate, head.header, config.admission,
     config.disputes, config.safrole, config.availability)
   if staged.error != BlockTransitionError.None:
-    return ApplicationCandidateResult(status: ApplicationCandidateError.BlockFailure,
-      blockReason: staged) # Prefix publication affects only the private fork.
-  let reports = planBlockReports(staged, ancestors, config.reports)
+    return refusedReportPreparation(ApplicationCandidateResult(
+      status: ApplicationCandidateError.BlockFailure,
+      blockReason: staged)) # Prefix publication affects only the private fork.
+  let reports = prepareBlockReports(staged, config.reports)
+  if reports.error != ReportAdmissionError.None:
+    return refusedReportPreparation(ApplicationCandidateResult(
+      status: ApplicationCandidateError.ReportFailure,
+      reportReason: reportPreparationFailure(reports)))
+  CandidateReportPreparation(successful: true, prepared: PreparedCandidateReports(data:
+    CandidateReportData(original: chain.chainView, parameters: head.chainParameters,
+      reports: reports.value, limits: limits)))
+
+proc completeCandidateReports*(chain: ApplicationChain, prepared: PreparedCandidateReports,
+    ancestors: openArray[OwnedHeader]): ApplicationCandidateResult =
+  ## Recheck exact canonical ownership before completing the original reports and executing accumulation once.
+  let data = prepared.data
+  if data == nil:
+    return ApplicationCandidateResult(status: ApplicationCandidateError.Uninitialized)
+  if not sameChainView(data.original, chain.chainView):
+    return ApplicationCandidateResult(status: ApplicationCandidateError.StateChanged)
+  let limits = data.limits
+  let reports = completeBlockReports(data.reports, ancestors)
   if reports.error != ReportAdmissionError.None:
     return ApplicationCandidateResult(status: ApplicationCandidateError.ReportFailure,
         reportReason: reports)
@@ -146,7 +209,7 @@ proc prepareCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
   if round.error != AccumulationRoundError.None:
     return ApplicationCandidateResult(status: ApplicationCandidateError.RoundFailure,
         roundReason: round.error)
-  let parameters = head.chainParameters
+  let parameters = data.parameters
   let executed = runBlockAccumulation(round.value, parameters, limits.execution)
   if executed.error != AccumulationRunnerError.None:
     return ApplicationCandidateResult(status: ApplicationCandidateError.RunnerFailure,
@@ -160,6 +223,13 @@ proc prepareCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
     return ApplicationCandidateResult(status: ApplicationCandidateError.FinalizationFailure,
         finalReason: finalized)
   ApplicationCandidateResult(status: ApplicationCandidateError.None, completed: finalized.value)
+
+proc prepareCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
+    ancestors: openArray[OwnedHeader], limits: ApplicationCandidateLimits): ApplicationCandidateResult =
+  ## One-shot callers use the same original report preparation and exact-parent completion without requesting acquisition.
+  let prepared = prepareCandidateReports(chain, candidate, limits)
+  if prepared.error != ApplicationCandidateError.None: return prepared.failure
+  completeCandidateReports(chain, prepared.value, ancestors)
 
 proc enqueueCandidate*(handoff: var AccumulationHandoff, chain: ApplicationChain,
     candidate: OwnedBlock, ancestors: openArray[OwnedHeader], limits: ApplicationCandidateLimits,

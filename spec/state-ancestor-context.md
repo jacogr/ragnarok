@@ -74,3 +74,11 @@ partial payload extraction and demand/preparation forgery. Three independently e
 runtime probes cover default capture, genuine constructor refusal and invalid-index extraction;
 a real canonical-header positive control uses the same accessors successfully. These checks retain
 exact diagnostic/exit predicates through the established guard and failure runners.
+
+`prepareCandidateReports` exposes a distinct successful prefix owner after exact-parent block
+transition and recent-report preparation, before accumulation execution. `candidateLookupDemand`
+uses that original report binding. `completeCandidateReports` rechecks the original canonical view,
+completes lookup admission under captured policies and only then executes/finalizes accumulation.
+The existing one-shot API now composes the same two stages, preserving its public contract and exact hash work. A genuine guaranteed two-guest
+fixture verifies missing/satisfied demand, failed completion without context, exact resulting root,
+no early publication, two actual guest executions and refusal after canonical advancement.

@@ -255,7 +255,7 @@ proc completeBlockReports*(prepared: PreparedReportAdmission,
     completed: AdmittedReports(data: AdmissionData(staged: staged, credentials: data.credentials,
       anchors: anchored.value, packages: packages.value, assignments: planned.value)))
 
-proc preparationFailure(prepared: ReportAdmissionResult[
+proc reportPreparationFailure*(prepared: ReportAdmissionResult[
     PreparedReportAdmission]): ReportAdmissionResult[AdmittedReports] =
   ## Preserve selected nested refusal exactly; this private bridge cannot convert success into a partial certificate.
   case prepared.error
@@ -286,7 +286,7 @@ proc planBlockReports*(staged: BlockTransitionResult, older: openArray[OwnedHead
     config: ReportAdmissionConfig): ReportAdmissionResult[AdmittedReports] =
   ## Compatibility coordinator preserves exact full admission and failure ordering through the two explicit stages.
   let prepared = prepareBlockReports(staged, config)
-  if prepared.error != ReportAdmissionError.None: return preparationFailure(prepared)
+  if prepared.error != ReportAdmissionError.None: return reportPreparationFailure(prepared)
   completeBlockReports(prepared.value, older)
 
 proc planPreparedReportLookupDemand*(prepared: PreparedReportAdmission,
