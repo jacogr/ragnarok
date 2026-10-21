@@ -200,3 +200,14 @@ joined close retires both threads before canonical/input owners disappear. Fresh
 independent recovery agrees with the pre-lease context. Repeated close and restart
 cannot overwrite the retained receipt or revive its ticket. These witnesses use
 existing execution APIs and change no PVM implementation or storage backend.
+
+## Scalar verification receipts
+
+Verification-only path and cooperative-writer APIs perform the same bounded,
+independently context-bound complete load, then retire all decoded byte/map owners
+on the allocating caller thread before returning fixed matching identity. No map
+owner escapes this API, and no verification repairs, writes, adopts or asserts disk
+durability. Native/context/format/resource failures remain precise payload-free
+results. Tests cover exact/short budgets, wrong/default trust, tight map policy,
+corruption, closed writers and 1,000 paired path/locked full verification cycles,
+plus strict refused-success access with a genuine verification control.

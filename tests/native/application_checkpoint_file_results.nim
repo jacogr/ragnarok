@@ -28,7 +28,10 @@ proc main() {.raises.} =
   let absent = default(ApplicationCheckpointIdentity)
   let refused = loadApplicationCheckpoint("missing-file-context", absent, genesisStoreLimits(),
       ByteLimit(1000))
-  if mode == "default-save":
+  if mode == "default-verify":
+    extractIdentity(verifyApplicationCheckpoint("missing-context", absent, genesisStoreLimits(),
+        ByteLimit(1000))) # Missing independent trust cannot supply verified scalar context.
+  elif mode == "default-save":
     let empty = default(ApplicationCheckpointFileResult[ApplicationCheckpointIdentity])
     extractIdentity(empty) # No default publication receipt exists.
   elif mode == "default-load":
@@ -48,6 +51,8 @@ proc main() {.raises.} =
     let owner = checkpointFixture()
     let expected = captureApplicationCheckpointIdentity(owner).value
     extractIdentity(saveApplicationCheckpoint(path, owner, ByteLimit(100000)))
+    extractIdentity(verifyApplicationCheckpoint(path, expected, genesisStoreLimits(), ByteLimit(
+        100000))) # Genuine verification passes the same success accessor as refusal witnesses.
     extractStore(loadApplicationCheckpoint(path, expected, genesisStoreLimits(), ByteLimit(100000)))
     inspectIdentity(refused)
     let prefix = encodeApplicationCheckpointIdentity(expected, ByteLimit(100000)).value

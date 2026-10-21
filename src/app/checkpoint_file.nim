@@ -136,3 +136,37 @@ limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointFileResult[Sta
       status: ApplicationCheckpointFileError.IdentityFailure,
       identityReason: ApplicationCheckpointIdentityError.Uninitialized)
   restored(writer.read(limit), expected, limits, limit)
+
+proc verified(loaded: ApplicationCheckpointFileResult[StateStore],
+    expected: ApplicationCheckpointIdentity): ApplicationCheckpointFileResult[
+    ApplicationCheckpointIdentity] =
+  ## Complete restored state stays on its allocating caller thread; successful verification returns fixed matching context only.
+  case loaded.error
+  of ApplicationCheckpointFileError.None:
+    ApplicationCheckpointFileResult[ApplicationCheckpointIdentity](
+        status: ApplicationCheckpointFileError.None, completed: expected)
+  of ApplicationCheckpointFileError.IdentityFailure:
+    ApplicationCheckpointFileResult[ApplicationCheckpointIdentity](
+        status: ApplicationCheckpointFileError.IdentityFailure,
+        identityReason: loaded.identityError)
+  of ApplicationCheckpointFileError.CheckpointFailure:
+    ApplicationCheckpointFileResult[ApplicationCheckpointIdentity](
+        status: ApplicationCheckpointFileError.CheckpointFailure,
+        checkpointReason: loaded.checkpointError)
+  else:
+    ApplicationCheckpointFileResult[ApplicationCheckpointIdentity](
+        status: loaded.error) # Native/budget/context refusals grant no verified context.
+proc verifyApplicationCheckpoint*(path: string, expected: ApplicationCheckpointIdentity,
+    limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointFileResult[
+        ApplicationCheckpointIdentity] =
+  ## Verify bounded complete bytes against independent trust, retiring every decoded graph before returning scalar context.
+  let loaded = loadApplicationCheckpoint(path, expected, limits, limit)
+  verified(loaded, expected)
+proc verifyApplicationCheckpoint*(writer: var AtomicFileWriter,
+    expected: ApplicationCheckpointIdentity,
+
+limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointFileResult[
+        ApplicationCheckpointIdentity] =
+  ## Cooperative exclusion shares the same strict whole-envelope verifier without returning any decoded map owner.
+  let loaded = loadApplicationCheckpoint(writer, expected, limits, limit)
+  verified(loaded, expected)

@@ -41,3 +41,9 @@ proc load*(writer: var ApplicationCheckpointWriter, expected: ApplicationCheckpo
     limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointFileResult[StateStore] =
   ## Full independent context and explicit recovered-store policy remain mandatory under the same lock.
   loadApplicationCheckpoint(writer.native, expected, limits, limit)
+
+proc verify*(writer: var ApplicationCheckpointWriter, expected: ApplicationCheckpointIdentity,
+    limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointFileResult[
+        ApplicationCheckpointIdentity] =
+  ## Only fixed matching context escapes complete verification; all byte/map allocation retires on this calling thread.
+  verifyApplicationCheckpoint(writer.native, expected, limits, limit)
