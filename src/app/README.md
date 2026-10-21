@@ -1,0 +1,31 @@
+# Application orchestration
+
+[Source guide](../README.md) · [Application design](../../docs/design/app.md)
+
+This folder joins validated configuration, optional services and explicitly selected complete-state
+work. The process entry point is [`../ragnarok.nim`](../ragnarok.nim); these modules receive owned
+configuration rather than reading command-line globals themselves.
+
+| Modules | Responsibility |
+| --- | --- |
+| [`options.nim`](options.nim), [`services.nim`](services.nim) | Parse configuration atomically and own telemetry, RPC, UI and optional canonical state through startup and shutdown |
+| [`chain.nim`](chain.nim), [`candidate.nim`](candidate.nim), [`handoff.nim`](handoff.nim) | Retain the selected complete-state head, prepare finalized candidates and acknowledge deferred adoption |
+| [`block_input.nim`](block_input.nim), [`block_download.nim`](block_download.nim) | Bound received block bytes and hand them to explicit preparation outside transport callbacks |
+| [`download_command.nim`](download_command.nim), `download_policy*`, [`download_schedule.nim`](download_schedule.nim) | Configure the one-child download command, explicit resource budgets and bounded peer rotation |
+| [`preparation_worker.nim`](preparation_worker.nim) | Own one execution worker and its exclusive input/chain lease through collection or joined shutdown |
+| `checkpoint_*` | Capture detached application envelopes, bound file I/O and coordinate checkpoint publication workers |
+
+The development proof peer accepts `server`, `client`, retained `mesh` and explicit `download`
+commands. Run `build/ragnarok --help` after `make`; the [networking guide](../../docs/networking.md)
+and [download startup contract](../../spec/application-download-startup.md) describe their inputs.
+These bounded paths do not provide a complete production node, consensus or validator service.
+
+Optional [telemetry](../telemetry/README.md), [WebSocket RPC](../rpc/README.md) and
+[browser UI](../ui/README.md) have their usage and scope documented in their own folders.
+Canonical state requires explicit state configuration and mutation budgets. Worker leases keep
+plain ARC graphs exclusive; native callbacks retire before the enclosing service owners close.
+
+The [application contract](../../spec/application.md), [chain contract](../../spec/application-chain.md),
+[preparation lease](../../spec/application-preparation-lease.md) and
+[checkpoint contract](../../spec/application-checkpoint.md) record exact ownership, verification
+and remaining integration boundaries.
