@@ -38,7 +38,7 @@ request verification of the current PR merge revision:
 | --- | --- |
 | `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation, Docker build/smoke |
 | `ci:e2e` | End-to-end networking tests only |
-| `ci:full` | All verification groups, including compiler guards, runtime contracts and JAM Tart interoperability |
+| `ci:full` | All verification groups, including compiler guards, runtime contracts, JAM Tart interoperability and PVM reference comparisons |
 
 The label addition is the request; leaving a label on a PR does not enable automatic checks on
 later commits. Remove and reapply the label to request checks after another push or rebase.
