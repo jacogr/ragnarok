@@ -31,3 +31,10 @@ slot and comparing the lookup posterior root with its retained child's prior-sta
 The selected parent itself lacks a retained newer child and cannot satisfy this proof. Missing
 hash, wrong slot, absent child and wrong state have distinct typed refusals. The focused suite
 covers each case and both valid child positions. No candidate header is used as the proof child.
+
+Report lookup validation now retains the immutable context instead of a second header sequence.
+`checkReportLookupAnchors` preserves its public input/result contract and exact refusal mapping:
+wrong slot or absent proof child remains `MissingLookupAnchor`, and incorrect child commitment
+remains `WrongLookupState`. Candidate-time ordering remains a report-stage check. Existing
+signed projections, authored ancestry cases, all-owner preflight and later backend failure/ARC
+witnesses run unchanged through the extracted implementation.
