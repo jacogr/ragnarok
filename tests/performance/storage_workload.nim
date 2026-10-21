@@ -138,15 +138,39 @@ proc main() {.raises.} =
         assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
       reopenNs = elapsed(reopenStart)
       check(disk.snapshot.value, trie, count, expected, deep, valueBytes)
+    var maintenanceNs = -1'i64
+    if engine == "memory":
+      # Compare current-root reclamation through an independent private clone, without claiming durability.
+      let maintenanceStart = getMonoTime()
+      let retained = selectRepositoryRoots(memory.snapshot.value, [expected], ElementLimit(1)).value
+      var cloned = cloneRepositorySelection(retained, limits).value
+      maintenanceNs = elapsed(maintenanceStart)
+      check(cloned.snapshot.value, trie, count, expected, deep, valueBytes)
+      assert cloned.snapshot.value.storedNodes < view.storedNodes
+      assert cloned.close == RepositoryError.None
+    elif engine == "managed":
+      # Managed replacement includes the actual file/namespace barriers and predecessor retirement.
+      let maintenanceStart = getMonoTime()
+      let receipt = disk.compact(disk.snapshot.value, [expected]).value
+      maintenanceNs = elapsed(maintenanceStart)
+      assert receipt.cleanup == FileError.None and uint64(receipt.epoch) == 2
+      assert receipt.reclaimedNodes > 0
+      check(disk.snapshot.value, trie, count, expected, deep, valueBytes)
+      assert disk.managedUsage.value.journalBytes == uint64(ManagedJournalHeaderBytes)
+      assert disk.close == FileError.None
+      assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
+      check(disk.snapshot.value, trie, count, expected, deep, valueBytes)
+    check(view, trie, count, expected, deep, valueBytes) # Held maps survive physical retirement and private clone close.
+    if disk.opened:
       assert disk.close == FileError.None
       if engine == "journal":
         var nativePath = path
         assert posix.unlink(nativePath.toCString()) == 0
       else:
-        removeManagedSample(path, [ManagedEpoch(1)]) # Cleanup covers only this fixture's exact known epoch.
+        removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2)])
     assert memory.close == RepositoryError.None
     echo "sample\t", count, "\t", topology, "\t", valueBytes, "\t", sample, "\t", publicationNs,
-        "\t", readNs, "\t", extractNs, "\t", reopenNs
+        "\t", readNs, "\t", extractNs, "\t", reopenNs, "\t", maintenanceNs
   assert seed.close == RepositoryError.None
 try:
   main()
