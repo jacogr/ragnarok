@@ -69,10 +69,15 @@ proc transitionSource*(context: Context, original: InputFixture,
       fixture.parameters)
   assert configured.error == GenesisError.None, "genuine configured signed parent"
   bindComputedProfile(lookup, configured).value
-proc transitionFixture*(epoch = false, withReady = false): ComputedTransitionFixture =
+proc transitionFixture*(epoch = false, withReady = false,
+    withExecution = false, invalidEntry = false): ComputedTransitionFixture =
   ## Preserve real signing and original map ownership; no fake keys or forged successful transition result.
   let halt = @[50'u8, 0]
-  let guest = reportGuest([refinementImmediate(8, 0), halt])
+  var instructions = @[refinementImmediate(8, 0), halt]
+  if withExecution and not invalidEntry:
+    # Five pinned opcode1 fallthrough blocks place the shared zero-output body at accumulation entry5.
+    instructions = @[@[1'u8], @[1'u8], @[1'u8], @[1'u8], @[1'u8], refinementImmediate(8, 0), halt]
+  let guest = reportGuest(instructions)
   var fixture = executionFixture([halt], [guest], external = false)
   let templateLinks = transitionLinks(executionRun(fixture, core = 0).value)
   let templateReport = templateLinks.computedLinkSource.value.computedGuaranteeReport.value

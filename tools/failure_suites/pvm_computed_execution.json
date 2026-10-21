@@ -1,0 +1,110 @@
+{
+  "source": "tests/native/pvm_computed_execution.nim",
+  "build_name": "pvm-computed-execution",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-execution-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed execution default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-execution-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed execution source"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-computed-execution-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed execution limit"
+    },
+    {
+      "identity": {
+        "origin": "engine"
+      },
+      "arguments": [
+        "engine"
+      ],
+      "name": "pvm-computed-execution-engine",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed execution engine"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-execution-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed execution owner"
+    },
+    {
+      "identity": {
+        "origin": "completed"
+      },
+      "arguments": [
+        "completed"
+      ],
+      "name": "pvm-computed-execution-completed",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed execution completed"
+    },
+    {
+      "identity": {
+        "origin": "reason-default"
+      },
+      "arguments": [
+        "reason-default"
+      ],
+      "name": "pvm-computed-execution-reason-default",
+      "diagnostic": "outcome.status == RunnerFailure",
+      "description": "Computed execution reason-default"
+    },
+    {
+      "identity": {
+        "origin": "reason-success"
+      },
+      "arguments": [
+        "reason-success"
+      ],
+      "name": "pvm-computed-execution-reason-success",
+      "diagnostic": "outcome.status == RunnerFailure",
+      "description": "Computed execution reason-success"
+    },
+    {
+      "identity": {
+        "origin": "reason-source"
+      },
+      "arguments": [
+        "reason-source"
+      ],
+      "name": "pvm-computed-execution-reason-source",
+      "diagnostic": "outcome.status == RunnerFailure",
+      "description": "Computed execution reason-source"
+    }
+  ]
+}
