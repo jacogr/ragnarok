@@ -34,6 +34,8 @@ proc main(): int =
       stdout.writeLine("Options: --with-telemetry --telemetry HOST:PORT --chain FILE")
       stdout.writeLine("         --with-rpc --rpc-port NUMBER --with-ui --ui-port NUMBER --dev-ui-dir DIRECTORY")
       stdout.writeLine("         --with-state --chain FILE --state-writes COUNT --state-write-bytes BYTES")
+      stdout.writeLine("         --state-checkpoint FILE --state-trust FILE --state-header FILE --state-checkpoint-bytes BYTES")
+      stdout.writeLine("         Checkpoint imports require independent trusted identity/header; restart retains one unfinalized head.")
       stdout.writeLine("State limits are explicit unsigned budgets; supplied complete state is structurally checked.")
       return 0
     if options.argumentCount() >= 1 and options.argument(1) == "download":

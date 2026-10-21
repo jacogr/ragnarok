@@ -135,9 +135,8 @@ The parser accepts `--state-checkpoint FILE --state-trust FILE --state-header FI
 `--chain` and both mutation budgets. All partial subsets, duplicates, missing values,
 disabled use and malformed/overflowing ceilings refuse atomically. Byte policy
 retains uint64 including explicit zero; no listener is implied. Private guarded
-getters expose only complete active requests. Normal startup refuses import intent
-without an explicit recovered owner, preventing silent genesis fallback while the
-dependent startup dispatcher is integrated. Backend `--state-storage`/`--state-db`
+getters expose only complete active requests. Service initialization requires a verified recovered owner for import intent,
+preventing silent genesis fallback. Backend `--state-storage`/`--state-db`
 names are reserved for db #1 and acquire no placeholder behavior here.
 
 Local recovery and legacy option suites pass; the affected Services suite proves
@@ -147,3 +146,22 @@ refusals, genuine positive controls, five private-option compiler rejections,
 semantic checking and inventory pass. The pinned runtime checks conjunctions as
 separate parsed/active assertions; exact diagnostics are recorded per origin.
 Evidence uses `build/recovery-options*`; CI is unrequested.
+
+## Configured checkpoint startup
+
+Both public `Services.start` overloads dispatch complete parsed import requests
+through bounded independent trust-file capture and selected checkpoint recovery
+before service initialization. The normal overload supplies its exact parsed
+mutation policy; the existing explicit-limits overload preserves its caller policy.
+Any trust, byte/map, context/header or profile failure refuses without listeners,
+file repair or genesis fallback. Active services reject repeated startup before
+trust I/O. Trust input ceilings use the fixed identity and existing structural
+header extent; checkpoint bytes use the separately required operator ceiling.
+The production entry's help documents all four controls. This imports into the
+existing complete in-memory store; db #1's local durable-head restart is separate.
+
+Local configured-startup suite passes with 27,936 occupied bytes before/after
+1,000 complete import/service lifetimes. The legacy service checkpoint-capture
+consumer passes. The real production entry builds and its help exposes all four
+controls; semantic checking, source-owned inventory and complete pinned formatting
+pass. Evidence uses `build/recovery-startup*`; no remote CI is requested.
