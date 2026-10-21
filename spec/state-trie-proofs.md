@@ -74,3 +74,7 @@ version, over-limit count and malformed terminal padding refuses. Decode grants 
 Strict source-owned runtime extraction probes cover default, capture, verification,
 node index, batch, lookup index, encoding and decoding refusals, with the same real
 successful accessors as positive controls. A failed build cannot count as a rejection.
+
+Compiler privacy probes reject witness owners, result tags/payloads, verified presence,
+root/key identities and batch/set owners. External callers cannot fabricate verified
+evidence or replace the root after verification.
