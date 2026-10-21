@@ -1,0 +1,40 @@
+{
+  "build_name": "application-recovery-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Application recovery default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-recovery-default"
+    },
+    {
+      "arguments": [
+        "missing"
+      ],
+      "description": "Application recovery missing",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "missing"
+      },
+      "name": "application-recovery-missing"
+    },
+    {
+      "arguments": [
+        "wrong-reason"
+      ],
+      "description": "Application recovery wrong-reason",
+      "diagnostic": "outcome.status == StateFailure",
+      "identity": {
+        "reason": "wrong-reason"
+      },
+      "name": "application-recovery-wrong-reason"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/application_recovery_results.nim"
+}
