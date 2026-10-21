@@ -16,12 +16,16 @@ proc inspect(trust: TrustedApplicationCheckpoint) =
 proc reason(outcome: CheckpointTrustResult) =
   ## Identity decoder reason requires that exact failure alternative.
   discard outcome.identityError
+proc fileReason(outcome: CheckpointTrustResult) =
+  ## A native path reason requires an actual selected-file failure.
+  discard outcome.fileError
 proc main() {.raises.} =
   ## Defaults/refusals and positive controls call the same helpers.
   case paramStr(1)
   of "default": extract(default(CheckpointTrustResult)) # Default results contain no trust.
   of "missing": extract(captureCheckpointTrust([], [], ByteLimit(0))) # Refusal cannot grant a header owner.
   of "identity": inspect(default(TrustedApplicationCheckpoint)) # Default trust has no scalar identity.
+  of "file": fileReason(default(CheckpointTrustResult)) # Default status has no native file error.
   of "reason": reason(default(CheckpointTrustResult)) # Default status contains no decoder cause.
   else:
     let source = checkpointFixture()
@@ -34,6 +38,7 @@ proc main() {.raises.} =
     extract(captured)
     inspect(captured.value)
     reason(captureCheckpointTrust([], wire, ByteLimit(high(uint64))))
+    fileReason(loadCheckpointTrust("", "", ByteLimit(238)))
 try:
   main() # Fixture failures cannot masquerade as runtime assertions.
 except:

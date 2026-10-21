@@ -44,6 +44,17 @@
         "reason": "reason"
       },
       "name": "application-recovery-trust-reason"
+    },
+    {
+      "arguments": [
+        "file"
+      ],
+      "description": "Application recovery trust file",
+      "diagnostic": "outcome.status == FileFailure",
+      "identity": {
+        "reason": "file"
+      },
+      "name": "application-recovery-trust-file"
     }
   ],
   "crypto_library": "crypto",
