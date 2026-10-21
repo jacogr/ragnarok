@@ -283,3 +283,19 @@ command workers join before the next fork.
 Local real TLS download scenarios, semantic checks and inventory pass. Actual
 responder counts are one for genuine adoption/guest refusal and zero for invalid
 import before transport. Evidence uses `build/recovery-download*`.
+
+## Known process exits after resumed execution
+
+Child-only Services recover the parent, genuinely execute/adopt its signed child
+and stage detached successor bytes. Abrupt exit at unstarted Staged preserves the
+exact old envelope; exit after actual durable Publish Done preserves the exact
+new envelope despite no collection/join/destructors. A joined parent reacquires
+the cooperative lock and restores only against independently precomputed old/new
+context and exact sealed bytes, refusing the other context without rewrites.
+Imports again retain one head with finality unset. No live worker/lock crosses
+fork, every child is reaped, and no mid-write kill, power loss or cross-process
+ARC release claim is made.
+
+Both selected staged/durable process-exit witnesses pass with exact file bytes,
+independent context refusal and fresh parent lock/verification/recovery. Semantic
+checks and inventory pass; evidence uses `build/recovery-process-exit*`.
