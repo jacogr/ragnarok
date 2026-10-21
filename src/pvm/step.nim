@@ -444,7 +444,7 @@ proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
   var failedPage = PageAddress(0)
   if registerOnlyOpcode(item.opcode):
     # Register-only execution retains its existing scope and copied-register semantics.
-    let mutation = evaluateRegisters(program, info.pc, info.registers)
+    let mutation = evaluateRegisters(decoded, info.registers)
     if mutation.error != RegisterError.None:
       # Defensive evaluator failure cannot publish the tentative copied gas state.
       return StepResult(status: StepError.UnsupportedInstruction)
