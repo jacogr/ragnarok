@@ -93,3 +93,19 @@ Captured immutable headers survive full endpoint/receiver cleanup. Four privacy
 checks, actual composite duplication lowering rejection and inventory pass locally
 (`build/ancestor-peer-{unit,guards,inventory}.log`). Command acquisition and existing
 report-admission integration remain subsequent work.
+
+## Explicit command activation
+
+`--download-remote-ancestors COUNT` is unique, download-only and state-enabled.
+COUNT has one canonical positive decimal spelling in 1..64; omitted/default/failed
+parses request no remote context. It can extend retained local and explicit-file
+context without silently replacing either source. All requested ancestor counts
+plus future download lineage must fit the existing policies before network IO.
+The remote response total will use the explicit `input.blockBytes` ceiling, with
+per-block codec and retained-header budgets checked independently.
+
+The dedicated options suite passes every supported count, malformed/full-width/
+duplicate/late-failure reset and unrelated-command refusal. Existing app, explicit
+ancestor, disk-storage and recovery option suites, the private activation-field
+rejection and inventory pass (`build/remote-ancestor-options-*.log`). Parsing alone
+does not start remote acquisition; command wiring is the next layer.
