@@ -4,12 +4,12 @@ Memory is the default backend. To persist complete application state, append the
 normal `server`, `client`, `mesh` or `download` command arguments:
 
 ```text
---with-state --chain chain.json --state-writes 1000 --state-write-bytes 1000000
---state-storage disk --state-db ./state.db
+--with-state --chain chain.json --state-storage disk --state-db ./state.db
 ```
 
-The mutation budgets are operator choices; the example values are not protocol defaults. The parent
-directory must already exist. The backend uses an exclusively locked regular file and refuses
+Omitted `--state-writes` and `--state-write-bytes` default independently to 1,000 writes and
+100,000 written value bytes per batch. Either flag can override its default; explicit zero remains
+zero. These are local resource policies, not protocol constants. The parent directory must already exist. The backend uses an exclusively locked regular file and refuses
 symlinks, a competing owner, incompatible identity/schema and corrupt or incomplete journals.
 Each file belongs to one configured genesis header, complete genesis state root and full parameter
 profile. Memory/disk selection is independent of the future full/light node mode.
@@ -39,7 +39,7 @@ not borrow local history or finality from another database. Any existing path ca
 to refuse without replacing its contents.
 
 For later local restarts, omit the checkpoint/trust/header/import-byte controls and keep the same
-chain/backend/path and explicit mutation budgets. Switching backend does not migrate databases.
+chain/backend/path and desired mutation budgets (defaults or overrides). Switching backend does not migrate databases.
 
 ## Durable publication and shutdown
 

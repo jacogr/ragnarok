@@ -344,7 +344,7 @@ still refuse atomically. Component APIs with explicit StateStoreLimits retain th
 ## Explicit backend options
 
 `--state-storage memory|disk` is independent of state activation and future full/light mode.
-Memory remains the default. Disk requires validated `--with-state`, chain and mutation policies,
+Memory remains the default. Disk requires validated `--with-state`, a chain and resolved mutation budgets,
 plus an explicit `--state-db PATH`; a memory run refuses an ignored database path. Parsing is
 atomic and rejects duplicate, incomplete, misspelled or disabled backend controls. External
 checkpoint controls remain an independent all-or-none trust request. The runtime layer opens the selected backend before listeners, so a disk flag never silently
