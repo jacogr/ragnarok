@@ -82,3 +82,14 @@ then checks reclaimed records, all rolling roots/finality after restart, unchang
 context/generation preservation and stale generation/epoch refusal. No canonical successor is
 installed by physical maintenance. Callers must run IO on the excluded storage worker or startup
 owner, keeping all shared ARC aliases stable throughout that lease.
+
+## Single-slot maintenance worker
+
+The existing fixed-address DiskPublicationWorker accepts either an opaque publication or maintenance
+request in the same capacity slot. Capacity is checked before touching any possibly leased graph.
+Done retains the lease until collection or joined close; maintenance has its own guarded receipt
+kind and never grants a canonical publication result. Queued-only shutdown reports NotExecuted;
+an entered operation retains its actual maintenance/cleanup/error receipt. The host freezes all
+ARC aliases and pauses RPC just as for publication. No second worker thread or cancel-as-rollback
+path is introduced. Native tests cover collection, joined completion, shutdown race, cross-operation
+Busy refusal, stale tickets and stale maintenance requests, followed by durable history restart.

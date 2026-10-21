@@ -1,13 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## One fixed-address native worker commits an opaque disk publication under an exclusive ARC graph lease.
+## One fixed-address native worker serializes opaque publication or maintenance under an exclusive ARC graph lease.
 ## The host pauses RPC and all aliases, collects the actual IO outcome, then installs canonical/RPC state.
 ## There is no cancel-as-rollback operation: joined shutdown preserves every operation that entered IO.
 import std/[assertions, locks, rawthreads]
 import ./disk_chain
 import ../state/disk_store
-import ../storage/node_repository
+import ../storage/[node_repository, managed_repository]
 
 type
   DiskWorkerPhase* {.pure.} = enum ## Done retains capacity and exclusive graph borrowing until collection or joined close.
@@ -24,10 +24,11 @@ type
     of None: ticket: DiskPublicationTicket
     else: discard                    # Defaults and refusals grant no capacity or completion authority.
   DiskCompletionKind* {.pure.} = enum ## Shutdown distinguishes work never entered from any actual durable or failed IO result.
-    Uninitialized, Completed, NotExecuted
+    Uninitialized, Completed, NotExecuted, Maintained
   DiskPublicationCompletion* = object ## Only Completed carries the exact coordinator result, including IO uncertainty.
     case status: DiskCompletionKind
     of Completed: outcome: DiskChainResult[RepositoryGeneration]
+    of Maintained: maintenanceOutcome: DiskChainResult[ManagedCompaction]
     else: discard # NotExecuted promises no operation entry; it never suppresses an actual commit receipt.
   DiskPublicationWorker* = object ## Noncopyable thread owner remains at one stable address through joined close.
     lock: Lock
@@ -39,10 +40,14 @@ type
     identity: nil WorkerIdentity
     disk: nil ptr DiskStateStore
     publication: nil ptr PreparedDiskPublication
+    maintenance: nil ptr PreparedDiskMaintenance
+    maintaining: bool
+    maintenanceOutcome: DiskChainResult[ManagedCompaction]
     outcome: DiskChainResult[RepositoryGeneration]
 proc `=wasMoved`*(worker: var DiskPublicationWorker) {.nodestroy, inline,
     requires: not worker.started.} =
   ## Relocation is permitted only before startup or after joined shutdown ends every native borrow.
+  `=wasMoved`(worker.maintenanceOutcome)
   `=wasMoved`(worker.outcome)
   `=wasMoved`(worker.identity)
 proc `=copy`*(destination: var DiskPublicationWorker, source: DiskPublicationWorker) {.error.}
@@ -55,6 +60,7 @@ proc requireClosed(worker: DiskPublicationWorker) {.requires: not worker.started
 proc `=destroy`*(worker: DiskPublicationWorker) =
   ## Explicit joined close precedes destruction of every borrowed owner and alias.
   requireClosed(worker)
+  `=destroy`(worker.maintenanceOutcome)
   `=destroy`(worker.outcome)
   `=destroy`(worker.identity)
 func error*(admission: DiskPublicationAdmission): DiskWorkerError =
@@ -71,12 +77,22 @@ func value*(completion: DiskPublicationCompletion): DiskChainResult[RepositoryGe
     requires: completion.status == DiskCompletionKind.Completed.} =
   ## Preserve the exact result, especially partial/uncertain IO failures, after all native temporaries retire.
   completion.outcome
+func maintenanceValue*(completion: DiskPublicationCompletion): DiskChainResult[
+    ManagedCompaction] {.inline, requires: completion.status == DiskCompletionKind.Maintained.} =
+  ## Preserve the actual maintenance/cleanup receipt without granting a canonical publication outcome.
+  completion.maintenanceOutcome
 proc execute(worker: ptr DiskPublicationWorker) =
   ## Never touch host canonical/RPC owners; all temporary ARC aliases retire before publishing Done.
   let disk = worker.disk
-  let publication = worker.publication
-  assert disk != nil and publication != nil
-  worker.outcome = commitDiskPublication(disk[], publication[])
+  assert disk != nil
+  if worker.maintaining:
+    let maintenance = worker.maintenance
+    assert maintenance != nil
+    worker.maintenanceOutcome = commitDiskMaintenance(disk[], maintenance[])
+  else:
+    let publication = worker.publication
+    assert publication != nil
+    worker.outcome = commitDiskPublication(disk[], publication[]) # Both operations share one exclusive capacity slot.
 proc run(raw: pointer) =
   ## Condition-driven one-slot execution performs no network callbacks or host installation.
   let worker = cast[ptr DiskPublicationWorker](raw)
@@ -101,6 +117,11 @@ proc start*(worker: var DiskPublicationWorker): bool {.raises.} =
   worker.phase = DiskWorkerPhase.Idle
   worker.next = 0
   worker.outcome = default(DiskChainResult[RepositoryGeneration])
+  worker.maintenanceOutcome = default(DiskChainResult[ManagedCompaction])
+  worker.maintaining = false
+  worker.disk = nil
+  worker.publication = nil
+  worker.maintenance = nil
   try:
     worker.identity = WorkerIdentity(marker: 1)
     worker.thread.create(run, addr worker)
@@ -132,10 +153,39 @@ proc submit*(worker: var DiskPublicationWorker, disk: var DiskStateStore,
   inc worker.next
   worker.disk = addr disk
   worker.publication = addr publication
+  worker.maintenance = nil
+  worker.maintaining = false
   worker.phase = DiskWorkerPhase.Queued
   signal(worker.changed)
   DiskPublicationAdmission(status: DiskWorkerError.None,
     ticket: DiskPublicationTicket(owner: worker.identity, generation: worker.next))
+proc submitMaintenance*(worker: var DiskPublicationWorker, disk: var DiskStateStore,
+    maintenance: var PreparedDiskMaintenance): DiskPublicationAdmission =
+  ## Borrow all aliases exclusively in the existing one-slot thread; Busy checks precede graph access.
+  if not worker.started: return DiskPublicationAdmission(status: DiskWorkerError.Closed)
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  if worker.phase != DiskWorkerPhase.Idle: return DiskPublicationAdmission(
+      status: DiskWorkerError.Busy)
+  if not maintenance.ready or not disk.opened: return DiskPublicationAdmission(
+      status: DiskWorkerError.NotReady)
+  if worker.next == high(uint64): return DiskPublicationAdmission(status: DiskWorkerError.Exhausted)
+  inc worker.next
+  worker.disk = addr disk
+  worker.publication = nil
+  worker.maintenance = addr maintenance
+  worker.maintaining = true
+  worker.phase = DiskWorkerPhase.Queued
+  signal(worker.changed)
+  DiskPublicationAdmission(status: DiskWorkerError.None,
+    ticket: DiskPublicationTicket(owner: worker.identity, generation: worker.next))
+proc completion(worker: var DiskPublicationWorker): DiskPublicationCompletion =
+  ## Only Done collection or joined Done shutdown moves the actual selected operation result once.
+  if worker.maintaining:
+    DiskPublicationCompletion(status: DiskCompletionKind.Maintained, maintenanceOutcome: move(
+        worker.maintenanceOutcome))
+  else:
+    DiskPublicationCompletion(status: DiskCompletionKind.Completed, outcome: move(worker.outcome))
 func matches(worker: var DiskPublicationWorker, ticket: DiskPublicationTicket): bool =
   ## Called under the lock; only the current nonidle slot grants collection authority.
   ticket.owner == worker.identity and ticket.generation != 0 and ticket.generation ==
@@ -148,10 +198,11 @@ proc collect*(worker: var DiskPublicationWorker, ticket: DiskPublicationTicket):
   defer: release(worker.lock)
   if not worker.matches(ticket) or worker.phase != DiskWorkerPhase.Done:
     return default(DiskPublicationCompletion)
-  result = DiskPublicationCompletion(status: DiskCompletionKind.Completed, outcome: move(
-      worker.outcome))
+  result = completion(worker)
   worker.disk = nil
   worker.publication = nil
+  worker.maintenance = nil
+  worker.maintaining = false
   worker.phase = DiskWorkerPhase.Idle
 proc close*(worker: var DiskPublicationWorker): DiskPublicationCompletion =
   ## Join before ending any graph lease; return every actual IO outcome even when shutdown raced execution.
@@ -162,14 +213,15 @@ proc close*(worker: var DiskPublicationWorker): DiskPublicationCompletion =
   release(worker.lock)
   worker.thread.join()
   if worker.phase == DiskWorkerPhase.Done:
-    result = DiskPublicationCompletion(status: DiskCompletionKind.Completed, outcome: move(
-        worker.outcome))
+    result = completion(worker)
   elif worker.phase == DiskWorkerPhase.Queued:
     result = DiskPublicationCompletion(status: DiskCompletionKind.NotExecuted) # No operation activation began.
   else:
     result = default(DiskPublicationCompletion) # Idle/collected slots have no second receipt.
   worker.disk = nil
   worker.publication = nil
+  worker.maintenance = nil
+  worker.maintaining = false
   worker.phase = DiskWorkerPhase.Idle
   worker.started = false
   worker.identity = nil
