@@ -12,13 +12,20 @@ type ComputedStorageMode* {.pure.} = enum ## Test-only original guest selection;
   Disabled, Commit, Panic, Underfunded, CheckpointCommit, CheckpointPanic, OutOfGas,
     CheckpointOutOfGas,
   FetchFirst, FetchSecond, FetchMissing, FetchList, FetchWideOffset, FetchWideIndex, FetchTail,
-    FetchDelete, FetchBranchPanic, FetchReadBack, FetchReadTail
+    FetchDelete, FetchBranchPanic, FetchReadBack, FetchReadTail, ReadMissing
 
 proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   ## Jump from refinement entry0 to empty output; entry5 writes RO key11 using literal or genuinely fetched RW bytes.
   assert mode != ComputedStorageMode.Disabled
   var body = @[refinementImmediate(7, 65536), refinementImmediate(8, 1),
     refinementImmediate(9, 196608), refinementImmediate(10, 3), @[10'u8, 5]]
+  if mode == ComputedStorageMode.ReadMissing:
+    body = @[@[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1], @[51'u8, 9, 255],
+      @[51'u8, 10, 0], @[10'u8, 5], @[51'u8, 7, 255], @[51'u8, 8, 0, 0, 1],
+      @[51'u8, 9, 1], @[51'u8, 10, 255], @[51'u8, 11, 0], @[51'u8, 12, 3],
+      @[10'u8, 4], @[62'u8, 7, 3, 0, 3], @[51'u8, 7, 0, 0, 1], @[51'u8, 8, 1],
+      @[51'u8, 9, 0, 0, 3], @[51'u8, 10, 11], @[10'u8,
+          5]] # Delete, read NONE into an ignored MAX destination, then persist its full word; compactFF sign-extends toMAX64.
   if mode in {ComputedStorageMode.FetchFirst, ComputedStorageMode.FetchSecond,
       ComputedStorageMode.FetchMissing, ComputedStorageMode.FetchList,
       ComputedStorageMode.FetchWideOffset, ComputedStorageMode.FetchWideIndex,
@@ -93,8 +100,9 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
     for instruction in [refinementImmediate(7, 65536), refinementImmediate(8, 1),
       refinementImmediate(9, 196609), refinementImmediate(10, 2), @[10'u8, 5]]:
       body.add(instruction) # Same raw key proves one provenance descriptor can retain multiple real mutations.
-  if mode in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail}:
-    body.add(@[51'u8, 8, 0]) # Only the longer read-back guests use compact empty-yield setup to keep the authored code below128 bytes.
+  if mode in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail,
+      ComputedStorageMode.ReadMissing}:
+    body.add(@[51'u8, 8, 0]) # Only the read-back and missing-read guests use compact empty-yield setup to keep the authored code below128 bytes.
   else:
     body.add(refinementImmediate(8, 0)) # Preserve every predecessor guest byte and its instruction boundaries.
   if mode == ComputedStorageMode.FetchBranchPanic:
