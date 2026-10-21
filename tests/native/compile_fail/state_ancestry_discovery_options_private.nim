@@ -5,5 +5,5 @@
 
 ## Validated on-demand activation cannot be forged by direct field mutation or extraction.
 import ../../../src/app/options
-let options = default(Options)
-discard options.discoverAncestors
+let owner = default(Options)
+discard owner.discoverAncestors
