@@ -123,3 +123,8 @@ not block/finality authority. Run `storage_retention_plan` for its ownership and
 `exportRepositorySelection` copies a plan's retained physical union under explicit record/value
 ceilings. The sorted detached result is maintenance transport, not an ordinary single-root batch.
 It performs no file replacement, generation reset, context rewrite or reclamation.
+
+Unchanged-root zero-record publications share their validated immutable physical table while
+creating a new exact view identity and generation. Ordinary changed-root admission, frame bytes
+and durability barriers retain their contracts. See `storage_unchanged_publication` and the
+[maintenance measurements](../../spec/disk-state-store.md#maintenance-measurement-scope).

@@ -461,3 +461,39 @@ The 64-publication medians were about 3.7 ms and 30.7 ms respectively, including
 For current-plus-eight-held roots, 504/832 and 952/4671 physical records were outside the selected
 union. These are exact authored-workload counts, not disk bytes already reclaimed or a production
 retention estimate. Full logs/reports remain under ignored `build/`.
+
+## Unchanged-root publication
+
+Immutable physical record tables now have an independent shared owner. A zero-record publication
+selecting the exact current root still checks the exact parent, base, generation capacity, transport
+canonicality, limits and exact complete entry/node counts. It then creates a new view identity and
+generation sharing the already validated table. It performs no redundant graph walk or table copy.
+Changed roots, historical-root selection and nonempty transports retain complete ordinary admission.
+Disk frame/checksum/append/synchronization and contextual publication are unchanged. Typed failures
+and stale views remain exact; old readers and retention plans own immutable data after close.
+The dedicated suite covers equal-root stale/foreign owners, forged counts, unknown roots, empty
+state, ordinary updates, historical selection, detached output and 1,000 balanced ARC lifetimes.
+
+The checked ten-run comparison reduces extra retained occupied memory for unchanged-root commits
+to 160 bytes in every case, from 132,256/740,512 bytes at 128/1024 keys. The 64-commit medians changed
+from about 3.7 ms to 1.9 ms and 30.7 ms to 2.9–3.4 ms. Ordinary update/extraction/reopen timings stayed
+close to the prior workload; every hash count, record count, root-union count and journal byte count
+remained identical. The shared table adds 32 occupied bytes to the observed ordinary-store lifetime.
+These are checked macOS ARM64 synthetic observations, not production throughput guarantees.
+
+## Next physical reclamation boundary
+
+Retention inventory/export is ready, but physical history remains append-only. Reclamation must
+preserve the selected chain/schema, durable generation, exact application context and every
+explicitly retained complete root. Selected current state alone cannot preserve bounded history
+and detached finality. Firewood's [revision-expiration design](https://github.com/ava-labs/firewood/blob/main/README.md)
+is a useful reference for tying reuse to an explicit retained revision set.
+
+The current database is one locked regular inode, with a caller-owned stable pathname namespace.
+Replacing that pathname during operation needs a stable locking/publication authority spanning
+old and new files. A managed multi-file layout can provide a stable lock, manifest and durable file
+generations; it changes the existing operator file contract and needs explicit migration. Keeping
+one regular database file instead leads to an offline compact-to-new-file operation or a separate
+in-place allocator/reuse design. This operator/layout choice must be resolved before implementing
+physical replacement. No file replacement, format migration, automatic reclamation or consumer
+integration is introduced by this tranche.
