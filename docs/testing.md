@@ -38,7 +38,9 @@ request verification of the current PR merge revision:
 | --- | --- |
 | `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation, Docker build/smoke |
 | `ci:e2e` | End-to-end networking tests only |
-| `ci:full` | All verification groups, including compiler guards, runtime contracts, JAM Tart interoperability and PVM reference comparisons |
+| `ci:interop` | All Interop jobs: PVM reference comparisons and JAM Tart interoperability |
+| `ci:perf` | All Perf jobs: the validated interpreted PVM speed comparison |
+| `ci:full` | All verification, Interop and Perf jobs |
 
 The label addition is the request; leaving a label on a PR does not enable automatic checks on
 later commits. Remove and reapply the label to request checks after another push or rebase.
@@ -57,9 +59,12 @@ not claim the deferred groups passed. Master pushes/merges always request full v
 newer master runs supersede older ones.
 
 For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
-choose `unit`, `e2e`, `docker`, `bench-pvm` or `full` (the default). The explicit
-`bench-pvm` scope runs only the [PVM speed comparison](../spec/pvm-benchmark-comparison.md),
-with an Actions table and raw artifacts; it is not a correctness-suite request. CLI equivalent:
+choose `unit`, `e2e`, `docker`, `interop`, `perf`, `pvm-reference`, `bench-pvm` or `full`
+(the default). `interop` runs all Interop jobs; `perf` runs all Perf jobs. The existing
+`pvm-reference` and `bench-pvm` selections remain available for individual PVM jobs.
+**Perf PVM** also runs automatically on master pushes. Its validated interpreted
+[PVM speed comparison](../spec/pvm-benchmark-comparison.md) appears in the Actions
+run summary with raw artifacts, so no manual dispatch is needed after a merge. CLI equivalent:
 
 ```sh
 gh workflow run ci.yml --ref <branch> -f suite=full
