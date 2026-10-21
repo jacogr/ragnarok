@@ -344,6 +344,17 @@
     },
     {
       "arguments": [
+        "new-funded"
+      ],
+      "description": "Accumulation funded creation selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "new-funded"
+      },
+      "name": "accumulation-effect-new-funded"
+    },
+    {
+      "arguments": [
         "upgrade"
       ],
       "description": "Accumulation upgrade selected-success guard",

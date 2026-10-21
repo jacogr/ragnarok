@@ -57,8 +57,10 @@ with anchor-time lookup and clipped interpreted module capture; see
 [inner lifecycle](pvm-inner-lifecycle.md). Native compilation and compiled benchmarks
 remain outside this interpreted-engine work.
 
-Self-funded liquid `new`, self `upgrade`, and liquid deferred `transfer` use current
-argument layouts. Supervised upgrade now executes against retained invocation state;
+All four `new` funding modes, self `upgrade`, and liquid deferred `transfer` use
+current argument layouts. Creation authenticates self/supervised sources, debits only
+the selected pool and binds child identity to the invoker. Self funding retains creation
+publication proof; foreign funding retains the explicit parallel conflict-selection gate. Supervised upgrade now executes against retained invocation state;
 its parallel batch publication still requires modified-account conflict selection.
 Supervisor29 now authenticates current effective authority and atomically reassigns
 self/foreign metadata, with self publication and the same foreign batch gate.
@@ -66,7 +68,7 @@ Supervised storage writes now authenticate and mutate the target account in reta
 invocation state; their foreign publication still needs the same conflict selection.
 Supervised solicit/forget now mutate target requests in retained invocation state,
 using actual invocation time and the same explicit foreign publication boundary.
-Other foreign funding paths, alternative funding modes and direct transfers remain
+Foreign transfer sources, alternate transfer funding modes and direct transfers remain
 explicit `UnsupportedHostCall` gates while
 their account mutation/publication proofs are migrated. The previous argument layout
 is never accepted as a production fallback. These gates are incomplete implementation,
@@ -134,7 +136,7 @@ explicit implementation gates until their account mutation/publication paths are
 
 Undefined `new`/`transfer` modes return protocol HUH after the applicable memory and
 service-existence checks. Transfer refusals charge only575 gas and never enqueue or
-debit; defined alternate funding modes remain explicit implementation gates.
+debit; defined alternate transfer funding modes remain explicit implementation gates.
 
 ## Runtime probe migration
 

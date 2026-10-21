@@ -329,6 +329,66 @@ block detached_proof:
       StateStoreError.None,
     "plan retains selected child values after all caller execution owners disappear"
 
+# Complete funding modes publish self debit/child pools, while foreign debits cannot opt into creation provenance.
+block creation_funding_publication:
+  for foreign in [false, true]:
+    for mode in 0'u64..3:
+      let instructions = @[registerImmediate(7, (if foreign: 77'u64 else: high(uint64))),
+          registerImmediate(8, high(uint64)), registerImmediate(9, mode), registerImmediate(10,
+              196608),
+          @[10'u8, 20], @[50'u8, 0]]
+      let sourceEntry = serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(
+          balance: AccountBalance(10), supervisorBalance: AccountBalance(4),
+              supervisor: ServiceIndex(42), supervisorCreated: AccountSlot(0),
+          created: AccountSlot(7)), ByteLimit(ServiceMetadataBytes)).value
+      var fixture = batchFixture(incoming = false, firstEnvelope = guestEnvelope(instructions,
+          input), secondEnvelope = guestEnvelope([@[50'u8, 0]]), extra = @[sourceEntry])
+      let ownKey = chapterServiceKey(StateChapter(255), ServiceIndex(42))
+      let original = fixture.state.snapshot.value.lookup(ownKey).value.bytes
+      var own = decodeServiceMetadata(original, ByteLimit(ServiceMetadataBytes)).value.metadata
+      own.supervisorBalance = AccountBalance(4)
+      let ownEntry = serviceMetadataEntry(ServiceIndex(42), own, ByteLimit(
+          ServiceMetadataBytes)).value
+      discard fixture.state.apply([StateWrite(key: ownKey, kind: StateWriteKind.Put,
+          value: ownEntry.value)]).value
+      let prior = fixture.state.snapshot.value
+      let first = batchExecution(fixture, 0, parameters = profile(), createdAccounts = ElementLimit(
+          1), copyLimit = MemoryByteLimit(60), serviceProbes = ServiceProbeLimit(1))
+      let second = batchExecution(fixture, 1, parameters = profile())
+      assert first.error == AccumulationDispatchError.None, "funded creation completes within explicit allocation limits"
+      let selected = first.effects.effectContext(AccumulationDimension.Regular).value
+      let child = ServiceIndex(uint32(uint64(machineInfo(first.value.machine).value.registers[7])))
+      let childKey = chapterServiceKey(StateChapter(255), child)
+      let childBytes = selected.effectAccounts.value.lookup(childKey).value.bytes
+      let childRecord = decodeServiceMetadata(childBytes, ByteLimit(
+          ServiceMetadataBytes)).value.metadata
+      assert uint64(childRecord.balance) == (if mode < 2: 1'u64 else: 0'u64) and
+          uint64(childRecord.supervisorBalance) == (if mode < 2: 0'u64 else: 1'u64),
+          "flat one-unit threshold seeds exactly the selected child pool"
+      let executions = [first, second]
+      let plan = prepareCompleteAccumulationBatch(fixture.inputs, prior, executions, [], HeaderSlot(
+          128), batchPolicy(createdAccounts = 1))
+      if foreign:
+        assert selected.effectAccountScope.value == AccumulationAccountScope.Unsupported and
+            plan.error == AccumulationBatchError.UnsupportedAccountEffects,
+            "foreign payer cannot be certified by bounded child creation facts"
+        assert fixture.state.snapshot.value.lookup(chapterServiceKey(StateChapter(255),
+            child)).error == StateStoreError.MissingKey,
+            "refused foreign publication leaves child absent in the complete prior"
+      else:
+        assert plan.error == AccumulationBatchError.None, "self funding modes retain complete creation publication"
+        discard applyAccumulationBatch(fixture.state, plan.value).value
+        let published = fixture.state.snapshot.value
+        let paid = decodeServiceMetadata(published.lookup(ownKey).value.bytes, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
+        assert uint64(paid.balance) == (if mode in [0'u64, 2]: 9'u64 else: 10'u64) and
+            uint64(paid.supervisorBalance) == (if mode in [1'u64, 3]: 3'u64 else: 4'u64),
+            "published source debit selects exactly one pool"
+        assert published.lookup(chapterServiceKey(StateChapter(255), child)).value.bytes ==
+            selected.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255),
+                child)).value.bytes,
+            "published child retains both pools and invoker provenance exactly"
+
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let owned = prepare(fixture, execute(fixture), second).value

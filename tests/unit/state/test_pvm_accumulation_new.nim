@@ -45,7 +45,7 @@ proc source(length = 5'u64, address = 196608'u64, accumulation = 123'u64, transf
     credit = 100000'u64, account = ServiceMetadata(balance: AccountBalance(1000)),
     data: seq[byte] = offered(), extra: seq[StateEntry] = @[], spareEntries = 6,
     writes = 3'u64, bootstrapProbes = 1'u64, mode = 0'u64,
-    suffix: seq[seq[byte]] = @[@[50'u8, 0]]): PreparedAccumulationMachine =
+    suffix: seq[seq[byte]] = @[@[50'u8, 0]], funder = high(uint64)): PreparedAccumulationMachine =
   assert length <= uint64(high(uint32)) # The current request carries a canonical E4 length, never a truncated E8.
   assert data.len >= 32 # This fixture borrows a complete opaque code hash before packing the current request.
   var wire = newSeq[byte](60)
@@ -58,7 +58,7 @@ proc source(length = 5'u64, address = 196608'u64, accumulation = 123'u64, transf
       wire[36+field*8+i] = byte((value shr (8*i)) and 255) # Three full-width E8 configuration fields.
   for i in 32..<data.len:
     wire.add(data[i]) # Preserve trailing authored preimage bytes after the fixed current request.
-  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, desired),
+  var instructions = @[registerImmediate(7, funder), registerImmediate(8, desired),
     registerImmediate(9, mode), registerImmediate(10, address), @[10'u8, 20]]
   for instruction in suffix:
     instructions.add(instruction) # Later effects execute through the same decoded production guest stream.
@@ -68,12 +68,13 @@ proc source(length = 5'u64, address = 196608'u64, accumulation = 123'u64, transf
 
 # Probe, copy, provision and execution ceilings are local policies, distinct from fixed protocol gas.
 proc run(prepared: PreparedAccumulationMachine, params: Parameters = parameters(), limit = 60'u64,
-    probes = 3'u64, provisions = default(AccumulationProvisionLimits)): AccumulationDispatchResult =
+    probes = 3'u64, provisions = default(AccumulationProvisionLimits),
+        created = 0'u64): AccumulationDispatchResult =
   executeAccumulationMachine(prepared, params,
     FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1),
       operand: OperandLimits(maxBytes: ByteLimit(132))), MemoryByteLimit(limit),
     ExecutionStepLimit(100), HostCallLimit(10), GasCycleLimit(1000), pvmContextConfig(), provisions,
-    ServiceProbeLimit(probes))
+    ServiceProbeLimit(probes), createdAccounts = ElementLimit(created))
 
 # Instruction costs are priced independently of the new row's fixed 3855 gas.
 proc price(prepared: PreparedAccumulationMachine): uint64 =
@@ -209,9 +210,17 @@ for mode in [4'u64, high(uint64)]:
   assert run(source(mode = mode, address = high(uint64))).value.exit == StepExit.Panic, "complete request capture precedes undefined-mode HUH"
   assert run(source(mode = mode, address = high(uint64), credit = price(prepared)+3854),
       limit = 0).value.exit == StepExit.OutOfGas, "unaffordable undefined mode drains gas before capture"
-# Valid alternate modes remain explicit implementation gates until their funding paths are proven.
-for mode in [1'u64, 2, 3]:
-  assert run(source(mode = mode)).error == AccumulationDispatchError.UnsupportedHostCall, "valid alternate creation funding is gated"
+# Empty protected source pools return CASH; liquid funding can seed the child's protected pool.
+for mode in [1'u64, 3]:
+  let refused = run(source(mode = mode))
+  assert uint64(machineInfo(refused.value.machine).value.registers[7]) == high(uint64)-6,
+      "protected funding cannot silently borrow liquid funds"
+let protectedChild = run(source(mode = 2))
+let protectedId = ServiceIndex(uint32(uint64(machineInfo(
+    protectedChild.value.machine).value.registers[7])))
+assert uint64(metadata(context(protectedChild), protectedId).balance) == 0 and
+    uint64(metadata(context(protectedChild), protectedId).supervisorBalance) == 188,
+    "liquid funds can seed exactly the child's protected threshold"
 assert run(valid, limit = 59).error == AccumulationDispatchError.LimitExceeded, "complete current request capture ceiling"
 for available in [0'u64, 3854, 3855, 3856]:
   let completed = run(source(credit = price(valid)+available))
@@ -418,10 +427,139 @@ failHash(1)
 assert uint64(machineInfo(run(noAuthority).value.machine).value.registers[7]) == high(uint64)-8 and
     hashCalls() == 0, "authority refusal does no hashing"
 failHash(0)
+# Funding modes choose source and destination independently; the invoker always owns the new service.
+proc fundedActor(supervisor = 42'u32, incarnation = 43'u32): ServiceMetadata =
+  ## Distinct current creation identity detects accidental use of the foreign payer's incarnation.
+  ServiceMetadata(balance: AccountBalance(1000), supervisorBalance: AccountBalance(1000),
+      supervisor: ServiceIndex(supervisor), supervisorCreated: AccountSlot(incarnation),
+          created: AccountSlot(43))
+proc payer(balance = 1000'u64, protected = 1000'u64, supervisor = 42'u32,
+    incarnation = 43'u32): StateEntry =
+  ## Foreign source has different lifetime metadata and two independently bounded pools.
+  serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(balance: AccountBalance(balance),
+      supervisorBalance: AccountBalance(protected), supervisor: ServiceIndex(supervisor),
+      supervisorCreated: AccountSlot(incarnation), created: AccountSlot(7),
+          lastAccumulation: AccountSlot(11)),
+      ByteLimit(ServiceMetadataBytes)).value
+for foreign in [false, true]:
+  for mode in 0'u64..3:
+    let prepared = source(mode = mode, funder = (if foreign: 77'u64 else: high(uint64)),
+        account = fundedActor(), extra = (if foreign: @[payer()] else: @[]))
+    let completed = run(prepared, created = 1)
+    assert completed.error == AccumulationDispatchError.None and completed.value.exit ==
+        StepExit.Halt,
+        "each authorized creation funding mode completes"
+    let childId = ServiceIndex(uint32(uint64(machineInfo(completed.value.machine).value.registers[7])))
+    let owner = context(completed)
+    let child = metadata(owner, childId)
+    assert uint64(child.balance) == (if mode < 2: 188'u64 else: 0'u64) and
+        uint64(child.supervisorBalance) == (if mode < 2: 0'u64 else: 188'u64), "destination mode selects exactly one child funding pool"
+    assert uint32(child.parent) == 42 and uint32(child.supervisor) == 42 and uint32(
+        child.supervisorCreated) == 43,
+        "foreign payment cannot change child parent or supervisor incarnation"
+    let funder = ServiceIndex(if foreign: 77'u32 else: 42'u32)
+    let after = metadata(owner, funder)
+    assert uint64(after.balance) == (if mode in [0'u64, 2]: 812'u64 else: 1000'u64) and
+        uint64(after.supervisorBalance) == (if mode in [1'u64, 3]: 812'u64 else: 1000'u64), "source mode debits only its selected pool"
+    let request = owner.effectServiceRequestHistory(childId, ServicePreimageHash(array[32, byte](
+        child.codeHash)), RequestLength(5))
+    assert request.value.state == RequestState.Requested, "every funding mode creates the child's own empty code request"
+    if foreign:
+      let key = chapterServiceKey(StateChapter(255), ServiceIndex(42))
+      assert owner.effectAccounts.value.lookup(key).value.bytes == context(completed,
+          AccumulationDimension.Exceptional).effectAccounts.value.lookup(key).value.bytes,
+          "foreign funding leaves the complete invoker metadata unchanged"
+    assert owner.effectAccountScope.value == (if foreign: AccumulationAccountScope.Unsupported else: AccumulationAccountScope.CreatedAccounts),
+        "bounded creation facts cannot certify foreign payer mutations"
+# Protected self funds require effective supervision even when the service can spend its own liquid balance.
+let delegate = serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(created: AccountSlot(7)),
+    ByteLimit(ServiceMetadataBytes)).value
+for stale in [false, true]:
+  for mode in 0'u64..3:
+    let completed = run(source(mode = mode, account = fundedActor(supervisor = 99,
+        incarnation = (if stale: 6'u32 else: 7'u32)), extra = @[delegate]))
+    let expectedHuh = not stale and mode in [1'u64, 3]
+    assert (uint64(machineInfo(completed.value.machine).value.registers[7]) == high(uint64)-8) ==
+        expectedHuh,
+        "only matching effective supervision controls protected source funds"
+# Missing funder WHO precedes undefined mode/manager HUH, after full memory and length validation.
+for funder in [100'u64, 0x10000002a'u64]:
+  let prepared = source(funder = funder, mode = high(uint64), gratis = 1)
+  failHash(1)
+  let refused = run(prepared)
+  assert uint64(machineInfo(refused.value.machine).value.registers[7]) == high(uint64)-3 and
+      hashCalls() == 0,
+      "source WHO precedes mode and manager checks without namespace hashing"
+  failHash(0)
+  assert run(source(funder = funder, address = high(uint64))).value.exit == StepExit.Panic,
+      "complete request capture precedes source WHO"
+  let invalid = run(source(funder = funder, length = uint64(high(uint32)), mode = high(uint64)))
+  assert uint64(machineInfo(invalid.value.machine).value.registers[7]) == high(uint64)-8,
+      "invalid code length precedes source WHO"
+for mode in 0'u64..3:
+  let unauthorized = source(funder = 77, mode = mode, account = fundedActor(), extra = @[payer(
+      supervisor = 77)])
+  failHash(1)
+  let refused = run(unauthorized)
+  assert uint64(machineInfo(refused.value.machine).value.registers[7]) == high(uint64)-8 and
+      hashCalls() == 0,
+      "foreign funding needs current effective authority before allocation hashing"
+  failHash(0)
+  let short = if mode in [0'u64, 2]: payer(balance = 187) else: payer(protected = 187)
+  let underflow = run(source(funder = 77, mode = mode, account = fundedActor(), extra = @[short]))
+  assert uint64(machineInfo(underflow.value.machine).value.registers[7]) == high(uint64)-6,
+      "another pool cannot hide selected-pool underflow"
+# Source threshold uses the aggregate of both remaining balances, independently of the selected pool.
+for balance in [197'u64, 198]:
+  let completed = run(source(funder = 77, account = fundedActor(), extra = @[payer(
+      balance = balance, protected = 0)]))
+  assert (uint64(machineInfo(completed.value.machine).value.registers[7]) == high(uint64)-6) == (
+      balance == 197),
+      "creation debit preserves the source's own exact minimum"
+let foreignSource = source(funder = 77, mode = 3, account = fundedActor(), extra = @[payer()])
+for checkpoint in [false, true]:
+  let failed = run(source(funder = 77, mode = 3, account = fundedActor(), extra = @[payer()],
+      suffix = (if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])), created = 1)
+  let selectedContext = normalizeAccumulationOutcome(failed).value.outcomeContext.value
+  assert (uint64(metadata(selectedContext, ServiceIndex(77)).supervisorBalance) == 812) ==
+      checkpoint,
+      "panic selects precisely the foreign payer checkpoint"
+  assert (selectedContext.effectAccountScope.value == AccumulationAccountScope.Unsupported) ==
+      checkpoint,
+      "creation ancestry remains paired with its selected checkpoint"
+# Foreign funding plans keep all roots/cursors unchanged on early or late backend refusal.
+let fundingPair = prepareAccumulationEffects(prepareAccumulationContexts(
+    foreignSource.machineBootstrap.value, pvmContextConfig()).value).value
+for successful in [0, 2]:
+  failAfter(cint(successful))
+  let refused = recordAccumulationNew(fundingPair, proposal, parameters(), ServiceProbeLimit(1),
+      ServiceIndex(77), AccumulationFundingMode(3))
+  assert refused.error == AccumulationEffectError.BackendFailure, "foreign funding hash refusal exposes no child, payer or cursor"
+  failHash(0)
+  assert uint64(metadata(fundingPair.effectContext(AccumulationDimension.Regular).value,
+      ServiceIndex(77)).supervisorBalance) == 1000,
+      "failed foreign debit retains the complete payer owner"
+let narrowFunding = run(source(funder = 77, mode = 3, account = fundedActor(), extra = @[payer()],
+    writes = 2))
+assert narrowFunding.error == AccumulationDispatchError.LimitExceeded,
+    "payer, child and code request require one atomic three-write batch"
+let collision = run(source(funder = 77, desired = 77, registrar = 42, account = fundedActor(),
+    extra = @[payer()]))
+assert uint64(machineInfo(collision.value.machine).value.registers[7]) == high(uint64)-4 and
+    uint64(metadata(context(collision), ServiceIndex(77)).balance) == 1000, "reserved FULL publishes no earlier planned debit"
+let cashFirst = run(source(funder = 77, desired = 77, registrar = 42, account = fundedActor(),
+    extra = @[payer(balance = 187)]))
+assert uint64(machineInfo(cashFirst.value.machine).value.registers[7]) == high(uint64)-6,
+    "selected source CASH precedes registrar collision FULL"
+let defaultFunding = recordAccumulationNew(default(AccumulationEffects), proposal, parameters(),
+    ServiceProbeLimit(1), ServiceIndex(77), AccumulationFundingMode(3))
+assert defaultFunding.error == AccumulationEffectError.Uninitialized, "default effects grant no foreign funding source"
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let completed = run(valid)
   checkChild(context(completed), selected) # Release every map/request/cursor and guest successor.
+  let foreignDone = run(foreignSource, created = 1)
+  assert foreignDone.error == AccumulationDispatchError.None, "release protected foreign creation and its retained map"
 let after = getOccupiedMem()
 assert before == after, "creation releases all ARC-owned successors"
 recordArcRelease("pvm_accumulation_new", 1000, before, after)
