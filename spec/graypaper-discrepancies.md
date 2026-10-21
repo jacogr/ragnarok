@@ -425,9 +425,15 @@ The [executed arithmetic cross-check](pvm-register-reference-crosscheck.md) pass
 all38977 unchanged independent rows across85 register-only opcodes, comparing the
 exact trap PC and all13 registers against pinned PolkaVM interpreter/JamV1. These
 expectations remain Gray Paper-derived; no row was changed to obtain parity.
-The [executed gas cross-check](pvm-gas-reference-crosscheck.md) also passes all1776
+The [executed gas cross-check](pvm-gas-reference-crosscheck.md) also passes all1784
 independent block prices under JamV1/L2Hit, retaining the paper's25-cycle memory
 profile. Exact local simulation ceilings remain checked by the native gas suite.
+The [control-flow corpus](pvm-load-jump-reference.md) compares all1800 complete
+conditional/load-and-jump paths and every register. The
+[metered fault-retry cases](pvm-metered-fault-retry-reference.md) retain one paid
+charge across22 scalar repair scenarios; [host resumption](pvm-metered-host-reference.md)
+checks nine programs with two host replies and exact shared budgets. Their contracts
+explicitly map reference causing-PC/identifier representations to GP observations.
 These results do not imply unrestricted PVM conformance.
 
 ## Related findings outside this PVM increment
