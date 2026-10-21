@@ -82,3 +82,20 @@ to 135,360 bytes for shallow keys and from 5,232,992 to 151,744 bytes for deep-p
 All 24 matching cases preserve complete maps, zero clone/extraction hash attempts, publication
 hash counts, the reader-memory observations and exact final scope release. This measures only
 additional clone ownership above an already-owned selection, not total process memory.
+
+## Byte-prefix route verification
+
+Starting from merged stack #614 at `e1cb3ce0`, complete graph validation compares full prefix bytes
+and masks only the high routed bits in the final partial byte. At depth248 it compares exactly
+31 bytes; no access to byte31 occurs. Unvisited low key bits remain unconstrained. This replaces
+up to248 bit tests per leaf with up to31 byte tests, preserving the complete-key routing contract.
+
+`storage_prefix_routes` independently authors and hashes two-leaf graphs at all248 divergence
+depths with zero, all-one and alternating common prefixes. It accepts present empty values and
+rejects first/interior/final wrong edges despite valid local hashes, leaving the owner unchanged.
+The24 matching checked native traversal samples preserve maps, occupied bytes and every hash
+counter. Timings are descriptive; no general speedup is claimed without controlled timing tools.
+
+Next work stays within physical storage: reuse multi-root scratch without sharing per-root visited
+state, canonicalize selected inventories once, reduce repeated serialized admission work, then add
+bounded read/maintenance capabilities with explicit authority, lifetime and budget contracts.
