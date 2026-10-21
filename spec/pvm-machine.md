@@ -68,12 +68,13 @@ bytes. Snapshot updates currently copy O(stored pages) references. This correctn
 baseline has no performance or gas-proportional execution claim. Allocation is
 bounded by the page limit; allocation failure itself is not mapped to a VM exit.
 
-## PolkaVM authority and resolved wrapping-access gate
+## Scoped memory exception and resolved wrapping-access gate
 
-The maintainer directed alignment with pinned PolkaVM on2026-10-21, selecting it
-as the accepted PVM implementation authority. The former prose/equation ambiguity
-now follows its exact exclusive-end overflow and final-page-presence rule at the
-scalar layer. Raw stepping preserves the resulting precise Fault/Panic and paid
+The Gray Paper remains primary. The maintainer approved a scoped memory exception
+on2026-10-21: the former wrapping-access gate follows pinned PolkaVM exclusive-end
+overflow and final-page-presence behavior at the scalar layer. The
+[discrepancy register](graypaper-discrepancies.md) distinguishes the paper
+prose/equation ambiguity from the mapped-last-byte deviation. Raw stepping preserves the resulting precise Fault/Panic and paid
 gas; JAM invocation normalization remains unchanged. See the
 [adoption and completion contract](pvm-polkavm-memory-order.md) for exact pinned
 tests, interpreter source evidence, last-byte and read-only edge cases.
@@ -81,7 +82,7 @@ The historical AmbiguousAccessOrder reason is retained but no longer emitted.
 
 ## PolkaVM cross-checks and fuzz material
 
-PolkaVM is pinned as a PVM behavior authority and test-only dependency in `vendor/polkavm` at
+PolkaVM is pinned as an implementation cross-check and test-only dependency in `vendor/polkavm` at
 `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`; `spec/polkavm-pins.json`
 records source hashes. No Rust engine or upstream scripts are built or run.
 The native suite adapts two witnesses from `crates/polkavm/src/tests.rs`:

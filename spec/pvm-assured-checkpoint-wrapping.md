@@ -1,8 +1,8 @@
 # Checkpointed wrapping faults select the saved deletion
 
 The original layer recorded local AmbiguousAccessOrder refusal for genuine
-load_i16/store_u16 guests. On2026-10-21 the maintainer explicitly selected pinned
-PolkaVM as the PVM behavior authority and directed alignment. The
+load_i16/store_u16 guests. On2026-10-21 the maintainer approved the scoped pinned
+PolkaVM memory exception while retaining the Gray Paper as primary. The
 [scalar adoption](pvm-polkavm-memory-order.md) supersedes that gate and the earlier
 proposal for invocation-only normalization. Production scalar inspection now
 returns Fault at0xfffff000 for these absent-final-page accesses.

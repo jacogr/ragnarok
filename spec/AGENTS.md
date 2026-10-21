@@ -3,10 +3,12 @@
 Read this file for protocol behavior, domain bytes or specification/vector upgrades, even when
 only editing implementation code. Preserve these established interpretations.
 
-The maintainer selects pinned PolkaVM as the accepted PVM implementation authority,
-including Gray Paper disagreements. Record scoped behavior adoptions against exact source pins;
-see [memory ordering](pvm-polkavm-memory-order.md). Preserve independent JAM/vector encoding
-and host-function contracts; do not infer unrelated pin upgrades.
+The Gray Paper is the primary PVM specification. Implement independently; pinned PolkaVM is
+the accepted implementation cross-check for fixture compatibility, not a porting target. Record
+contradictions, ambiguities and missing definitions in the [discrepancy register](graypaper-discrepancies.md),
+with exact pins, minimal witnesses, observed/reference results and fixture coverage. Keep approved
+exceptions scoped, including [memory ordering](pvm-polkavm-memory-order.md); do not infer
+unrelated behavior or pin changes. Preserve independent JAM/vector and host-function contracts.
 
 For encoding-width discrepancies, the maintainer directs following the published vectors: if the
 vectors encode a field compactly, use that compact encoding and document the text discrepancy.

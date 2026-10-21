@@ -1,15 +1,18 @@
 # PolkaVM memory exception ordering adoption
 
-## Authority, scope and pins
+## Specification, scoped exception and pins
 
-On2026-10-21 the maintainer selected PolkaVM as the de-facto and only currently
-accepted PVM implementation, and explicitly directed alignment with it despite
-the Gray Paper prose/equation disagreement. This supersedes the prior local
-wrapping-access gate. This adopts scalar memory behavior at its owner, not an
-invocation-only conversion of a local error into panic.
+The Gray Paper is the primary specification; this is independent Nim implementation
+with pinned PolkaVM fixture cross-checks. On2026-10-21 the maintainer approved the
+following specific memory exception behavior despite the paper discrepancies, then
+clarified that this is not general PolkaVM precedence. See entries GP-PVM-001 and
+GP-PVM-002 in the [discrepancy register](graypaper-discrepancies.md) for the exact
+prose/equation conflict and the separate mapped-last-byte deviation. This supersedes
+the prior local wrapping-access gate at the scalar owner, not by invocation-only
+conversion of a local error into panic.
 
 PolkaVM remains pinned at `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa`.
-`spec/polkavm-pins.json` records its authority and the SHA-256 of both
+`spec/polkavm-pins.json` records its cross-check role and the SHA-256 of both
 `crates/polkavm/src/tests.rs` and `crates/polkavm/src/interpreter.rs`.
 GP0.8.0 stays at `07f041dabd073f9018b418e9ee72e79dd2185401` and vectors at
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a`. No upstream code, compiler,
