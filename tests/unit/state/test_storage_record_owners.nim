@@ -12,6 +12,18 @@ proc check(view: RepositoryView, value: byte) =
   let entries = restoreStateEntries(view, view.commitment.root, storageLimits().codec.trie).value
   assert entries.len == 2
   assert entries[0].value == @[value] and entries[1].value == @[9'u8]
+proc detachedClone(limits: RepositoryLimits): NodeRepository =
+  ## Return a clone after the source owner, source views and selection all retire at this boundary.
+  let a = storageTrie(7)
+  let b = storageTrie(8)
+  var source = newNodeRepository(limits)
+  let first = source.publish(source.snapshot.value, exportFullTrie(a,
+      limits.codec.records).value).value
+  let next = source.publish(first, exportTrieChanges(a, b, limits.codec.records).value).value
+  let selection = selectRepositoryRoots(next, [first.commitment.root, next.commitment.root],
+      ElementLimit(2)).value
+  result = cloneRepositorySelection(selection, limits).value
+  assert source.close == RepositoryError.None
 proc cycle() =
   ## Separate mutable handles share only immutable predecessors; every public byte array stays detached.
   let limits = storageLimits()
@@ -19,6 +31,13 @@ proc cycle() =
   let b = storageTrie(8)
   let c = storageTrie(10)
   let d = storageTrie(11)
+  var alone = detachedClone(limits)
+  let aloneView = alone.snapshot.value
+  check(aloneView, 8)
+  assert restoreHistoricalStateEntries(aloneView, a.commitment.root, limits.codec.trie).value[
+      0].value == @[7'u8]
+  assert alone.close == RepositoryError.None
+  check(aloneView, 8) # The cloned table alone must keep its immutable cells alive.
   var transport = exportFullTrie(a, limits.codec.records).value
   var owner = newNodeRepository(limits)
   let first = owner.publish(owner.snapshot.value, transport).value
