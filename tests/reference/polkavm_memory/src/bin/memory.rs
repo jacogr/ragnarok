@@ -3,8 +3,8 @@
 //! Compare independent scalar memory witnesses through pinned public JamV1 interpreter APIs.
 // @@PvmReference={"input":"pvm-memory-access.bin","suite":"pvm_memory_access_reference"}
 use polkavm::{
-    BackendKind, Config, Engine, InterruptKind, MemoryProtection, Module, ModuleConfig,
-    ProgramBlob, ProgramCounter, ProgramParts, Reg,
+    InterruptKind, MemoryProtection, Module, ModuleConfig, ProgramBlob, ProgramCounter,
+    ProgramParts, Reg,
 };
 use polkavm_common::program::InstructionSetKind;
 
@@ -23,10 +23,7 @@ fn main() {
     assert!(data.len() >= 12 && &data[..8] == b"PVMMAC01");
     let count = word(&data, 8, 4) as usize;
     assert!((1..=20000).contains(&count));
-    let mut config = Config::default();
-    config.set_backend(Some(BackendKind::Interpreter));
-    config.set_allow_dynamic_paging(true);
-    let engine = Engine::new(&config).unwrap();
+    let engine = ragnarok_memory_probe::engine(true);
     let mut profile = ModuleConfig::new();
     profile.set_page_size(4096);
     profile.set_dynamic_paging(true);

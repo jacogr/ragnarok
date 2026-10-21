@@ -3,6 +3,7 @@
 
 """Protect discovery, process failure and fresh differential reports without invoking native tools."""
 import json
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -35,6 +36,7 @@ class ReferenceRunnerTests(unittest.TestCase):
         declarations = [dict(suite='pvm_registers', input='../pvm-registers.bin'),
                         dict(suite='pvm_registers', generator='os'),
                         dict(suite='pvm_missing'), dict(suite='pvm_registers', skip=True),
+                        dict(suite='pvm_registers', engine='compiler'),
                         dict(suite='pvm_registers', input='pvm-registers.bin', regenerate='x.bin')]
         for entry in declarations:
             with self.subTest(entry=entry), tempfile.TemporaryDirectory(dir=ROOT/'build') as temporary:
@@ -51,6 +53,21 @@ class ReferenceRunnerTests(unittest.TestCase):
             (crate/'src/bin/duplicate.rs').write_text(text)
             with self.assertRaisesRegex(ValueError, 'Duplicate'):
                 runner.discover(crate)
+
+    def test_backend_roles_and_invalid_selection(self):
+        """Pure parser/simulator probes are explicit; an unknown backend fails before any process."""
+        checks = {item['binary']: item for item in runner.discover()}
+        self.assertFalse(checks['gas']['engine'])
+        self.assertFalse(checks['limits']['engine'])
+        with tempfile.TemporaryDirectory(dir=ROOT/'build') as temporary:
+            folder = Path(temporary)
+            with patch.dict(os.environ, {'RAGNAROK_PVM_REFERENCE_BACKEND': 'automatic'}), \
+                    patch.object(runner, 'command') as command:
+                with self.assertRaisesRegex(ValueError, 'Unknown reference backend'):
+                    runner.run(folder)
+                command.assert_not_called()
+            saved = json.loads((folder/'results.json').read_text())
+            self.assertEqual(saved['status'], 'failed')
 
     def test_process_status_logs_and_timeout(self):
         """A nonzero exit or timeout is preserved with diagnostics, including child-group cleanup."""

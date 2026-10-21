@@ -5,22 +5,21 @@
 //! Output is a portable little-endian test corpus; runtime builds consume frozen bytes, not Rust.
 
 // @@PvmReference={"regenerate":"pvm-memory-boundary.bin","suite":"pvm_memory_boundary_reference"}
-use polkavm::{
-    BackendKind, Config, Engine, InterruptKind, MemoryProtection, Module, ModuleConfig,
-    ProgramBlob, Reg,
-};
+use polkavm::{InterruptKind, MemoryProtection, Module, ModuleConfig, ProgramBlob, Reg};
 use polkavm_common::program::{asm, InstructionSetKind};
 use polkavm_common::writer::ProgramBlobBuilder;
 
 fn main() {
+    // Capability inspection is read-only and never writes the requested fixture output.
+    if std::env::args().nth(1).as_deref() == Some("--backend-info") {
+        ragnarok_memory_probe::backend_info();
+        return;
+    }
     // The caller selects an ignored output path; regeneration never advances upstream pins.
     let path = std::env::args()
         .nth(1)
         .expect("provide a fixture output path");
-    let mut config = Config::default();
-    config.set_backend(Some(BackendKind::Interpreter));
-    config.set_allow_dynamic_paging(true);
-    let engine = Engine::new(&config).unwrap();
+    let engine = ragnarok_memory_probe::engine(true);
     let mut cases = Vec::new();
     // Retain the original twelve records first, in their original byte order.
     for address in [0xfffffffe_u32, 0xffffffff] {

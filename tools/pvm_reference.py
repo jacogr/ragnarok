@@ -41,9 +41,11 @@ def discover(crate=CRATE, root=ROOT):
             raise ValueError(f'Expected one reference declaration: {source}')
         entry = json.loads(declarations[0])
         if (not isinstance(entry, dict) or not {'suite'} <= entry.keys()
-                or entry.keys()-{'suite', 'input', 'regenerate', 'generator'}
-                or len(entry.keys()-{'suite'}) > 1):
+                or entry.keys()-{'suite', 'input', 'regenerate', 'generator', 'engine'}
+                or len(entry.keys()-{'suite', 'engine'}) > 1):
             raise ValueError(f'Invalid reference declaration: {source}')
+        if type(entry.get('engine', True)) is not bool:
+            raise ValueError(f'Invalid backend role: {source}')
         suite = entry['suite']
         if not isinstance(suite, str) or not re.fullmatch(r'pvm_[a-z_]+', suite):
             raise ValueError(f'Invalid suite: {source}')
@@ -114,6 +116,11 @@ def run(folder=BUILD):
 
     save()
     try:
+        # A requested compiler run must not silently become an interpreter run on this host.
+        backend = os.environ.get('RAGNAROK_PVM_REFERENCE_BACKEND', 'interpreter')
+        if backend not in ('interpreter', 'compiler'):
+            raise ValueError('Unknown reference backend: '+backend)
+        report['backend'] = backend
         # Validate pristine pinned implementation and normative sources before accepting any probe.
         pins = json.loads((ROOT/'spec/polkavm-pins.json').read_text())
         upstream = require_submodule(pins)
@@ -136,7 +143,7 @@ def run(folder=BUILD):
         report.update(polkavm=pins['commit'], graypaper=gray['commit'], rust=rust,
                       head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT,
                                                    text=True).strip(), planned=checks,
-                      sources={item['source']: digest(ROOT/item['source']) for item in checks},
+                      sources={str(path.relative_to(ROOT)): digest(path) for path in sorted((CRATE/'src').rglob('*.rs'))},
                       lock_sha256=digest(CRATE/'Cargo.lock'))
         checked(['rustup', 'run', rust, 'cargo', 'build', '--release', '--locked', '--offline',
                  '--bins', '--manifest-path', CRATE/'Cargo.toml', '--target-dir', TARGET], 'build')

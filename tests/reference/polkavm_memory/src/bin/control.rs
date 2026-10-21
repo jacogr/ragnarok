@@ -3,8 +3,8 @@
 //! Cross-check independent GP conditional-control paths through the public JamV1 interpreter.
 // @@PvmReference={"input":"pvm-control.bin","suite":"pvm_conditional_control_reference"}
 use polkavm::{
-    BackendKind, CacheModel, Config, CostModelKind, Engine, GasMeteringKind, InterruptKind, Module,
-    ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,
+    CacheModel, CostModelKind, GasMeteringKind, InterruptKind, Module, ModuleConfig, ProgramBlob,
+    ProgramCounter, ProgramParts, Reg,
 };
 use polkavm_common::program::InstructionSetKind;
 fn word(data: &[u8], at: usize, width: usize) -> u64 {
@@ -23,9 +23,7 @@ fn main() {
     assert!(data.len() >= 12 && &data[..8] == b"PVMCTL01");
     let count = word(&data, 8, 4) as usize;
     assert!((384..=4096).contains(&count));
-    let mut config = Config::default();
-    config.set_backend(Some(BackendKind::Interpreter));
-    let engine = Engine::new(&config).unwrap();
+    let engine = ragnarok_memory_probe::engine(false);
     let mut cursor = 12;
     for row in 0..count {
         assert!(data.len() - cursor >= 217);
