@@ -95,3 +95,21 @@ file/recovery witness retains 21,184 occupied bytes before/after; captured input
 replacement and identity-before-header error ordering pass. Ten combined runtime
 refusals, genuine controls, twelve compiler privacy checks and inventory pass.
 Evidence uses `build/recovery-trust-files*`; CI remains separate.
+
+## Explicit recovered Services startup
+
+`Services.startRecovered` accepts only a successful opaque recovery result and
+validated state-enabled options. It compares the full independently configured
+chain parameter tuple before any listener opens, then installs the exact recovered
+application pair. Default/refused recovery cannot fall back to configured genesis;
+repeated start preserves live state. The component API preserves the restored
+map's explicit policy, as the existing explicit-limits startup overload does; CLI
+recovery must decode using its parsed policy. Close/restart keeps existing joins
+and acknowledgement behavior. No ancestral link to configured genesis is inferred:
+the operator-selected trusted anchor is the authority for this one-head restart.
+
+Local checked Services recovery suite passes with 29,744 occupied bytes before/
+after 1,000 aggregate lifetimes. Existing application Services startup/adoption
+and checkpoint-capture suites also pass, preserving their own ARC evidence.
+Focused module/test semantic checks, inventory and complete pinned formatting
+pass. Logs use `build/recovery-services*`; exact-head Linux CI is separate.

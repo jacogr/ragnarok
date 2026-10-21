@@ -66,3 +66,8 @@ same entry point with their existing integration/offload definitions and isolate
 Make reads `src/version.json` and generates the source revision, validated compiler pin and UTC
 build timestamp before compilation. Shipped binaries query no external version files, Git
 repository or compiler process.
+
+Explicit checkpoint recovery can seed Services from an independently trusted sealed
+head and complete map, with one retained head and finality unset. Full chain profile
+agreement is checked before listeners open; the selected checkpoint is never its
+own trust source. See [the recovery contract](../../spec/application-recovery.md).

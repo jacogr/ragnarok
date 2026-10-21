@@ -8,6 +8,7 @@
 
 import std/[syncio, strutils, base64]
 import ./options
+import ./checkpoint_recovery
 import ./handoff
 import ./candidate
 import ./block_input
@@ -154,16 +155,25 @@ proc setupTelemetry(client: var Client, options: Options, certificate: string, p
   configure(client, options.telemetryEndpoint(), parsed.value)
 
 proc startServices(services: var Services, options: Options, role: string,
-    withState: bool, limits: StateStoreLimits): bool {.raises.} =
+    withState: bool, limits: StateStoreLimits, recovered: ApplicationChain): bool {.raises.} =
   ## Capture one bounded file and install the optional canonical owner before listeners become observable.
   if services.started or not options.valid(): return false # Repeat start cannot disturb an existing lifetime.
   services.chainText = boundedFile(options.chainPath(), MaxChainBytes)
   if withState:
-    let seeded = initApplicationChain(services.chainText, limits)
-    if seeded.error != ApplicationChainError.None:
-      services.close() # A missing/refused seed cannot become a partial listener-only startup.
-      return false
-    services.canonical = seeded.value
+    if recovered.chainView.retainedCount > 0:
+      let configured = configuredParameters(services.chainText)
+      let head = recovered.chainView.bestBlock.value
+      if not configured.ok or configured.value.encodeParameters !=
+          head.chainParameters.encodeParameters:
+        services.close() # A trusted anchor must still match the complete explicitly selected chain profile.
+        return false
+      services.canonical = recovered # Preserve the exact restored map, inherited policy and one-head/unfinalized view.
+    else:
+      let seeded = initApplicationChain(services.chainText, limits)
+      if seeded.error != ApplicationChainError.None:
+        services.close() # A missing/refused seed cannot become a partial listener-only startup.
+        return false
+      services.canonical = seeded.value
   if not services.ui.start(options.uiPort(), options.devUiDirectory()):
     stderr.writeLine("Invalid UI listener or --dev-ui-dir")
     services.close() # Failed startup cannot retain a directory, seed or partially opened listener.
@@ -190,13 +200,23 @@ proc start*(services: var Services, options: Options, role: string): bool {.rais
   if options.stateEnabled:
     limits.writes = options.stateWrites # Fixed trie ceilings never imply a mutable budget.
     limits.writeValueBytes = options.stateWriteBytes
-    return startServices(services, options, role, true, limits)
-  startServices(services, options, role, false, limits)
+    return startServices(services, options, role, true, limits, default(ApplicationChain))
+  startServices(services, options, role, false, limits, default(ApplicationChain))
 
 proc start*(services: var Services, options: Options, role: string,
     limits: StateStoreLimits): bool {.raises.} =
   ## Explicitly enable canonical complete-state ownership, sharing the exact seed with optional RPC.
-  startServices(services, options, role, true, limits)
+  startServices(services, options, role, true, limits, default(ApplicationChain))
+
+proc startRecovered*(services: var Services, options: Options, role: string,
+    recovered: ApplicationRecoveryResult): bool {.raises.} =
+  ## Explicit component recovery preserves its caller-selected map policy, like the existing explicit-limits startup overload.
+  ## CLI recovery must restore with its parsed policy before calling this entry point; no map policy is widened here.
+  if services.started or not options.valid or not options.stateEnabled:
+    return false # Failed/repeated admission must not read files or disturb active services.
+  if recovered.error != ApplicationRecoveryError.None:
+    return false # Refused/default recovery never falls back to configured genesis.
+  startServices(services, options, role, true, genesisStoreLimits(), recovered.value)
 
 func chainView*(services: Services): ChainView {.requires: not services.preparing.} =
   ## Return an immutable selected-history alias; default/closed/legacy services have no canonical head.

@@ -71,3 +71,14 @@ hook pattern for resource owners. Root/size extraction and publication then reje
 the moved source. Test source observation, surviving destination bytes, actual
 ARC copy rejection and repeated release; successful semantic checking alone did
 not expose this lifecycle mismatch. No compiler/stdlib changes are needed.
+
+## Nested tagged defaults at call boundaries
+
+Recovery startup observed conflicting `completed` fields when a complex
+`default(ApplicationChain)` was an optional private parameter, and when
+`default(ApplicationRecoveryResult)` appeared directly inside an asserted call.
+Explicit helper arguments and a named local default result passed semantic and
+native checking. See [the Services binding test](../tests/unit/state/test_application_recovery_services.nim).
+Keep negative controls opaque enough to exercise runtime admission rather than
+constant construction; this observation does not establish a general default-value
+restriction or justify modifying the compiler.
