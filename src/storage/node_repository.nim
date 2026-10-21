@@ -190,18 +190,29 @@ proc publish*(repository: var NodeRepository, expected: RepositoryView,
   if validated != RecordError.None:
     return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
         recordReason: validated)
-  var records = newSeq[TrieRecord](count)
-  for i, record in head.records: records[i] = record # Sharing old private immutable values is safe.
-  var next = head.records.len
+  var added = newSeq[TrieRecord](count-head.records.len)
+  var next = 0
   for record in batch.records:
     let old = position(head.records, record.digest)
     if old >= 0:
       if not sameRecord(head.records[old], record):
         return RepositoryResult[RepositoryView](status: RepositoryError.RecordConflict)
     else:
-      records[next] = copyRecord(record) # Raw transport mutations cannot alter the accepted candidate.
+      added[next] = copyRecord(record) # Raw transport mutations cannot alter the accepted candidate.
       inc next
-  records.sort(compareRecord)
+  added.sort(compareRecord) # Only newly admitted records require sorting; the published table is already ordered.
+  var records = newSeq[TrieRecord](count)
+  var prior = 0
+  var fresh = 0
+  for index in 0..<count:
+    # Merge disjoint sorted addresses linearly, retaining old private payload owners without copying bytes.
+    if fresh >= added.len or (prior < head.records.len and
+        compareHash(head.records[prior].digest, added[fresh].digest) < 0):
+      records[index] = head.records[prior]
+      inc prior
+    else:
+      records[index] = added[fresh]
+      inc fresh
   var seen = newSeq[bool](records.len)
   var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
   let complete = graph(records, StateNodeHash(array[32, byte](batch.root)), 0,

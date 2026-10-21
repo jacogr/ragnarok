@@ -96,3 +96,27 @@ claim that it fits the configured total-journal budget. Delta persistence uses 9
 in the 1024-key workload. The current accumulated sorted record table still copies all descriptors,
 sorts them on every append and walks the entire target graph. No disk-addressed paging, bounded
 read cache, automatic history reclamation or production-scale efficiency is claimed yet.
+
+## Sorted-index admission
+
+Publication now sorts only newly admitted addresses and linearly merges them with the already
+sorted immutable table. Existing full-address conflict checks, complete graph validation, budgets,
+failed-publication atomicity and raw byte ownership remain intact. Mixed full/delta transports,
+reversed record orders, reused addresses, zero-record revisions and held historical readers are
+checked independently. Descriptor copying remains O(history); new-record sorting uses O(delta)
+scratch instead of the pinned mergesort's O(history) temporary buffer.
+
+The fixed candidate's ten deterministic samples exactly match the baseline bytes, hash calls and
+post-update occupied memory. Ten alternating baseline/candidate runs also agree on every exact
+counter. For 1024 entries, publication median totals across 64 updates changed from 51.5/49.5ms
+to 42.7/42.6ms for retention one/eight; reopen medians changed from 43.0/42.8ms to 37.5/38.3ms.
+Outliers overlap substantially on this shared host. This supports retaining the simpler asymptotic
+sorting improvement, not a production latency promise or a claim of reduced post-update live memory.
+
+## Normal restart authority
+
+The maintainer selected local durable-head resume for normal disk-mode restarts: verify configured
+chain identity and physical integrity, then resume the app's own previously validated durable head.
+External checkpoint imports still require independently supplied trusted application identity and
+sealed header. Persisted state root/generation alone is insufficient application context; disk mode
+must atomically select matching block identity, sealed header, full parameters and state revision.
