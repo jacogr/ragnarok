@@ -260,3 +260,58 @@ proc encodeProofView*(view: ProofView, limits: ProofViewLimits, perProof: StateP
     for i, octet in wire: output[offset+i] = octet
     offset += wire.len
   ProofViewResult[seq[byte]](status: ProofViewError.None, completed: output)
+
+proc decodeProofView*(input: openArray[byte], expectedRoot: StateRoot,
+    limits: ProofViewLimits, perProof: StateProofLimits, aggregate: StateProofBatchLimits,
+    wireBytes: ByteLimit): ProofViewResult[ProofView] =
+  ## Authenticate an exact local collection under caller trust only after complete structural/budget preflight.
+  if uint64(input.len) > uint64(wireBytes):
+    return ProofViewResult[ProofView](status: ProofViewError.LimitExceeded)
+  if input.len < 8: return ProofViewResult[ProofView](status: ProofViewError.Truncated)
+  if input[0] != byte('R') or input[1] != byte('P') or input[2] != byte('V') or input[3] != byte('1'):
+    return ProofViewResult[ProofView](status: ProofViewError.NonCanonical)
+  var count = 0'u64
+  for i in 0..<4:
+    count = count or (uint64(input[4+i]) shl (8*i)) # Widen before shifts in the untrusted E4 domain.
+  if count > uint64(limits.items) or count > uint64(aggregate.items):
+    return ProofViewResult[ProofView](status: ProofViewError.LimitExceeded)
+  if count > uint64((input.len-8) div 45):
+    return ProofViewResult[ProofView](status: ProofViewError.Truncated)
+  if count > uint64(high(int) div sizeof(StateProofQuery)):
+    return ProofViewResult[ProofView](status: ProofViewError.LengthOverflow)
+  var queries = newSeq[StateProofQuery](int(count))
+  var offset = 8
+  var bytes = 0'u64
+  for i in 0..<int(count):
+    # Every fixed record header and variable witness extent is checked before access or slicing.
+    if input.len-offset < 35:
+      return ProofViewResult[ProofView](status: ProofViewError.Truncated)
+    var key = default(array[31, byte])
+    for j in 0..<31: key[j] = input[offset+j]
+    var size = 0'u64
+    for j in 0..<4: size = size or (uint64(input[offset+31+j]) shl (8*j))
+    offset += 35
+    if size > uint64(input.len-offset):
+      return ProofViewResult[ProofView](status: ProofViewError.Truncated)
+    if size < 10:
+      return ProofViewResult[ProofView](status: ProofViewError.NonCanonical)
+    let query = StateKey(key)
+    if i > 0 and compareKey(queries[i-1].key, query) >= 0:
+      return ProofViewResult[ProofView](status: ProofViewError.NonCanonical)
+    let decoded = decodeStateProof(input.toOpenArray(offset, offset+int(size)-1), perProof, wireBytes)
+    if decoded.error != StateProofError.None:
+      return ProofViewResult[ProofView](status: ProofViewError.ProofFailure,
+          proofReason: decoded.error)
+    let valueBytes = uint64(decoded.value.suppliedByteLength.value)
+    if valueBytes > uint64(limits.valueBytes)-bytes:
+      return ProofViewResult[ProofView](status: ProofViewError.LimitExceeded)
+    bytes += valueBytes
+    queries[i] = StateProofQuery(key: query, proof: decoded.value)
+    offset += int(size)
+  if offset != input.len:
+    return ProofViewResult[ProofView](status: ProofViewError.NonCanonical)
+  let verified = verifyStateProofs(queries, expectedRoot, perProof, aggregate)
+  if verified.error != StateProofError.None:
+    return ProofViewResult[ProofView](status: ProofViewError.ProofFailure,
+        proofReason: verified.error)
+  captureProofView(verified.value, expectedRoot, limits) # No policy can widen after the shared atomic verifier.
