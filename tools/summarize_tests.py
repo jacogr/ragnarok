@@ -26,6 +26,10 @@ def summarize(report, kind):
         # List every module so a new failure or a newly ported module is visible in the PR.
         for row in rows:
             lines.append('| `'+row['source']+'` | '+('Pass' if row['passed'] else 'Fail')+' |')
+    elif kind == 'storage-benchmark':
+        # Storage compares equal validated operations while keeping durability and resident-read limits explicit.
+        from storage_benchmark_report import summarize_benchmark
+        return summarize_benchmark(report)
     elif kind == 'pvm-benchmark':
         # Speed samples have their own strict completeness and backend-availability contract.
         from pvm_benchmark_report import summarize_benchmark
@@ -156,7 +160,7 @@ def summarize(report, kind):
 # Missing reports produce an explicit summary and a failing helper, preserving the preceding job failure.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--kind', choices=('runtime', 'modules', 'python', 'guards', 'failures', 'e2e', 'pvm-reference', 'pvm-benchmark'), required=True)
+    parser.add_argument('--kind', choices=('runtime', 'modules', 'python', 'guards', 'failures', 'e2e', 'pvm-reference', 'pvm-benchmark', 'storage-benchmark'), required=True)
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--artifact', type=Path, help='Also replace one downloadable Markdown report')

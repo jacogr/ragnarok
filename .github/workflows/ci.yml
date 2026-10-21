@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [unit, e2e, docker, interop, perf, pvm-reference, bench-pvm, full]
+        options: [unit, e2e, docker, interop, perf, pvm-reference, bench-pvm, bench-storage, full]
         default: full
         required: true
 
@@ -404,4 +404,33 @@ jobs:
             build/tests/pvm-benchmark/samples.csv
             build/tests/pvm-benchmark/summary.md
             build/pvm-benchmark/native-build.log
+            build/ci/*.log
+
+  # Keep storage adjacent to other Perf jobs and use the same group/full request policy.
+  bench-storage:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-storage' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+    name: Perf Storage
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Compare validated memory and durable storage workloads
+        run: make bench-storage
+      - name: Show storage speed comparison
+        if: always()
+        run: make summary-storage-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      - name: Retain storage speed evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: bench-storage-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            build/tests/storage-benchmark/*.log
+            build/tests/storage-benchmark/results.json
+            build/tests/storage-benchmark/samples.csv
+            build/tests/storage-benchmark/summary.md
             build/ci/*.log

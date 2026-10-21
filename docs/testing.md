@@ -59,7 +59,7 @@ not claim the deferred groups passed. Master pushes/merges always request full v
 newer master runs supersede older ones.
 
 For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
-choose `unit`, `e2e`, `docker`, `interop`, `perf`, `pvm-reference`, `bench-pvm` or `full`
+choose `unit`, `e2e`, `docker`, `interop`, `perf`, `pvm-reference`, `bench-pvm`, `bench-storage` or `full`
 (the default). `interop` runs all Interop jobs; `perf` runs all Perf jobs. The existing
 `pvm-reference` and `bench-pvm` selections remain available for individual PVM jobs.
 **Perf PVM** also runs automatically on master pushes. Its validated interpreted
@@ -112,3 +112,14 @@ Keep feature-specific coverage, reproduction details and limitations in the rele
 document. Adding a native suite or rejection family should not require editing this index or
 unrelated verification-group tests. Historical results stay tied to their recorded revisions;
 local verification does not substitute for Linux CI.
+
+## Storage performance
+
+`make bench-storage` compares memory, synced journal and managed repositories using the same
+prepared batches, read requests and complete maps. `make summary-storage-benchmark` appends its
+table to `SUMMARY_OUTPUT` and saves downloadable `build/tests/storage-benchmark/summary.md`.
+
+In Actions, **Perf Storage** sits beside **Perf PVM**. Master pushes, `perf`/`full` dispatch and
+`ci:perf`/`ci:full` PR requests run the group; `bench-storage` dispatch runs storage alone. The job
+always renders a summary and retains JSON, CSV, Markdown and logs, including failures. Timing has
+no fixed CI speed threshold. See [the workload contract](../spec/storage-benchmark.md) for scope.
