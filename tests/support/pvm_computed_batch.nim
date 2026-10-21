@@ -15,13 +15,13 @@ proc batchLimits*(): ComputedBatchLimits =
   ComputedBatchLimits(guarantees: ElementLimit(3), reporters: ElementLimit(9),
     bytes: ByteLimit(100000), headerBytes: ByteLimit(4096))
 proc batchEnvelopes*(repeatReporter = false, distinctPackages = false, withReady = false,
-    withRound = false, withExecution = false, invalidEntry = false, withComposition = false): seq[
-        ComputedGuaranteeEnvelope] =
+    withRound = false, withExecution = false, invalidEntry = false, withComposition = false,
+        withChain = false): seq[ComputedGuaranteeEnvelope] =
   ## Share the actual original map and posterior snapshot rather than rebuilding equal-root stand-ins.
   let fixture = rosterFixture(rotation = 4, repeatReporter = repeatReporter,
     additionalCores = [1'u64], distinctPackages = distinctPackages, withReady = withReady,
         withRound = withRound, withExecution = withExecution, invalidEntry = invalidEntry,
-            withComposition = withComposition)
+            withComposition = withComposition, withChain = withChain)
   let sources = @[fixture.source, fixture.siblings[0]]
   result = newSeq[ComputedGuaranteeEnvelope](sources.len)
   for i, source in sources:
@@ -29,11 +29,11 @@ proc batchEnvelopes*(repeatReporter = false, distinctPackages = false, withReady
     let eligible = checkComputedRoster(source, guarantorLimits().roster).value
     let context = prepareComputedGuarantors(eligible, guarantorLimits()).value
     var indices: seq[uint16] = @[]
-    for index in 0'u16..<6'u16:
+    for index in 0'u16..<(if withChain: 9'u16 else: 6'u16):
       if context.computedGuarantorAt(GuaranteeSlot(2), GuarantorIndex(index)).error ==
           ComputedGuarantorError.None:
         indices.add(index) # Only genuine owner-selected current validators participate.
-    assert indices.len == 3, "six current validators assign three each to the two populated cores"
+    assert indices.len == 3, "actual current validators assign three each to the two populated cores"
     let records = signedCredentials(context, GuaranteeSlot(2), indices, credentialMessage(context))
     let verified = verifyComputedCredentials(context, GuaranteeSlot(2), records).value
     result[i] = prepareComputedEnvelope(verified, ComputedEnvelopeLimits(reportBytes: ByteLimit(

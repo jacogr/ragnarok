@@ -52,7 +52,8 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
     target = 0'u32, offender = false, repeatReporter = false,
     additionalCores: openArray[uint64] = [], distinctPackages = false,
         withReady = false, withRound = false, withExecution = false,
-            invalidEntry = false, withComposition = false): ComputedRosterFixture =
+            invalidEntry = false, withComposition = false,
+                withChain = false): ComputedRosterFixture =
   ## Re-author a three-core complete signed prefix; optional parent9 -> posterior6 is a real epoch transition.
   let base = transitionFixture(epoch = shrink, withReady = withReady, withExecution = withExecution,
       invalidEntry = invalidEntry)
@@ -80,12 +81,14 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
     StateWrite(kind: StateWriteKind.Put, key: poolEntry.key, value: poolEntry.value)]
   if withComposition:
     # Parent statistics are genuine original serialized input, before the final root, signing and current PVM work.
+    let currentCount = if withChain: 9 else: 6
     var activity = default(ActivityState)
-    activity.validators[StatisticsEpoch.Current] = newSeq[ValidatorActivity](6)
+    activity.validators[StatisticsEpoch.Current] = newSeq[ValidatorActivity](currentCount)
     activity.validators[StatisticsEpoch.Previous] = newSeq[ValidatorActivity](6)
     activity.cores = newSeq[CoreActivity](3)
     let entry = activityStateEntry(activity, ActivityConfig(cores: CoreCount(3),
-      current: ValidatorCount(6), previous: ValidatorCount(6), maxServices: ElementLimit(4),
+      current: ValidatorCount(uint64(currentCount)), previous: ValidatorCount(6),
+          maxServices: ElementLimit(4),
       maxBytes: ByteLimit(4096))).value
     writes.add(StateWrite(kind: StateWriteKind.Put, key: entry.key, value: entry.value))
   if withExecution:
@@ -103,11 +106,11 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
       assigners: @[ServiceIndex(42), ServiceIndex(42), ServiceIndex(42)], always: @[]),
       PrivilegeConfig(cores: CoreCount(3), maxAlways: ElementLimit(2), maxBytes: ByteLimit(1000))).value
     writes.add(StateWrite(kind: StateWriteKind.Put, key: privileges.key, value: privileges.value))
-  if shrink or repeatReporter:
-    # Optionally extend parent C8 or repeat one actual Ed identity before signing; pending/staging remain six.
+  if shrink or repeatReporter or withChain:
+    # Extend actual original C8 for coherent chain domains or epoch shrink; pending/staging remain six.
     let raw = original.snapshot.value.lookup(chapterKey(StateChapter(8))).value.bytes
     let active = decodeStateValidators(raw, cfg.disputes.rosters).value.value
-    var records = newSeq[StateValidator](if shrink: 9 else: 6)
+    var records = newSeq[StateValidator](if shrink or withChain: 9 else: 6)
     for index in 0..<6: records[index] = validatorAt(active, StateValidatorIndex(uint64(index))).value
     for index in 6..<records.len:
       var seed = default(array[32, byte])
@@ -203,7 +206,8 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
           extrinsicLimits()).value
       fixture.inputs = bindImportInputs(selectedExternal, @[newSeq[VerifiedImport](0)], [],
           inputLimits()).value
-    let links = rosterLinks(executionRun(fixture, core = selectedCore).value, ErasureShards(shards))
+    let selectedShards = if withChain: 9'u16 else: shards
+    let links = rosterLinks(executionRun(fixture, core = selectedCore).value, ErasureShards(selectedShards))
     let admitted = validateBlockCommitments(candidate, base.context.parent, snapshot, cfg.admission)
     assert admitted.error == BlockAdmissionError.None, "genuine three-core source admission"
     let bound = bindComputedState(links, admitted).value
