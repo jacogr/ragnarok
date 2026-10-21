@@ -3,7 +3,8 @@
 
 # Generated host binaries, dependency checkouts and local configuration never enter the build.
 build
-vendor
+vendor/*
+!vendor/README.md
 **/nimcache
 **/__pycache__
 **/*.pyc

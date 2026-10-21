@@ -14,7 +14,7 @@ emulation because the pinned compiler has no Linux ARM64 distribution.
 
 ```sh
 make docker-build          # ragnarok:local, linux/amd64
-make check-docker          # Build, then run version/help and checked peer selftests.
+make check-docker          # Build, then run version/help and checked peer/integration selftests.
 docker run --rm --network none ragnarok:local --version
 docker run --rm ragnarok:local --help
 ```
@@ -22,7 +22,8 @@ docker run --rm ragnarok:local --help
 `DOCKER_IMAGE` changes the local image tag. `DOCKER` selects another Docker CLI. Build and smoke
 logs remain under `build/ci/docker-{build,smoke}.log`; failure in either phase fails Make.
 `DOCKER_PLATFORM` defaults to `linux/amd64`; other architectures currently fail before setup.
-No target logs into a registry or publishes images.
+No target logs into a registry or publishes images. The fixture-dependent offload selftest stays
+in E2E, where its official-vector fixture is prepared; the container smoke checks need no fixtures.
 
 The build context retains only the source Git objects, refs and index needed for the existing
 pinned-submodule validation and embedded revision. Local Git config/hooks, dependency checkouts,
@@ -63,7 +64,7 @@ select its required instrumented compiler/linker profile when added.
 
 The canonical workflow's **Docker image** job runs `make check-docker` independently on master
 pushes and requested `unit`/`full` runs (`ci:unit` or `ci:full` on PRs). It builds a local image and
-runs its selftests without networking under the runtime user. Only diagnostic logs are uploaded;
+runs its self-contained selftests without networking under the runtime user. Only diagnostic logs are uploaded;
 images are not pushed to any registry. To request just this job on a branch:
 
 ```sh

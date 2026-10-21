@@ -41,7 +41,7 @@ docker-build:
 
 # Exercise the packaged ABI closure and checked peer selftests as its non-root runtime user.
 check-docker: docker-build
-	@for option in --version --help --selftest --integration-selftest --offload-selftest; do \
+	@for option in --version --help --selftest --integration-selftest; do \
 	  $(DOCKER) run --rm --network none "$(DOCKER_IMAGE)" "$$option"; \
 	done 2>&1 | tee build/ci/docker-smoke.log
 

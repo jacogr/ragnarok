@@ -26,11 +26,12 @@ COPY . .
 RUN git rev-parse --verify HEAD && make build
 # C ABI libraries have absolute DT_NEEDED entries; package names and a binary-relative runpath.
 RUN apt-get update && apt-get install --no-install-recommends -y patchelf \
+    && mkdir /out && cp /src/build/ragnarok /out/ragnarok \
     && patchelf \
       --replace-needed /src/build/crypto/libragnarok_crypto.so libragnarok_crypto.so \
       --replace-needed /src/build/bandersnatch/target/release/libragnarok_bandersnatch.so libragnarok_bandersnatch.so \
       --replace-needed /src/build/quic/libquic_proof.so libquic_proof.so \
-      --set-rpath '$ORIGIN/../lib/ragnarok' /src/build/ragnarok \
+      --set-rpath '$ORIGIN/../lib/ragnarok' /out/ragnarok \
     && rm -rf /var/lib/apt/lists/*
 
 # Ship only the peer, its maintained native ABIs and the required system runtime libraries.
@@ -42,7 +43,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     && useradd --uid 10001 --gid 10001 --home-dir /data --no-create-home ragnarok \
     && mkdir /data && chown 10001:10001 /data
 COPY LICENSE-APACHE LICENSE-MIT /usr/share/doc/ragnarok/
-COPY --from=builder /src/build/ragnarok /usr/local/bin/ragnarok
+COPY --from=builder /out/ragnarok /usr/local/bin/ragnarok
 COPY --from=builder /src/build/crypto/libragnarok_crypto.so /usr/local/lib/ragnarok/
 COPY --from=builder /src/build/bandersnatch/target/release/libragnarok_bandersnatch.so /usr/local/lib/ragnarok/
 COPY --from=builder /src/build/quic/libquic_proof.so /usr/local/lib/ragnarok/

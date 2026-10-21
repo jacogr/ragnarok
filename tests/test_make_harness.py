@@ -54,7 +54,7 @@ sys.exit(7 if failure and failure in sys.argv[1:] else 0)
                     # A failed image build prevents every runtime invocation.
                     self.assertEqual(len(calls), 1)
                 else:
-                    options = ['--version', '--help', '--selftest', '--integration-selftest', '--offload-selftest']
+                    options = ['--version', '--help', '--selftest', '--integration-selftest']
                     if failure:
                         # Stop at the failed selftest, including when commands write through a log pipe.
                         options = options[:options.index(failure)+1]
