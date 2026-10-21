@@ -145,7 +145,7 @@ import os
 import sys
 name = Path(__file__).name
 with Path('calls').open('a') as output:
-    output.write(name+(' --group failures' if '--group' in sys.argv else ' --rpc-test' if '--rpc-test' in sys.argv else '')+'\\n')
+    output.write(name+(' --prefetch-blobs vendor/jamtestvectors' if '--prefetch-blobs' in sys.argv else ' --group failures' if '--group' in sys.argv else ' --rpc-test' if '--rpc-test' in sys.argv else '')+'\\n')
 # A malformed inventory must stop Make before it invokes provisioning or native verification.
 if name == 'check_inventory.py' and os.environ.get('FAIL_INVENTORY'):
     sys.exit(7)
@@ -199,6 +199,8 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                 # Each group is scheduled once after clean; setup dependencies are shared by Make.
                 self.assertEqual(calls.count(name), 1)
             self.assertTrue((folder/'build/ci/failures.log').is_file())
+            self.assertLess(calls.index('setup_submodules.py --prefetch-blobs vendor/jamtestvectors'),
+                            calls.index('test_python.py'))
             self.assertTrue((folder/'build/ci/python.log').is_file())
             self.assertTrue((folder/'build/ci/e2e.log').is_file())
             failed = subprocess.run(arguments+['runtime'], cwd=folder,

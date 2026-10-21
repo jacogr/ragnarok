@@ -74,6 +74,28 @@ in 145.1 seconds locally; the measured baseline took 168.7 seconds before the ad
 regression. These are local observations, not Linux CI timing guarantees. Real checked full-LTO
 private/shared rebuilds still print `7`, `12`, `12`, with source-edit rotation and unchanged reuse.
 
+## Provision sparse vector blobs before discovery
+
+The Linux retry still reached the five-minute deadline in
+`SpecificationTests.test_published_report_sources`. That check verifies every pinned vector blob;
+individual `git show` calls in a fresh partial clone can each trigger a separate lazy fetch.
+Python discovery does not compile native binaries, so disabling native LTO cannot reduce this cost.
+
+`make check-python` now requests batched blob provisioning during source setup; other groups
+retain their focused source setup. The provisioner resolves the existing `spec/pins.json` vector blob paths against the immutable
+pinned tree, checks local object availability with lazy fetching disabled and fetches missing blob
+identities in one batch. This is dependency provisioning before discovery's deadline. It retains
+the sparse working tree, source revision, independent SHA-256 verification and unchanged test
+workloads/deadline. Complete or warm clones require no fetch. Missing pinned paths and failed
+fetches remain errors. The batch uses the same fetch options as
+[Git's promisor fetch implementation](https://github.com/git/git/blob/master/promisor-remote.c),
+including disabled negotiation for explicit object wants.
+
+A fresh upstream partial clone fetched the selected pinned blobs in 29.0 seconds locally; all
+317 SHA-256 values then verified in 11.7 seconds. Local partial-clone regression tests verify one
+cold fetch, offline warm reuse, absent unrelated objects, no working-tree materialization and
+missing-path rejection. These timings describe the local network and host, not a Linux guarantee.
+
 ## Observed local verification
 
 All 53 source-identity, native profile, Hastur planning/locking and unit orchestration
