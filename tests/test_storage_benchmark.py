@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Protect equal storage workload coverage, honest durability comparisons and failed-run evidence."""
+from contextlib import contextmanager
 import copy
 import json
 from pathlib import Path
@@ -31,6 +32,30 @@ def passes():
     """Build two complete identical passes whose statistics have independent exact expectations."""
     one={f'{e}-{n}-{t}-{v}-{w}':parse_output(output(e,n,t,v,w),e,n,t,v,w) for e in ENGINES for n,t,v,w in CASES}
     return [one,copy.deepcopy(one)]
+
+
+@contextmanager
+def native_stub(folder):
+    """Generate authored raw evidence while leaving artifact/error sequencing real."""
+    import storage_benchmark
+    library=folder/'crypto/library'
+    library.parent.mkdir()
+    library.write_bytes(b'fixture native ABI')
+    def command(arguments,name,*args,**kwargs):
+        # Each declared identity gets a complete independently authored native output log.
+        binary,engine,count,directory,topology,value_bytes,batch_width=arguments
+        log=folder/(name+'.log')
+        log.write_text(output(engine,int(count),topology,int(value_bytes),int(batch_width)))
+        return dict(exit_code=0,log=str(log),elapsed_seconds=0.001)
+    with patch.object(storage_benchmark,'BUILD',folder),patch.object(
+            storage_benchmark,'installed',return_value=(folder/'compiler',{})),patch.object(
+            storage_benchmark,'crypto_sources',return_value={}),patch.object(
+            storage_benchmark,'build_crypto',return_value=library),patch.object(
+            storage_benchmark,'cpu_model',return_value='fixture CPU'),patch.object(
+            storage_benchmark.NativeChecks,'build',return_value=(
+                dict(exit_code=0,log='native-build.log',elapsed_seconds=0.001),folder/'binary')),patch.object(
+            storage_benchmark,'command',side_effect=command):
+        yield storage_benchmark
 
 
 class StorageBenchmarkTests(unittest.TestCase):
@@ -180,6 +205,52 @@ class StorageBenchmarkTests(unittest.TestCase):
             self.assertEqual(report['crypto_sha256'],hashlib.sha256(library.read_bytes()).hexdigest())
             self.assertEqual(report['status'],'failed')
             self.assertIn('Storage benchmark build failed',report['error'])
+
+    def test_complete_native_stub_publishes_all_artifacts(self):
+        """Success follows complete raw CSV and validated Markdown publication."""
+        import csv
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary)
+            with native_stub(folder) as runner,patch('builtins.print'):
+                runner.run()
+            report=json.loads((folder/'results.json').read_text())
+            self.assertEqual(report['status'],'checks-passed')
+            with (folder/'samples.csv').open() as source:
+                rows=list(csv.reader(source))
+            self.assertEqual(len(rows),1+2*len(ENGINES)*len(CASES)*13)
+            self.assertEqual((folder/'summary.md').read_text(),summarize_benchmark(report))
+            self.assertFalse(list(folder.glob('.*.tmp')))
+
+    def test_csv_and_summary_failures_cannot_publish_success(self):
+        """Late write/render refusal removes final CSV and records a failed diagnostic summary."""
+        for boundary in ('csv','summary','replace'):
+            with self.subTest(boundary=boundary),tempfile.TemporaryDirectory() as temporary:
+                folder=Path(temporary)
+                with native_stub(folder) as runner,patch('builtins.print'):
+                    original_summary=runner.summarize_benchmark
+                    original_replace=runner.os.replace
+                    def summary(report):
+                        # Success-only failure still permits the failed-run diagnostic.
+                        if report['status']=='checks-passed':
+                            raise ValueError('summary refused')
+                        return original_summary(report)
+                    def replace(source,target):
+                        # Progress/failure JSON remains writable when CSV publication fails.
+                        if Path(target).name=='samples.csv':
+                            raise OSError('replace refused')
+                        return original_replace(source,target)
+                    if boundary=='csv':
+                        selected=patch.object(runner.csv,'writer',side_effect=RuntimeError('csv refused'))
+                    elif boundary=='summary':
+                        selected=patch.object(runner,'summarize_benchmark',side_effect=summary)
+                    else:
+                        selected=patch.object(runner.os,'replace',side_effect=replace)
+                    with selected,self.assertRaisesRegex(Exception,boundary+' refused'):
+                        runner.run()
+                self.assertEqual(json.loads((folder/'results.json').read_text())['status'],'failed')
+                self.assertFalse((folder/'samples.csv').exists())
+                self.assertIn('Status: failed',(folder/'summary.md').read_text())
+                self.assertFalse(list(folder.glob('.*.tmp')))
 
     def test_failed_rerun_removes_stale_success(self):
         import storage_benchmark

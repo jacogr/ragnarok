@@ -21,6 +21,39 @@ ROOT=Path(__file__).resolve().parents[1]
 BUILD=ROOT/'build/tests/storage-benchmark'
 
 
+# Replace a complete artifact only after its private temporary file closes successfully.
+def atomic_text(path,value):
+    temporary=None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',dir=path.parent,
+                prefix='.'+path.name+'-',suffix='.tmp',delete=False) as output:
+            temporary=Path(output.name)
+            output.write(value)
+        os.replace(temporary,path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+# A failed CSV write cannot publish a partial final artifact or a successful verification status.
+def write_samples(report):
+    temporary=None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w',newline='',dir=BUILD,
+            prefix='.samples-',suffix='.tmp',delete=False) as output:
+            temporary=Path(output.name)
+            writer=csv.writer(output);writer.writerow(('pass','backend','items','key_topology','value_bytes','batch_width','sample','warmup',*[phase+'_ns' for phase in PHASES],*METRICS))
+            for p,observations in enumerate(report['passes']):
+                for engine in ENGINES:
+                    for count,topology,value_bytes,batch_width in CASES:
+                        for row in observations[f'{engine}-{count}-{topology}-{value_bytes}-{batch_width}']:
+                            writer.writerow((p,engine,count,topology,value_bytes,batch_width,row['sample'],row['sample']<3,*[row[k] for k in (*PHASES,*METRICS)]))
+        os.replace(temporary,BUILD/'samples.csv')
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 # Record the CPU model without hostnames, network state or unrelated environment variables.
 def cpu_model():
     if platform.system()=='Darwin':
@@ -36,12 +69,12 @@ def cpu_model():
 # Persist progress and failures before rendering any comparison; older success cannot survive a failed rerun.
 def run():
     BUILD.mkdir(parents=True,exist_ok=True)
-    for name in ('summary.md','samples.csv'):
+    for name in ('summary.md','samples.csv','results.json'):
         (BUILD/name).unlink(missing_ok=True)
     report=dict(status='running',checks=[],passes=[],cases=[])
     def save():
         # Full raw samples and source/toolchain identities stay downloadable independently of Markdown.
-        (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')
+        atomic_text(BUILD/'results.json',json.dumps(report,indent=2)+'\n')
     save()
     try:
         compiler,_=installed()
@@ -81,21 +114,19 @@ def run():
                     observations[f'{engine}-{count}-{topology}-{value_bytes}-{batch_width}']=parse_output(Path(evidence['log']).read_text(),engine,count,topology,value_bytes,batch_width)
             report['passes'].append(observations);save()
         report['cases']=aggregate(report['passes']);report['status']='checks-passed'
-        report['hardware']['load_average_end']=os.getloadavg();save()
-        with (BUILD/'samples.csv').open('w',newline='') as output:
-            writer=csv.writer(output);writer.writerow(('pass','backend','items','key_topology','value_bytes','batch_width','sample','warmup',*[phase+'_ns' for phase in PHASES],*METRICS))
-            for p,observations in enumerate(report['passes']):
-                for engine in ENGINES:
-                    for count,topology,value_bytes,batch_width in CASES:
-                        for row in observations[f'{engine}-{count}-{topology}-{value_bytes}-{batch_width}']:
-                            writer.writerow((p,engine,count,topology,value_bytes,batch_width,row['sample'],row['sample']<3,*[row[k] for k in (*PHASES,*METRICS)]))
-        print(summarize_benchmark(report))
+        report['hardware']['load_average_end']=os.getloadavg()
+        write_samples(report)
+        summary=summarize_benchmark(report)
+        atomic_text(BUILD/'summary.md',summary)
+        print(summary)
     except Exception as error:
         # Native assertions, IO refusal, malformed observations and setup errors are real job failures.
         report.update(status='failed',error=str(error));raise
     finally:
-        save()
-        (BUILD/'summary.md').write_text(summarize_benchmark(report))
+        if report['status']!='checks-passed':
+            (BUILD/'samples.csv').unlink(missing_ok=True)
+            atomic_text(BUILD/'summary.md',summarize_benchmark(report))
+        save() # Final success follows complete CSV and validated Markdown.
 
 
 # Imports expose inert orchestration for tests; Make alone owns provisioning and execution sequencing.
