@@ -135,3 +135,20 @@ physical admission, not canonical chain authority or checkpoint trust.
 delta), tests all truncated delta extents, altered bytes, self-consistent wrong routes, narrowed
 physical ceilings, stale identities, decoded-then-mutated raw input and retained maps after close.
 It requires1000 exact ARC release cycles. Disk replay adoption is a separate dependent change.
+
+## Fused journal replay boundary
+
+`replayJournalFrame` and explicitly selected `replayContextJournalFrame` require exact outer frame
+consumption, checksum integrity and the expected view's contiguous generation before serialized
+publication. The live repository supplies the inner physical policy. Context is copied before
+publication and returned only with a complete admitted revision. A new `InvalidRevision` refusal
+represents stale, noncontiguous or invalid complete graph admission; codec diagnostics remain
+selected under `InvalidRecords`. Existing detached frame decoding remains independently checked.
+
+The focused suite covers genuine outer+inner hash counts, all truncated contextual extents,
+checksum tampering, generation skips, false graph metadata, context/frame quotas, detached caller
+mutation and1000 ARC cycles. Replay alone does not select a disk head or authorize repair.
+
+Replay reads the immutable expected view's scalar repository policy, refusing an oversized inner
+body before outer checksum hashing. The observer suite requires zero hash attempts on that refusal.
+`repositoryLimits(view)` returns only copied policy scalars, never graph ownership or mutable bytes.
