@@ -93,3 +93,13 @@ an entered operation retains its actual maintenance/cleanup/error receipt. The h
 ARC aliases and pauses RPC just as for publication. No second worker thread or cancel-as-rollback
 path is introduced. Native tests cover collection, joined completion, shutdown race, cross-operation
 Busy refusal, stale tickets and stale maintenance requests, followed by durable history restart.
+
+## Explicit application layout policy
+
+`--state-layout managed` opts an already selected disk backend into the managed directory format;
+omission or `journal` preserves the existing single-file default. Layout controls require disk
+mode and never trigger path probing or migration. `--state-compact-bytes` is managed-only, defaults
+to 64 MiB, accepts explicit zero to disable automatic maintenance and is capped at 128 MiB to leave
+journal headroom for a bounded publication. It does not widen write-count/value-byte defaults or
+complete-map/physical/file budgets. Invalid, duplicate, unknown and overflowing controls clear the
+entire parsed configuration. Full/light node mode remains separate from physical layout selection.
