@@ -25,18 +25,21 @@ proc finalizationFixture*(withReady = true, withComposition = false,
       ComputedStorageMode.FetchReadTail, ComputedStorageMode.ReadMissing,
       ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
       ComputedStorageMode.ReadCheckpointProtection, ComputedStorageMode.ReadCheckpointWrapLoad,
-      ComputedStorageMode.ReadCheckpointWrapStore, ComputedStorageMode.ReadCheckpointNegativeBranch}
+      ComputedStorageMode.ReadCheckpointWrapStore, ComputedStorageMode.ReadCheckpointNegativeBranch,
+      ComputedStorageMode.ReadCheckpointUntakenBranch}
     limits.completion.batch.selfValueBytes = ByteLimit(if wideValue: 11'u64 else: 3'u64)
   if storage in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail,
       ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
       ComputedStorageMode.ReadCheckpointProtection, ComputedStorageMode.ReadCheckpointWrapLoad,
       ComputedStorageMode.ReadCheckpointWrapStore,
-      ComputedStorageMode.ReadCheckpointNegativeBranch}:
+      ComputedStorageMode.ReadCheckpointNegativeBranch,
+      ComputedStorageMode.ReadCheckpointUntakenBranch}:
     limits.steps = ExecutionStepLimit(32) # Admit only the longer read and checkpoint guests before their original execution.
   if storage in {ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
       ComputedStorageMode.ReadCheckpointProtection, ComputedStorageMode.ReadCheckpointWrapLoad,
       ComputedStorageMode.ReadCheckpointWrapStore,
-      ComputedStorageMode.ReadCheckpointNegativeBranch}:
+      ComputedStorageMode.ReadCheckpointNegativeBranch,
+      ComputedStorageMode.ReadCheckpointUntakenBranch}:
     limits.calls = HostCallLimit(5) # This new guest fetches, deletes, checkpoints, reads and restores before its actual terminal.
   let executed = executeComputedAccumulation(computedExecutionFixture(withReady = withReady,
       withComposition = withComposition, withChain = withChain, storage = storage), limits)

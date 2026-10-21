@@ -65,7 +65,8 @@ proc verifyCheckpointDeletion*(mode: ComputedStorageMode, evidenceName: string) 
   ## Execute one originally authored terminal path through the full pipeline and retain distinct suite ARC evidence.
   assert mode in {ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
     ComputedStorageMode.ReadCheckpointProtection, ComputedStorageMode.ReadCheckpointWrapLoad,
-    ComputedStorageMode.ReadCheckpointWrapStore, ComputedStorageMode.ReadCheckpointNegativeBranch}
+    ComputedStorageMode.ReadCheckpointWrapStore, ComputedStorageMode.ReadCheckpointNegativeBranch,
+    ComputedStorageMode.ReadCheckpointUntakenBranch}
   let fixture = assuredOutcomeFixture(mode)
   let original = fixture.state.snapshot.value
   let oldView = fixture.view
