@@ -8,7 +8,7 @@ import std/[syncio, monotimes, times]
 import std/posix/posix
 import ./[options, services, download_policy, block_download, ancestor_inputs]
 import ./download_schedule
-import ../codec/bounded
+import ../codec/[bounded, header]
 import ../quic/[block_download_loop, block_download_peers]
 
 type DownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
@@ -38,6 +38,38 @@ proc identity(path: string, expected: var DownloadPeerKey): bool {.raises.} =
   for index in 0..<32: key[index] = bytes[index] # Copy only the exact proven public key payload.
   expected = DownloadPeerKey(key)
   true
+
+proc receiveChild(owner: var Services, options: Options, peers: seq[DownloadPeerId],
+    ports: array[16, uint16], keys: array[16, DownloadPeerKey], ancestors: seq[OwnedHeader],
+    limits: DownloadLoopLimits, started: MonoTime,
+        timeout: uint64): DownloadCommandResult {.raises.} =
+  ## One activation owns every callback/input alias until joined teardown, including all refusal paths.
+  var preflight = default(BlockDownload)
+  let admitted = preflight.begin(owner, ancestors, limits.input, limits.candidate)
+  if admitted.error != BlockDownloadError.None: return DownloadCommandResult.AdmissionFailure
+  discard preflight.cancel(admitted.value) # Exact raw admission is checked before any outgoing TLS engine opens.
+  var dispatcher = default(BlockDownloadLoop)
+  defer: dispatcher.close() # Stable stack owner remains alive during native close callbacks on every exit.
+  if dispatcher.configure(owner, peers, ancestors, limits, DownloadLoopTick(0)) !=
+      DownloadLoopError.None: return DownloadCommandResult.InvalidPolicy
+  for index in 0..<peers.len:
+    if dispatcher.openPeer(peers[index], keys[index], ports[index], options.argument(3),
+        options.argument(4), options.argument(6)) != DownloadPeerError.None:
+      return DownloadCommandResult.TransportFailure # Deferred close retires all earlier opened endpoints too.
+  while true:
+    let elapsed = (getMonoTime() - started).inMilliseconds
+    if elapsed < 0: return DownloadCommandResult.DispatchFailure # Do not narrow a broken host clock into a huge deadline.
+    if uint64(elapsed) >= timeout: return DownloadCommandResult.Timeout
+    if dispatcher.tick(DownloadLoopTick(uint64(elapsed))) != DownloadLoopError.None:
+      return DownloadCommandResult.DispatchFailure
+    case dispatcher.stage
+    of DownloadLoopStage.Adopted: return DownloadCommandResult.Adopted # Only an actual consumed Services success reaches this alternative.
+    of DownloadLoopStage.Exhausted: return DownloadCommandResult.Exhausted
+    of DownloadLoopStage.Failed: return DownloadCommandResult.DispatchFailure
+    else: discard # Waiting/receiving/queued work requires a later bounded dispatcher turn.
+    var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
+    var remaining = default(Timespec)
+    discard nanosleep(requested, remaining) # One bounded host pause avoids spinning; all native endpoint polls remain nonblocking.
 
 proc runDownload*(options: Options): DownloadCommandResult {.raises.} =
   ## Open at most sixteen endpoints; timeout/exhaustion/failure returns only after all callbacks and Services retire.
@@ -82,30 +114,5 @@ proc runDownload*(options: Options): DownloadCommandResult {.raises.} =
   var owner = default(Services)
   defer: owner.close() # Dispatcher teardown below must end every Services borrow first.
   if not owner.start(options, "download"): return DownloadCommandResult.StartupFailure
-  var preflight = default(BlockDownload)
-  let admitted = preflight.begin(owner, ancestors, limits.input, limits.candidate)
-  if admitted.error != BlockDownloadError.None: return DownloadCommandResult.AdmissionFailure
-  discard preflight.cancel(admitted.value) # Exact raw admission is checked before any outgoing TLS engine opens.
-  var dispatcher = default(BlockDownloadLoop)
-  defer: dispatcher.close() # Stable stack owner remains alive during native close callbacks on every exit.
-  if dispatcher.configure(owner, peers, ancestors, limits, DownloadLoopTick(0)) !=
-      DownloadLoopError.None: return DownloadCommandResult.InvalidPolicy
-  for index in 0..<count:
-    if dispatcher.openPeer(peers[index], keys[index], ports[index], options.argument(3),
-        options.argument(4), options.argument(6)) != DownloadPeerError.None:
-      return DownloadCommandResult.TransportFailure # Deferred close retires all earlier opened endpoints too.
   let started = getMonoTime()
-  while true:
-    let elapsed = (getMonoTime() - started).inMilliseconds
-    if elapsed < 0: return DownloadCommandResult.DispatchFailure # Do not narrow a broken host clock into a huge deadline.
-    if uint64(elapsed) >= timeout: return DownloadCommandResult.Timeout
-    if dispatcher.tick(DownloadLoopTick(uint64(elapsed))) != DownloadLoopError.None:
-      return DownloadCommandResult.DispatchFailure
-    case dispatcher.stage
-    of DownloadLoopStage.Adopted: return DownloadCommandResult.Adopted # Only an actual consumed Services success reaches this alternative.
-    of DownloadLoopStage.Exhausted: return DownloadCommandResult.Exhausted
-    of DownloadLoopStage.Failed: return DownloadCommandResult.DispatchFailure
-    else: discard # Waiting/receiving/queued work requires a later bounded dispatcher turn.
-    var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
-    var remaining = default(Timespec)
-    discard nanosleep(requested, remaining) # One bounded host pause avoids spinning; all native endpoint polls remain nonblocking.
+  receiveChild(owner, options, peers, ports, keys, ancestors, limits, started, timeout)
