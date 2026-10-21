@@ -172,9 +172,10 @@ matrix checks the exact fitting/overflow boundary for each scalar width with
 inaccessible/read-only/read-write final pages. It includes the mapped final-byte
 Panic assertion and a successful penultimate-byte control. Memory-step fixtures
 check guest exits, unchanged registers/memory and charge preservation.
-The [executed memory reference](pvm-memory-boundary-reference.md) now freezes12
-public-API interpreter results for byte loads/stores at the final and penultimate
-addresses with absent/RW/RO mappings. Native replay checks every exit, exact fault
+The [executed memory reference](pvm-memory-boundary-reference.md) now freezes90
+public-API interpreter results across all11 direct scalar forms and absent/RW/RO
+mappings, including final-fitting and exclusive-end boundaries. The original12 byte
+load/store records remain unchanged after the count header. Native replay checks every exit, exact fault
 page, A0 and complete memory/source preservation. The optional generator is retained
 with the exact upstream dependency identities; ordinary tests only replay frozen data.
 This confirms the specific reference behavior by execution without claiming a full

@@ -1,4 +1,4 @@
-# Executed final-byte memory reference fixtures
+# Executed scalar-boundary memory reference fixtures
 
 The Gray Paper remains primary. GP-PVM-002 in the
 [discrepancy register](graypaper-discrepancies.md) records the specific accepted
@@ -27,24 +27,28 @@ rustup run 1.99.0 cargo fmt --manifest-path tests/reference/polkavm_memory/Cargo
 
 ## Fixture and completion contract
 
-Twelve cases cross byte load/store at0xfffffffe/0xffffffff with absent/read-write/
-read-only final pages. Map with `zero_memory_with_memory_protection`, seed7 in
+Ninety cases cross every direct scalar opcode52..62 with absent/read-write/read-only
+final pages. Each width uses the last start whose exclusive end fits u32, the
+paper's nominal final-fitting start, and0xffffffff when distinct. The original
+twelve byte-load/store records remain first and byte-identical after the count header. Map with `zero_memory_with_memory_protection`, seed7 in
 every byte, then apply read-only protection. A0 starts99. Ordinary `zero_memory`
 requires existing writable memory and cannot create the reference mapping.
 
-Binary layout: eight ASCII bytes `PVMMEM01`, u32 little-endian record count12,
-then25-byte records: u64 address; u8 mapping(0 absent,1 RW,2 RO); u8 opcode(52/59);
+Binary layout: eight ASCII bytes `PVMMEM01`, u32 little-endian record count90,
+then25-byte records: u64 address; u8 mapping(0 absent,1 RW,2 RO); u8 opcode(52..62);
 u8 exit(0 Finished,1 Trap,2 Segfault); u32 fault page(0 for nonfault); u64 A0;
 u8 penultimate-page byte; u8 last-page byte. Absent images use two zero placeholders.
-The descriptor pins the complete312-byte corpus SHA-256.
+The descriptor pins the complete2262-byte corpus SHA-256.
 
-The Nim replay independently encodes the byte operation and performs one prepaid
+The Nim replay independently encodes the scalar operation and performs one prepaid
 step. Finished corresponds to Continued before the reference's return instruction;
 Trap/Fault are compared directly. Compare A0, every other register, exact fault
 page, PC, retained gas/charge state, permissions, every page byte and source aliases.
 This isolates memory behavior; it does not establish equality of engine-default gas
-modes, full executions or other scalar widths. Existing all-width and charged-gas
-matrices remain required. No full upstream Rust test suite run is claimed.
+modes, full executions, negative signed-load values or indirect forms. The replay
+independently expands successful multi-byte stores from the known register value,
+checks all4096 bytes, and cross-checks both recorded tail bytes. Existing signed,
+indirect and charged-gas matrices remain required. No full upstream Rust test suite run is claimed.
 
 Require two byte-identical generator runs, native replay, fixture discovery,
 source-pin checks, lockfile identity validation and both pinned formatters.
@@ -53,14 +57,13 @@ full chainspec equivalence remain open.
 
 ## Observed local evidence
 
-Two public-API reference runs produce identical312-byte corpora, SHA-256
+Two public-API reference runs produce identical2262-byte corpora, SHA-256
+`28ecf7688d0dbc915d238107012f173362351001be08781294777d888d9d9f74`.
+All90 native rows pass. The provenance test reconstructs the original312-byte
+corpus and requires its original hash
 `9a27ed2322e3615c6cacceb63f1d10610c88866d25ac121f03e43e0efe684089`.
-All12 native rows pass. The dependency-lock test passes; specification tests pass3
-with the existing unrelated Bandersnatch parity skip. Inventory passes219 failure
-families/2562 probes/339 native suites; pinned formatting passes2583 Nim sources,
-the existing Rust crate and the optional reference crate's explicit format check.
-No production code, upstream source or revision changes. Native evidence is local
-checked-release macOS/ARC/Clang LTO; reference evidence uses the pinned Rust release
-profile. Remote Linux CI and full upstream Rust suite execution are separate.
-Logs remain under `build/pvm-memory-reference-*` and
-`build/pvm-memory-boundary-*`.
+Every opcode/address/mapping tuple is covered once. The dependency-lock test retains
+all upstream package identities/checksums. No production code, upstream revision or
+dependency changes. Native evidence is local checked-release macOS/ARC/Clang LTO;
+reference evidence uses pinned Rust release. Remote Linux CI and a full upstream
+Rust suite run remain separate. Logs are under `build/pvm-scalar-boundary-*`.

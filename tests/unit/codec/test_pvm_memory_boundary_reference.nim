@@ -31,8 +31,8 @@ try:
   data = readFile(getEnv("RAGNAROK_PVM_MEMORY_BOUNDARY"))
 except:
   quit 2
-assert data.len == 312 and data[0..7] == "PVMMEM01" and word(data, 8, 4) == 12
-for row in 0..<12:
+assert data.len == 2262 and data[0..7] == "PVMMEM01" and word(data, 8, 4) == 90
+for row in 0..<90:
   # Each record contains address, mapping, opcode, exit, fault page, A0 and two tail bytes.
   let at = 12 + row * 25
   let address = word(data, at, 8)
@@ -41,8 +41,10 @@ for row in 0..<12:
   let exit = byte(data[at + 10])
   let expectedFault = word(data, at + 11, 4)
   let expectedA0 = word(data, at + 15, 8)
-  assert address in [0xfffffffe'u64, 0xffffffff'u64]
-  assert mapping <= 2 and op in [52'u8, 59'u8] and exit <= 2
+  assert mapping <= 2 and op in {52'u8..62'u8} and exit <= 2
+  let widths = [1'u64, 1, 2, 2, 4, 4, 8, 1, 2, 4, 8]
+  let width = widths[int(op)-52]
+  assert address in [0xffffffff'u64-width, 0x100000000'u64-width, 0xffffffff'u64]
   let access = if mapping == 0: PageAccess.Inaccessible
     elif mapping == 1: PageAccess.ReadWrite else: PageAccess.ReadOnly
   var image = PageImage(index: PageIndex(0xfffff), access: access,
@@ -78,12 +80,15 @@ for row in 0..<12:
   let posterior = pageImage(memoryOf(outcome.machine).value, PageIndex(0xfffff)).value
   assert posterior.access == access
   for index in 0..<4096:
-    # The two recorded bytes cover both candidate stores; all other bytes stay sentinel7.
-    let wanted = if mapping == 0: 7'u8
-      elif index == 4094: byte(data[at + 23])
-      elif index == 4095: byte(data[at + 24]) else: 7'u8
+    # Independently expand the known store value; frozen tail bytes cross-check both final positions.
+    let absolute = 0xfffff000'u64+uint64(index)
+    var wanted = 7'u8
+    if mapping != 0 and exit == 0 and op >= 59 and absolute >= address and absolute-address < width:
+      wanted = byte((99'u64 shr (8*int(absolute-address))) and 255)
+    if mapping != 0 and index == 4094: assert wanted == byte(data[at+23])
+    if mapping != 0 and index == 4095: assert wanted == byte(data[at+24])
     assert posterior.bytes[index] == wanted
   assert pageImage(memoryOf(source).value, PageIndex(0xfffff)).value.bytes == image.bytes
   assert pageImage(memory, PageIndex(0xfffff)).value.bytes == image.bytes
 
-echo "PVM executed memory boundary reference passed: 12"
+echo "PVM executed memory boundary reference passed: 90"
