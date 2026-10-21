@@ -514,10 +514,12 @@ assert "\"result\":null" in respond(requestCall("9"), requestsInfo)
 assert "\"result\":[]" in respond(requestCall("4294967293"), requestsInfo)
 for length in ["4", "5", "6"]: # Excess count, trailing bytes and overlong count must not become successful histories.
   assert "\"code\":0" in respond(requestCall(length), requestsInfo)
-for length in ["4294967294", "4294967295"]: # Current reserved selectors refuse independently of whether a matching key is present.
-  assert "\"code\":0" in respond(requestCall(length), requestsInfo)
-  assert "\"code\":0" in respond(requestCall(length).replace(repeat("A", 43) & "=", "AQ" &
+for length in ["4294967294", "4294967295"]: # Invalid selectors refuse independently of key, account and block presence.
+  assert "\"code\":-32602" in respond(requestCall(length), requestsInfo)
+  assert "\"code\":-32602" in respond(requestCall(length).replace(repeat("A", 43) & "=", "AQ" &
       repeat("A", 41) & "="), requestsInfo)
+  assert "\"code\":-32602" in respond(requestCall(length).replace(",42,", ",41,"), requestsInfo)
+  assert "\"code\":-32602" in respond(requestCall(length), info)
 assert "\"result\":null" in respond(requestCall("0").replace(",42,", ",41,"), requestsInfo)
 assert "\"code\":0" in respond(requestCall("0").replace(",42,", ",43,"), requestsInfo)
 assert "\"code\":1" in respond(requestCall("0"), info)
@@ -539,6 +541,12 @@ for size in 0..<13: # Every incomplete three-slot value fails, including the emp
 let defaultRequest = services.serviceRequest(default(Genesis), ServiceIndex(42), default(
     ServicePreimageHash), RequestLength(0))
 assert defaultRequest.error == ServiceReadError.Uninitialized
+# Direct callers receive a precise invalid-length reason even without an initialized snapshot.
+for length in [high(uint32) - 1, high(uint32)]:
+  assert services.serviceRequest(requestsInfo.chain.bestBlock.value, ServiceIndex(42), default(
+      ServicePreimageHash), RequestLength(length)).error == ServiceReadError.InvalidLength
+  assert services.serviceRequest(default(Genesis), ServiceIndex(42), default(
+      ServicePreimageHash), RequestLength(length)).error == ServiceReadError.InvalidLength
 let emptyRequestResult = default(ServiceRequestResult)
 assert emptyRequestResult.error == ServiceReadError.Uninitialized
 
@@ -1622,15 +1630,15 @@ assert "-32601" in respond(subscribeRequest("0"), requestsInfo)
 assert "\"code\":0" in respond(subscribeRequest("0"), info, requestSession)
 assert "Finalized chain view unavailable" in respond(subscribeRequest("0").replace("false", "true"),
     requestsInfo, requestSession)
-for bad in ["-1", "4294967296", "1.0", "true", "null", "\"1\""]:
+for bad in ["-1", "4294967294", "4294967295", "4294967296", "1.0", "true", "null", "\"1\""]:
   assert "-32602" in respond(subscribeRequest(bad), requestsInfo,
       requestSession) # Lengths parse exactly without narrowing or allocations based on them.
 assert "-32602" in respond(subscribeRequest("0").replace(repeat("A", 43) & "=", "a2V5"),
     requestsInfo, requestSession)
 assert "-32602" in respond(subscribeRequest("0").replace(",false", ""), requestsInfo, requestSession)
-for bad in ["4", "5", "6", "4294967294", "4294967295"]:
+for bad in ["4", "5", "6"]:
   assert "\"code\":0" in respond(subscribeRequest(bad), requestsInfo,
-      requestSession) # Malformed and ambiguous present entries cannot become absence.
+      requestSession) # Malformed present histories cannot become absence.
 for index in 0..<4:
   assert respond(subscribeRequest($index), requestsInfo, requestSession) == SubscribedBest.replace(
       "\"result\":1", "\"result\":" & $(index + 1))

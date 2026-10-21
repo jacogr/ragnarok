@@ -19,7 +19,7 @@ const MaxServiceKeyBytes* = 4096 ## Bound raw storage-key hashing independently 
 
 type
   ServiceReadError* {.pure.} = enum ## Missing data is distinct from a malformed account, resource limit or native hash failure.
-    Uninitialized, None, Missing, Malformed, LimitExceeded, BackendFailure, AmbiguousNamespace
+    Uninitialized, None, Missing, Malformed, LimitExceeded, BackendFailure, AmbiguousNamespace, InvalidLength
   ServiceReadResult* = object ## Only complete success contains an owner-bound immutable value view.
     case status: ServiceReadError
     of None:
@@ -108,20 +108,20 @@ proc servicePreimage*(view: Genesis, service: ServiceIndex, hash: ServicePreimag
 proc serviceRequest*(view: Genesis, service: ServiceIndex, hash: ServicePreimageHash,
     length: RequestLength): ServiceRequestResult =
   ## Read a fixed history from the current bounded request namespace, without length-sized allocation.
-  ## Reserved E4 prefixes refuse namespace derivation; the older ambiguity alternative remains historical.
+  ## Reserved E4 prefixes refuse before state lookup or hashing; legacy ambiguity status is retained for compatibility.
+  if uint32(length) >= high(uint32) - 1:
+    return ServiceRequestResult(status: ServiceReadError.InvalidLength) # Invalid input cannot become absent data or backend failure.
   let account = serviceData(view, service, ByteLimit(ServiceMetadataBytes))
   if account.error != ServiceReadError.None:
     return ServiceRequestResult(status: account.error) # An absent account cannot supply request state.
   let derived = serviceRequestKey(service, hash, length, ByteLimit(32))
   if derived.error != RequestError.None:
-    return ServiceRequestResult(status: ServiceReadError.BackendFailure) # Namespace validation/backend refusal is distinct from absent data.
+    return ServiceRequestResult(status: ServiceReadError.BackendFailure) # Backend refusal is distinct from absent data.
   let found = view.lookup(derived.value)
   if found.error == StateStoreError.MissingKey:
-    return ServiceRequestResult(status: ServiceReadError.Missing) # Even colliding namespaces can prove a key absent.
+    return ServiceRequestResult(status: ServiceReadError.Missing) # A valid request key can prove a history absent.
   if found.error != StateStoreError.None:
     return ServiceRequestResult(status: ServiceReadError.BackendFailure) # Never publish an invalid owner.
-  if uint32(length) >= high(uint32) - 1:
-    return ServiceRequestResult(status: ServiceReadError.AmbiguousNamespace) # Present bytes may be storage/preimage data.
   if found.value.byteLength > 13:
     return ServiceRequestResult(status: ServiceReadError.Malformed) # At most a count plus three E4 slots, before copying.
   let wire = found.value.bytes

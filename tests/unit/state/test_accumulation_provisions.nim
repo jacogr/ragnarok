@@ -106,8 +106,17 @@ proc requests() =
   let digest = ServicePreimageHash(array[32, byte](blake2b256(bytes).value))
   assert preimageRequested(state, ServiceIndex(42), digest, RequestLength(3)).value
   assert not preimageRequested(state, ServiceIndex(100), digest, RequestLength(3)).value
-  assert preimageRequested(state, ServiceIndex(42), digest, RequestLength(high(uint32))).error ==
-      PreimageTransitionError.BackendFailure, "reserved length refuses namespace derivation instead of fabricating absence"
+  assert not preimageRequested(state, ServiceIndex(42), digest,
+      RequestLength(high(uint32) - 2)).value # The largest valid selector can still prove absence.
+  failHash(1)
+  # Both reserved selectors refuse before state validation and before any backend hash attempt.
+  for length in [high(uint32) - 1, high(uint32)]:
+    assert preimageRequested(state, ServiceIndex(42), digest, RequestLength(length)).error ==
+        PreimageTransitionError.InvalidInput
+    assert preimageRequested(default(StateStoreSnapshot), ServiceIndex(42), digest,
+        RequestLength(length)).error == PreimageTransitionError.InvalidInput
+  assert hashCalls() == 0
+  failHash(0)
   assert preimageRequested(default(StateStoreSnapshot), ServiceIndex(42), digest, RequestLength(
       3)).error == PreimageTransitionError.InvalidState
   # Target identity keeps the complete uint32 domain; low/reserved indices are not extra provide eligibility filters.

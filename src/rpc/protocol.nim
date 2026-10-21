@@ -273,6 +273,14 @@ proc serviceNumber(token: Value, output: var uint32): bool =
   output = number
   true
 
+# Parse only the protocol request-length domain; service IDs retain the full unsigned E4 range.
+proc requestLengthNumber(token: Value, output: var uint32): bool =
+  var length = 0'u32
+  if not serviceNumber(token, length) or length >= high(uint32) - 1:
+    return false # Reject reserved selectors before block lookup, hashing or subscription allocation.
+  output = length
+  true
+
 # Render a copied genesis descriptor using JIP-2's Base64 identity and numeric slot.
 proc descriptor(value: Genesis): JsonValue =
   jsonObject([("header_hash", json(base64.encode(array[32, byte](value.blockHash)))),
@@ -550,8 +558,8 @@ proc chainSubscription(values: seq[Value], parameters: int, methodName, id: stri
           identity[index] = byte(raw[index]) # Canonical validation established exactly 32 bytes.
         hash = ServicePreimageHash(identity)
       if kind == SubscriptionKind.ServiceRequest:
-        if not serviceNumber(values[parameters + 3], length):
-          return error(id, -32602, "Expected uint32 preimage length") # No narrowing, floats or length-sized allocation.
+        if not requestLengthNumber(values[parameters + 3], length):
+          return error(id, -32602, "Expected preimage length below 4294967294") # No narrowing, floats or length-sized allocation.
       let flag = values[parameters + count]
       if flag.kind != literalValue or flag.text notin ["true", "false"]:
         return error(id, -32602, "Expected finalized boolean") # Never interpret numbers, null or containers as flags.
@@ -824,8 +832,8 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
         return error(id, -32602, "Invalid or oversized Base64 key") # Bound hashing and decoder scratch.
     var length = 0'u32
     if methodName == "serviceRequest":
-      if not serviceNumber(values[first + 3], length):
-        return error(id, -32602, "Expected uint32 preimage length") # Parse without narrowing or allocation based on length.
+      if not requestLengthNumber(values[first + 3], length):
+        return error(id, -32602, "Expected preimage length below 4294967294") # Parse without narrowing or allocation based on length.
     let hash = values[first].text
     let selected = resolveBlock(info.chain, hash)
     if selected.error != GenesisError.None:
@@ -838,8 +846,6 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
           identity), RequestLength(length))
       if request.error == ServiceReadError.Missing:
         return success(id, jsonNull()) # Absence differs from an outstanding empty history.
-      if request.error == ServiceReadError.AmbiguousNamespace:
-        return error(id, 0, "Request namespace ambiguous under pinned GP 0.8.0") # Do not interpret storage/preimage bytes as slots.
       if request.error != ServiceReadError.None:
         return error(id, 0, "Invalid or unreadable service request") # Malformed state never becomes null or [].
       return success(id, requestSlots(request.value))
