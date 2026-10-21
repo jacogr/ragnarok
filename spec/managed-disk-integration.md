@@ -174,3 +174,14 @@ retained historical map access, contextual publication requirements and independ
 It is unique, never inferred from an existing path and cannot be mixed with external checkpoint
 import controls. Missing/duplicate/NUL-containing sources, in-place requests and unselected backend
 controls refuse atomically before IO. Failed/default Options expose no migration source authority.
+
+## Explicit application migration
+
+Services validates the local legacy source with the configured chain/profile and full canonical
+history before copying its exact generation, selected context and rolling/finality root union.
+`--state-migrate-from` always targets an absent managed destination; it never resumes an existing
+target, creates a missing source, falls back after source refusal or rewrites source bytes. After
+confirmed copy and source retirement, the managed owner becomes canonical. A valid destination
+may remain after a later retirement/startup failure; retries never overwrite it. Omit migration
+intent for subsequent ordinary managed restarts. Tests compare all state entries, preserve the
+legacy bytes, refuse existing targets/corrupt sources and independently reopen both databases.

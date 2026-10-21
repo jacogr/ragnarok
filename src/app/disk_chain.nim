@@ -359,3 +359,41 @@ proc commitDiskMaintenance*(disk: var DiskStateStore,
     return DiskChainResult[ManagedCompaction](status: DiskChainError.MaintenanceFailure,
         maintenanceReason: compacted)
   DiskChainResult[ManagedCompaction](status: DiskChainError.None, completed: compacted.value)
+
+proc migrateDiskChain*(source: DiskStateStore, destination: var DiskStateStore, path: string,
+    chain: StorageChainId, owner: ApplicationChain, limits: ManagedLimits): DiskChainResult[
+        RepositoryGeneration] =
+  ## Preserve exactly the already admitted local legacy history and finality; migration grants no new canonical authority.
+  if destination.opened: return DiskChainResult[RepositoryGeneration](status: DiskChainError.Busy)
+  let current = source.snapshot
+  if current.error != DiskStoreError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
+        storeReason: current)
+  let canonical = owner.stateSnapshot
+  if canonical.error != StateStoreError.None or not sameStateSnapshot(current.value,
+      canonical.value):
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let generation = source.generation
+  if generation.error != DiskStoreError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.FileFailure,
+        fileReason: generation.fileError)
+  let context = encodeDiskHistory(owner, chain, generation.value, limits.contextBytes)
+  if context.error != DiskHistoryError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.ContextFailure,
+        contextReason: context.error)
+  let previous = source.snapshotContext
+  if previous.error != FileError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.FileFailure,
+        fileReason: previous.error)
+  if previous.value != context.value:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let captured = diskSources(owner)
+  if captured.error != DiskChainError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  var roots: seq[StateRoot] = @[]
+  for selected in captured.value: roots.add(selected.commitment.root)
+  let copied = migrateDiskStateStore(source, destination, path, chain, roots, limits)
+  if copied.error != DiskStoreError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
+        storeReason: copied)
+  DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: generation.value)

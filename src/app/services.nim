@@ -307,7 +307,20 @@ proc setupDisk(services: var Services, options: Options, limits: StateStoreLimit
   services.diskLimits = diskJournalLimits(limits)
   services.diskManaged = options.managedStorage
   services.compactBytes = if services.diskManaged: options.stateCompactionBytes else: ByteLimit(0)
-  if imported:
+  if options.stateMigration:
+    if imported: return false # Independently imported authority cannot be mixed with a local legacy source.
+    var legacy = default(DiskStateStore)
+    defer:
+      if legacy.opened: discard legacy.close
+    let recovered = openDiskChain(legacy, options.stateMigrationSource, services.diskId,
+      seed.value.chainView.bestBlock.value.chainParameters, limits, services.diskLimits)
+    if recovered.error != DiskChainError.None: return false
+    let migrated = migrateDiskChain(legacy, services.disk, options.stateDatabase, services.diskId,
+      recovered.value, managedPolicy(services.diskLimits))
+    if migrated.error != DiskChainError.None: return false
+    if legacy.close != FileError.None: return false # A valid destination may remain after retirement refusal; it is never overwritten on retry.
+    services.canonical = recovered.value
+  elif imported:
     if services.initializeSelectedDisk(options.stateDatabase).error !=
         DiskChainError.None: return false
   else:
