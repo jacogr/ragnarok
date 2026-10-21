@@ -3,8 +3,8 @@
 //! Execute whole guest loops with memory, host replies, branches and exact/underfunded gas.
 // @@PvmReference={"input":"pvm-mixed-program.bin","suite":"pvm_mixed_program_reference"}
 use polkavm::{
-    BackendKind, CacheModel, Config, CostModelKind, Engine, GasMeteringKind, InterruptKind,
-    MemoryProtection, Module, ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,
+    CacheModel, CostModelKind, GasMeteringKind, InterruptKind, MemoryProtection, Module,
+    ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,
 };
 use polkavm_common::program::InstructionSetKind;
 
@@ -21,10 +21,7 @@ fn main() {
     let data = std::fs::read(std::env::args().nth(1).expect("provide PVMMIX01 corpus")).unwrap();
     assert!(data.len() >= 12 && &data[..8] == b"PVMMIX01");
     assert_eq!(word(&data, 8, 4), 32);
-    let mut config = Config::default();
-    config.set_backend(Some(BackendKind::Interpreter));
-    config.set_allow_dynamic_paging(true);
-    let engine = Engine::new(&config).unwrap();
+    let engine = ragnarok_memory_probe::engine(true);
     let mut profile = ModuleConfig::new();
     profile.set_page_size(4096);
     profile.set_dynamic_paging(true);

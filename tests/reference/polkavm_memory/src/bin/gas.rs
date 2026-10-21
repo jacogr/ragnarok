@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Cross-check independent Gray Paper gas expectations against the pinned public pipeline simulator.
-// @@PvmReference={"generator":"pvm_gas_reference","suite":"pvm_gas"}
+// @@PvmReference={"engine":false,"generator":"pvm_gas_reference","suite":"pvm_gas"}
 use polkavm::{ProgramBlob, ProgramParts};
 use polkavm_common::program::{InstructionSetKind, Instructions};
 use polkavm_common::simulator::{CacheModel, Simulator};

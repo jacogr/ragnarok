@@ -3,8 +3,7 @@
 //! Cross-check the existing independent Gray Paper arithmetic corpus through public PolkaVM APIs.
 // @@PvmReference={"input":"pvm-registers.bin","suite":"pvm_registers"}
 use polkavm::{
-    BackendKind, Config, Engine, InterruptKind, Module, ModuleConfig, ProgramBlob, ProgramCounter,
-    ProgramParts, Reg,
+    InterruptKind, Module, ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,
 };
 use polkavm_common::program::InstructionSetKind;
 // Read one field after the full fixed-record corpus extent is validated.
@@ -26,9 +25,7 @@ fn main() {
             .and_then(|bytes| bytes.checked_add(12)),
         Some(data.len())
     );
-    let mut config = Config::default();
-    config.set_backend(Some(BackendKind::Interpreter));
-    let engine = Engine::new(&config).unwrap();
+    let engine = ragnarok_memory_probe::engine(false);
     let mut seen = [false; 256];
     // Each module runs the original operand bytes, then traps before any unrelated instruction.
     for row in 0..count {

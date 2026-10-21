@@ -3,8 +3,8 @@
 //! Public metered host suspend/resume observations, including signed immediate identifier bits.
 // @@PvmReference={"suite":"pvm_metered_host_reference"}
 use polkavm::{
-    BackendKind, CacheModel, Config, CostModelKind, Engine, GasMeteringKind, InterruptKind, Module,
-    ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,
+    CacheModel, CostModelKind, GasMeteringKind, InterruptKind, Module, ModuleConfig, ProgramBlob,
+    ProgramCounter, ProgramParts, Reg,
 };
 use polkavm_common::program::InstructionSetKind;
 fn main() {
@@ -19,9 +19,7 @@ fn main() {
         (vec![0, 0, 0, 128], 0x80000000),
         (vec![255, 255, 255, 255], 0xffffffff),
     ];
-    let mut config = Config::default();
-    config.set_backend(Some(BackendKind::Interpreter));
-    let engine = Engine::new(&config).unwrap();
+    let engine = ragnarok_memory_probe::engine(false);
     let mut count = 0;
     for (tail, id) in cases {
         let mut first = vec![10];

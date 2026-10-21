@@ -54,12 +54,13 @@ def summarize_reference(report):
 
     for item in plan:
         name = item['binary']
-        lines.append('| `'+name+'` | '+verdict(name+'-reference')+' | `'+item['suite']+'`: '+verdict(name+'-native')+' |')
+        role = ' (backend neutral)' if not item.get('engine', True) else ''
+        lines.append('| `'+name+'` | '+verdict(name+'-reference')+role+' | `'+item['suite']+'`: '+verdict(name+'-native')+' |')
     lines += ['', 'Reference build: '+verdict('build')+'.']
     if report.get('error'):
         # Failed setup may not have produced a plan; keep its bounded reason visible below the empty table.
         lines += ['', 'Failure: '+cell(report['error'])]
-    for key in ('head', 'graypaper', 'polkavm', 'rust', 'platform'):
+    for key in ('head', 'graypaper', 'polkavm', 'rust', 'platform', 'backend'):
         # Record exact environment identifiers from the run, never the summary renderer's host.
         if key in report:
             lines.append('- '+key+': '+cell(report[key]))

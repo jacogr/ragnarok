@@ -3,15 +3,12 @@
 //! Public Sync/Full/L2Hit fault-repair/retry observations for every direct scalar memory form.
 // @@PvmReference={"suite":"pvm_metered_fault_retry_reference"}
 use polkavm::{
-    BackendKind, CacheModel, Config, CostModelKind, Engine, GasMeteringKind, InterruptKind,
-    MemoryProtection, Module, ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,
+    CacheModel, CostModelKind, GasMeteringKind, InterruptKind, MemoryProtection, Module,
+    ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,
 };
 use polkavm_common::program::InstructionSetKind;
 fn main() {
-    let mut config = Config::default();
-    config.set_backend(Some(BackendKind::Interpreter));
-    config.set_allow_dynamic_paging(true);
-    let engine = Engine::new(&config).unwrap();
+    let engine = ragnarok_memory_probe::engine(true);
     let mut cases = 0;
     for op in 52_u8..=62 {
         for read_only in [false, true] {

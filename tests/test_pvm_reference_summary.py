@@ -36,6 +36,15 @@ class ReferenceSummaryTests(unittest.TestCase):
         self.assertIn('`: Not run',text)
         self.assertIn('&lt;setup&gt; \\| failed',text)
 
+    def test_selected_backend_and_neutral_probe(self):
+        """A simulator/parser result is not labeled as execution by the requested compiler backend."""
+        data=report()
+        data['backend']='compiler'
+        data['planned'][0]['engine']=False
+        text=summarize_reference(data)
+        self.assertIn('Pass (backend neutral)',text)
+        self.assertIn('backend: compiler',text)
+
     def test_forged_success_rejected(self):
         """A green top-level string cannot conceal missing/failed stages or duplicate identities."""
         mutations=[lambda d:d['checks'].pop(),

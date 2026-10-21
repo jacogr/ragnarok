@@ -3,15 +3,13 @@
 //! Public-API probe separating structural program parsing, code validation and execution.
 // @@PvmReference={"suite":"pvm_initialization"}
 use polkavm::{
-    BackendKind, CompileError, Config, Engine, InterruptKind, Module, ModuleConfig, ProgramBlob,
-    ProgramCounter, ProgramParts, Reg,
+    CompileError, InterruptKind, Module, ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts,
+    Reg,
 };
 use polkavm_common::program::{ISA_JamV1, InstructionSetKind};
 fn main() {
     // Select the same public interpreter profile used by the other reference tools.
-    let mut config = Config::default();
-    config.set_backend(Some(BackendKind::Interpreter));
-    let engine = Engine::new(&config).unwrap();
+    let engine = ragnarok_memory_probe::engine(false);
     // Identical load prefixes isolate the final terminator from other program differences.
     for (name, code) in [
         ("trap_control", vec![51_u8, 7, 7, 0]),

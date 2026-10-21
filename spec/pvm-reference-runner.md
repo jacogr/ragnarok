@@ -14,7 +14,9 @@ executables in release mode offline, then runs each reference probe and its matc
 checked native suite. Ordinary native verification still consumes frozen fixtures
 without requiring this optional Rust reference crate.
 
-Each reference executable owns a single `@@PvmReference` JSON comment naming its
+The [explicit backend contract](pvm-reference-backends.md) selects interpreter by
+default or a strictly requested compiler, with no fallback. Parser/simulator-only
+probes are declared backend neutral. Each reference executable owns a single `@@PvmReference` JSON comment naming its
 native suite and optional input, generator or regenerated fixture. Discovery requires
 every executable to declare a valid pairing. Unknown fields, missing native suites,
 unsafe fixture paths and duplicate pairings fail before building. There is no

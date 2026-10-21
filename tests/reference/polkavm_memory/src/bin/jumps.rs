@@ -3,14 +3,11 @@
 //! Public JamV1 parsing and execution observations for GP-PVM-005/006.
 // @@PvmReference={"suite":"pvm_jump_table_reference"}
 use polkavm::{
-    BackendKind, Config, Engine, InterruptKind, Module, ModuleConfig, ProgramBlob, ProgramCounter,
-    ProgramParts, Reg,
+    InterruptKind, Module, ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,
 };
 use polkavm_common::program::{ISA_JamV1, InstructionSetKind};
 fn main() {
-    let mut config = Config::default();
-    config.set_backend(Some(BackendKind::Interpreter));
-    let engine = Engine::new(&config).unwrap();
+    let engine = ragnarok_memory_probe::engine(false);
     let mut rejected = 0;
     let mut trapped = 0;
     let mut hosted = 0;

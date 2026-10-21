@@ -3,8 +3,8 @@
 //! Metered missing-page/read-only repair and retry across all multi-byte scalar store forms.
 // @@PvmReference={"input":"pvm-cross-page-retry.bin","suite":"pvm_metered_cross_page_retry"}
 use polkavm::{
-    BackendKind, CacheModel, Config, CostModelKind, Engine, GasMeteringKind, InterruptKind,
-    MemoryProtection, Module, ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,
+    CacheModel, CostModelKind, GasMeteringKind, InterruptKind, MemoryProtection, Module,
+    ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,
 };
 use polkavm_common::program::InstructionSetKind;
 
@@ -21,10 +21,7 @@ fn main() {
     let data = std::fs::read(std::env::args().nth(1).expect("provide PVMCRY01 corpus")).unwrap();
     assert!(data.len() >= 12 && &data[..8] == b"PVMCRY01");
     assert_eq!(word(&data, 8, 4), 48);
-    let mut config = Config::default();
-    config.set_backend(Some(BackendKind::Interpreter));
-    config.set_allow_dynamic_paging(true);
-    let engine = Engine::new(&config).unwrap();
+    let engine = ragnarok_memory_probe::engine(true);
     let mut profile = ModuleConfig::new();
     profile.set_page_size(4096);
     profile.set_dynamic_paging(true);
