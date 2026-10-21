@@ -1478,6 +1478,96 @@ proc commitAccumulationTransfer*(prepared: PreparedAccumulationTransfer, limit: 
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
 
+proc recordAccumulationDirectTransfer*(effects: AccumulationEffects, funder: ServiceIndex,
+    destination: AccumulationTransferDestination, amount: TransferBalance,
+    mode: AccumulationFundingMode, parameters: Parameters): AccumulationEffectResult[
+        AccumulationEffects] =
+  ## Apply current direct Omega_T with both-endpoint authority, no memo and no deferred output.
+  ## Publish both pool changes atomically; same-account modes1/2 operate on one combined metadata record.
+  template fail(reason: AccumulationEffectError) =
+    return AccumulationEffectResult[AccumulationEffects](status: reason)
+  let data = effects.data
+  if data == nil:
+    fail(AccumulationEffectError.Uninitialized) # Defaults cannot authorize either endpoint.
+  if not parameters.valid:
+    fail(AccumulationEffectError.InvalidParameters) # Funding requires the actual deposit schedule.
+  let previous = data.regular.data
+  assert previous != nil # Private pairs retain initialized current dimensions.
+  let self = previous.initial.contextInfo.value.service
+  let source = currentAccountMetadata(previous.accounts, funder)
+  if source.error != AccumulationEffectError.None:
+    if source.error == AccumulationEffectError.UnknownService and uint32(funder) == uint32(self):
+      fail(AccumulationEffectError.MalformedState) # A missing invoker is invalid local provenance.
+    fail(source.error) # WHO precedes every authority and cash refusal.
+  if uint64(destination) > uint64(high(uint32)):
+    fail(AccumulationEffectError.UnknownService) # Preserve the whole destination register domain.
+  let target = ServiceIndex(uint32(uint64(destination)))
+  let recipient = currentAccountMetadata(previous.accounts, target)
+  if recipient.error != AccumulationEffectError.None:
+    fail(recipient.error) # Both accounts exist before HUH can be selected.
+  let selection = uint64(mode)
+  let same = uint32(funder) == uint32(target)
+  if selection > 3 or (same and selection in [0'u64, 3'u64]):
+    fail(AccumulationEffectError.NotRequested) # Direct same-pool self transfers are explicitly forbidden.
+  if selection in [1'u64, 3'u64] or uint32(funder) != uint32(self):
+    let authority = effectiveSupervisor(previous.accounts, funder, source.value)
+    if authority.error != AccumulationEffectError.None:
+      fail(authority.error) # Never reconstruct malformed supervision.
+    if uint32(authority.value) != uint32(self):
+      fail(AccumulationEffectError.NotRequested) # Source protected funds require effective supervisor authority.
+  if uint32(target) != uint32(self):
+    let authority = effectiveSupervisor(previous.accounts, target, recipient.value)
+    if authority.error != AccumulationEffectError.None:
+      fail(authority.error) # Direct credits require actual destination authority too.
+    if uint32(authority.value) != uint32(self):
+      fail(AccumulationEffectError.NotRequested) # No arbitrary direct credit bypasses destination execution.
+  var paid = source.value
+  let debit = uint64(amount)
+  let balance = if selection in [1'u64, 3'u64]: uint64(paid.supervisorBalance) else: uint64(paid.balance)
+  if debit > balance:
+    fail(AccumulationEffectError.InsufficientCash) # Prove selected-pool subtraction before computing either successor.
+  if selection in [1'u64, 3'u64]:
+    paid.supervisorBalance = AccountBalance(balance-debit) # Preserve liquid source funds.
+  else:
+    paid.balance = AccountBalance(balance-debit) # Preserve protected source funds.
+  if not same and not funded(paid, parameters):
+    fail(AccumulationEffectError.InsufficientCash) # A distinct destination cannot fund the source threshold.
+  var credited = if same: paid else: recipient.value
+  let credit = if selection >= 2: uint64(credited.supervisorBalance) else: uint64(credited.balance)
+  if debit > high(uint64)-credit:
+    fail(AccumulationEffectError.InvalidState) # Unrepresentable canonical balance grants no partial credit or guest code.
+  if selection >= 2:
+    credited.supervisorBalance = AccountBalance(credit+debit) # The preceding bound proves addition fits.
+  else:
+    credited.balance = AccountBalance(credit+debit) # Same-account cross-pool credit follows the selected debit.
+  if same:
+    paid = credited # One account contains both prospective fields before its aggregate funding check.
+    if not funded(paid, parameters):
+      fail(AccumulationEffectError.InsufficientCash) # Cross-pool moves preserve, rather than temporarily lower, total funding.
+  let debitEntry = serviceMetadataEntry(funder, paid, ByteLimit(ServiceMetadataBytes)).value
+  var writes = @[StateWrite(key: debitEntry.key, kind: StateWriteKind.Put, value: debitEntry.value)]
+  if not same:
+    let creditEntry = serviceMetadataEntry(target, credited, ByteLimit(ServiceMetadataBytes)).value
+    writes.add(StateWrite(key: creditEntry.key, kind: StateWriteKind.Put,
+        value: creditEntry.value)) # Distinct endpoints require one atomic two-write batch.
+  var working = forkStateStore(previous.accounts).value
+  let changed = working.apply(writes)
+  case changed.error
+  of StateStoreError.None:
+    discard # Neither field or endpoint is visible before complete Merklization succeeds.
+  of StateStoreError.LimitExceeded:
+    fail(AccumulationEffectError.LimitExceeded) # Local store ceilings never become guest CASH.
+  of StateStoreError.BackendFailure:
+    fail(AccumulationEffectError.BackendFailure) # No debit survives a failed destination credit.
+  else:
+    fail(AccumulationEffectError.InvalidState) # Preserve both prior owners on invariant failure.
+  let candidate = successorData(previous, changed.value, selfMetadata = same and uint32(funder) ==
+      uint32(self))
+  let current = AccumulationEffectContext(data: candidate)
+  AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
+      completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
+          exceptional: data.exceptional)))
+
 proc recordAccumulationEject*(effects: AccumulationEffects, target: AccumulationEjectTarget,
     parameters: Parameters): AccumulationEffectResult[AccumulationEffects] =
   ## Remove an empty junior created before this invocation and reclaim both balances into self liquid funds.

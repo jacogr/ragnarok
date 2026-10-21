@@ -78,6 +78,9 @@ of "eject": discard recordAccumulationEject(pair, AccumulationEjectTarget(99),
   default(Parameters)).value # Failed eject cannot expose a credited successor.
 of "transfer": discard context.effectTransferAt(AccumulationTransferIndex(
     0)).value # Default contexts have no outgoing element.
+of "transfer-direct": discard recordAccumulationDirectTransfer(pair, ServiceIndex(77),
+    AccumulationTransferDestination(99), TransferBalance(5), AccumulationFundingMode(3),
+    default(Parameters)).value # A refused direct mutation carries neither endpoint.
 of "transfer-funded": discard prepareAccumulationTransfer(pair, AccumulationTransferDestination(99),
     TransferBalance(5), Gas(9), default(TransferMemo), default(Parameters), ServiceIndex(77),
     AccumulationFundingMode(3)).value # Failed funding retains no source-bound plan.

@@ -462,6 +462,51 @@ block deferred_funding_publication:
             "the produced record credits exactly its selected pool in the next invocation"
 
 
+block direct_cross_pool_publication:
+  for foreign in [false, true]:
+    for mode in [1'u64, 2]:
+      let endpoint = if foreign: 77'u64 else: high(uint64)
+      let instructions = @[registerImmediate(7, endpoint), registerImmediate(8, endpoint),
+          registerImmediate(9, mode), registerImmediate(10, 5), registerImmediate(11, high(uint64)),
+          registerImmediate(12, 0), @[10'u8, 22], @[50'u8, 0]]
+      let payer = ServiceMetadata(balance: AccountBalance(10), supervisorBalance: AccountBalance(
+          10), supervisor: ServiceIndex(42), supervisorCreated: AccountSlot(0),
+              created: AccountSlot(7))
+      let payerEntry = serviceMetadataEntry(ServiceIndex(77), payer, ByteLimit(
+          ServiceMetadataBytes)).value
+      var source = batchFixture(incoming = false, writes = 2, firstEnvelope = guestEnvelope(
+          instructions), secondEnvelope = guestEnvelope([@[50'u8, 0]]), extra = @[payerEntry])
+      let ownKey = chapterServiceKey(StateChapter(255), ServiceIndex(42))
+      var own = metadata(source.state.snapshot.value, 42)
+      own.supervisorBalance = AccountBalance(10)
+      let ownEntry = serviceMetadataEntry(ServiceIndex(42), own, ByteLimit(
+          ServiceMetadataBytes)).value
+      discard source.state.apply([StateWrite(key: ownKey, kind: StateWriteKind.Put,
+          value: ownEntry.value)]).value
+      let first = batchExecution(source, 0, parameters = profile(), copyLimit = MemoryByteLimit(0))
+      let second = batchExecution(source, 1, parameters = profile(), copyLimit = MemoryByteLimit(0))
+      assert first.error == AccumulationDispatchError.None, "same-account direct funding needs only one metadata write"
+      let selected = first.effects.effectContext(AccumulationDimension.Regular).value
+      assert selected.effectInfo.value.transfers == 0, "direct cross-pool move owns no deferred output"
+      let accountKey = chapterServiceKey(StateChapter(255), ServiceIndex(
+          if foreign: 77'u32 else: 42'u32))
+      let accountBytes = selected.effectAccounts.value.lookup(accountKey).value.bytes
+      let paid = decodeServiceMetadata(accountBytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+      assert uint64(paid.balance) == (if mode == 1: 15'u64 else: 5'u64) and
+          uint64(paid.supervisorBalance) == (if mode == 1: 5'u64 else: 15'u64),
+          "one metadata write combines same-account selected debit and credit"
+      let plan = prepare(source, first, second)
+      if foreign:
+        assert plan.error == AccumulationBatchError.UnsupportedAccountEffects,
+            "even a single foreign cross-pool record retains the parallel publication gate"
+      else:
+        assert plan.error == AccumulationBatchError.None, "self direct cross-pool effects retain metadata publication"
+        discard applyAccumulationBatch(source.state, plan.value).value
+        let published = metadata(source.state.snapshot.value, 42)
+        assert uint64(published.balance) == uint64(paid.balance) and
+            uint64(published.supervisorBalance) == uint64(paid.supervisorBalance),
+            "complete self publication retains both direct pool fields"
+
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let plan = prepare(mutual, a, b).value

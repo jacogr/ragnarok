@@ -823,6 +823,45 @@ proc invalidTransferModeResponse(context: DispatchContext, cpu: MachineInfo, mem
   response.registers[7] = RegisterValue(high(uint64)-8)
   hostSuccess[AccumulationDispatchError](response) # Both services exist; invalid mode never incurs deferred gas.
 
+proc directTransferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Direct transfers always pay the base fee; they require neither memo capture nor a deferred fee plan.
+  let charged = chargedResponse(cpu, memory, 575, 0)
+  if charged.kind != HostResultKind.Response: return charged # No partial charge response escapes.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas: return charged # No state or authority work before affordability.
+  let current = context.effects.effectContext(AccumulationDimension.Regular).value
+  let self = uint64(uint32(current.effectInfo.value.service))
+  let rawFunder = uint64(cpu.registers[7])
+  let funder = if rawFunder == high(uint64): self else: rawFunder
+  if funder > uint64(high(uint32)):
+    response.registers[7] = RegisterValue(high(uint64)-3)
+    return hostSuccess[AccumulationDispatchError](response) # Full-width source WHO never aliases a valid account.
+  let rawTarget = uint64(cpu.registers[8])
+  let target = if rawTarget == high(uint64): self else: rawTarget
+  let changed = recordAccumulationDirectTransfer(context.effects, ServiceIndex(uint32(funder)),
+      AccumulationTransferDestination(target), TransferBalance(uint64(cpu.registers[10])),
+      AccumulationFundingMode(uint64(cpu.registers[9])), context.parameters)
+  case changed.error
+  of AccumulationEffectError.None:
+    context.effects = changed.value # Atomic immediate debit/credit leaves outgoing values unchanged.
+    response.registers[7] = RegisterValue(0)
+  of AccumulationEffectError.UnknownService:
+    response.registers[7] = RegisterValue(high(uint64)-3) # WHO precedes authority and CASH.
+  of AccumulationEffectError.NotRequested:
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH covers endpoint authority and same-pool self moves.
+  of AccumulationEffectError.InsufficientCash:
+    response.registers[7] = RegisterValue(high(uint64)-6) # CASH follows both-endpoint authority.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded) # No guest code for local write capacity.
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure) # Both endpoints survive hash refusal.
+  of AccumulationEffectError.MalformedState:
+    return hostFailure(AccumulationDispatchError.MalformedState) # No fabricated metadata.
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Invariant/parameter failures publish neither endpoint.
+  hostSuccess[AccumulationDispatchError](response)
+
 proc transferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
   if uint64(cpu.gas) < 575:
@@ -833,7 +872,7 @@ proc transferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Me
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let self = uint64(uint32(current.effectInfo.value.service))
   if uint64(cpu.registers[12]) == 0:
-    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Direct credits require their independent account transition path.
+    return directTransferResponse(context, cpu, memory) # Zero memo pointer selects immediate atomic credit, independent of deferred gas.
   if context.parameters.get(transferMemoSize) != 128:
     return hostFailure(AccumulationDispatchError.InvalidContext) # The fixed C.2 memo type must match the protocol profile.
   var planned = default(PreparedAccumulationTransfer)
