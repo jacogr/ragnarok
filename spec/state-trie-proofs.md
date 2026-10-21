@@ -106,3 +106,8 @@ Chain adapters accept only an explicitly selected guarded block result. They gen
 from its retained complete snapshot and verify against its posterior map root, never
 the header prior-state root. Failed selections cannot authenticate an empty proof.
 This boundary inherits caller selection trust and adds no consensus/fork-choice claim.
+
+Real signed three-child execution/composition now proves each retained head under its
+posterior root. The original parent and each header prior-state root reject a later
+posterior witness. This preserves retained history semantics without adding proof RPC,
+consensus trust or canonical publication behavior.
