@@ -186,21 +186,19 @@ proc decodeRepositorySnapshot*(input: openArray[byte], chain: StorageChainId,
   if readHash(input, input.len-32) != checksum:
     return SnapshotResult[RepositorySnapshot](status: SnapshotError.ChecksumMismatch)
   let bodyOffset = HeaderBytes+rootBytes+int(context)
-  let decoded = decodeRecordCollection(input.toOpenArray(bodyOffset, input.len-33), physicalLimits(
-      limits, ByteLimit(body)))
-  if decoded.error != RecordError.None:
-    return SnapshotResult[RepositorySnapshot](status: SnapshotError.RecordFailure,
-        recordReason: decoded.error)
   var roots = newSeq[StateRoot](int(count))
   for index in 0..<roots.len: roots[index] = StateRoot(readHash(input, HeaderBytes+index*32))
-  let image = RepositoryImage(generation: RepositoryGeneration(generation),
-    commitment: StateTrieCommitment(root: StateRoot(readHash(input, base+41)), entries: int(
-        entries), nodes: number(input, base+81)),
-    roots: roots, collection: decoded.value)
-  let admitted = restoreRepositoryImage(image, limits.repository, limits.roots, ByteLimit(body))
+  let commitment = StateTrieCommitment(root: StateRoot(readHash(input, base+41)), entries: int(
+    entries), nodes: number(input, base+81))
+  let admitted = decodeRepositoryImage(input.toOpenArray(bodyOffset, input.len-33),
+    RepositoryGeneration(generation), commitment, roots, limits.repository, limits.roots, ByteLimit(body))
+  if admitted.error == RepositoryError.InvalidRecords:
+    # Fused admission preserves the original physical-codec diagnostic without a second hash pass.
+    return SnapshotResult[RepositorySnapshot](status: SnapshotError.RecordFailure,
+      recordReason: admitted.recordError)
   if admitted.error != RepositoryError.None:
     return SnapshotResult[RepositorySnapshot](status: SnapshotError.RepositoryFailure,
-        repositoryReason: admitted.error)
+      repositoryReason: admitted.error)
   var ownedContext = newSeq[byte](int(context))
   for index in 0..<ownedContext.len: ownedContext[index] = input[HeaderBytes+rootBytes+index]
   SnapshotResult[RepositorySnapshot](status: SnapshotError.None,

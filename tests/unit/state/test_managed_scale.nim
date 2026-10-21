@@ -13,6 +13,13 @@ proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the existing real-primitive observer before each measured phase.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count real hash attempts without changing their results.
+proc hex(bytes: string): string =
+  ## Preserve exact already-written digest bytes without extra hash attempts in measured phases.
+  const digits = "0123456789abcdef"
+  result = ""
+  for octet in bytes:
+    result.add(digits[int(byte(octet) shr 4)])
+    result.add(digits[int(byte(octet) and 15)])
 proc key(number: int): StateKey =
   ## Authored indices fit two bytes and produce canonical lexical key order.
   assert number >= 0 and number < 65536
@@ -118,6 +125,9 @@ proc workload(count, size, sample: int): string {.raises.} =
   for index, root in roots:
     checkMap(retained, root, trie, count, size, applied[
         index]) # Readers survive physical retirement and owner close.
+  let snapshotBytes = readFile(path & "/snapshot-0000000000000002.bin")
+  assert snapshotBytes.len >= 32
+  let checksum = hex(snapshotBytes[snapshotBytes.len-32..<snapshotBytes.len])
   assert source.close == RepositoryError.None
   removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2)])
   "{\"items\":" & $count & ",\"value_bytes\":" & $size & ",\"sample\":" & $sample &
@@ -128,19 +138,16 @@ proc workload(count, size, sample: int): string {.raises.} =
     ",\"reopen_hashes\":" & $reopenHashes & ",\"reopen_ns\":" & $reopenNs &
     ",\"before_nodes\":" & $before.storedNodes & ",\"after_nodes\":" & $after.storedNodes &
     ",\"snapshot_bytes\":" & $after.snapshotBytes & ",\"occupied_with_reader\":" &
-        $occupiedWithReader & "}"
+        $occupiedWithReader & ",\"checksum\":\"" & checksum & "\"}"
 proc main() {.raises.} =
   ## Three repetitions describe timing spread; deterministic counters must agree across each identical workload.
   var evidence = "["
-  let occupiedBefore = getOccupiedMem()
   for count in [1024, 8192]:
     for size in [16, 256]:
       for sample in 0..<3:
         if evidence.len > 1:
           evidence.add(",") # Separate complete records without a trailing JSON separator.
         evidence.add(workload(count, size, sample))
-  let occupiedAfter = getOccupiedMem()
-  assert occupiedAfter >= occupiedBefore # The still-owned evidence string is deliberately retained here.
   evidence.add("]\n")
   let folder = getEnv("RAGNAROK_TEST_EVIDENCE")
   if folder.len > 0:

@@ -54,3 +54,33 @@ retain borrowed serialized bytes or mutable caller root arrays.
 for fused admission on a five-record union), all-prefix truncation and hash corruption, canonical
 order, orphan and narrower-policy refusals, empty-current retention, continued publication and
 1,000 ARC release cycles. Snapshot adoption is a separate dependent layer.
+
+## Snapshot adoption and matching-workload result
+
+Snapshot decoding now uses fused serialized image admission after its unchanged envelope, identity,
+extent and checksum checks. The RecordFailure/RepositoryFailure distinction and nested physical
+reasons are preserved. Raw-image restoration remains unchanged for callers. Correctly checksummed
+adversarial snapshots exercise inner hash mismatch, false selected root and false graph node counts.
+The original all-prefix truncation and every-byte mutation checks remain in place.
+
+Three matching repetitions per workload preserve selected snapshot checksums, exact extents, all
+complete maps and retained-reader behavior. Publication, compaction and extraction hash counts are
+unchanged. Strict compacted-snapshot reopen counts change as follows:
+
+| Entries | Value bytes | Before hash attempts | After hash attempts |
+| --- | --- | --- | --- |
+| 1,024 | 16 | 4,410 | 2,206 |
+| 1,024 | 256 | 6,490 | 3,246 |
+| 8,192 | 16 | 33,076 | 16,539 |
+| 8,192 | 256 | 49,492 | 24,747 |
+
+Strict journal replay counts fall respectively from 4,668 to 2,615; 6,748 to 3,671; 33,334 to
+16,948; and 49,750 to 25,172. Each saved snapshot checksum and byte extent matches its baseline.
+These are hash-attempt reductions, not general throughput or power-loss claims. Hyperfine is not
+available on the measured host; no comparative wall-clock speedup is claimed. Timing fields are
+descriptive observations from the same checked native ARC workload.
+
+Remaining work includes profiling graph traversal/table copying and reader memory at larger bounded
+workloads before selecting a further optimization. Journal-frame decoding/publication still has its
+original validation path. Page packing, disk caches, device/filesystem power-loss certification and
+light-state proof storage require their own measured contracts and remain deferred.
