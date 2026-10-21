@@ -105,3 +105,23 @@ and adds `DOWNLOAD_PROGRESS adopted=N requested=M` for multi-child requests.
 The confirmed count includes only actual consumed receipts or the one joined
 shutdown receipt; it never counts attempted/downloaded bytes. Semantic, privacy,
 inventory and whitespace checks pass. Remote CI remains unrequested.
+
+## Later-child failure and retry witnesses
+
+The expanded real TLS suite passes one/two/three/eight-child runs, then verifies
+that an empty response, stale first-child replay, damaged second seal, malformed
+second block and a tight evolved-statistics composition policy each report one
+confirmed adoption out of three requested children. Every negative responder sees
+the actual second parent-bound request. A one-byte-short accumulated ancestry
+budget reports two adoptions and sends no third request; the exact byte ceiling
+permits all three. No resource refusal silently drops an ancestor.
+
+A missing second FIN reaches the shared 4,000 ms command deadline before the
+explicit 20,000 ms stream/30,000 ms attempt ceilings, preserving one adoption and
+two observed requests. A two-pin empty-first fallback consumes exactly three
+requests at each independent identity while adopting three children, proving that
+each rearmed child gets its explicit fresh attempt policy on retained endpoints.
+The shared exchange helper joins every responder after command workers/callbacks
+retire. Pinned semantic and native checks pass; evidence uses
+`build/multiblock-prefix-*`. Scalar prefix observations are followed by direct
+RPC/durable-map verification in subsequent layers.
