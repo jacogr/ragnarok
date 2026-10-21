@@ -91,9 +91,12 @@ test tooling, with no production integration or full-VM conformance claim.
 
 ## Remaining execution work
 
-The [basic-block gas cost model](pvm-gas.md) now has independent pipeline/dependency
-witnesses and an explicit negative-target specification gate. Next, compose block
-charging and register-only stepping with exact exceptional-state ordering; control
-flow and memory-instruction integration follow separately. The wrapping memory
-ambiguity in `pvm-machine.md` remains an explicit gate. Standard initialization,
-host calls and complete JAM invocation remain unimplemented.
+Register-value agreement does not establish complete execution conformance.
+[Charged stepping](pvm-step.md) and [recursive execution](pvm-execution.md) now
+compose gas, control flow and scalar memory; [initialization](pvm-initialization.md)
+and the scoped host/JAM adapters have their own contracts and completion evidence.
+The [discrepancy register](graypaper-discrepancies.md) records the adopted memory/
+pricing exceptions and unresolved specification questions. Local execution limits
+and remaining integration scope still prevent an unrestricted PVM conformance claim.
+M1 framing is complete; full state serialization, whole-block parity and full
+chainspec equivalence remain open.
