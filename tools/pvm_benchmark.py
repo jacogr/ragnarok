@@ -38,6 +38,15 @@ def cpu_model():
     return platform.machine()
 
 
+# Preserve observable sandbox prerequisites without changing a local host's kernel configuration.
+def linux_sandbox_settings():
+    values={}
+    for key in ('vm.unprivileged_userfaultfd','kernel.apparmor_restrict_unprivileged_userns'):
+        path=Path('/proc/sys')/key.replace('.','/')
+        values[key]=path.read_text().strip() if path.is_file() else None
+    return values
+
+
 # Setup owns builds; every observed duration is emitted only after that execution validates fully.
 def run():
     BUILD.mkdir(parents=True,exist_ok=True)
@@ -60,6 +69,9 @@ def run():
 
     save()
     try:
+        required=os.environ.get('PVM_BENCH_REQUIRE_COMPILED','0')
+        if required not in ('0','1'):raise ValueError('PVM_BENCH_REQUIRE_COMPILED must be 0 or 1')
+        report['required_compiled']=required=='1';save()
         pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text());upstream=require_submodule(pins)
         gray=json.loads((ROOT/'spec/pins.json').read_text())['graypaper']
         require_submodule(dict(gray,repository=gray['repository'].removeprefix('https://github.com/')))
@@ -85,7 +97,7 @@ def run():
         report.update(head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
             worktree_dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT)),
             hardware=dict(platform=platform.platform(),cpu=cpu_model(),logical_cpus=os.cpu_count(),
-                          load_average_start=os.getloadavg()),
+                          load_average_start=os.getloadavg(),linux_sandbox=linux_sandbox_settings()),
             rust=rust,rustc=subprocess.check_output(['rustup','run',rust,'rustc','--version','--verbose'],text=True).strip(),
             nimony_toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),
             build_environment={key:os.environ[key] for key in ('RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS','CFLAGS','LDFLAGS') if key in os.environ},
@@ -112,7 +124,7 @@ def run():
             observations={}
             for engine in order:
                 output=checked(arguments[engine],f'pass{pass_index}-{engine}',timeout=300)
-                observations[engine]=parse_output(output,engine)
+                observations[engine]=parse_output(output,engine,require_compiled=report['required_compiled'])
             report['passes'].append(observations);save()
         report['cases']=aggregate(report['passes']);report['status']='checks-passed'
         report['hardware']['load_average_end']=os.getloadavg();save()

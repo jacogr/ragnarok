@@ -10,7 +10,7 @@ NAMES=('arithmetic-10000','memory-aligned-1000','memory-crossing-1000',
 
 
 # A successful process with missing/duplicate samples is not a successful benchmark.
-def parse_output(output, engine):
+def parse_output(output, engine, *, require_compiled=False):
     if engine not in ENGINES:raise ValueError('Unknown benchmark engine')
     rows={i:dict(samples=[],reason=None) for i in range(len(NAMES))}
     for line in output.splitlines():
@@ -31,6 +31,7 @@ def parse_output(output, engine):
         # Warmups must also complete validation; unavailable backends must not carry fallback timings.
         if row['reason'] is not None:
             if row['samples']:raise ValueError('Unavailable backend supplied timings')
+            if require_compiled:raise ValueError('Required compiled backend unavailable: '+row['reason'])
         elif sorted(item['sample'] for item in row['samples'])!=list(range(13)):
             raise ValueError('Missing or duplicate benchmark samples')
     return [rows[i] for i in range(len(NAMES))]
@@ -91,6 +92,8 @@ def summarize_benchmark(report):
             item=case['engines'][engine]
             if item['status']=='unavailable':
                 if engine!='polkavm_compiler' or not item.get('reason'):raise ValueError('Required baseline unavailable')
+                if report.get('required_compiled') and report['status']=='checks-passed':
+                    raise ValueError('Required compiled backend unavailable')
                 cells.append('Unavailable')
             else:
                 if ({(s['pass_index'],s['sample']) for s in item['samples']}

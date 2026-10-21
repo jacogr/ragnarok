@@ -62,6 +62,36 @@ class PvmBenchmarkTests(unittest.TestCase):
         with self.assertRaises(ValueError):parse_output(output(True),'polkavm_interpreter')
         with self.assertRaises(ValueError):parse_output(good,'fallback')
 
+    def test_required_compiler_cannot_be_unavailable(self):
+        """Hosted compiler jobs fail closed; unsupported local hosts retain explicit unavailable cells."""
+        parse_output(output(True),'polkavm_compiler')
+        with self.assertRaisesRegex(ValueError,'Required compiled backend unavailable'):
+            parse_output(output(True),'polkavm_compiler',require_compiled=True)
+        parse_output(output(),'polkavm_compiler',require_compiled=True)
+        one={engine:parse_output(output(engine=='polkavm_compiler'),engine) for engine in ENGINES}
+        with self.assertRaisesRegex(ValueError,'Required compiled backend unavailable'):
+            summarize_benchmark(dict(status='checks-passed',required_compiled=True,
+                                     cases=aggregate([one,deepcopy(one)])))
+
+    def test_invalid_compiler_requirement_fails_with_fresh_evidence(self):
+        """Misspelled configuration cannot silently make a required compiler optional."""
+        import pvm_benchmark
+        with tempfile.TemporaryDirectory() as temporary,patch.dict(
+                'os.environ',{'PVM_BENCH_REQUIRE_COMPILED':'yes'}),patch.object(
+                pvm_benchmark,'BUILD',Path(temporary)):
+            with self.assertRaisesRegex(ValueError,'must be 0 or 1'):pvm_benchmark.run()
+            self.assertEqual(json.loads((Path(temporary)/'results.json').read_text())['status'],'failed')
+
+    def test_kernel_metadata_is_read_only_and_bounded(self):
+        """Only the two reviewed kernel settings enter metadata; missing facilities stay explicit."""
+        import pvm_benchmark
+        with patch.object(Path,'is_file',return_value=False):
+            values=pvm_benchmark.linux_sandbox_settings()
+        self.assertEqual(values,{'vm.unprivileged_userfaultfd':None,
+                                'kernel.apparmor_restrict_unprivileged_userns':None})
+        with patch.object(Path,'is_file',return_value=True),patch.object(Path,'read_text',return_value='1\n'):
+            self.assertEqual(set(pvm_benchmark.linux_sandbox_settings().values()),{'1'})
+
     def test_noise_is_flagged_without_dropping_samples(self):
         """A loaded host may pass correctness but cannot yield an apparently stable speed ratio."""
         one={engine:parse_output(output(engine=='polkavm_compiler'),engine) for engine in ENGINES}

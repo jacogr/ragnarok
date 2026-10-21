@@ -87,7 +87,11 @@ No production optimization or weaker checking profile was used to obtain results
 
 ## Actions delivery and reproduction
 
-The canonical workflow has a separate manually selected `bench-pvm` scope. It is
+The canonical workflow has a separate manually selected `bench-pvm` scope, gated by
+the compiled fixture comparisons. Dedicated hosted Linux jobs enable the pinned
+upstream sandbox prerequisites and require actual compiled measurements. Local hosts
+may still report unavailable; no local kernel settings are changed. See
+[compiled CI](pvm-linux-compiled-ci.md). It is
 excluded from normal unit/full/PR-label verification, and has its own inventory,
 setup and strict execution verdict. Its Actions summary shows the consolidated table;
 the artifact retains raw JSON/CSV, Markdown and build/run logs for thirty days.
