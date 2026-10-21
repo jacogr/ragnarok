@@ -12,11 +12,13 @@
 static int selected, skipped, remaining, reason;
 static uint64_t calls[4];
 static size_t write_limit;
+static int zero_skip, zero_remaining;
 
 void storage_io_reset(void) {
     /* Reset every configured fault/short-write cap before unrelated fixture or runner IO. */
     selected = skipped = remaining = reason = 0;
     write_limit = 0;
+    zero_skip = zero_remaining = 0;
     for (int index = 0; index < 4; index++) {
         /* Each known operation begins with an independently observable zero count. */
         calls[index] = 0;
@@ -50,6 +52,19 @@ void storage_io_write_limit(size_t limit) {
     /* Optional real short writes exercise progress followed by interruption; zero removes the cap. */
     write_limit = limit;
 }
+int storage_io_zero_writes(int skip, int count) {
+    /* Negative controls cannot create an unbounded countdown or mutate active configuration. */
+    if (skip < 0 || count < 0) {
+        return -1;
+    }
+    zero_skip = skip;
+    zero_remaining = count;
+    return 0;
+}
+int storage_io_zero_remaining(void) {
+    /* Completion witnesses distinguish a real zero-progress refusal from an unexercised branch. */
+    return zero_remaining;
+}
 static int refuse(int operation) {
     /* Saturating diagnostic counters avoid signed arithmetic overflow in the test observer itself. */
     if (calls[operation] != UINT64_MAX) {
@@ -82,6 +97,15 @@ ssize_t storage_io_write(int descriptor, const void *buffer, size_t count) {
     if (refuse(STORAGE_IO_WRITE)) {
         /* Rejected writes retain errno and transfer no caller bytes. */
         return -1;
+    }
+    if (zero_remaining > 0) {
+        /* Forward the chosen genuine prefix before producing an explicit no-progress receipt. */
+        if (zero_skip > 0) {
+            zero_skip--;
+        } else {
+            zero_remaining--;
+            return 0;
+        }
     }
     if (write_limit != 0 && count > write_limit) {
         /* Only actual native positive results can authorize caller offset advancement. */

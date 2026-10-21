@@ -19,6 +19,10 @@ uint64_t storage_io_calls(int operation);
 int storage_io_remaining(void);
 /* Cap genuine forwarded write progress; zero disables the cap. */
 void storage_io_write_limit(size_t limit);
+/* Produce bounded zero-progress write receipts after genuine calls; reject negative controls. */
+int storage_io_zero_writes(int skip, int count);
+/* Expose remaining zero-progress controls so unexercised paths cannot pass. */
+int storage_io_zero_remaining(void);
 /* Forward real SDK reads except explicitly selected test refusals. */
 ssize_t storage_io_read(int descriptor, void *buffer, size_t count);
 /* Forward real SDK writes with optional real short progress. */
