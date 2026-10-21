@@ -189,3 +189,14 @@ publication nor retirement uncertainty triggers an implicit retry or adoption.
 Services itself rejects live relocation and implicit copies. Native tests cross
 real publication, aggregate close/restart, stale tickets, staged cancellation and
 acknowledged idle shutdown, with actual runtime/move/copy/private checks.
+
+## Independent export and canonical execution lifetimes
+
+Real Services integration holds an actual preparation/RPC canonical lease while
+staging, dispatching and observing previously prepared checkpoint bytes. I/O Done
+never releases the execution gate. Both explicit export acknowledgement and
+unacknowledged joined aggregate close preserve the exact publication outcome;
+joined close retires both threads before canonical/input owners disappear. Fresh
+independent recovery agrees with the pre-lease context. Repeated close and restart
+cannot overwrite the retained receipt or revive its ticket. These witnesses use
+existing execution APIs and change no PVM implementation or storage backend.
