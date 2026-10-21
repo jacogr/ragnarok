@@ -62,8 +62,10 @@ argument layouts. Supervised upgrade now executes against retained invocation st
 its parallel batch publication still requires modified-account conflict selection.
 Supervisor29 now authenticates current effective authority and atomically reassigns
 self/foreign metadata, with self publication and the same foreign batch gate.
-Other foreign supervised mutations, alternative funding modes and direct transfers
-are explicit `UnsupportedHostCall` gates while
+Supervised storage writes now authenticate and mutate the target account in retained
+invocation state; their foreign publication still needs the same conflict selection.
+Foreign request mutations, other foreign funding paths, alternative funding modes
+and direct transfers are explicit `UnsupportedHostCall` gates while
 their account mutation/publication proofs are migrated. The previous argument layout
 is never accepted as a production fallback. These gates are incomplete implementation,
 not discrepancies in the normative paper.

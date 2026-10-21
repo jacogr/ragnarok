@@ -232,6 +232,27 @@ block supervisor_publication:
       assert uint32(metadata(prior, 42).supervisor) == 0,
           "retained prior metadata does not change on publication"
 
+# A genuine supervised storage write retains the foreign publication gate under the existing self-key policy.
+block foreign_storage_publication:
+  let instructions = @[registerImmediate(7, 77), registerImmediate(8, 65536), registerImmediate(9,
+      1), registerImmediate(10, 196608), registerImmediate(11, 1), @[10'u8, 5], @[50'u8, 0]]
+  let child = serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(supervisor: ServiceIndex(42),
+      supervisorCreated: AccountSlot(0)), ByteLimit(ServiceMetadataBytes)).value
+  let fixture = batchFixture(incoming = false, firstEnvelope = guestEnvelope(instructions, input),
+      secondEnvelope = guestEnvelope(@[@[50'u8, 0]], input), extra = @[child])
+  let first = batchExecution(fixture, 0)
+  let selected = first.effects.effectContext(AccumulationDimension.Regular).value
+  let key = serviceStorageKey(ServiceIndex(77), @[73'u8], ByteLimit(1)).value
+  assert selected.effectAccounts.value.lookup(key).value.bytes == @[1'u8],
+      "supervised foreign storage mutation actually executes"
+  assert selected.effectAccountScope.value == AccumulationAccountScope.Unsupported,
+      "foreign storage cannot impersonate bounded self-key provenance"
+  assert prepare(fixture, first, batchExecution(fixture, 1)).error ==
+      AccumulationBatchError.UnsupportedAccountEffects,
+      "foreign storage still needs parallel modified-account conflict selection"
+  assert fixture.state.snapshot.value.lookup(key).error == StateStoreError.MissingKey,
+      "refused foreign storage publication retains the prior namespace"
+
 # Provide/yield versions preserve scope, and a refusal after preparation never publishes the earlier metadata candidate.
 let fixture = batchFixture(firstEnvelope = envelope(7, provide = true), secondEnvelope = envelope(19))
 let first = batchExecution(fixture, 0)
