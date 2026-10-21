@@ -60,9 +60,10 @@ whole-client throughput improvements.
 - The positive `gas` versus `signedgas` domain mismatch remains explicitly open in
   [host gas accounting](pvm-host-gas.md#exact-terminal-balances). Current full uint64
   nonnegative inputs are retained; no silent signed narrowing is authorized.
-- Broaden composition coverage across different arithmetic operations and block
-  transitions, then profile the resulting interpreter costs. Existing operation
-  matrices and short fixed loop guests do not prove arbitrary program equivalence.
+- [Dependent arithmetic chains](pvm-register-chain-reference.md) now cover all 85
+  register operations across block transitions and host continuations. Broaden
+  composition further and profile the resulting interpreter costs; these operation
+  matrices and fixed guests do not prove arbitrary program equivalence.
 - Add the [required full upstream PolkaVM differential fuzzing job](graypaper-discrepancies.md#required-future-polkavm-fuzzing-ci)
   separately when a faithful state adapter and reproducible failure handling exist.
   Current deterministic comparisons and malformed-input native tests do not satisfy it.
