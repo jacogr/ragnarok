@@ -29,3 +29,7 @@ unchanged after short-policy or foreign-root refusal. No cryptography is repeate
 Projection retains an explicitly requested subset under the original root. Missing
 witnesses, duplicate requests and short output budgets refuse without changing the
 source. A zero-key projection is a valid empty evidence view, not an empty state map.
+
+Witness export returns detached query records holding immutable unverified paths.
+A receiving consumer must verify them under its own explicit root. Tightened output
+quotas precede record allocation; mutating exported records never changes the view.
