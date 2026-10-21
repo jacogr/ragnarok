@@ -1,0 +1,1 @@
+PASS application recovery roundtrip: exact bytes and state, one imported head, unset finality and explicit policy
