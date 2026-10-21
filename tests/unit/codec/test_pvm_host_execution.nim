@@ -132,6 +132,92 @@ for fault in [false, true]:
     # Selected metadata remains available for guest memory recovery.
     assert uint32(hosted.faultPage) == uint32(plain.faultPage)
 
+type
+  MeteredContext = object ## Counts loop callbacks without retaining any guest state or program owner.
+    calls: uint64
+  MeteredRefusal = enum ## A distinct local refusal domain selects the fallible callback API.
+    Refused
+
+proc meteredRespond(context: var MeteredContext, stopped: StepOutcome): HostResponse {.raises: [].} =
+  ## Preserve gas and code while mutating ordinary register state on each fixed-program continuation.
+  let cpu = machineInfo(stopped.machine).value
+  assert stopped.exit == StepExit.Host and uint64(stopped.hostCall) == 7
+  assert uint64(cpu.pc) == 0 and uint64(cpu.registers[10]) == context.calls
+  if context.calls == 0:
+    # A callback may reenter another program at the same PC; its memo and gas remain independent.
+    let nestedSource = source(0)
+    let nestedProgram = programOf(nestedSource).value
+    let nestedPrice = uint64(blockGas(nestedProgram, CodeAddress(0), GasCycleLimit(1000)).value)
+    var nestedCpu = machineInfo(nestedSource).value
+    nestedCpu.blockCharged = false
+    nestedCpu.gas = MachineGas(nestedPrice + 7)
+    let nested = captureMachine(nestedProgram, memoryOf(nestedSource).value, nestedCpu).value
+    let finished = execute(nested, ExecutionStepLimit(1), GasCycleLimit(nestedPrice + 3)).value
+    assert finished.exit == StepExit.Halt and uint64(machineInfo(finished.machine).value.gas) == 7
+    assert uint64(machineInfo(nested).value.gas) == nestedPrice + 7
+  inc context.calls
+  var registers = cpu.registers
+  registers[8] = RegisterValue(context.calls)
+  HostResponse(action: HostAction.Continue, gas: cpu.gas, registers: registers,
+    memory: memoryOf(stopped.machine).value)
+
+proc meteredFallible(context: var MeteredContext, stopped: StepOutcome): HostResult[
+    MeteredRefusal] {.raises: [].} =
+  ## Exercise the typed callback form with the identical successful response semantics.
+  hostSuccess[MeteredRefusal](meteredRespond(context, stopped))
+
+# Seventeen visits pay the same block price across actual host replies; no call inherits another's memo.
+block meteredInvocationIsolation:
+  let wire = @[0'u8, 0, 17, 10, 7, 131, 0xaa, 1, 83, 0x4a, 17, 0, 0, 0, 251, 255,
+    255, 255, 50, 0, 37, 128, 0]
+  let code = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(128), JumpCountLimit(0)).value
+  let price = uint64(blockGas(code, CodeAddress(0), GasCycleLimit(1000)).value)
+  let haltPrice = uint64(blockGas(code, CodeAddress(15), GasCycleLimit(1000)).value)
+  var registers = default(RegisterFile)
+  registers[0] = RegisterValue(0xffff0000'u64)
+  let initial = captureMachine(code, captureMemory([], PageLimit(0)).value,
+    MachineInfo(pc: CodeAddress(0), gas: MachineGas(price * 17 + haltPrice + 7),
+      blockCharged: false, registers: registers)).value
+  var plainContext = MeteredContext(calls: 0)
+  var typedContext = MeteredContext(calls: 0)
+  let plain = executeWithHost(initial, plainContext, meteredRespond, ExecutionStepLimit(52),
+    HostCallLimit(17), GasCycleLimit(price + 3))
+  let typed = executeWithHost(initial, typedContext, meteredFallible, ExecutionStepLimit(52),
+    HostCallLimit(17), GasCycleLimit(price + 3))
+  assert plain.error == StepError.None and typed.error == HostExecutionError.None
+  let completed = [plain.value, typed.value]
+  for result in completed:
+    # Both embeddings preserve exact debits and all unrelated initial registers.
+    let cpu = machineInfo(result.machine).value
+    assert result.exit == StepExit.Halt and uint64(cpu.pc) == 0 and uint64(cpu.gas) == 7
+    for i in 0..<13:
+      let expected = if i in [8, 10]: 17'u64 else: uint64(registers[i])
+      assert uint64(cpu.registers[i]) == expected
+  assert plainContext.calls == 17 and typedContext.calls == 17
+  plainContext.calls = 0
+  typedContext.calls = 0
+  # A previous successful higher-limit invocation cannot bypass fresh simulation under a lower limit.
+  assert executeWithHost(initial, plainContext, meteredRespond, ExecutionStepLimit(52),
+    HostCallLimit(17), GasCycleLimit(price + 2)).error == StepError.GasCycleLimitExceeded
+  let lower = executeWithHost(initial, typedContext, meteredFallible, ExecutionStepLimit(52),
+    HostCallLimit(17), GasCycleLimit(price + 2))
+  assert lower.error == HostExecutionError.ExecutionFailure and lower.executionError ==
+      StepError.GasCycleLimitExceeded
+  assert plainContext.calls == 0 and typedContext.calls == 0
+  # Dispatch and instruction refusal retain prior observable callback effects in both forms.
+  assert executeWithHost(initial, plainContext, meteredRespond, ExecutionStepLimit(52),
+    HostCallLimit(16), GasCycleLimit(price + 3)).error == StepError.HostCallLimitExceeded
+  let short = executeWithHost(initial, typedContext, meteredFallible, ExecutionStepLimit(51),
+    HostCallLimit(17), GasCycleLimit(price + 3))
+  assert short.error == HostExecutionError.ExecutionFailure and short.executionError ==
+      StepError.StepLimitExceeded
+  assert plainContext.calls == 16 and typedContext.calls == 17
+  let unchanged = machineInfo(initial).value
+  assert uint64(unchanged.gas) == price * 17 + haltPrice + 7 and not unchanged.blockCharged
+  for i in 0..<13:
+    # No successful or refused invocation mutates the caller's retained source snapshot.
+    assert uint64(unchanged.registers[i]) == uint64(registers[i])
+
 # All roots and context values die at each invocation boundary, including failure after callback effects.
 proc cycle() =
   var context = Context(calls: 0, action: HostAction.Continue, badMemory: false)
