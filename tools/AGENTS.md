@@ -22,8 +22,8 @@ Read [verification infrastructure](../docs/testing/infrastructure.md) for harnes
   Accept 1–4 workers;
   retain serial overrides, private caches/logs, ordered diagnostics and fresh per-suite ARC evidence.
   Keep linked profiles and network/resource scenarios sequential. Hastur scheduling artifacts belong
-  under `build/`; its successful parallel worker caches are discarded, so serial codec runs can
-  be faster on warm local repeats. Record timings without weakening test workloads or verdicts.
+  under `build/`. Codec workers reuse private caches serially across their assigned mains;
+  never share writable caches concurrently. Record timings without weakening workloads or verdicts.
 
 - Keep source-owned verification plans deterministic and feature-grouped. Ordinary failure-family
   files own expected identities; specialized drivers own typed mode declarations and variant plans.

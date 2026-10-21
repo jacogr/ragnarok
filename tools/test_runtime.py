@@ -25,7 +25,7 @@ from native_preparation import prepare_libraries, prepare_integration, prepare_u
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/tests/runtime'
 # Each selected workload owns its workspace; other jobs use independent native-check instances.
-checks = NativeChecks(BUILD)
+checks = NativeChecks(BUILD, reuse_builds=True, lto=False)
 command, build = checks.command, checks.build
 
 
@@ -152,7 +152,7 @@ def main():
         parser.error('--failure-shard applies only to the failures group')
     # Private reports, caches and logs allow the two workloads to run on independent CI runners.
     BUILD = ROOT/('build/tests/runtime' if args.group == 'unit' else 'build/tests/failures')
-    checks = NativeChecks(BUILD, reuse_builds=args.group == 'failures')
+    checks = NativeChecks(BUILD, reuse_builds=True, lto=False)
     command, build = checks.command, checks.build
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)

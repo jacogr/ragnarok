@@ -265,13 +265,16 @@ class NimonyCISafeguards(unittest.TestCase):
         # A barrier requires actual overlap without depending on host speed or arbitrary sleep thresholds.
         def fake_command(arguments, name):
             calls.append((name, arguments))
+            if name.startswith('cache-control-'):
+                return dict(exit_code=0, output='')
             barrier.wait(timeout=5)
             return dict(exit_code=1, output=name)
         with patch.dict(test_guards.os.environ, {'COMPILE_CHECK_JOBS': '2'}), patch.object(
                 test_guards, 'command', side_effect=fake_command):
             rows = list(test_guards.compile_rejections(Path('/fixture/nimony'), {'first': 'a', 'second': 'b'}))
         self.assertEqual([(name, expected) for name, expected, _ in rows], [('first', 'a'), ('second', 'b')])
-        self.assertEqual({name for name, _ in calls}, {'first', 'second'})
+        self.assertEqual({name for name, _ in calls if not name.startswith('cache-control-')},
+                         {'first', 'second'})
         caches = {arg for _, arguments in calls for arg in arguments if str(arg).startswith('--nimcache:')}
         self.assertEqual(len(caches), 2)
         self.assertTrue(all(row[2]['exit_code'] == 1 for row in rows))

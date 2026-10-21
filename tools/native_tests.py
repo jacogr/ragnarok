@@ -15,6 +15,7 @@ import os
 import subprocess
 import platform
 import argparse
+import sys
 from setup_nimony import ROOT, cache_directory
 
 # Share directory-discovered suite identities with selection, cumulative reports and provenance.
@@ -66,8 +67,7 @@ def unit_command(compiler, name=None, libraries=None):
         # Each positive test owns an explicit expected-output file; missing evidence must fail before compilation.
         if not source.is_file() or not source.with_suffix('.output').is_file():
             raise FileNotFoundError('Missing native test or expected output: '+str(source))
-    flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on',
-             '--passC:-flto', '--passL:-flto']
+    flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on']
     if name in UNIT_LINKS and UNIT_LINKS[name] is not None:
         # Never guess a library path or let a stale production library stand in for refusal instrumentation.
         profile = UNIT_LINKS[name]
@@ -98,7 +98,7 @@ def unit_command(compiler, name=None, libraries=None):
         # Integration remains an explicit per-suite opt-in, independent of library preparation.
         flags.append('-d:'+define)
     if platform.system() == 'Linux':
-        # Keep the established Linux LTO linker rather than relying on the runner's defaults.
+        # Keep the established Linux LLD linker rather than relying on the runner's defaults.
         flags.append('--passL:-fuse-ld=lld')
     # Serial suites with identical build inputs can reuse semantic intermediates; each main still
     # compiles and runs separately. Separate profiles protect observer renames, defines and native ABIs.
@@ -114,11 +114,15 @@ def unit_command(compiler, name=None, libraries=None):
                    native={str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs})
     identity = hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()[:16]
     # The parallel codec pool keeps its own cache; it cannot race with serial profile reuse.
-    cache_name = 'working-codec' if name is None else 'working-profile-'+identity
-    return [str(runner), '--bindir:'+str(compiler.parent),
+    cache_name = 'working-codec-'+identity if name is None else 'working-profile-'+identity
+    arguments = [str(runner), '--bindir:'+str(compiler.parent),
             '--cachedir:'+str(cache_directory(compiler, ROOT/'build/tests/native', cache_name)),
             '--jobs:'+str(unit_jobs() if name is None else 1),
             '--joined:off', *('--forward:'+flag for flag in flags), 'test', str(target)]
+    if name is None and unit_jobs() > 1:
+        # Private serial workers reuse imports across codec mains; the parent retains the global cache lock.
+        return [sys.executable, str(ROOT/'tools/native_codec.py'), *arguments]
+    return arguments
 
 
 # Hastur's scheduling history uses a relative path even with --cachedir; contain it under build.

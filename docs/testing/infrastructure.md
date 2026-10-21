@@ -28,6 +28,21 @@ metadata and unsupported fields/profiles fail before setup; discovering a file n
 a generic compiler error for its intended rejection. Fixture sources and their loader are hashed
 in guard and runtime provenance.
 
+Semantic rejection checks use fresh per-invocation worker caches. Each bounded worker checks a
+contiguous lexical batch serially; concurrent workers never share a writable cache. A successful
+`check` control initializes the frontend configuration before expected failures, allowing the
+pinned compiler's normal import reuse. Without that control, a failing first build clears the
+configuration memo and the next fixture rebuilds its import graph. The compiler owns dependency
+invalidation; no compiler metadata is edited. Every fixture keeps its own process, exact diagnostic
+predicate and retained log, and results retain declaration order. Failed controls fail the group;
+temporary worker caches are discarded after the invocation.
+
+Ownership guards retain real lowering builds and their original ABI/define profiles, using the
+existing serial profile cache and compiler-owned lock. Different profiles remain isolated and
+every main keeps its own output identity. Cache validation must cover imported and main-source edits
+as well as private worker ownership; ownership failures still require the intended lowering
+diagnostic rather than a semantic-only rejection.
+
 `tools/native_requirements/<source-family>/<suite>.json` declares one suite's source directory,
 ordered libraries, headers, observer call-site renames, compiler defines, fresh-fixture
 requirement and optional static `fixtures` dependencies.
@@ -67,9 +82,12 @@ Serial native suites reuse compiler intermediates only within the same source di
 exact ordered compiler/linker profile. The cache identity also includes native library and header
 contents and the compiler installation. Observer renames and feature defines therefore remain
 isolated. Every main still compiles and runs in its own process; expected-output comparisons,
-per-suite ARC evidence retirement and fresh observations remain mandatory. The parallel codec
-pool uses a separate cache. A compiler-owned advisory lock serializes standalone and cumulative
-unit invocations through evidence validation, including exceptional exits. Cumulative runs log
+per-suite ARC evidence retirement and fresh observations remain mandatory. The codec batch uses
+bounded private serial Hastur workers: each worker keeps its own cache across a contiguous group
+of discovered mains, with no concurrent cache sharing. Workers still run every main separately,
+retain its expected-output verdict and report failure if any main fails. Cache identities include
+the exact build profile; workers reuse only their own compatible intermediates. A compiler-owned
+advisory lock serializes standalone and cumulative unit invocations through evidence validation, including exceptional exits. Cumulative runs log
 the active batch and its elapsed time.
 
 CI partitions the discovered batch plan across eight bounded jobs, keeping each job's
@@ -134,7 +152,14 @@ Contract verification opts into compiler-intermediate reuse only for matching so
 ordered compiler/linker profiles, native library/header contents and compiler installations.
 Each driver retains its own executable and every probe remains a separate process. A group-owned
 advisory lock protects shared build intermediates; other verification groups retain their existing
-per-build caches. Progress logs identify the active build and elapsed time.
+per-build caches. Independent unit corpora use this same profile-reuse path. Progress logs identify
+the active build and elapsed time.
+
+Units, independent corpora and runtime contracts keep ARC, Clang, release/speed optimization and
+runtime checks enabled, but omit LTO to reduce compilation/linking cost. E2E and the shipped peer
+retain full LTO. The shared native builder defaults to full LTO, including future production-like
+and fuzz callers unless they deliberately select another profile. LTO selection participates in
+the compiler cache identity, so full-LTO and non-LTO intermediates cannot be mixed.
 
 CI partitions the discovered ordinary contract families across four bounded jobs. Specialized
 controls execute once, in the final partition. Each partition requires its exact predeclared
