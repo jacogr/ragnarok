@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_PVM_REGISTER_CHAINS",
+  "files": {
+    "pvm-register-chains.bin": "16e4160a96984ced0d1e878815a067750f8878be26d92570a3680edd68228a82"
+  },
+  "target": "pvm-register-chains.bin"
+}
