@@ -7,7 +7,8 @@
 import ./chain
 import ../chain/[genesis, provider, parameters]
 import ../state/store
-import ../codec/state_trie
+import ../codec/[state_trie, bounded]
+import ../crypto/primitives
 
 type
   ApplicationCheckpointSlot* = distinct uint32 ## Captured block time remains distinct from disk generations and slot-file selectors.
@@ -18,8 +19,9 @@ type
     timeslot: ApplicationCheckpointSlot
     configuration: Parameters
   ApplicationCheckpointIdentityError* {.pure.} = enum ## Defaults and refused captures expose no partially usable binding.
-    Uninitialized, None, MissingHead, StateMismatch
-  ApplicationCheckpointIdentityResult* = object ## Only a successful exact-owner capture grants initialized metadata.
+    Uninitialized, None, MissingHead, StateMismatch, LimitExceeded, InvalidFormat,
+      InvalidParameters, ChecksumMismatch, BackendFailure
+  ApplicationCheckpointIdentityResult* = object ## Successful capture or local decoding returns complete metadata; decoding grants no independent trust.
     case status: ApplicationCheckpointIdentityError
     of None:
       completed: ApplicationCheckpointIdentity
@@ -72,3 +74,85 @@ proc captureApplicationCheckpointIdentity*(chain: ApplicationChain): Application
     completed: ApplicationCheckpointIdentity(initialized: true, blockIdentity: head.blockHash,
       stateCommitment: state.value.commitment.root, timeslot: ApplicationCheckpointSlot(head.slot),
       configuration: head.chainParameters))
+
+const
+  IdentityMagic = "RAGNAROK-APP-V1\n"
+  ApplicationCheckpointIdentityBytes* = 238 ## Fixed metadata extent includes the full 122-byte profile and 32-byte checksum.
+  IdentityPayloadBytes = ApplicationCheckpointIdentityBytes - 32
+
+type ApplicationCheckpointEncodingResult* = object ## Failed/default encoding has no partial output buffer.
+  case status: ApplicationCheckpointIdentityError
+  of None:
+    completed: seq[byte]
+  else:
+    discard # No failure can masquerade as a complete encoded identity.
+func error*(outcome: ApplicationCheckpointEncodingResult): ApplicationCheckpointIdentityError =
+  ## Inspect encoding refusal without extracting private bytes.
+  outcome.status
+func value*(outcome: ApplicationCheckpointEncodingResult): seq[byte] {.inline,
+    requires: outcome.status == ApplicationCheckpointIdentityError.None.} =
+  ## Only fully encoded and checksummed metadata is exposed as independently owned bytes.
+  outcome.completed
+proc encodeApplicationCheckpointIdentity*(identity: ApplicationCheckpointIdentity,
+    limit: ByteLimit): ApplicationCheckpointEncodingResult =
+  ## Prove the fixed allocation ceiling before copying exact scalar fields or invoking the maintained hash primitive.
+  if not identity.ready: return ApplicationCheckpointEncodingResult(
+      status: ApplicationCheckpointIdentityError.Uninitialized)
+  if uint64(limit) < uint64(ApplicationCheckpointIdentityBytes):
+    return ApplicationCheckpointEncodingResult(status: ApplicationCheckpointIdentityError.LimitExceeded)
+  var bytes = newSeq[byte](ApplicationCheckpointIdentityBytes)
+  for index, character in IdentityMagic:
+    bytes[index] = byte(character) # Version/domain excludes other local checkpoint envelopes.
+  let blockHash = array[32, byte](identity.blockIdentity)
+  let root = array[32, byte](identity.stateCommitment)
+  for index in 0..<32:
+    bytes[16 + index] = blockHash[index]
+    bytes[48 + index] = root[index] # Both identities retain all bits, without replacing posterior root by header prior state.
+  for index in 0..<4:
+    bytes[80 + index] = byte((uint32(identity.timeslot) shr (8 * index)) and
+        255) # Exact E4 little-endian block time.
+  let configuration = identity.configuration.encodeParameters
+  for index in 0..<ParameterBytes:
+    bytes[84 + index] = configuration[index] # Every parameter participates, including fields unrelated to state hashing.
+  let digest = blake2b256(bytes.toOpenArray(0, IdentityPayloadBytes - 1))
+  if digest.error != CryptoError.None:
+    return ApplicationCheckpointEncodingResult(status: ApplicationCheckpointIdentityError.BackendFailure)
+  let checksum = array[32, byte](digest.value)
+  for index in 0..<32:
+    bytes[IdentityPayloadBytes + index] = checksum[
+        index] # Integrity covers the entire versioned scalar tuple, not external authority.
+  ApplicationCheckpointEncodingResult(status: ApplicationCheckpointIdentityError.None,
+      completed: bytes)
+proc decodeApplicationCheckpointIdentity*(bytes: openArray[byte],
+    limit: ByteLimit): ApplicationCheckpointIdentityResult =
+  ## Decode one exact local representation; initialized metadata remains untrusted until compared with independent caller context.
+  if uint64(bytes.len) > uint64(limit):
+    return ApplicationCheckpointIdentityResult(status: ApplicationCheckpointIdentityError.LimitExceeded)
+  if bytes.len != ApplicationCheckpointIdentityBytes:
+    return ApplicationCheckpointIdentityResult(status: ApplicationCheckpointIdentityError.InvalidFormat)
+  for index, character in IdentityMagic:
+    if bytes[index] != byte(character):
+      return ApplicationCheckpointIdentityResult(status: ApplicationCheckpointIdentityError.InvalidFormat) # A checksum never enables version fallback.
+  let digest = blake2b256(bytes.toOpenArray(0, IdentityPayloadBytes - 1))
+  if digest.error != CryptoError.None:
+    return ApplicationCheckpointIdentityResult(status: ApplicationCheckpointIdentityError.BackendFailure)
+  let checksum = array[32, byte](digest.value)
+  for index in 0..<32:
+    if bytes[IdentityPayloadBytes + index] != checksum[index]:
+      return ApplicationCheckpointIdentityResult(status: ApplicationCheckpointIdentityError.ChecksumMismatch) # Corrupt metadata exposes no usable fields.
+  let configuration = decodeParameters(bytes.toOpenArray(84, IdentityPayloadBytes - 1))
+  if not configuration.ok:
+    return ApplicationCheckpointIdentityResult(status: ApplicationCheckpointIdentityError.InvalidParameters) # Complete fixed bytes still must satisfy the existing parameter invariants.
+  var blockHash = default(array[32, byte])
+  var root = default(array[32, byte])
+  for index in 0..<32:
+    blockHash[index] = bytes[16 + index]
+    root[index] = bytes[48 + index] # Fixed extent was proved before any field read.
+  var slot = 0'u32
+  for index in 0..<4:
+    slot = slot or (uint32(bytes[80 + index]) shl (8 *
+        index)) # Disjoint shifts preserve full-width time without wrapping addition.
+  ApplicationCheckpointIdentityResult(status: ApplicationCheckpointIdentityError.None,
+    completed: ApplicationCheckpointIdentity(initialized: true, blockIdentity: BlockHash(blockHash),
+      stateCommitment: StateRoot(root), timeslot: ApplicationCheckpointSlot(slot),
+          configuration: configuration.value))

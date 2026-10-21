@@ -66,6 +66,39 @@
         "reason": "parameters"
       },
       "name": "application-checkpoint-identity-parameters"
+    },
+    {
+      "arguments": [
+        "encoded-default"
+      ],
+      "description": "Application checkpoint identity encoded-default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "encoded-default"
+      },
+      "name": "application-checkpoint-identity-encoded-default"
+    },
+    {
+      "arguments": [
+        "encode-unready"
+      ],
+      "description": "Application checkpoint identity encode-unready",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "encode-unready"
+      },
+      "name": "application-checkpoint-identity-encode-unready"
+    },
+    {
+      "arguments": [
+        "decode-short"
+      ],
+      "description": "Application checkpoint identity decode-short",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "decode-short"
+      },
+      "name": "application-checkpoint-identity-decode-short"
     }
   ],
   "crypto_library": "crypto",
