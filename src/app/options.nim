@@ -11,15 +11,21 @@ import ../codec/bounded
 const
   MaxDownloadBlocks* = 64             ## A command requests a finite number of actual successive adoptions.
   MaxDownloadAncestors* = 64          ## Hard path-count cap before any ancestor file IO or native setup.
+  DefaultCompactionBytes = 64'u64*1024*1024 # Managed maintenance is bounded independently of write policy.
+  MaximumCompactionBytes = 128'u64*1024*1024 # Leave journal capacity for a bounded final publication frame.
   DefaultStateWrites = 1000'u64       # CLI defaults do not widen explicitly supplied component policies.
   DefaultStateWriteBytes = 100000'u64 # Each omitted mutation ceiling resolves independently.
   Switches = ["--with-ui", "--with-rpc", "--with-telemetry", "--with-state"]
   Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes",
       "--state-write-bytes", "--state-checkpoint", "--state-trust", "--state-header",
-      "--state-checkpoint-bytes", "--state-storage", "--state-db", "--download-ancestor", "--download-blocks"]
+      "--state-checkpoint-bytes", "--state-storage", "--state-db", "--state-layout",
+      "--state-compact-bytes", "--download-ancestor", "--download-blocks"]
 
 type StateStorage* {.pure.} = enum ## Backend choice is independent of future full/light node modes.
   Memory, Disk
+
+type StateDiskLayout* {.pure.} = enum ## Physical layout is independent of memory/disk and future full/light selection.
+  Journal, Managed
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
   parsed, telemetry, rpc, ui, state, recover: bool
@@ -29,6 +35,8 @@ type Options* = object ## Validated service controls; command handlers validate 
   endpoint, chain, directory: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
   backend: StateStorage
+  layout: StateDiskLayout
+  compactBytes: ByteLimit
   database: string
   rpcNumber, uiNumber: uint16
   writeCount: ElementLimit
@@ -68,6 +76,12 @@ func stateEnabled*(options: Options): bool =
 func diskStorage*(options: Options): bool =
   ## Only a validated explicit disk request enables durable backend startup.
   options.parsed and options.state and options.backend == StateStorage.Disk
+func managedStorage*(options: Options): bool =
+  ## Only an explicitly selected managed disk layout enables managed startup or automatic reclamation.
+  options.diskStorage and options.layout == StateDiskLayout.Managed
+func stateCompactionBytes*(options: Options): ByteLimit {.requires: options.managedStorage.} =
+  ## Return the managed soft journal threshold; explicit zero disables automatic maintenance.
+  options.compactBytes
 func stateDatabase*(options: Options): string {.requires: options.diskStorage.} =
   ## Return the explicitly selected database path; no implicit location or overwrite is invented.
   options.database
@@ -143,7 +157,8 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
   ## Parse unique trailing controls atomically; repeated invocations own independent configuration.
   options = default(Options)
   var candidate = Options(rpcNumber: 19800, uiNumber: 8888, downloadCount: 1,
-    writeCount: ElementLimit(DefaultStateWrites), writeBytes: ByteLimit(DefaultStateWriteBytes))
+    writeCount: ElementLimit(DefaultStateWrites), writeBytes: ByteLimit(DefaultStateWriteBytes),
+    compactBytes: ByteLimit(DefaultCompactionBytes))
   var first = arguments.len
   for i in 0..<arguments.len: # Only reserved service controls begin the trailing option region.
     if arguments[i] in Switches or arguments[i] in Values:
@@ -175,6 +190,11 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--state-checkpoint": candidate.recoveryFile = value
       of "--state-trust": candidate.recoveryIdentity = value
       of "--state-header": candidate.recoveryHeader = value
+      of "--state-layout":
+        case value
+        of "journal": candidate.layout = StateDiskLayout.Journal
+        of "managed": candidate.layout = StateDiskLayout.Managed
+        else: return false # Layout spelling is explicit; existing paths never select migration implicitly.
       of "--state-db": candidate.database = value
       of "--download-blocks":
         var number = 0'u64
@@ -192,11 +212,14 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
         of "memory": candidate.backend = StateStorage.Memory
         of "disk": candidate.backend = StateStorage.Disk
         else: return false # Backend spelling has one exact representation; light is not a backend.
-      of "--state-writes", "--state-write-bytes", "--state-checkpoint-bytes":
+      of "--state-writes", "--state-write-bytes", "--state-checkpoint-bytes", "--state-compact-bytes":
         var number = 0'u64
         if not decimalLimit(value, number): return false # No partial or wrapped budget escapes the candidate.
         if name == "--state-writes": candidate.writeCount = ElementLimit(number)
         elif name == "--state-write-bytes": candidate.writeBytes = ByteLimit(number)
+        elif name == "--state-compact-bytes":
+          if number > MaximumCompactionBytes: return false
+          candidate.compactBytes = ByteLimit(number)
         else: candidate.recoveryBytes = ByteLimit(number)
       of "--rpc-port", "--ui-port":
         let port = portValue(value)
@@ -220,6 +243,9 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
     if not hasDatabase: return false # Every disk run selects its exact path before opening storage.
   elif hasDatabase:
     return false # A memory run cannot silently ignore a requested physical database.
+  if "--state-layout" in seen and candidate.backend != StateStorage.Disk: return false
+  if "--state-compact-bytes" in seen and not (candidate.backend == StateStorage.Disk and
+      candidate.layout == StateDiskLayout.Managed): return false # Never silently ignore maintenance controls.
   let recoveryControls = ["--state-checkpoint", "--state-trust", "--state-header", "--state-checkpoint-bytes"]
   var recoveryCount = 0
   for control in recoveryControls:
