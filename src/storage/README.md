@@ -62,7 +62,7 @@ and a borrowed batch; callers control the number and lifetime of retained revisi
 failure follows the project's fail-stop policy. Handles belong to the single-threaded ARC execution
 contract; this module adds no cross-thread ownership protocol.
 
-`StateStore` integration is deferred under the explicit coordination boundary above. Existing
+The authorized in-memory `StateStore` tranche follows the coordination boundary above. Existing
 whole-map checkpoints remain the recovery/export
 baseline; this module performs no disk I/O. Partial light state needs its own proof/trust contract
 and separate database. Future byte-storage backends can live beside this module while preserving

@@ -4,7 +4,7 @@
 update their feature contract rather than appending progress here.
 
 `src/state/` owns the in-memory serialized-state store: atomic write batches publish complete
-immutable snapshots and recompute roots through the existing Merklization implementation.
+immutable snapshots and use the complete-state incremental trie for commitment updates.
 `src/state/checkpoint.nim` encodes and verifies versioned local full-map checkpoints;
 `checkpoint_file.nim` bounds synchronous startup reads and publishes complete sibling files
 through the bounded `src/lib/atomic_file.nim` byte-publication primitive: POSIX file sync,
@@ -14,14 +14,15 @@ not light-state databases or authenticated chain-head recovery.
 
 Snapshots can fork private complete-map working stores with inherited resource ceilings; branches share
 only immutable prior owners and publish independently.
-The standalone [`storage/full_state_trie`](../../src/storage/README.md) provides immutable
-incremental full-map revisions with shared subtrees. Storage and state/checkpoint work continue
-independently: state work must not modify or adopt this trie, and storage work must not change
-state consumers. Integration requires a separately scoped task explicitly authorized by the
-maintainer; merging the standalone trie does not authorize adoption.
+The [`storage/full_state_trie`](../../src/storage/README.md) provides immutable complete-map
+revisions with shared subtrees. The maintainer authorized its in-memory StateStore adoption,
+coordinated with the state owner; the public sorted-map/read/fork API remains unchanged.
+The [integration contract](../../spec/state-store-incremental.md) records atomic map/trie
+publication, independent root cross-checks, consumer checks and measured tradeoffs. Disk adoption,
+canonical durable heads and startup mode/backend selection remain separately authorized work.
 See [the trie contract](../../spec/full-state-trie.md) and
-[the storage contract](../../spec/state-store.md). Native replay verifies seven published pre/post mapping pairs; this is not state-transition
-execution.
+[the storage contract](../../spec/state-store.md). Native replay verifies seven published pre/post
+mapping pairs; this is not state-transition execution.
 
 `src/state/authorization.nim` implements the first bounded non-PVM transition: authorization
 pool advancement from validated guarantee projections and post-accumulation queues. Its store

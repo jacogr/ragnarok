@@ -1,16 +1,16 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Owned in-memory serialized JAM state, using GP 0.8.0 M/B/L through stateTrieRoot.
+## Owned in-memory serialized JAM state with atomic sorted mappings and incremental GP 0.8.0 commitments.
 ## Single-threaded handles publish complete immutable snapshots; borrowed write inputs stay
-## stable for apply. Snapshot retention is caller-controlled, with no disk storage or
-## incremental trie yet.
+## stable for apply. Snapshot retention is caller-controlled; storage remains in memory.
 ##
 ## Exposes StateStore/StateStoreSnapshot handles, snapshot, lookup, sorted keyAt, commitment and atomic apply over
 ## complete serialized mappings, bounded owner-bound copySlice, plus forkStateStore with inherited ceilings for private working branches.
 
 import std/[algorithm, assertions]
 import ../codec/[state_trie, state_layout, bounded]
+import ../storage/full_state_trie
 
 type
   StateEntryIndex* = distinct int ## Sorted ordinal interpreted only against the supplied immutable complete-map snapshot.
@@ -30,6 +30,7 @@ type
   ## Acyclic ARC-owned map. Values become immutable before this owner is published.
   SnapshotData = ref object
     entries: seq[StateEntry]
+    trie: FullStateTrie # Independently immutable path-copied Merkle state, published with the sorted map.
     commitment: StateTrieCommitment
     limits: StateStoreLimits
   StateStoreSnapshot* = object ## Read-only retained map identity; copies preserve the same immutable historical state.
@@ -82,29 +83,38 @@ proc copyBytes(source: openArray[byte]): seq[byte] =
   # Copy individual bytes rather than exporting or sharing caller-owned mutable backing storage.
   for i, octet in source: result[i] = octet
 
-## Translate Merklization errors without synthesizing a successful zero/default commitment.
-func storeError(reason: StateTrieError): StateStoreError =
+## Translate the private incremental implementation's reasons without exposing its handles.
+func storeError(reason: TrieError): StateStoreError =
   case reason
-  of StateTrieError.None: StateStoreError.None # A completed root is the only successful case.
-  of StateTrieError.Uninitialized: StateStoreError.Uninitialized # Preserve default failure.
-  of StateTrieError.LimitExceeded: StateStoreError.LimitExceeded # Map policy budgets directly.
-  of StateTrieError.DuplicateKey: StateStoreError.DuplicateKey # Never select an arbitrary duplicate.
-  of StateTrieError.LengthOverflow: StateStoreError.LengthOverflow # Keep addressing failures distinct.
-  of StateTrieError.BackendFailure: StateStoreError.BackendFailure # Native primitive refusal is an error.
+  of TrieError.None: StateStoreError.None # A completed root is the only successful case.
+  of TrieError.Uninitialized: StateStoreError.Uninitialized # Preserve default failure.
+  of TrieError.MissingKey: StateStoreError.MissingKey # Complete-map absence remains explicit.
+  of TrieError.InvalidWrite: StateStoreError.InvalidWrite # Malformed borrowed mutations never become deletes.
+  of TrieError.LimitExceeded: StateStoreError.LimitExceeded # Preserve complete-map and batch ceilings.
+  of TrieError.DuplicateKey: StateStoreError.DuplicateKey # Never select an arbitrary duplicate.
+  of TrieError.LengthOverflow: StateStoreError.LengthOverflow # Keep native extent failures distinct.
+  of TrieError.BackendFailure: StateStoreError.BackendFailure # Required primitive refusal is an error.
+
+func trieLimits(limits: StateStoreLimits): FullStateTrieLimits =
+  ## Preserve every caller-selected limit, including future writes after snapshot forks.
+  FullStateTrieLimits(trie: limits.trie, writes: limits.writes,
+    writeValueBytes: limits.writeValueBytes)
 
 proc newStateStore*(entries: openArray[StateEntry], limits: StateStoreLimits): StateStoreResult[StateStore] =
   ## Initialize from a borrowed mapping after complete root/resource validation. Duplicates reject.
   ## Allocation exhaustion follows the project's fail-stop policy; the store owns all published bytes.
-  let committed = stateTrieRoot(entries, limits.trie)
-  if committed.error != StateTrieError.None:
-    # Reject limits/duplicates/backend failures before retaining or copying any caller value.
+  let committed = newFullStateTrie(entries, trieLimits(limits))
+  if committed.error != TrieError.None:
+    # Reject before constructing the sorted map; private trie candidates retire on failure.
     return StateStoreResult[StateStore](status: storeError(committed.error))
   var owned = newSeq[StateEntry](entries.len)
   # Root validation has already bounded entry and value extents before owned allocation.
   for i, entry in entries:
     owned[i] = StateEntry(key: entry.key, value: copyBytes(entry.value))
   owned.sort(compareEntry)
-  let data = SnapshotData(entries: owned, commitment: committed.value, limits: limits)
+  let data = SnapshotData(entries: owned, trie: committed.value,
+    commitment: committed.value.commitment,
+    limits: limits)
   StateStoreResult[StateStore](status: StateStoreError.None,
     completed: StateStore(head: data, limits: limits))
 
@@ -209,7 +219,8 @@ proc apply*(store: var StateStore, writes: openArray[StateWrite]): StateStoreRes
   if uint64(writes.len) > uint64(store.limits.writes):
     # Bound input-derived sorting scratch before allocating it.
     return StateStoreResult[StateStoreSnapshot](status: StateStoreError.LimitExceeded)
-  if writes.len > high(int) div sizeof(WriteIndex):
+  if writes.len > high(int) div sizeof(WriteIndex) or
+      writes.len > high(int) div sizeof(TrieWrite):
     # A count representable as int still must fit its typed scratch extent.
     return StateStoreResult[StateStoreSnapshot](status: StateStoreError.LengthOverflow)
   var writeBytes = 0'u64
@@ -267,6 +278,16 @@ proc apply*(store: var StateStore, writes: openArray[StateWrite]): StateStoreRes
         return StateStoreResult[StateStoreSnapshot](status: StateStoreError.LimitExceeded)
       inc count
       total += uint64(size)
+  var adapted = newSeq[TrieWrite](writes.len)
+  for i, write in writes:
+    # Borrow payload descriptors only until synchronous trie apply privately copies changed leaf bytes.
+    adapted[i] = TrieWrite(key: write.key,
+      kind: (if write.kind == StateWriteKind.Put: TrieWriteKind.Put else: TrieWriteKind.Delete),
+      value: write.value)
+  let committed = head.trie.apply(adapted)
+  if committed.error != TrieError.None:
+    # Exact node policy and required hashing complete before constructing/publishing the sorted map.
+    return StateStoreResult[StateStoreSnapshot](status: storeError(committed.error))
   var candidate = newSeq[StateEntry](count)
   source = 0
   change = 0
@@ -288,11 +309,8 @@ proc apply*(store: var StateStore, writes: openArray[StateWrite]): StateStoreRes
         inc destination
       inc change
       if order == 0: inc source # Consume the original only on an equal full key.
-  let committed = stateTrieRoot(candidate, store.limits.trie)
-  if committed.error != StateTrieError.None:
-    # Node-policy or late hash failure drops the private candidate; the old head is still published.
-    return StateStoreResult[StateStoreSnapshot](status: storeError(committed.error))
-  let data = SnapshotData(entries: candidate, commitment: committed.value, limits: store.limits)
+  let data = SnapshotData(entries: candidate, trie: committed.value,
+    commitment: committed.value.commitment, limits: store.limits)
   store.head = data # This is the sole publication point, reached only after complete success.
   StateStoreResult[StateStoreSnapshot](status: StateStoreError.None,
     completed: StateStoreSnapshot(data: data))
