@@ -161,3 +161,9 @@ Managed `usage` reports cached selected-file extents and revision metadata witho
 copying. It excludes unknown/staged/retired files and retained reader memory. The fixed native
 `storage_managed_usage` workload records reclamation and elapsed cost for 64 commits retaining nine
 explicit roots; its measurements are descriptive local evidence, not performance thresholds.
+
+The authorized managed adoption keeps `FileRepository` as the existing public publication/result
+facade. `initializeManagedFileRepository`, `openManagedFileRepository` and
+`recoverManagedFileRepository` explicitly select managed ownership; legacy entry points remain
+single-file operations. `opened` reads scalar lifecycle state, so worker polling does not touch ARC
+graphs. Managed compaction and selected usage return `UnsupportedLayout` for legacy owners.

@@ -6,4 +6,4 @@ type
   FileError* {.pure.} = enum ## Partial/uncertain writes never expose a successful successor view.
     Uninitialized, None, Busy, InvalidPath, AlreadyExists, IoFailure, LimitExceeded,
     WrongIdentity, InvalidJournal, InvalidBatch, InvalidFrame, PublishedUnsynced, RecoveryRequired,
-      BackendFailure, RecoveryMismatch, StaleView, InvalidRetention, EpochExhausted
+      BackendFailure, RecoveryMismatch, StaleView, InvalidRetention, EpochExhausted, UnsupportedLayout
