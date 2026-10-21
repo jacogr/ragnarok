@@ -641,6 +641,17 @@ func startupDiskMaintenanceOutcome*(services: Services): DiskChainResult[
     not services.preparing and not services.publishing.} =
   ## Retain a real pre-listener startup compaction receipt; default means no startup maintenance was due.
   services.startupMaintenance
+func diskMaintenanceFailed*(services: Services): bool {.requires:
+    not services.preparing and not services.publishing.} =
+  ## Observe actual preparation/admission/IO/cleanup failure without treating joined nonexecution as rollback or failure.
+  if services.maintenanceStage.error notin {DiskChainError.Uninitialized,
+      DiskChainError.None}: return true
+  if services.maintenanceAdmission notin {DiskWorkerError.Uninitialized,
+      DiskWorkerError.None}: return true
+  if services.maintenanceCompletion.kind != DiskCompletionKind.Maintained: return false
+  let outcome = services.maintenanceCompletion.maintenanceValue
+  if outcome.error != DiskChainError.None: return true
+  outcome.value.cleanup != FileError.None
 func diskMaintenanceCompletion*(services: Services): DiskPublicationCompletion {.requires:
     not services.preparing and not services.publishing.} =
   ## Retain the exact completed or queued-not-executed maintenance receipt across joined shutdown.

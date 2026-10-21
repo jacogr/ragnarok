@@ -185,3 +185,18 @@ confirmed copy and source retirement, the managed owner becomes canonical. A val
 may remain after a later retirement/startup failure; retries never overwrite it. Omit migration
 intent for subsequent ordinary managed restarts. Tests compare all state entries, preserve the
 legacy bytes, refuse existing targets/corrupt sources and independently reopen both databases.
+
+## Maintenance failure and confirmed progress
+
+Services separately retains actual maintenance preparation, worker admission, IO and cleanup
+failures. Joined queued nonexecution is not failure or rollback. The download command reports
+`StorageMaintenanceFailure` only after preserving any confirmed installed child count, including
+an outstanding child confirmed during joined teardown. An uninstalled/uncertain publication is
+never counted. Ordinary memory/journal behavior and network/ancestry contracts stay unchanged.
+
+The failure suite injects a real CURRENT.next exclusive-create collision after genuine child
+publication and separately runs a forked writer with a real zero RLIMIT_FSIZE. It checks the
+confirmed child remains canonical, exact nested failure reasons, mutation refusal, preserved
+CURRENT, explicit no-maintenance restart and kernel retirement of abruptly abandoned locks.
+Fork occurs before any parent Services worker starts. No production fault hook or power-loss
+claim is introduced. The existing real TLS download-progress consumer remains passing.

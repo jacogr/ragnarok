@@ -14,7 +14,8 @@ import ../quic/[block_download_loop, block_download_peers]
 
 type DownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
   Uninitialized, Adopted, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,
-  InvalidAncestors, StartupFailure, AdmissionFailure, TransportFailure, DispatchFailure, Exhausted, Timeout
+  InvalidAncestors, StartupFailure, AdmissionFailure, TransportFailure, DispatchFailure, Exhausted,
+    Timeout, StorageMaintenanceFailure
 
 type DownloadCommandOutcome* = object ## Immutable scalar diagnostics describe confirmed installed progress, never execution authority.
   status: DownloadCommandResult
@@ -122,6 +123,7 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
       inc adopted
       observed = ObservedDownloadHead(initialized: true, hash: array[32, byte](child.blockHash),
           slot: uint32(child.slot))
+      if owner.diskMaintenanceFailed: return DownloadCommandResult.StorageMaintenanceFailure
       if adopted == requested: return DownloadCommandResult.Adopted
       var next = newSeq[OwnedHeader](older.len + 1)
       next[0] = previousHeader
@@ -196,6 +198,7 @@ proc performDownloads(options: Options, adopted: var int): DownloadCommandResult
           uint32(settled.value.slot) <= observed.slot:
         return DownloadCommandResult.DispatchFailure # Only this run's one outstanding child can add shutdown-confirmed progress.
       inc adopted
+  if owner.diskMaintenanceFailed: return DownloadCommandResult.StorageMaintenanceFailure
   terminal
 
 proc runDownloads*(options: Options): DownloadCommandOutcome {.raises.} =
