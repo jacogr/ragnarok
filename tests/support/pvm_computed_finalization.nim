@@ -9,6 +9,7 @@ import ../../src/state/[computed_execution, computed_finalization, accumulation_
   accumulation_runner, accumulation_dispatch, accumulation_execution, accumulation_batch,
   accumulation_reentry, accumulation_continuation, accumulation_outputs]
 import ../../src/codec/[bounded, state_outputs]
+import ../../src/pvm/step
 import ./[pvm_computed_execution, accumulation_execution_context]
 
 proc finalizationFixture*(withReady = true, withComposition = false,
@@ -22,6 +23,8 @@ proc finalizationFixture*(withReady = true, withComposition = false,
     let bytes = if storage in {ComputedStorageMode.FetchWideOffset,
         ComputedStorageMode.FetchWideIndex, ComputedStorageMode.FetchTail}: 11'u64 else: 3'u64
     limits.completion.batch.selfValueBytes = ByteLimit(bytes)
+  if storage == ComputedStorageMode.FetchReadBack:
+    limits.steps = ExecutionStepLimit(32) # Admit only the new24-instruction read-after-write guest before its original execution.
   let executed = executeComputedAccumulation(computedExecutionFixture(withReady = withReady,
       withComposition = withComposition, withChain = withChain, storage = storage), limits)
   if executed.error != ComputedExecutionError.None:
