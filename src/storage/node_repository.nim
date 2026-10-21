@@ -133,10 +133,15 @@ proc graph(records: seq[StoredRecord], digest: StateNodeHash, depth: int,
   # Borrow scalar fields directly from the immutable table; a local record would deep-copy payload bytes.
   if records[index].kind == TrieRecordKind.Leaf:
     let key = array[31, byte](records[index].key)
-    for bit in 0..<depth:
-      let mask = byte(128 shr (bit mod 8))
-      if (key[bit div 8] and mask) != (prefix[bit div 8] and mask):
-        return RepositoryError.InvalidGraph # A locally valid node at the wrong path is not a valid trie.
+    for octet in 0..<depth div 8:
+      # Whole prefix bytes replace eight identical bit comparisons without reading beyond the key.
+      if key[octet] != prefix[octet]: return RepositoryError.InvalidGraph
+    let remaining = depth mod 8
+    if remaining != 0:
+      # Only routed high bits matter; unvisited low key bits remain unconstrained.
+      let mask = byte(255 xor ((1 shl (8-remaining))-1))
+      if (key[depth div 8] and mask) != (prefix[depth div 8] and mask):
+        return RepositoryError.InvalidGraph
     let size = uint64(records[index].payload.len)
     if counts.entries >= uint64(limits.items) or size > uint64(limits.perValue) or
         size > uint64(limits.totalValueBytes)-counts.bytes:
