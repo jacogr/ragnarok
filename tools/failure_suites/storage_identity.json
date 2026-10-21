@@ -1,0 +1,72 @@
+{
+  "source": "tests/native/storage_identity_results.nim",
+  "build_name": "storage-identity-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "default"
+      },
+      "arguments": [
+        "bytes",
+        "default"
+      ],
+      "name": "storage-identity-bytes-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage identity bytes default guard"
+    },
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "failed"
+      },
+      "arguments": [
+        "bytes",
+        "failed"
+      ],
+      "name": "storage-identity-bytes-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage identity bytes failed guard"
+    },
+    {
+      "identity": {
+        "member": "identity",
+        "origin": "default"
+      },
+      "arguments": [
+        "identity",
+        "default"
+      ],
+      "name": "storage-identity-identity-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage identity identity default guard"
+    },
+    {
+      "identity": {
+        "member": "identity",
+        "origin": "failed"
+      },
+      "arguments": [
+        "identity",
+        "failed"
+      ],
+      "name": "storage-identity-identity-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage identity identity failed guard"
+    },
+    {
+      "identity": {
+        "member": "chain",
+        "origin": "default"
+      },
+      "arguments": [
+        "chain",
+        "default"
+      ],
+      "name": "storage-identity-chain-default",
+      "diagnostic": "identity.initialized",
+      "description": "Storage identity chain default guard"
+    }
+  ]
+}

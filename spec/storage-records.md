@@ -72,3 +72,16 @@ publishes full/changed/inverse physical batches and verifies every restored valu
 trusted-root refusal, narrower ceilings and views retained beyond close. The observer-linked
 `storage_restoration_failure` suite proves trust/policy refusal before hashes, typed backend failure,
 subsequent recovery and 1,000 independent ARC release cycles.
+
+## Full-state database identity
+
+`database_identity.nim` encodes `RAGNAROK-FULL-NODES-V1\n`, an explicit nominal 32-byte
+`StorageChainId`, then Blake2b-256 of that complete prefix. Decode requires exact bytes, a valid
+checksum and the independently selected chain. Unknown schema/mode or incompatible chain never
+converts or reuses a database implicitly. This checksum grants no chain authority. Default identity
+objects refuse; callers must choose the chain and path before opening physical storage.
+
+Only the full-state schema is implemented. A future light database needs a separate schema and
+proof/trust contract; no light-state API, CLI mode or path-selection adapter is added. The native
+`storage_identity` suite checks a frozen independent hashlib witness, every truncated prefix and
+every one-byte corruption, exact/short limits, trailers, defaults and valid-but-foreign chains.
