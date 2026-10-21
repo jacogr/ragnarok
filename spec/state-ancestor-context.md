@@ -48,3 +48,11 @@ request count is capped by strict slot distance to the oldest missing lookup and
 header allowance. No numeric distance is treated as a required chain length: skipped slots remain
 valid. Complete plans require no request; zero remaining allowance refuses incomplete plans.
 Focused signed/authored tests cover complete/missing/default/permanent-refusal and quota cases.
+
+Report admission now has explicit `prepareBlockReports` and `completeBlockReports` boundaries.
+Preparation owns the actual successful block transition, verified credentials, parent policy,
+corrected recent history and exact policies. It certifies no lookup, assignment or final state.
+Completion accepts only that opaque preparation plus older headers and performs lookup/package/
+capacity checks. The original `planBlockReports` composes both and preserves nested refusal causes.
+Existing signed composition and ARC tests run through that wrapper; explicit preparation/completion
+positive and default negative controls cover the new boundary.
