@@ -15,7 +15,8 @@ type
     state: StateStore
     view: ChainView
   ApplicationChainError* {.pure.} = enum ## Failed/default results retain only the selected reason, never partial application owners.
-    Uninitialized, None, MissingHead, StateFailure, ChainFailure, RpcFailure, ParametersFailure, GenesisFailure
+    Uninitialized, None, MissingHead, StateFailure, ChainFailure, RpcFailure, ParametersFailure,
+      GenesisFailure, DurabilityRequired, DurabilityFailure
   ApplicationChainResult*[T] = object ## Guard constructor/application success separately from actual failed child stages.
     case status: ApplicationChainError
     of None:
@@ -137,3 +138,23 @@ proc installPrepared*(chain: var ApplicationChain, rpc: var rpc_server.Server,
       canInstallPrepared(chain, rpc, prepared, lease).} =
   ## Join canonical and RPC owners before subscriber work; no execution/capture/hash is repeated.
   rpc.installPreparedAccumulation(chain.state, chain.view, prepared, lease)
+
+proc durabilityRequired*(): ApplicationChainResult[BlockSnapshot] =
+  ## Disk consumers use the asynchronous handoff; synchronous application calls cannot bypass persistence.
+  ApplicationChainResult[BlockSnapshot](status: ApplicationChainError.DurabilityRequired)
+proc durabilityFailure*(): ApplicationChainResult[BlockSnapshot] =
+  ## The service retains the exact disk stage/IO outcome separately; this completion grants no child.
+  ApplicationChainResult[BlockSnapshot](status: ApplicationChainError.DurabilityFailure)
+proc preparationRefusal*(failure: ChainPreparationResult): ApplicationChainResult[
+    BlockSnapshot] {.requires:
+    failure.error == ChainPreparationError.ChainFailure.} =
+  ## Preserve the original composition/capture refusal without synthesizing a partial child.
+  ApplicationChainResult[BlockSnapshot](status: ApplicationChainError.ChainFailure,
+      chainReason: failure.chainFailure)
+proc installedPrepared*(chain: ApplicationChain, prepared: PreparedChainUpdate): ApplicationChainResult[
+    BlockSnapshot] {.requires:
+    prepared.ready and sameStateSnapshot(chain.stateSnapshot.value, prepared.stateSnapshot) and
+    sameChainView(chain.chainView, prepared.chainView).} =
+  ## Acknowledge only the exact already installed successor; this result performs no mutation or capture.
+  ApplicationChainResult[BlockSnapshot](status: ApplicationChainError.None,
+      completed: prepared.child)

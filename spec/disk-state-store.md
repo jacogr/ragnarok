@@ -351,6 +351,41 @@ still refuse atomically. Component APIs with explicit StateStoreLimits retain th
 Memory remains the default. Disk requires validated `--with-state`, chain and mutation policies,
 plus an explicit `--state-db PATH`; a memory run refuses an ignored database path. Parsing is
 atomic and rejects duplicate, incomplete, misspelled or disabled backend controls. External
-checkpoint controls remain an independent all-or-none trust request. This parser layer refuses
-disk service startup until the immediately following runtime layer enables it, so the flag can
-never silently execute against memory.
+checkpoint controls remain an independent all-or-none trust request. The runtime layer opens the selected backend before listeners, so a disk flag never silently
+executes against memory.
+
+## Application disk runtime
+
+Services now enables the backend flag before listeners become visible. Its chain identity is
+Blake2b-256 of `RAGNAROK-CHAIN-V1\n`, configured genesis header hash, complete genesis posterior root
+and the complete encoded parameter tuple. Normal restart opens only that contextual database and
+restores its bounded history/finality; a missing path creates exclusively from configured genesis.
+Invalid existing journals, identities, locks or application context never fall back to memory or
+bootstrap. External trusted imports create exclusively and refuse every existing database path.
+
+Initial finite ceilings are 256 MiB journal, 128 MiB retained physical value bytes, 4,194,304
+physical records, 64 MiB encoded batch, 1,048,576 exported records and 4 MiB per-frame context.
+The selected complete-state trie and explicit mutation policies remain separate inherited ceilings.
+Startup currently reconstructs configured genesis to bind its complete root; this bounded cost and
+historical-map restoration remain measurement/improvement work, not production-scale optimality.
+
+Disk adoption uses the existing one-slot queue with a distinct Publishing stage. The host prepares
+and checks canonical/RPC authority, encodes context, and retires ALL temporary source/preparation
+aliases in a separate activation before worker admission. RPC remains paused while native IO holds
+its exclusive lease. Later scalar/tick polling collects the actual receipt, installs the prepared
+canonical/RPC update, then reopens RPC. Producer completion is available only after that sequence;
+the download loop waits across ticks. Synchronous Services.applyAccumulation returns
+DurabilityRequired in disk mode; consumers enqueue and poll instead of blocking the dispatcher.
+Memory-mode behavior is unchanged.
+
+Exact failed staging and IO outcomes remain available separately from the generic application
+DurabilityFailure completion. Potential IO uncertainty prevents further writes until a fresh startup.
+Explicit backend shutdown joins before input/canonical retirement, preserves actual receipts across
+close, and requires fresh startup before more writes. The download-loop close path joins active disk
+publication before retiring its private input aliases. RPC startup adopts the whole restored view,
+including history/finality, before any request processing. Full/light remains independent.
+
+The application_services suite retains its original memory-mode 1,000-cycle balanced ARC evidence
+and adds signed disk execution with and without RPC, paused publication, competing-lock refusal,
+exact prepared ownership, persisted child/parent restart and explicit synchronous bypass refusal.
+The executable semantic check and actual composite Services ownership rejection pass.
