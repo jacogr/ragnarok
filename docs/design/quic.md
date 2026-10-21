@@ -7,7 +7,11 @@ update their feature contract rather than appending progress here.
 nonblocking UDP dispatcher drives the maintained LSQUIC/TLS bridge. No stream or connection creates
 an OS thread. Raw-block preparation uses one reusable Services worker and one outstanding input
 lease after native callbacks retire; endpoint polling continues while canonical/RPC access is gated.
-See the [download worker contract](../../spec/application-download-worker.md). Optional RingVRF verification uses two workers and four total owned job slots.
+A finite download run retains authenticated peer connections across children. Host rearming
+requires a consumed canonical adoption, native close and retired input/job leases; final shutdown
+joins before borrowed owners retire. See the
+[progress contract](../../spec/application-download-progress.md) and the
+[download worker contract](../../spec/application-download-worker.md). Optional RingVRF verification uses two workers and four total owned job slots.
 The application entry point is `src/ragnarok.nim`. `session.nim` receives validated application
 configuration and privately owns peer/stream state, callbacks and retained mesh coordination.
 Both peer shapes use `app/services.nim` for optional service ownership/startup; transport

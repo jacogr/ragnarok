@@ -5,10 +5,10 @@ scope, verification and remaining work.
 
 `src/ragnarok.nim` is the sole native application entry point for production and E2E builds.
 It reads process arguments once, parses an owned `app/options.Options`, and dispatches bounded
-peer/mesh lifecycles, explicit one-child downloads and no-socket selftests. Configuration is passed
+peer/mesh lifecycles, explicit bounded child downloads and no-socket selftests. Configuration is passed
 explicitly; transport, telemetry, RPC and UI modules do not inspect command-line globals. The current commands remain
-the development proof peer, providing the future client entry point without claiming full node
-execution, block import, consensus or validator operation.
+bounded development entry points with supported child admission, execution and publication.
+The long-running node, complete validation, consensus and validator lifecycles remain open.
 
 `app/options.nim` validates trailing service switches/configuration atomically. Private fields
 have read-only accessors; a failed/default result cannot start a session. Endpoint configuration
@@ -43,15 +43,19 @@ adoption outcome; both peer loops attempt at most one candidate per service tick
 work. Producers acknowledge completion explicitly, and shutdown retires either alternative.
 `app/candidate.nim` prepares from an owned block through existing admission and PVM stages,
 using the retained head's parent/map/parameters and explicit stage policies, then queues only
-complete finalized success. Network acquisition and asynchronous execution scheduling remain
-application integration work. See [the handoff contract](../../spec/application-chain.md).
+complete finalized success. The download dispatcher supplies network acquisition and managed
+asynchronous preparation for this supported path. See [the handoff contract](../../spec/application-chain.md).
 
 `app/download_command.nim` owns stable Services and dispatcher lifetimes for the explicit
 `download` command. `app/download_policy.nim` loads a bounded, complete versioned policy file;
-no gas, stage, retry or network budget is inferred. Up to sixteen explicitly pinned loopback peers may supply one
-child, with asynchronous preparation outside callbacks and success only after actual deferred adoption.
-The [startup contract](../../spec/application-download-startup.md) records the command,
-configuration schema and remaining production boundaries.
+no gas, stage, retry or network budget is inferred. Up to sixteen explicitly pinned loopback peers
+supply a finite sequence of up to 64 children, default one, with asynchronous preparation outside
+callbacks and success only after actual deferred adoption. The authenticated catalog remains
+stable across children. Explicit session rearming requires consumed adoption and retired
+stream/input/worker leases; final shutdown joins before outer aliases retire. One shared deadline
+and per-child stage/retry budgets preserve confirmed partial progress. See the
+[startup contract](../../spec/application-download-startup.md) and
+[progress contract](../../spec/application-download-progress.md) for configuration and bounds.
 
 `app/preparation_worker.nim` provides one reusable native execution thread and one outstanding
 input lease. Services manages that lease by pausing RPC before submission and guarding canonical
