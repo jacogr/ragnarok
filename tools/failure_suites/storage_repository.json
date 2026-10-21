@@ -1,0 +1,111 @@
+{
+  "source": "tests/native/storage_repository_results.nim",
+  "build_name": "storage-repository-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-repository-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage repository result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-repository-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage repository result failed guard"
+    },
+    {
+      "identity": {
+        "member": "record",
+        "origin": "default"
+      },
+      "arguments": [
+        "record",
+        "default"
+      ],
+      "name": "storage-repository-record-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage repository record default guard"
+    },
+    {
+      "identity": {
+        "member": "record",
+        "origin": "failed"
+      },
+      "arguments": [
+        "record",
+        "failed"
+      ],
+      "name": "storage-repository-record-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage repository record failed guard"
+    },
+    {
+      "identity": {
+        "member": "reason",
+        "origin": "default"
+      },
+      "arguments": [
+        "reason",
+        "default"
+      ],
+      "name": "storage-repository-reason-default",
+      "diagnostic": "outcome.status == InvalidRecords",
+      "description": "Storage repository reason default guard"
+    },
+    {
+      "identity": {
+        "member": "metadata",
+        "origin": "default"
+      },
+      "arguments": [
+        "metadata",
+        "default"
+      ],
+      "name": "storage-repository-metadata-default",
+      "diagnostic": "not view.data == nil",
+      "description": "Storage repository metadata default guard"
+    },
+    {
+      "identity": {
+        "member": "generation",
+        "origin": "default"
+      },
+      "arguments": [
+        "generation",
+        "default"
+      ],
+      "name": "storage-repository-generation-default",
+      "diagnostic": "not view.data == nil",
+      "description": "Storage repository generation default guard"
+    },
+    {
+      "identity": {
+        "member": "nodes",
+        "origin": "default"
+      },
+      "arguments": [
+        "nodes",
+        "default"
+      ],
+      "name": "storage-repository-nodes-default",
+      "diagnostic": "not view.data == nil",
+      "description": "Storage repository nodes default guard"
+    }
+  ]
+}
