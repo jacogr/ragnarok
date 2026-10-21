@@ -316,3 +316,21 @@ before/after 1,000 complete decode/bind/re-encode cycles. Both producer finality
 selections preserve exact bytes while imports retain one unfinalized head and
 explicit readonly policy. Semantic checks and inventory pass; evidence uses
 `build/recovery-roundtrip*`.
+
+## Operational handoff and remaining scope
+
+The [operator guide](../docs/checkpoint-import.md) describes independent trust
+inputs, all four startup controls, byte versus mutation policy, RPC observations
+and typed component APIs. This tranche integrates external complete-map checkpoint
+imports with existing application startup/execution/checkpoint lifetimes. Trie/
+storage interfaces and PVM implementations remain unchanged; db #1 separately
+owns local durable database publication and history/finality recovery. M1 framing
+is complete, while full T(state) serialization and whole-block JAM/STF parity
+remain open. Known process-exit evidence is separate from power-loss and exact-head
+Linux CI evidence.
+
+Final documentation links and executable flag-name checks pass. Fifty targeted
+native-harness/guard/unit-inventory Python tests, source-owned inventory and full
+pinned Nim/Rust formatting pass. Focused local native, actual RPC/TLS, known
+process-exit and ARC evidence is recorded above; no full E2E or Linux CI request
+is implied by publishing this stack.
