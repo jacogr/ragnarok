@@ -341,3 +341,30 @@ jobs:
           path: |
             build/ci/docker-build.log
             build/ci/docker-smoke.log
+
+  # Pinned public-API comparisons remain distinct from frozen native fixtures and future fuzzing.
+  pvm-reference:
+    if: *full
+    name: PVM reference comparisons
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Compare pinned PolkaVM and native PVM fixtures
+        run: make check-pvm-reference
+      # Retain diagnostics even if provisioning failed before results.json could be created.
+      - name: Retain PVM comparison evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-reference-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/pvm-reference/*.log
+            build/tests/pvm-reference/results.json
+            build/tests/native/selected/pvm_*.log
+            build/tests/native/preparation/selected-pvm_*.json

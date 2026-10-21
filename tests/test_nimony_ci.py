@@ -62,7 +62,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('synchronize', triggers)
         self.assertNotIn('opened', triggers)
         for target in ('check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
-                       'check-telemetry-interop-ci'):
+                       'check-telemetry-interop-ci', 'check-pvm-reference'):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
             self.assertEqual(text.count('run: make '+target+'\n'), 1)
         self.assertEqual(text.count('needs:'), 2)
@@ -94,6 +94,7 @@ class NimonyCISafeguards(unittest.TestCase):
                                ('docker', '${{ '+requested.replace("inputs.suite == 'unit' ||",
                                    "inputs.suite == 'unit' || inputs.suite == 'docker' ||")+' }}'),
                                ('guards', '&full ${{ '+full+' }}'), ('failures', '*full'),
+                               ('pvm-reference', '*full'),
                                ('e2e', '${{ '+e2e+' }}'), ('telemetry-interop', '*full'),
                                ('unit-status', '${{ always() && ('+requested+') }}'),
                                ('failures-status', '${{ always() && ('+full+') }}')]:
@@ -163,7 +164,7 @@ class NimonyCISafeguards(unittest.TestCase):
         definition = text.split('      - &inventory\n', 1)[1].split('      - ', 1)[0]
         self.assertEqual(definition.strip(),
                          'name: Validate verification inventory\n        run: make check-inventory')
-        jobs = ('modules', 'python', 'guards', 'unit', 'failures', 'e2e', 'telemetry-interop', 'docker')
+        jobs = ('modules', 'python', 'guards', 'unit', 'failures', 'e2e', 'telemetry-interop', 'docker', 'pvm-reference')
         positions = [text.index('\n  '+job+':\n') for job in jobs]+[len(text)]
         for index, job in enumerate(jobs):
             # Keeping the step in each job avoids relying on another job's result or skipped dependencies.
@@ -173,6 +174,23 @@ class NimonyCISafeguards(unittest.TestCase):
                 self.assertEqual(section.count(preflight), 1)
                 self.assertLess(section.index(preflight), section.index('run: make check-'+job))
         self.assertNotIn('continue-on-error:', text)
+
+    def test_pvm_reference_evidence_scope(self):
+        """The separate full-scope job keeps failed-run evidence without silently allowing failure."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        section = text.split('  pvm-reference:\n', 1)[1]
+        self.assertIn('runs-on: ubuntu-latest', section)
+        self.assertIn('if: *full', section)
+        self.assertEqual(section.count('run: make check-pvm-reference'), 1)
+        self.assertIn('if: always()\n        uses: *upload-artifact', section)
+        paths = section.split('          path: |\n', 1)[1]
+        self.assertIn('build/tests/pvm-reference/results.json', paths)
+        self.assertIn('build/tests/pvm-reference/*.log', paths)
+        self.assertNotIn('**', paths)
+        self.assertNotIn('target', paths)
+        self.assertNotIn('.bin', paths)
+        self.assertNotIn('continue-on-error', section)
+        self.assertNotIn('needs:', section)
 
     # The shared native builder must work before any historical driver has created its output directory.
     def test_bandersnatch_clean_build_directory(self):
