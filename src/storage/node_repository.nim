@@ -219,23 +219,23 @@ proc publish*(repository: var NodeRepository, expected: RepositoryView,
   repository.head = data # No failed validation can change the prior published owner.
   RepositoryResult[RepositoryView](status: RepositoryError.None, completed: RepositoryView(data: data))
 
-proc restoreFullTrie*(view: RepositoryView, expected: StateRoot,
-    limits: FullStateTrieLimits): RepositoryResult[FullStateTrie] =
-  ## Reconstruct only an independently trusted complete root, preserving caller mutation ceilings.
+proc restoreStateEntries*(view: RepositoryView, expected: StateRoot,
+    limits: StateTrieLimits): RepositoryResult[seq[StateEntry]] =
+  ## Copy complete reachable leaves under an independently trusted root, without rehashing them.
   let data = view.data
-  if data == nil: return RepositoryResult[FullStateTrie](status: RepositoryError.Uninitialized)
+  if data == nil: return RepositoryResult[seq[StateEntry]](status: RepositoryError.Uninitialized)
   if array[32, byte](data.commitment.root) != array[32, byte](expected):
-    return RepositoryResult[FullStateTrie](status: RepositoryError.RootMismatch) # Local journal/root claims cannot choose authority.
-  if uint64(data.commitment.entries) > uint64(limits.trie.items) or data.commitment.nodes > uint64(
-      limits.trie.nodes):
-    return RepositoryResult[FullStateTrie](status: RepositoryError.LimitExceeded) # Reject narrower fixed ceilings before traversal scratch.
+    return RepositoryResult[seq[StateEntry]](status: RepositoryError.RootMismatch) # Local journal/root claims cannot choose authority.
+  if uint64(data.commitment.entries) > uint64(limits.items) or data.commitment.nodes > uint64(
+      limits.nodes):
+    return RepositoryResult[seq[StateEntry]](status: RepositoryError.LimitExceeded) # Reject narrower fixed ceilings before traversal scratch.
   var seen = newSeq[bool](data.records.len)
   var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
   let checked = graph(data.records, StateNodeHash(array[32, byte](expected)), 0,
-    default(array[31, byte]), limits.trie, seen, counts)
-  if checked != RepositoryError.None: return RepositoryResult[FullStateTrie](status: checked)
+    default(array[31, byte]), limits, seen, counts)
+  if checked != RepositoryError.None: return RepositoryResult[seq[StateEntry]](status: checked)
   if counts.entries > uint64(high(int) div sizeof(StateEntry)):
-    return RepositoryResult[FullStateTrie](status: RepositoryError.LimitExceeded) # Bound the exact leaf descriptor extent before allocation.
+    return RepositoryResult[seq[StateEntry]](status: RepositoryError.LimitExceeded) # Bound the exact leaf descriptor extent before allocation.
   var entries = newSeq[StateEntry](int(counts.entries))
   var next = 0
   for index, record in data.records:
@@ -243,7 +243,15 @@ proc restoreFullTrie*(view: RepositoryView, expected: StateRoot,
       let copied = copyRecord(record)
       entries[next] = StateEntry(key: copied.key, value: copied.payload)
       inc next # Complete graph validation proved the exact reachable leaf count.
-  let restored = newFullStateTrie(entries, limits)
+  RepositoryResult[seq[StateEntry]](status: RepositoryError.None, completed: entries)
+
+proc restoreFullTrie*(view: RepositoryView, expected: StateRoot,
+    limits: FullStateTrieLimits): RepositoryResult[FullStateTrie] =
+  ## Reconstruct one immutable trie after trusted complete leaf extraction, preserving mutation ceilings.
+  let entries = restoreStateEntries(view, expected, limits.trie)
+  if entries.error != RepositoryError.None:
+    return RepositoryResult[FullStateTrie](status: entries.error)
+  let restored = newFullStateTrie(entries.value, limits)
   if restored.error != TrieError.None:
     return RepositoryResult[FullStateTrie](status: RepositoryError.TrieFailure,
         trieReason: restored.error)
