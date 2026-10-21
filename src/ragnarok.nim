@@ -44,6 +44,7 @@ proc main(): int =
       stdout.writeLine("         --download-ancestor FILE (repeat newest-first; download only, maximum 64)")
       stdout.writeLine("         --download-local-ancestors (download only; prepend all retained local parents)")
       stdout.writeLine("         --download-remote-ancestors COUNT (download only; fetch up to 1..64 older parents)")
+      stdout.writeLine("         --download-discover-ancestors COUNT (download only; fetch on demand, 1..64 headers per run)")
       stdout.writeLine("         --download-blocks COUNT (download only, default 1, range 1..64)")
       stdout.writeLine("State limits are unsigned budgets; supplied complete state is structurally checked.")
       return 0

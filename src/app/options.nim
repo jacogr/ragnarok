@@ -20,7 +20,8 @@ const
       "--state-write-bytes", "--state-checkpoint", "--state-trust", "--state-header",
       "--state-checkpoint-bytes", "--state-storage", "--state-db", "--state-layout",
       "--state-migrate-from",
-      "--state-compact-bytes", "--download-ancestor", "--download-blocks", "--download-remote-ancestors"]
+      "--state-compact-bytes", "--download-ancestor", "--download-blocks",
+      "--download-remote-ancestors", "--download-discover-ancestors"]
 
 type StateStorage* {.pure.} = enum ## Backend choice is independent of future full/light node modes.
   Memory, Disk
@@ -32,7 +33,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   parsed, telemetry, rpc, ui, state, recover, localAncestors: bool
   positional: seq[string]
   ancestorFiles: seq[string]
-  downloadCount, remoteAncestors: int
+  downloadCount, remoteAncestors, discoverAncestors: int
   endpoint, chain, directory: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
   backend: StateStorage
@@ -69,6 +70,10 @@ func localDownloadAncestors*(options: Options): bool =
 func remoteDownloadAncestors*(options: Options): int =
   ## Explicit finite descending context request; disabled/default/failed parses request no remote headers.
   if options.parsed: options.remoteAncestors else: 0
+
+func discoverDownloadAncestors*(options: Options): int =
+  ## Explicit whole-run on-demand header allowance; default/failed parses never enable acquisition.
+  if options.parsed: options.discoverAncestors else: 0
 
 func downloadBlocks*(options: Options): int =
   ## Valid commands default to one child; failed/default parsing reports no requested work.
@@ -227,6 +232,11 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
             number > uint64(MaxDownloadAncestors):
           return false # One canonical positive decimal bounds remote request work before any IO.
         candidate.remoteAncestors = int(number)
+      of "--download-discover-ancestors":
+        var number = 0'u64
+        if value[0] == '0' or not decimalLimit(value, number) or number == 0 or number > uint64(MaxDownloadAncestors):
+          return false # Whole-run header allowance is canonical, positive and finite before any command IO.
+        candidate.discoverAncestors = int(number)
       of "--download-ancestor":
         if candidate.ancestorFiles.len == MaxDownloadAncestors or value in candidate.ancestorFiles:
           return false # Repeated paths cannot multiply IO/work or exceed the startup path ceiling.
@@ -295,10 +305,12 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
   if candidate.positional.len > 0 and candidate.positional[0] == "download":
     if not candidate.state or candidate.telemetry: return false # Downloads require explicit canonical state; outgoing telemetry is not wired yet.
   if candidate.ancestorFiles.len > 0 or "--download-blocks" in seen or candidate.localAncestors or
-      candidate.remoteAncestors > 0:
+      candidate.remoteAncestors > 0 or candidate.discoverAncestors > 0:
     if candidate.positional.len == 0 or candidate.positional[0] != "download" or
         not candidate.state:
       return false # Other commands must not silently ignore supplied download controls.
+  if candidate.remoteAncestors > 0 and candidate.discoverAncestors > 0:
+    return false # Up-front fixed acquisition and child-driven discovery are explicit alternative command modes.
   candidate.parsed = true
   options = candidate # Only a complete validated configuration replaces the cleared output.
   true
