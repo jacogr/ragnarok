@@ -77,3 +77,10 @@ formatting passes2581 Nim sources and the Rust crate. These are checked-release
 macOS/ARC/Clang LTO results; remote Linux CI is separate and was not requested.
 Exact source/dependency/configuration hashes and logs are retained under
 `build/polkavm-memory-*`. No PolkaVM Rust execution is claimed.
+
+Runtime probe follow-through: the former ambiguous-origin misuse input now
+produces a valid Fault. Replace that obsolete failure expectation with a genuine
+local cycle-limit refusal; retain the same strict value precondition diagnostic.
+An explicit fault-origin driver invocation succeeds as a positive control.
+Non-fault origins continue rejecting fault-page access. Verify all six negative
+process cases and the positive control under the checked-release build profile.

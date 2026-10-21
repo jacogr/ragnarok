@@ -201,7 +201,7 @@ repaired store/load retries, saturated indices and address sums exceeding 64 bit
 The existing independent arithmetic traces and control witnesses also execute through
 `stepMemory`. Compiler guards protect outcome state/page privacy and nominal limits;
 isolated runtime probes reject fault-page access on every non-fault alternative and
-value access on the ambiguity gate. ARC release cycles include source/fault/repair/
+value access on a local simulation-limit refusal. ARC release cycles include source/fault/repair/
 success graphs. Inputs are original native witnesses; no upstream implementation,
 licence or binary fixture is copied into the project.
 
