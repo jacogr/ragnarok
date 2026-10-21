@@ -27,6 +27,7 @@ and telemetry/RPC/UI startup.
 | [`quic/`](quic/) | Nonblocking LSQUIC adapter, authenticated CE 143 peer and bounded proof offload | [Networking guide](../docs/networking.md) |
 | [`rpc/`](rpc/) | Optional WebSocket JSON-RPC queries and bounded subscriptions | [RPC contract](../spec/rpc.md) |
 | [`state/`](state/) | Serialized state storage, Merklization and transition foundations | [State design](../docs/design/state.md) |
+| [`storage/`](storage/) | Immutable incremental complete-state trie | [Storage guide](storage/README.md) |
 | [`telemetry/`](telemetry/) | Optional bounded JIP-3 telemetry delivery | [Telemetry contract](../spec/telemetry.md) |
 | [`ui/`](ui/) | Embedded gzip static server and Nimony browser prototype | [UI contract](../spec/ui.md) · [Browser prototype](../spec/ui-browser.md) |
 
