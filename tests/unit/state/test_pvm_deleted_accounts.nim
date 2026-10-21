@@ -14,12 +14,11 @@ import ../../../src/codec/[bounded, composite, header, state_accounts, state_ser
 import ../../../src/pvm/machine
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_batch_context, accumulation_provision_integration,
-  pvm_accumulation_program, pvm_accumulation_context, arc_evidence]
+  pvm_accumulation_program, pvm_accumulation_context, arc_evidence, accumulation_batch_hash_failures]
 
 # Observe/inject genuine backend refusals after actual executions and prepared publication plans exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
-proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 let slot = HeaderSlot(50000)
 let blob = @[5'u8, 7, 9]
@@ -379,13 +378,11 @@ block recreated_owner_and_failures:
   var owned = default(PreparedAccumulationBatch)
   var state = default(StateStore)
   var rows: seq[StateEntry] = @[]
-  var accountRows: seq[StateEntry] = @[]
   block sources:
     # Drop every external execution owner before applying or injecting private-phase failures.
     let fixture = registrarSetup(envelope(recreate = true, provide = true))
     owned = prepare(fixture, execute(fixture), execute(fixture, 1)).value
     rows = expected(fixture, @[], recreated = true, provided = true)
-    accountRows = expected(fixture, @[], recreated = true)
     state = fixture.state
   let prior = state.snapshot.value
   failHash(1)
@@ -393,14 +390,8 @@ block recreated_owner_and_failures:
     "recreation projection refuses an early account-root backend failure"
   failHash(0)
   assert sameStateSnapshot(prior, state.snapshot.value), "early refusal preserves the exact prior"
-  discard newStateStore(accountRows, integrationStoreLimits()).value
-  let hashes = hashCalls()
-  hashAfter(hashes)
-  assert applyAccumulationBatch(state, owned).provisionError ==
-      AccumulationProvisionError.BackendFailure,
-    "late provision failure discards even a completed recreation projection"
-  failHash(0)
-  assert sameStateSnapshot(prior, state.snapshot.value), "late refusal preserves all original target entries"
+  # Cover real account and provision phases after all caller execution owners have gone away.
+  assertBatchHashRollback(state, owned)
   discard applyAccumulationBatch(state, owned).value
   sameRoot(state, rows)
   let published = state.snapshot.value
@@ -427,17 +418,8 @@ block stale_and_backend:
   assert applyAccumulationBatch(target, plan).storeError == StateStoreError.BackendFailure, "account-root failure publishes no deletion or credit"
   failHash(0)
   assert sameStateSnapshot(prior, target.snapshot.value), "early failure is atomic"
-  let rows = expected(fixture, @[77'u32])
-  failHash(0)
-  let accountOnly = newStateStore(rows, integrationStoreLimits()).value
-  let hashes = hashCalls()
-  assert hashes > 0, "independent exact account-only root calibrates the phase boundary"
-  hashAfter(hashes)
-  let late = applyAccumulationBatch(target, plan)
-  assert late.error == AccumulationBatchError.TerminalFailure and late.provisionError ==
-      AccumulationProvisionError.BackendFailure, "late provision failure discards complete deletion/credit candidate"
-  failHash(0)
-  assert sameStateSnapshot(prior, target.snapshot.value), "late refusal retains original target, balance and requests"
+  # Exercise every actual hash without treating full-map constructor work as a mutation prefix.
+  assertBatchHashRollback(target, plan)
 
 block detached_owner:
   var owned = default(PreparedAccumulationBatch)

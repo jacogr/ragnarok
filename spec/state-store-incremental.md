@@ -84,6 +84,20 @@ checkpoint bundle, lookup and transition-failure ARC witnesses each complete 1,0
 without growth; occupied-byte baselines differ by the fixtures those suites deliberately retain.
 No production consumer or checkpoint format changes were necessary.
 
+Consumer fault injection must count the actual incremental mutation, rather than infer work
+from a full-map constructor or total trie nodes. The incoming-credit witness measures a successful
+credit before refusing each required state hash. Creation/deletion publication witnesses measure
+an actual successful batch on a separate store handle, then refuse every required hash from the
+same immutable prior. Both account-store and later provision failures must occur, with guarded
+reason extraction and exact prior snapshot preservation after every refusal. Independent expected
+roots, literal balances and stale-plan checks remain separate from that calibration.
+
+This corrects the accumulation-credit, created-account and deleted-account failures observed in
+Linux CI run `39553045492` after incremental-store adoption. All three selected suites pass locally
+with the checked optimized non-LTO unit profile and unchanged expected output; each retains its
+1,000-cycle ARC witness without growth. Production store behavior and compiler flags are unchanged.
+Exact-head Linux verification remains separate.
+
 Reproduce measurements without changing a checkout or Git ref:
 
 ```sh
