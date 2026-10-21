@@ -649,3 +649,15 @@ records before/after selected-file extents and compaction time under the native 
 and checks 1,000 allocation-free usage queries. Timing is descriptive local evidence, with no
 cross-host threshold or performance claim. This workload does not model random disk access, SSD
 wear, power-loss guarantees or production cache behavior.
+
+## Managed interruption evidence
+
+`storage_managed_failures` uses isolated forked writers, real RLIMIT_FSIZE short writes and abrupt
+`exitnow` without close/destruction. It checks zero/prefix/body/checksum-limited appends, poison
+refusal, immutable old readers and exact-prefix recovery. It also exits after snapshot creation,
+journal creation, partial pending manifest and confirmed CURRENT replacement: restart selects the
+old epoch until CURRENT changes and the new epoch thereafter, independently of old-file cleanup.
+A real partial staged snapshot leaves CURRENT unchanged, poisons the live owner and is removable
+only after validated reopen. No production fault-injection hooks are added. These are checked
+process/interruption tests, not a simulation of lost device caches or proof of power-loss behavior;
+post-rename synchronization uncertainty remains an explicit refusal requiring reopen.
