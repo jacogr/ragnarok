@@ -42,7 +42,7 @@ type
     data: nil RepositorySelectionData
   GraphCollection {.pure.} = enum ## Admission avoids collection; extraction and retention request exact positions.
     None, Leaves, Records
-  GraphVisit = object ## Traversal scratch records only reachable leaves for optional detached extraction.
+  GraphVisit = object ## Traversal scratch optionally collects reachable leaf or complete-record positions.
     seen: seq[bool]
     leaves: seq[int]
     collect: GraphCollection
