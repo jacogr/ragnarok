@@ -832,9 +832,8 @@ proc transferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Me
         memory) # Undefined modes are protocol refusals, not valid unimplemented funding paths.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let self = uint64(uint32(current.effectInfo.value.service))
-  if (uint64(cpu.registers[7]) != high(uint64) and uint64(cpu.registers[7]) != self) or
-      uint64(cpu.registers[9]) != 0 or uint64(cpu.registers[12]) == 0:
-    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Direct or supervised transfers require the broader account transition path.
+  if uint64(cpu.registers[12]) == 0:
+    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Direct credits require their independent account transition path.
   if context.parameters.get(transferMemoSize) != 128:
     return hostFailure(AccumulationDispatchError.InvalidContext) # The fixed C.2 memo type must match the protocol profile.
   var planned = default(PreparedAccumulationTransfer)
@@ -848,24 +847,34 @@ proc transferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Me
     var memo = default(array[128, byte])
     for i in 0..<128:
       memo[i] = captured.value[i] # Complete fixed input capture precedes WHO/LOW/CASH checks.
-    let prepared = prepareAccumulationTransfer(context.effects,
-      AccumulationTransferDestination(if uint64(cpu.registers[8]) == high(
-          uint64): self else: uint64(cpu.registers[8])), TransferBalance(uint64(cpu.registers[10])),
-      Gas(uint64(cpu.registers[11])), TransferMemo(memo), context.parameters)
-    case prepared.error
-    of AccumulationEffectError.None:
-      planned = prepared.value # This exact source version supplies the debit after full affordability.
-      deferredGas = uint64(cpu.registers[11])
-    of AccumulationEffectError.UnknownService:
-      code = high(uint64)-3 # WHO pays only the base fee.
-    of AccumulationEffectError.TransferGasLow:
-      code = high(uint64)-7 # LOW precedes CASH and pays only the base fee.
-    of AccumulationEffectError.InsufficientCash:
-      code = high(uint64)-6 # CASH pays no deferred gas.
-    of AccumulationEffectError.MalformedState:
-      return hostFailure(AccumulationDispatchError.MalformedState) # No fabricated guest verdict for corrupt metadata.
+    let rawFunder = uint64(cpu.registers[7])
+    let funder = if rawFunder == high(uint64): self else: rawFunder
+    if funder > uint64(high(uint32)):
+      code = high(uint64)-3 # Full-width source WHO follows memo capture and incurs no deferred fee.
     else:
-      return hostFailure(AccumulationDispatchError.InvalidContext) # No invalid plan can quote a successful fee.
+      let prepared = prepareAccumulationTransfer(context.effects,
+        AccumulationTransferDestination(if uint64(cpu.registers[8]) == high(
+            uint64): self else: uint64(cpu.registers[8])),
+        TransferBalance(uint64(cpu.registers[10])), Gas(uint64(cpu.registers[11])), TransferMemo(
+            memo),
+        context.parameters, ServiceIndex(uint32(funder)), AccumulationFundingMode(uint64(
+            cpu.registers[9])))
+      case prepared.error
+      of AccumulationEffectError.None:
+        planned = prepared.value # The exact source version supplies the debit after complete affordability.
+        deferredGas = uint64(cpu.registers[11])
+      of AccumulationEffectError.UnknownService:
+        code = high(uint64)-3 # WHO pays only the base fee.
+      of AccumulationEffectError.NotRequested:
+        code = high(uint64)-8 # Authority HUH precedes LOW and CASH, with no deferred fee.
+      of AccumulationEffectError.TransferGasLow:
+        code = high(uint64)-7 # LOW precedes CASH and pays only the base fee.
+      of AccumulationEffectError.InsufficientCash:
+        code = high(uint64)-6 # CASH pays no deferred gas.
+      of AccumulationEffectError.MalformedState:
+        return hostFailure(AccumulationDispatchError.MalformedState) # Corrupt metadata cannot become a guest verdict.
+      else:
+        return hostFailure(AccumulationDispatchError.InvalidContext) # No failed plan can quote a successful fee.
   of MachineError.Fault, MachineError.InvalidRange:
     action = HostAction.Panic # Memory failure quotes base-only gas and preserves the original destination register.
   of MachineError.LimitExceeded:

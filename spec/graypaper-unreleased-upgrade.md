@@ -57,10 +57,11 @@ with anchor-time lookup and clipped interpreted module capture; see
 [inner lifecycle](pvm-inner-lifecycle.md). Native compilation and compiled benchmarks
 remain outside this interpreted-engine work.
 
-All four `new` funding modes, self `upgrade`, and liquid deferred `transfer` use
+All four `new` and deferred `transfer` funding modes, plus self `upgrade`, use
 current argument layouts. Creation authenticates self/supervised sources, debits only
 the selected pool and binds child identity to the invoker. Self funding retains creation
-publication proof; foreign funding retains the explicit parallel conflict-selection gate. Supervised upgrade now executes against retained invocation state;
+publication proof; foreign funding retains the explicit parallel conflict-selection
+gate. Supervised upgrade now executes against retained invocation state;
 its parallel batch publication still requires modified-account conflict selection.
 Supervisor29 now authenticates current effective authority and atomically reassigns
 self/foreign metadata, with self publication and the same foreign batch gate.
@@ -68,9 +69,11 @@ Supervised storage writes now authenticate and mutate the target account in reta
 invocation state; their foreign publication still needs the same conflict selection.
 Supervised solicit/forget now mutate target requests in retained invocation state,
 using actual invocation time and the same explicit foreign publication boundary.
-Foreign transfer sources, alternate transfer funding modes and direct transfers remain
-explicit `UnsupportedHostCall` gates while
-their account mutation/publication proofs are migrated. The previous argument layout
+Deferred transfers authenticate self/supervised sources, debit the selected pool
+and preserve the destination-protected flag through next-invocation credit. Foreign
+transfer publication retains the parallel conflict-selection gate. Direct transfers
+remain an explicit `UnsupportedHostCall` gate while their atomic credit path is migrated.
+The previous argument layout
 is never accepted as a production fallback. These gates are incomplete implementation,
 not discrepancies in the normative paper.
 
@@ -136,7 +139,7 @@ explicit implementation gates until their account mutation/publication paths are
 
 Undefined `new`/`transfer` modes return protocol HUH after the applicable memory and
 service-existence checks. Transfer refusals charge only575 gas and never enqueue or
-debit; defined alternate transfer funding modes remain explicit implementation gates.
+debit. Defined deferred modes execute against the selected liquid/protected source pool.
 
 ## Runtime probe migration
 

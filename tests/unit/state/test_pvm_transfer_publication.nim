@@ -10,7 +10,7 @@ import ../../../src/codec/[bounded, composite, header, c2_records, state_account
   state_layout, state_service_values, state_requests, state_trie]
 import ../../../src/state/[accumulation_batch, accumulation_dispatch, accumulation_effects,
   accumulation_context, accumulation_invocation, accumulation_outcome, accumulation_provisions,
-  accumulation_transfers, store]
+  accumulation_transfers, accumulation_inputs, accumulation_service, store]
 import ../../../src/pvm/[machine, step]
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_batch_context, accumulation_provision_integration,
@@ -406,6 +406,62 @@ block released_callers:
 discard applyAccumulationBatch(detachedState, detached).value
 assert uint64(metadata(detachedState.snapshot.value, 42).balance) == 12
 assert collect(detached).transferCollectionInfo.value.transfers == 1
+block deferred_funding_publication:
+  for foreign in [false, true]:
+    for mode in 0'u64..3:
+      let instructions = @[registerImmediate(7, (if foreign: 77'u64 else: high(uint64))),
+          registerImmediate(8, 99), registerImmediate(9, mode), registerImmediate(10, 5),
+          registerImmediate(11, 0), registerImmediate(12, 196608), @[10'u8, 22], @[50'u8, 0]]
+      let payer = ServiceMetadata(balance: AccountBalance(10), supervisorBalance: AccountBalance(
+          10), supervisor: ServiceIndex(42), supervisorCreated: AccountSlot(0),
+              created: AccountSlot(7))
+      let payerEntry = serviceMetadataEntry(ServiceIndex(77), payer, ByteLimit(
+          ServiceMetadataBytes)).value
+      var source = batchFixture(incoming = false, firstEnvelope = guestEnvelope(instructions, memo(
+        )), secondEnvelope = guestEnvelope([@[50'u8, 0]]), extra = @[payerEntry])
+      let ownKey = chapterServiceKey(StateChapter(255), ServiceIndex(42))
+      var own = metadata(source.state.snapshot.value, 42)
+      own.supervisorBalance = AccountBalance(10)
+      let ownEntry = serviceMetadataEntry(ServiceIndex(42), own, ByteLimit(
+          ServiceMetadataBytes)).value
+      discard source.state.apply([StateWrite(key: ownKey, kind: StateWriteKind.Put,
+          value: ownEntry.value)]).value
+      let first = execute(source)
+      let second = execute(source, 1)
+      assert first.error == AccumulationDispatchError.None, "funding matrix executes genuine deferred transfers"
+      let selected = first.effects.effectContext(AccumulationDimension.Regular).value
+      let outgoing = selected.effectTransferAt(AccumulationTransferIndex(0)).value
+      assert uint32(outgoing.source) == (if foreign: 77'u32 else: 42'u32) and
+          outgoing.destinationSupervisor == (mode >= 2), "retained output preserves payer and destination pool"
+      let plan = prepare(source, first, second)
+      if foreign:
+        assert plan.error == AccumulationBatchError.UnsupportedAccountEffects,
+            "foreign debit cannot inherit a self metadata publication certificate"
+        let unchanged = metadata(source.state.snapshot.value, 77)
+        assert uint64(unchanged.balance) == 10 and uint64(unchanged.supervisorBalance) == 10,
+            "refused foreign publication retains both payer pools"
+      else:
+        assert plan.error == AccumulationBatchError.None, "self deferred funding modes retain complete publication"
+        discard applyAccumulationBatch(source.state, plan.value).value
+        let paid = metadata(source.state.snapshot.value, 42)
+        assert uint64(paid.balance) == (if mode in [0'u64, 2]: 5'u64 else: 10'u64) and
+            uint64(paid.supervisorBalance) == (if mode in [1'u64, 3]: 5'u64 else: 10'u64),
+            "complete self publication debits only its selected pool"
+        let recipient = metadata(source.state.snapshot.value, 99)
+        assert uint64(recipient.balance) == 20 and uint64(recipient.supervisorBalance) == 0,
+            "neither deferred destination pool receives an early batch credit"
+        let creditedInputs = prepareAccumulationInputs(source.inputs.invocationOperands.value,
+            [outgoing], [], AccumulationInputConfig(inputs: ElementLimit(1),
+                allowances: ElementLimit(0), services: ElementLimit(1))).value
+        let receiver = prepareAccumulationService(creditedInputs, InvocationServiceIndex(0),
+            source.state.snapshot.value, HeaderSlot(129), AccumulationServiceConfig(
+                codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024))).value
+        let credited = receiver.serviceInfo.value.account
+        assert uint64(credited.balance) == (if mode < 2: 25'u64 else: 20'u64) and
+            uint64(credited.supervisorBalance) == (if mode < 2: 0'u64 else: 5'u64),
+            "the produced record credits exactly its selected pool in the next invocation"
+
+
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let plan = prepare(mutual, a, b).value

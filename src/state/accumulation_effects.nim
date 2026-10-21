@@ -1363,53 +1363,75 @@ proc effectTransferAt*(context: AccumulationEffectContext, index: AccumulationTr
     completed: data.transfers.values[int(uint64(index))])
 
 proc prepareAccumulationTransfer*(effects: AccumulationEffects,
-    destination: AccumulationTransferDestination,
-
-amount: TransferBalance, gas: Gas, memo: TransferMemo, parameters: Parameters):
-    AccumulationEffectResult[PreparedAccumulationTransfer] =
-  ## Validate WHO/LOW/CASH in pinned order without writes/hashing; the immutable plan binds this exact source version.
-  ## Gas charging and append/store capacity belong after this pure validation; inputs are copied fixed values.
-  # Failed plans expose no metadata, memo or source owner payload.
+    destination: AccumulationTransferDestination, amount: TransferBalance, gas: Gas,
+    memo: TransferMemo, parameters: Parameters, funder: ServiceIndex,
+    mode: AccumulationFundingMode): AccumulationEffectResult[PreparedAccumulationTransfer] =
+  ## Validate both accounts, authority, LOW and CASH without hashing; retain this exact source version.
+  ## The selected source pool funds one deferred record, whose destination flag selects the future credit pool.
   template fail(reason: AccumulationEffectError) =
     return AccumulationEffectResult[PreparedAccumulationTransfer](status: reason)
   let data = effects.data
   if data == nil:
     fail(AccumulationEffectError.Uninitialized) # No default owner can authorize a debit.
   if not parameters.valid:
-    fail(AccumulationEffectError.InvalidParameters) # Funding never uses a fabricated schedule.
+    fail(AccumulationEffectError.InvalidParameters) # Funding requires an actual deposit schedule.
   let previous = data.regular.data
   assert previous != nil # Private constructors retain complete current snapshots.
+  let original = currentAccountMetadata(previous.accounts, funder)
+  if original.error != AccumulationEffectError.None:
+    if original.error == AccumulationEffectError.UnknownService and uint32(funder) == uint32(
+        previous.initial.contextInfo.value.service):
+      fail(AccumulationEffectError.MalformedState) # Never fabricate a missing invoker.
+    fail(original.error) # Source WHO precedes authority and minimum-gas checks.
   if uint64(destination) > uint64(high(uint32)):
-    fail(AccumulationEffectError.UnknownService) # Full-width destination has no sentinel or low-bit alias.
+    fail(AccumulationEffectError.UnknownService) # No low-bit alias for a full-width destination.
   let target = ServiceIndex(uint32(uint64(destination)))
-  let found = previous.accounts.lookup(chapterServiceKey(StateChapter(255), target))
-  if found.error == StateStoreError.MissingKey:
-    fail(AccumulationEffectError.UnknownService) # Actual current membership alone authorizes destination lookup.
-  if found.error != StateStoreError.None or found.value.byteLength != ServiceMetadataBytes:
-    fail(AccumulationEffectError.MalformedState) # Corrupt current targets are not fabricated absent accounts.
-  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
-  if decoded.error != ServiceMetadataError.None:
-    fail(AccumulationEffectError.MalformedState) # Require canonical target metadata before minimum-gas comparison.
-  if uint64(gas) < uint64(decoded.value.metadata.minimumTransferGas):
-    fail(AccumulationEffectError.TransferGasLow) # LOW precedes creator funding checks.
+  let recipient = currentAccountMetadata(previous.accounts, target)
+  if recipient.error != AccumulationEffectError.None:
+    fail(recipient.error) # Both accounts must exist before authority HUH.
+  let selection = uint64(mode)
+  if selection > 3:
+    fail(AccumulationEffectError.NotRequested) # Undefined modes never mask into a valid balance choice.
   let self = previous.initial.contextInfo.value.service
-  let creator = previous.accounts.lookup(chapterServiceKey(StateChapter(255), self))
-  if creator.error != StateStoreError.None or creator.value.byteLength != ServiceMetadataBytes:
-    fail(AccumulationEffectError.MalformedState) # The invoking account must remain complete and canonical.
-  let original = decodeServiceMetadata(creator.value.bytes, ByteLimit(ServiceMetadataBytes))
-  if original.error != ServiceMetadataError.None:
-    fail(AccumulationEffectError.MalformedState) # Never repair source metadata while transferring funds.
-  var metadata = original.value.metadata
-  if uint64(amount) > uint64(metadata.balance):
-    fail(AccumulationEffectError.InsufficientCash) # Prove subtraction before computing the prospective debit.
-  metadata.balance = AccountBalance(uint64(metadata.balance)-uint64(amount))
+  var metadata = original.value
+  if selection in [1'u64, 3'u64] or uint32(funder) != uint32(self):
+    let authority = effectiveSupervisor(previous.accounts, funder, metadata)
+    if authority.error != AccumulationEffectError.None:
+      fail(authority.error) # Malformed supervision grants no funding authority.
+    if uint32(authority.value) != uint32(self):
+      fail(AccumulationEffectError.NotRequested) # Protected source funds always require effective supervision.
+  if uint64(gas) < uint64(recipient.value.minimumTransferGas):
+    fail(AccumulationEffectError.TransferGasLow) # LOW follows authority and precedes funding CASH.
+  let balance = if selection in [1'u64, 3'u64]: uint64(metadata.supervisorBalance) else: uint64(
+      metadata.balance)
+  if uint64(amount) > balance:
+    fail(AccumulationEffectError.InsufficientCash) # Only the selected source pool can fund the debit.
+  if selection in [1'u64, 3'u64]:
+    metadata.supervisorBalance = AccountBalance(balance-uint64(amount)) # Proven unsigned subtraction.
+  else:
+    metadata.balance = AccountBalance(balance-uint64(amount)) # Preserve the unselected protected pool.
   if not funded(metadata, parameters):
-    fail(AccumulationEffectError.InsufficientCash) # CASH includes the creator's own exact storage threshold.
+    fail(AccumulationEffectError.InsufficientCash) # Both remaining pools contribute to the source threshold.
+  let transfer = DeferredTransfer(source: funder, destination: target,
+      destinationSupervisor: selection >= 2, amount: amount, gas: gas, memo: memo)
   let plan = PreparedAccumulationTransfer(data: TransferPlanData(source: effects,
-    metadata: metadata,
-    transfer: DeferredTransfer(source: self, destination: target, amount: amount, gas: gas, memo: memo)))
+      metadata: metadata, transfer: transfer))
   AccumulationEffectResult[PreparedAccumulationTransfer](status: AccumulationEffectError.None,
       completed: plan)
+
+proc prepareAccumulationTransfer*(effects: AccumulationEffects,
+    destination: AccumulationTransferDestination, amount: TransferBalance, gas: Gas,
+    memo: TransferMemo, parameters: Parameters): AccumulationEffectResult[
+        PreparedAccumulationTransfer] =
+  ## Preserve self/liquid callers through the complete deferred funding operation.
+  let data = effects.data
+  if data == nil:
+    return AccumulationEffectResult[PreparedAccumulationTransfer](
+        status: AccumulationEffectError.Uninitialized) # Defaults retain no source account.
+  let previous = data.regular.data
+  assert previous != nil # Successful preparation retains a current context.
+  prepareAccumulationTransfer(effects, destination, amount, gas, memo, parameters,
+      previous.initial.contextInfo.value.service, AccumulationFundingMode(0))
 
 proc commitAccumulationTransfer*(prepared: PreparedAccumulationTransfer, limit: ElementLimit):
     AccumulationEffectResult[AccumulationEffects] =
@@ -1446,8 +1468,10 @@ proc commitAccumulationTransfer*(prepared: PreparedAccumulationTransfer, limit: 
     fail(AccumulationEffectError.BackendFailure) # Old accounts and outgoing owners survive hashing failure.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
-  # The bound transfer plan writes exactly the invoker metadata; keep broader supported proofs and unsupported ancestry.
-  let candidate = successorData(previous, changed.value, selfMetadata = true)
+  # Preserve bounded self proofs only when the actual debit belongs to the invoker.
+  let self = previous.initial.contextInfo.value.service
+  let candidate = successorData(previous, changed.value, selfMetadata = uint32(
+      plan.transfer.source) == uint32(self))
   candidate.transfers = TransferSetData(values: transfers)
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
