@@ -255,3 +255,16 @@ retire; idle restart creates no duplicate publication receipt.
 Local recovered-export lease scenarios, semantic checking and inventory pass.
 Both collected/joined paths preserve exact original envelope bytes and independent
 lease gates; evidence uses `build/recovery-export-lease*`.
+
+## Read-only verification during recovered execution
+
+After one actual export, initialized unrelated trust produces Completed(Verify,
+ContextMismatch) on the I/O worker; default context refuses admission. A matching
+verification then returns fixed matching context while canonical/RPC exclusion
+stays held and Done retains slot capacity. Joined shutdown preserves Verify rather
+than Publish, installs no decoded map and leaves every envelope byte unchanged.
+Independent offline verification succeeds after retirement.
+
+Local recovered verification-lease suite, semantic checks and inventory pass,
+including actual wrong-context/matching completions and exact file preservation.
+Evidence uses `build/recovery-verify-lease*`; no production worker changes.
