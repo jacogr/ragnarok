@@ -1,0 +1,51 @@
+{
+  "build_name": "application-ancestor-response-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Ancestor response extraction default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "application-ancestor-response-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Ancestor response extraction refused",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "refused"
+      },
+      "name": "application-ancestor-response-refused"
+    },
+    {
+      "arguments": [
+        "block"
+      ],
+      "description": "Ancestor response extraction block",
+      "diagnostic": "outcome.status == BlockFailure",
+      "identity": {
+        "reason": "block"
+      },
+      "name": "application-ancestor-response-block"
+    },
+    {
+      "arguments": [
+        "request"
+      ],
+      "description": "Ancestor response extraction request",
+      "diagnostic": "request.initialized",
+      "identity": {
+        "reason": "request"
+      },
+      "name": "application-ancestor-response-request"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/application_ancestor_response_results.nim"
+}
