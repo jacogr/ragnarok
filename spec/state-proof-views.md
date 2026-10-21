@@ -1,0 +1,18 @@
+# Verified partial state read views
+
+Use the [bounded proof contract](state-trie-proofs.md) and its unchanged GP/vector pins.
+This feature collects already verified exact-key facts under one independently
+supplied root. `ProofView` is deliberately distinct from complete `StateStoreSnapshot`.
+It cannot authorize a state transition, root recomputation or checkpoint restoration.
+
+Capture checks every lookup root, current count/value ceilings and duplicate keys,
+then publishes one immutable sorted collection. Present-empty and authenticated
+absence remain distinct. Path storage has the proof format's structural 249-node
+per-entry maximum; logical value bytes have an independent aggregate ceiling.
+Unknown keys must return MissingWitness, never authenticated absence.
+
+Completion plan: immutable capture, exact-key lookup, same-root union, projection,
+authenticated witness export, local collection encoding/decoding, a typed C(11)
+reader, strict authority guards and usage/evidence documentation. No storage API,
+Services lifecycle, proof RPC, network protocol or light-node database changes.
+M1 framing remains complete; full state serialization and whole-block parity remain open.
