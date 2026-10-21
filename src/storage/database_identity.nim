@@ -17,6 +17,7 @@ const
 type
   StorageSchema* {.pure.} = enum ## Distinct physical formats never silently reinterpret each other.
     FullNodesV1, FullStateV1
+  StorageChecksum* = distinct array[32, byte] ## Local file integrity checksum is not a JAM commitment or chain identity.
   StorageChainId* = distinct array[32, byte] ## Storage chain identity is not a state root or protocol block hash.
   DatabaseIdentity* = object ## Opaque initialized full-state schema identity; no light-state APIs are implied.
     chain: StorageChainId

@@ -507,3 +507,41 @@ proc restoreRepositoryImage*(image: RepositoryImage, limits: RepositoryLimits,
     completed: NodeRepository(head: RepositoryData(table: RepositoryTable(records: records),
       commitment: image.commitment, generation: image.generation, valueBytes: bytes,
           limits: limits)))
+
+proc repositoryLimits*(selection: RepositorySelection): RepositoryLimits {.requires: selection.initialized.} =
+  ## Copy inherited scalar policy without exposing physical records or an updateable source handle.
+  let data = selection.data
+  assert data != nil
+  let source = data.source.data
+  assert source != nil
+  source.limits
+
+proc retainedRootCount*(selection: RepositorySelection): int {.requires: selection.initialized.} =
+  ## Count roots without allocating a detached root inventory.
+  let data = selection.data
+  assert data != nil
+  data.roots.len
+proc measureRepositorySelection*(selection: RepositorySelection,
+    limits: RecordLimits): RepositoryResult[int] =
+  ## Preflight the exact record-collection extent without hashing, detaching records or allocating output.
+  let data = selection.data
+  if data == nil: return RepositoryResult[int](status: RepositoryError.Uninitialized)
+  if uint64(data.indices.len) > uint64(limits.records.records) or data.valueBytes > uint64(
+      limits.records.valueBytes):
+    return RepositoryResult[int](status: RepositoryError.LimitExceeded)
+  let empty = measureRecordCollection(default(RecordCollection), limits)
+  if empty.error != RecordError.None: return RepositoryResult[int](
+      status: RepositoryError.LimitExceeded)
+  var size = uint64(empty.value)
+  let maximum = min(uint64(limits.encoded), uint64(high(int)))
+  let source = data.source.data
+  assert source != nil
+  for index in data.indices:
+    let fixed = if source.table.records[index].kind == TrieRecordKind.Leaf: 72'u64 else: 97'u64
+    let payload = uint64(source.table.records[index].payload.len)
+    if payload > uint64(limits.trie.perValue) or fixed > maximum-size:
+      return RepositoryResult[int](status: RepositoryError.LimitExceeded)
+    size += fixed
+    if payload > maximum-size: return RepositoryResult[int](status: RepositoryError.LimitExceeded)
+    size += payload # Each addition is proved against the exact host-bounded output ceiling.
+  RepositoryResult[int](status: RepositoryError.None, completed: int(size))
