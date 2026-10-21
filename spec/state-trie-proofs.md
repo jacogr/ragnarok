@@ -39,3 +39,7 @@ and expose only detached bytes. Wrong roots, keys, values and backend refusal ex
 Empty absence accepts only a zero root with an explicit empty path, or a path ending
 at an authenticated zero selected edge. Nonzero truncated edges, attached value bytes
 and all-empty branches refuse. Terminal branches may not exceed the 248-bit key domain.
+
+Different-leaf absence requires exact shared traversed bits and a distinct full key.
+It never requires or returns the neighboring value, including hashed long leaves.
+Forged leaf placement and irrelevant supplied bytes refuse without lookup authority.

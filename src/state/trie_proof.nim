@@ -159,8 +159,16 @@ proc verifyStateProof*(proof: StateProof, expectedRoot: StateRoot, query: StateK
     of StateNodeKind.EmbeddedLeaf, StateNodeKind.HashedLeaf:
       # Structural capture guarantees this is the terminal; require exact key and value preimage.
       let leafKey = if info.kind == StateNodeKind.EmbeddedLeaf: info.embeddedKey else: info.hashedKey
+      for prefix in 0..<depth:
+        # A different leaf proves absence only in the selected subtree, never across another branch.
+        if leafKey.bit(prefix) != query.bit(prefix):
+          return StateProofResult[VerifiedStateLookup](status: StateProofError.KeyMismatch)
       if array[31, byte](leafKey) != array[31, byte](query):
-        return StateProofResult[VerifiedStateLookup](status: StateProofError.KeyMismatch)
+        if data.value.len != 0:
+          return StateProofResult[VerifiedStateLookup](status: StateProofError.InvalidProof)
+        return StateProofResult[VerifiedStateLookup](status: StateProofError.None,
+          completed: VerifiedStateLookup(proof: proof, rootIdentity: expectedRoot,
+            keyIdentity: query, found: false))
       let encoded = encodeStateLeaf(query, data.value, limits.valueBytes)
       if encoded.error != StateLayoutError.None:
         return StateProofResult[VerifiedStateLookup](status: StateProofError.BackendFailure)
