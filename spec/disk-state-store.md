@@ -337,6 +337,14 @@ DB/import combinations, RPC exclusion through native IO and joined shutdown befo
 Full/light remains a separate future mode contract. The append-only physical store still retains all
 records under finite ceilings; page packing, reclamation and production-scale optimality are open.
 
+## CLI mutation-budget defaults
+
+State activation still requires `--with-state` and a selected chain. An omitted `--state-writes`
+resolves to 1,000 and an omitted `--state-write-bytes` resolves to 100,000, independently in both
+memory and disk modes and checkpoint-import startup. Explicit values, including zero and the full
+unsigned range, remain exact. Malformed/duplicate controls and budgets without state activation
+still refuse atomically. Component APIs with explicit StateStoreLimits retain their own policies.
+
 ## Explicit backend options
 
 `--state-storage memory|disk` is independent of state activation and future full/light mode.

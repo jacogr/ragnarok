@@ -6,7 +6,7 @@ import std/[assertions, syncio]
 import ../../../src/app/options
 import ../../../src/codec/bounded
 proc base(command = "server"): seq[string] =
-  ## Existing complete-state activation and mutation limits remain mandatory.
+  ## State activation and chain remain mandatory; this fixture explicitly selects readonly limits.
   @[command, "--with-state", "--chain", "chain.json", "--state-writes", "0", "--state-write-bytes", "0"]
 proc complete(number = "100000"): seq[string] =
   ## Paths do not supply policy and policy does not imply independent trust.
@@ -23,6 +23,9 @@ proc main() =
   assert not options.recoveryEnabled
   assert parseOptions(base(), options) and not options.recoveryEnabled
   let group = complete()
+  assert parseOptions(appended(@["server", "--with-state", "--chain", "chain.json"], group), options)
+  assert options.recoveryEnabled and uint64(options.stateWrites) == 1000 and uint64(
+      options.stateWriteBytes) == 100000
   assert parseOptions(appended(base(), group), options)
   assert options.recoveryEnabled and options.recoveryPath == "state.bin"
   assert options.recoveryTrustPath == "trust.bin" and options.recoveryHeaderPath == "header.bin"

@@ -4,6 +4,7 @@
 ## Atomic backend parsing keeps explicit disk selection independent from state activation and import trust.
 import std/[assertions, syncio]
 import ../../../src/app/options
+import ../../../src/codec/bounded
 proc main() =
   ## Each failed/default parse clears prior successful disk/path ownership.
   let base = @["server", "--with-state", "--chain", "chain.json", "--state-writes", "1",
@@ -13,6 +14,10 @@ proc main() =
   var disk = base
   disk.add("--state-storage"); disk.add("disk"); disk.add("--state-db"); disk.add("state.db")
   assert parseOptions(disk, selected) and selected.diskStorage and selected.stateDatabase == "state.db"
+  let defaults = @["server", "--with-state", "--chain", "chain.json", "--state-storage", "disk",
+      "--state-db", "state.db"]
+  assert parseOptions(defaults, selected) and selected.diskStorage
+  assert uint64(selected.stateWrites) == 1000 and uint64(selected.stateWriteBytes) == 100000
   let cases = @[
     @["--state-storage", "disk"], @["--state-db", "state.db"],
     @["--state-storage", "memory", "--state-db", "state.db"],
