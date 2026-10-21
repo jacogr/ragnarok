@@ -2,6 +2,7 @@
 
 Prepared for maintainer review and manual posting; nothing has been filed upstream.
 These are separate questions, not a request to adopt all PolkaVM implementation details.
+Resolved upstream entries are disposition notes rather than new issues to post.
 The [discrepancy register](graypaper-discrepancies.md) retains the full evidence and
 local compatibility decisions. Each draft below is intended to stand on its own.
 
@@ -129,7 +130,7 @@ For compatibility we have approved rejecting these at JAM guest preparation whil
 preserving the paper-aligned raw interpreter. That local policy is not evidence
 that the paper already defines the stricter predicate.
 
-## GP-PVM-005 — Suggested comment on existing PR559
+## GP-PVM-005 — Historical comment on PR559 (subsequently merged)
 
 [PR559](https://github.com/gavofyork/graypaper/pull/559) directly addresses a
 reproducible difference with Gray Paper0.8.0
@@ -176,9 +177,9 @@ all nonempty width0 tables would itself differ from current PolkaVM's successful
 module load and later trap. [PR559](https://github.com/gavofyork/graypaper/pull/559)
 proposes an upper width bound but does not resolve this case.
 
-## GP-PVM-007 — Suggested boundary-fixture comment on existing PR559
+## GP-PVM-007 — Historical boundary-fixture comment on PR559 (subsequently merged)
 
-[PR559](https://github.com/gavofyork/graypaper/pull/559) proposes code and jump-count
+[PR559](https://github.com/gavofyork/graypaper/pull/559), now merged2026-10-21, adds code and jump-count
 bounds missing from our pinned Gray Paper0.8.0
 `07f041dabd073f9018b418e9ee72e79dd2185401` deblob predicate.
 Pinned PolkaVM0.37.0 `69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa` already enforces
@@ -229,3 +230,28 @@ Our local deterministic cross-check exercises all scalar memory forms and retain
 48 paper/reference differences with unchanged original paper expectations.
 
 Prepared locally only; a duplicate check is still needed before maintainer posting.
+
+## GP-PVM-009 — Resolved by existing PR554; do not file a duplicate
+
+Gray Paper0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+[three-register arguments](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L629-L640),
+saturates the complete second operand byte to r12. Pinned PolkaVM0.37.0
+`69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa` masks that byte's low nibble first.
+
+For blob `[0,0,4,190,16,16,0,9]`, r0=7, r1=11, r12=55, add32 produces18.
+The paper writes r12; executed PolkaVM writes r0. Byte0xff selects r12 in both;
+0x10/0x80 select r0 only under PolkaVM. A program that later returns through r0
+can therefore halt under one rule and panic under the other. Aliases also change
+some block gas/cycle prices.
+
+Public source evidence:
+[RawReg::get](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/program.rs#L29-L43)
+and [read_args_regs3](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/program.rs#L827-L832).
+Our independent cross-check covers all41 opcodes/all256 destination bytes with
+separate paper/reference expectations, including1050 gas/cycle differences.
+
+The duplicate check found [PR554](https://github.com/gavofyork/graypaper/pull/554),
+merged2026-08-26 as `e5375148597a45a99d31c9aa6bce6c7bf3a48998`. Its exact patch
+adds modulo16 before saturation. This resolves the question in later upstream text;
+our frozen pin still contains the original equation. Retain this witness/disposition
+for the pin-upgrade review, and do not post a duplicate issue.

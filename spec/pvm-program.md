@@ -105,3 +105,13 @@ outer Continue/inner Panic classification, and preserved source frame/map aliase
 All four native suites pass with their1000-cycle ARC evidence unchanged:
 authorization975472, refinement25202592, accumulation269248 and inner invocation
 507504 bytes. Evidence is local checked-release macOS/ARC/Clang LTO, not Linux CI.
+
+
+## Captured destination decoding profile
+
+[GP-PVM-009](pvm-destination-reference.md) requires raw paper and explicit JAM
+owners to retain distinct three-register D rules: saturate the whole second operand
+byte for paper, or its low nibble for the accepted implementation profile. The
+private owner stores that choice through capture and execution. Original bytes and
+other operand equations remain unchanged; outer/inner JAM preparation already
+selects the compatibility owner.

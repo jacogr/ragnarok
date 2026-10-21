@@ -40,6 +40,7 @@ type
     bytes: seq[byte]
     codeOffset, codeLength, maskOffset, jumpOffset, jumpWidth: int
     jumps: uint64
+    profile: DecodeProfile
   Program* = object ## Copyable ARC handle; no API exports its backing bytes or mutable storage.
     data: nil ProgramData
   OperandShape* {.pure.} = enum ## Each shape follows one operand equation in the pinned instruction tables.
@@ -183,7 +184,7 @@ proc decode(input: openArray[byte], entry: CodeAddress,
   ProgramResult[Program](status: ProgramError.None, completed: Program(data: ProgramData(
     bytes: owned, codeOffset: codeOffset, codeLength: codeLength, maskOffset: maskOffset,
     jumpOffset: jumpOffset, jumpWidth: width,
-    jumps: (if profile == DecodeProfile.Jam and width == 0: 0'u64 else: jumps))))
+    jumps: (if profile == DecodeProfile.Jam and width == 0: 0'u64 else: jumps), profile: profile)))
 
 proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
     byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit): ProgramResult[Program] =
@@ -193,7 +194,7 @@ proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
 
 proc decodeJamProgram*(input: openArray[byte], entry: CodeAddress,
     byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit): ProgramResult[Program] =
-  ## Decode for JAM execution with scoped GP-PVM-004/005/006/007 PolkaVM compatibility rules.
+  ## Decode for JAM execution with scoped GP-PVM-004/005/006/007/009 PolkaVM compatibility rules.
   ## Reject missing final successors/widths above four; width-zero tables are semantically empty.
   ## Code is at most32 MiB and declared jumps at most16 Mi entries before width-zero normalization.
   ## Original bytes remain owned verbatim; caller limits apply before semantic normalization.
@@ -337,11 +338,13 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     item.x = Immediate(extended(data, pc + 3, xlen))
     item.y = Immediate(extended(data, pc + 3 + uint64(xlen), min(4, max(0, int(skip) - xlen - 2))))
   of 190..230:
-    # The whole second operand byte, not just its low nibble, saturates to register D.
+    # GP-PVM-009: raw paper saturates the whole byte; the explicit JAM owner uses its low nibble.
     item.shape = OperandShape.ThreeRegisters
     item.a = RegisterIndex(min(12, first mod 16))
     item.b = RegisterIndex(min(12, first div 16))
-    item.d = RegisterIndex(min(12, int(codeByte(data, pc + 2))))
+    let encoded = int(codeByte(data, pc + 2))
+    let destination = (if data.profile == DecodeProfile.Jam: encoded mod 16 else: encoded)
+    item.d = RegisterIndex(min(12, destination))
   else:
     # A valid owner cannot contain another marked opcode; retain an explicit failure alternative.
     return ProgramResult[Instruction](status: ProgramError.InvalidInstruction)

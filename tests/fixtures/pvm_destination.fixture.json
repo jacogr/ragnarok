@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_PVM_DESTINATION",
+  "files": {
+    "pvm-destination.bin": "90dbbeea30184dbebacdc242a4bc438d464677e6f8b96c161ee9933327a29110"
+  },
+  "target": "pvm-destination.bin"
+}

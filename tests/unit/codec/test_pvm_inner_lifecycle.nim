@@ -83,6 +83,17 @@ assert uint64(zeroCreated.response.registers[7]) == 0 and
 let zeroProgram = zeroCreated.machines.innerMachine(InnerMachineId(0)).value.program
 assert jumpTarget(zeroProgram, JumpIndex(0)).error == ProgramError.InvalidIndex
 
+# GP-PVM-009 is retained through actual inner-machine capture, independently of raw paper owners.
+let destinationBytes = @[0'u8, 0, 11, 51, 1, 7, 51, 2, 11, 190, 33, 16, 50, 0, 73, 2]
+let destinationCreated = create(empty, innerRegisters(uint64(destinationBytes.len)),
+  memory = innerMemory(destinationBytes)).value
+let destinationOwner = destinationCreated.machines.innerMachine(InnerMachineId(0)).value.program
+assert byte(instruction(destinationOwner, CodeAddress(6)).value.d) == 0
+let destinationPaper = decodeProgram(destinationBytes, CodeAddress(0), ProgramByteLimit(100),
+    JumpCountLimit(0)).value
+assert byte(instruction(destinationPaper, CodeAddress(6)).value.d) == 12
+assert empty.innerMachineCount.value == 0
+
 # Populate every slot, delete a middle hole, reuse the minimum hole and retain earlier snapshots unchanged.
 var full = empty
 for id in 0..<63:
