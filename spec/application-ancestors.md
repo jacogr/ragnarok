@@ -29,8 +29,8 @@ lookup child/state-root binding. A missing header cannot be fabricated from C(3)
 Test exact/short count, per-header and aggregate bytes, late file/decoder failure,
 truncated/suffixed headers, nonregular/invalid paths, full-width ceilings,
 caller mutation and detached ownership. Retain result extraction/privacy guards
-and fresh repeated ARC evidence. Integrate explicit download-only paths, then
-exercise real report admission and command startup before outgoing transport.
+and fresh repeated ARC evidence. Explicit download-only paths, real report
+admission and command startup before outgoing transport are implemented below.
 M1 framing remains complete; full state serialization and JAM/STF parity remain open.
 
 ## Local capture verification
@@ -95,3 +95,19 @@ cycles. Evidence is `build/ancestor-lookup-final-*` and
 `build/ancestor-candidate-regression.log`. Existing no-ancestor startup behavior
 and optional-fixture defaults remain covered. Linux CI and full JAM parity remain
 separate evidence.
+
+## Operator handoff and remaining scope
+
+The [operator guide](../docs/download-ancestors.md) describes ordering, exact file
+content, count/byte policy accounting and import/disk operation. Existing trusted
+checkpoint/disk download regression passes unchanged. The actual executable
+build and help expose the repeatable control. No trie/storage/PVM implementation
+or interface changed; db #1 retains ownership of storage internals. Automatic
+ancestor acquisition, discovery/non-loopback peers, multi-child synchronization,
+fork choice and full/light database selection remain separate bounded work.
+
+Final local documentation-link checks, actual executable help, full pinned
+Nim/Rust formatting, verification inventory and Git whitespace checks pass.
+Only application inputs/options/command and their tests/docs changed. Remote CI
+has not been requested; automatic peer discovery and complete JAM parity are not
+claimed by these checks.

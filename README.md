@@ -40,6 +40,7 @@ Use `make help` to list targets, `make format` to format Nim and Rust, and `make
 to check formatting. The [development guide](docs/development.md) describes individual check
 groups; the [testing guide](docs/testing.md) explains their coverage.
 
+Downloads accept [explicit sealed ancestor files](docs/download-ancestors.md) for report lookup validation.
 External full-state checkpoints support [explicit trusted import startup](docs/checkpoint-import.md),
 resuming one selected head with finality unset.
 
