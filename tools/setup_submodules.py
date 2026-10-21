@@ -4,12 +4,14 @@
 
 """Initialize recorded upstream gitlinks, using a focused checkout for the large JAM vector repository.
 
-Exposes initialize_vectors and a setup CLI that restores pinned submodules, including a focused
-vector checkout.
+Exposes initialize_vectors, prefetch_blobs and a setup CLI that restores pinned submodules,
+including a focused vector checkout and batched provisioning of consumed pinned blobs.
 """
+import argparse
+import json
+import os
 from pathlib import Path
 import subprocess
-import sys
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -38,10 +40,48 @@ def initialize_vectors(path,revision,url):
         git('sparse-checkout','set','--cone','codec','stf/safrole',cwd=path)
 
 
+# Fetch only consumed pinned blobs together; individual lazy Git reads otherwise incur one network round trip each.
+def prefetch_blobs(path, revision, names):
+    names = set(names)
+    if not names:
+        return
+    listing = subprocess.check_output(
+        ['git', '-C', str(path), 'ls-tree', '-rz', revision, '--', *sorted(names)])
+    objects = {}
+    # Resolve paths against the immutable tree, and reject absent paths or directories before fetching anything.
+    for record in listing.split(b'\0'):
+        if record:
+            metadata, name = record.split(b'\t', 1)
+            _, kind, oid = metadata.decode().split()
+            if kind != 'blob':
+                raise ValueError(f'Expected pinned blob: {name!r}')
+            objects[name.decode()] = oid
+    if objects.keys() != names:
+        raise ValueError(f'Missing pinned blobs: {sorted(names - objects.keys())}')
+    # Query local availability without triggering lazy fetches; complete/warm clones require no network.
+    identities = sorted(set(objects.values()))
+    status = subprocess.check_output(
+        ['git', '-C', str(path), 'cat-file', '--batch-check'],
+        input='\n'.join(identities)+'\n', text=True,
+        env={**os.environ, 'GIT_NO_LAZY_FETCH': '1'})
+    missing = [line.split()[0] for line in status.splitlines() if line.endswith(' missing')]
+    if missing:
+        # Explicit blob wants retain the pinned commit, sparse checkout and all existing refs unchanged.
+        subprocess.run(['git', '-C', str(path), '-c', 'fetch.negotiationAlgorithm=noop',
+                        'fetch', 'origin', '--no-tags', '--no-write-fetch-head',
+                        '--recurse-submodules=no', '--filter=blob:none', '--stdin'],
+                       input='\n'.join(missing)+'\n', text=True, check=True)
+
+
 # Initialize only recorded gitlinks and stop rather than overwrite local dependency edits.
 def main():
     listing=git('config','--file',str(ROOT/'.gitmodules'),'--get-regexp',r'^submodule\..*\.path$',output=True)
-    selected=set(sys.argv[1:])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--prefetch-blobs', action='store_true',
+                        help='Provision consumed pinned vector blobs before Python verification')
+    parser.add_argument('paths', nargs='*', help='Optional submodule paths to initialize')
+    arguments = parser.parse_args()
+    selected=set(arguments.paths)
     for line in listing.splitlines():
         key,relative=line.split(maxsplit=1)
         # Optional arguments restrict initialization to the source requested by a particular test runner.
@@ -59,6 +99,11 @@ def main():
             assert git('rev-parse','HEAD',cwd=path,output=True)==revision, f'Wrong checkout: {relative}'
         if relative=='vendor/jamtestvectors':
             initialize_vectors(path,revision,url)
+            # Only Python provenance consumes the complete pinned blob set; native jobs keep focused setup.
+            if arguments.prefetch_blobs:
+                vectors = json.loads((ROOT/'spec/pins.json').read_text())['vectors']
+                assert vectors['path'] == relative and vectors['commit'] == revision, 'Vector pin/gitlink mismatch'
+                prefetch_blobs(path, revision, vectors.get('git_blobs', {}))
         else:
             # Native submodule children keep the revisions already recorded by their parent repository.
             git('submodule','update','--init','--recursive','--depth=1','--filter=blob:none','--',relative)

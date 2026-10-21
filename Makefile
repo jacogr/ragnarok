@@ -142,6 +142,7 @@ check-inventory:
 
 # Independent Python discovery and long-running networking are selectable without the other workloads.
 check-python: check-inventory sources
+	$(PYTHON) tools/setup_submodules.py --prefetch-blobs vendor/jamtestvectors 2>&1 | tee build/ci/python-sources.log
 	$(PYTHON) tools/test_python.py 2>&1 | tee build/ci/python.log
 check-e2e: setup browser-tools
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_e2e.py --compiler "$$NIMONY" 2>&1 | tee build/ci/e2e.log

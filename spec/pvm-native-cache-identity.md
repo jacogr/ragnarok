@@ -53,6 +53,49 @@ builder modes and Hastur profiles, real two-version checked rebuilds with expect
 outputs `7` then `12`, and selected native/benchmark verification. Keep failure statuses,
 ARC evidence and CI/report freshness checks intact.
 
+## Bounded digest reuse
+
+The Python reference/tooling job in CI run `39631349594` exhausted its 300-second budget.
+Local per-test timing identified repeated whole-tree hashing in native command planning as the
+largest cost: the linked-profile and unit-entrypoint checks alone spent roughly 73 seconds
+rereading the same runtime/support sources, including large PVM fixtures.
+
+Discovery still enumerates source families on every request. A bounded process-local cache reuses
+only individual file digests whose device, inode, size, nanosecond mtime and nanosecond ctime are
+unchanged. Restored-mtime same-size edits, atomic replacements, additions, deletions and newly
+created optional configuration files retain epoch invalidation. Optional absence is never cached.
+The epoch schema and content-derived output stay identical to the original full-read algorithm;
+no digest metadata is persisted or used as a replacement for runtime provenance.
+
+The optimized planner reproduces the previous content epoch exactly for codec/state/native
+source groups. Repeated local planning samples fall from 0.112/0.176/0.122 seconds to
+0.015/0.045/0.063 seconds respectively. The full Python check passes 629 tests (four skipped)
+in 145.1 seconds locally; the measured baseline took 168.7 seconds before the additional
+regression. These are local observations, not Linux CI timing guarantees. Real checked full-LTO
+private/shared rebuilds still print `7`, `12`, `12`, with source-edit rotation and unchanged reuse.
+
+## Provision sparse vector blobs before discovery
+
+The Linux retry still reached the five-minute deadline in
+`SpecificationTests.test_published_report_sources`. That check verifies every pinned vector blob;
+individual `git show` calls in a fresh partial clone can each trigger a separate lazy fetch.
+Python discovery does not compile native binaries, so disabling native LTO cannot reduce this cost.
+
+`make check-python` now requests batched blob provisioning during source setup; other groups
+retain their focused source setup. The provisioner resolves the existing `spec/pins.json` vector blob paths against the immutable
+pinned tree, checks local object availability with lazy fetching disabled and fetches missing blob
+identities in one batch. This is dependency provisioning before discovery's deadline. It retains
+the sparse working tree, source revision, independent SHA-256 verification and unchanged test
+workloads/deadline. Complete or warm clones require no fetch. Missing pinned paths and failed
+fetches remain errors. The batch uses the same fetch options as
+[Git's promisor fetch implementation](https://github.com/git/git/blob/master/promisor-remote.c),
+including disabled negotiation for explicit object wants.
+
+A fresh upstream partial clone fetched the selected pinned blobs in 29.0 seconds locally; all
+317 SHA-256 values then verified in 11.7 seconds. Local partial-clone regression tests verify one
+cold fetch, offline warm reuse, absent unrelated objects, no working-tree materialization and
+missing-path rejection. These timings describe the local network and host, not a Linux guarantee.
+
 ## Observed local verification
 
 All 53 source-identity, native profile, Hastur planning/locking and unit orchestration

@@ -3,6 +3,7 @@
 
 """Prevent persistent generic-call caches from crossing edited owned Nim source trees."""
 from pathlib import Path
+import os
 import unittest
 from unittest.mock import patch
 from harness_fixtures import temporary_folder
@@ -35,6 +36,47 @@ class NativeSourceIdentityTests(unittest.TestCase):
             (folder/'run.log').write_text('fresh diagnostic')
             self.assertEqual(first,source_identity(root,target))
             paths[0].unlink();self.assertNotEqual(first,source_identity(root,target))
+
+    def test_unchanged_files_reuse_hashes_but_edits_do_not(self):
+        """Stable plans avoid repeated reads; discovery and restored-mtime edits still rotate epochs."""
+        with temporary_folder() as root:
+            root = root.resolve()
+            source = root/'src'
+            source.mkdir()
+            target = source/'main.nim'
+            helper = source/'helper.nim'
+            target.write_text('discard')
+            helper.write_text('first')
+            original_read = Path.read_bytes
+            with patch.object(Path, 'read_bytes', autospec=True, side_effect=original_read) as read:
+                initial = source_identity(root, target)
+                self.assertEqual({call.args[0] for call in read.call_args_list}, {target, helper})
+                read.reset_mock()
+                self.assertEqual(initial, source_identity(root, target))
+                read.assert_not_called()
+                before = helper.stat()
+                helper.write_text('other')
+                os.utime(helper, ns=(before.st_atime_ns, before.st_mtime_ns))
+                # Size and mtime alone would conceal this edit; ctime must invalidate the old digest.
+                self.assertEqual(helper.stat().st_size, before.st_size)
+                self.assertEqual(helper.stat().st_mtime_ns, before.st_mtime_ns)
+                self.assertNotEqual(initial, source_identity(root, target))
+                self.assertEqual([call.args[0] for call in read.call_args_list], [helper])
+                read.reset_mock()
+                replacement = root/'replacement'
+                replacement.write_text('third')
+                os.utime(replacement, ns=(before.st_atime_ns, before.st_mtime_ns))
+                changed = source_identity(root, target)
+                replacement.replace(helper)
+                # Atomic replacement can preserve size/mtime, but never the retained inode identity.
+                self.assertNotEqual(changed, source_identity(root, target))
+                self.assertEqual([call.args[0] for call in read.call_args_list], [helper])
+            helper.unlink()
+            self.assertNotEqual(changed, source_identity(root, target))
+            config = root/'nim.cfg'
+            missing = source_identity(root, target)
+            config.write_text('--boundchecks:on')
+            self.assertNotEqual(missing, source_identity(root, target))
 
     def test_builder_rotates_shared_and_private_caches(self):
         """Both code paths use source identity, while stable trees still reuse each requested profile."""

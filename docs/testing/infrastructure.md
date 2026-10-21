@@ -174,6 +174,13 @@ build commands. Production builds do not import test harnesses; independent equa
 fixture checks, observation libraries and network scenarios remain in `tests/`. Dependency pins,
 compiler flags, locked/offline Cargo builds and release adapter tests are unchanged.
 
+`make check-python` provisions its sources with `setup_submodules.py --prefetch-blobs`, resolving the vector `git_blobs` paths already recorded in `spec/pins.json` against
+the pinned tree and fetches missing objects together. This keeps network provisioning outside
+Python discovery's deadline and avoids a separate lazy fetch per fixture. Warm/full clones
+perform no fetch. Other groups retain focused setup. The sparse working tree, immutable pin and per-blob SHA-256 checks remain
+unchanged; no second fixture registry is introduced. Python discovery runs references and
+orchestration tests without compiling native binaries, so native LTO settings do not affect it.
+
 Runtime failure suites keep ordinary case identities in `tools/failure_suites/<family>.json`, one case per
 line. Suite defaults specify argument fields, labels and diagnostics; exceptional cases override
 those values explicitly. The loader expands and validates expected identities and distinct log names before any probes run. Fixture-dependent probes, offload completion checks,
@@ -262,3 +269,7 @@ so stale imported generic bodies cannot cross edited runtime/support/adjacent Ni
 sources. Unchanged source trees retain profile reuse; source edits may create a fresh
 project cache directory. Existing compiler identity, flags, native ABI hashes, worker
 isolation and locks remain in force. Compiler files and metadata are never modified.
+File discovery and metadata checks still run for every plan. A bounded process-local digest cache
+avoids rereading unchanged files; device/inode, size and nanosecond modification/change times
+invalidate cached bytes. Same-size edits with restored mtime and atomic replacements remain
+source changes. No metadata/digest cache persists between processes.
