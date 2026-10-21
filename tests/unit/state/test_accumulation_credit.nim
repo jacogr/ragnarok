@@ -182,8 +182,14 @@ proc rollback() =
     assert unchanged.error == AccumulationServiceError.None
   let prior = newStateStore(rows, limits()).value.snapshot.value
   let expectedRoot = root(prior)
-  # Two long account values add payload hashes to the leaf/branch hashes; include the final root refusal.
-  for successful in 2..<4+int(prior.commitment.nodes):
+  # Measure this real credited update: unchanged subtrees no longer require whole-map hashes.
+  failHash(0)
+  let completed = prepareAccumulationService(transferred, InvocationServiceIndex(0), prior,
+    HeaderSlot(0), config())
+  assert completed.error == AccumulationServiceError.None
+  let hashes = hashCalls()
+  assert hashes > 2, "credit must require state hashing beyond the two code/namespace hashes"
+  for successful in 2..<int(hashes):
     hashAfter(cint(successful))
     assert prepareAccumulationService(transferred, InvocationServiceIndex(0), prior, HeaderSlot(0),
         config()).error == AccumulationServiceError.BackendFailure

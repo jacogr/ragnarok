@@ -13,12 +13,11 @@ import ../../../src/codec/[bounded, composite, header, state_accounts, state_ser
 import ../../../src/pvm/[machine, step]
 import ../../../src/crypto/primitives
 import ../../support/[accumulation_batch_context, accumulation_provision_integration,
-  pvm_accumulation_program, pvm_accumulation_context, arc_evidence]
+  pvm_accumulation_program, pvm_accumulation_context, arc_evidence, accumulation_batch_hash_failures]
 
 # Fail real backend work only after the guest and prepared batch exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
-proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 # One unit flat deposit gives a literal nonzero debit/child balance while retaining the fixed fixture profile.
 proc profile(): Parameters =
@@ -305,22 +304,8 @@ block provision_and_atomicity:
   assert sameStateSnapshot(prior, target.snapshot.value), "account phase remains atomic"
 
 block late_provision_failure:
-  var expected = rows(fixture)
-  addChild(expected, childId(42), 42)
-  addChild(expected, childId(99), 99)
-  failHash(0)
-  let accountOnly = newStateStore(expected, integrationStoreLimits()).value
-  let hashes = hashCalls()
-  assert hashes > 0, "independent complete account-map root calibrates the exact private phase boundary"
-  var state = fixture.state
-  let prior = state.snapshot.value
-  hashAfter(hashes)
-  let failed = applyAccumulationBatch(state, plan)
-  assert failed.error == AccumulationBatchError.TerminalFailure and failed.provisionError ==
-      AccumulationProvisionError.BackendFailure,
-    "late provision-root refusal discards every completed child and creator debit"
-  failHash(0)
-  assert sameStateSnapshot(prior, state.snapshot.value), "late refusal preserves exact prior owner"
+  # Refuse every real incremental hash, including provision work after completed child/debit writes.
+  assertBatchHashRollback(fixture.state, plan)
 
 block detached_proof:
   var owned = default(PreparedAccumulationBatch)
