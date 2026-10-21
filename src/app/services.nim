@@ -8,7 +8,7 @@
 
 import std/[syncio, strutils, base64]
 import ./options
-import ./checkpoint_recovery
+import ./[checkpoint_recovery, checkpoint_trust]
 import ./handoff
 import ./candidate
 import ./block_input
@@ -196,19 +196,37 @@ proc startServices(services: var Services, options: Options, role: string,
   services.started = true
   true
 
+proc startConfigured(services: var Services, options: Options, role: string,
+    withState: bool, limits: StateStoreLimits): bool {.raises.} =
+  ## Both public startup policies share one explicit import dispatcher before any listener becomes visible.
+  if services.started or not options.valid:
+    return false # Live/default startup cannot trigger trust or checkpoint I/O.
+  if options.recoveryEnabled:
+    if not withState: return false # Imported complete state cannot enter a listener-only startup.
+    let trustLimit = ByteLimit(uint64(MaxRecoveryHeaderBytes + ApplicationCheckpointIdentityBytes))
+    let trust = loadCheckpointTrust(options.recoveryTrustPath, options.recoveryHeaderPath, trustLimit)
+    if trust.error != CheckpointTrustError.None:
+      return false # Missing or mismatched independent trust never falls back to configured genesis.
+    let recovered = loadTrustedCheckpoint(options.recoveryPath, trust.value, limits,
+        options.recoveryByteLimit)
+    if recovered.error != ApplicationRecoveryError.None:
+      return false # Native/context/map/header refusal grants no partial canonical owner.
+    return startServices(services, options, role, true, limits, recovered.value)
+  startServices(services, options, role, withState, limits, default(ApplicationChain))
+
 proc start*(services: var Services, options: Options, role: string): bool {.raises.} =
   ## Select canonical startup only from validated explicit CLI policy; legacy commands retain optional genesis behavior.
   var limits = genesisStoreLimits()
   if options.stateEnabled:
     limits.writes = options.stateWrites # Fixed trie ceilings never imply a mutable budget.
     limits.writeValueBytes = options.stateWriteBytes
-    return startServices(services, options, role, true, limits, default(ApplicationChain))
-  startServices(services, options, role, false, limits, default(ApplicationChain))
+    return startConfigured(services, options, role, true, limits)
+  startConfigured(services, options, role, false, limits)
 
 proc start*(services: var Services, options: Options, role: string,
     limits: StateStoreLimits): bool {.raises.} =
   ## Explicitly enable canonical complete-state ownership, sharing the exact seed with optional RPC.
-  startServices(services, options, role, true, limits, default(ApplicationChain))
+  startConfigured(services, options, role, true, limits)
 
 proc startRecovered*(services: var Services, options: Options, role: string,
     recovered: ApplicationRecoveryResult): bool {.raises.} =
