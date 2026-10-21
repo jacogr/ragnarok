@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_PVM_CROSS_PAGE_RETRY",
+  "files": {
+    "pvm-cross-page-retry.bin": "6c1172c4ba06b7f3c0603b932bdb1d924620d826f0d7436eff00b0b3a7f545d1"
+  },
+  "target": "pvm-cross-page-retry.bin"
+}

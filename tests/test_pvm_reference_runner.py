@@ -21,7 +21,7 @@ class ReferenceRunnerTests(unittest.TestCase):
         """Unknown executable sources cannot silently escape reference/native coverage."""
         checks = runner.discover()
         self.assertEqual({item['binary'] for item in checks},
-                         {'ragnarok-memory-probe', 'control', 'gas', 'hosts', 'jumps',
+                         {'ragnarok-memory-probe', 'control', 'cross_retry', 'gas', 'hosts', 'jumps',
                           'limits', 'memory', 'registers', 'retry', 'validation'})
         with tempfile.TemporaryDirectory(dir=ROOT/'build') as temporary:
             crate = Path(temporary)

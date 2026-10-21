@@ -72,8 +72,9 @@ The new executable owns its runner declaration, so the existing Linux comparison
 job discovers it without a job edit or a separate PR per table entry. Independent
 Python tests verify frozen bytes, full opcode coverage, exact signed values and
 48 unchanged paper/reference differences. Tampered expected registers and malformed
-record lengths must fail both consumers. Complete invocation combinations and
-metered repair of this priority case remain subsequent work.
+record lengths must fail both consumers. The
+[metered repair of this priority case](pvm-cross-page-metered-retry.md) now has its
+own paired fixture; complete invocation combinations remain subsequent work.
 
 ## Observed local evidence
 
