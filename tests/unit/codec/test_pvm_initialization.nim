@@ -70,6 +70,46 @@ assert execute(minimal, ExecutionStepLimit(1), GasCycleLimit(100)).value.exit ==
 let halt = start(envelope([], [], [0'u8, 0, 2, 50, 0, 1], 0, 0), [], 0).value
 assert execute(halt, ExecutionStepLimit(1), GasCycleLimit(100)).value.exit == StepExit.Halt
 
+# Every final member of T is raw-valid, but only five need no fallthrough at JAM preparation.
+for opcode in [0'u8, 1, 40, 50, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90,
+    170, 171, 172, 173, 174, 175, 180]:
+  let accepted = opcode in {0'u8, 40'u8, 50'u8, 80'u8, 180'u8}
+  for padding in [0, 1, 24]:
+    # Literal opcode boundaries cover zero-padded operands and the exact skip cap.
+    var raw = @[0'u8, 0, byte(4 + padding), 51, 7, 7, opcode]
+    for index in 0..<padding: raw.add(0)
+    raw.add(9)
+    for index in 1..<((4 + padding + 7) div 8): raw.add(0)
+    assert decodeProgram(raw, CodeAddress(0), ProgramByteLimit(100), JumpCountLimit(0)).error ==
+        ProgramError.None
+    let input = envelope([11'u8], [22'u8], raw, 0, 0)
+    let source = input
+    let prepared = start(input, [], 2)
+    assert prepared.error == (if accepted: InitializationError.None else:
+      InitializationError.InvalidProgram)
+    assert input == source
+    if accepted:
+      # Preparation never executes even a successful load prefix; all initialized registers survive.
+      assert uint64(machineInfo(prepared.value).value.registers[7]) == 0xfeff0000'u64
+      assert uint64(load(memoryOf(prepared.value).value, MemoryAddress(196608), AccessWidth(
+          1)).value) == 22
+    # Whole-module rejection also applies when the final instruction is unreachable from entry.
+    raw[3] = 0
+    assert start(envelope([], [], raw, 0, 0), [], 0).error ==
+        (if accepted: InitializationError.None else: InitializationError.InvalidProgram)
+
+# The conditional's taken destination is valid entry0; missing fallthrough alone causes refusal.
+let finalConditional = [0'u8, 0, 6, 51, 7, 7, 170, 0, 253, 9]
+assert start(envelope([], [], finalConditional, 0, 0), [], 0).error ==
+    InitializationError.InvalidProgram
+# A successor-present conditional and fallthrough remain valid at preparation.
+for raw in [@[0'u8, 0, 5, 51, 7, 7, 1, 0, 25],
+    @[0'u8, 0, 7, 51, 7, 7, 170, 0, 253, 0, 73]]:
+  assert start(envelope([], [], raw, 0, 0), [], 0).error == InitializationError.None
+# Static-target validity remains a runtime check; this exception does not add eager branch checks.
+assert start(envelope([], [], [0'u8, 0, 2, 40, 127, 1], 0, 0), [], 0).error ==
+    InitializationError.None
+
 # Exact truncations cover header fields, payload, program length and embedded program bytes.
 for length in 0..<empty.len:
   let rejected = start(empty.toOpenArray(0, length - 1), [], 0)

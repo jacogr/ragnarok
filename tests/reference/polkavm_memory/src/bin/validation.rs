@@ -54,4 +54,42 @@ fn main() {
             }
         }
     }
+    let mut cases = 0;
+    // Cover every GP final terminator with empty, short and maximum-length operand tails.
+    for opcode in [
+        0_u8, 1, 40, 50, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 170, 171, 172, 173, 174, 175,
+        180,
+    ] {
+        let accepted = matches!(opcode, 0 | 40 | 50 | 80 | 180);
+        for padding in [0_usize, 1, 24] {
+            for unreachable in [false, true] {
+                // A leading trap makes the bad suffix unreachable without changing module validity.
+                let mut code = vec![if unreachable { 0 } else { 51 }, 7, 7, opcode];
+                code.resize(4 + padding, 0);
+                let mut wire = vec![0_u8, 0, code.len() as u8];
+                wire.extend(&code);
+                wire.push(9);
+                wire.resize(3 + code.len() + code.len().div_ceil(8), 0);
+                let mut parts = ProgramParts::empty(InstructionSetKind::JamV1);
+                parts.code_and_jump_table = wire.into();
+                let blob = ProgramBlob::from_parts(parts).unwrap();
+                let validation = blob.validate_code_with_isa(ISA_JamV1);
+                assert_eq!(
+                    validation.is_ok(),
+                    accepted,
+                    "opcode={opcode} padding={padding}"
+                );
+                if !accepted {
+                    assert_eq!(validation, Err(ProgramCounter(code.len() as u32)));
+                }
+                let loaded = Module::from_blob(&engine, &ModuleConfig::new(), blob);
+                assert_eq!(loaded.is_ok(), accepted);
+                if let Err(error) = loaded {
+                    assert!(matches!(error, CompileError::ValidationFailed(..)));
+                }
+                cases += 1;
+            }
+        }
+    }
+    println!("Final terminator matrix passed: {cases}");
 }
