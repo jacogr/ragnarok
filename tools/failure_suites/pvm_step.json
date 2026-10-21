@@ -50,14 +50,14 @@
     },
     {
       "identity": {
-        "origin": "negative"
+        "origin": "scan_limit"
       },
       "arguments": [
-        "negative"
+        "scan_limit"
       ],
-      "name": "pvm-step-negative",
+      "name": "pvm-step-scan-limit",
       "diagnostic": "r.status == None",
-      "description": "PVM step result selection negative"
+      "description": "PVM step whole-block scan refusal before a register mutation"
     }
   ]
 }

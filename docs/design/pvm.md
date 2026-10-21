@@ -12,8 +12,8 @@ including the approved PolkaVM memory exception ordering. `src/pvm/registers.nim
 evaluates all 85 register-only instruction mutations against a copied register file;
 see [the register semantics contract](../../spec/pvm-registers.md). `src/pvm/gas.nim`
 calculates whole-block pipeline costs with bounded storage and a local cycle limit;
-[the gas contract](../../spec/pvm-gas.md) records independent witnesses and the negative
-branch-target specification gate. `src/pvm/step.nim` now charges whole blocks and
+[the gas contract](../../spec/pvm-gas.md) records independent witnesses and approved
+PolkaVM wrapped branch-target pricing. `src/pvm/step.nim` now charges whole blocks and
 executes register, control-flow and scalar memory steps into immutable machine snapshots, preserving
 the full state on out-of-gas and the specified single-step terminal PCs; see
 [the stepping contract](../../spec/pvm-step.md). Memory faults retain the paid block charge

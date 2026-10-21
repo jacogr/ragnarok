@@ -48,7 +48,7 @@ retains no allocations or references after returning; the program owner is borro
 and unchanged. No native intrinsics, unchecked execution mode or per-opcode gas
 substitute is used.
 
-## Branch-byte lookup and specification gate
+## PolkaVM branch-byte lookup
 
 Branch latency is one when either the static target or fallthrough byte is `trap`
 or `unlikely`, and twenty otherwise. This inspects raw bytes even at unmarked
@@ -57,18 +57,16 @@ operand positions; jump admissibility is a separate execution check. The new
 addresses beyond the program. Signed backward targets within the program remain
 ordinary raw-byte lookups.
 
-A branch whose signed target is **negative** returns `NegativeBranchTarget`.
-The pinned definition extends the instruction sequence only to the right, but the
-branch-cost equation indexes its signed target before jump validity is handled.
-It supplies no value for a negative index. Treating that index as a trap, wrapping
-it to an unsigned address or performing the jump validity check first would choose
-unspecified semantics. A native gate witness and a skipped consensus-charge test
-record this unresolved case. This implementation does not claim complete gas parity
-for all valid program blobs until the specification supplies that definition.
+The maintainer-selected PolkaVM authority now resolves negative mathematical
+targets using its u32-wrapped decoded target and absent-byte prediction-hit rule.
+See [the scoped adoption](pvm-polkavm-branch-cost.md). NegativeBranchTarget is a
+historical compatibility identifier, not a current blockGas result. The fixed
+25-cycle memory latency matches PolkaVM Full(L2Hit); this adoption changes only
+target-byte selection and does not select a different cache/cost model.
 
 ## Independent evidence
 
-The generated `build/` gas fixture contains **1,728** blocks. A Python test-only
+The generated `build/` gas fixture contains **1,776** blocks. A Python test-only
 reference reads numeric opcode mutations and cost macros directly from the pinned
 TeX, then simulates with unbounded historical entries, dependency sets and separate
 next-state copies. Production code uses handwritten profiles and a compact fixed
@@ -107,5 +105,5 @@ The [single-step executor](pvm-step.md) now composes charging with immutable
 successor snapshots, unchanged out-of-gas state and single-step terminal outcomes.
 Memory faults preserve the paid block charge for repair/retry. The bounded
 [executor](pvm-execution.md) now handles host suspension and recursive exit rules;
-standard initialization and host functions remain separate work. The negative branch-cost specification gate
-remains explicit; this is not a complete PVM or JAM invocation implementation.
+standard initialization and host functions remain separate work. Branch pricing follows the approved PolkaVM adoption; this is not a complete
+PVM or JAM invocation implementation.

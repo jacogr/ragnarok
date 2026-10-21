@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 whole-block pipeline simulation; see spec/pvm-gas.md.
+## Whole-block pipeline simulation with approved PolkaVM wrapped-target pricing; see spec/pvm-gas.md.
 ## Exposes blockGas, nominal BlockGas/GasCycleLimit values and guarded GasResult outcomes.
 ## The simulator borrows an immutable program and uses bounded stack storage only.
 
@@ -237,12 +237,11 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
       if cost.slots <= slots:
         # Branch cost inspects raw bytes even when the target is not a valid jump destination.
         if item.opcode in {81'u8..90'u8, 170'u8..175'u8}:
-          if item.displacement < 0 and uint64(-item.displacement) > pc:
-            # The GP defines only a right-hand zero suffix, not negative instruction indices.
-            return GasResult(status: GasError.NegativeBranchTarget)
-          # Validated PCs fit host int; adding a signed-32-bit positive offset fits uint64.
-          let target = (if item.displacement < 0: pc - uint64(-item.displacement)
-            else: pc + uint64(item.displacement))
+          # PolkaVM decodes static offsets with u32 wrapping before raw target-byte pricing.
+          # Both operands fit32 bits, so the sum fits33 bits; the negative magnitude is bounded by2^31.
+          let offset = if item.displacement < 0: 0x100000000'u64 - uint64(-item.displacement)
+            else: uint64(item.displacement)
+          let target = ((pc and 0xffffffff'u64) + offset) and 0xffffffff'u64
           let following = instructionByte(program, CodeAddress(pc + 1 + uint64(item.skip)))
           let taken = instructionByte(program, CodeAddress(target))
           if following.value in {0'u8, 2'u8} or taken.value in {0'u8, 2'u8}:

@@ -12,9 +12,8 @@ Source of truth is Gray Paper **0.8.0**, commit
 `stepOnce(machine, gasLimit)` implements the single-step opcode capability for
 all valid instructions, including `ecalli`. The narrower `stepRegisters`,
 `stepControl` and `stepMemory` entry points preserve their existing capability
-boundaries. All still return guarded `StepResult` values and share the explicit
-negative-branch-pricing specification gate; wrapping memory follows the
-maintainer-approved PolkaVM behavior.
+boundaries. All return guarded `StepResult` values; branch-target pricing and wrapping
+memory follow the maintainer-approved pinned PolkaVM behavior.
 
 `execute(machine, stepLimit, gasLimit)` evaluates the recursive `Psi` exit rules
 using a loop over immutable snapshots. Its input program is already validated

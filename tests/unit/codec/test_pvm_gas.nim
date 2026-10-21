@@ -65,13 +65,15 @@ assert blockGas(captured.value, CodeAddress(high(uint64)), GasCycleLimit(100)).e
 assert instructionByte(captured.value, CodeAddress(1)).value == 0
 assert instructionByte(captured.value, CodeAddress(high(uint64))).value == 0
 assert instructionByte(default(Program), CodeAddress(0)).error == ProgramError.InvalidOwner
-# The signed branch target -1 is not defined by the GP's right-hand zero suffix.
-let negative = decodeProgram([0'u8, 0, 7, 170, 0, 255, 255, 255, 255, 0, 65],
-  CodeAddress(0), ProgramByteLimit(11), JumpCountLimit(0))
+# PolkaVM wraps the negative static target before pricing; noncheap move fallthrough isolates the absent-target hit.
+let negative = decodeProgram([0'u8, 0, 9, 170, 0, 255, 255, 255, 255, 100, 0, 0, 65, 1],
+  CodeAddress(0), ProgramByteLimit(14), JumpCountLimit(0))
 assert negative.error == ProgramError.None
-assert blockGas(negative.value, CodeAddress(0), GasCycleLimit(100)).error ==
-  GasError.NegativeBranchTarget
-# A backward branch to an in-range unlikely byte is priced normally, not rejected by the gate.
+let negativeCost = blockGas(negative.value, CodeAddress(0), GasCycleLimit(4))
+assert negativeCost.error == GasError.None and uint64(negativeCost.value) == 1
+assert blockGas(negative.value, CodeAddress(0), GasCycleLimit(3)).error ==
+    GasError.CycleLimitExceeded
+# A backward branch to an in-range unlikely byte is priced normally with its actual target byte.
 let backward = decodeProgram([0'u8, 0, 8, 2, 170, 0, 255, 255, 255, 255, 0, 131],
   CodeAddress(0), ProgramByteLimit(12), JumpCountLimit(0))
 assert backward.error == ProgramError.None
