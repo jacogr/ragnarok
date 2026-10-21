@@ -114,3 +114,12 @@ falls back to a local head or genesis. An existing wrong-layout path or corrupt 
 without migration, overwrite or older-head fallback. The managed startup suite checks actual
 Services create/restart, lock competition, wrong-layout refusal, unchanged corrupt bytes and
 successful restart after an explicit test-owned restoration of the exact original manifest.
+
+## Managed checkpoint import trust
+
+The managed checkpoint import suite starts from a separately supplied exact checkpoint identity
+and sealed header, creates a fresh managed destination, and compares every imported state entry.
+It refuses repeated import into an existing path and missing external trust without selecting the
+already valid local database. A subsequent normal local restart resumes that previously admitted
+imported head with finality unset. This keeps local durable-head resumption distinct from external
+checkpoint authority; physical layout never supplies missing import trust or execution provenance.
