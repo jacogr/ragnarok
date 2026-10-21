@@ -200,6 +200,14 @@ fn main() {
 }
 ```
 
+## Cross-checks with no new discrepancy
+
+The [executed arithmetic cross-check](pvm-register-reference-crosscheck.md) passes
+all38977 unchanged independent rows across85 register-only opcodes, comparing the
+exact trap PC and all13 registers against pinned PolkaVM interpreter/JamV1. These
+expectations remain Gray Paper-derived; no row was changed to obtain parity.
+This result does not imply unrestricted PVM conformance.
+
 ## Related findings outside this PVM increment
 
 Existing evidence remains in its owning records rather than being duplicated here:

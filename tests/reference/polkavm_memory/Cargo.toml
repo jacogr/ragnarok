@@ -4,6 +4,7 @@
 # Optional fixture regeneration against the pinned upstream public API; no production integration.
 [package]
 name = "ragnarok-memory-probe"
+default-run = "ragnarok-memory-probe"
 version = "0.0.0"
 edition = "2021"
 publish = false
