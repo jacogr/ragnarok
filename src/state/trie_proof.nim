@@ -12,7 +12,7 @@ type
     valueBytes*: ByteLimit
   StateProofError* {.pure.} = enum ## Failure alternatives never expose a proof prefix or lookup payload.
     Uninitialized, None, LimitExceeded, InvalidProof, InvalidIndex, RootMismatch,
-    KeyMismatch, BackendFailure, MissingValue, StoreFailure, DuplicateKey, LengthOverflow
+    KeyMismatch, BackendFailure, MissingValue, StoreFailure, Truncated, NonCanonical, DuplicateKey, LengthOverflow
   ProofData = ref object ## Private acyclic ownership freezes copied canonical nodes and supplied bytes.
     nodes: seq[EncodedStateNode]
     value: seq[byte]
@@ -464,3 +464,32 @@ proc encodeStateProof*(proof: StateProof, limits: StateProofLimits,
   for i, octet in data.value:
     output[int(overhead)+i] = octet # Return new caller-owned storage, not a mutable owner view.
   StateProofResult[seq[byte]](status: StateProofError.None, completed: output)
+
+proc decodeStateProof*(input: openArray[byte], limits: StateProofLimits,
+    wireBytes: ByteLimit): StateProofResult[StateProof] =
+  ## Decode exactly one bounded local envelope; no alternate version, suffix or partial success is accepted.
+  if uint64(input.len) > uint64(wireBytes):
+    return proofFailure[StateProof](StateProofError.LimitExceeded)
+  if input.len < 10: return proofFailure[StateProof](StateProofError.Truncated)
+  if input[0] != byte('R') or input[1] != byte('S') or input[2] != byte('P') or input[3] != byte('1'):
+    return proofFailure[StateProof](StateProofError.NonCanonical)
+  let count = uint64(input[4]) or (uint64(input[5]) shl 8)
+  var size = 0'u64
+  for i in 0..<4:
+    size = size or (uint64(input[6+i]) shl (8*i)) # Widen before shifting untrusted E4 octets.
+  if count > 249 or count > uint64(limits.nodes) or size > uint64(limits.valueBytes):
+    return proofFailure[StateProof](StateProofError.LimitExceeded)
+  let overhead = 10'u64 + count*64'u64
+  let total = overhead+size # Both operands have fixed validated domains far below uint64 overflow.
+  if total > uint64(input.len): return proofFailure[StateProof](StateProofError.Truncated)
+  if total != uint64(input.len): return proofFailure[StateProof](StateProofError.NonCanonical)
+  var nodes = newSeq[EncodedStateNode](int(count))
+  for i in 0..<int(count):
+    # Every node's full extent was proven before allocation and indexing.
+    var bytes = default(array[64, byte])
+    for j in 0..<64: bytes[j] = input[10+i*64+j]
+    nodes[i] = EncodedStateNode(bytes)
+  var supplied = newSeq[byte](int(size))
+  for i in 0..<int(size):
+    supplied[i] = input[int(overhead)+i] # Retain no caller-owned mutable byte storage.
+  captureStateProof(nodes, supplied, limits) # Canonical layout/path checks remain shared and noncryptographic.
