@@ -130,3 +130,12 @@ identity and bounded relative source-hash manifest. Compiler, native executable 
 hashes are retained. Missing or malformed provenance cannot render a successful comparison even
 with plausible timings. Failed/partial runs remain diagnosable without pretending setup completed.
 These recorded identities are reproducibility evidence, not checkpoint or execution authority.
+
+## Opposite-order ratio stability
+
+Raw-derived statistics retain both pass medians and each within-pass backend/memory ratio. A
+separate marker flags ratios that differ by more than 25% across opposite execution orders, even
+when pooled medians look equal. Common host drift may mark absolute timings noisy while leaving
+ratios stable. All statistics and ratio fields are recomputed from complete raw evidence; canonical
+JSON comparison also refuses forged derived numeric types and nonfinite values. These descriptive
+ratios do not establish causality, production throughput or interchangeable durability.
