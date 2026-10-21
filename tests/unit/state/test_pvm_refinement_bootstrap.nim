@@ -157,6 +157,26 @@ assert prepare(@[0'u8]).error == RefinementBootstrapError.InvalidEnvelope
 var invalid = raw
 invalid[invalid.len-1] = 0 # No instruction start bit, despite a correctly hashed preimage and valid envelope framing.
 assert prepare(invalid).error == RefinementBootstrapError.InvalidProgram
+# Real historical lookup and hashing cannot promote final missing successors to a ready refinement CPU.
+for program in [@[0'u8, 0, 4, 51, 7, 7, 1, 9],
+    @[0'u8, 0, 6, 51, 7, 7, 170, 0, 253, 9]]:
+  var authenticated = @[2'u8, 201, 202]
+  for index in 0..<11: authenticated.add(0)
+  authenticated.add(byte(program.len))
+  for index in 0..<3: authenticated.add(0)
+  for octet in program: authenticated.add(octet)
+  let source = authenticated
+  assert prepare(authenticated).error == RefinementBootstrapError.InvalidProgram
+  assert authenticated == source
+  authenticated[18] = 0 # An unreachable final successor is still a whole-module defect.
+  assert prepare(authenticated).error == RefinementBootstrapError.InvalidProgram
+# A present successor produces a Ready owner rather than a preparation failure.
+block:
+  var authenticated = @[2'u8, 201, 202]
+  for index in 0..<11: authenticated.add(0)
+  for octet in [9'u8, 0, 0, 0, 0, 0, 5, 51, 7, 7, 1, 0, 25]: authenticated.add(octet)
+  assert prepare(authenticated).value.bootstrapInfo.value.status == RefinementCodeStatus.Ready
+
 # A wrong committed preimage hash is invalid supplied state; backend failures cannot fabricate BAD/Ready/hash bytes.
 let originalState = state(raw, expectedCodeHash)
 var altered = raw

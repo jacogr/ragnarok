@@ -80,3 +80,19 @@ The approved preparation check passes the initializer matrix and its existing
 checker independently passes all132 final-terminator/padding/reachability cases,
 including exact rejection offsets. The raw three-case suite still passes.
 Inventory remains219 failure families/2562 probes/341 native suites.
+
+## Actual JAM caller coverage
+
+The existing authorization-invocation, refinement-bootstrap and accumulation-machine
+suites carry the missing-successor witnesses through real historical code lookup,
+hashing, envelope preparation and mandatory entry selection. Authorization returns
+`InitializationFailure` with `InvalidProgram`; refinement and accumulation return
+their existing `InvalidProgram` alternatives. No failed result exposes an invocation
+or CPU. Unreachable bad suffixes still refuse; present-trap successors prepare and
+produce ordinary guest Panic when executed. Source code/bootstrap aliases survive
+refusal unchanged. These are original fixtures with existing helper/link profiles.
+
+All three caller suites pass in checked release with their existing1000-cycle ARC
+checks: authorization975472, refinement25202592 and accumulation269248 bytes,
+each unchanged before/after. The longer accumulation fixture uses its own64-byte
+program budget so refusal is semantic rather than local limit exhaustion.
