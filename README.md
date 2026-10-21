@@ -38,6 +38,9 @@ Use `make help` to list targets, `make format` to format Nim and Rust, and `make
 to check formatting. The [development guide](docs/development.md) describes individual check
 groups; the [testing guide](docs/testing.md) explains their coverage.
 
+External full-state checkpoints support [explicit trusted import startup](docs/checkpoint-import.md),
+resuming one selected head with finality unset.
+
 ## Q&A
 
 ### Is Ragnarök eligible for the JAM Implementer's Prize?

@@ -11,6 +11,7 @@ feature contracts, pinned source identities and unresolved protocol interpretati
 | Guide | What it covers |
 | --- | --- |
 | [Development](development.md) | Supported hosts, setup, Make targets and local workflows |
+| [Checkpoint imports](checkpoint-import.md) | Explicit trusted full-state startup inputs and operation |
 | [Testing](testing.md) | Verification groups, evidence and requesting CI |
 | [GitHub automation](../.github/WORKFLOWS.md) | Workflow jobs, CI labels and retained evidence |
 | [Design](design.md) | Module boundaries and links to the pages in [`design/`](design/) |
