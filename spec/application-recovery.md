@@ -183,3 +183,18 @@ server/mesh startup refusals, with exact input preservation and reaped children.
 Both E2E plan/completeness harness tests and inventory pass. Evidence is under
 `build/recovery-executable*`; this is focused local process evidence, not a full
 E2E or exact-head Linux CI verdict.
+
+## Genuine resumed successor authority
+
+A signed two-guest block is independently prepared and adopted through direct
+execution and a fresh checkpoint-restored Services owner. Exact child identity,
+complete posterior root/count and every key/value agree. A pre-recovery finalized
+certificate is rejected as StaleState despite root equality; successful private
+preparation publishes only on the later service tick. The retained imported parent
+stays immutable, ordinary history grows to two heads, finality remains unset and
+replay refuses without changing canonical state. Shared fixture startup retires
+all temporary restored aliases before subsequent lease tests. No PVM or state
+transition implementation changes are required.
+
+Local signed-successor suite, focused semantic checking and inventory pass.
+Evidence uses `build/recovery-successor*`; no full JAM/STF or Linux CI claim is made.
