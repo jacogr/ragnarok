@@ -213,3 +213,12 @@ Serialized image admission now uses the ordered decoder. Descending input report
 `InvalidRecords/NonCanonical` earlier, instead of the later `InvalidGraph`; duplicate identities
 remain `DuplicateNode`. No valid bytes change. Tests require zero hashes for descending/duplicate
 identities, all truncations, unchanged generic decoding and real inner hash refusal.
+
+## Snapshot selected-count preflight
+
+Snapshot decoding bounds declared selected entries/nodes against the complete-map policy before
+outer hashing or physical record allocation. Root/context/body extent checks and independent
+chain/schema selection remain mandatory. Oversized claims return `SnapshotError.LimitExceeded`
+even when their checksum is invalid; bounded plausible claims still require the genuine checksum
+and complete physical admission. Observer tests require zero hashes for both count limits and
+narrowed policies, one hash for a bounded checksum failure and four for an intact three-node graph.

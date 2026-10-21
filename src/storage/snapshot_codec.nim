@@ -157,13 +157,15 @@ proc decodeRepositorySnapshot*(input: openArray[byte], chain: StorageChainId,
     return SnapshotResult[RepositorySnapshot](status: SnapshotError.WrongIdentity)
   let generation = number(input, base+33)
   let entries = number(input, base+73)
+  let nodes = number(input, base+81)
   let count = number(input, base+89)
   let context = number(input, base+97)
   let body = number(input, base+105)
   if generation == 0 or count == 0: return SnapshotResult[RepositorySnapshot](
       status: SnapshotError.InvalidFormat)
   if count > uint64(limits.roots) or count > uint64(high(int) div sizeof(StateRoot)) or entries >
-      uint64(high(int)):
+      uint64(high(int)) or entries > uint64(limits.repository.codec.trie.items) or
+      nodes > uint64(limits.repository.codec.trie.nodes):
     return SnapshotResult[RepositorySnapshot](status: SnapshotError.LimitExceeded)
   if context > uint64(limits.context): return SnapshotResult[RepositorySnapshot](
       status: SnapshotError.LimitExceeded)
@@ -189,7 +191,7 @@ proc decodeRepositorySnapshot*(input: openArray[byte], chain: StorageChainId,
   var roots = newSeq[StateRoot](int(count))
   for index in 0..<roots.len: roots[index] = StateRoot(readHash(input, HeaderBytes+index*32))
   let commitment = StateTrieCommitment(root: StateRoot(readHash(input, base+41)), entries: int(
-    entries), nodes: number(input, base+81))
+    entries), nodes: nodes)
   let admitted = decodeRepositoryImage(input.toOpenArray(bodyOffset, input.len-33),
     RepositoryGeneration(generation), commitment, roots, limits.repository, limits.roots, ByteLimit(body))
   if admitted.error == RepositoryError.InvalidRecords:
