@@ -222,3 +222,15 @@ chain/schema selection remain mandatory. Oversized claims return `SnapshotError.
 even when their checksum is invalid; bounded plausible claims still require the genuine checksum
 and complete physical admission. Observer tests require zero hashes for both count limits and
 narrowed policies, one hash for a bounded checksum failure and four for an intact three-node graph.
+
+## Borrowed physical shape refusal
+
+The initial physical byte scan now rejects reserved zero record identities and branches with
+both children empty. These same shapes were already rejected after transport allocation; they
+now fail while input remains borrowed, before allocating/copying record payloads. Exact tag,
+extent, count, per-value and aggregate ceilings remain in force. A zero child on only one side
+is still a locally possible branch; complete-map canonical topology remains the graph's job.
+
+Observer controls cover target, unordered collection and canonical collection decoders, requiring
+zero hashes for both malformed forms and genuine hashing for intact or subtly corrupt records.
+Raw mutable validation retains its original independent shape and integrity checks.

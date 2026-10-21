@@ -213,6 +213,8 @@ proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: boo
   var previous = default(StateNodeHash)
   for i in 0..<int(count):
     if input.len-offset < 33: return RecordResult[TrieExport](status: RecordError.InvalidFormat)
+    if zero(StateNodeHash(readHash(input, offset+1))):
+      return RecordResult[TrieExport](status: RecordError.NonCanonical) # Reserved empty addresses cannot own a physical record.
     if ordered:
       # Prove canonical unique physical order from borrowed bytes before allocating any records or hash scratch.
       let digest = StateNodeHash(readHash(input, offset+1))
@@ -236,6 +238,9 @@ proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: boo
       offset += int(size) # Remaining-input proof makes narrowing and addition safe.
     elif tag == 1:
       if input.len-offset < 64: return RecordResult[TrieExport](status: RecordError.InvalidFormat)
+      if zero(StateNodeHash(readHash(input, offset))) and
+          zero(StateNodeHash(readHash(input, offset+32))):
+        return RecordResult[TrieExport](status: RecordError.NonCanonical) # No raw record allocation is needed to reject an empty branch.
       offset += 64 # Physical branches retain both complete child identities.
     else:
       return RecordResult[TrieExport](status: RecordError.NonCanonical)
