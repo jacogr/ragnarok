@@ -8,7 +8,10 @@ The preceding register, control, memory, host, metered-retry and complete-progra
 corpora establish a useful common subset before timing. This is the first limited
 baseline, not a declaration that all PVM/JAM correctness gates are closed.
 
-One consolidated comparison covers all workloads and both reference backends. The
+One consolidated comparison covers all workloads. The maintainer currently selects
+Ragnarök versus the PolkaVM interpreter; compiled comparison is explicitly deferred
+until the interpreter baseline is competitive. No compiler backend process is started
+by `make bench-pvm`, and no CI kernel settings are changed. The
 independent fixture generator encodes original guest bytes and derives complete
 registers, memory, host-call counts and GP block prices without either engine
 producing expectations. Five fixed guests exercise arithmetic/branches (10000 loop
@@ -25,12 +28,11 @@ symbols. Its transitive versions/checksums match the pinned upstream lock. Defau
 PolkaVM features and public JamV1 APIs are used; no nightly musttail feature,
 experimental sandbox, source patch or dependency upgrade is introduced.
 
-Both reference backends use Sync/Full/L2Hit pricing. The requested backend is explicit;
-an unavailable compiler/profile receives no timing and no interpreter substitution.
-Engine setup failures, including unavailable dynamic-paging kernel facilities, are
-reported per workload. Invalid modules, incorrect results or unsupported observed
-exits fail the run rather than becoming an unavailable result. No kernel setting is
-changed. Compiled CPU support/module checks still apply on an otherwise supported host.
+The reference interpreter uses Sync/Full/L2Hit pricing with an explicit backend.
+Invalid modules, incorrect results or unsupported observed exits fail the run.
+No compiler process or kernel configuration change is part of current measurements.
+The retained Rust driver supports explicit compiler selection for future use; that
+capability is not requested by the maintained baseline command.
 
 The measured region is execution through final halt, including host dispatch/replies
 where applicable and normal transient allocation/ARC work. Process startup, program
@@ -104,3 +106,24 @@ Benchmark/oracle/lock/profile/report guards, existing CI/summary/Make safeguards
 inventory and both relevant pinned formatters pass locally. Real native and reference
 controls reject tampered expected results and block prices before accepting a sample.
 The future full upstream fuzzing/differential CI obligation remains separate.
+
+## Current comparison scope
+
+On 2026-10-21 the maintainer requested keeping comparisons interpreted while Ragnarök
+is substantially behind. Reports retain an explicit `Deferred` compiled column and
+reason, with no timing samples or backend-availability claim for that column. Two
+opposite-order passes measure only Ragnarök and the pinned PolkaVM interpreter.
+Historical reports with unavailable/measured compiled entries remain readable; they
+do not establish that the current command requested that backend.
+
+The experimental hosted compiler correctness run found a pinned host-API panic when
+seeding the last 4 KiB page. Its evidence is retained in the
+[compiler boundary record](pvm-compiler-final-page.md). Compiled CI, sandbox kernel
+changes and a required-compiler gate are deferred along with compiled performance.
+The ordinary full reference job continues to check the interpreter/native pairs.
+
+The interpreter-only command passes locally with all five validated workloads,
+20 measured samples per active engine and explicit deferred compiler rows. All 51
+selected tooling/CI/summary checks pass. Raw checks confirm no compiler command ran;
+compiled rows carry no samples. Existing native code, workload inputs, pins and build
+profiles are unchanged. These local results do not imply an exact-head Linux result.

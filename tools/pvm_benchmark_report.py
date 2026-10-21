@@ -1,10 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Validate raw benchmark observations and render one complete three-engine comparison table."""
+"""Validate raw baseline observations and keep deferred compiled comparisons explicit."""
 import statistics
 
 ENGINES=('ragnarok','polkavm_interpreter','polkavm_compiler')
+ACTIVE_ENGINES=ENGINES[:2]
+DEFERRED_COMPILER='Deferred by maintainer until the interpreter baseline is competitive'
 NAMES=('arithmetic-10000','memory-aligned-1000','memory-crossing-1000',
        'hosts-aligned-1000','hosts-crossing-1000')
 
@@ -60,7 +62,11 @@ def aggregate(passes):
             if any(unavailable):
                 if not all(unavailable) or engine!='polkavm_compiler':
                     raise ValueError('Inconsistent backend availability between passes')
-                engines[engine]=dict(status='unavailable',reason='; '.join(sorted({item['reason'] for item in observations})))
+                deferred=[item.get('deferred',False) for item in observations]
+                if any(deferred) and not all(deferred):raise ValueError('Inconsistent compiler deferral between passes')
+                if any(item['samples'] for item in observations):raise ValueError('Unmeasured backend supplied timings')
+                engines[engine]=dict(status='deferred' if all(deferred) else 'unavailable',
+                    reason='; '.join(sorted({item['reason'] for item in observations})))
             else:
                 raw=[dict(item,pass_index=p) for p,row in enumerate(observations) for item in row['samples']]
                 samples=[item['execution_ns'] for item in raw if item['sample']>=3]
@@ -89,9 +95,10 @@ def summarize_benchmark(report):
         noisy=False
         for engine in ENGINES:
             item=case['engines'][engine]
-            if item['status']=='unavailable':
+            if item['status'] in ('unavailable','deferred'):
                 if engine!='polkavm_compiler' or not item.get('reason'):raise ValueError('Required baseline unavailable')
-                cells.append('Unavailable')
+                if item.get('samples'):raise ValueError('Unmeasured backend supplied timings')
+                cells.append('Deferred' if item['status']=='deferred' else 'Unavailable')
             else:
                 if ({(s['pass_index'],s['sample']) for s in item['samples']}
                         !={(p,i) for p in range(2) for i in range(13)} or len(item['samples'])!=26):
@@ -109,11 +116,11 @@ def summarize_benchmark(report):
     if noisy_rows:
         lines+=['','† Noisy: per-pass medians differ by more than 25% or central sample spread exceeds 2×. Ratios are provisional; no samples were discarded.']
     reasons={item['engines']['polkavm_compiler'].get('reason') for item in cases
-             if item['engines']['polkavm_compiler']['status']=='unavailable'}
+             if item['engines']['polkavm_compiler']['status'] in ('unavailable','deferred')}
     for reason in sorted(reasons):
         # Kernel/backend errors are diagnostics, not instructions or Markdown table content.
         safe=' '.join(reason.split())[:500].replace('<','&lt;').replace('>','&gt;')
-        lines+=['','Compiled unavailable: '+safe]
+        lines+=['','Compiled comparison: '+safe]
     if report.get('error'):lines+=['','Failure: '+str(report['error']).replace('\n',' ')[:500]]
     lines+=['','These are observations on one recorded host, without affinity/frequency isolation. '
             'Small differences within the sample spread are not established performance changes.',

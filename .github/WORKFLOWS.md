@@ -12,7 +12,8 @@ E2E networking, JAM Tart telemetry interoperability and the Docker image build/s
 The Docker job runs for unit/full requests and never publishes an image. A separate PVM
 reference job runs the pinned public-API probes and matching native suites for master pushes
 and full requests. The separate manual `bench-pvm` scope measures validated workloads
-and publishes one speed table with raw samples; full fuzzing CI remains future work.
+and publishes one speed table with raw samples. The current baseline compares Ragnarök
+and the PolkaVM interpreter; compiled comparisons are deferred. Full fuzzing CI remains future work.
 
 Pushes to `master` request full verification. Pull requests run checks when a maintainer adds
 `ci:unit`, `ci:e2e` or `ci:full`; opening a PR or pushing another commit does not request a run.
