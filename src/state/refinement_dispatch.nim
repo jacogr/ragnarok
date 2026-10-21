@@ -4,8 +4,8 @@
 ## Capture one immutable refinement host environment and run its supported hosts with bounded execution.
 ## Caller supplies trusted initialized CPU/heap and authenticated input bytes; this is not a Psi_R certificate.
 
-import ../pvm/[machine, step, gas, host_gas, host_heap, host_fetch, refinement_exports, inner_machines]
-import ../codec/[bounded, work_package, work_digest]
+import ../pvm/[machine, program, step, gas, host_gas, host_heap, host_fetch, refinement_exports, inner_machines]
+import ../codec/[bounded, composite, state_service_values, work_package, work_digest]
 import ../chain/parameters
 import ./[store, refinement_lookup]
 
@@ -27,6 +27,7 @@ type
     machine: Machine
     fetch: FetchContext
     lookup: HistoricalLookupContext
+    service: ServiceIndex
     heap: RefinementHeapBounds
     offset: ExportOffset
   PreparedRefinementExecution* = object ## A replayable caller-prepared environment, without code eligibility or block authority.
@@ -48,6 +49,7 @@ type
     copyLimit: MemoryByteLimit
     exportLimits: ExportLimits
     machines: InnerMachines
+    programCopyLimit: ProgramByteLimit
     innerFailure: StepError
 
 func error*[T](outcome: RefinementDispatchResult[T]): RefinementDispatchError =
@@ -116,7 +118,73 @@ proc prepareRefinementExecution*(initial: Machine, state: StateStoreSnapshot,
   RefinementDispatchResult[PreparedRefinementExecution](status: RefinementDispatchError.None,
     completed: PreparedRefinementExecution(data: RefinementData(machine: initial,
       fetch: fetched.value,
-      lookup: lookup.value, heap: heap, offset: offset)))
+      lookup: lookup.value, service: package.workItemAt(int(uint64(
+          item))).value.workItemInfo.value.service,
+      heap: heap, offset: offset)))
+
+# Consume an inner transition once, preserving its exact response/map pairing and local error reason.
+proc innerResponse(context: var DispatchContext, changed: InnerMachineResult[
+    InnerMachineTransition]):
+    HostResult[RefinementDispatchError] {.raises: [].} =
+  if changed.error == InnerMachineError.UnsupportedSource:
+    return hostFailure(RefinementDispatchError.InvalidContext) # A resolved source must not require another adapter.
+  if changed.error == InnerMachineError.ExecutionFailure:
+    context.innerFailure = changed.executionError
+    return hostFailure(RefinementDispatchError.ExecutionFailure) # Stage the exact enum reason beside this run's private context.
+  if changed.error == InnerMachineError.None:
+    let transition = changed.value
+    context.machines = transition.machines
+    return hostSuccess[RefinementDispatchError](
+        transition.response) # Response and immutable map move together.
+  hostFailure(if changed.error == InnerMachineError.LimitExceeded: RefinementDispatchError.LimitExceeded
+    else: RefinementDispatchError.InvalidContext) # A local capture refusal cannot become protocol HUH/FULL.
+
+# Resolve database mode only after the inner preflight has proved affordability and a free module handle.
+proc historicalCompilation(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[RefinementDispatchError] {.raises: [].} =
+  let requested = uint64(cpu.registers[9])
+  let cost = 1862'u64+(requested div 1024)*366+((requested mod 1024)*366+1023) div 1024
+  let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[8])), MemoryLength(32),
+      MemoryByteLimit(32))
+  if captured.error in {MachineError.Fault, MachineError.InvalidRange}:
+    return hostSuccess[RefinementDispatchError](HostResponse(action: HostAction.Panic,
+      gas: MachineGas(uint64(cpu.gas)-cost), gasDeficit: GasDeficit(0), registers: cpu.registers,
+      memory: memory)) # Affordability was proved by the module preflight; memory panic precedes account selection.
+  if captured.error != MachineError.None:
+    return hostFailure(RefinementDispatchError.InvalidContext) # Fixed bounded capture cannot exceed its explicit32-byte allowance.
+  let selected = uint64(cpu.registers[11])
+  if selected != high(uint64) and selected > uint64(high(uint32)):
+    return innerResponse(context, compileHistoricalInnerModule(context.machines, cpu.gas,
+      cpu.registers, memory, false, [])) # Full-width out-of-domain accounts are absent, without low-bit aliasing.
+  let service = if selected == high(uint64): context.source.service else: ServiceIndex(uint32(selected))
+  var hash = default(array[32, byte])
+  for index in 0..<32:
+    hash[index] = captured.value[index] # Exact fixed capture establishes every source coordinate.
+  let looked = historicalPreimage(context.source.lookup, service, ServicePreimageHash(hash))
+  case looked.error
+  of HistoricalLookupError.None:
+    discard # Absence remains distinct from a present empty blob.
+  of HistoricalLookupError.MalformedState:
+    return hostFailure(RefinementDispatchError.MalformedState)
+  of HistoricalLookupError.BackendFailure:
+    return hostFailure(RefinementDispatchError.BackendFailure)
+  of HistoricalLookupError.LimitExceeded:
+    return hostFailure(RefinementDispatchError.LimitExceeded)
+  else:
+    return hostFailure(RefinementDispatchError.InvalidContext)
+  if not looked.value.present:
+    return innerResponse(context, compileHistoricalInnerModule(context.machines, cpu.gas,
+      cpu.registers, memory, false, [])) # NONE never publishes a catalogue entry.
+  let blob = looked.value.value
+  let offset = min(uint64(cpu.registers[10]), uint64(blob.byteLength))
+  let size = min(requested, uint64(blob.byteLength)-offset)
+  let copied = blob.copySlice(offset, size, ByteLimit(uint64(context.programCopyLimit)))
+  if copied.error == StateStoreError.LimitExceeded:
+    return hostFailure(RefinementDispatchError.LimitExceeded) # Bound actual source capture before copying, independently of gas pricing.
+  if copied.error != StateStoreError.None:
+    return hostFailure(RefinementDispatchError.InvalidContext) # Owner-bound clipping already proved the complete source range.
+  innerResponse(context, compileHistoricalInnerModule(context.machines, cpu.gas,
+    cpu.registers, memory, true, copied.value))
 
 proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
     RefinementDispatchError] {.raises: [].} =
@@ -178,17 +246,8 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
       expungeInnerMachine(context.machines, cpu.gas, cpu.registers,
           memory) # Every implemented inner host uses one invocation-local map.
     if changed.error == InnerMachineError.UnsupportedSource:
-      return hostFailure(RefinementDispatchError.UnsupportedHostCall) # Historical compilation needs its authenticated database adapter.
-    if changed.error == InnerMachineError.ExecutionFailure:
-      context.innerFailure = changed.executionError
-      return hostFailure(RefinementDispatchError.ExecutionFailure) # Stage the exact enum reason beside this run's private context.
-    if changed.error == InnerMachineError.None:
-      let transition = changed.value
-      context.machines = transition.machines
-      return hostSuccess[RefinementDispatchError](
-          transition.response) # Response and immutable map move together.
-    hostFailure(if changed.error == InnerMachineError.LimitExceeded: RefinementDispatchError.LimitExceeded
-      else: RefinementDispatchError.InvalidContext) # A local capture refusal cannot become protocol HUH/FULL.
+      return historicalCompilation(context, cpu, memory) # Pricing/capacity preflight succeeded before any state source work.
+    innerResponse(context, changed)
   else:
     hostSuccess[RefinementDispatchError](unknownHostResponse(cpu.gas, cpu.registers,
         memory)) # Includes accumulation-only IDs.
@@ -204,7 +263,7 @@ proc executeRefinement*(prepared: PreparedRefinementExecution, copyLimit: Memory
   let empty = captureRefinementExports(data.offset)
   var context = DispatchContext(source: data, exports: empty, copyLimit: copyLimit,
       exportLimits: exportLimits, machines: captureInnerMachines(inner),
-          innerFailure: StepError.Uninitialized)
+          programCopyLimit: inner.program, innerFailure: StepError.Uninitialized)
   let evaluated = executeWithHost(data.machine, context, dispatch, steps, calls, cycles)
   case evaluated.error
   of HostExecutionError.None:

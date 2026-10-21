@@ -6,7 +6,7 @@
 
 import std/[assertions, syncio]
 import ../../../src/state/[refinement_dispatch, store]
-import ../../../src/pvm/[machine, program, step, gas, host_fetch, refinement_exports]
+import ../../../src/pvm/[machine, program, step, gas, host_fetch, refinement_exports, inner_machines]
 import ../../../src/chain/parameters
 import ../../../src/codec/[bounded, composite, state_accounts, state_trie, state_service_values,
   state_requests, work_package, work_digest, work_report]
@@ -31,7 +31,7 @@ proc package(anchor = 20'u32): OwnedWorkPackage =
   let config = fullPackageConfig(ByteLimit(2048))
   let size = encodeWorkPackage(value, config, wire).value
   decodeWorkPackage(wire.toOpenArray(0, size-1), config).value.owner
-proc state(): StateStoreSnapshot =
+proc state(program: seq[byte] = @[]): StateStoreSnapshot =
   ## Retained complete maps supply independent histories and byte values for each package-selected self.
   var hash = default(array[32, byte])
   hash[0] = 73
@@ -39,11 +39,11 @@ proc state(): StateStoreSnapshot =
   for service in [42'u32, 99]:
     entries.add(serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(), ByteLimit(
         ServiceMetadataBytes)).value)
-    let bytes = if service == 42: @[21'u8, 22, 23] else: @[31'u8, 32, 33]
+    let bytes = if program.len != 0: program elif service == 42: @[21'u8, 22, 23] else: @[31'u8, 32, 33]
     entries.add(servicePreimageEntry(ServiceIndex(service), ServicePreimageHash(hash), bytes,
-      ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(3))).value)
-    let key = serviceRequestKey(ServiceIndex(service), ServicePreimageHash(hash), RequestLength(3),
-        ByteLimit(32)).value
+      ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(105))).value)
+    let key = serviceRequestKey(ServiceIndex(service), ServicePreimageHash(hash), RequestLength(
+        uint32(bytes.len)), ByteLimit(32)).value
     entries.add(StateEntry(key: key, value: @[1'u8, 10, 0, 0, 0])) # Available since literal timeslot ten.
   newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(8),
       perValue: ByteLimit(105),
@@ -98,17 +98,19 @@ proc caps(): RefinementCaptureLimits =
   RefinementCaptureLimits(trace: FetchTraceLimit(3), package: FetchPackageLimit(64),
     encoding: FetchEncodingLimit(2048), inputs: FetchInputLimit(9000))
 proc prepare(machine: Machine, item = 0'u64, anchor = 20'u32,
-    source = inputs(), cap = caps()): RefinementDispatchResult[PreparedRefinementExecution] =
+    source = inputs(), cap = caps(), accounts: StateStoreSnapshot = state(
+        )): RefinementDispatchResult[PreparedRefinementExecution] =
   ## Capture all rows but bind current fetch identity and historical self to the same selected package item.
-  prepareRefinementExecution(machine, state(), package(anchor), FetchItemIndex(item), parameters(),
+  prepareRefinementExecution(machine, accounts, package(anchor), FetchItemIndex(item), parameters(),
     [101'u8, 102, 103], source, RefinementHeapBounds(first: PageIndex(48), past: PageIndex(64)),
     ExportOffset(7), cap)
 proc run(prepared: PreparedRefinementExecution, steps = 100'u64, calls = 10'u64,
-    cycles = 1000'u64, copy = 5000'u64, exports = 2'u64): RefinementDispatchResult[
-        RefinementOutcome] =
+    cycles = 1000'u64, copy = 5000'u64, exports = 2'u64, inner: InnerMachineLimits = default(
+        InnerMachineLimits)): RefinementDispatchResult[RefinementOutcome] =
   ## Keep engine/copy/export policies independently selectable for transactional refusal witnesses.
   executeRefinement(prepared, MemoryByteLimit(copy), ExportLimits(items: ElementLimit(exports),
-    bytes: ByteLimit(exports*4104)), ExecutionStepLimit(steps), HostCallLimit(calls), GasCycleLimit(cycles))
+    bytes: ByteLimit(exports*4104)), ExecutionStepLimit(steps), HostCallLimit(calls), GasCycleLimit(
+        cycles), inner)
 
 let lookup = cpu([@[10'u8, 7], @[50'u8, 0]], registers())
 for item in [0'u64, 1]:
@@ -224,6 +226,75 @@ proc cycle() =
   assert uint64(run(captured).value.exports.count) == 1
   assert run(captured, exports = 0).error == RefinementDispatchError.LimitExceeded
 cycle()
+# Database compilation uses an independently framed program inside a historical preimage slice.
+proc compileLimits(program = 64'u64, total = 128'u64): InnerMachineLimits =
+  ## Keep retained program limits independent of requested-length gas and exported-byte policy.
+  InnerMachineLimits(items: InnerMachineLimit(63), program: ProgramByteLimit(program),
+    total: InnerProgramLimit(total), jumps: JumpCountLimit(0), pages: PageLimit(4),
+    steps: ExecutionStepLimit(20), cycles: GasCycleLimit(100))
+proc databaseRegisters(service = high(uint64), offset = 1'u64, length = 6'u64,
+    pointer = 65536'u64): RegisterFile =
+  ## Current compile arguments are mode, hash pointer, requested extent, offset and full-width service.
+  result = registers()
+  result[7] = RegisterValue(1)
+  result[8] = RegisterValue(pointer)
+  result[9] = RegisterValue(length)
+  result[10] = RegisterValue(offset)
+  result[11] = RegisterValue(service)
+let databaseBlob = @[0'u8, 0, 0, 2, 50, 0, 1, 0]
+let databaseState = state(databaseBlob)
+let compileGuest = @[@[10'u8, 9], @[50'u8, 0]]
+# Availability begins at the exact supplied slot; both package items and an explicit foreign service are supported.
+for item in [0'u64, 1]:
+  for service in [high(uint64), 42'u64, 99]:
+    let done = run(prepare(cpu(compileGuest, databaseRegisters(service)), item = item,
+        anchor = 10, accounts = databaseState).value, inner = compileLimits())
+    assert done.error == RefinementDispatchError.None and done.value.outcome.exit == StepExit.Halt, "visible historical source completes"
+    assert uint64(done.value.outcome.machine.machineInfo.value.registers[7]) == 0, "first historical module handle is zero"
+let unavailable = run(prepare(cpu(compileGuest, databaseRegisters()), anchor = 9,
+    accounts = databaseState).value, inner = compileLimits()).value
+assert uint64(unavailable.outcome.machine.machineInfo.value.registers[7]) == high(uint64), "unavailable account or history returns NONE"
+for service in [100'u64, uint64(high(uint32))+43, high(uint64)-1]:
+  let absent = run(prepare(cpu(compileGuest, databaseRegisters(service)),
+      accounts = databaseState).value, inner = compileLimits()).value
+  assert uint64(absent.outcome.machine.machineInfo.value.registers[7]) == high(uint64), "unavailable account or history returns NONE"
+# Clipping can leave a malformed suffix or empty present program; both are HUH rather than NONE.
+for offset in [0'u64, 7, 8, high(uint64)]:
+  let malformed = run(prepare(cpu(compileGuest, databaseRegisters(offset = offset)),
+      accounts = databaseState).value, inner = compileLimits()).value
+  assert uint64(malformed.outcome.machine.machineInfo.value.registers[7]) == high(uint64)-8, "malformed clipped source returns HUH"
+let clipped = run(prepare(cpu(compileGuest, databaseRegisters(length = 1000)),
+    accounts = state(@[0'u8, 0, 0, 2, 50, 0, 1])).value, inner = compileLimits()).value
+assert uint64(clipped.outcome.machine.machineInfo.value.registers[7]) == 0, "clipping preserves complete trailing program"
+# Memory faults precede even an absent account; fixed hash capture is independent of the slice-copy budget.
+for pointer in [0'u64, 69631, high(uint64)]:
+  let fault = run(prepare(cpu(compileGuest, databaseRegisters(service = 100, pointer = pointer)),
+      accounts = databaseState).value, inner = compileLimits()).value
+  assert fault.outcome.exit == StepExit.Panic, "hash capture panic precedes absent account"
+assert run(prepare(cpu(compileGuest, databaseRegisters()), accounts = databaseState).value,
+    inner = compileLimits(5)).error == RefinementDispatchError.LimitExceeded, "historical slice copy respects program budget"
+assert run(prepare(cpu(compileGuest, databaseRegisters()), accounts = databaseState).value,
+    inner = compileLimits(total = 5)).error == RefinementDispatchError.LimitExceeded, "historical module respects total retained budget"
+# The DB rate prices requested bytes even when the historical suffix is shorter or absent.
+let databaseCost = 1862'u64+(366'u64*6+1023) div 1024
+for credit in [databaseCost-1, databaseCost, databaseCost+1]:
+  let done = run(prepare(cpu(compileGuest, databaseRegisters(), credit = credit),
+      accounts = databaseState).value, inner = compileLimits()).value
+  assert done.outcome.exit == (if credit < databaseCost: StepExit.OutOfGas else: StepExit.Halt), "exact DB gas completes the already prepaid guest block"
+# A historical module is immediately usable by machine/expunge; each run starts with its own empty map.
+let lifecycle = @[@[10'u8, 9], immediate(8, 0), @[10'u8, 10], immediate(7, 0),
+    immediate(8, 0), @[10'u8, 15], @[50'u8, 0]]
+proc databaseCycle() =
+  ## Release the retained lookup owner, clipped program, catalogue, machine and host responses every iteration.
+  let done = run(prepare(cpu(lifecycle, databaseRegisters()), accounts = databaseState).value,
+      inner = compileLimits()).value
+  assert done.outcome.exit == StepExit.Halt and uint64(
+      done.outcome.machine.machineInfo.value.registers[7]) == 0, "historical module creates and expunges an instance"
+databaseCycle()
+let databaseBefore = getOccupiedMem()
+for iteration in 0..<1000:
+  databaseCycle() # Exercise historical catalogue lifetimes independently of the original export cycle.
+assert getOccupiedMem() == databaseBefore, "historical modules release their complete ARC ownership"
 let before = getOccupiedMem()
 for iteration in 0..<1000: cycle()
 let after = getOccupiedMem()

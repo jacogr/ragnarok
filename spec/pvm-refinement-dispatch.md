@@ -1,5 +1,16 @@
 # Bounded refinement host execution
 
+## Current unreleased dispatch
+
+The current [Gray Paper upgrade](graypaper-unreleased-upgrade.md) uses
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. Inner hosts are compile9,
+machine10, peek11, poke12, pages13, invoke14 and expunge15. Compile now supports
+both memory and historical database sources; the package item determines self
+and the retained package context determines the lookup anchor. See
+[inner lifecycle](pvm-inner-lifecycle.md) for source clipping, gas and bounds.
+The source reader remains read-only and grants no block-state publication.
+Historical release details below retain their original evidence and host IDs.
+
 Pins: GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `pvm_invocations.tex` refinemutator F and Omega_G/Y/H/E, vectors
 `d3c089c9a1d5352ad353626d7a2db8589f137b2a`. Grow_heap alone retains the
