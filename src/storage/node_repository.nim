@@ -211,9 +211,9 @@ proc lookupNode*(view: RepositoryView, digest: StateNodeHash): RepositoryResult[
   RepositoryResult[TrieRecord](status: RepositoryError.None, completed: copyRecord(
       data.table.records[index]))
 
-proc publish*(repository: var NodeRepository, expected: RepositoryView,
-    batch: TrieExport): RepositoryResult[RepositoryView] =
-  ## Preflight storage, validate records/complete target, then publish at one single-threaded point.
+proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
+    batch: TrieExport, decoded: bool): RepositoryResult[RepositoryView] =
+  ## Private admission always validates the complete graph; only an exact local decoder may supply integrity.
   let head = repository.head
   if head == nil: return RepositoryResult[RepositoryView](status: RepositoryError.Uninitialized)
   if expected.data == nil or expected.data != head:
@@ -235,10 +235,12 @@ proc publish*(repository: var NodeRepository, expected: RepositoryView,
         return RepositoryResult[RepositoryView](status: RepositoryError.LimitExceeded)
       inc count
       bytes += uint64(record.payload.len) # Subtraction proved aggregate retained bytes fit.
-  let validated = validateTrieExport(batch, limits.codec)
-  if validated != RecordError.None:
-    return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
-        recordReason: validated)
+  if not decoded:
+    # Mutable caller transports never inherit an earlier decode's integrity authority.
+    let validated = validateTrieExport(batch, limits.codec)
+    if validated != RecordError.None:
+      return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
+          recordReason: validated)
   if batch.records.len == 0 and array[32, byte](batch.root) == array[32, byte](
       head.commitment.root):
     # Immutable current graphs need no traversal or table copy; exact metadata remains mandatory.
@@ -288,6 +290,25 @@ proc publish*(repository: var NodeRepository, expected: RepositoryView,
     valueBytes: bytes, limits: limits)
   repository.head = data # No failed validation can change the prior published owner.
   RepositoryResult[RepositoryView](status: RepositoryError.None, completed: RepositoryView(data: data))
+
+proc publish*(repository: var NodeRepository, expected: RepositoryView,
+    batch: TrieExport): RepositoryResult[RepositoryView] =
+  ## Verify every mutable raw record and complete target before atomic publication.
+  publishBatch(repository, expected, batch, false)
+
+proc publishEncoded*(repository: var NodeRepository, expected: RepositoryView,
+    input: openArray[byte]): RepositoryResult[RepositoryView] =
+  ## Decode and admit one untrusted serialized revision without rehashing the decoder's owned records.
+  ## No public validation flag/token exists; failure leaves the exact prior owner unchanged.
+  let head = repository.head
+  if head == nil: return RepositoryResult[RepositoryView](status: RepositoryError.Uninitialized)
+  if expected.data == nil or expected.data != head:
+    return RepositoryResult[RepositoryView](status: RepositoryError.StaleView)
+  let decoded = decodeTrieExport(input, head.limits.codec)
+  if decoded.error != RecordError.None:
+    return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
+      recordReason: decoded.error)
+  publishBatch(repository, expected, decoded.value, true)
 
 proc collectStateEntries(view: RepositoryView, expected: StateRoot,
     limits: StateTrieLimits, selected: bool): RepositoryResult[seq[StateEntry]] =

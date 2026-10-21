@@ -121,3 +121,17 @@ and sort from each operation. Public retained-root request order remains unchang
 roots retain their existing canonical ordering. Detached public payloads and fresh clone identities
 remain mandatory. Opposite root orders produce identical physical transport, and retained owners
 remain independent after source close. The24-case workload must preserve roots, counters and memory.
+
+## Serialized revision admission
+
+`publishEncoded(expected, input)` synchronously decodes untrusted revision bytes under the exact
+live repository policy, then privately reuses only that decoder's record integrity checks. Full
+base, identity, generation, topology, route, metadata, conflict and orphan admission checks remain.
+Raw `publish` always revalidates mutable transports. Neither API accepts a skip flag or trust token.
+All failures preserve the prior owner; success owns bytes independently of caller input. This is
+physical admission, not canonical chain authority or checkpoint trust.
+
+`storage_encoded_publication` counts genuine hashes (three for the initial graph, two for its sparse
+delta), tests all truncated delta extents, altered bytes, self-consistent wrong routes, narrowed
+physical ceilings, stale identities, decoded-then-mutated raw input and retained maps after close.
+It requires1000 exact ARC release cycles. Disk replay adoption is a separate dependent change.
