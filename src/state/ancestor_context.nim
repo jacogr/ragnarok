@@ -111,3 +111,22 @@ proc captureAncestorContext*(parent: OwnedHeader, older: openArray[OwnedHeader],
   AncestorContextResult[AncestorContext](status: AncestorContextError.None,
     completed: AncestorContext(data: AncestorContextData(headers: headers, hashes: hashes,
         bytes: bytes)))
+
+proc extendAncestorContext*(context: AncestorContext, older: openArray[OwnedHeader],
+    limits: AncestorContextLimits): AncestorContextResult[AncestorContext] =
+  ## Atomically append older context under current limits; refusal never changes the existing context.
+  let data = context.data
+  if data == nil:
+    return AncestorContextResult[AncestorContext](status: AncestorContextError.Uninitialized)
+  let retained = data.headers.len
+  if uint64(retained) > uint64(limits.headers) or
+      uint64(older.len) > uint64(limits.headers) - uint64(retained) or
+      older.len > high(int) div sizeof(OwnedHeader) - retained:
+    return AncestorContextResult[AncestorContext](status: AncestorContextError.LimitExceeded)
+  let count = retained - 1 + older.len # Initialized contexts always retain at least one parent.
+  var combined = newSeq[OwnedHeader](count)
+  for index in 1..<retained:
+    combined[index - 1] = data.headers[index] # Existing newest-first prefix is never replaced or reordered.
+  for index, owner in older:
+    combined[retained - 1 + index] = owner # Count proof bounds every descriptor before allocation/indexing.
+  captureAncestorContext(data.headers[0], combined, limits)
