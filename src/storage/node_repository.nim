@@ -14,6 +14,11 @@ type
     records*: ElementLimit
     valueBytes*: ByteLimit
   RepositoryGeneration* = distinct uint64 ## Local publication sequence, unrelated to protocol timeslots.
+  RepositoryImage* = object ## Detached untrusted complete-root union preserves the selected durable generation.
+    generation*: RepositoryGeneration
+    commitment*: StateTrieCommitment
+    roots*: seq[StateRoot]
+    collection*: RecordCollection
   RepositoryError* {.pure.} = enum ## Errors expose no partial graph, candidate or publication receipt.
     Uninitialized, None, MissingNode, LimitExceeded, StaleView, BaseMismatch,
     InvalidRecords, InvalidGraph, RecordConflict, GenerationExhausted, RootMismatch, TrieFailure
@@ -427,3 +432,78 @@ proc exportRepositorySelection*(selection: RepositorySelection,
   for index, position in indices:
     records[index] = copyRecord(source.table.records[position]) # Never export shared mutable payload bytes.
   RepositoryResult[seq[TrieRecord]](status: RepositoryError.None, completed: records)
+
+proc compareRoot(left, right: StateRoot): int =
+  ## Canonical root inventories use the same fixed lexical byte order as physical addresses.
+  compareHash(StateNodeHash(array[32, byte](left)), StateNodeHash(array[32, byte](right)))
+proc exportRepositoryImage*(selection: RepositorySelection, limits: TrieExportLimits,
+    roots: ElementLimit): RepositoryResult[RepositoryImage] =
+  ## Bound and detach a validated union, preserving current metadata and ordering its unique root set.
+  let data = selection.data
+  if data == nil: return RepositoryResult[RepositoryImage](status: RepositoryError.Uninitialized)
+  if uint64(data.roots.len) > uint64(roots):
+    return RepositoryResult[RepositoryImage](status: RepositoryError.LimitExceeded)
+  if uint64(data.source.generation) == 0:
+    return RepositoryResult[RepositoryImage](status: RepositoryError.InvalidGraph)
+  let exported = exportRepositorySelection(selection, limits)
+  if exported.error != RepositoryError.None:
+    return RepositoryResult[RepositoryImage](status: exported.error)
+  var ordered = selection.retainedRoots
+  ordered.sort(compareRoot)
+  RepositoryResult[RepositoryImage](status: RepositoryError.None,
+    completed: RepositoryImage(generation: data.source.generation,
+      commitment: data.source.commitment,
+      roots: ordered, collection: RecordCollection(records: exported.value)))
+proc restoreRepositoryImage*(image: RepositoryImage, limits: RepositoryLimits,
+    roots: ElementLimit, encoded: ByteLimit): RepositoryResult[NodeRepository] =
+  ## Admit all record hashes and complete roots before constructing an independent writable owner.
+  if uint64(image.generation) == 0 or image.commitment.entries < 0 or image.roots.len == 0:
+    return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph)
+  if uint64(image.roots.len) > uint64(roots) or image.roots.len > high(int) div sizeof(StateRoot):
+    return RepositoryResult[NodeRepository](status: RepositoryError.LimitExceeded)
+  let recordCount = image.collection.records.len
+  if uint64(recordCount) > uint64(limits.records) or recordCount > high(int) div sizeof(TrieRecord):
+    return RepositoryResult[NodeRepository](status: RepositoryError.LimitExceeded)
+  var selected = false
+  for index, root in image.roots:
+    if index > 0 and compareRoot(image.roots[index-1], root) >= 0:
+      return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph) # Root inventories are unique and canonical.
+    if compareRoot(root, image.commitment.root) == 0: selected = true
+  if not selected: return RepositoryResult[NodeRepository](status: RepositoryError.RootMismatch)
+  var physical = limits.codec
+  physical.records = TrieExportLimits(records: TrieNodeLimit(uint64(limits.records)),
+    valueBytes: limits.valueBytes)
+  physical.encoded = encoded
+  let validated = validateRecordCollection(image.collection, physical)
+  if validated != RecordError.None:
+    return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
+        recordReason: validated)
+  var records = newSeq[TrieRecord](recordCount)
+  var bytes = 0'u64
+  for index, record in image.collection.records:
+    if index > 0 and compareHash(image.collection.records[index-1].digest, record.digest) >= 0:
+      return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph) # Persisted address order is exact, not silently normalized.
+    records[index] = copyRecord(record)
+    bytes += uint64(record.payload.len) # Collection preflight proved the aggregate physical byte bound.
+  var retained = newSeq[bool](records.len)
+  var count = 0
+  for root in image.roots:
+    var visit = GraphVisit(seen: newSeq[bool](records.len), collect: GraphCollection.Records)
+    var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
+    let checked = graph(records, StateNodeHash(array[32, byte](root)), 0,
+      default(array[31, byte]), limits.codec.trie, visit, counts)
+    if checked != RepositoryError.None: return RepositoryResult[NodeRepository](status: checked)
+    if compareRoot(root, image.commitment.root) == 0:
+      if counts.entries != uint64(image.commitment.entries) or counts.nodes !=
+          image.commitment.nodes:
+        return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph)
+    for index in visit.leaves:
+      if not retained[index]:
+        retained[index] = true
+        inc count # Shared roots need each physical record once, and orphan records never become durable.
+  if count != records.len: return RepositoryResult[NodeRepository](
+      status: RepositoryError.InvalidGraph)
+  RepositoryResult[NodeRepository](status: RepositoryError.None,
+    completed: NodeRepository(head: RepositoryData(table: RepositoryTable(records: records),
+      commitment: image.commitment, generation: image.generation, valueBytes: bytes,
+          limits: limits)))

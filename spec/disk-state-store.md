@@ -507,3 +507,13 @@ an E8 record count and the existing physical record forms. It has no target-root
 aggregate value ceiling is the explicit union budget; per-value ceilings remain inherited. The
 original target-bearing codec retains its bytes and complete-map aggregate ceilings. Cross-domain
 decoding refuses, and full graph/current-root validation remains a separate admission boundary.
+
+## Multi-root repository images
+
+Detached images preserve a nonzero durable generation and exact current commitment, plus sorted
+unique root and record inventories. Admission revalidates every physical hash, every complete root
+under inherited complete-state policy, current counts and exact union reachability. Orphans, missing
+nodes, duplicate/unsorted roots or records and incorrect selected metadata refuse. An empty selected
+map may retain nonempty historical roots. Only successful admission constructs a writable owner;
+subsequent delta commits continue from the preserved generation. Export and admission retain no
+mutable aliases to caller data or earlier repository owners.
