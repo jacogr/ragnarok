@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Capture bounded complete sealed headers from explicit regular files, preserving caller order.
+## Capture bounded sealed headers from explicit regular files or retained local parents, preserving exact order.
 ## Structural decoding grants no ancestry/trust authority; report admission still checks every link.
 
 import std/assertions
