@@ -12,6 +12,7 @@ import ./handoff
 import ./candidate
 import ./block_input
 import ./preparation_worker
+import ./[checkpoint_identity, checkpoint_transfer]
 import ../codec/bounded
 import ../codec/[block_codec, header]
 import ./chain as application_chain
@@ -181,6 +182,13 @@ proc start*(services: var Services, options: Options, role: string,
 func chainView*(services: Services): ChainView {.requires: not services.preparing.} =
   ## Return an immutable selected-history alias; default/closed/legacy services have no canonical head.
   services.canonical.chainView
+
+proc checkpointIdentity*(services: Services): ApplicationCheckpointIdentityResult {.requires: not services.preparing.} =
+  ## Capture fixed context only while canonical aliases are available; no file metadata supplies independent trust.
+  captureApplicationCheckpointIdentity(services.canonical)
+proc prepareCheckpoint*(services: Services, limit: ByteLimit): PreparedApplicationCheckpoint {.requires: not services.preparing.} =
+  ## Explicit host-side serialization runs outside callbacks and before any detached I/O admission or execution lease.
+  prepareApplicationCheckpoint(services.canonical, limit)
 
 proc stateSnapshot*(services: Services): StateStoreResult[StateStoreSnapshot] {.requires:
     not services.preparing.} =
