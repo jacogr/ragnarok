@@ -42,3 +42,27 @@ Disk adoption, journal/checkpoint/canonical-head atomicity, durable pin policy, 
 selection and all other consumer adoption remain separately gated. This tranche adds no M1 or
 complete state-serialization claim. No public StateStore backend selector or alternate execution
 path is introduced.
+
+## In-memory adoption
+
+StateStore now privately retains a FullStateTrie in each snapshot beside its existing sorted
+mapping. The complete-map constructor and every update use the incremental trie for commitments;
+stateTrieRoot remains independent and test-only at this boundary. Existing validation/error
+precedence, sorted keyAt and owner-bound value slicing remain in the state layer. Adapted writes
+borrow stable input only for the synchronous call; both owners are private before publication.
+A single head assignment publishes their matching root and mapping after all checks succeed.
+
+Empty batches retain the exact snapshot. Successful nonempty absent deletes still allocate a new
+StateStore snapshot, even if the underlying trie reuses its revision and needs zero hashes.
+No required backend invocation is skipped on a changed path; failure there discards every new
+node and leaves old snapshot identity/bytes unchanged. Forks retain the same immutable trie and
+inherit all mutation ceilings. Sorted-map descriptors still copy with O(n) work. Leaf payloads
+currently have separate owned copies in the sorted map and trie; measure that explicit memory
+cost before proposing a different shared representation or changing the slice API.
+
+The observer-linked `state_store_incremental` suite uses a complete 256-leaf balanced mapping:
+a 33-byte single-key replacement requires exactly ten Blake2b calls (two leaf, eight branches),
+including when applying the same mutation on an independently retained fork. First/fifth-call
+failures prove atomic rollback; the independent whole-map calculator checks the final root and
+every sorted key/value. Absent deletes and empty batches need zero calls; retained values/slices
+survive both original and fork owner destruction.

@@ -2,7 +2,8 @@
 
 Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `text/merklization.tex` M and B/L. The store accepts already serialized 31-byte keys and raw
-values. It reuses [the existing root calculator](state-trie.md); it neither changes T(state)
+values. Its incremental commitments use [the complete-state trie](full-state-trie.md), cross-checked
+against [the independent root calculator](state-trie.md); it neither changes T(state)
 nor interprets service namespaces. Sources and vectors remain at [their pins](pins.json).
 
 ## Full/light mode boundary
@@ -17,7 +18,8 @@ placeholder mode flag, light-state implementation, persistence schema or backend
 
 `src/state/store.nim` provides an owned map with atomic mutation batches and retained immutable
 versions. This is the storage foundation for execution, not state-transition execution, a disk
-backend, trie-node database, proofs or incremental root updates.
+backend, trie-node database or proofs. Incremental in-memory commitments are now adopted under
+the [separately authorized integration contract](state-store-incremental.md).
 
 - `newStateStore(entries, limits)` validates the complete mapping/root before copying caller
   bytes into private ARC storage. Duplicate initial keys reject. Input order is irrelevant.
@@ -34,16 +36,18 @@ backend, trie-node database, proofs or incremental root updates.
 
 A batch preflights its count, tags, individual/aggregate write bytes and exact final-map count/
 value bytes. Two sorted merge passes count then construct the private candidate. Old published
-values remain immutable; new caller values are deep-copied. The existing root calculator checks
-node budgets and computes the candidate root. Only complete success publishes the new head.
+values remain immutable; new caller values are deep-copied. The private incremental trie checks
+node budgets and computes changed paths. Only complete success publishes the matching map/trie head.
 Any policy, duplicate or backend failure drops the candidate and leaves the prior head unchanged.
 An empty batch retains the existing snapshot without hashing.
 
 All count/byte arithmetic is checked before addition/allocation under Nimony's wrapping integer
 semantics. Explicit batch limits supplement `StateTrieLimits`. Allocation exhaustion retains the
 project's fail-stop policy. Limits apply per map/batch, not globally to caller-retained historical
-snapshots; callers control their retention. Worst-case sorting is O((n + w) log(n + w)) including
-root construction; updates recompute the full root. There is no performance claim in this increment.
+snapshots; callers control their retention. Updates still merge O(n + w) sorted-map descriptors and sort O(w log w) write identities;
+commitment hashing follows changed paths with cached unchanged subtrees. The mapping and trie
+currently own separate payload copies. Reproducible measurements and limits of the performance
+claim belong to the integration contract.
 
 Stores are single-threaded value handles. Copying a store creates another independently updateable
 handle sharing immutable prior state. Borrowed initial entries and writes must remain stable for
@@ -114,6 +118,6 @@ The scoped storage checklist is complete locally. View-only and snapshot-only re
 survive destruction of every originating store/result/local in their producer scopes.
 The first bounded non-PVM execution slice now uses this store for
 [authorization pool advancement](authorization-transition.md). The complete execution pipeline,
-disk persistence, incremental trie updates, proofs and the
+disk persistence, proofs and the
 separate light-store contract remain future work. The request-domain release checkpoint and all
 other [upstream policy dispositions](state-clarifications.md) remain unchanged.
