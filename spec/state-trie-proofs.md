@@ -101,3 +101,8 @@ A fresh 1,000-cycle ARC witness covers complete snapshots, raw/decoded paths, ge
 sets, verified batches, detached bytes and actual late backend refusals. Occupied
 allocator memory must return to the warmed baseline; this is workload-specific release
 evidence, not a general allocation-failure or process-memory claim.
+
+Chain adapters accept only an explicitly selected guarded block result. They generate
+from its retained complete snapshot and verify against its posterior map root, never
+the header prior-state root. Failed selections cannot authenticate an empty proof.
+This boundary inherits caller selection trust and adds no consensus/fork-choice claim.
