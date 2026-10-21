@@ -37,6 +37,7 @@
     "LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
     "crates/polkavm/src/api.rs": "434b456a0feb0d56a2c56816519aeecc1552e7587c6769c295a7334d5b82087d",
     "crates/polkavm/src/config.rs": "e825653b6f0eb34eb64c291ec0398d9aab54b68b96bd38ad260a754d9bd5fae4",
-    "crates/polkavm-common/src/writer.rs": "d0b32180990ad2f0d0272d024f90bb8caa18e3f9ac3c69b25dd2e9262b06eda6"
+    "crates/polkavm-common/src/writer.rs": "d0b32180990ad2f0d0272d024f90bb8caa18e3f9ac3c69b25dd2e9262b06eda6",
+    "crates/polkavm-common/src/abi.rs": "5c8d11c31279346032f0d0cf6e72711d4e75300a3fa182e6ca93c25bb42c92e5"
   }
 }

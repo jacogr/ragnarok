@@ -31,6 +31,7 @@ chosen compatibility behavior as proof that the paper must change.
 | GP-PVM-004 | Paper/implementation discrepancy | Final fallthrough/conditional: runtime panic versus module rejection | JAM preparation matches PolkaVM; raw paper witness retained |
 | GP-PVM-005 | Paper/implementation discrepancy | Jump-entry widths above4 accepted by paper, rejected by PolkaVM | JAM rejection tested; open PR559 proposes the bound |
 | GP-PVM-006 | Paper/implementation discrepancy | Nonempty width0 table versus semantically empty table | JAM normalization and real invocation tested; upstream clarification needed |
+| GP-PVM-007 | Paper/implementation discrepancy | Code-byte and declared jump-count bounds absent from pinned deblob | JAM bounds and exact edges tested; open PR559 proposes the bounds |
 
 ## Upstream discussion review —2026-10-21
 
@@ -341,6 +342,38 @@ Please specify deblob and dynamic-jump behavior together. Bounded Gray Paper
 issue/PR searches found no exact zero-width resolution; open559's four-byte upper
 bound alone does not settle this lower-bound case. A local issue draft is retained.
 
+## GP-PVM-007: code-byte and declared jump-count limits
+
+**Paper evidence:** the pinned [deblob predicate](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/pvm.tex#L49-L70)
+checks framing, opcode partition and entry validity without the implementation's
+32 MiB code/16 Mi jump-entry bounds. A complete all-trap program with33554433
+instruction bytes and its canonical mask satisfies that predicate. Tiny blob
+`[225,1,0,0,0,1,0,1]` declares16777217 zero-width entries, one trap and mask1;
+its raw table contains the declared number of zero targets under the paper rule.
+
+**Executed pinned PolkaVM:** [ABI constants](https://github.com/paritytech/polkavm/blob/69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa/crates/polkavm-common/src/abi.rs#L28-L33)
+and the raw parser reject code above33554432 bytes and declared entries above
+16777216, before discarding width-zero entries. The [public probe](../tests/reference/polkavm_memory/src/bin/limits.rs)
+checks full present code at limit-1/limit/limit+1, and zero-width declarations at
+count limit-1/limit/limit+1/UINT64_MAX. Both accepted code edges validate every
+instruction. This is executed parser/validator evidence, not only truncated headers.
+
+**Ragnarök disposition:** following the maintainer's discrepancy compatibility
+policy, `decodeJamProgram` applies the same bounds before capture/normalization.
+Raw `decodeProgram` retains all seven paper-valid inputs when local policy permits.
+Declared counts still consume caller policy first. Native tests cover full code,
+raw table lookup, exact boundaries, outer `InvalidProgram`, inner HUH, retained
+empty-map aliases and distinct local `LimitExceeded`. The existing raw decoder and
+512-case raw/JAM jump-table suites also pass. See the
+[module-limit contract](pvm-module-limits.md).
+
+**Upstream:** open [PR559](https://github.com/gavofyork/graypaper/pull/559),
+reviewed2026-10-21 at head `a279a738f43fb2399188d752c427e4901a7d1171`,
+proposes these exact bounds. The [local draft comment](graypaper-discrepancy-issue-drafts.md)
+asks for exact-edge fixtures and declared-count/width-zero interaction. No duplicate
+issue is filed, and no paper/upstream revision is adopted. The ABI source digest is
+added to the existing PolkaVM source manifest at the unchanged revision.
+
 ## Reproducing the local fixture evidence
 
 From a provisioned checkout with the pinned dependencies, run:
@@ -392,9 +425,15 @@ The [executed arithmetic cross-check](pvm-register-reference-crosscheck.md) pass
 all38977 unchanged independent rows across85 register-only opcodes, comparing the
 exact trap PC and all13 registers against pinned PolkaVM interpreter/JamV1. These
 expectations remain Gray Paper-derived; no row was changed to obtain parity.
-The [executed gas cross-check](pvm-gas-reference-crosscheck.md) also passes all1776
+The [executed gas cross-check](pvm-gas-reference-crosscheck.md) also passes all1784
 independent block prices under JamV1/L2Hit, retaining the paper's25-cycle memory
 profile. Exact local simulation ceilings remain checked by the native gas suite.
+The [control-flow corpus](pvm-load-jump-reference.md) compares all1800 complete
+conditional/load-and-jump paths and every register. The
+[metered fault-retry cases](pvm-metered-fault-retry-reference.md) retain one paid
+charge across22 scalar repair scenarios; [host resumption](pvm-metered-host-reference.md)
+checks nine programs with two host replies and exact shared budgets. Their contracts
+explicitly map reference causing-PC/identifier representations to GP observations.
 These results do not imply unrestricted PVM conformance.
 
 ## Related findings outside this PVM increment

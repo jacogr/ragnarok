@@ -10,6 +10,10 @@
 
 import ../codec/natural
 
+const
+  jamCodeBytes = 32'u64 * 1024 * 1024 # GP-PVM-007: pinned PolkaVM's instruction-byte ceiling.
+  jamJumpEntries = 16'u64 * 1024 * 1024 # Declared entries are bounded before width-zero normalization.
+
 type
   CodeAddress* = distinct uint64 ## Byte-addressed instruction counter, also used for copied dynamic jump targets.
   JumpIndex* = distinct uint64 ## A table ordinal is deliberately not an instruction counter or dynamic jump address.
@@ -97,6 +101,8 @@ proc decode(input: openArray[byte], entry: CodeAddress,
   let jumps = uint64(count.value)
   # Zero-width tables also need a logical count ceiling despite consuming no payload bytes.
   if jumps > uint64(jumpLimit): return ProgramResult[Program](status: ProgramError.LimitExceeded)
+  if profile == DecodeProfile.Jam and jumps > jamJumpEntries:
+    return ProgramResult[Program](status: ProgramError.InvalidProgram)
   var cursor = int(count.consumed)
   # The width is an independent one-byte field, including widths zero and above eight.
   if cursor == input.len: return ProgramResult[Program](status: ProgramError.Truncated)
@@ -112,6 +118,8 @@ proc decode(input: openArray[byte], entry: CodeAddress,
       ProgramError.Truncated else: ProgramError.NonCanonical))
   cursor += int(codeCount.consumed)
   let codeSize = uint64(codeCount.value)
+  if profile == DecodeProfile.Jam and codeSize > jamCodeBytes:
+    return ProgramResult[Program](status: ProgramError.InvalidProgram)
   let jumpOffset = cursor
   # Division proves the product fits both the supplied buffer and host indexing.
   if width != 0 and jumps > uint64((input.len - cursor) div width):
@@ -185,9 +193,10 @@ proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
 
 proc decodeJamProgram*(input: openArray[byte], entry: CodeAddress,
     byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit): ProgramResult[Program] =
-  ## Decode for JAM execution with scoped GP-PVM-004/005/006 PolkaVM compatibility rules.
+  ## Decode for JAM execution with scoped GP-PVM-004/005/006/007 PolkaVM compatibility rules.
   ## Reject missing final successors/widths above four; width-zero tables are semantically empty.
-  ## Original bytes remain owned verbatim; limits apply to the declared count before normalization.
+  ## Code is at most32 MiB and declared jumps at most16 Mi entries before width-zero normalization.
+  ## Original bytes remain owned verbatim; caller limits apply before semantic normalization.
   decode(input, entry, byteLimit, jumpLimit, DecodeProfile.Jam)
 
 proc codeLength*(program: Program): ProgramResult[uint64] =
