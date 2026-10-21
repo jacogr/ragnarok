@@ -7,7 +7,7 @@
 import std/assertions
 import std/posix/posix
 import ./[node_repository, node_records, record_codec, journal_codec, database_identity]
-import ../codec/bounded
+import ../codec/[bounded, state_trie]
 
 type
   JournalLimits* = object ## Bound complete/accumulated node storage and the whole physical journal.
@@ -15,7 +15,8 @@ type
     bytes*: ByteLimit
   FileError* {.pure.} = enum ## Partial/uncertain writes never expose a successful successor view.
     Uninitialized, None, Busy, InvalidPath, AlreadyExists, IoFailure, LimitExceeded,
-    WrongIdentity, InvalidJournal, InvalidBatch, InvalidFrame, PublishedUnsynced, RecoveryRequired, BackendFailure
+    WrongIdentity, InvalidJournal, InvalidBatch, InvalidFrame, PublishedUnsynced, RecoveryRequired,
+      BackendFailure, RecoveryMismatch
   FileResult*[T] = object ## Guarded alternatives retain precise selected preparation diagnostics.
     case status: FileError
     of None: completed: T
@@ -109,8 +110,23 @@ proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
     if uint64(count) > remaining: return FileResult[seq[byte]](status: FileError.LimitExceeded)
     for i in 0..<count: bytes.add(buffer[i])
   FileResult[seq[byte]](status: FileError.None, completed: bytes)
+proc truncateFile(fd: cint, extent: int64): cint {.importc: "ftruncate", cdecl,
+    header: "<unistd.h>".}
+  ## Supported native Linux/macOS SDKs use 64-bit off_t; host-bounded extents are proved before conversion.
+proc incompleteTail(bytes: openArray[byte], offset: int, limit: ByteLimit): bool =
+  ## Admit only an incomplete final frame, never a complete corrupt frame or oversized length attack.
+  let remaining = bytes.len-offset
+  if remaining < 8: return true # A torn length prefix cannot be decoded but can be explicitly discarded.
+  var length = 0'u64
+  for i in 0..<8: length = length or (uint64(bytes[offset+i]) shl (8*i))
+  let maximum = min(uint64(limit), uint64(high(int)))
+  if maximum < 48 or length < uint64(TrieExportHeaderBytes) or length > maximum-48:
+    return false # Unknown/impossible complete lengths require operator investigation, not truncation.
+  length+48 > uint64(remaining)
+
 proc acquire(repository: var FileRepository, path: string, chain: StorageChainId,
-    limits: JournalLimits, create: bool): FileError =
+    limits: JournalLimits, create: bool, repair = false,
+    expectedGeneration = RepositoryGeneration(0), expectedRoot = default(StateRoot)): FileError =
   ## Own no resources on failure; adoption follows shape/chain/graph and synchronization checks.
   if repository.active: return FileError.Busy
   if not validPath(path): return FileError.InvalidPath
@@ -164,9 +180,14 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
     if identity.error == IdentityError.BackendFailure: return FileError.BackendFailure
     if identity.error != IdentityError.None: return FileError.WrongIdentity
     var offset = StorageIdentityBytes
+    var partial = false
     while offset < bytes.len:
       let extent = journalFrameExtent(bytes.toOpenArray(offset, bytes.high), limits.bytes)
-      if extent.error != FrameError.None: return FileError.InvalidJournal # No implicit fallback to a valid prefix.
+      if extent.error != FrameError.None:
+        if repair and incompleteTail(bytes, offset, limits.bytes):
+          partial = true
+          break # Only explicit recovery can stop at a verified prefix preceding an incomplete final frame.
+        return FileError.InvalidJournal
       let frame = decodeJournalFrame(bytes.toOpenArray(offset, offset+extent.value-1),
         limits.repository.codec, limits.bytes)
       if frame.error == FrameError.BackendFailure: return FileError.BackendFailure
@@ -178,7 +199,19 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
       if memory.publish(current, frame.value.batch).error !=
           RepositoryError.None: return FileError.InvalidJournal
       offset += extent.value # Extent validation proved exact bounded forward progress.
-    size = uint64(bytes.len)
+    if repair:
+      let selected = memory.snapshot.value
+      if uint64(selected.generation) != uint64(expectedGeneration) or
+          array[32, byte](selected.commitment.root) != array[32, byte](expectedRoot):
+        return FileError.RecoveryMismatch # An independent exact prefix token is required before any destructive operation.
+      if partial:
+        if synchronize(descriptor) != 0 or synchronize(directory) != 0: return FileError.IoFailure
+        if truncateFile(descriptor, int64(offset)) != 0: return FileError.IoFailure
+        size = uint64(offset) # O_APPEND makes the next write start at the truncated EOF despite the old read offset.
+      else:
+        size = uint64(bytes.len) # A complete visible frame cannot be discarded to satisfy an older token.
+    else:
+      size = uint64(bytes.len)
   if synchronize(descriptor) != 0 or synchronize(directory) != 0: return FileError.IoFailure
   repository.descriptor = descriptor
   repository.directory = directory
@@ -198,6 +231,11 @@ proc openFileRepository*(repository: var FileRepository, path: string, chain: St
     limits: JournalLimits): FileError =
   ## Strictly reopen every complete frame with the independently selected chain and new ceilings.
   acquire(repository, path, chain, limits, false)
+proc recoverFileRepository*(repository: var FileRepository, path: string, chain: StorageChainId,
+    limits: JournalLimits, expectedGeneration: RepositoryGeneration,
+        expectedRoot: StateRoot): FileError =
+  ## Explicitly truncate only an incomplete final append after independently verifying its exact durable prefix.
+  acquire(repository, path, chain, limits, false, true, expectedGeneration, expectedRoot)
 proc snapshot*(repository: FileRepository): FileResult[RepositoryView] =
   ## Uncertain/partial publication requires reopening or explicit recovery before new reads.
   if not repository.active: return FileResult[RepositoryView](status: FileError.Uninitialized)

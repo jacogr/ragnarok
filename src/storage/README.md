@@ -98,3 +98,8 @@ closed, noncopyable append-only owner: each durable frame contains changed recor
 Strict reopen validates the whole journal and refuses partial tails. Retained read views remain
 valid after file close. All calls are synchronous storage work; run them outside networking
 callbacks. See the record contract for bounded IO, cooperative inode locking and uncertainty rules.
+
+`recoverFileRepository` is an explicit operator action for an interrupted final append. It
+requires the independently trusted generation and root of the complete prefix before truncating
+anything; complete corrupt frames and complete successor revisions are never discarded. Strict
+open remains unchanged. Real child-process short-write checks exercise recovery and resumed append.
