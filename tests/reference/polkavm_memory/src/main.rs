@@ -4,6 +4,7 @@
 //! Regenerate scalar boundary fixtures using only pristine pinned PolkaVM public APIs.
 //! Output is a portable little-endian test corpus; runtime builds consume frozen bytes, not Rust.
 
+// @@PvmReference={"regenerate":"pvm-memory-boundary.bin","suite":"pvm_memory_boundary_reference"}
 use polkavm::{
     BackendKind, Config, Engine, InterruptKind, MemoryProtection, Module, ModuleConfig,
     ProgramBlob, Reg,

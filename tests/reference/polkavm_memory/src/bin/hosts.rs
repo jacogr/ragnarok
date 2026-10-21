@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Public metered host suspend/resume observations, including signed immediate identifier bits.
+// @@PvmReference={"suite":"pvm_metered_host_reference"}
 use polkavm::{
     BackendKind, CacheModel, Config, CostModelKind, Engine, GasMeteringKind, InterruptKind, Module,
     ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, Reg,

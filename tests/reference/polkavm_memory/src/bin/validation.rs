@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Public-API probe separating structural program parsing, code validation and execution.
+// @@PvmReference={"suite":"pvm_initialization"}
 use polkavm::{
     BackendKind, CompileError, Config, Engine, InterruptKind, Module, ModuleConfig, ProgramBlob,
     ProgramCounter, ProgramParts, Reg,

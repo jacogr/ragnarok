@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Cross-check the existing independent Gray Paper arithmetic corpus through public PolkaVM APIs.
+// @@PvmReference={"input":"pvm-registers.bin","suite":"pvm_registers"}
 use polkavm::{
     BackendKind, Config, Engine, InterruptKind, Module, ModuleConfig, ProgramBlob, ProgramCounter,
     ProgramParts, Reg,
