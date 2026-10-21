@@ -9,6 +9,8 @@ import ./node_records
 import ../codec/[state_trie, state_layout, bounded]
 
 const
+  CollectionMagic = "RAGNAROK-RECORDS-V1\n"
+  CollectionHeaderBytes = CollectionMagic.len+8
   RecordMagic = "RAGNAROK-TRIE-V1\n"
   RecordHeaderBytes = RecordMagic.len + 88
   TrieExportHeaderBytes* = RecordHeaderBytes ## Minimum exact body extent for one local physical batch.
@@ -56,15 +58,32 @@ func metadata(batch: TrieExport, count: uint64, limits: RecordLimits): RecordErr
     if batch.entries <= high(uint64) div 249 and batch.nodes > batch.entries*249:
       return RecordError.NonCanonical # Topology claims cannot exceed the full key-depth bound.
   RecordError.None
-proc extent(batch: TrieExport, limits: RecordLimits): RecordResult[int] =
+proc payloadBudget(limits: RecordLimits, collection: bool): uint64 =
+  ## Single-root transports retain complete-map ceilings; multi-root collections use the physical union ceiling.
+  if not collection:
+    min(uint64(limits.records.valueBytes), uint64(limits.trie.totalValueBytes))
+  else:
+    uint64(limits.records.valueBytes)
+proc checkMetadata(batch: TrieExport, count: uint64, limits: RecordLimits,
+    collection: bool): RecordError =
+  ## Count-only collections never manufacture target-root claims to reuse physical validation.
+  if not collection:
+    metadata(batch, count, limits)
+  else:
+    if count > uint64(limits.records.records) or count > uint64(high(int) div sizeof(TrieRecord)):
+      return RecordError.LimitExceeded
+    RecordError.None
+proc extent(batch: TrieExport, records: openArray[TrieRecord], limits: RecordLimits,
+    collection: bool): RecordResult[int] =
   ## Validate all canonical fields and arithmetic before allocating hash/sort/output buffers.
-  let checked = metadata(batch, uint64(batch.records.len), limits)
+  let checked = checkMetadata(batch, uint64(records.len), limits, collection)
   if checked != RecordError.None: return RecordResult[int](status: checked)
   let maximum = min(uint64(limits.encoded), uint64(high(int)))
   var size = uint64(RecordHeaderBytes)
+  if collection: size = uint64(CollectionHeaderBytes)
   if size > maximum: return RecordResult[int](status: RecordError.LimitExceeded)
   var bytes = 0'u64
-  for record in batch.records:
+  for record in records:
     if record.kind notin {TrieRecordKind.Leaf, TrieRecordKind.Branch}:
       return RecordResult[int](status: RecordError.NonCanonical) # Reject unknown raw enum tags.
     if zero(record.digest): return RecordResult[int](status: RecordError.NonCanonical)
@@ -75,7 +94,7 @@ proc extent(batch: TrieExport, limits: RecordLimits): RecordResult[int] =
       if not zero(record.left) or not zero(record.right):
         return RecordResult[int](status: RecordError.NonCanonical) # Leaf records carry no physical edges.
       let payload = uint64(record.payload.len)
-      let bound = min(uint64(limits.records.valueBytes), uint64(limits.trie.totalValueBytes))
+      let bound = payloadBudget(limits, collection)
       if payload > uint64(limits.trie.perValue) or payload > bound-bytes or payload > maximum-size:
         return RecordResult[int](status: RecordError.LimitExceeded)
       bytes += payload
@@ -86,16 +105,17 @@ proc extent(batch: TrieExport, limits: RecordLimits): RecordResult[int] =
         return RecordResult[int](status: RecordError.NonCanonical) # Empty branches and spare fields have no canonical meaning.
   RecordResult[int](status: RecordError.None, completed: int(size))
 
-proc validateTrieExport*(batch: TrieExport, limits: RecordLimits): RecordError =
+proc validateRecords(batch: TrieExport, records: openArray[TrieRecord], limits: RecordLimits,
+    collection: bool): RecordError =
   ## Verify each physical node commitment; graph completeness/routing require the repository layer.
-  let checked = extent(batch, limits)
+  let checked = extent(batch, records, limits, collection)
   if checked.error != RecordError.None: return checked.error
-  var identities = newSeq[StateNodeHash](batch.records.len)
-  for i, record in batch.records: identities[i] = record.digest # Fixed scratch has been preflighted.
+  var identities = newSeq[StateNodeHash](records.len)
+  for i, record in records: identities[i] = record.digest # Fixed scratch has been preflighted.
   identities.sort(compareHash)
   for i in 1..<identities.len:
     if compareHash(identities[i-1], identities[i]) == 0: return RecordError.DuplicateNode
-  for record in batch.records:
+  for record in records:
     var encoded = default(EncodedStateNode)
     if record.kind == TrieRecordKind.Leaf:
       let leaf = encodeStateLeaf(record.key, record.payload, limits.trie.perValue)
@@ -124,21 +144,25 @@ func readHash(input: openArray[byte], offset: int): array[32, byte] =
   result = default(array[32, byte])
   for i in 0..<32: result[i] = input[offset+i]
 
-proc encodeTrieExport*(batch: TrieExport, limits: RecordLimits): RecordResult[seq[byte]] =
+proc encodeRecords(batch: TrieExport, records: openArray[TrieRecord], limits: RecordLimits,
+    collection: bool): RecordResult[seq[byte]] =
   ## Serialize only a locally verified batch; the borrowed source remains stable throughout.
-  let checked = extent(batch, limits)
+  let checked = extent(batch, records, limits, collection)
   if checked.error != RecordError.None: return RecordResult[seq[byte]](status: checked.error)
-  let validated = validateTrieExport(batch, limits)
+  let validated = validateRecords(batch, records, limits, collection)
   if validated != RecordError.None: return RecordResult[seq[byte]](status: validated)
   var output = newSeq[byte](checked.value)
-  for i, character in RecordMagic: output[i] = byte(character) # Exact version has no fallback.
-  var offset = RecordMagic.len
-  putHash(output, offset, array[32, byte](batch.base)); offset += 32
-  putHash(output, offset, array[32, byte](batch.root)); offset += 32
-  putNumber(output, offset, batch.entries); offset += 8
-  putNumber(output, offset, batch.nodes); offset += 8
-  putNumber(output, offset, uint64(batch.records.len)); offset += 8
-  for record in batch.records:
+  var magic = RecordMagic
+  if collection: magic = CollectionMagic
+  for i, character in magic: output[i] = byte(character) # Exact transport domain has no fallback.
+  var offset = magic.len
+  if not collection:
+    putHash(output, offset, array[32, byte](batch.base)); offset += 32
+    putHash(output, offset, array[32, byte](batch.root)); offset += 32
+    putNumber(output, offset, batch.entries); offset += 8
+    putNumber(output, offset, batch.nodes); offset += 8
+  putNumber(output, offset, uint64(records.len)); offset += 8
+  for record in records:
     output[offset] = byte(ord(record.kind)); inc offset # Tags have exact one-byte widths.
     putHash(output, offset, array[32, byte](record.digest)); offset += 32
     if record.kind == TrieRecordKind.Leaf:
@@ -154,24 +178,33 @@ proc encodeTrieExport*(batch: TrieExport, limits: RecordLimits): RecordResult[se
       putHash(output, offset, array[32, byte](record.right)); offset += 32
   RecordResult[seq[byte]](status: RecordError.None, completed: output)
 
-proc decodeTrieExport*(input: openArray[byte], limits: RecordLimits): RecordResult[TrieExport] =
+proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: bool): RecordResult[TrieExport] =
   ## Bound and scan the entire borrowed input before allocating records or invoking crypto.
   if uint64(input.len) > uint64(limits.encoded): return RecordResult[TrieExport](
       status: RecordError.LimitExceeded)
-  if input.len < RecordHeaderBytes: return RecordResult[TrieExport](
+  var header = RecordHeaderBytes
+  var magic = RecordMagic
+  if collection:
+    header = CollectionHeaderBytes
+    magic = CollectionMagic
+  if input.len < header: return RecordResult[TrieExport](
       status: RecordError.InvalidFormat)
-  for i, character in RecordMagic:
+  for i, character in magic:
     if input[i] != byte(character): return RecordResult[TrieExport](
         status: RecordError.InvalidFormat)
-  var offset = RecordMagic.len
-  var batch = TrieExport(base: StateRoot(readHash(input, offset)),
-    root: StateRoot(readHash(input, offset+32)), entries: number(input, offset+64),
-    nodes: number(input, offset+72))
-  let count = number(input, offset+80)
-  offset = RecordHeaderBytes
+  var offset = magic.len
+  var batch = default(TrieExport)
+  if not collection:
+    batch.base = StateRoot(readHash(input, offset))
+    batch.root = StateRoot(readHash(input, offset+32))
+    batch.entries = number(input, offset+64)
+    batch.nodes = number(input, offset+72)
+    offset += 80 # Only target-bearing batches carry complete-root claims.
+  let count = number(input, offset)
+  offset = header
   if count > uint64((input.len-offset) div 72): return RecordResult[TrieExport](
       status: RecordError.InvalidFormat)
-  let checked = metadata(batch, count, limits)
+  let checked = checkMetadata(batch, count, limits, collection)
   if checked != RecordError.None: return RecordResult[TrieExport](status: checked)
   var bytes = 0'u64
   for i in 0..<int(count):
@@ -184,7 +217,7 @@ proc decodeTrieExport*(input: openArray[byte], limits: RecordLimits): RecordResu
       offset += 39
       if size > uint64(input.len-offset): return RecordResult[TrieExport](
           status: RecordError.InvalidFormat)
-      let bound = min(uint64(limits.records.valueBytes), uint64(limits.trie.totalValueBytes))
+      let bound = payloadBudget(limits, collection)
       if size > uint64(limits.trie.perValue) or size > bound-bytes:
         return RecordResult[TrieExport](status: RecordError.LimitExceeded)
       bytes += size
@@ -196,7 +229,7 @@ proc decodeTrieExport*(input: openArray[byte], limits: RecordLimits): RecordResu
       return RecordResult[TrieExport](status: RecordError.NonCanonical)
   if offset != input.len: return RecordResult[TrieExport](status: RecordError.InvalidFormat)
   batch.records = newSeq[TrieRecord](int(count))
-  offset = RecordHeaderBytes
+  offset = header
   for i in 0..<int(count):
     let tag = input[offset]
     let digest = StateNodeHash(readHash(input, offset+1))
@@ -215,6 +248,33 @@ proc decodeTrieExport*(input: openArray[byte], limits: RecordLimits): RecordResu
       batch.records[i] = TrieRecord(kind: TrieRecordKind.Branch, digest: digest,
         left: StateNodeHash(readHash(input, offset)), right: StateNodeHash(readHash(input, offset+32)))
       offset += 64
-  let validated = validateTrieExport(batch, limits)
+  let validated = validateRecords(batch, batch.records, limits, collection)
   if validated != RecordError.None: return RecordResult[TrieExport](status: validated)
   RecordResult[TrieExport](status: RecordError.None, completed: batch)
+
+
+proc validateTrieExport*(batch: TrieExport, limits: RecordLimits): RecordError =
+  ## Preserve exact single-target metadata, record and complete-map byte ceilings.
+  validateRecords(batch, batch.records, limits, false)
+proc encodeTrieExport*(batch: TrieExport, limits: RecordLimits): RecordResult[seq[byte]] =
+  ## Preserve the existing single-target representation byte for byte.
+  encodeRecords(batch, batch.records, limits, false)
+proc decodeTrieExport*(input: openArray[byte], limits: RecordLimits): RecordResult[TrieExport] =
+  ## Decode only the existing target-bearing domain with no collection fallback.
+  decodeRecords(input, limits, false)
+proc validateRecordCollection*(collection: RecordCollection, limits: RecordLimits): RecordError =
+  ## Validate canonical unique physical records under an explicit aggregate union budget.
+  validateRecords(default(TrieExport), collection.records, limits, true)
+proc measureRecordCollection*(collection: RecordCollection, limits: RecordLimits): RecordResult[int] =
+  ## Preflight canonical shape and exact encoded extent without hashing or allocating record/output storage.
+  extent(default(TrieExport), collection.records, limits, true)
+proc encodeRecordCollection*(collection: RecordCollection, limits: RecordLimits): RecordResult[seq[byte]] =
+  ## Borrow records directly, preflighting before any transport/output allocation.
+  encodeRecords(default(TrieExport), collection.records, limits, true)
+proc decodeRecordCollection*(input: openArray[byte], limits: RecordLimits): RecordResult[
+    RecordCollection] =
+  ## Preflight every extent before allocation/hashing; complete graphs require separate admission.
+  let decoded = decodeRecords(input, limits, true)
+  if decoded.error != RecordError.None: return RecordResult[RecordCollection](status: decoded.error)
+  RecordResult[RecordCollection](status: RecordError.None,
+    completed: RecordCollection(records: decoded.value.records))

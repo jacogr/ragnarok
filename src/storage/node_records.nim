@@ -15,6 +15,8 @@ type
     key*: StateKey
     payload*: seq[byte]
     left*, right*: StateNodeHash
+  RecordCollection* = object ## Detached physical record union carries no single-root metadata or graph authority.
+    records*: seq[TrieRecord]
   TrieExport* = object ## Complete target metadata plus records absent from the declared base revision.
     base*, root*: StateRoot
     entries*: uint64
