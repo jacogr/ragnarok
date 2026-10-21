@@ -21,9 +21,9 @@ def validate_requirements(records):
         raise ValueError('Native requirements must cover exactly the discovered suites')
     fields = {'directory', 'libraries', 'includes', 'observers', 'defines', 'prepared'}
     allowed = {
-        'libraries': {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic'},
-        'includes': {'crypto', 'bandersnatch', 'quic'},
-        'observers': {'setup_new', 'setup_free', 'key_new', 'key_free', 'verify', 'commit', 'ring_verify'},
+        'libraries': {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io'},
+        'includes': {'crypto', 'bandersnatch', 'quic', 'storage_io'},
+        'observers': {'setup_new', 'setup_free', 'key_new', 'key_free', 'verify', 'commit', 'ring_verify', 'io_read', 'io_write', 'io_fsync'},
         'defines': {'integration'},
     }
     for name, record in records.items():
@@ -64,7 +64,11 @@ def validate_requirements(records):
         if record['directory'] == 'codec' and primary:
             # The shared codec directory invocation has no per-file native linking profile.
             raise ValueError('Native batch directory mismatch: '+name)
-        if bool(record['includes']) != bool(primary) or (record['observers'] and 'bandersnatch_observer' not in record['libraries']):
+        io_observers = [value for value in record['observers'] if value.startswith('io_')]
+        ring_observers = [value for value in record['observers'] if not value.startswith('io_')]
+        if (bool(record['includes']) != bool(primary)
+                or (ring_observers and 'bandersnatch_observer' not in record['libraries'])
+                or (io_observers and ('storage_io' not in record['libraries'] or 'storage_io' not in record['includes']))):
             # Header and observer configuration must have corresponding prepared native libraries.
             raise ValueError('Native header or observer mismatch: '+name)
     return records

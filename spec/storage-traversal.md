@@ -249,3 +249,17 @@ these are descriptive local observations. The implementation was reverted. Pinne
 sequence fences compile away, so entering them was not an actual per-byte runtime cost.
 No speedup or retained optimization is claimed. Baseline source/configuration identity is checked
 after reversion, and the new exact-boundary suite runs against that retained implementation.
+
+## Native IO fault observation
+
+Explicit native test profiles link a separate OS observer object and force an SDK-first redirect
+header only for declared read/write/fsync calls. All uninjected calls forward to the actual SDK
+using real descriptors. Production libraries, compiler/runtime and ordinary test profiles remain
+unchanged. Controls are bounded single-threaded test state; every intended fault must be consumed.
+The observer can produce genuine short writes before a later injected refusal.
+
+`storage_sync_failures` injects one EIO return at the actual fsync call boundary after genuine
+legacy/managed frame writes. Publication returns PublishedUnsynced, poisons further operations
+and preserves old readers. Independent old-prefix recovery refuses the complete visible successor;
+strict reopen admits its complete map. Separate file and directory sync refusals also poison without appending; the file must remain byte-identical.
+This is deterministic syscall-failure evidence, not device/filesystem power-loss certification.

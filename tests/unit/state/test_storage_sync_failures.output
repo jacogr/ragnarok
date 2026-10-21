@@ -1,0 +1,1 @@
+PASS storage sync failures: genuine writes, injected barrier refusal, poisoned owners and exact recovery trust

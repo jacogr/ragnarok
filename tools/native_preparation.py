@@ -21,7 +21,7 @@ def record_evidence(record, name, evidence):
 
 # Prepare pristine pinned libraries once, retaining each provider's original evidence fields.
 def prepare_libraries(folder, record=None, required=None):
-    available = {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic'}
+    available = {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io'}
     requested = available if required is None else set(required)
     if not requested <= available:
         # Refuse unknown providers before any native build or partial evidence is published.
@@ -45,6 +45,11 @@ def prepare_libraries(folder, record=None, required=None):
         from nimony_quic import prepare as prepare_quic
         libraries['quic'], certificates, evidence['quic_native'] = prepare_quic()
         record_evidence(record, 'quic_native', evidence['quic_native'])
+    if 'storage_io' in requested:
+        # This test-only object never participates in production crypto, transport or executable builds.
+        from storage_io_observer import prepare as prepare_storage_io
+        libraries['storage_io'], evidence['storage_io_native'] = prepare_storage_io(folder)
+        record_evidence(record, 'storage_io_native', evidence['storage_io_native'])
     return {name: library for name, library in libraries.items() if name in requested}, certificates, evidence
 
 

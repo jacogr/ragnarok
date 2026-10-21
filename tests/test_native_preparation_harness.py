@@ -58,12 +58,12 @@ class NativePreparationHarness(unittest.TestCase):
             # QUIC preparation owns its certificate workspace and takes no caller folder.
             order.append(('quic', None))
             return 'quic', 'certificates', {'quic': 'evidence'}
-        with patch('nimony_crypto.prepare', side_effect=crypto), patch('bandersnatch_native.prepare', side_effect=bandersnatch), patch('nimony_quic.prepare', side_effect=quic):
+        with patch('nimony_crypto.prepare', side_effect=crypto), patch('bandersnatch_native.prepare', side_effect=bandersnatch), patch('nimony_quic.prepare', side_effect=quic), patch('storage_io_observer.prepare', return_value=('storage-io', {'io': 'evidence'})):
             libraries, certificates, evidence = native_preparation.prepare_libraries(Path('/fixture'))
         self.assertEqual(order, [('crypto', Path('/fixture')), ('bandersnatch', Path('/fixture')), ('quic', None)])
-        self.assertEqual(libraries, dict(crypto='crypto', observer='observer', bandersnatch='bs', bandersnatch_observer='bs-observer', quic='quic'))
+        self.assertEqual(libraries, dict(crypto='crypto', observer='observer', bandersnatch='bs', bandersnatch_observer='bs-observer', quic='quic', storage_io='storage-io'))
         self.assertEqual(certificates, 'certificates')
-        self.assertEqual(evidence, dict(crypto_native={'crypto': 'evidence'}, bandersnatch_native={'bs': 'evidence'}, quic_native={'quic': 'evidence'}))
+        self.assertEqual(evidence, dict(crypto_native={'crypto': 'evidence'}, bandersnatch_native={'bs': 'evidence'}, quic_native={'quic': 'evidence'}, storage_io_native={'io': 'evidence'}))
 
     # Failed preparation must stop immediately, without allowing later providers to supply partial success.
     def test_library_failure_stops_preparation(self):
@@ -128,6 +128,15 @@ class NativePreparationHarness(unittest.TestCase):
                 self.assertEqual(certificates, 'certs' if 'quic' in expected else None)
                 self.assertEqual(dict(recorded), evidence)
                 self.assertEqual(len(evidence), len(expected))
+
+    # An IO-only profile never provisions crypto/Rust/transport and records its own object evidence.
+    def test_selected_storage_io(self):
+        with patch('storage_io_observer.prepare', return_value=('io-object', {'ready': True})) as io:
+            libraries, certificates, evidence = native_preparation.prepare_libraries(Path('/fixture'), required=['storage_io'])
+        self.assertEqual(libraries, {'storage_io': 'io-object'})
+        self.assertIsNone(certificates)
+        self.assertEqual(evidence, {'storage_io_native': {'ready': True}})
+        io.assert_called_once_with(Path('/fixture'))
 
     # Bad dependency names fail before providers can publish evidence or create foreign resources.
     def test_unknown_library_provider(self):

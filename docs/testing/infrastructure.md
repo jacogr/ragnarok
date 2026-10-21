@@ -273,3 +273,8 @@ File discovery and metadata checks still run for every plan. A bounded process-l
 avoids rereading unchanged files; device/inode, size and nanosecond modification/change times
 invalidate cached bytes. Same-size edits with restored mtime and atomic replacements remain
 source changes. No metadata/digest cache persists between processes.
+
+Storage IO observers are explicit native-only profiles: the `storage_io` test object and include
+directory are required for `io_read`, `io_write` or `io_fsync` call-site observation. SDK prototypes
+are included before redirection to preserve platform aliases. Ordinary and production compilation
+receive no redirection header or fault controls. Every unrefused call uses real OS IO.

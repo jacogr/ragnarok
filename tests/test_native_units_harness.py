@@ -305,6 +305,16 @@ class NativeUnitHarness(unittest.TestCase):
             with self.assertRaisesRegex(FileNotFoundError, 'native unit library'):
                 native_tests.unit_command(folder/'nimony', 'state_trie', {'crypto': folder/'missing'})
 
+    # Forced SDK-first redirection appears only in explicitly declared OS observer profiles.
+    def test_storage_io_redirect_isolation(self):
+        with temporary_folder('hastur') as folder:
+            libraries=native_libraries(folder)
+            instrumented=native_tests.unit_command(folder/'nimony','storage_sync_failures',libraries)
+            ordinary=native_tests.unit_command(folder/'nimony','storage_file_repository',libraries)
+        self.assertIn('--forward:--passC:-include'+str(ROOT/'native/storage_io/redirect.h'),instrumented)
+        self.assertIn('--forward:--passC:-DRAGNAROK_STORAGE_IO_FSYNC',instrumented)
+        self.assertFalse(any('STORAGE_IO' in arg or 'storage_io/redirect.h' in arg for arg in ordinary))
+
     # Host-specific linker flags and profile caches must keep production and instrumented builds separate.
     def test_linked_host_profiles(self):
         with temporary_folder('hastur') as folder:
