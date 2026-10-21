@@ -41,6 +41,9 @@ The overview defines a narrower positive ceiling for `signedgas` than for input
 `gas`. This adapter retains the established full uint64 nonnegative input contract
 and exact arithmetic rather than silently narrowing it. Reconciliation of those
 formal positive domains remains a specification gate for unrestricted conformance.
+The [PR533 adoption note](pvm-gas-domain-clarification.md) now records the already-merged
+upstream unsigned-domain/clamped-OutOfGas clarification. Its broader changes are
+not adopted by our unchanged 0.8.0 pin; existing deficit witnesses remain intentional.
 
 The fixed host charges compare before subtracting, so both positive and negative
 magnitudes are computed without overflow or underflow.
