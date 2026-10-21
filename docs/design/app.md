@@ -12,9 +12,9 @@ execution, block import, consensus or validator operation.
 
 `app/options.nim` validates trailing service switches/configuration atomically. Private fields
 have read-only accessors; a failed/default result cannot start a session. Endpoint configuration
-alone does not enable services, and UI implies RPC. Canonical state requires `--with-state`,
-a chain file and both explicit mutation budgets; it does not enable listeners. Repeated parses
-have independent ownership.
+alone does not enable services, and UI implies RPC. Canonical state requires `--with-state` and
+a chain file. Mutation budgets default to 1,000 writes and 100,000 value bytes, with independent
+overrides. State activation does not enable listeners. Repeated parses have independent ownership.
 
 `app/services.nim` owns one non-copyable aggregate of RPC, UI, telemetry and an optional canonical application chain. It captures one
 bounded chain-file snapshot for RPC parameter/genesis setup and telemetry registration, starts

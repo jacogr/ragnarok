@@ -48,7 +48,7 @@ assert parseOptions(original, owned)
 original[0] = "changed"
 assert owned.argument(1) == "client" and owned.rpcPort() == 65535
 
-# Canonical state is an independent activation with two mandatory exact unsigned budgets.
+# Canonical state is an independent activation with independently defaulted or overridden unsigned budgets.
 var state = default(Options)
 assert not state.stateEnabled
 assert parseOptions(@["server", "--with-state", "--chain", "seed.json",
@@ -64,12 +64,25 @@ assert state.stateEnabled and uint64(state.stateWrites) == 1
 assert uint64(state.stateWriteBytes) == high(uint64) and state.rpcPort == 19800
 assert alias.chainPath == "seed.json" and uint64(alias.stateWrites) == high(uint64)
 
+# Omitted ceilings default independently; explicit zero and later parses never inherit prior values.
+for command in ["server", "client", "mesh", "download"]:
+  let base = @[command, "--with-state", "--chain", "seed.json"]
+  assert parseOptions(base, state)
+  assert uint64(state.stateWrites) == 1000 and uint64(state.stateWriteBytes) == 100000
+  var countOnly = base
+  countOnly.add("--state-writes"); countOnly.add("0")
+  assert parseOptions(countOnly, state)
+  assert uint64(state.stateWrites) == 0 and uint64(state.stateWriteBytes) == 100000
+  var bytesOnly = base
+  bytesOnly.add("--state-write-bytes"); bytesOnly.add("0")
+  assert parseOptions(bytesOnly, state)
+  assert uint64(state.stateWrites) == 1000 and uint64(state.stateWriteBytes) == 0
+  assert parseOptions(base, state)
+  assert uint64(state.stateWrites) == 1000 and uint64(state.stateWriteBytes) == 100000
+
 # Neither malformed nor inactive policies retain old flags, old positions or partially parsed budget values.
 for arguments in [@["server", "--with-state"],
-    @["server", "--with-state", "--chain", "seed.json"],
-    @["server", "--with-state", "--chain", "seed.json", "--state-writes", "1"],
     @["server", "--with-state", "--state-writes", "1", "--state-write-bytes", "1"],
-    @["server", "--with-state", "--chain", "seed.json", "--state-write-bytes", "1"],
     @["server", "--state-writes", "1"], @["server", "--state-write-bytes", "1"],
     @["server", "--with-state", "--with-state"],
     @["server", "--with-state", "--chain", "seed.json", "--state-writes", "0",

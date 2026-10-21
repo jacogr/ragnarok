@@ -58,15 +58,16 @@ For example, supply your existing certificate/key paths and set
   --state-checkpoint-bytes 8388608
 ```
 
-The example mutation ceilings are explicit local policy. `--state-writes` bounds
-one mutation batch and `--state-write-bytes` bounds its written value bytes. Choose
-both for your workload; zero/zero selects readonly state. The checkpoint-byte
+Omitted mutation ceilings default independently to 1,000 writes and 100,000 written value bytes.
+The example flags override those defaults; explicit zero remains a readonly/refusal policy. `--state-writes` bounds
+one mutation batch and `--state-write-bytes` bounds its written value bytes. Override
+either for your workload; zero/zero selects readonly state. The checkpoint-byte
 ceiling covers the entire application envelope, including its identity prefix.
 It is independent of mutation policy and the fixed trust-input/header ceilings.
 Other full-state capture limits still apply.
 
 All four recovery controls are mandatory together, along with `--with-state`,
-`--chain` and both mutation ceilings. Partial groups, duplicates, malformed decimal
+`--chain`. Mutation ceilings may use their defaults. Partial groups, duplicates, malformed decimal
 limits and uint64 overflow refuse atomically. An explicit zero checkpoint-byte
 limit is accepted as policy and refuses a nonempty checkpoint. Recovery does not
 implicitly enable RPC, UI or telemetry.

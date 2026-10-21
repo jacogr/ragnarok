@@ -158,6 +158,8 @@ proc startServices(services: var Services, options: Options, role: string,
     withState: bool, limits: StateStoreLimits, recovered: ApplicationChain): bool {.raises.} =
   ## Capture one bounded file and install the optional canonical owner before listeners become observable.
   if services.started or not options.valid(): return false # Repeat start cannot disturb an existing lifetime.
+  if options.diskStorage:
+    return false # The next startup layer enables disk; this parser layer must never run it silently in memory.
   if options.recoveryEnabled and recovered.chainView.retainedCount == 0:
     return false # Parsed import intent cannot silently select ordinary genesis startup.
   services.chainText = boundedFile(options.chainPath(), MaxChainBytes)

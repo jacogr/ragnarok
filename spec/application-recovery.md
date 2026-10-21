@@ -132,7 +132,8 @@ source-owned inventory pass. Logs use `build/recovery-rpc*`; CI is unrequested.
 
 The parser accepts `--state-checkpoint FILE --state-trust FILE --state-header FILE
 --state-checkpoint-bytes N` only together and with existing explicit `--with-state`,
-`--chain` and both mutation budgets. All partial subsets, duplicates, missing values,
+`--chain`. Mutation budgets default independently to 1,000 writes and 100,000 value bytes;
+explicit overrides, including zero, retain their exact values. All partial subsets, duplicates, missing values,
 disabled use and malformed/overflowing ceilings refuse atomically. Byte policy
 retains uint64 including explicit zero; no listener is implied. Private guarded
 getters expose only complete active requests. Service initialization requires a verified recovered owner for import intent,

@@ -9,15 +9,23 @@ import std/[strutils, assertions]
 import ../codec/bounded
 
 const
+  DefaultStateWrites = 1000'u64       # CLI defaults do not widen explicitly supplied component policies.
+  DefaultStateWriteBytes = 100000'u64 # Each omitted mutation ceiling resolves independently.
   Switches = ["--with-ui", "--with-rpc", "--with-telemetry", "--with-state"]
   Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes",
-      "--state-write-bytes", "--state-checkpoint", "--state-trust", "--state-header", "--state-checkpoint-bytes"]
+      "--state-write-bytes", "--state-checkpoint", "--state-trust", "--state-header",
+      "--state-checkpoint-bytes", "--state-storage", "--state-db"]
+
+type StateStorage* {.pure.} = enum ## Backend choice is independent of future full/light node modes.
+  Memory, Disk
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
   parsed, telemetry, rpc, ui, state, recover: bool
   positional: seq[string]
   endpoint, chain, directory: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
+  backend: StateStorage
+  database: string
   rpcNumber, uiNumber: uint16
   writeCount: ElementLimit
   writeBytes, recoveryBytes: ByteLimit
@@ -40,11 +48,18 @@ proc telemetryEnabled*(options: Options): bool =
   options.parsed and options.telemetry
 
 func stateEnabled*(options: Options): bool =
-  ## Only a complete explicit state policy activates canonical application ownership.
+  ## Explicit activation and a selected chain use resolved default or overridden mutation budgets.
   options.parsed and options.state
 
+func diskStorage*(options: Options): bool =
+  ## Only a validated explicit disk request enables durable backend startup.
+  options.parsed and options.state and options.backend == StateStorage.Disk
+func stateDatabase*(options: Options): string {.requires: options.diskStorage.} =
+  ## Return the explicitly selected database path; no implicit location or overwrite is invented.
+  options.database
+
 func stateWrites*(options: Options): ElementLimit {.requires: options.parsed and options.state.} =
-  ## Extract the caller's exact write-count budget only from a validated active policy.
+  ## Extract the resolved write-count budget; explicit zero overrides the CLI default.
   options.writeCount
 
 func stateWriteBytes*(options: Options): ByteLimit {.requires: options.parsed and options.state.} =
@@ -113,7 +128,8 @@ proc decimalLimit(text: string, value: var uint64): bool =
 proc parseOptions*(arguments: seq[string], options: var Options): bool =
   ## Parse unique trailing controls atomically; repeated invocations own independent configuration.
   options = default(Options)
-  var candidate = Options(rpcNumber: 19800, uiNumber: 8888)
+  var candidate = Options(rpcNumber: 19800, uiNumber: 8888,
+    writeCount: ElementLimit(DefaultStateWrites), writeBytes: ByteLimit(DefaultStateWriteBytes))
   var first = arguments.len
   for i in 0..<arguments.len: # Only reserved service controls begin the trailing option region.
     if arguments[i] in Switches or arguments[i] in Values:
@@ -145,6 +161,12 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--state-checkpoint": candidate.recoveryFile = value
       of "--state-trust": candidate.recoveryIdentity = value
       of "--state-header": candidate.recoveryHeader = value
+      of "--state-db": candidate.database = value
+      of "--state-storage":
+        case value
+        of "memory": candidate.backend = StateStorage.Memory
+        of "disk": candidate.backend = StateStorage.Disk
+        else: return false # Backend spelling has one exact representation; light is not a backend.
       of "--state-writes", "--state-write-bytes", "--state-checkpoint-bytes":
         var number = 0'u64
         if not decimalLimit(value, number): return false # No partial or wrapped budget escapes the candidate.
@@ -162,10 +184,17 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
   let hasWrites = "--state-writes" in seen
   let hasBytes = "--state-write-bytes" in seen
   if candidate.state:
-    if candidate.chain.len == 0 or not hasWrites or
-        not hasBytes: return false # Activation requires all explicit inputs.
+    if candidate.chain.len == 0: return false # Activation still requires an explicit selected chain; omitted budgets use defaults.
   elif hasWrites or hasBytes:
     return false # Unselected policy controls must not be silently ignored.
+  let hasBackend = "--state-storage" in seen
+  let hasDatabase = "--state-db" in seen
+  if (hasBackend or hasDatabase) and not candidate.state:
+    return false # Explicit backend controls must never be silently ignored.
+  if candidate.backend == StateStorage.Disk:
+    if not hasDatabase: return false # Every disk run selects its exact path before opening storage.
+  elif hasDatabase:
+    return false # A memory run cannot silently ignore a requested physical database.
   let recoveryControls = ["--state-checkpoint", "--state-trust", "--state-header", "--state-checkpoint-bytes"]
   var recoveryCount = 0
   for control in recoveryControls:
