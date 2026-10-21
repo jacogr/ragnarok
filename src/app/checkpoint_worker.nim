@@ -1,18 +1,22 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## One fixed-address native I/O worker consumes sole-owner prepared bytes without borrowing canonical state.
+## One fixed-address I/O worker publishes detached envelopes or verifies complete files.
+## Canonical graphs never cross its thread boundary.
 ## One host thread serializes stage/begin/collect/close; native work and shutdown never run in network callbacks.
 
 import std/[locks, rawthreads]
 import ./[checkpoint_file, checkpoint_writer, checkpoint_identity, checkpoint_transfer, checkpoint_codec]
 import ../codec/bounded
+import ../state/store
 
 type
+  ApplicationCheckpointOperation* {.pure.} = enum ## Verified file content and durable publication have distinct fixed receipt meanings.
+    Publish, Verify
   ApplicationCheckpointWorkerPhase* {.pure.} = enum ## Done retains capacity until explicit collection; Staged has not begun I/O.
     Idle, Staged, Running, Executing, Done
   ApplicationCheckpointWorkerError* {.pure.} = enum ## Refused admission never consumes the caller's sole prepared owner.
-    Uninitialized, None, Closed, Busy, NotReady, LimitExceeded, Exhausted
+    Uninitialized, None, Closed, Busy, NotReady, InvalidContext, LimitExceeded, Exhausted
   WorkerIdentity = ref object ## Host-only namespace is never accessed by the native I/O thread.
     marker: uint8
   ApplicationCheckpointTicket* = object ## Identity plus nonwrapping local generation prevent foreign/stale completion access.
@@ -29,6 +33,7 @@ type
   ApplicationCheckpointCompletion* = object ## Only completed work exposes its exact typed writer outcome.
     case status: ApplicationCheckpointCompletionKind
     of Completed:
+      performed: ApplicationCheckpointOperation
       outcome: ApplicationCheckpointFileResult[ApplicationCheckpointIdentity]
     else:
       discard # No default/cancelled publication receipt can be adopted.
@@ -46,6 +51,9 @@ type
     writer: ApplicationCheckpointWriter
     prepared: PreparedApplicationCheckpoint
     limit: ByteLimit
+    request: ApplicationCheckpointOperation
+    expected: ApplicationCheckpointIdentity
+    verifyLimits: StateStoreLimits
     outcome: ApplicationCheckpointFileResult[ApplicationCheckpointIdentity]
 
 proc `=wasMoved`*(worker: var ApplicationCheckpointWorker) {.nodestroy, inline,
@@ -90,9 +98,17 @@ func completion*(shutdown: ApplicationCheckpointShutdown): ApplicationCheckpoint
 func retirementError*(shutdown: ApplicationCheckpointShutdown): ApplicationCheckpointFileError =
   ## None confirms actual idempotent/native close; default shutdown reports Uninitialized.
   shutdown.retirement
+func operation*(completion: ApplicationCheckpointCompletion): ApplicationCheckpointOperation {.inline,
+    requires: completion.status == ApplicationCheckpointCompletionKind.Completed.} =
+  ## An actual verified file never masquerades as a durable publication receipt.
+  completion.performed
 proc execute(worker: ptr ApplicationCheckpointWorker) =
-  ## Only detached bytes and fixed context reach native file replacement; temporary native owners retire before Done.
-  worker.outcome = worker.writer.save(worker.prepared, worker.limit)
+  ## Native verification retires decoded graphs on this thread; publication borrows only host-owned detached bytes.
+  case worker.request
+  of ApplicationCheckpointOperation.Publish:
+    worker.outcome = worker.writer.save(worker.prepared, worker.limit)
+  of ApplicationCheckpointOperation.Verify:
+    worker.outcome = worker.writer.verify(worker.expected, worker.verifyLimits, worker.limit)
 proc run(raw: pointer) =
   ## A condition-driven single thread performs only ordered writer I/O, with no canonical adoption or dispatcher callbacks.
   let worker = cast[ptr ApplicationCheckpointWorker](raw)
@@ -121,6 +137,9 @@ proc start*(worker: var ApplicationCheckpointWorker,
   worker.phase = ApplicationCheckpointWorkerPhase.Idle
   worker.next = 0
   worker.limit = ByteLimit(0)
+  worker.request = ApplicationCheckpointOperation.Publish
+  worker.expected = default(ApplicationCheckpointIdentity)
+  worker.verifyLimits = default(StateStoreLimits)
   worker.outcome = default(ApplicationCheckpointFileResult[ApplicationCheckpointIdentity])
   worker.prepared = default(PreparedApplicationCheckpoint)
   try:
@@ -158,6 +177,35 @@ proc stage*(worker: var ApplicationCheckpointWorker, prepared: var PreparedAppli
   inc worker.next
   worker.prepared = move(prepared)
   worker.cancelled = false
+  worker.limit = limit
+  worker.request = ApplicationCheckpointOperation.Publish
+  worker.expected = default(ApplicationCheckpointIdentity)
+  worker.verifyLimits = default(StateStoreLimits)
+  worker.outcome = default(ApplicationCheckpointFileResult[ApplicationCheckpointIdentity])
+  worker.phase = ApplicationCheckpointWorkerPhase.Staged
+  ApplicationCheckpointAdmission(status: ApplicationCheckpointWorkerError.None,
+    ticket: ApplicationCheckpointTicket(owner: worker.identity, generation: worker.next))
+proc stageVerification*(worker: var ApplicationCheckpointWorker,
+    expected: ApplicationCheckpointIdentity,
+
+limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointAdmission =
+  ## Only independent fixed context and explicit map/byte policy cross the thread; no filesystem work happens during admission.
+  if not worker.started: return ApplicationCheckpointAdmission(
+      status: ApplicationCheckpointWorkerError.Closed)
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  if worker.phase != ApplicationCheckpointWorkerPhase.Idle:
+    return ApplicationCheckpointAdmission(status: ApplicationCheckpointWorkerError.Busy) # All request kinds retain Done acknowledgement backpressure.
+  if not expected.ready:
+    return ApplicationCheckpointAdmission(status: ApplicationCheckpointWorkerError.InvalidContext) # File metadata cannot authorize its own verification.
+  if worker.next == high(uint64):
+    return ApplicationCheckpointAdmission(status: ApplicationCheckpointWorkerError.Exhausted) # Verification shares the same nonwrapping namespace as publication.
+  inc worker.next
+  worker.prepared = default(PreparedApplicationCheckpoint)
+  worker.cancelled = false
+  worker.request = ApplicationCheckpointOperation.Verify
+  worker.expected = expected
+  worker.verifyLimits = limits
   worker.limit = limit
   worker.outcome = default(ApplicationCheckpointFileResult[ApplicationCheckpointIdentity])
   worker.phase = ApplicationCheckpointWorkerPhase.Staged
@@ -199,7 +247,7 @@ proc peek*(worker: var ApplicationCheckpointWorker,
   if worker.cancelled:
     return ApplicationCheckpointCompletion(status: ApplicationCheckpointCompletionKind.Cancelled)
   ApplicationCheckpointCompletion(status: ApplicationCheckpointCompletionKind.Completed,
-      outcome: worker.outcome)
+      performed: worker.request, outcome: worker.outcome)
 proc collect*(worker: var ApplicationCheckpointWorker,
     ticket: ApplicationCheckpointTicket): ApplicationCheckpointCompletion =
   ## Collect only Done after all worker-local aliases retire, then release the sole buffer on its host allocator thread.
@@ -212,7 +260,7 @@ proc collect*(worker: var ApplicationCheckpointWorker,
     result = ApplicationCheckpointCompletion(status: ApplicationCheckpointCompletionKind.Cancelled) # Unstarted cancellation has no publication receipt.
   else:
     result = ApplicationCheckpointCompletion(status: ApplicationCheckpointCompletionKind.Completed,
-        outcome: worker.outcome) # Actual returned success or refusal remains distinct from cancellation.
+        performed: worker.request, outcome: worker.outcome) # Actual returned success or refusal remains distinct from cancellation.
   worker.cancelled = false
   worker.outcome = default(ApplicationCheckpointFileResult[ApplicationCheckpointIdentity])
   worker.prepared = default(PreparedApplicationCheckpoint)
@@ -236,7 +284,7 @@ proc close*(worker: var ApplicationCheckpointWorker): ApplicationCheckpointShutd
       result.finished = ApplicationCheckpointCompletion(
           status: ApplicationCheckpointCompletionKind.Completed,
 
-outcome: worker.outcome) # Joined shutdown preserves an actual returned publication receipt.
+performed: worker.request, outcome: worker.outcome) # Joined shutdown preserves an actual returned publication receipt.
   elif worker.phase == ApplicationCheckpointWorkerPhase.Executing:
     result.finished = ApplicationCheckpointCompletion(
         status: ApplicationCheckpointCompletionKind.Interrupted) # A missing outcome after native entry must never be described as an unstarted/cancelled transaction.

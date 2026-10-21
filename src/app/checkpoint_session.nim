@@ -4,6 +4,8 @@
 ## Managed export lifetimes retain an unacknowledged joined publication receipt across repeated shutdown and restart attempts.
 import ./[checkpoint_worker, checkpoint_file, checkpoint_transfer]
 import ../codec/bounded
+import ../state/store
+import ./checkpoint_identity
 
 type ApplicationCheckpointSession* = object ## One stable worker address and fixed shutdown journal have a single host owner.
   worker: ApplicationCheckpointWorker
@@ -77,3 +79,10 @@ proc close*(session: var ApplicationCheckpointSession) =
   session.retired = retired
   session.pending = retired.completion.kind != ApplicationCheckpointCompletionKind.Uninitialized or
       retired.retirementError != ApplicationCheckpointFileError.None
+
+proc stageVerification*(session: var ApplicationCheckpointSession,
+    expected: ApplicationCheckpointIdentity,
+
+limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointAdmission =
+  ## Fixed independent trust and budgets reuse the same exclusive acknowledgement slot and retained shutdown journal.
+  session.worker.stageVerification(expected, limits, limit)
