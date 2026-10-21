@@ -6,7 +6,8 @@
 import std/assertions
 import ../../src/state/[computed_transition, computed_profile, computed_lookup, computed_recent,
   computed_state, computed_links, computed_guarantee, computed_report, block_transition,
-  block_admission, store, input_refinement, availability_specifier, export_erasure, bundle_erasure,
+  block_admission, report_transition, store, input_refinement, availability_specifier,
+  export_erasure, bundle_erasure,
   erasure_layout, erasure_words, auditable_bundle, extrinsic_inputs, import_inputs, import_justification]
 import ../../src/chain/[genesis, parameters]
 import ../../src/codec/[assurances, bounded, header, block_codec, work_package, work_report, composite,
@@ -33,11 +34,8 @@ proc rosterLinks(execution: InputRefinement, shards: ErasureShards): ComputedRep
   let report = prepareComputedReport(available, ByteLimit(100000)).value
   let transcript = prepareComputedGuarantee(report, ByteLimit(100000)).value
   prepareComputedLinks(transcript, [], ElementLimit(0)).value
-proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 65535'u16,
-    target = 0'u32, offender = false, repeatReporter = false,
-    additionalCores: openArray[uint64] = []): ComputedRosterFixture =
-  ## Re-author a three-core complete signed prefix; optional parent9 -> posterior6 is a real epoch transition.
-  let base = transitionFixture(epoch = shrink)
+proc rosterTransitionConfig*(): BlockReportConfig =
+  ## Share the genuine three-core prefix policies with guarantee-bearing candidate fixtures.
   var cfg = transitionConfig()
   cfg.admission.frame.cores = CoreCount(3)
   cfg.admission.frame.validators = ValidatorCount(9)
@@ -48,6 +46,13 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
   cfg.safrole.state.validators = cfg.disputes.rosters
   cfg.availability.rosters = cfg.disputes.rosters
   cfg.availability.assignments = cfg.disputes.availability
+  cfg
+proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 65535'u16,
+    target = 0'u32, offender = false, repeatReporter = false,
+    additionalCores: openArray[uint64] = []): ComputedRosterFixture =
+  ## Re-author a three-core complete signed prefix; optional parent9 -> posterior6 is a real epoch transition.
+  let base = transitionFixture(epoch = shrink)
+  let cfg = rosterTransitionConfig()
   var original = base.context.original
   let assignments = availabilityStateEntry(newSeq[AvailabilityAssignment](3),
       cfg.availability.assignments).value

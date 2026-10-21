@@ -1,0 +1,88 @@
+{
+  "source": "tests/native/pvm_computed_inclusion.nim",
+  "build_name": "pvm-computed-inclusion",
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "origin": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "pvm-computed-inclusion-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed inclusion default"
+    },
+    {
+      "identity": {
+        "origin": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "pvm-computed-inclusion-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed inclusion source"
+    },
+    {
+      "identity": {
+        "origin": "mismatch"
+      },
+      "arguments": [
+        "mismatch"
+      ],
+      "name": "pvm-computed-inclusion-mismatch",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed inclusion mismatch"
+    },
+    {
+      "identity": {
+        "origin": "limit"
+      },
+      "arguments": [
+        "limit"
+      ],
+      "name": "pvm-computed-inclusion-limit",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed inclusion limit"
+    },
+    {
+      "identity": {
+        "origin": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "pvm-computed-inclusion-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed inclusion owner"
+    },
+    {
+      "identity": {
+        "origin": "stage"
+      },
+      "arguments": [
+        "stage"
+      ],
+      "name": "pvm-computed-inclusion-stage",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed inclusion stage"
+    },
+    {
+      "identity": {
+        "origin": "component"
+      },
+      "arguments": [
+        "component"
+      ],
+      "name": "pvm-computed-inclusion-component",
+      "diagnostic": "outcome.status == None",
+      "description": "Computed inclusion component"
+    }
+  ]
+}
