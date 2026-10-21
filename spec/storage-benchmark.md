@@ -55,3 +55,10 @@ share 232 additional prefix bits and exercise deep routing without changing the 
 count or update semantics. Native output, JSON cases, CSV and Markdown retain the topology identity;
 missing or mismatched shapes refuse comparison. All complete maps and individual read payloads
 remain validated outside timing. The existing Perf Storage job stays adjacent to Perf PVM.
+
+## Inline and out-of-line value coverage
+
+Every backend, size and key topology now runs 16-byte inline and 256-byte out-of-line values.
+Fixture identity includes the payload length in native samples, JSON, CSV and Markdown. Aggregation
+revalidates that identity rather than accepting timings substituted from a cheaper representation.
+The complete authored payload and exact selected root remain positive controls for every sample.

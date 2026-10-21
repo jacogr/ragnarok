@@ -17,13 +17,14 @@ proc key(index: int, deep: bool): StateKey =
   raw[offset] = byte(index shr 8)
   raw[offset+1] = byte(index and 255)
   StateKey(raw)
-proc value(index, applied: int): seq[byte] =
-  ## Every fixture has 256-byte values, with sixteen distinct single-key successor updates.
-  result = newSeq[byte](256)
+proc value(index, applied, valueBytes: int): seq[byte] =
+  ## Inline and out-of-line payload sizes use the same sixteen deterministic successor updates.
+  result = newSeq[byte](valueBytes)
   let octet = if index < applied: byte(index+1) else: byte(index and 255)
-  for position in 0..<256:
+  for position in 0..<valueBytes:
     result[position] = octet # Full payload checks follow every timed operation group.
-proc check(view: RepositoryView, trie: StateTrieLimits, count: int, expected: StateRoot, deep: bool) =
+proc check(view: RepositoryView, trie: StateTrieLimits, count: int, expected: StateRoot, deep: bool,
+    valueBytes: int) =
   ## Independently authored keys/values and the sealed fixture root must match after publication/reopen.
   assert array[32, byte](view.commitment.root) == array[32, byte](expected)
   assert uint64(view.generation) == 17
@@ -31,13 +32,13 @@ proc check(view: RepositoryView, trie: StateTrieLimits, count: int, expected: St
   assert entries.len == count
   for index, entry in entries:
     assert array[31, byte](entry.key) == array[31, byte](key(index, deep))
-    assert entry.value == value(index, 16)
+    assert entry.value == value(index, 16, valueBytes)
 proc elapsed(start: MonoTime): int64 =
   ## Monotonic positive nanoseconds describe one fixed public API operation batch.
   (getMonoTime()-start).inNanoseconds
 proc main() {.raises.} =
   ## Python selects only explicit engines/sizes and supplies one isolated owned directory per pass.
-  assert paramCount() == 4
+  assert paramCount() == 5
   let engine = paramStr(1)
   assert engine in ["memory", "journal", "managed"]
   let countText = paramStr(2)
@@ -47,6 +48,9 @@ proc main() {.raises.} =
   let topology = paramStr(4)
   assert topology in ["leading", "trailing"]
   let deep = topology == "trailing"
+  let valueText = paramStr(5)
+  assert valueText in ["16", "256"]
+  let valueBytes = if valueText == "16": 16 else: 256
   let trie = StateTrieLimits(items: ElementLimit(8192), perValue: ByteLimit(256),
     totalValueBytes: ByteLimit(2097152), nodes: TrieNodeLimit(100000))
   let limits = RepositoryLimits(codec: RecordLimits(trie: trie,
@@ -57,7 +61,7 @@ proc main() {.raises.} =
     snapshotBytes: ByteLimit(33554432), journalBytes: ByteLimit(33554432), contextBytes: ByteLimit(64))
   var entries: seq[StateEntry] = @[]
   for index in 0..<count:
-    entries.add(StateEntry(key: key(index, deep), value: value(index, 0)))
+    entries.add(StateEntry(key: key(index, deep), value: value(index, 0, valueBytes)))
   var state = newFullStateTrie(entries, FullStateTrieLimits(trie: trie,
     writes: ElementLimit(1), writeValueBytes: ByteLimit(256))).value
   let full = exportFullTrie(state, limits.codec.records).value
@@ -72,7 +76,7 @@ proc main() {.raises.} =
   var changes: seq[TrieExport] = @[]
   for index in 0..<16:
     let next = state.apply([TrieWrite(key: key(index, deep), kind: TrieWriteKind.Put,
-      value: value(index, index+1))]).value
+      value: value(index, index+1, valueBytes))]).value
     changes.add(exportTrieChanges(state, next, limits.codec.records).value)
     state = next # Preparation, Merklization and fixture construction stay outside timed publication.
   let expected = state.commitment.root
@@ -104,7 +108,7 @@ proc main() {.raises.} =
             index]).value # Real disk publication includes its synchronization barrier.
     let publicationNs = elapsed(publicationStart)
     let view = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
-    check(view, trie, count, expected, deep)
+    check(view, trie, count, expected, deep, valueBytes)
     var observed = newSeq[TrieRecord](4096)
     let readStart = getMonoTime()
     for index in 0..<observed.len:
@@ -116,14 +120,14 @@ proc main() {.raises.} =
       let raw = array[31, byte](record.key)
       let number = int(raw[if deep: 29 else: 0])*256+int(raw[if deep: 30 else: 1])
       assert number >= count-128 and number < count
-      assert record.payload == value(number, 16) # Validate every returned byte outside the measured read interval.
+      assert record.payload == value(number, 16, valueBytes) # Validate every returned byte outside the measured read interval.
     let extractStart = getMonoTime()
     let restored = restoreStateEntries(view, expected, trie).value
     let extractNs = elapsed(extractStart)
     assert restored.len == count
     for index, entry in restored:
       assert array[31, byte](entry.key) == array[31, byte](key(index, deep))
-      assert entry.value == value(index, 16)
+      assert entry.value == value(index, 16, valueBytes)
     var reopenNs = -1'i64
     if engine != "memory":
       assert disk.close == FileError.None
@@ -133,7 +137,7 @@ proc main() {.raises.} =
       else:
         assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
       reopenNs = elapsed(reopenStart)
-      check(disk.snapshot.value, trie, count, expected, deep)
+      check(disk.snapshot.value, trie, count, expected, deep, valueBytes)
       assert disk.close == FileError.None
       if engine == "journal":
         var nativePath = path
@@ -141,8 +145,8 @@ proc main() {.raises.} =
       else:
         removeManagedSample(path, [ManagedEpoch(1)]) # Cleanup covers only this fixture's exact known epoch.
     assert memory.close == RepositoryError.None
-    echo "sample\t", count, "\t", topology, "\t", sample, "\t", publicationNs, "\t", readNs, "\t",
-        extractNs, "\t", reopenNs
+    echo "sample\t", count, "\t", topology, "\t", valueBytes, "\t", sample, "\t", publicationNs,
+        "\t", readNs, "\t", extractNs, "\t", reopenNs
   assert seed.close == RepositoryError.None
 try:
   main()
