@@ -217,6 +217,39 @@ def application_download_sequence(context):
     return observed
 
 
+@PLAN.workload
+def application_remote_ancestors(context):
+    """Verify real executable ancestor acquisition, complete maps, managed restart and atomic refusal."""
+    import hashlib
+    import os
+    from native_fixtures import unit_runtime_fixtures
+    from application_remote_ancestors import observe
+    peer_build, peer = context.peer
+    observed = dict(passed=False)
+    if peer_build['exit_code'] == 0:
+        # Only the current production build may drive the independent native witness.
+        compiled, responder = context.checks.build(context.compiler,
+            ROOT/'tests/native/application_remote_ancestors.nim', 'application-remote-ancestors',
+            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+        observed['build'] = compiled
+        if compiled['exit_code'] == 0:
+            _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
+                suite='application_download_progress')['application_download_progress']
+            for path, expected in files:
+                # Actual generated input identities remain independently checked before either process starts.
+                if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                    raise ValueError('Remote ancestry fixture mismatch: '+str(path))
+            environment = dict(os.environ, **{name: str(path) for name, path in inputs.items()})
+            try:
+                result = observe(peer, responder, context.checks.folder/'remote-ancestor-work', environment)
+                observed.update(run=result, fixtures={str(path): digest for path, digest in files},
+                    passed=result['passed'])
+            except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
+                observed['failure'] = str(error) # Protocol, CLI, process and cleanup failures remain this workload's own verdict.
+    announce('executable remote ancestor context', observed['passed'])
+    return observed
+
+
 # Preserve this task and its original checks in dependency order.
 @PLAN.workload
 def telemetry(context):
