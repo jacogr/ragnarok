@@ -65,13 +65,17 @@ proc prepareGrowth*(count, publications: int, hot = false): StorageGrowthFixture
     result.changes.add(exportTrieChanges(state, next, limits.codec.records).value)
     result.roots.add(next.commitment.root)
     state = next # Every root corresponds to exactly one prepared four-key physical publication.
-proc checkGrowth*(view: RepositoryView, root: StateRoot, count, publications: int, hot = false) =
-  ## Check every authored key/value using closed-form update expectations outside measured intervals.
-  let entries = restoreHistoricalStateEntries(view, root, growthLimits().codec.trie).value
+proc checkGrowthEntries*(entries: openArray[StateEntry], count, publications: int, hot = false) =
+  ## Independently validate already returned complete maps without hiding a second extraction in timing.
   assert entries.len == count
   for index, entry in entries:
     assert array[31, byte](entry.key) == array[31, byte](growthKey(index))
     assert entry.value == growthValue(index, growthRevision(index, count, publications, hot))
+proc checkGrowth*(view: RepositoryView, root: StateRoot, count, publications: int,
+    hot = false) =
+  ## Historical reachability remains explicitly selected and does not imply canonical/finality authority.
+  let entries = restoreHistoricalStateEntries(view, root, growthLimits().codec.trie).value
+  checkGrowthEntries(entries, count, publications, hot)
 
 proc checkGrowthHead*(view: RepositoryView, root: StateRoot, count, publications: int,
     hot = false) =
