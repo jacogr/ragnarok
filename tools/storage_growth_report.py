@@ -23,10 +23,13 @@ def unavailable(engine,phase):
     return (engine=='memory' and phase=='reopen') or (engine=='journal' and phase in ('retention','maintenance','extraction_after','reads_after')) or (engine!='managed' and phase in ('retained_reopen','compacted_reopen'))
 
 
-def parse_growth(output,engine,count,steps,pattern='sweep'):
+def parse_growth(output,engine,count,steps,pattern='sweep',*,samples=13):
     """Require exact identities, complete ordered samples and bounded typed timings/physical metrics."""
     if engine not in ENGINES or type(count) is not int or count not in COUNTS or type(steps) is not int or steps not in PUBLICATIONS or pattern not in PATTERNS or (count,steps,pattern) not in CASES:
         raise ValueError('Unknown sustained storage configuration')
+    # Resource controls accept one validated trajectory; speed callers retain exactly thirteen.
+    if type(samples) is not int or samples not in (1,13):
+        raise ValueError('Invalid sustained sample plan')
     rows=[]
     durations=[]
     for line in output.splitlines():
@@ -44,7 +47,7 @@ def parse_growth(output,engine,count,steps,pattern='sweep'):
                 re.fullmatch(r'-1|0|[1-9][0-9]{0,18}',value) is None for value in (*fields[1:3],*fields[4:])):
             raise ValueError('Invalid sustained storage output')
         size,publications,sample,*values=map(int,(*fields[1:3],*fields[4:]))
-        if size!=count or publications!=steps or sample!=len(rows) or sample>=13:
+        if size!=count or publications!=steps or sample!=len(rows) or sample>=samples:
             raise ValueError('Invalid sustained sample identity')
         row=dict(items=size,publications=publications,pattern=pattern,sample=sample,**dict(zip((*PHASES,*METRICS),values)))
         if len(durations)!=steps or sum(durations)>row['publication']:
@@ -69,7 +72,7 @@ def parse_growth(output,engine,count,steps,pattern='sweep'):
             if (missing and value!=-1) or (zero and value!=0) or (not missing and not zero and not 0<value<(1<<63)):
                 raise ValueError('Invalid sustained selected-file extent')
         rows.append(row)
-    if len(rows)!=13 or durations:
+    if len(rows)!=samples or durations:
         raise ValueError('Incomplete sustained sample coverage')
     return rows
 
