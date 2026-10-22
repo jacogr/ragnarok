@@ -165,3 +165,10 @@ account/storage identities and rejects default plans and short aggregate counts.
 to the explicitly selected block's posterior complete-state root. Failed/default
 selections never fall back to zero-root state. Suite `chain_state_proof_batch`
 uses a genuinely signed fixture and compares selected complete-state values.
+
+## Selected-block semantic generation
+
+`generateBlockServiceProofs` resolves the exact immutable plan against one
+explicitly selected posterior map. Service identities are selectors rather than
+root authority; default selection and invalid plans cannot generate a response.
+Suite `chain_state_proof_plan` verifies the selected fixture's actual account.
