@@ -282,6 +282,60 @@ proc lookupNode*(view: RepositoryView, digest: StateNodeHash): RepositoryResult[
   RepositoryResult[TrieRecord](status: RepositoryError.None, completed: copyRecord(
       data.table.records[index]))
 
+func transportDigest(record: TrieRecord): StateNodeHash =
+  ## Private publication traversal projects only the fixed address from an untrusted raw transport.
+  record.digest
+proc admitPublication[T](repository: var NodeRepository, head: RepositoryData,
+    batch: RecordBatchInfo, count: int, bytes: uint64, added: var seq[StoredRecord],
+    touched: openArray[T], address: proc(record: T): StateNodeHash {.nimcall.}): RepositoryResult[
+        RepositoryView] =
+  ## Private bounded cells still need complete target topology and exact touched-record reachability.
+  ## Callers preserve independent integrity, head/base/generation and quota/conflict precedence first.
+  let limits = head.limits
+  if batch.records == 0 and array[32, byte](batch.root) == array[32, byte](
+      head.commitment.root):
+    # Immutable current graphs need no traversal or table copy; exact metadata remains mandatory.
+    if batch.entries != uint64(head.commitment.entries) or batch.nodes != head.commitment.nodes:
+      return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph)
+    let data = RepositoryData(table: head.table, commitment: head.commitment,
+      generation: RepositoryGeneration(uint64(head.generation)+1), valueBytes: head.valueBytes,
+      limits: limits)
+    repository.head = data # A new exact view identity/generation still invalidates old publication handles.
+    return RepositoryResult[RepositoryView](status: RepositoryError.None,
+      completed: RepositoryView(data: data))
+  added.sort(compareRecord) # Only newly admitted records require sorting; the published table is already ordered.
+  var records = newSeqOfCap[StoredRecord](count)
+  var prior = 0
+  var fresh = 0
+  for index in 0..<count:
+    # Merge disjoint sorted addresses linearly, retaining old private payload owners without copying bytes.
+    if fresh >= added.len or (prior < head.table.records.len and
+        compareHash(head.table.records[prior].digest, added[fresh].digest) < 0):
+      records.add(head.table.records[prior])
+      inc prior
+    else:
+      records.add(added[fresh])
+      inc fresh
+  let table = newRepositoryTable(records)
+  var visit = GraphVisit(seen: newSeq[uint64](graphWords(table.records.len)))
+  var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
+  let complete = graph(table, StateNodeHash(array[32, byte](batch.root)), 0,
+    default(array[31, byte]), limits.codec.trie, visit, counts)
+  if complete != RepositoryError.None: return RepositoryResult[RepositoryView](status: complete)
+  if counts.entries != batch.entries or counts.nodes != batch.nodes:
+    return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph)
+  for record in touched:
+    if not marked(visit.seen, position(table, address(record))):
+      return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph) # Do not admit unrelated orphan records through a revision batch.
+  let data = RepositoryData(table: table,
+      commitment: StateTrieCommitment(root: batch.root,
+    entries: int(counts.entries), nodes: counts.nodes), generation: RepositoryGeneration(uint64(
+        head.generation)+1),
+    valueBytes: bytes, limits: limits)
+  repository.head = data # No failed validation can change the prior published owner.
+  RepositoryResult[RepositoryView](status: RepositoryError.None, completed: RepositoryView(data: data))
+
+
 proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
     batch: TrieExport, decoded: bool): RepositoryResult[RepositoryView] =
   ## Private admission always validates the complete graph; only an exact local decoder may supply integrity.
@@ -312,17 +366,6 @@ proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
     if validated != RecordError.None:
       return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
           recordReason: validated)
-  if batch.records.len == 0 and array[32, byte](batch.root) == array[32, byte](
-      head.commitment.root):
-    # Immutable current graphs need no traversal or table copy; exact metadata remains mandatory.
-    if batch.entries != uint64(head.commitment.entries) or batch.nodes != head.commitment.nodes:
-      return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph)
-    let data = RepositoryData(table: head.table, commitment: head.commitment,
-      generation: RepositoryGeneration(uint64(head.generation)+1), valueBytes: head.valueBytes,
-      limits: limits)
-    repository.head = data # A new exact view identity/generation still invalidates old publication handles.
-    return RepositoryResult[RepositoryView](status: RepositoryError.None,
-      completed: RepositoryView(data: data))
   var added = newSeqOfCap[StoredRecord](count-head.table.records.len)
   for record in batch.records:
     let old = position(head.table.records, record.digest)
@@ -331,37 +374,9 @@ proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
         return RepositoryResult[RepositoryView](status: RepositoryError.RecordConflict)
     else:
       added.add(storeRecord(record)) # Append only initialized nonnil cells; raw transport stays detached.
-  added.sort(compareRecord) # Only newly admitted records require sorting; the published table is already ordered.
-  var records = newSeqOfCap[StoredRecord](count)
-  var prior = 0
-  var fresh = 0
-  for index in 0..<count:
-    # Merge disjoint sorted addresses linearly, retaining old private payload owners without copying bytes.
-    if fresh >= added.len or (prior < head.table.records.len and
-        compareHash(head.table.records[prior].digest, added[fresh].digest) < 0):
-      records.add(head.table.records[prior])
-      inc prior
-    else:
-      records.add(added[fresh])
-      inc fresh
-  let table = newRepositoryTable(records)
-  var visit = GraphVisit(seen: newSeq[uint64](graphWords(table.records.len)))
-  var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
-  let complete = graph(table, StateNodeHash(array[32, byte](batch.root)), 0,
-    default(array[31, byte]), limits.codec.trie, visit, counts)
-  if complete != RepositoryError.None: return RepositoryResult[RepositoryView](status: complete)
-  if counts.entries != batch.entries or counts.nodes != batch.nodes:
-    return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph)
-  for record in batch.records:
-    if not marked(visit.seen, position(table, record.digest)):
-      return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph) # Do not admit unrelated orphan records through a revision batch.
-  let data = RepositoryData(table: table,
-      commitment: StateTrieCommitment(root: batch.root,
-    entries: int(counts.entries), nodes: counts.nodes), generation: RepositoryGeneration(uint64(
-        head.generation)+1),
-    valueBytes: bytes, limits: limits)
-  repository.head = data # No failed validation can change the prior published owner.
-  RepositoryResult[RepositoryView](status: RepositoryError.None, completed: RepositoryView(data: data))
+  let info = RecordBatchInfo(base: batch.base, root: batch.root, entries: batch.entries,
+    nodes: batch.nodes, records: uint64(batch.records.len), valueBytes: 0)
+  admitPublication(repository, head, info, count, bytes, added, batch.records, transportDigest)
 
 proc publish*(repository: var NodeRepository, expected: RepositoryView,
     batch: TrieExport): RepositoryResult[RepositoryView] =
