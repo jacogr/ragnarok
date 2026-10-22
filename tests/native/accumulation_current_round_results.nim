@@ -24,4 +24,5 @@ of "transfers": discard round.currentRoundTransfers.value # Only the actual matc
 of "pending-owner": discard round.currentRoundPending.value # Only the actual matching selected alternative authorizes extraction.
 of "guests": discard round.currentRoundGuests.value # Only the actual matching selected alternative authorizes extraction.
 of "snapshot": discard round.currentRoundSnapshot.value # Only the actual matching selected alternative authorizes extraction.
+of "parameters": discard round.currentRoundParameters.value # Default owners cannot supply frozen chain configuration.
 else: discard owner.value # No synthetic completed current round.

@@ -9,6 +9,8 @@ let refusedSource = startCurrentAccumulationSequence(default(PreparedCurrentAccu
 let sequence = default(CurrentAccumulationSequence)
 let plan = default(PreparedCurrentContinuation)
 let refusedPlan = planCurrentAccumulationContinuation(sequence, default(CurrentContinuationLimits))
+let refusedRun = runCurrentAccumulationContinuation(plan, default(
+    CurrentContinuationExecutionLimits))
 case paramStr(1)
 of "refused-sequence": discard refusedSource.value # Only genuine selected success/failure authorizes this extraction.
 of "refused-plan": discard refusedPlan.value # Only genuine selected success/failure authorizes this extraction.
@@ -32,4 +34,12 @@ of "plan-partition": discard plan.currentContinuationPartition.value # Only genu
 of "plan-state": discard plan.currentContinuationState.value # Only genuine selected success/failure authorizes this extraction.
 of "plan-report": discard plan.currentContinuationReportAt(CurrentPlanReportIndex(
     0)).value # Only genuine selected success/failure authorizes this extraction.
+of "entry-guest": discard owner.guestFailure # Only the actual later-execution failure branch grants its parent reason.
+of "entry-account": discard owner.accountFailure # Only the actual later-execution failure branch grants its parent reason.
+of "entry-provision": discard owner.provisionFailure # Only the actual later-execution failure branch grants its parent reason.
+of "entry-global": discard owner.globalFailure # Only the actual later-execution failure branch grants its parent reason.
+of "entry-output": discard owner.outputFailure # Only the actual later-execution failure branch grants its parent reason.
+of "entry-transfer": discard owner.transferFailure # Only the actual later-execution failure branch grants its parent reason.
+of "entry-pending": discard owner.pendingFailure # Only the actual later-execution failure branch grants its parent reason.
+of "entry-refused": discard refusedRun.value # A refused/default plan never completes a fake entry.
 else: discard owner.value # No fabricated initialized current continuation.
