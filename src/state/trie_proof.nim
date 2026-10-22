@@ -68,14 +68,19 @@ proc captureStateProof*(nodes: openArray[EncodedStateNode], supplied: openArray[
       uint64(supplied.len) > uint64(limits.valueBytes):
     return StateProofResult[StateProof](status: StateProofError.LimitExceeded)
   for i, node in nodes:
-    # Each nonterminal is a branch; a terminal leaf ends the path after at most 248 bits.
+    # Each nonterminal is a branch; a terminal leaf or empty selected edge ends the path.
     let decoded = decodeStateNode(array[64, byte](node))
     if decoded.error != StateLayoutError.None:
       return StateProofResult[StateProof](status: StateProofError.InvalidProof)
     if i < nodes.len - 1 and decoded.value.node.kind != StateNodeKind.Branch:
       return StateProofResult[StateProof](status: StateProofError.InvalidProof)
-    if i == nodes.len - 1 and decoded.value.node.kind == StateNodeKind.Branch:
-      return StateProofResult[StateProof](status: StateProofError.InvalidProof)
+    if decoded.value.node.kind == StateNodeKind.Branch:
+      # A terminal branch may witness an empty selected edge, but no branch exists below bit 247.
+      if i >= 248:
+        return StateProofResult[StateProof](status: StateProofError.InvalidProof)
+      if array[32, byte](decoded.value.node.left) == default(array[32, byte]) and
+          array[32, byte](decoded.value.node.right) == default(array[32, byte]):
+        return StateProofResult[StateProof](status: StateProofError.InvalidProof)
   var copiedNodes = newSeq[EncodedStateNode](nodes.len)
   for i, node in nodes:
     copiedNodes[i] = node # Fixed node copies preserve exact canonical bytes.
@@ -114,7 +119,14 @@ proc verifyStateProof*(proof: StateProof, expectedRoot: StateRoot, query: StateK
       uint64(data.value.len) > uint64(limits.valueBytes):
     return StateProofResult[VerifiedStateLookup](status: StateProofError.LimitExceeded)
   if data.nodes.len == 0:
-    return StateProofResult[VerifiedStateLookup](status: StateProofError.InvalidProof)
+    # An empty dictionary is the zero identity, not Blake2b(empty), and carries no supplied value.
+    if data.value.len != 0:
+      return StateProofResult[VerifiedStateLookup](status: StateProofError.InvalidProof)
+    if array[32, byte](expectedRoot) != default(array[32, byte]):
+      return StateProofResult[VerifiedStateLookup](status: StateProofError.RootMismatch)
+    return StateProofResult[VerifiedStateLookup](status: StateProofError.None,
+      completed: VerifiedStateLookup(proof: proof, rootIdentity: expectedRoot,
+        keyIdentity: query, found: false))
   var expected = array[32, byte](expectedRoot)
   var partial = false
   for depth, node in data.nodes:
@@ -130,13 +142,20 @@ proc verifyStateProof*(proof: StateProof, expectedRoot: StateRoot, query: StateK
     let info = decodeStateNode(array[64, byte](node)).value.node
     case info.kind
     of StateNodeKind.Branch:
-      # Captured paths have at most 248 branches, each before the final leaf.
+      # Captured paths have at most 248 branches before a leaf or an empty selected edge.
       if query.bit(depth):
         expected = array[32, byte](info.right)
         partial = false
       else:
         expected = array[32, byte](info.left)
         partial = true
+      if depth == data.nodes.len - 1:
+        # A short path is absence only at the authenticated zero selected edge.
+        if expected != default(array[32, byte]) or data.value.len != 0:
+          return StateProofResult[VerifiedStateLookup](status: StateProofError.InvalidProof)
+        return StateProofResult[VerifiedStateLookup](status: StateProofError.None,
+          completed: VerifiedStateLookup(proof: proof, rootIdentity: expectedRoot,
+            keyIdentity: query, found: false))
     of StateNodeKind.EmbeddedLeaf, StateNodeKind.HashedLeaf:
       # Structural capture guarantees this is the terminal; require exact key and value preimage.
       let leafKey = if info.kind == StateNodeKind.EmbeddedLeaf: info.embeddedKey else: info.hashedKey
