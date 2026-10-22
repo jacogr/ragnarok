@@ -111,3 +111,21 @@ Real signed three-child execution/composition now proves each retained head unde
 posterior root. The original parent and each header prior-state root reject a later
 posterior witness. This preserves retained history semantics without adding proof RPC,
 consensus trust or canonical publication behavior.
+
+## Completed bounded proof interface
+
+The local immutable proof feature is complete within the specified ceilings. Local
+checked ARC/Clang verification covers structural/membership/absence checks, complete
+map and snapshot generation, ordered atomic batches, exact local framing, strict
+runtime/compiler guards, frozen independent paths, every key of fourteen published
+maps, independent revisions, actual backend refusal prefixes, 1,000 ARC cycles and
+real signed successive-head binding. Reproduce using `make unit SUITE=<suite>` for
+`state_proof`, `state_proof_generation`, `state_snapshot_proof`, `state_proof_batch`,
+`state_proof_wire`, `state_proof_reference`, `state_proof_published`,
+`state_proof_backend`, `state_proof_lifecycle` and `chain_state_proof`.
+
+Logs are retained under ignored `build/state-proof-*`; these are local results,
+separate from exact-head Linux CI and complete JAM interoperability. No storage API,
+format, canonical publication, Services lease or protocol pin changed. No proof RPC,
+light-node store or complete state execution is claimed. The [usage guide](../docs/state-proofs.md)
+describes trust, byte limits and retained-owner lifetimes.

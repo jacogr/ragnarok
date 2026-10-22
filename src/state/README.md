@@ -32,3 +32,6 @@ Start with the [store contract](../../spec/state-store.md),
 [PVM/state successor boundary](../../spec/pvm-state-successor.md).
 The [state design](../../docs/design/state.md) links the transition families and their verification;
 component coverage does not imply complete JAM state serialization or a production validator.
+
+Bounded immutable state trie membership/absence interfaces are documented in the
+[state proof guide](../../docs/state-proofs.md) and [feature contract](../../spec/state-trie-proofs.md).
