@@ -1,0 +1,40 @@
+{
+  "build_name": "state-manifest-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "Guard inactive state manifest value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "state-manifest-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard inactive state manifest reason",
+      "diagnostic": "outcome.status == CompositionFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-manifest-reason"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard inactive state manifest invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-manifest-invalid"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_manifest_results.nim"
+}

@@ -62,3 +62,7 @@ Next: bind the validated complete source to an explicit complete service manifes
 rejecting opaque/unclassified service captures and any unmatched serialized row.
 Reuse composition codecs and retain source identity without claiming valid-state
 consistency or trusted-root selection.
+
+The follow-up [complete manifest validator](state-manifest.md) now matches all
+service entries through explicit typed inputs; opaque captures and unmatched rows
+remain refusals. This does not settle the independent parity gates above.
