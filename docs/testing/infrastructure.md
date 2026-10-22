@@ -278,3 +278,12 @@ Storage IO observers are explicit native-only profiles: the `storage_io` test ob
 directory are required for `io_read`, `io_write` or `io_fsync` call-site observation. SDK prototypes
 are included before redirection to preserve platform aliases. Ordinary and production compilation
 receive no redirection header or fault controls. Every unrefused call uses real OS IO.
+
+Ubuntu prerequisite setup stays in `make host-tools`. Missing packages trigger APT acquisition
+with three retries and 30-second HTTP/HTTPS connection/data timeouts; package-lock waits are
+bounded to 60 seconds. Index updates additionally have a five-minute wall-clock limit with a
+ten-second termination grace, and any failed index makes setup fail. Installation begins only
+after a successful update; package configuration retains its normal completion semantics.
+Both stages save stdout/stderr in `build/ci/host-tools-{update,install}.log`, covered by the existing
+CI artifact globs even when compiler setup never starts. Provisioned and non-APT hosts skip this
+path. The workflow's overall job limits are unchanged.
