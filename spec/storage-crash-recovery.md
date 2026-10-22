@@ -214,3 +214,11 @@ Actual truncation/barrier process death leaves either the exact torn tail or the
 prefix visible. Strict startup admits only a complete prefix; a mismatched token preserves every
 byte and grants no owner. The same independent exact token can finish confirmation and publication
 can resume. No killed recovery process returns a live owner or grants checkpoint-import trust.
+
+## Source-preserving migration process crashes
+
+`storage_migration_crash` kills at every destination write, barrier and CURRENT rename. The parent
+retains its original legacy lease across fork; child death releases only the child's inherited
+reference, not the parent's lease. Source bytes, both complete authored roots and opaque context
+remain exact and readable. Existing targets reject recreation; strict admission follows only a
+complete visible CURRENT and preserves all forensic names/bytes. No import trust is inferred.
