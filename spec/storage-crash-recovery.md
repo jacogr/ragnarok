@@ -206,3 +206,11 @@ Actual truncation/barrier process death leaves either the exact torn tail or the
 prefix visible. Strict startup admits only a complete prefix; a mismatched token preserves every
 byte and grants no owner. The same independent exact token can finish confirmation and publication
 can resume. No killed recovery process returns a live owner or grants checkpoint-import trust.
+
+## storage_repair_barrier_crash
+
+The child receives an independently exact generation/root token for a genuine torn append.
+Actual truncation/barrier process death leaves either the exact torn tail or the confirmed complete
+prefix visible. Strict startup admits only a complete prefix; a mismatched token preserves every
+byte and grants no owner. The same independent exact token can finish confirmation and publication
+can resume. No killed recovery process returns a live owner or grants checkpoint-import trust.
