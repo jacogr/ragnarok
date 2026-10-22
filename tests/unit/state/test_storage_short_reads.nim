@@ -64,7 +64,11 @@ proc scenario(managed: bool) {.raises.} =
     journal.bytes = ByteLimit(uint64(original.len)-1)
     assert openFileRepository(file, path, default(StorageChainId), journal) ==
         FileError.LimitExceeded
-  assert not file.opened and ioCalls(readIo) > 1
+  assert not file.opened
+  if managed:
+    assert ioCalls(readIo) > 1 # CURRENT was read before the oversized selected snapshot was refused.
+  else:
+    assert ioCalls(readIo) == 0 # A known oversized journal must refuse before the first payload read.
   resetIo()
   assert readFile(journalPath) == original
   limits = managedStorageLimits()

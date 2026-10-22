@@ -139,6 +139,12 @@ proc readNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "re
 proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
   ## Fixed chunks detect one excess byte without trusting file-size metadata for allocation.
   let maximum = min(uint64(limit), uint64(high(int)))
+  var metadata = default(Stat)
+  if posix.fstat(fd, metadata) != 0 or not S_ISREG(metadata.st_mode) or metadata.st_size < 0:
+    return FileResult[seq[byte]](status: FileError.IoFailure)
+  if uint64(metadata.st_size) > maximum:
+    return FileResult[seq[byte]](status: FileError.LimitExceeded)
+  # A stat snapshot only refuses known excess; bounded reads still decide actual extent and EOF.
   var bytes: seq[byte] = @[]
   var buffer = default(array[4096, byte])
   while true:
