@@ -1,0 +1,62 @@
+{
+  "build_name": "state-validated-checkpoint-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "Guard inactive validated checkpoint value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "state-validated-checkpoint-value"
+    },
+    {
+      "arguments": [
+        "checkpoint"
+      ],
+      "description": "Guard inactive validated checkpoint checkpoint",
+      "diagnostic": "outcome.status == CheckpointFailure",
+      "identity": {
+        "reason": "checkpoint"
+      },
+      "name": "state-validated-checkpoint-checkpoint"
+    },
+    {
+      "arguments": [
+        "global"
+      ],
+      "description": "Guard inactive validated checkpoint global",
+      "diagnostic": "outcome.status == GlobalFailure",
+      "identity": {
+        "reason": "global"
+      },
+      "name": "state-validated-checkpoint-global"
+    },
+    {
+      "arguments": [
+        "manifest"
+      ],
+      "description": "Guard inactive validated checkpoint manifest",
+      "diagnostic": "outcome.status == ManifestFailure",
+      "identity": {
+        "reason": "manifest"
+      },
+      "name": "state-validated-checkpoint-manifest"
+    },
+    {
+      "arguments": [
+        "format"
+      ],
+      "description": "Guard inactive validated checkpoint format",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "format"
+      },
+      "name": "state-validated-checkpoint-format"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_validated_checkpoint_results.nim"
+}

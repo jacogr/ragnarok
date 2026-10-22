@@ -1,0 +1,84 @@
+{
+  "build_name": "state-account-review-checkpoint-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard account review checkpoint default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-account-review-checkpoint-default"
+    },
+    {
+      "arguments": [
+        "checkpoint"
+      ],
+      "description": "Guard account review checkpoint checkpoint",
+      "diagnostic": "outcome.status == CheckpointFailure",
+      "identity": {
+        "reason": "checkpoint"
+      },
+      "name": "state-account-review-checkpoint-checkpoint"
+    },
+    {
+      "arguments": [
+        "directory"
+      ],
+      "description": "Guard account review checkpoint directory",
+      "diagnostic": "outcome.status == DirectoryFailure",
+      "identity": {
+        "reason": "directory"
+      },
+      "name": "state-account-review-checkpoint-directory"
+    },
+    {
+      "arguments": [
+        "footprint"
+      ],
+      "description": "Guard account review checkpoint footprint",
+      "diagnostic": "outcome.status == FootprintFailure",
+      "identity": {
+        "reason": "footprint"
+      },
+      "name": "state-account-review-checkpoint-footprint"
+    },
+    {
+      "arguments": [
+        "supervision"
+      ],
+      "description": "Guard account review checkpoint supervision",
+      "diagnostic": "outcome.status == SupervisionFailure",
+      "identity": {
+        "reason": "supervision"
+      },
+      "name": "state-account-review-checkpoint-supervision"
+    },
+    {
+      "arguments": [
+        "economics"
+      ],
+      "description": "Guard account review checkpoint economics",
+      "diagnostic": "outcome.status == EconomicsFailure",
+      "identity": {
+        "reason": "economics"
+      },
+      "name": "state-account-review-checkpoint-economics"
+    },
+    {
+      "arguments": [
+        "review"
+      ],
+      "description": "Guard account review checkpoint review",
+      "diagnostic": "outcome.status == ReviewFailure",
+      "identity": {
+        "reason": "review"
+      },
+      "name": "state-account-review-checkpoint-review"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_account_review_checkpoint_results.nim"
+}

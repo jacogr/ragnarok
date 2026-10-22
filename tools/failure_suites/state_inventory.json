@@ -1,0 +1,51 @@
+{
+  "build_name": "state-inventory-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "Guard inventory value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "state-inventory-value"
+    },
+    {
+      "arguments": [
+        "key"
+      ],
+      "description": "Guard inventory key",
+      "diagnostic": "outcome.status == KeyFailure",
+      "identity": {
+        "reason": "key"
+      },
+      "name": "state-inventory-key"
+    },
+    {
+      "arguments": [
+        "manifest"
+      ],
+      "description": "Guard inventory manifest",
+      "diagnostic": "outcome.status == ManifestFailure",
+      "identity": {
+        "reason": "manifest"
+      },
+      "name": "state-inventory-manifest"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Guard inventory source",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source"
+      },
+      "name": "state-inventory-source"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_inventory_results.nim"
+}

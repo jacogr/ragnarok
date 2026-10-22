@@ -7,14 +7,11 @@
 ## checked payload/status access.
 
 import std/[strutils, base64, sha1]
-from std/unicode import validateUtf8
+import ../lib/utf8
+export utf8
 
 const MaxMessage* = 16384
 const MaxHeader* = 4096
-
-proc validUtf8*(text: string): bool =
-  ## Validate Unicode scalar encodings, excluding overlong sequences, surrogates and out-of-range values.
-  validateUtf8(text) == -1
 
 proc frame*(payload: string, opcode = 1): string =
   ## Produce one unmasked final server frame; caller supplies a bounded payload and valid opcode.

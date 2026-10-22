@@ -1,0 +1,40 @@
+{
+  "build_name": "state-service-directory-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard service directory default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-service-directory-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard service directory invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-service-directory-invalid"
+    },
+    {
+      "arguments": [
+        "lookup"
+      ],
+      "description": "Guard service directory lookup",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "lookup"
+      },
+      "name": "state-service-directory-lookup"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_service_directory_results.nim"
+}

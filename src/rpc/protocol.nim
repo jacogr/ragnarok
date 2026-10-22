@@ -10,10 +10,10 @@
 ## parameters() derives active-roster erasure geometry and pending-roster ticket limits;
 ## missing state uses zero. RpcSession owns bounded chain subscriptions and serialized updates.
 
-import std/[strutils, parsejson, streams, base64]
+import std/[strutils, base64]
 import ./wire
 import ./proof_requests
-import ../lib/json_writer
+import ../lib/[json_writer, json_reader]
 import ../version
 import ../chain/[parameters, genesis, services, statistics, beefy, reports, provider]
 import ../codec/[state_trie, state_layout, header]
@@ -34,15 +34,6 @@ const Architecture = when defined(arm64): "arm64" elif defined(amd64): "amd64" e
 
 # Flat parse tokens own decoded strings/raw numeric lexemes; next skips a complete subtree.
 type
-  Kind = enum objectValue, arrayValue, stringValue, numberValue, literalValue
-  Value = object
-    kind: Kind
-    text: string
-    next: int
-  # Open containers retain only their token index and child count; depth is capped before growth.
-  Container = object
-    index: int
-    children: int
   ## Connection-local subscription identity; zero is reserved for an unused fixed table entry.
   SubscriptionId = distinct uint32
   ## Supported chain subscriptions share capacity and IDs, but use their own cancellation method.
@@ -93,100 +84,6 @@ proc quote*(text: string): string =
   ## Compatibility helper for callers needing a quoted JSON string.
   $json(text)
 
-# Reject lexical extensions accepted by the pinned stdlib; structure and decoding belong to JsonParser.
-# This allocation-free pass does not parse values. Its input is already size-limited and valid UTF-8.
-proc strictLexemes(text: string): bool =
-  var quoted = false
-  var escaped = false
-  var previous = ' '
-  for c in text: # Inspect raw bytes before the stdlib can normalize permissive spellings.
-    if quoted:
-      if ord(c) < 32: return false # JSON strings cannot contain literal controls.
-      if escaped:
-        if c notin {'"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'}: return false
-        escaped = false # Hex digits and surrogate pairs are checked by the standard decoder.
-      elif c == '\\': escaped = true
-      elif c == '"': quoted = false
-      else: discard # Ordinary UTF-8 string bytes need no additional lexical policy.
-    else:
-      if c in {' ', '\t', '\r', '\n'}: continue # Only JSON whitespace may separate tokens.
-      if ord(c) < 32 or c in {'/', '\'', '\\'}: return false # Exclude comments and non-JSON quotes.
-      if c in {']', '}'} and previous == ',': return false # Stdlib accepts trailing commas.
-      if c == '.' and previous notin {'0'..'9'}: return false # Stdlib normalizes .1 to 0.1.
-      if c == '"': quoted = true
-      previous = c
-  not quoted and not escaped
-
-# Validate a stdlib numeric lexeme without converting or narrowing the request ID.
-proc strictNumber(token: string): bool =
-  var i = 0
-  if token.len > 0 and token[0] == '-': inc i # JSON permits only a leading minus.
-  if i >= token.len: return false
-  if token[i] == '0': inc i # A zero integer part cannot have more digits.
-  elif token[i] in {'1'..'9'}:
-    while i < token.len and token[i] in {'0'..'9'}: inc i # Consume the integer part.
-  else: return false
-  if i < token.len and token[i] == '.': # Fractions need at least one digit.
-    inc i
-    let begin = i
-    while i < token.len and token[i] in {'0'..'9'}: inc i
-    if i == begin: return false
-  if i < token.len and token[i] in {'e', 'E'}: # Exponents need digits after any sign.
-    inc i
-    if i < token.len and token[i] in {'+', '-'}: inc i
-    let begin = i
-    while i < token.len and token[i] in {'0'..'9'}: inc i
-    if i == begin: return false
-  i == token.len
-
-# Adapt standard streaming events to owned dispatch values; failure discards all partial output.
-# The stdlib handles delimiters, separators, decoding and syntax errors. We cap its stack growth
-# between events, enforce string object keys and preserve numeric text rather than using getInt/getFloat.
-proc parseValues(text: string, values: var seq[Value], maxValues = 2048, maxDepth = 16): bool =
-  if not strictLexemes(text): return false
-  var parser = default(JsonParser)
-  parser.open(newStringStream(text), "RPC request")
-  defer: parser.close()
-  var containers: seq[Container] = @[]
-  while true: # One event at a time bounds allocations before the next stdlib parser step.
-    parser.next()
-    if parser.hasError or parser.kind == jsonError: return false
-    case parser.kind
-    of jsonEof: return values.len > 0 and containers.len == 0
-    of jsonObjectEnd, jsonArrayEnd:
-      if containers.len == 0: return false # Never access an absent open container.
-      let parent = containers.pop()
-      values[parent.index].next = values.len
-    else:
-      if values.len >= maxValues or containers.len >= maxDepth: return false
-      if containers.len == 0:
-        if values.len > 0: return false # Stdlib permits another root after a closed container.
-      else:
-        let parent = containers.len - 1
-        if values[containers[parent].index].kind == objectValue and
-            containers[parent].children mod 2 == 0 and parser.kind != jsonString:
-          return false # The streaming parser also accepts non-string object keys.
-        inc containers[parent].children
-      var token = Value(kind: literalValue, text: "", next: values.len + 1)
-      case parser.kind
-      of jsonString:
-        token.kind = stringValue
-        token.text = parser.str
-        if not validUtf8(token.text): return false # Reject lone low surrogates from the decoder.
-      of jsonInt, jsonFloat:
-        token.kind = numberValue
-        token.text = parser.str
-        if not strictNumber(token.text): return false
-      of jsonObjectStart: token.kind = objectValue
-      of jsonArrayStart: token.kind = arrayValue
-      of jsonTrue: token.text = "true"
-      of jsonFalse: token.text = "false"
-      of jsonNull: token.text = "null"
-      else: return false # Error, EOF and closing events have already been handled.
-      values.add(move(token))
-      if parser.kind in {jsonObjectStart, jsonArrayStart}:
-        containers.add(Container(index: values.len - 1, children: 0)) # Bounded open-container stack.
-
 # Decode bounded, unprefixed hex atomically; an empty value is valid only for state values.
 proc decodeHex(text: string, maximum: int, output: var seq[byte]): bool =
   if text.len mod 2 != 0 or text.len div 2 > maximum: return false # Bound before allocation.
@@ -209,7 +106,7 @@ proc configuredGenesis*(text: string, parameters: Parameters,
   ## The default remains legacy readonly capture; no mutation budget is inferred from protocol parameters.
   # Reject absent, oversized or non-UTF-8 input before token allocation.
   if text.len == 0 or text.len > 8 * 1024 * 1024 or not validUtf8(text): return invalidGenesis()
-  var values: seq[Value] = @[]
+  var values: seq[JsonToken] = @[]
   # Only a complete strict JSON object can describe a chainspec.
   if not parseValues(text, values, 262144, 32) or values[0].kind !=
       objectValue: return invalidGenesis()
@@ -278,7 +175,7 @@ proc decodeBlob(text: string, maximum: int, output: var seq[byte]): bool =
   true
 
 # Parse a JSON integer token without signed conversion, floating point or overflow.
-proc serviceNumber(token: Value, output: var uint32): bool =
+proc serviceNumber(token: JsonToken, output: var uint32): bool =
   if token.kind != numberValue or token.text.len == 0: return false # IDs require an integer token.
   var number = 0'u32
   # Before each multiply/add, prove the next unsigned-32-bit result remains representable.
@@ -291,7 +188,7 @@ proc serviceNumber(token: Value, output: var uint32): bool =
   true
 
 # Parse only the protocol request-length domain; service IDs retain the full unsigned E4 range.
-proc requestLengthNumber(token: Value, output: var uint32): bool =
+proc requestLengthNumber(token: JsonToken, output: var uint32): bool =
   var length = 0'u32
   if not serviceNumber(token, length) or length >= high(uint32) - 1:
     return false # Reject reserved selectors before block lookup, hashing or subscription allocation.
@@ -313,7 +210,7 @@ proc configuredParameters*(text: string): ParameterResult =
   ## Unknown fields are parsed for syntax only; duplicate root members and missing parameters fail atomically.
   if text.len == 0 or text.len > 8 * 1024 * 1024 or not validUtf8(text):
     return default(ParameterResult) # Missing, oversized or invalid text cannot imply a default chain.
-  var values: seq[Value] = @[]
+  var values: seq[JsonToken] = @[]
   if not parseValues(text, values, 262144, 32) or values[0].kind != objectValue:
     return default(ParameterResult)
   var found = false
@@ -424,7 +321,7 @@ proc completeStateProof*(session: var RpcSession, request: RpcProofRequest, root
   discard session.proofRequests.finish(request)
   true
 
-proc proofControl(values: seq[Value], parameters: int, methodName, id: string,
+proc proofControl(values: seq[JsonToken], parameters: int, methodName, id: string,
     session: var RpcSession): string =
   ## Validate complete selectors and cancellation before changing the tentative session.
   if parameters < 0 or values[parameters].kind != arrayValue:
@@ -600,7 +497,7 @@ proc nextUpdate*(session: var RpcSession): string =
 
 ## Validate subscription calls and family-specific cancellation; failed calls leave tables unchanged.
 ## Initial snapshots, boolean cancellation and terminal-error removal are documented local policies.
-proc chainSubscription(values: seq[Value], parameters: int, methodName, id: string,
+proc chainSubscription(values: seq[JsonToken], parameters: int, methodName, id: string,
     info: ClientInfo, session: var RpcSession): string =
   if parameters >= 0 and values[parameters].kind != arrayValue:
     return error(id, -32602, "Expected positional params") # Named arguments are not JIP-2 calls.
@@ -798,7 +695,7 @@ proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): JsonValu
       ("maxPendingBytes", json(MaxSubscriptionQueueBytes)), ("subscriptionState", usage)]))])
 
 # Validate an envelope independently of execution. Invalid requests reply with null IDs; notifications are silent.
-proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: int,
+proc dispatchImpl(values: seq[JsonToken], start: int, info: ClientInfo, allowance: int,
     session: var RpcSession, stateful: bool): string =
   if values[start].kind != objectValue: return error("null", -32600, "Invalid Request")
   var id = "null"
@@ -1079,7 +976,7 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
   error(id, -32601, "Method not available") # Chain queries/subscriptions are unavailable until backed by actual state.
 
 # Determine the exact encoded ID length for output reservation; invalid envelopes may reserve excess.
-proc requestId(values: seq[Value], start: int): string =
+proc requestId(values: seq[JsonToken], start: int): string =
   result = "null"
   if values[start].kind != objectValue: return # Invalid nonobjects have a small null-ID error.
   var i = start + 1
@@ -1094,7 +991,7 @@ proc requestId(values: seq[Value], start: int): string =
     i = values[i].next
 
 # Bound every method's final response, including fixed methods appearing after large blob results.
-proc dispatch(values: seq[Value], start: int, info: ClientInfo, session: var RpcSession,
+proc dispatch(values: seq[JsonToken], start: int, info: ClientInfo, session: var RpcSession,
     stateful: bool, allowance = MaxReplyBytes): string =
   var candidate = session # Fixed arrays and immutable strings isolate tentative subscription changes.
   result = dispatchImpl(values, start, info, allowance, candidate, stateful)
@@ -1106,7 +1003,7 @@ proc dispatch(values: seq[Value], start: int, info: ClientInfo, session: var Rpc
 # Parse and execute one whole message atomically; empty output means a notification-only message.
 proc respondImpl(text: string, info: ClientInfo, session: var RpcSession, stateful: bool): string =
   if text.len == 0 or text.len > MaxMessage or not validUtf8(text): return error("null", -32700, "Parse error")
-  var values: seq[Value] = @[]
+  var values: seq[JsonToken] = @[]
   if not parseValues(text, values): return error("null", -32700, "Parse error")
   if values[0].kind != arrayValue: return dispatch(values, 0, info, session, stateful)
   var starts: seq[int] = @[]

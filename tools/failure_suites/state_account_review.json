@@ -1,0 +1,29 @@
+{
+  "build_name": "state-account-review-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard account review default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-account-review-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard account review invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-account-review-invalid"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_account_review_results.nim"
+}

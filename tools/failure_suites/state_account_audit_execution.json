@@ -1,0 +1,73 @@
+{
+  "build_name": "state-account-audit-execution-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard account audit default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-account-audit-execution-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard account audit invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-account-audit-execution-invalid"
+    },
+    {
+      "arguments": [
+        "footprint"
+      ],
+      "description": "Guard account audit footprint",
+      "diagnostic": "outcome.status == FootprintFailure",
+      "identity": {
+        "reason": "footprint"
+      },
+      "name": "state-account-audit-execution-footprint"
+    },
+    {
+      "arguments": [
+        "linkage"
+      ],
+      "description": "Guard account audit linkage",
+      "diagnostic": "outcome.status == LinkageFailure",
+      "identity": {
+        "reason": "linkage"
+      },
+      "name": "state-account-audit-execution-linkage"
+    },
+    {
+      "arguments": [
+        "content"
+      ],
+      "description": "Guard account audit content",
+      "diagnostic": "outcome.status == ContentFailure",
+      "identity": {
+        "reason": "content"
+      },
+      "name": "state-account-audit-execution-content"
+    },
+    {
+      "arguments": [
+        "join"
+      ],
+      "description": "Guard account audit join",
+      "diagnostic": "outcome.status == JoinFailure",
+      "identity": {
+        "reason": "join"
+      },
+      "name": "state-account-audit-execution-join"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_account_audit_execution_results.nim"
+}

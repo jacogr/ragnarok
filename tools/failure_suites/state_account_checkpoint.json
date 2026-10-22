@@ -1,0 +1,84 @@
+{
+  "build_name": "state-account-checkpoint-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard account checkpoint default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-account-checkpoint-default"
+    },
+    {
+      "arguments": [
+        "serialization"
+      ],
+      "description": "Guard account checkpoint serialization",
+      "diagnostic": "outcome.status == SerializationFailure",
+      "identity": {
+        "reason": "serialization"
+      },
+      "name": "state-account-checkpoint-serialization"
+    },
+    {
+      "arguments": [
+        "inventory"
+      ],
+      "description": "Guard account checkpoint inventory",
+      "diagnostic": "outcome.status == InventoryFailure",
+      "identity": {
+        "reason": "inventory"
+      },
+      "name": "state-account-checkpoint-inventory"
+    },
+    {
+      "arguments": [
+        "footprint"
+      ],
+      "description": "Guard account checkpoint footprint",
+      "diagnostic": "outcome.status == FootprintFailure",
+      "identity": {
+        "reason": "footprint"
+      },
+      "name": "state-account-checkpoint-footprint"
+    },
+    {
+      "arguments": [
+        "linkage"
+      ],
+      "description": "Guard account checkpoint linkage",
+      "diagnostic": "outcome.status == LinkageFailure",
+      "identity": {
+        "reason": "linkage"
+      },
+      "name": "state-account-checkpoint-linkage"
+    },
+    {
+      "arguments": [
+        "content"
+      ],
+      "description": "Guard account checkpoint content",
+      "diagnostic": "outcome.status == ContentFailure",
+      "identity": {
+        "reason": "content"
+      },
+      "name": "state-account-checkpoint-content"
+    },
+    {
+      "arguments": [
+        "join"
+      ],
+      "description": "Guard account checkpoint join",
+      "diagnostic": "outcome.status == JoinFailure",
+      "identity": {
+        "reason": "join"
+      },
+      "name": "state-account-checkpoint-join"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_account_checkpoint_results.nim"
+}

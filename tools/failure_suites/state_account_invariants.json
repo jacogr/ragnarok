@@ -1,0 +1,29 @@
+{
+  "build_name": "state-account-invariants-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard account invariants default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-account-invariants-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard account invariants invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-account-invariants-invalid"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_account_invariants_results.nim"
+}
