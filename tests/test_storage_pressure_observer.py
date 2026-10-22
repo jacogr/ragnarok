@@ -12,6 +12,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 import storage_pressure_metrics as metrics
 import storage_pressure_scope as scope
+from storage_pressure_child import sample_status
 
 UNIT = 'ragnarok-storage-pressure-'+'a'*32+'.service'
 
@@ -29,6 +30,12 @@ def snapshot():
 
 class PressureObserverTests(unittest.TestCase):
     """Signal/resource interpretation must come from private kernel receipts rather than assumptions."""
+
+    def test_exec_exit_samples_are_unavailable_not_malformed(self):
+        """Linux may omit Vm fields before State becomes Z; this must not erase final wait4 evidence."""
+        self.assertIsNone(sample_status('Name: worker\nState: R (running)\nPid: 17\n'))
+        with self.assertRaises(ValueError):
+            sample_status('VmRSS: 1 kB\nVmRSS: 2 kB\n')
 
     def test_gauges_may_fall_while_counters_increase(self):
         """Resident bytes are not cumulative; reclaim counters and PSI totals are."""

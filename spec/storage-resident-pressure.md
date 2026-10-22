@@ -40,7 +40,8 @@ systemd, privilege, kernel fields or limit enforcement fails explicitly before n
 Retain raw memory.current/peak/high/max, memory.swap.current/max, memory.events.local,
 memory.stat, memory.pressure and io.stat before/after each native child. Kernel memory.peak
 covers the unit's lifetime including its observer; wait4 supplies exact native-child peak RSS.
-Sampled anonymous/file/swap/process gauges are approximate maxima with explicit sample counts.
+Sampled anonymous/file/swap/process gauges are approximate maxima with explicit sample counts. Exec/exit snapshots with missing Vm fields are unavailable;
+a child with no usable samples has null sampled gauges, while exact wait4/kernel peaks remain.
 Reclaim/fault/stall/device counters are monotonic deltas, never byte-gauge subtraction.
 
 Before each attempt, hash only the exclusive closed synthetic namespace, then advise eviction

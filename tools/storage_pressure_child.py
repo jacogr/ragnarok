@@ -20,6 +20,16 @@ def child_setup():
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 
+def sample_status(raw):
+    """Missing transition-time Vm fields are unavailable samples; malformed kernel rows still fail."""
+    try:
+        return parse_status(raw)
+    except ValueError as error:
+        if str(error) == 'Incomplete process memory status':
+            return None
+        raise
+
+
 def observe(group, arguments, log):
     """wait4 owns exact child RSS/faults/block operations; sampled gauges are explicitly approximate."""
     before_raw = read_raw(group)
@@ -39,21 +49,29 @@ def observe(group, arguments, log):
                 if pid:
                     process.returncode = os.waitstatus_to_exitcode(status)
                     break
+                if time.monotonic()-started > 35:
+                    # Even missing proc samples must obey the native observation deadline.
+                    timed_out = True
+                    process.kill()
+                    _, status, usage = os.wait4(process.pid, 0)
+                    process.returncode = os.waitstatus_to_exitcode(status)
+                    break
                 try:
                     raw_member = Path(f'/proc/{process.pid}/cgroup').read_text()
-                    actual = resolve(raw_member, Path('/proc/self/mountinfo').read_text())
-                    if actual != str(group):
-                        raise ValueError('Native child escaped its private cgroup')
-                    membership = raw_member
-                    memory = parse_status(Path(f'/proc/{process.pid}/status').read_text())
+                    status_raw = Path(f'/proc/{process.pid}/status').read_text()
                 except FileNotFoundError:
-                    # Exit can race this read; wait4 still supplies exact RSS and termination evidence.
+                    # The exact final counters still come from wait4 when exit races procfs.
+                    time.sleep(0.002)
                     continue
-                except ValueError:
-                    # A zombie loses Vm fields; it must be reaped before another sample is admitted.
-                    if Path(f'/proc/{process.pid}/stat').read_text().split(') ')[-1].startswith('Z '):
-                        continue
-                    raise
+                actual = resolve(raw_member, Path('/proc/self/mountinfo').read_text())
+                if actual != str(group):
+                    raise ValueError('Native child escaped its private cgroup')
+                membership = raw_member
+                memory = sample_status(status_raw)
+                if memory is None:
+                    # Exec/exit can temporarily remove Vm fields while State still reports running.
+                    time.sleep(0.002)
+                    continue
                 current = parse(read_raw(group))
                 peaks['rss'] = max(peaks['rss'], memory['VmRSS'])
                 peaks['swap'] = max(peaks['swap'], memory['VmSwap'])
@@ -61,13 +79,6 @@ def observe(group, arguments, log):
                 peaks['file'] = max(peaks['file'], current['memory.stat']['file'])
                 peaks['cgroup_swap'] = max(peaks['cgroup_swap'], current['memory.swap.current'])
                 samples += 1
-                if time.monotonic()-started > 35:
-                    # A bounded stalled treatment is an observation, never a completed native reopen.
-                    timed_out = True
-                    process.kill()
-                    _, status, usage = os.wait4(process.pid, 0)
-                    process.returncode = os.waitstatus_to_exitcode(status)
-                    break
                 time.sleep(0.02)
         finally:
             if process.returncode is None:
@@ -82,7 +93,7 @@ def observe(group, arguments, log):
     return dict(arguments=arguments, before_raw=before_raw, after_raw=after_raw,
                 evidence=evidence, timed_out=timed_out,
                 outcome='observer-timeout' if timed_out else outcome(process.returncode, evidence),
-                exit_code=process.returncode, sampled_peaks=peaks, samples=samples,
+                exit_code=process.returncode, sampled_peaks=peaks if samples else None, samples=samples,
                 child_membership_raw=membership, elapsed_seconds=time.monotonic()-started,
                 resources=dict(peak_rss_bytes=usage.ru_maxrss*1024,
                                minor_faults=usage.ru_minflt, major_faults=usage.ru_majflt,
