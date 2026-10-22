@@ -1,0 +1,62 @@
+{
+  "source": "tests/native/accumulation_current_statistics_results.nim",
+  "build_name": "accumulation-current-statistics-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-statistics-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current accumulation statistics extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-statistics-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current accumulation statistics extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "current-statistics-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Current accumulation statistics extraction: info"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "current-statistics-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Current accumulation statistics extraction: source"
+    },
+    {
+      "identity": {
+        "reason": "row"
+      },
+      "arguments": [
+        "row"
+      ],
+      "name": "current-statistics-row",
+      "diagnostic": "outcome.status == None",
+      "description": "Current accumulation statistics extraction: row"
+    }
+  ]
+}
