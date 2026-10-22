@@ -80,3 +80,27 @@ proc memoryReaderLifetime*(count: int): LifetimeObservation =
     assert result.held >= result.owner and result.closed == result.held
   result.released = occupiedStorageBytes()
   assert result.closed > result.baseline and result.released == result.baseline
+
+proc memoryReadersLifetime*(count: int): LifetimeObservation =
+  ## A bounded handle vector shares one immutable graph while retaining each handle independently.
+  result = emptyLifetime()
+  block:
+    var owner = isolatedMemoryOwner(count)
+    result.owner = occupiedStorageBytes()
+    var held = newSeq[RepositoryView](4096)
+    for index in 0..<held.len:
+      # Each public snapshot acquisition retains its own owner-bound immutable handle.
+      held[index] = owner.snapshot.value
+    result.held = occupiedStorageBytes()
+    assert owner.close == RepositoryError.None
+    result.closed = occupiedStorageBytes()
+    let root = held[0].commitment.root
+    checkGrowthHead(held[0], root, count, 64)
+    for view in held:
+      # Root and generation checks ensure every acquired handle survived actual owner retirement.
+      assert array[32, byte](view.commitment.root) == array[32, byte](root)
+      assert uint64(view.generation) == 65
+    result.checks = count+4096
+    assert result.held > result.owner and result.closed == result.held
+  result.released = occupiedStorageBytes()
+  assert result.released == result.baseline
