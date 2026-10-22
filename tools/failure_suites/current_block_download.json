@@ -1,0 +1,88 @@
+{
+  "source": "tests/native/current_block_download_results.nim",
+  "build_name": "current-block-download-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-block-download-default",
+      "diagnostic": "outcome.successful",
+      "description": "Current block download selected extraction guard default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-block-download-refused",
+      "diagnostic": "outcome.successful",
+      "description": "Current block download selected extraction guard refused"
+    },
+    {
+      "identity": {
+        "reason": "owner"
+      },
+      "arguments": [
+        "owner"
+      ],
+      "name": "current-block-download-owner",
+      "diagnostic": "stage(download) == Failed",
+      "description": "Current block download selected extraction guard owner"
+    },
+    {
+      "identity": {
+        "reason": "input"
+      },
+      "arguments": [
+        "input"
+      ],
+      "name": "current-block-download-input",
+      "diagnostic": "reason.status == InputFailure",
+      "description": "Current block download selected extraction guard input"
+    },
+    {
+      "identity": {
+        "reason": "preparation"
+      },
+      "arguments": [
+        "preparation"
+      ],
+      "name": "current-block-download-preparation",
+      "diagnostic": "reason.status == PreparationFailure",
+      "description": "Current block download selected extraction guard preparation"
+    },
+    {
+      "identity": {
+        "reason": "worker"
+      },
+      "arguments": [
+        "worker"
+      ],
+      "name": "current-block-download-worker",
+      "diagnostic": "reason.status == WorkerFailure",
+      "description": "Current block download selected worker guard"
+    },
+    {
+      "identity": {
+        "reason": "handoff"
+      },
+      "arguments": [
+        "handoff"
+      ],
+      "name": "current-block-download-handoff",
+      "diagnostic": "reason.status == HandoffFailure",
+      "description": "Current block download selected handoff guard"
+    }
+  ]
+}
