@@ -183,3 +183,17 @@ unselected successor of the validated selected epoch, plus CURRENT.next. It neve
 files or falls back to another head. Explicit zero maintenance preserves staged forensic files.
 Online maintenance runs after confirmed publication and before producer acknowledgement; failure
 preserves the confirmed canonical prefix and prevents further mutation until fresh startup.
+
+## Consuming checked transport results
+
+`ManagedIoResult`, `RecordResult`, `SnapshotResult` and `FrameResult` support `takeValue`
+when the result is mutable and successful. Check the result's error first. A successful call
+moves the owned payload and changes the source status to `Uninitialized`; do not extract from
+that source again. Use `value` when an independent copy is required. Immutable private repository
+cells and retained views keep their existing ownership contracts; other result types do not gain
+this consuming API implicitly.
+
+Bounded read metadata controls capacity only. Actual short reads, EOF and the excess growth probe
+remain authoritative, and strict format admission still runs after loading. For matched peak-RSS
+observations, the checked comparison rules and Linux qualification, see the
+[read-memory record](../../spec/storage-read-memory-qualification.md).

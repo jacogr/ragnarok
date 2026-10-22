@@ -94,3 +94,23 @@ See the [measurement contract](../spec/storage-resource-measurements.md),
 [larger-fixture contract](../spec/storage-deployment-benchmark.md),
 [speed comparison guide](storage-performance.md) and [managed operator guide](managed-storage.md).
 This work adds no M1 completion claim; complete protocol state serialization remains separate.
+
+## Read-memory qualification and comparisons
+
+The [read-memory qualification](../spec/storage-read-memory-qualification.md) records matched
+baseline/candidate reopens and a separate exact-head Linux resident-pressure panel. Ownership
+transfers and direct bounded reads reduce transient peaks; the complete graph remains resident.
+The Linux results distinguish completed reopens, local cgroup OOM kills and observer timeouts.
+They do not change startup/recovery authority or the fail-stop allocation policy.
+
+`tools/compare_storage_reopens.py` reads existing clean schema2 fresh-reopen reports through
+`--baseline` and `--candidate`, requires one reviewed `--allow-source` per changed source, and
+writes `--output`. It reparses native roots/maps/lifetimes, exact selected bytes and checked build
+identity; the workload and child counter observer cannot change even with source approval.
+Source-inventory differences require a new common baseline. No imported command is executed.
+Unlike the richer resource panels, these schema2 reports omit CPU/OS and active pressure identity;
+a same-host comparison needs a separate host/pairing record. Whole-child RSS and live Nim bytes
+remain distinct, descriptive observations.
+
+Use the existing `storage-pressure` workflow-dispatch scope for isolated Linux memory treatments.
+The ordinary Perf Storage and Perf Storage Growth workloads, samples and budgets are unchanged.
