@@ -67,6 +67,7 @@ assert "\"compilerRevision\":" & quote(CompilerRevision) in answer
 assert "\"buildTimestamp\":" & quote(BuildTimestamp) in answer
 assert "\"id\":7" in answer and "\"connectedPeers\":3" in answer and "\"uptimeMs\":12" in answer
 assert "\"transport\":\"websocket\"" in answer and "\"bestBlock\":null" in answer
+assert "\"chainState\":null" in answer
 assert respond("{\"jsonrpc\":\"2.0\",\"method\":\"ragnarok_clientInfo\"}", info) == ""
 assert respond("[{\"jsonrpc\":\"2.0\",\"method\":\"absent\"}]", info) == ""
 assert "\"code\":0" in respond("{\"jsonrpc\":\"2.0\",\"method\":\"bestBlock\",\"id\":null}", info)
@@ -1144,6 +1145,15 @@ let restartedIdentityInfo = ClientInfo(chain: genesisView(historyChild),
 assert "\"chain\":{\"genesisHash\":" & quote(genesisHash) in respond(request, restartedIdentityInfo)
 let childHashText = base64.encode(array[32, byte](historyChild.value.blockHash))
 let childRootText = base64.encode(array[32, byte](historyChild.value.stateRoot))
+# Diagnostics bind each count/root to its exact descriptor and do not imply configured genesis or finality.
+let historicalAnswer = respond(request, historicalInfo)
+assert "\"chainState\":{\"best\":{\"header_hash\":" & quote(childHashText) &
+  ",\"slot\":9,\"stateRoot\":" & quote(childRootText) & ",\"stateKeys\":2,\"knownServices\":0}" in historicalAnswer
+assert "\"finalized\":null,\"history\":{\"retainedBlocks\":2,\"maxRetainedBlocks\":8,\"oldestBlock\":{\"header_hash\":" &
+    quote(genesisHash) & ",\"slot\":7},\"finalizedOutsideHistory\":false}" in historicalAnswer
+assert "\"chain\":null" in historicalAnswer
+assert "\"slot\":7" in respond(request, withGenesis) # The previous immutable reader remains unchanged.
+
 assert respond(bestRequest, historicalInfo) == respond(bestRequest, withGenesis).replace(
   genesisHash, childHashText).replace("\"slot\":7", "\"slot\":9")
 assert respond(rootRequest, historicalInfo) == respond(rootRequest, withGenesis)
@@ -1178,6 +1188,9 @@ let repeatedFinality = selectedFinality.value.finalizeView(selectedHash)
 assert repeatedFinality.error == ViewFinalizeError.None
 let newerFinality = selectedFinality.value.finalizeView(historyChild.value.blockHash)
 assert newerFinality.error == ViewFinalizeError.None
+let currentFinalityInfo = ClientInfo(chain: newerFinality.value)
+assert "\"finalizedOutsideHistory\":false" in respond(request, currentFinalityInfo)
+
 assert newerFinality.value.finalizeView(selectedHash).error == ViewFinalizeError.Regression
 assert selectedFinality.value.finalizedBlock.value.slot ==
     7 # Older readers retain their independently selected finality.
@@ -1190,6 +1203,13 @@ for atSlot in 10'u32..19'u32:
   finalizedRolling = appended.value # Best-head appends cannot silently advance finality.
 assert finalizedRolling.retainedCount == MaxRetainedBlocks
 assert finalizedRolling.finalizedBlock.value.slot == 7
+let separatedInfo = ClientInfo(chain: finalizedRolling)
+let separatedAnswer = respond(request, separatedInfo)
+assert "\"retainedBlocks\":8" in separatedAnswer
+assert "\"finalizedOutsideHistory\":true" in separatedAnswer
+assert "\"finalized\":{\"header_hash\":" & quote(genesisHash) &
+    ",\"slot\":7,\"stateRoot\":\"63T8fX9zxm7i2b5I3Rx0CW41FSpcc9m2rVlS8AK2/Cw=\"" in separatedAnswer
+
 assert finalizedRolling.blockAt(selectedHash).error ==
     GenesisError.None # One separate owner keeps finalized state queryable after eviction.
 assert finalizedRolling.blockAt(historyChild.value.blockHash).error != GenesisError.None

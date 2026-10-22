@@ -649,6 +649,29 @@ proc subscriptionUsage(session: RpcSession): JsonValue =
     ("finalized", json(finalized)), ("pendingUpdates", json(session.pendingCount)),
     ("pendingBytes", json(session.pendingBytes))])
 
+proc snapshotInfo(source: BlockSnapshotResult): JsonValue =
+  ## Describe one exact immutable posterior snapshot without decoding chapters or enumerating its map.
+  if source.error != GenesisError.None:
+    return jsonNull() # Absent finality cannot borrow the best head's state information.
+  let head = source.value
+  jsonObject([("header_hash", json(base64.encode(array[32, byte](head.blockHash)))),
+    ("slot", json(head.slot)), ("stateRoot", json(base64.encode(array[32, byte](head.stateRoot)))),
+    ("stateKeys", json(head.keyCount)), ("knownServices", json(head.serviceCount))])
+
+proc chainStateInfo(view: ChainView): JsonValue =
+  ## Report selected state and the bounded rolling window; a separated finalized anchor is counted independently.
+  if view.retainedCount == 0:
+    return jsonNull() # No chain source is different from an empty state or a caught-up node.
+  let oldest = view.retainedBlockAt(RetainedBlockIndex(0))
+  let finalized = view.finalizedBlock
+  var separate = false
+  if finalized.error == GenesisError.None:
+    separate = finalized.value.slot < oldest.value.slot # Retained linear history proves strict slot ordering.
+  jsonObject([("best", snapshotInfo(view.bestBlock)), ("finalized", snapshotInfo(finalized)),
+    ("history", jsonObject([("retainedBlocks", json(view.retainedCount)),
+      ("maxRetainedBlocks", json(MaxRetainedBlocks)), ("oldestBlock", descriptor(oldest.value)),
+      ("finalizedOutsideHistory", json(separate))]))])
+
 # Describe only implemented capabilities; absent chain/backend data is explicit rather than guessed.
 proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): JsonValue =
   var methods = JsonArray()
@@ -681,7 +704,8 @@ proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): JsonValu
     ("uptimeMs", json(info.uptimeMs)), ("connectedPeers", json(info.peers)),
     ("memory", jsonObject([("occupiedBytes", json(info.occupiedBytes)),
       ("reservedBytes", json(info.reservedBytes))])),
-    ("chain", identity), ("bestBlock", best), ("finalizedBlock", finalized),
+    ("chain", identity), ("chainState", chainStateInfo(info.chain)), ("bestBlock", best), (
+        "finalizedBlock", finalized),
     ("rpc", jsonObject([("transport", json("websocket")), ("address", json("127.0.0.1")),
       ("port", json(info.port)), ("methods", json(methods)), ("subscriptions", json(stateful)),
       ("maxMessageBytes", json(MaxMessage)), ("maxBatchRequests", json(16)),
