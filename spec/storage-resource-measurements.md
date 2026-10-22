@@ -177,3 +177,10 @@ A test-owned regular read-only descriptor may request Linux `POSIX_FADV_DONTNEED
 unsupported or refused distinctly; none asserts eviction or cold storage. No global cache drop,
 namespace change, write operation or production storage hook is introduced. The unchanged policy
 makes no request. Descriptor admission and file-byte preservation have real-file positive controls.
+
+`make bench-storage-file-cache` synchronizes exclusive16/64 MiB synthetic files in the parent, then
+runs fresh read-only Python children in opposite unchanged/hinted policy orders. Every byte and the
+complete digest are validated with bounded64 KiB buffers and strict short-read progress. Symlinks,
+size/content changes and identity changes refuse. Logical read calls and read-interval page faults
+include validation work; child peak RSS excludes parent preparation but includes Python startup.
+Requested advice is never labeled eviction, cold storage, throughput or physical device I/O.
