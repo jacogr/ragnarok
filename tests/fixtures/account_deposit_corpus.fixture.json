@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_ACCOUNT_DEPOSIT_CORPUS",
+  "files": {
+    "account-deposit-corpus.txt": "64b0a48e38646cdfe0a9483a7d208cf4fd13e8bb06286c2750b6f4fb19a51456"
+  },
+  "target": "account-deposit-corpus.txt"
+}
