@@ -1,0 +1,73 @@
+{
+  "source": "tests/native/accumulation_current_consensus_results.nim",
+  "build_name": "accumulation-current-consensus-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-consensus-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current consensus extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-consensus-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current consensus extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "current-consensus-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Current consensus extraction: source"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "current-consensus-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Current consensus extraction: info"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "current-consensus-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Current consensus extraction: state"
+    },
+    {
+      "identity": {
+        "reason": "backend"
+      },
+      "arguments": [
+        "backend"
+      ],
+      "name": "current-consensus-backend",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Current consensus extraction: backend"
+    }
+  ]
+}
