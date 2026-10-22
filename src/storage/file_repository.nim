@@ -228,9 +228,9 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
     if not writeAll(descriptor, identityBytes): return FileError.IoFailure
     size = uint64(identityBytes.len) # Failed initialization preserves its file for explicit operator recovery.
   else:
-    let loaded = readAll(descriptor, limits.bytes)
+    var loaded = readAll(descriptor, limits.bytes)
     if loaded.error != FileError.None: return loaded.error
-    let bytes = loaded.value
+    let bytes = move(loaded.completed) # The private result has one final owner; replay never needs a copy.
     if bytes.len < StorageIdentityBytes: return FileError.WrongIdentity
     let identity = decodeDatabaseIdentity(bytes.toOpenArray(0, StorageIdentityBytes-1), chain,
       ByteLimit(StorageIdentityBytes), schema)
