@@ -88,3 +88,12 @@ native trajectory. Missing, duplicate, reordered, late, negative, noncanonical o
 checkpoints refuse. Backend and workload substitution still fail the existing native parser.
 Allocation rows carry current Nim heap bytes and physical counters only; all duration values are
 discarded after validating the native witnesses.
+
+## Bounded resource panels
+
+Shared resource-panel orchestration retains exact native commands, source-owned cases, raw stdout,
+parsed observations and fresh-child counters. It reparses raw witnesses before final rendering,
+checks all covered source/compiler/provider/binary identities at both ends, and atomically publishes
+success only after complete coverage. Build, timeout, native assertion, parsing or rendering failure
+removes stale public summaries while preserving diagnostic receipts. Each future panel owns its
+case plan and parser; orchestration never infers semantic success from exit status alone.
