@@ -65,3 +65,14 @@ remains a separate concrete procedure activation before submission. Both overloa
 activation before entering the shared pause/submission path. Cancellation, Done and joined close rules
 are unchanged. Native generic execution independently receives the resulting RPV1 under the
 selected posterior root; existing service capture/execution/worker/Services suites remain controls.
+
+## Chapter reads and time
+
+`proof_global` selects nominal `StateChapterId` identities through bounded root-free plans.
+Duplicate selectors refuse; explicit empty capture is valid. `readProofChapter` bounds the cached
+verified byte length before copying and reuses exact typed chapter capture with the caller's
+profile/policy. It returns an immutable single-chapter owner, never a complete snapshot.
+`readGlobalTime` provides a consistent global result while preserving the established time API.
+Missing witnesses, proven absence, malformed present values and resource/configuration refusals
+remain distinct. The native `state_global_chapter_reads` suite authenticates independent maps,
+checks exact/suffixed/truncated values and measures zero extra hashes during typed reads.
