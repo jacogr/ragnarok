@@ -80,3 +80,11 @@ resolves that identity with the historical preimage reader. Detached alternative
 code hashes cannot replace it. This resolves bytes only: program validation, PVM
 execution and refinement-anchor provenance remain their existing owners' work.
 Suite `state_proof_service_code` covers selection, time, quotas and missing history.
+
+## Root-independent query plans
+
+`ServiceProofPlan` retains a bounded canonical key set, with private immutable
+ownership and guarded ordinal access. It requests evidence without certifying
+state or trusting a root. `planProofAccount` requests only C(255, service).
+Default plans are invalid; short count limits and invalid ordinals fail explicitly.
+Suite `state_proof_plan_account` covers the owner and count contract.
