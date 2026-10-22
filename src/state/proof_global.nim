@@ -146,3 +146,24 @@ proc readGlobalAuthorization*(view: ProofView, kind: AuthorizationKind,
     return GlobalProofResult[AuthorizationSnapshot](status: GlobalProofError.InvalidValue)
   GlobalProofResult[AuthorizationSnapshot](status: GlobalProofError.None,
       completed: decoded.value.snapshot)
+
+proc readGlobalValidators*(view: ProofView, chapter: ValidatorChapter,
+    config: ValidatorStateConfig): GlobalProofResult[ValidatorStateSnapshot] =
+  ## Select one exact roster identity; neither another roster's witness nor an absent roster is a fallback.
+  if ord(chapter) < ord(ValidatorChapter.Staging) or ord(chapter) > ord(ValidatorChapter.Previous):
+    return GlobalProofResult[ValidatorStateSnapshot](status: GlobalProofError.InvalidConfig)
+  let bytes = chapterBytes(view, StateChapterId(ord(chapter)), config.maxBytes)
+  if bytes.error != GlobalProofError.None:
+    return GlobalProofResult[ValidatorStateSnapshot](status: bytes.error)
+  let decoded = decodeStateValidators(bytes.value, config)
+  if decoded.error != StateComponentError.None:
+    # Existing population rules and independent resource ceilings remain the codec's authority.
+    let reason = case decoded.error
+      of StateComponentError.InvalidConfig: GlobalProofError.InvalidConfig
+      of StateComponentError.LimitExceeded, StateComponentError.LengthOverflow: GlobalProofError.LimitExceeded
+      else: GlobalProofError.InvalidValue
+    return GlobalProofResult[ValidatorStateSnapshot](status: reason)
+  if decoded.value.consumed != bytes.value.len:
+    return GlobalProofResult[ValidatorStateSnapshot](status: GlobalProofError.InvalidValue)
+  GlobalProofResult[ValidatorStateSnapshot](status: GlobalProofError.None,
+      completed: decoded.value.value)
