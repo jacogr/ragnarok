@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_COMPLETE_REVIEW",
+  "files": {
+    "complete-review.txt": "6ff8152c0b0d302a88056c4834dcc36b4cbd798752734ea2e5dd80ea67a9442c"
+  },
+  "target": "complete-review.txt"
+}
