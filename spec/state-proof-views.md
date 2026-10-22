@@ -67,3 +67,21 @@ provenance boundary without introducing another store representation.
 An actual verified absent lookup must reject byte extraction through the base
 lookup presence precondition; raw neighboring leaf bytes never become a present
 value through a partial-view accessor.
+
+## Bounded completion and reproduction
+
+The partial verified-read interface is complete within its explicit resource ceilings.
+Use `make unit SUITE=state_proof_view`, `state_proof_view_wire` and
+`state_proof_view_time` for capture, root identity, sorted lookup, exact union,
+projection, witness export, exact local framing and typed C(11) checks. Source-owned
+runtime/compiler probes protect failed extraction and private authority. The
+[usage guide](../docs/state-proof-views.md) documents unknown versus proven absence.
+
+Local checked ARC/Clang results remain under `build/state-proof-*`. They are separate
+from exact-head Linux CI and JAM interoperability. The underlying independent/pinned
+proof/root evidence remains in [the proof contract](state-trie-proofs.md). No storage
+API, database format, canonical state transition, Services lease or dependency pin
+changed. No light-node storage, proof RPC or complete state parity is claimed.
+
+`make unit SUITE=state_proof_view_lifecycle` additionally records fresh 1,000-cycle
+ARC release evidence and verifies projection/union/encoding while hashing is refused.

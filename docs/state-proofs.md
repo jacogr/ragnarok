@@ -23,6 +23,8 @@ trusted root and exact `StateKey`, inspect `error`, then use the verified lookup
 `present` before reading detached `bytes`. Wrong root/key placement, wrong value
 preimages, backend failure or exhausted policy never return lookup authority.
 A different neighboring leaf may prove absence without disclosing its long value.
+Raw inline terminal nodes still expose their embedded bytes; proof transport is not
+a general value-confidentiality mechanism.
 
 The project-local RSP1 envelope contains `RSP1`, an E2 node count, an E4 supplied-value
 length, canonical 64-byte nodes and supplied bytes. It excludes root and query
