@@ -128,3 +128,10 @@ retired through the earlier-epoch API. Held generation1 maps outlive final nativ
 Strict restart validates the selected manifest and complete authored map, preserves every remaining
 forensic byte, and never chooses staging by filename. Explicit bounded cleanup/replacement retry
 finishes independently of the killed caller; selected/future epoch retirement remains forbidden.
+
+## Managed manifest process crashes
+
+`storage_manifest_crash` verifies actual manifest rename, strict new epoch and explicit old-epoch cleanup.
+Strict restart validates the selected manifest and complete authored map, preserves every remaining
+forensic byte, and never chooses staging by filename. Explicit bounded cleanup/replacement retry
+finishes independently of the killed caller; selected/future epoch retirement remains forbidden.
