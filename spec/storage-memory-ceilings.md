@@ -41,3 +41,39 @@ simulated parser fixtures on another host.
 References: [Python resource limits](https://docs.python.org/3/library/resource.html),
 [Linux PSI](https://docs.kernel.org/accounting/psi.html),
 [cgroup v2 memory controller](https://docs.kernel.org/admin-guide/cgroup-v2.html).
+
+## Final local qualification
+
+The complete implementation was frozen and checked at
+`933f708a219aae225a9e0bf283dfd9bb6c76a5bc` on merged trunk
+`e0c3a4309e6326ac63c9b1ab2ed8e0cce8d31c7e`. The final stack layer adds this
+qualification record only; all measured source/build inputs retain identical bytes.
+
+- 148 storage tooling tests and35 CI safeguard tests passed. This includes independent complete
+ Linux/Darwin report fixtures, malformed/duplicate/overflow telemetry, probe and command identity,
+ foreign root/namespace/counter substitution, real nonzero exits and SIGKILL, descendant group
+ timeout cleanup, late export refusal and unchanged parent address-space limits.
+- `make check-inventory` and `make format-check` passed. Ruby Psych parsed the workflow YAML;
+ no actionlint or exact-head Linux CI verdict is claimed.
+- `make bench-storage-memory-ceilings` built the pinned checked ARC/Clang release/LTO native
+ workload and passed all eight unrestricted before/after consumers across both backends and
+ both declared cardinalities. Every consumer validated the exact producer root/generation,
+ complete authored map, retained view after close, final ARC baseline and unchanged selected bytes.
+- All three actual host probes reported Darwin unsupported. All twelve capped trajectories
+ remain explicit unavailable rows; none executed a constrained native consumer. Synthetic Linux
+ fixtures exercise validators and orchestration but do not supply Linux enforcement evidence.
+- Setup-free Make reporting and strict matching-report self-comparison passed. CSV retains all
+ twenty planned rows, with unavailable resources distinct from numeric zero.
+
+Full local identities, raw commands, logs and receipts live under ignored
+`build/storage-db4-final-qualification.json`, `build/storage-db4-final-logs/` and
+`build/tests/storage-memory-ceilings/`. The earlier exploratory run is preserved separately in
+`build/evidence-storage-db4-first/`. Existing storage evidence, parked directories and branches
+remain intact. No production runtime/native library, format, default backend, pin or trust-policy
+change was made, and no remote CI label was requested.
+
+This completes the bounded child-local ceiling tooling tranche. Actual Linux capped native
+qualification remains pending an admitted Linux run. Controlled resident-memory pressure,
+induced paging/out-of-core behavior, page packing and filesystem/device/hardware power-loss
+qualification remain separate work. Complete protocol serialization remains separate, with no
+new M1 completion claim or promotion of a partial light-state root.
