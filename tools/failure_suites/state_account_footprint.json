@@ -1,0 +1,29 @@
+{
+  "build_name": "state-account-footprint-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard footprint default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-account-footprint-default"
+    },
+    {
+      "arguments": [
+        "overflow"
+      ],
+      "description": "Guard footprint overflow",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "overflow"
+      },
+      "name": "state-account-footprint-overflow"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_account_footprint_results.nim"
+}
