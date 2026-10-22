@@ -8,7 +8,8 @@
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
-import ./[wire, protocol]
+import ./[wire, protocol, proof_requests]
+from ../codec/state_trie import StateRoot
 import ../chain/[parameters, genesis, provider]
 import ../state/[store, accumulation_chain, accumulation_completion, accumulation_finalization,
   accumulation_publication, accumulation_current_update]
@@ -27,7 +28,8 @@ type
   RpcChainLease* = ref object ## Opaque host-only identity authorizing one chain pause; never shared with a worker.
     marker: uint8
   Server* = object ## Non-copyable listener; an exclusive chain pause retains sockets without exposing request contexts.
-    opened: bool
+    opened, proofs: bool
+    proofCursor: int            # Fair bounded scan advances after each successfully claimed connection.
     lease: nil RpcChainLease
     fd: cint
     connections: array[MaxConnections, Connection]
@@ -37,6 +39,17 @@ type
     chain: ChainView            # Retained immutable provider view shared by one dispatcher tick.
     identity: ChainIdentity     # Fixed configured genesis identity is independent of selected/restarted history.
     parameters: ParameterResult # Fixed-size owned configuration shared by all connections.
+
+type RpcProofDispatch* = object ## Host-only routing retains a detached request namespace, never a canonical snapshot.
+  index: int
+  selection: RpcProofRequest
+
+func valid*(dispatch: RpcProofDispatch): bool =
+  ## Default routing tickets grant no connection delivery authority.
+  dispatch.selection.valid
+func proofRequest*(dispatch: RpcProofDispatch): RpcProofRequest {.requires: dispatch.valid.} =
+  ## The host receives exact fixed selectors after the RPC tick activation has retired.
+  dispatch.selection
 
 type
   RpcAccumulationError* {.pure.} = enum ## Default/closed listeners and rejected state-chain adoption expose no child.
@@ -145,6 +158,40 @@ proc close*(server: var Server) {.requires: server.lease == nil.} =
   if server.opened:
     discard posix.close(server.fd)
   server.opened = false
+  server.proofs = false # A restarted listener requires an explicit canonical host binding again.
+
+proc enableStateProofs*(server: var Server): bool =
+  ## Only a live unpaused listener may advertise the host's managed proof binding.
+  if not server.opened or server.lease != nil: return false
+  server.proofs = true
+  true
+
+proc takeStateProofRequest*(server: var Server): RpcProofDispatch =
+  ## Claim at most one connection selector fairly, outside RPC tick and every canonical lease.
+  if not server.opened or not server.proofs or server.lease != nil:
+    return default(RpcProofDispatch)
+  for step in 0..<MaxConnections:
+    let index = (server.proofCursor + step) mod MaxConnections
+    if server.connections[index].opened and server.connections[index].upgraded and
+        not server.connections[index].closing:
+      let selected = server.connections[index].session.takeStateProofRequest()
+      if selected.valid:
+        server.proofCursor = (index + 1) mod MaxConnections
+        return RpcProofDispatch(index: index, selection: selected)
+  default(RpcProofDispatch) # No request retains no routing or selection authority.
+
+proc finishStateProof*(server: var Server, dispatch: RpcProofDispatch, root: StateRoot,
+    wire: openArray[byte], failure = ""): bool =
+  ## Deliver only after lease release; connection-local namespaces suppress stale/reset completions.
+  if not server.opened or server.lease != nil or not dispatch.valid or dispatch.index < 0 or
+      dispatch.index >= MaxConnections: return false
+  let index = dispatch.index
+  if not server.connections[index].opened or not server.connections[index].upgraded or
+      server.connections[index].closing: return false
+  if not server.connections[index].session.completeStateProof(dispatch.selection, root, wire, failure):
+    server.connections[index].close() # Byte/count overflow retires only the slow originating consumer.
+    return false
+  true
 
 # Configure descriptor flags before any network operation; failed configuration leaves ownership with caller.
 proc nonblocking(fd: cint): bool =
@@ -424,7 +471,7 @@ proc tick*(server: var Server, peers: uint32) =
       server.connections[free].opened = true
       server.connections[free].deadline = now + 5000
   let info = ClientInfo(uptimeMs: now - server.started, peers: peers, role: server.role,
-      port: server.port, parameters: server.parameters, chain: server.chain,
+      port: server.port, proofs: server.proofs, parameters: server.parameters, chain: server.chain,
       identity: server.identity,
       occupiedBytes: getOccupiedMem(), reservedBytes: getTotalMem())
   for slot in mitems(server.connections): # Fixed capacity bounds per-turn work and memory.

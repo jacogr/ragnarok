@@ -54,3 +54,18 @@ consumer; no partial queue mutation commits. Batches retain sequential execution
 reply-budget transactionality. Methods are advertised only on stateful connections whose
 canonical host explicitly enables proof production; stateless/default listeners return
 -32601. Listener/Services binding is supplied by the following layers.
+
+
+## Listener dispatch boundary
+
+The host explicitly enables proof capability only after binding a live canonical Services
+owner. After an RPC tick returns, the listener fairly claims at most one detached selector
+from its eight connections. The routing ticket retains the original request's namespace,
+not an fd or canonical snapshot. Connection slot/fd reuse cannot deliver an old result to
+a new session. Scheduling and completion refuse while the canonical lease is paused;
+the host must collect or join the worker and resume before delivery. Closing/restarting
+the listener clears capability until an explicit host binding is installed again.
+
+Native listener tests exercise two consumers, fair claim-once scheduling, cancellation,
+replacement sessions, pause/resume delivery and count-limit disconnection isolation.
+Socket framing and full native worker/receive verification belong to the Services layer.
