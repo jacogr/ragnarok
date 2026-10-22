@@ -96,3 +96,28 @@ ARC baseline check. The complete checked ARC/Clang/LTO native peer build passed.
 pinned formatting of changed Nim files and `git diff --check` passed. Evidence is under ignored
 `build/ci/nimony-rpc-sync-*`. These are macOS ARM64 results; Linux runtime qualification remains
 for CI. No storage semantics or compiler pins changed, and the candidate remains held.
+
+
+## Qualification after storage preflight, pressure and growth-CI work
+
+Merge master `56e8686f` normally, retaining both held compiler pins and the earlier directory
+stream adaptation. Preserve the merged Linux RSS explicit-result fix and proof-protocol token
+correction. Resolve only the compatibility-guide overlap: retain the verified cache-fix guidance
+and the new Linux RSS lowering record. No additional compiler compatibility fix was necessary.
+All 42 newly changed upstream files outside four reviewed upgrade overlaps remain byte-identical
+to master. The two benchmark manifest overlaps retain removal of the retired source-epoch helper;
+all comparison/growth source inputs exist. Preserve the separate Perf Storage Growth job and the
+new pressure/abort evidence collectors without changing their workloads or success criteria.
+
+All 341 production modules and 242 focused storage/native-profile/Make/CI/cache Python tests
+passed. Four Linux x86-64 target semantic checks passed: management resources, both storage file
+readers and the RPC proof-protocol suite. These are semantic checks, not Linux linking/runtime
+results. All 14 selected native suites passed on macOS ARM64: managed/journal tiny-heap preflight,
+post-stat growth, read bounds, short/interrupted reads, file admission, journal/managed owners,
+managed publication IO, disk recovery, repair interruptions, management resources and RPC proof
+protocol. The maintained memory-ceiling panel and its setup-free summary passed, including eight
+unrestricted native controls and byte preservation; three probes and twelve capped attempts
+remain unavailable on Darwin. Linux resident-pressure and debugger call-site measurements were
+not rerun on this host. Inventory, pinned formatting of all nine new/changed Nim inputs and diff
+checks passed. Raw local evidence is under `build/ci/nimony-storage-next-*`. The candidate remains
+held pending the next published nightly.
