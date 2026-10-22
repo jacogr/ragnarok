@@ -392,3 +392,11 @@ Each actual legacy/managed initialization sync is tested independently after two
 a permanent refusal. Failed initialization exposes no live owner and retains exact forensic bytes.
 Absent-only creation refuses an existing target; strict reopen can admit only the visible complete
 identity or CURRENT-selected epoch. A partial directory without CURRENT grants no state authority.
+
+## Source-preserving migration under IO refusal
+
+Every actual destination write and sync boundary is interrupted and permanently refused in a
+contextual two-root migration. The original journal remains byte-identical, locked and readable
+with both complete historical maps and detached opaque context. Failed destinations expose no
+owner; retry remains absent-only, and strict admission uses only a complete visible CURRENT.
+No migration result confers independent checkpoint-import trust or interprets application context.
