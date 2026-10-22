@@ -94,6 +94,11 @@ func value*[T](outcome: ManagedIoResult[T]): T {.inline, requires: outcome.statu
     FileError.None.} =
   ## Extract only complete successful IO bytes or canonical names.
   outcome.completed
+proc takeValue*[T](outcome: var ManagedIoResult[T]): T {.inline, requires: outcome.status ==
+    FileError.None.} =
+  ## Transfer a successful payload without copying; the consumed source becomes explicitly uninitialized.
+  result = move(outcome.completed)
+  outcome = ManagedIoResult[T](status: FileError.Uninitialized)
 proc managedFileName*(kind: ManagedFileKind, epoch: ManagedEpoch): ManagedIoResult[string] =
   ## Derive canonical lowercase hexadecimal epoch names; CURRENT has no variable path component.
   if kind == ManagedFileKind.Current:
@@ -124,15 +129,32 @@ proc readNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "re
     header: "<unistd.h>".}
   ## Supported Linux/macOS SDKs return signed-long ssize_t; explicit headers preserve the native ABI.
 proc readAll(fd: cint, limit: ByteLimit): ManagedIoResult[seq[byte]] =
-  ## Detect one excess byte without trusting file-size metadata or allocating beyond the configured limit.
+  ## Seed bounded capacity from the held regular inode; actual reads decide growth, shrink and EOF.
   let maximum = min(uint64(limit), uint64(high(int)))
   var metadata = default(Stat)
   if posix.fstat(fd, metadata) != 0 or not S_ISREG(metadata.st_mode) or metadata.st_size < 0:
     return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   if uint64(metadata.st_size) > maximum:
     return ManagedIoResult[seq[byte]](status: FileError.LimitExceeded)
-  # Metadata only refuses a known excess; the actual read loop still detects post-check growth.
-  var bytes: seq[byte] = @[]
+  # A bounded regular extent seeds capacity only; reads still decide post-stat growth, shrink and EOF.
+  var bytes = newSeq[byte](int(metadata.st_size))
+  var filled = 0
+  while filled < bytes.len:
+    # Native writes stay inside the actually owned sequence, even after genuine short progress.
+    let requested = min(bytes.len-filled, 4096)
+    let count = readNative(fd, addr bytes[filled], csize_t(requested))
+    if count < 0:
+      # EINTR retains the same filled prefix; only a permanent error terminates this read.
+      if posix.errno() != interrupted: return ManagedIoResult[seq[byte]](
+          status: FileError.IoFailure)
+    elif count == 0:
+      # Actual early EOF trims preallocated storage to the exact observed prefix, without zero padding.
+      bytes.setLen(filled)
+      return ManagedIoResult[seq[byte]](status: FileError.None, completed: bytes)
+    else:
+      # Positive progress is bounded by the real writable window before advancing its cursor.
+      if count > requested: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
+      filled += int(count)
   var buffer = default(array[4096, byte])
   while true:
     let requested = int(min(maximum-uint64(bytes.len), 4095'u64))+1
@@ -241,7 +263,7 @@ proc readManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind, epoch:
   if descriptor < 0: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   defer:
     if descriptor >= 0: discard closeNative(descriptor) # Refused reads never leak their exact native descriptor.
-  if not regular(descriptor): return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
+  # readAll validates this held descriptor and its regular extent in one authoritative preflight.
   let loaded = readAll(descriptor, limit)
   let closing = descriptor
   descriptor = -1
@@ -341,14 +363,14 @@ proc openManagedJournal*(journal: var ManagedJournal, directory: ManagedDirector
   if descriptor < 0: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   defer:
     if descriptor >= 0: discard closeNative(descriptor)
-  if not regular(descriptor): return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
+  # readAll validates this held descriptor and its regular extent in one authoritative preflight.
   let loaded = readAll(descriptor, limit)
   if loaded.error != FileError.None: return loaded
   if syncFile(descriptor) != 0 or syncFile(state.descriptor) != 0:
     return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   journal.descriptor = descriptor
   journal.state = state
-  journal.size = uint64(loaded.value.len)
+  journal.size = uint64(loaded.completed.len) # Scalar observation must not extract/copy the owned payload.
   journal.limit = limit
   journal.poisoned = false
   journal.active = true

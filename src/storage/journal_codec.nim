@@ -29,6 +29,11 @@ func error*[T](outcome: FrameResult[T]): FrameError =
 func value*[T](outcome: FrameResult[T]): T {.inline, requires: outcome.status == FrameError.None.} =
   ## Extract only a complete checked frame or byte buffer.
   outcome.completed
+proc takeValue*[T](outcome: var FrameResult[T]): T {.inline,
+    requires: outcome.status == FrameError.None.} =
+  ## Transfer checked bytes or replay context once; the consumed source loses its success authority.
+  result = move(outcome.completed)
+  outcome = FrameResult[T](status: FrameError.Uninitialized)
 func recordError*[T](outcome: FrameResult[T]): RecordError {.requires: outcome.status ==
     FrameError.InvalidRecords.} =
   ## Access only the selected inner physical-record refusal.
@@ -63,12 +68,12 @@ proc encodeFrame(generation: RepositoryGeneration, batch: TrieExport,
   let prefix = int(overhead-32)+context.len
   var bounded = limits
   bounded.encoded = ByteLimit(min(uint64(limits.encoded), maximum-overhead-uint64(context.len)))
-  let body = encodeTrieExport(batch, bounded)
+  var body = encodeTrieExport(batch, bounded)
   if body.error == RecordError.LimitExceeded: return FrameResult[seq[byte]](
       status: FrameError.LimitExceeded)
   if body.error != RecordError.None:
     return FrameResult[seq[byte]](status: FrameError.InvalidRecords, recordReason: body.error)
-  let bytes = body.value
+  let bytes = body.takeValue # The frame builder borrows this single owned body until copying it to output.
   var output = newSeq[byte](bytes.len+prefix+32) # The narrowed inner ceiling proved the addition and allocation.
   putNumber(output, 0, uint64(bytes.len+prefix-16))
   putNumber(output, 8, uint64(generation))
@@ -114,7 +119,7 @@ proc decodeFrame(input: openArray[byte], contextual: bool, contextLimit: ByteLim
   let inspected = inspectFrame(input, contextual, contextLimit, limits.encoded, limit)
   if inspected.error != FrameError.None: return FrameResult[JournalFrame](status: inspected.error)
   let prefix = inspected.value
-  let decoded = decodeTrieExport(input.toOpenArray(prefix, input.len-33), limits)
+  var decoded = decodeTrieExport(input.toOpenArray(prefix, input.len-33), limits)
   if decoded.error == RecordError.LimitExceeded: return FrameResult[JournalFrame](
       status: FrameError.LimitExceeded)
   if decoded.error != RecordError.None:
@@ -125,7 +130,7 @@ proc decodeFrame(input: openArray[byte], contextual: bool, contextLimit: ByteLim
     for i in 0..<context.len: context[i] = input[24+i] # Never return a mutable borrow into caller bytes.
   FrameResult[JournalFrame](status: FrameError.None,
     completed: JournalFrame(generation: RepositoryGeneration(number(input, 8)),
-        batch: decoded.value, context: context))
+        batch: decoded.takeValue, context: context))
 
 proc encodeJournalFrame*(generation: RepositoryGeneration, batch: TrieExport,
     limits: RecordLimits, limit: ByteLimit): FrameResult[seq[byte]] =

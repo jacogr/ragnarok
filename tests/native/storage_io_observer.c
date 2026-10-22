@@ -24,6 +24,11 @@ static int zero_skip, zero_remaining;
 /* A single-threaded fixture retains ownership; the controller checks identity before its one write. */
 static int growth_descriptor = -1, growth_pending;
 static off_t growth_extent;
+/* Shrink fixtures retain a separate exact descriptor and cannot overlap a pending extent change. */
+static int shrink_descriptor = -1, shrink_pending;
+static off_t shrink_extent;
+static dev_t shrink_device;
+static ino_t shrink_inode;
 static dev_t growth_device;
 static ino_t growth_inode;
 
@@ -279,6 +284,8 @@ void storage_io_reset(void) {
     /* Forget the borrowed fixture descriptor without closing or otherwise transferring its ownership. */
     growth_descriptor = -1;
     growth_pending = 0;
+    shrink_descriptor = -1;
+    shrink_pending = 0;
     for (int index = 0; index <= STORAGE_IO_LAST; index++) {
         /* Each known operation begins with an independently observable zero count. */
         calls[index] = 0;
@@ -317,7 +324,7 @@ int storage_io_grow_on_read(int descriptor, int64_t extent) {
     struct stat metadata;
     int flags = descriptor < 0 ? -1 : fcntl(descriptor, F_GETFL);
     if (flags < 0 || (flags & O_ACCMODE) == O_RDONLY ||
-        descriptor < 0 || extent < 0 || extent > 65536 || growth_pending ||
+        descriptor < 0 || extent < 0 || extent > 65536 || growth_pending || shrink_pending ||
         fstat(descriptor, &metadata) != 0 || !S_ISREG(metadata.st_mode) ||
         metadata.st_size < 0 || metadata.st_size >= extent) {
         return -1;
@@ -328,6 +335,27 @@ int storage_io_grow_on_read(int descriptor, int64_t extent) {
     growth_inode = metadata.st_ino;
     growth_pending = 1;
     return 0;
+}
+int storage_io_shrink_on_read(int descriptor, int64_t extent) {
+    /* Validate every scalar, permission and inode bound before replacing active fixture state. */
+    struct stat metadata;
+    int flags = descriptor < 0 ? -1 : fcntl(descriptor, F_GETFL);
+    if (flags < 0 || (flags & O_ACCMODE) == O_RDONLY || extent < 0 ||
+        extent > 65536 || growth_pending || shrink_pending ||
+        fstat(descriptor, &metadata) != 0 || !S_ISREG(metadata.st_mode) ||
+        metadata.st_size <= extent || metadata.st_size > 65536) {
+        return -1;
+    }
+    shrink_descriptor = descriptor;
+    shrink_extent = (off_t)extent;
+    shrink_device = metadata.st_dev;
+    shrink_inode = metadata.st_ino;
+    shrink_pending = 1;
+    return 0;
+}
+int storage_io_shrink_pending(void) {
+    /* Positive consumption proves the fixture reached an actual native read boundary. */
+    return shrink_pending;
 }
 int storage_io_growth_pending(void) {
     /* A one-shot pending flag distinguishes an executed growth from a skipped read path. */
@@ -389,6 +417,23 @@ ssize_t storage_io_read(int descriptor, void *buffer, size_t count) {
         }
         if (ftruncate(owned, growth_extent) != 0) {
             /* Failed real fixture IO supplies no positive read progress or growth claim. */
+            return -1;
+        }
+    }
+    if (shrink_pending) {
+        /* Retire the one-shot control first; a reused descriptor must never truncate another inode. */
+        struct stat metadata;
+        int owned = shrink_descriptor;
+        shrink_descriptor = -1;
+        shrink_pending = 0;
+        if (fstat(owned, &metadata) != 0 || metadata.st_dev != shrink_device ||
+            metadata.st_ino != shrink_inode || metadata.st_size < shrink_extent ||
+            metadata.st_size > 65536) {
+            errno = EINVAL;
+            return -1;
+        }
+        if (ftruncate(owned, shrink_extent) != 0) {
+            /* A failed genuine truncation supplies no read bytes or success witness. */
             return -1;
         }
     }

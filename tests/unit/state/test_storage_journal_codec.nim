@@ -8,7 +8,11 @@ import ../../../src/codec/bounded
 proc main() =
   ## Independent exact bytes protect length/generation endianness and checksum coverage.
   let limits = RecordLimits(encoded: ByteLimit(105))
-  let wire = encodeJournalFrame(RepositoryGeneration(1), default(TrieExport), limits, ByteLimit(153)).value
+  var encoding = encodeJournalFrame(RepositoryGeneration(1), default(TrieExport), limits, ByteLimit(153))
+  assert encoding.error == FrameError.None
+  let beforeEncodingTransfer = getOccupiedMem()
+  let wire = encoding.takeValue
+  assert encoding.error == FrameError.Uninitialized and getOccupiedMem() == beforeEncodingTransfer
   # Frozen Python struct/hashlib witness covers the entire local frame independently.
   let expected = [105'u8, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
     82, 65, 71, 78, 65, 82, 79, 75, 45, 84, 82, 73, 69, 45, 86, 49,
@@ -30,7 +34,11 @@ proc main() =
   var wide = wire
   for i in 0..<8: wide[i] = 255
   assert journalFrameExtent(wide, ByteLimit(high(uint64))).error == FrameError.LimitExceeded
-  let frame = decodeJournalFrame(wire, limits, ByteLimit(153)).value
+  var decoding = decodeJournalFrame(wire, limits, ByteLimit(153))
+  assert decoding.error == FrameError.None
+  let beforeDecodingTransfer = getOccupiedMem()
+  let frame = decoding.takeValue
+  assert decoding.error == FrameError.Uninitialized and getOccupiedMem() == beforeDecodingTransfer
   assert uint64(frame.generation) == 1 and frame.batch.records.len == 0
   assert encodeJournalFrame(RepositoryGeneration(0), default(TrieExport), limits, ByteLimit(
       153)).error == FrameError.InvalidFormat

@@ -137,15 +137,31 @@ proc readNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "re
     header: "<unistd.h>".}
   ## Supported Linux/macOS SDKs return signed-long ssize_t; explicit headers preserve the native ABI.
 proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
-  ## Fixed chunks detect one excess byte without trusting file-size metadata for allocation.
+  ## Actual reads decide the extent; bounded regular metadata seeds one directly filled buffer.
   let maximum = min(uint64(limit), uint64(high(int)))
   var metadata = default(Stat)
   if posix.fstat(fd, metadata) != 0 or not S_ISREG(metadata.st_mode) or metadata.st_size < 0:
     return FileResult[seq[byte]](status: FileError.IoFailure)
   if uint64(metadata.st_size) > maximum:
     return FileResult[seq[byte]](status: FileError.LimitExceeded)
-  # A stat snapshot only refuses known excess; bounded reads still decide actual extent and EOF.
-  var bytes: seq[byte] = @[]
+  # A bounded stat extent seeds capacity only; actual reads still decide post-stat growth and EOF.
+  var bytes = newSeq[byte](int(metadata.st_size))
+  var filled = 0
+  while filled < bytes.len:
+    # Each native write stays inside the actually owned sequence after any genuine short read.
+    let requested = min(bytes.len-filled, 4096)
+    let count = readNative(fd, addr bytes[filled], csize_t(requested))
+    if count < 0:
+      # EINTR retains the same filled prefix; only a permanent error terminates this read.
+      if posix.errno() != interrupted: return FileResult[seq[byte]](status: FileError.IoFailure)
+    elif count == 0:
+      # Actual early EOF trims preallocated storage to the exact observed prefix, without zero padding.
+      bytes.setLen(filled)
+      return FileResult[seq[byte]](status: FileError.None, completed: bytes)
+    else:
+      # Positive progress is bounded by the real writable window before advancing its cursor.
+      if count > requested: return FileResult[seq[byte]](status: FileError.IoFailure)
+      filled += int(count)
   var buffer = default(array[4096, byte])
   while true:
     let remaining = maximum-uint64(bytes.len)
@@ -228,9 +244,9 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
     if not writeAll(descriptor, identityBytes): return FileError.IoFailure
     size = uint64(identityBytes.len) # Failed initialization preserves its file for explicit operator recovery.
   else:
-    let loaded = readAll(descriptor, limits.bytes)
+    var loaded = readAll(descriptor, limits.bytes)
     if loaded.error != FileError.None: return loaded.error
-    let bytes = loaded.value
+    let bytes = move(loaded.completed) # The private result has one final owner; replay never needs a copy.
     if bytes.len < StorageIdentityBytes: return FileError.WrongIdentity
     let identity = decodeDatabaseIdentity(bytes.toOpenArray(0, StorageIdentityBytes-1), chain,
       ByteLimit(StorageIdentityBytes), schema)
@@ -247,7 +263,7 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
           break # Only explicit recovery can stop at a verified prefix preceding an incomplete final frame.
         return FileError.InvalidJournal
       let current = memory.snapshot.value
-      let frame = if schema == StorageSchema.FullStateV1:
+      var frame = if schema == StorageSchema.FullStateV1:
         memory.replayContextJournalFrame(current, bytes.toOpenArray(offset, offset+extent.value-1),
           limits.contextBytes, limits.bytes)
       else:
@@ -255,7 +271,8 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
           limits.bytes) # Schema is independently selected before checksum and atomic graph admission.
       if frame.error == FrameError.BackendFailure: return FileError.BackendFailure
       if frame.error != FrameError.None: return FileError.InvalidJournal
-      context = frame.value.context # Only a fully admitted frame can select its context.
+      var replay = frame.takeValue # Only a fully admitted frame can select its independently owned context.
+      context = move(replay.context)
       offset += extent.value # Extent validation proved exact bounded forward progress.
     if repair:
       let selected = memory.snapshot.value
@@ -339,7 +356,7 @@ proc publish*(repository: var FileRepository, expected: RepositoryView,
     return FileResult[RepositoryView](status: FileError.InvalidBatch, batchReason: prepared)
   let maximum = min(uint64(repository.limits.bytes), uint64(high(int)))
   let remaining = maximum-repository.size
-  let frame = if repository.schema == StorageSchema.FullStateV1:
+  var frame = if repository.schema == StorageSchema.FullStateV1:
     encodeContextJournalFrame(prepared.value.generation, batch, selectedContext,
       repository.limits.contextBytes, repository.limits.repository.codec, ByteLimit(remaining))
   else:
@@ -349,13 +366,14 @@ proc publish*(repository: var FileRepository, expected: RepositoryView,
       status: FileError.LimitExceeded)
   if frame.error != FrameError.None:
     return FileResult[RepositoryView](status: FileError.InvalidFrame, frameReason: frame.error)
+  let bytes = frame.takeValue # One owned checked frame supplies both the append and its exact extent.
   if synchronize(repository.descriptor) != 0 or synchronize(repository.directory) != 0:
     repository.poisoned = true
     return FileResult[RepositoryView](status: FileError.IoFailure) # Reuse never follows an unconfirmed old durable boundary.
-  if not writeAll(repository.descriptor, frame.value):
+  if not writeAll(repository.descriptor, bytes):
     repository.poisoned = true
     return FileResult[RepositoryView](status: FileError.IoFailure) # A partial tail has no selected candidate.
-  repository.size += uint64(frame.value.len) # Remaining-capacity preflight proved this exact addition.
+  repository.size += uint64(bytes.len) # Remaining-capacity preflight proved this exact addition.
   if synchronize(repository.descriptor) != 0:
     repository.poisoned = true
     return FileResult[RepositoryView](status: FileError.PublishedUnsynced) # Complete bytes may be visible, but no successor is authorized.

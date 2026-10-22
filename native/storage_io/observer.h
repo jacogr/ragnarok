@@ -26,6 +26,9 @@ void storage_io_read_limit(size_t limit);
 int storage_io_grow_on_read(int descriptor, int64_t extent);
 /* Require the real read-boundary growth to execute before accepting its fixture. */
 int storage_io_growth_pending(void);
+/* One real post-stat truncation is limited to an already test-owned regular inode of at most64 KiB. */
+int storage_io_shrink_on_read(int descriptor, int64_t extent);
+int storage_io_shrink_pending(void);
 /* Produce bounded zero-progress write receipts after genuine calls; reject negative controls. */
 int storage_io_zero_writes(int skip, int count);
 /* Expose remaining zero-progress controls so unexercised paths cannot pass. */

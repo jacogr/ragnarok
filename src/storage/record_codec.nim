@@ -38,6 +38,11 @@ func value*[T](outcome: RecordResult[T]): T {.inline,
 func zero(hash: StateNodeHash): bool =
   ## The all-zero address is reserved for an empty physical subtree.
   array[32, byte](hash) == default(array[32, byte])
+proc takeValue*[T](outcome: var RecordResult[T]): T {.inline,
+    requires: outcome.status == RecordError.None.} =
+  ## Transfer one validated transport owner; the consumed result exposes only Uninitialized afterward.
+  result = move(outcome.completed)
+  outcome = RecordResult[T](status: RecordError.Uninitialized)
 proc compareHash(a, b: StateNodeHash): int =
   ## Lexicographic fixed identities support bounded duplicate rejection.
   let left = array[32, byte](a)
@@ -291,16 +296,18 @@ proc encodeRecordCollection*(collection: RecordCollection, limits: RecordLimits)
 proc decodeRecordCollection*(input: openArray[byte], limits: RecordLimits): RecordResult[
     RecordCollection] =
   ## Preflight every extent before allocation/hashing; complete graphs require separate admission.
-  let decoded = decodeRecords(input, limits, true)
+  var decoded = decodeRecords(input, limits, true)
   if decoded.error != RecordError.None: return RecordResult[RecordCollection](status: decoded.error)
+  var batch = decoded.takeValue # The collection owns the decoder's exact validated record buffer.
   RecordResult[RecordCollection](status: RecordError.None,
-    completed: RecordCollection(records: decoded.value.records))
+    completed: RecordCollection(records: move(batch.records)))
 
 proc decodeOrderedRecordCollection*(input: openArray[byte], limits: RecordLimits): RecordResult[
     RecordCollection] =
   ## Require strict physical-address order before allocation while independently hashing every record once.
   ## This decoder grants no complete-graph authority and accepts no validation bypass flag.
-  let decoded = decodeRecords(input, limits, true, true)
+  var decoded = decodeRecords(input, limits, true, true)
   if decoded.error != RecordError.None: return RecordResult[RecordCollection](status: decoded.error)
+  var batch = decoded.takeValue # The collection owns the decoder's exact validated record buffer.
   RecordResult[RecordCollection](status: RecordError.None,
-    completed: RecordCollection(records: decoded.value.records))
+    completed: RecordCollection(records: move(batch.records)))

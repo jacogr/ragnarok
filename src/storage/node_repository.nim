@@ -357,11 +357,11 @@ proc publishEncoded*(repository: var NodeRepository, expected: RepositoryView,
   if head == nil: return RepositoryResult[RepositoryView](status: RepositoryError.Uninitialized)
   if expected.data == nil or expected.data != head:
     return RepositoryResult[RepositoryView](status: RepositoryError.StaleView)
-  let decoded = decodeTrieExport(input, head.limits.codec)
+  var decoded = decodeTrieExport(input, head.limits.codec)
   if decoded.error != RecordError.None:
     return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
       recordReason: decoded.error)
-  publishBatch(repository, expected, decoded.value, true)
+  publishBatch(repository, expected, decoded.takeValue, true)
 
 proc collectStateEntries(view: RepositoryView, expected: StateRoot,
     limits: StateTrieLimits, selected: bool): RepositoryResult[seq[StateEntry]] =
@@ -645,7 +645,7 @@ proc decodeRepositoryImage*(input: openArray[byte], generation: RepositoryGenera
   ## Integrity failures retain RecordError, while topology/metadata/budget refusals use RepositoryError.
   let metadata = imageMetadata(generation, commitment, roots, limits, rootLimit)
   if metadata != RepositoryError.None: return RepositoryResult[NodeRepository](status: metadata)
-  let decoded = decodeOrderedRecordCollection(input, imageRecordLimits(limits, encoded))
+  var decoded = decodeOrderedRecordCollection(input, imageRecordLimits(limits, encoded))
   if decoded.error != RecordError.None:
     return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
       recordReason: decoded.error)
@@ -653,7 +653,7 @@ proc decodeRepositoryImage*(input: openArray[byte], generation: RepositoryGenera
   for index, root in roots:
     ownedRoots[index] = root # Bounded scalar copies cannot retain mutable caller metadata.
   let image = RepositoryImage(generation: generation, commitment: commitment,
-    roots: ownedRoots, collection: decoded.value)
+    roots: ownedRoots, collection: decoded.takeValue)
   restoreImage(image, limits, rootLimit, encoded, true)
 
 proc repositoryLimits*(selection: RepositorySelection): RepositoryLimits {.requires: selection.initialized.} =

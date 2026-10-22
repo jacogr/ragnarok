@@ -40,6 +40,11 @@ func value*[T](outcome: SnapshotResult[T]): T {.inline, requires: outcome.status
     SnapshotError.None.} =
   ## Extract bytes or restored owners only after complete admission.
   outcome.completed
+proc takeValue*[T](outcome: var SnapshotResult[T]): T {.inline,
+    requires: outcome.status == SnapshotError.None.} =
+  ## Transfer admitted bytes/owners once; the consumed result retains no success payload or authority.
+  result = move(outcome.completed)
+  outcome = SnapshotResult[T](status: SnapshotError.Uninitialized)
 func recordError*[T](outcome: SnapshotResult[T]): RecordError {.requires: outcome.status ==
     SnapshotError.RecordFailure.} =
   ## Preserve a selected physical record refusal without returning decoded prefixes.
@@ -106,11 +111,11 @@ proc encodeRepositorySnapshot*(selection: RepositorySelection, chain: StorageCha
     return SnapshotResult[SnapshotEncoding](status: SnapshotError.RepositoryFailure,
         repositoryReason: image.error)
   let data = image.value
-  let body = encodeRecordCollection(data.collection, codec)
+  var body = encodeRecordCollection(data.collection, codec)
   if body.error != RecordError.None:
     return SnapshotResult[SnapshotEncoding](status: SnapshotError.RecordFailure,
         recordReason: body.error)
-  let bytes = body.value
+  let bytes = body.takeValue # Framing borrows one owned encoded body without duplicating its bytes.
   var output = newSeq[byte](Overhead+rootBytes+context.len+bytes.len)
   for index, character in Magic: output[index] = byte(character)
   let base = Magic.len

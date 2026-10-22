@@ -123,15 +123,16 @@ proc initializeManagedRepository*(repository: var ManagedRepository, path: strin
     limits: ManagedLimits, schema = StorageSchema.FullNodesV1): FileError =
   ## Preflight a complete nonzero-generation seed before creating an absent managed directory.
   if repository.active: return FileError.Busy
-  let encoded = encodeRepositorySnapshot(selection, chain, schema, context, snapshotLimits(limits))
+  var encoded = encodeRepositorySnapshot(selection, chain, schema, context, snapshotLimits(limits))
   if encoded.error != SnapshotError.None: return snapshotFailure(encoded.error)
+  let snapshotEncoding = encoded.takeValue # All checksum, staging and length reads borrow this sole owner.
   let restored = cloneRepositorySelection(selection, limits.repository)
   if restored.error == RepositoryError.LimitExceeded: return FileError.LimitExceeded
   if restored.error != RepositoryError.None: return FileError.InvalidJournal
   var selectedContext = newSeq[byte](context.len)
   for index, octet in context: selectedContext[index] = octet # Borrowed application bytes never become a mutable alias.
   let manifest = encodeManagedManifest(chain, schema, ManagedEpoch(1), selection.generation,
-    selection.commitment.root, encoded.value.checksum, ByteLimit(ManagedManifestBytes))
+    selection.commitment.root, snapshotEncoding.checksum, ByteLimit(ManagedManifestBytes))
   if manifest.error != ManifestError.None: return FileError.BackendFailure
   let header = encodeManagedJournalHeader(manifest.value.checksum, limits.journalBytes)
   if header.error != ManifestError.None: return FileError.LimitExceeded
@@ -141,7 +142,7 @@ proc initializeManagedRepository*(repository: var ManagedRepository, path: strin
   var reason = initializeManagedDirectory(repository.directory, path)
   if reason != FileError.None: return reason
   reason = createManagedFile(repository.directory, ManagedFileKind.Snapshot, ManagedEpoch(1),
-    encoded.value.bytes, limits.snapshotBytes)
+    snapshotEncoding.bytes, limits.snapshotBytes)
   if reason != FileError.None: return reason
   reason = createManagedFile(repository.directory, ManagedFileKind.Journal, ManagedEpoch(1),
     header.value, limits.journalBytes)
@@ -157,7 +158,7 @@ proc initializeManagedRepository*(repository: var ManagedRepository, path: strin
   repository.chain = chain
   repository.schema = schema
   repository.epoch = ManagedEpoch(1)
-  repository.snapshotBytes = uint64(encoded.value.bytes.len)
+  repository.snapshotBytes = uint64(snapshotEncoding.bytes.len)
   repository.limits = limits
   repository.poisoned = false
   repository.active = true # Only the synchronized manifest grants a selected live revision.
@@ -191,27 +192,32 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
   if decoded.error == ManifestError.BackendFailure: return FileError.BackendFailure
   if decoded.error != ManifestError.None: return FileError.InvalidJournal
   let manifest = decoded.value
-  let bytes = readManagedFile(repository.directory, ManagedFileKind.Snapshot, manifest.epoch,
+  var loadedSnapshot = readManagedFile(repository.directory, ManagedFileKind.Snapshot,
+    manifest.epoch,
     limits.snapshotBytes)
-  if bytes.error != FileError.None: return bytes.error
-  let restored = decodeRepositorySnapshot(bytes.value, chain, schema, snapshotLimits(limits))
+  if loadedSnapshot.error != FileError.None: return loadedSnapshot.error
+  var bytes = loadedSnapshot.takeValue # One detached buffer owns the complete synchronous decoder input.
+  let snapshotExtent = uint64(bytes.len) # Preserve the actually read extent, independently of later buffer retirement.
+  var restored = decodeRepositorySnapshot(bytes, chain, schema, snapshotLimits(limits))
   if restored.error != SnapshotError.None: return snapshotFailure(restored.error)
-  var memory = restored.value.repository
+  bytes = @[] # Decode owns detached records/context; retire serialized input before opening the journal.
+  var admittedSnapshot = restored.takeValue # The repository and detached context now have one transport owner.
+  var memory = move(admittedSnapshot.repository)
   let base = memory.snapshot.value
   let checksumMatches = array[32, byte](manifest.snapshotChecksum) == array[32, byte](
-      restored.value.checksum)
+      admittedSnapshot.checksum)
   if not checksumMatches or uint64(base.generation) != uint64(manifest.generation) or
       array[32, byte](base.commitment.root) != array[32, byte](manifest.root):
     return FileError.InvalidJournal
-  let journal = openManagedJournal(repository.journal, repository.directory, manifest.epoch,
+  var journal = openManagedJournal(repository.journal, repository.directory, manifest.epoch,
     limits.journalBytes)
   if journal.error != FileError.None: return journal.error
-  let frames = journal.value
+  let frames = journal.takeValue # Replay borrows this sole detached owner until all selected frames are admitted.
   if frames.len < ManagedJournalHeaderBytes: return FileError.InvalidJournal
   if validateManagedJournalHeader(frames.toOpenArray(0, ManagedJournalHeaderBytes-1),
       manifest.checksum) != ManifestError.None: return FileError.InvalidJournal
   var offset = ManagedJournalHeaderBytes
-  var context = restored.value.context
+  var context = move(admittedSnapshot.context)
   var partial = false
   while offset < frames.len:
     let extent = journalFrameExtent(frames.toOpenArray(offset, frames.high), limits.journalBytes)
@@ -222,7 +228,7 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
         break # The verified prefix still needs independent exact authorization before truncation.
       return FileError.InvalidJournal
     let selected = memory.snapshot.value
-    let frame = if schema == StorageSchema.FullStateV1:
+    var frame = if schema == StorageSchema.FullStateV1:
       memory.replayContextJournalFrame(selected, frames.toOpenArray(offset, offset+extent.value-1),
         limits.contextBytes, limits.journalBytes)
     else:
@@ -230,7 +236,8 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
         limits.journalBytes) # Independent schema selection precedes checksum and complete graph admission.
     if frame.error == FrameError.BackendFailure: return FileError.BackendFailure
     if frame.error != FrameError.None: return FileError.InvalidJournal
-    context = frame.value.context # Only a completely admitted contiguous frame selects context.
+    var replay = frame.takeValue # Only a completely admitted contiguous frame supplies selected context.
+    context = move(replay.context)
     offset += extent.value
   if repair:
     let selected = memory.snapshot.value
@@ -245,7 +252,7 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
   repository.chain = chain
   repository.schema = schema
   repository.epoch = manifest.epoch
-  repository.snapshotBytes = uint64(bytes.value.len)
+  repository.snapshotBytes = snapshotExtent
   repository.limits = limits
   repository.poisoned = false
   repository.active = true
@@ -279,7 +286,7 @@ proc publish*(repository: var ManagedRepository, expected: RepositoryView, batch
   if size.error != FileError.None: return ManagedResult[RepositoryView](status: size.error)
   let maximum = min(uint64(repository.limits.journalBytes), uint64(high(int)))
   let remaining = ByteLimit(maximum-size.value) # The journal lease admitted its size under this ceiling.
-  let frame = if repository.schema == StorageSchema.FullStateV1:
+  var frame = if repository.schema == StorageSchema.FullStateV1:
     encodeContextJournalFrame(prepared.value.generation, batch, selectedContext,
       repository.limits.contextBytes, repository.limits.repository.codec, remaining)
   else:
@@ -288,9 +295,10 @@ proc publish*(repository: var ManagedRepository, expected: RepositoryView, batch
     return ManagedResult[RepositoryView](status: FileError.LimitExceeded)
   if frame.error != FrameError.None:
     return ManagedResult[RepositoryView](status: FileError.InvalidFrame, frameReason: frame.error)
+  let bytes = frame.takeValue # Keep one checked frame owner through every synchronization/write barrier.
   var reason = synchronize(repository.directory)
   if reason == FileError.None: reason = appendManagedJournal(repository.journal, [])
-  if reason == FileError.None: reason = appendManagedJournal(repository.journal, frame.value)
+  if reason == FileError.None: reason = appendManagedJournal(repository.journal, bytes)
   if reason != FileError.None:
     repository.poisoned = true # Partial/uncertain bytes revoke fresh live operations until explicit reopen.
     return ManagedResult[RepositoryView](status: reason)
@@ -327,10 +335,11 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   if retained.error != RepositoryError.None:
     return ManagedResult[ManagedCompaction](status: FileError.InvalidRetention)
   let plan = retained.value
-  let encoded = encodeRepositorySnapshot(plan, repository.chain, repository.schema,
+  var encoded = encodeRepositorySnapshot(plan, repository.chain, repository.schema,
     repository.context, snapshotLimits(repository.limits))
   if encoded.error != SnapshotError.None:
     return ManagedResult[ManagedCompaction](status: snapshotFailure(encoded.error))
+  let snapshotEncoding = encoded.takeValue # Physical replacement borrows one encoded snapshot throughout staging.
   let restored = cloneRepositorySelection(plan, repository.limits.repository)
   if restored.error == RepositoryError.LimitExceeded:
     return ManagedResult[ManagedCompaction](status: FileError.LimitExceeded)
@@ -339,7 +348,7 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   let next = ManagedEpoch(uint64(repository.epoch)+1)
   let manifest = encodeManagedManifest(repository.chain, repository.schema, next,
     selected.generation,
-    selected.commitment.root, encoded.value.checksum, ByteLimit(ManagedManifestBytes))
+    selected.commitment.root, snapshotEncoding.checksum, ByteLimit(ManagedManifestBytes))
   if manifest.error != ManifestError.None:
     return ManagedResult[ManagedCompaction](status: FileError.BackendFailure)
   let header = encodeManagedJournalHeader(manifest.value.checksum, repository.limits.journalBytes)
@@ -349,7 +358,7 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   defer:
     if journal.opened: discard journal.close # Staging never retires the selected old journal on failure.
   var reason = createManagedFile(repository.directory, ManagedFileKind.Snapshot, next,
-    encoded.value.bytes, repository.limits.snapshotBytes)
+    snapshotEncoding.bytes, repository.limits.snapshotBytes)
   if reason == FileError.None:
     reason = createManagedFile(repository.directory, ManagedFileKind.Journal, next,
       header.value, repository.limits.journalBytes)
@@ -373,7 +382,7 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   let moved = moveManagedJournal(repository.journal, journal)
   repository.memory = restored.value # The private selected context remains byte-identical through physical replacement.
   repository.epoch = next
-  repository.snapshotBytes = uint64(encoded.value.bytes.len)
+  repository.snapshotBytes = uint64(snapshotEncoding.bytes.len)
   if closed != FileError.None or moved != FileError.None:
     repository.poisoned = true
     return ManagedResult[ManagedCompaction](status: FileError.RecoveryRequired)
