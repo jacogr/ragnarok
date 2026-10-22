@@ -87,3 +87,14 @@ its ARC implementation is checked by native execution and source review, not pro
 The bounded model omits ticket identity, repeated generations, UI/transport bytes and proof
 correctness. It must kill canonical-gate removal, foreign-stop resume and cancel-resume mutants,
 and reach cancelled Done work that still owns its RPC lease.
+
+## Boundary and lifetime verification
+
+`application_proof_contracts` requires twelve independent exact AssertionDefect outcomes for
+default result/reason extraction, unclosed and live-relocated workers, canonical view/snapshot
+access, checkpoint identity/serialization and unjoined Services destruction during a proof lease.
+Its joined-close positive control succeeds with a real selected-state request. Five compiler
+privacy probes reject direct admission discriminators, worker tickets/query owners and query/
+response backing storage. The earlier preparation lease's strict diagnostics now match the
+combined exclusion expression; all thirteen existing cases still require their original hard
+failure status. No unexpected compiler/startup/fixture failure can satisfy these verdicts.

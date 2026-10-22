@@ -1,0 +1,144 @@
+{
+  "build_name": "application-proof-contracts",
+  "cases": [
+    {
+      "arguments": [
+        "admission"
+      ],
+      "description": "Proof contract admission",
+      "diagnostic": "admission.status == None",
+      "identity": {
+        "reason": "admission"
+      },
+      "name": "application-proof-contract-admission"
+    },
+    {
+      "arguments": [
+        "query-reason"
+      ],
+      "description": "Proof contract query-reason",
+      "diagnostic": "admission.status == QueryFailure",
+      "identity": {
+        "reason": "query-reason"
+      },
+      "name": "application-proof-contract-query-reason"
+    },
+    {
+      "arguments": [
+        "worker-reason"
+      ],
+      "description": "Proof contract worker-reason",
+      "diagnostic": "admission.status == WorkerFailure",
+      "identity": {
+        "reason": "worker-reason"
+      },
+      "name": "application-proof-contract-worker-reason"
+    },
+    {
+      "arguments": [
+        "worker-admission"
+      ],
+      "description": "Proof contract worker-admission",
+      "diagnostic": "admission.status == None",
+      "identity": {
+        "reason": "worker-admission"
+      },
+      "name": "application-proof-contract-worker-admission"
+    },
+    {
+      "arguments": [
+        "worker-completion"
+      ],
+      "description": "Proof contract worker-completion",
+      "diagnostic": "completion.status == Completed",
+      "identity": {
+        "reason": "worker-completion"
+      },
+      "name": "application-proof-contract-worker-completion"
+    },
+    {
+      "arguments": [
+        "unclosed-worker"
+      ],
+      "description": "Proof contract unclosed-worker",
+      "diagnostic": "not worker.started",
+      "identity": {
+        "reason": "unclosed-worker"
+      },
+      "name": "application-proof-contract-unclosed-worker"
+    },
+    {
+      "arguments": [
+        "move-live-worker"
+      ],
+      "description": "Proof contract move-live-worker",
+      "diagnostic": "not worker.started",
+      "identity": {
+        "reason": "move-live-worker"
+      },
+      "name": "application-proof-contract-move-live-worker"
+    },
+    {
+      "arguments": [
+        "view"
+      ],
+      "description": "Proof contract view",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "view"
+      },
+      "name": "application-proof-contract-view"
+    },
+    {
+      "arguments": [
+        "snapshot"
+      ],
+      "description": "Proof contract snapshot",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "snapshot"
+      },
+      "name": "application-proof-contract-snapshot"
+    },
+    {
+      "arguments": [
+        "checkpoint"
+      ],
+      "description": "Proof contract checkpoint",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "checkpoint"
+      },
+      "name": "application-proof-contract-checkpoint"
+    },
+    {
+      "arguments": [
+        "serialize"
+      ],
+      "description": "Proof contract serialize",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "serialize"
+      },
+      "name": "application-proof-contract-serialize"
+    },
+    {
+      "arguments": [
+        "services-destroy"
+      ],
+      "description": "Proof contract services-destroy",
+      "diagnostic": "not worker.started",
+      "identity": {
+        "reason": "services-destroy"
+      },
+      "name": "application-proof-contract-services-destroy"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_proof_contracts.nim"
+}
