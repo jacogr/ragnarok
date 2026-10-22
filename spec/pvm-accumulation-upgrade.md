@@ -6,9 +6,35 @@ The [coordinated upgrade](graypaper-unreleased-upgrade.md) targets
 `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. Current upgrade is selector21:
 r7 selects the account (all ones means self), r8 points to the hash, r9/r10 carry
 the minimum accumulation/transfer gas. The self path preserves supervisor fields
-and current account-write proofs. Foreign supervised mutation remains an explicit
-implementation gate. Underfunding drains gas to zero. The details and verification
+and current account-write proofs. Authorized foreign mutation now executes against
+the retained invocation map, while parallel batch publication remains explicitly gated. Underfunding drains gas to zero. The details and verification
 below retain the historical release argument layout.
+
+## Supervised target execution
+
+Scope: the same current Omega_U row permits the invoking service to upgrade itself
+or an account for which it is the effective supervisor. The state operation accepts
+an explicit nominal target, checks current canonical target/invoker metadata and the
+supervisor creation slot, then replaces exactly the code hash and two gas fields in
+one atomic store successor. Self remains legal even when another service supervises it.
+The existing self-only API delegates to the same checked implementation.
+
+Foreign metadata marks account ancestry `Unsupported`; later self writes cannot
+reset it. This is an execution capability, not a claim of parallel publication:
+`accpar` requires modified-account conflict selection before foreign effects can be
+merged. Retain the batch gate until that selection and its provenance are implemented.
+No complete state or block parity is claimed.
+
+Completion: upgrade/effects/dispatch and publication consumers; foreign success,
+stale/missing authority, immutable prior/checkpoints, repeated changes, wide gas,
+atomic backend/policy refusal and stable ARC. Existing WHO/HUH/panic/gas order stays fixed.
+
+Local macOS upgrade/effects/dispatch/account-publication/batch suites passed with
+stable1000-cycle ARC evidence. All264 production modules, compiler rejection guards
+and39 strict accumulation-effect runtime guards passed. A genuine common-source
+fixture proves the foreign upgrade executes while batch preparation refuses its
+unsupported account provenance and leaves the source root unchanged. This is local
+evidence, not exact-head Linux CI or complete parallel accumulation parity.
 
 ## Current foreign-target refusal ordering
 
@@ -18,7 +44,7 @@ Scope: Omega_U at Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 selector returns WHO; an existing foreign account whose effective supervisor is not
 the invoker returns HUH. Supervisor authority includes the recorded creation slot,
 so a recreated service cannot inherit it. These protocol refusals precede the
-remaining explicit gate for an authorized foreign mutation. Self/sentinel success
+authorized foreign mutation. Self/sentinel success
 and all publication boundaries remain unchanged.
 
 Completion checks: native `pvm_accumulation_upgrade` and dispatch consumers, covering
@@ -27,7 +53,8 @@ metadata, stale supervisor incarnation, unchanged accounts/checkpoints and retai
 ARC ownership. This closes an implementation error, not a discrepancy in the paper.
 
 Local macOS upgrade and dispatch native suites passed, each with stable1000-cycle
-ARC evidence. The authorized foreign mutation remains explicitly incomplete.
+ARC evidence. This earlier refusal-order tranche left authorized foreign mutation gated; the
+supervised execution section above describes its subsequent implementation.
 
 ## Scope and authority
 

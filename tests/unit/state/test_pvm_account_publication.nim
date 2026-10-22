@@ -165,6 +165,35 @@ block broader_mutation_is_sticky:
         AccumulationBatchError.UnsupportedAccountEffects,
       "broader selected effects remain a reason-only publication gate"
 
+# Genuine supervised upgrades remain explicit publication gates until parallel conflict selection is implemented.
+block supervised_upgrade_requires_conflict_selection:
+  var instructions = @[registerImmediate(7, 99), registerImmediate(8, 196608),
+      registerImmediate(9, 7), registerImmediate(10, 8), @[10'u8, 21]]
+  for instruction in upgrade(17):
+    instructions.add(instruction) # A later genuine self upgrade cannot erase foreign provenance.
+  instructions.add(@[50'u8, 0])
+  var fixture = batchFixture(incoming = false, firstEnvelope = guestEnvelope(instructions, input))
+  let targetKey = chapterServiceKey(StateChapter(255), ServiceIndex(99))
+  var target = metadata(fixture.state.snapshot.value, 99)
+  target.supervisor = ServiceIndex(42)
+  target.supervisorCreated = metadata(fixture.state.snapshot.value, 42).created
+  let entry = serviceMetadataEntry(ServiceIndex(99), target, ByteLimit(ServiceMetadataBytes)).value
+  discard fixture.state.apply([StateWrite(key: targetKey, kind: StateWriteKind.Put,
+      value: entry.value)]).value
+  let priorRoot = array[32, byte](fixture.state.snapshot.value.commitment.root)
+  let first = batchExecution(fixture, 0)
+  let second = batchExecution(fixture, 1)
+  let selected = first.effects.effectContext(AccumulationDimension.Regular).value
+  assert selected.effectAccountScope.value == AccumulationAccountScope.Unsupported,
+      "foreign metadata cannot masquerade as self publication"
+  assert uint64(metadata(selected.effectAccounts.value, 99).minimumAccumulationGas) == 7,
+      "supervised foreign upgrade actually executed before publication refusal"
+  let refused = prepare(fixture, first, second)
+  assert refused.error == AccumulationBatchError.UnsupportedAccountEffects,
+      "parallel batch needs a conflict-selection proof; actual reason " & $uint32(refused.error)
+  assert array[32, byte](fixture.state.snapshot.value.commitment.root) == priorRoot,
+      "failed publication leaves the complete source map unchanged"
+
 # Provide/yield versions preserve scope, and a refusal after preparation never publishes the earlier metadata candidate.
 let fixture = batchFixture(firstEnvelope = envelope(7, provide = true), secondEnvelope = envelope(19))
 let first = batchExecution(fixture, 0)

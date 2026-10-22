@@ -1,5 +1,15 @@
 # Terminal-selected self-metadata publication
 
+## Current supervised execution boundary
+
+At current Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
+[supervised upgrade](pvm-accumulation-upgrade.md) can mutate foreign metadata in
+retained invocation state. Its `Unsupported` account lineage deliberately refuses
+batch publication before exposing a candidate, even after a later self upgrade or byte-for-byte
+restoration. The current `accpar` modified-account/supervisor conflict selection must
+be implemented before such an invocation can publish. A genuine common-source native
+publication fixture protects the refusal and the unchanged complete source root.
+
 ## Scope and authority
 
 The original upgrade-only boundary below has since been extended by bounded
