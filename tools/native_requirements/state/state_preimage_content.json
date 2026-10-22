@@ -1,0 +1,15 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "composition_chapters"
+  ],
+  "includes": [
+    "crypto"
+  ],
+  "libraries": [
+    "observer"
+  ],
+  "observers": [],
+  "prepared": false
+}

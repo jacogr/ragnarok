@@ -1,0 +1,51 @@
+{
+  "build_name": "state-preimage-content-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard preimage content default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-preimage-content-default"
+    },
+    {
+      "arguments": [
+        "offender"
+      ],
+      "description": "Guard preimage content offender",
+      "diagnostic": "contains({BackendFailure, HashMismatch}, outcome.status)",
+      "identity": {
+        "reason": "offender"
+      },
+      "name": "state-preimage-content-offender"
+    },
+    {
+      "arguments": [
+        "ordinal"
+      ],
+      "description": "Guard preimage content ordinal",
+      "diagnostic": "contains({BackendFailure, HashMismatch}, outcome.status)",
+      "identity": {
+        "reason": "ordinal"
+      },
+      "name": "state-preimage-content-ordinal"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Guard preimage content source",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source"
+      },
+      "name": "state-preimage-content-source"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_preimage_content_results.nim"
+}
