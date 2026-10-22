@@ -105,3 +105,11 @@ publications. Exact concatenated frame bytes, selected generation/root and every
 historical map are checked after strict restart. Earlier complete frames never disappear, and
 parent-held readers stay valid. Visible-but-unreturned bytes are admitted only by independent
 strict restart; no killed child is retroactively counted as a confirmed application adoption.
+
+## Managed multi-publication crash prefixes
+
+`storage_managed_sequence_crash` kills a writer at every write and durability barrier across four successive
+publications. Exact concatenated frame bytes, selected generation/root and every earlier authored
+historical map are checked after strict restart. Earlier complete frames never disappear, and
+parent-held readers stay valid. Visible-but-unreturned bytes are admitted only by independent
+strict restart; no killed child is retroactively counted as a confirmed application adoption.
