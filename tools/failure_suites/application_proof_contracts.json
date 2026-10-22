@@ -132,6 +132,17 @@
         "reason": "services-destroy"
       },
       "name": "application-proof-contract-services-destroy"
+    },
+    {
+      "arguments": [
+        "query-view-reason"
+      ],
+      "description": "Proof contract generic view reason",
+      "diagnostic": "outcome.status == ViewFailure",
+      "identity": {
+        "reason": "query-view-reason"
+      },
+      "name": "application-proof-contract-query-view-reason"
     }
   ],
   "crypto_library": "observer",

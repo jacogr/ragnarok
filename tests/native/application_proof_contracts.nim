@@ -12,6 +12,9 @@ proc main() {.raises.} =
   ## Every invalid case must fail at its exact guard; the control closes actual native work.
   let mode = paramStr(1)
   case mode
+  of "query-view-reason":
+    let guarded = default(ProofQueryResult[ProofResponse])
+    discard guarded.viewError # A default response cannot expose a generic view refusal reason.
   of "admission":
     let guarded = default(StateProofAdmission)
     discard guarded.value

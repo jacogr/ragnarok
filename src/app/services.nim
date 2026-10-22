@@ -14,7 +14,7 @@ import ./candidate
 import ./block_input
 import ./preparation_worker
 import ./[proof_query, proof_worker]
-import ../state/proof_service
+import ../state/[proof_service, proof_plan]
 import ./[disk_chain, disk_worker]
 import ./[checkpoint_identity, checkpoint_transfer, checkpoint_session, checkpoint_worker, checkpoint_file]
 import ../codec/bounded
@@ -620,6 +620,14 @@ proc stateProofAvailable*(services: Services): bool =
     return false # Pending/unacknowledged adoption retains its existing exclusive producer capacity.
   services.canonical.stateSnapshot.error == StateStoreError.None
 
+proc stageStateProof(services: var Services, selected: BlockHash, plan: StateProofPlan,
+    limits: ProofQueryLimits): ProofQueryError =
+  ## This activation and all its canonical ARC aliases retire BEFORE the worker can start.
+  let captured = captureProofQuery(services.canonical.chainView.blockAt(selected), plan, limits)
+  if captured.error == ProofQueryError.None:
+    services.proofInput = captured.value # One staged owner survives after every temporary alias retires.
+  captured.error
+
 proc stageStateProof(services: var Services, selected: BlockHash, plan: ServiceProofPlan,
     limits: ProofQueryLimits): ProofQueryError =
   ## This activation and all its canonical ARC aliases retire BEFORE the worker can start.
@@ -628,14 +636,8 @@ proc stageStateProof(services: var Services, selected: BlockHash, plan: ServiceP
     services.proofInput = captured.value # One staged owner survives after every temporary alias retires.
   captured.error
 
-proc beginStateProof*(services: var Services, selected: BlockHash, plan: ServiceProofPlan,
-    limits: ProofQueryLimits): StateProofAdmission {.raises.} =
-  ## Capture one exact retained block, detach the plan, pause RPC, then transfer the query to one slot.
-  if not services.started: return StateProofAdmission(status: StateProofAdmissionError.Closed)
-  if not services.stateProofAvailable:
-    return StateProofAdmission(status: StateProofAdmissionError.Busy)
-  discard services.proofWorker.start() # A reusable idle thread cannot observe staging until submission.
-  let reason = services.stageStateProof(selected, plan, limits)
+proc finishStateProof(services: var Services, reason: ProofQueryError): StateProofAdmission =
+  ## Staging activations have retired; only this common path may pause RPC and submit the private query.
   if reason != ProofQueryError.None:
     return StateProofAdmission(status: StateProofAdmissionError.QueryFailure, queryReason: reason)
   services.rpcLease = services.rpc.pauseChain()
@@ -650,6 +652,26 @@ proc beginStateProof*(services: var Services, selected: BlockHash, plan: Service
   services.rpcLease = nil
   services.proofInput = default(ProofQuery) # A refusal never grants the worker access to this owner.
   StateProofAdmission(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
+
+proc beginStateProof*(services: var Services, selected: BlockHash, plan: StateProofPlan,
+    limits: ProofQueryLimits): StateProofAdmission {.raises.} =
+  ## Global/mixed plans use the established exclusive lease and exact native ticket retirement.
+  if not services.started: return StateProofAdmission(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable:
+    return StateProofAdmission(status: StateProofAdmissionError.Busy)
+  discard services.proofWorker.start() # Idle reuse never creates a worker per request.
+  let reason = services.stageStateProof(selected, plan, limits)
+  services.finishStateProof(reason) # No selected-state temporary survives the staging activation.
+
+proc beginStateProof*(services: var Services, selected: BlockHash, plan: ServiceProofPlan,
+    limits: ProofQueryLimits): StateProofAdmission {.raises.} =
+  ## Existing service callers retain guarded admission and completion error alternatives.
+  if not services.started: return StateProofAdmission(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable:
+    return StateProofAdmission(status: StateProofAdmissionError.Busy)
+  discard services.proofWorker.start() # Idle reuse never creates a worker per request.
+  let reason = services.stageStateProof(selected, plan, limits)
+  services.finishStateProof(reason) # No selected-state temporary survives the staging activation.
 
 proc stateProofPhase*(services: var Services): ProofWorkerPhase =
   ## Synchronized scalar polling never observes or copies selected-state ARC owners.

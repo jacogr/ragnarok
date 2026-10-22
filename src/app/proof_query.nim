@@ -5,7 +5,7 @@
 ## Capturing is host-side admission only; generation and authentication belong outside callbacks.
 import std/assertions
 import ../chain/[genesis, state_proof]
-import ../state/[proof_service, proof_view, trie_proof, store]
+import ../state/[proof_service, proof_view, trie_proof, store, proof_plan, planned_proof]
 import ../codec/[bounded, state_layout, state_trie]
 
 type
@@ -18,10 +18,11 @@ type
     wireBytes*: ByteLimit
     hashes*: ProofHashLimit
   ProofQueryError* {.pure.} = enum ## Failed/default requests expose no selected graph or partially generated response.
-    Uninitialized, None, InvalidSelection, InvalidPlan, LimitExceeded, ProofFailure, ServiceFailure
+    Uninitialized, None, InvalidSelection, InvalidPlan, LimitExceeded, ProofFailure, ServiceFailure, ViewFailure
   QueryData = ref object ## Immutable acyclic request; worker use requires exclusive access to all selected-state aliases.
     selected: BlockSnapshotResult
-    plan: ServiceProofPlan
+    plan: StateProofPlan
+    serviceCompatibility: bool
     limits: ProofQueryLimits
     hashes: ProofHashLimit
   ProofQuery* = object ## Root authority comes only from the explicit retained selection, never from response bytes.
@@ -34,6 +35,8 @@ type
       proofReason: StateProofError
     of ServiceFailure:
       serviceReason: ServiceProofError
+    of ViewFailure:
+      viewReason: ProofViewError
     else:
       discard                   # Default and admission refusals have reasons alone.
 func error*[T](outcome: ProofQueryResult[T]): ProofQueryError =
@@ -51,6 +54,11 @@ func serviceError*[T](outcome: ProofQueryResult[T]): ServiceProofError {.require
     ProofQueryError.ServiceFailure.} =
   ## Inspect only an actual semantic-view/encoding refusal.
   outcome.serviceReason
+func viewError*[T](outcome: ProofQueryResult[T]): ProofViewError {.requires:
+    outcome.status == ProofQueryError.ViewFailure.} =
+  ## Generic planned-view failures retain their exact reason without exposing a response prefix.
+  outcome.viewReason
+
 func valid*(query: ProofQuery): bool =
   ## Default requests grant neither selected-state access nor work authority.
   query.data != nil
@@ -69,8 +77,8 @@ proc estimatedHashes*(query: ProofQuery): ProofHashLimit {.requires: query.data 
   let data = query.data
   assert data != nil
   data.hashes
-proc captureProofQuery*(selected: BlockSnapshotResult, plan: ServiceProofPlan,
-    limits: ProofQueryLimits): ProofQueryResult[ProofQuery] =
+proc captureProofQueryImpl(selected: BlockSnapshotResult, plan: StateProofPlan,
+    limits: ProofQueryLimits, serviceCompatibility: bool): ProofQueryResult[ProofQuery] =
   ## Inspect cached complete-map counts and fixed plan metadata before allocation or hash work.
   if selected.error != GenesisError.None:
     return ProofQueryResult[ProofQuery](status: ProofQueryError.InvalidSelection)
@@ -96,12 +104,22 @@ proc captureProofQuery*(selected: BlockSnapshotResult, plan: ServiceProofPlan,
     return ProofQueryResult[ProofQuery](status: ProofQueryError.LimitExceeded)
   if uint64(limits.wireBytes) < 8 or count > (uint64(limits.wireBytes)-8) div 45:
     return ProofQueryResult[ProofQuery](status: ProofQueryError.LimitExceeded)
-  let detached = mergeProofPlans(plan, plan, limits.aggregate.items)
-  if detached.error != ServiceProofError.None:
+  let detached = mergeStateProofPlans(plan, plan, limits.aggregate.items)
+  if detached.error != ProofPlanError.None:
     return ProofQueryResult[ProofQuery](status: ProofQueryError.LimitExceeded)
   ProofQueryResult[ProofQuery](status: ProofQueryError.None,
     completed: ProofQuery(data: QueryData(selected: selected, plan: detached.value,
-      limits: limits, hashes: ProofHashLimit(count*perQuery))))
+      limits: limits, hashes: ProofHashLimit(count*perQuery),
+          serviceCompatibility: serviceCompatibility)))
+
+proc captureProofQuery*(selected: BlockSnapshotResult, plan: StateProofPlan,
+    limits: ProofQueryLimits): ProofQueryResult[ProofQuery] =
+  ## Generic global/service requests keep exact planned-view failure reasons.
+  captureProofQueryImpl(selected, plan, limits, false)
+proc captureProofQuery*(selected: BlockSnapshotResult, plan: ServiceProofPlan,
+    limits: ProofQueryLimits): ProofQueryResult[ProofQuery] =
+  ## Preserve legacy service-result spelling while using the same detached generic plan owner.
+  captureProofQueryImpl(selected, plan.toStateProofPlan, limits, true)
 
 type
   ResponseData = ref object ## Detached output shares no canonical snapshot, plan or raw proof graph.
@@ -137,13 +155,24 @@ proc bytes*(response: ProofResponse, limit: ByteLimit): ProofQueryResult[seq[byt
   var copied = newSeq[byte](data.wire.len)
   for i in 0..<copied.len: copied[i] = data.wire[i]
   ProofQueryResult[seq[byte]](status: ProofQueryError.None, completed: copied)
+proc viewFailure(data: QueryData, reason: ProofViewError): ProofQueryResult[ProofResponse] =
+  ## Generic callers retain view errors; existing service callers keep their established typed alternatives.
+  if not data.serviceCompatibility:
+    return ProofQueryResult[ProofResponse](status: ProofQueryError.ViewFailure, viewReason: reason)
+  let translated = case reason
+    of ProofViewError.LimitExceeded, ProofViewError.LengthOverflow: ServiceProofError.LimitExceeded
+    of ProofViewError.Uninitialized: ServiceProofError.Uninitialized
+    of ProofViewError.NonCanonical: ServiceProofError.InvalidInput
+    else: ServiceProofError.InvalidValue # Authenticated generation never fabricates a service value or response prefix.
+  ProofQueryResult[ProofResponse](status: ProofQueryError.ServiceFailure, serviceReason: translated)
+
 proc executeProofQuery*(query: ProofQuery): ProofQueryResult[ProofResponse] =
   ## Run bounded complete-map generation, exact-root authentication and encoding outside dispatcher callbacks.
   let data = query.data
   if data == nil:
     return ProofQueryResult[ProofResponse](status: ProofQueryError.Uninitialized)
   let limits = data.limits
-  let generated = generateBlockServiceProofs(data.selected, data.plan, limits.map,
+  let generated = generateBlockPlannedProofs(data.selected, data.plan, limits.map,
     limits.proof, limits.aggregate)
   if generated.error != StateProofError.None:
     return ProofQueryResult[ProofResponse](status: ProofQueryError.ProofFailure,
@@ -153,21 +182,19 @@ proc executeProofQuery*(query: ProofQuery): ProofQueryResult[ProofResponse] =
     # Raw paths are copied as immutable handles only within this exclusively leased worker activation.
     queries[i] = generated.value.queryAt(i).value
   let root = data.selected.value.stateRoot
-  let checked = verifyServiceProofs(data.plan, queries, root, limits.proof, limits.aggregate, limits.view)
-  if checked.error == ServiceProofError.ProofFailure:
+  let checked = verifyPlannedProofs(data.plan, queries, root, limits.proof, limits.aggregate, limits.view)
+  if checked.error == ProofViewError.ProofFailure:
     return ProofQueryResult[ProofResponse](status: ProofQueryError.ProofFailure,
         proofReason: checked.proofError)
-  if checked.error != ServiceProofError.None:
-    return ProofQueryResult[ProofResponse](status: ProofQueryError.ServiceFailure,
-        serviceReason: checked.error)
-  let encoded = encodeServiceProofs(checked.value, data.plan, limits.view, limits.proof,
+  if checked.error != ProofViewError.None:
+    return viewFailure(data, checked.error)
+  let encoded = encodePlannedProofs(checked.value, data.plan, limits.view, limits.proof,
       limits.wireBytes)
-  if encoded.error == ServiceProofError.ProofFailure:
+  if encoded.error == ProofViewError.ProofFailure:
     return ProofQueryResult[ProofResponse](status: ProofQueryError.ProofFailure,
         proofReason: encoded.proofError)
-  if encoded.error != ServiceProofError.None:
-    return ProofQueryResult[ProofResponse](status: ProofQueryError.ServiceFailure,
-        serviceReason: encoded.error)
+  if encoded.error != ProofViewError.None:
+    return viewFailure(data, encoded.error)
   ProofQueryResult[ProofResponse](status: ProofQueryError.None,
     completed: ProofResponse(data: ResponseData(identity: data.selected.value.blockHash,
       root: root, wire: encoded.value)))
