@@ -114,3 +114,14 @@ frequency/affinity isolation. Process restart tests leave the kernel/page cache 
 filesystem and device power-loss qualification needs a separately scoped environment. See the
 [measurement contract](../spec/storage-growth-benchmark.md), [short-panel contract](../spec/storage-benchmark.md),
 [managed operations](managed-storage.md) and [checkpoint trust](checkpoint-import.md).
+
+## Whole-process resource baseline
+
+Run `make bench-storage-resources` for a separate bounded resource pass. It reuses the checked
+sustained fixture at 8,192/32,768 entries with 64 sweep publications, one trajectory per process,
+and both backend orders. `build/tests/storage-resources/results.json`, `summary.md` and logs record
+whole-native-process peak RSS in bytes and minor/major page faults. Native timings are discarded.
+Fixture preparation, independent expected maps, validation and retained readers contribute to
+these counters; they do not isolate repository memory. OS caches remain unchanged. These are
+preliminary observations for choosing larger/paged-storage experiments, with no cold-cache or
+physical-device claim. See the [resource measurement contract](../spec/storage-resource-measurements.md).
