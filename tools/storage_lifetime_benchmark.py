@@ -4,6 +4,8 @@
 
 """Admit isolated ARC lifetime controls and whole-child resources without subtracting unrelated peaks."""
 import re
+import csv
+import io
 from storage_resource_panel import ROOT, run_panel, validate_panel
 
 SOURCE = ROOT/'tests/performance/storage_lifetime_workload.nim'
@@ -56,18 +58,30 @@ def summarize(report):
     lines = ['# Storage isolated lifetimes', '',
              'Current Nim allocator observations cover only objects alive at the named boundary.',
              'Whole-child peak RSS includes setup and validation; independent peaks are never subtracted.', '',
-             '| Scenario | Entries | Baseline bytes | Fixture bytes | Owner bytes | Released bytes | Peak RSS bytes |',
-             '| --- | ---: | ---: | ---: | ---: | ---: | ---: |']
+             '| Scenario | Entries | Baseline bytes | Fixture bytes | Owner bytes | Held bytes | Closed bytes | Released bytes | Peak RSS bytes |',
+             '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
     for run in runs:
         scenario, count = run['case']; row = run['observed']
-        lines.append(f'| {scenario} | {count} | {row["baseline"]} | {row["fixture"]} | {row["owner"]} | {row["released"]} | {run["resources"]["peak_rss_bytes"]} |')
+        lines.append(f'| {scenario} | {count} | {row["baseline"]} | {row["fixture"]} | {row["owner"]} | {row["held"]} | {row["closed"]} | {row["released"]} | {run["resources"]["peak_rss_bytes"]} |')
     return '\n'.join(lines)+'\n'
+
+
+def lifetime_csv(report):
+    """Export every scalar checkpoint and fresh-child counter, preserving unavailable -1 values."""
+    runs = validate_panel(report, SOURCE, DEFINES, CASES, arguments, parse)
+    output = io.StringIO(newline=''); writer = csv.writer(output)
+    writer.writerow(('scenario', 'items', *FIELDS, 'peak_rss_bytes', 'minor_faults', 'major_faults'))
+    for run in runs:
+        # Fixed source-owned field order lets independent consumers compare identical lifetime cases.
+        writer.writerow((*run['case'], *[run['observed'][k] for k in FIELDS],
+                         *[run['resources'][k] for k in ('peak_rss_bytes', 'minor_faults', 'major_faults')]))
+    return output.getvalue()
 
 
 def run():
     """The Make-owned target supplies setup; one fresh observer isolates each bounded scenario."""
     folder = ROOT/'build/tests/storage-lifetimes'
-    run_panel(folder, SOURCE, DEFINES, CASES, arguments, parse, summarize)
+    run_panel(folder, SOURCE, DEFINES, CASES, arguments, parse, summarize, artifacts=(('lifetimes.csv', lifetime_csv),))
     print('PASS storage lifetime panel: '+str(folder/'summary.md'))
 
 

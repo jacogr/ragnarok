@@ -71,10 +71,14 @@ def validate_panel(report, source, defines, cases, arguments, parser):
     return runs
 
 
-def run_panel(folder, source, defines, cases, arguments, parser, render):
+def run_panel(folder, source, defines, cases, arguments, parser, render, *, artifacts=()):
     """Use one checked build and one independently accounted child per bounded case; never reuse stale success."""
+    names = [name for name, producer in artifacts]
+    if (len(set(names)) != len(names) or any(Path(name).name != name or name in ('results.json', 'summary.md')
+            or not callable(producer) for name, producer in artifacts)):
+        raise ValueError('Invalid source-owned resource artifact plan')
     folder = Path(folder); folder.mkdir(parents=True, exist_ok=True)
-    for name in ('results.json', 'summary.md'):
+    for name in ('results.json', 'summary.md', *names):
         # Only this panel's public artifacts retire; other evidence directories and logs remain intact.
         (folder/name).unlink(missing_ok=True)
     report = dict(status='running', schema_version=1, profile=PROFILE, source=str(source),
@@ -111,10 +115,16 @@ def run_panel(folder, source, defines, cases, arguments, parser, render):
         report['hardware']['load_average_end'] = os.getloadavg()
         report['status'] = 'checks-passed'
         validate_panel(report, source, defines, cases, arguments, parser)
+        for name, producer in artifacts:
+            # Every extra artifact is derived from already admitted raw rows before final success publication.
+            atomic_text(folder/name, producer(report))
         atomic_text(folder/'summary.md', render(report)); save()
         return report
     except Exception as error:
         # Rendering, artifact writes and native refusal share one failed-publication path.
-        report.update(status='failed', error=str(error)); (folder/'summary.md').unlink(missing_ok=True)
+        report.update(status='failed', error=str(error))
+        for name in ('summary.md', *names):
+            # A late CSV or Markdown failure retires all public success artifacts from this panel.
+            (folder/name).unlink(missing_ok=True)
         save()
         raise
