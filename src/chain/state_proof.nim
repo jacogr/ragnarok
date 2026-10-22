@@ -18,3 +18,19 @@ proc verifyBlockStateProof*(selected: BlockSnapshotResult, proof: StateProof, qu
   if selected.error != GenesisError.None:
     return proofFailure[VerifiedStateLookup](StateProofError.Uninitialized)
   verifyStateProof(proof, selected.value.stateRoot, query, limits)
+
+proc generateBlockStateProofs*(selected: BlockSnapshotResult, queries: openArray[StateKey],
+    mapLimits: StateTrieLimits, limits: StateProofLimits,
+    aggregate: StateProofBatchLimits): StateProofResult[StateProofSet] =
+  ## Generate an ordered atomic path set from exactly the explicitly selected posterior complete map.
+  if selected.error != GenesisError.None:
+    return proofFailure[StateProofSet](StateProofError.Uninitialized)
+  generateStateProofs(selected.value.stateSnapshot, queries, mapLimits, limits, aggregate)
+
+proc verifyBlockStateProofs*(selected: BlockSnapshotResult, queries: openArray[StateProofQuery],
+    limits: StateProofLimits, aggregate: StateProofBatchLimits): StateProofResult[
+        VerifiedStateProofBatch] =
+  ## Only selected posterior root authority can authenticate all requested raw paths atomically.
+  if selected.error != GenesisError.None:
+    return proofFailure[VerifiedStateProofBatch](StateProofError.Uninitialized)
+  verifyStateProofs(queries, selected.value.stateRoot, limits, aggregate)
