@@ -6,7 +6,7 @@ from pathlib import Path
 import hashlib
 import unittest
 from state_complete_serialization_oracle import (
-    ROWS, MAGIC, source, checkpoint, encoded, refusal_cases, refusals_encoded)
+    ROWS, MAGIC, source, checkpoint, encoded, refusal_cases, refusals_encoded, multiservice_encoded)
 from state_composition_oracle import entries
 
 class CompleteSerializationOracleTests(unittest.TestCase):
@@ -54,3 +54,17 @@ class CompleteSerializationOracleTests(unittest.TestCase):
         self.assertEqual(len(roots), 33)
         self.assertEqual(refusals_encoded(),
             (Path(__file__).parent/'fixtures/serialization-refusals.txt').read_bytes())
+
+    def test_multiservice_fixture(self):
+        """Distinct service namespaces survive reversed input order without changing canonical bytes."""
+        from state_composition_oracle import chapters
+        for group in range(8):
+            services = [source(4*group+i)[1] for i in range(4)]
+            self.assertEqual(len({item[0] for item in services}), 4)
+            self.assertEqual(len(entries(chapters(), services)), 32)
+            self.assertEqual(checkpoint(entries(chapters(), services)),
+                             checkpoint(entries(chapters(), services[::-1])))
+        authored = multiservice_encoded()
+        self.assertEqual(len(set(authored.splitlines())), 8)
+        self.assertEqual(authored,
+            (Path(__file__).parent/'fixtures/multiservice-serialization.txt').read_bytes())
