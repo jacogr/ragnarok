@@ -57,6 +57,8 @@ let wouldBlock {.importc: "EWOULDBLOCK", header: "<errno.h>".}: cint
 let again {.importc: "EAGAIN", header: "<errno.h>".}: cint
 let interrupted {.importc: "EINTR", header: "<errno.h>".}: cint
 let exists {.importc: "EEXIST", header: "<errno.h>".}: cint
+proc closeNative(fd: cint): cint {.importc: "close", cdecl, header: "<unistd.h>".}
+  ## Retire a descriptor once through its SDK declaration; even EINTR must never cause a retry.
 proc openFile(path: cstring, flags, mode: cint): cint {.importc: "open", cdecl,
     header: "<fcntl.h>".}
   ## The real variadic SDK declaration supplies the platform-correct mode ABI.
@@ -197,8 +199,8 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
   defer:
     if descriptor >= 0:
       if locked: discard lock(descriptor, unlock) # Every refused open releases its own cooperative lock.
-      discard posix.close(descriptor)
-    if directory >= 0: discard posix.close(directory)
+      discard closeNative(descriptor)
+    if directory >= 0: discard closeNative(directory)
   var metadata = default(Stat)
   if posix.fstat(descriptor, metadata) != 0 or not S_ISREG(
       metadata.st_mode): return FileError.IoFailure
@@ -310,8 +312,8 @@ proc close*(repository: var FileRepository): FileError =
   discard repository.memory.close
   repository.context = @[] # Retained detached contexts have their own byte owners.
   let released = lock(descriptor, unlock)
-  let retired = posix.close(descriptor)
-  let parentRetired = posix.close(directory)
+  let retired = closeNative(descriptor)
+  let parentRetired = closeNative(directory)
   if released != 0 or retired != 0 or parentRetired != 0: return FileError.IoFailure
   FileError.None
 proc publish*(repository: var FileRepository, expected: RepositoryView,

@@ -377,3 +377,11 @@ bounded staging cleanup permits a replacement retry. Held readers retain their o
 Refusal at either retired journal or snapshot unlink follows confirmed epoch selection. The
 receipt reports cleanup failure separately, while strict restart keeps the new complete epoch.
 Explicit retired-epoch cleanup is idempotent; no refusal authorizes rollback or directory scans.
+
+## One-shot descriptor retirement
+
+Close uses the SDK prototype exactly once and never retries even EINTR. Native tests retire each
+legacy and managed descriptor, immediately reuse its exact number with an independent resource,
+and return EINTR. The replacement remains live after close and repeated owner retirement,
+while strict reopen preserves complete bytes/maps. This models retirement before an error receipt;
+it makes no claim that every operating system retires descriptors on every close error.

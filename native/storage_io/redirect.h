@@ -33,4 +33,8 @@
 #define unlinkat storage_io_unlinkat
 #endif
 
+#ifdef RAGNAROK_STORAGE_IO_CLOSE
+#define close storage_io_close
+#endif
+
 #endif
