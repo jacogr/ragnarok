@@ -63,12 +63,12 @@ proc encodeFrame(generation: RepositoryGeneration, batch: TrieExport,
   let prefix = int(overhead-32)+context.len
   var bounded = limits
   bounded.encoded = ByteLimit(min(uint64(limits.encoded), maximum-overhead-uint64(context.len)))
-  let body = encodeTrieExport(batch, bounded)
+  var body = encodeTrieExport(batch, bounded)
   if body.error == RecordError.LimitExceeded: return FrameResult[seq[byte]](
       status: FrameError.LimitExceeded)
   if body.error != RecordError.None:
     return FrameResult[seq[byte]](status: FrameError.InvalidRecords, recordReason: body.error)
-  let bytes = body.value
+  let bytes = body.takeValue # The frame builder borrows this single owned body until copying it to output.
   var output = newSeq[byte](bytes.len+prefix+32) # The narrowed inner ceiling proved the addition and allocation.
   putNumber(output, 0, uint64(bytes.len+prefix-16))
   putNumber(output, 8, uint64(generation))
