@@ -117,3 +117,8 @@ No signature, availability-transition or root-authority rule is added.
 E8-gas domains. Its native suite preserves maximum service/gas values and copied role/row fields,
 rejects every truncated prefix and suffix, and separates dictionary/byte/profile failures from
 missing/absent evidence. No privilege update or execution authority is inferred from decoding.
+
+`readGlobalReady` exposes the existing immutable ready-ring owner, retaining complete reports and
+owner-bound dependency sets. Native coverage uses the independent report fixture, preserves slot/
+item/dependency positions and retained children, rejects malformed nested/outer extents, and checks
+report/item/dependency/byte/epoch ceilings independently. Accumulated rings remain a separate type.
