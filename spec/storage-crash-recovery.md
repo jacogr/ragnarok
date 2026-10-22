@@ -67,3 +67,10 @@ and final frame extent. Exact visible prefix bytes are independently checked. In
 fail strict startup; wrong generation/root repair tokens preserve every byte and expose no owner.
 The exact independent prefix token permits truncation and a complete resumed successor. A final
 complete frame refuses the old repair token and cannot be rolled back. Held readers remain valid.
+
+## Legacy publication barrier crashes
+
+`storage_legacy_barrier_crash` independently counts 3 successful observed boundaries and kills after each.
+Pre-append barriers retain the exact prior frame; the final completed sync leaves the exact complete
+successor visible. Strict restart admits only the independently checked generation/root and complete
+authored leaves, while retained parent readers remain unchanged.
