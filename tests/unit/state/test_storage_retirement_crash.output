@@ -1,0 +1,1 @@
+PASS storage_retirement_crash: both actual retired-file unlinks, confirmed new epoch and idempotent cleanup

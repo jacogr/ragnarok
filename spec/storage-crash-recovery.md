@@ -135,3 +135,10 @@ finishes independently of the killed caller; selected/future epoch retirement re
 Strict restart validates the selected manifest and complete authored map, preserves every remaining
 forensic byte, and never chooses staging by filename. Explicit bounded cleanup/replacement retry
 finishes independently of the killed caller; selected/future epoch retirement remains forbidden.
+
+## Managed retirement process crashes
+
+`storage_retirement_crash` verifies both actual retired-file unlinks, confirmed new epoch and idempotent cleanup.
+Strict restart validates the selected manifest and complete authored map, preserves every remaining
+forensic byte, and never chooses staging by filename. Explicit bounded cleanup/replacement retry
+finishes independently of the killed caller; selected/future epoch retirement remains forbidden.
