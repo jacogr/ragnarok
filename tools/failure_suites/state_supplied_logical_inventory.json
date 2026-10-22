@@ -1,0 +1,73 @@
+{
+  "build_name": "state-supplied-logical-inventory-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard supplied logical inventory default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-supplied-logical-inventory-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard supplied logical inventory invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-supplied-logical-inventory-invalid"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard supplied logical inventory reason",
+      "diagnostic": "outcome.status == InventoryFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-supplied-logical-inventory-reason"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Guard supplied logical inventory source",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source"
+      },
+      "name": "state-supplied-logical-inventory-source"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Guard supplied logical inventory info",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "info"
+      },
+      "name": "state-supplied-logical-inventory-info"
+    },
+    {
+      "arguments": [
+        "key"
+      ],
+      "description": "Guard supplied logical inventory key",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "key"
+      },
+      "name": "state-supplied-logical-inventory-key"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_supplied_logical_inventory_results.nim"
+}
