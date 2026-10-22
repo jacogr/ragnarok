@@ -39,7 +39,8 @@ proc preparedEffectContexts*(extra: seq[StateEntry] = @[]): PreparedAccumulation
       registrar: ServiceIndex(13), assigners: @[ServiceIndex(14), ServiceIndex(15)]),
           config.privileges).value,
     serviceMetadataEntry(ServiceIndex(42), ServiceMetadata(codeHash: CodeHash(hash),
-      balance: AccountBalance(10), lastAccumulation: AccountSlot(3)), ByteLimit(89)).value,
+      balance: AccountBalance(10), lastAccumulation: AccountSlot(3)), ByteLimit(
+          ServiceMetadataBytes)).value,
     servicePreimageEntry(ServiceIndex(42), ServicePreimageHash(hash), raw,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(1))).value,
     StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 4, 2])]
@@ -47,7 +48,7 @@ proc preparedEffectContexts*(extra: seq[StateEntry] = @[]): PreparedAccumulation
   for entry in extra: entries.add(entry)
   let state = newStateStore(entries, StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(100),
     perValue: ByteLimit(10000), totalValueBytes: ByteLimit(10000), nodes: TrieNodeLimit(10000)),
-    writes: ElementLimit(1), writeValueBytes: ByteLimit(89))).value.snapshot.value
+    writes: ElementLimit(1), writeValueBytes: ByteLimit(ServiceMetadataBytes))).value.snapshot.value
   let service = prepareAccumulationService(inputs, InvocationServiceIndex(0), state, HeaderSlot(4),
     AccumulationServiceConfig(codeLimit: ServiceCodeLimit(0), preimageBytes: ByteLimit(1))).value
   let invocation = prepareAccumulationInvocation(service, default(StateEntropyWord),

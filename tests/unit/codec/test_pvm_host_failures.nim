@@ -146,14 +146,13 @@ for permitted in [0, 1, 2]:
   assert failed.error == HostExecutionError.ExecutionFailure
   assert failed.executionError == StepError.HostCallLimitExceeded and context.calls == permitted
 
-for action in [HostAction.Halt, HostAction.Panic, HostAction.OutOfGas]:
+for action in [HostAction.Panic, HostAction.OutOfGas]:
   # A host terminal response completes on the final instruction allowance at the nonzero causing PC.
   var context = Context(selectedCall: 2, mode: Terminal, action: action, limit: MemoryByteLimit(2))
   let done = executeWithHost(source(3), context, respond, ExecutionStepLimit(2),
     HostCallLimit(2), GasCycleLimit(0))
   assert done.error == HostExecutionError.None and context.calls == 2
-  let expected = (if action == HostAction.Halt: StepExit.Halt
-    elif action == HostAction.Panic: StepExit.Panic else: StepExit.OutOfGas)
+  let expected = (if action == HostAction.Panic: StepExit.Panic else: StepExit.OutOfGas)
   assert done.value.exit == expected and uint64(machineInfo(done.value.machine).value.pc) == 2
 
 # Real fetch limit refusal is distinct from both a permission panic and guest gas underflow.
@@ -165,9 +164,9 @@ for writable in [false, true]:
       HostCallLimit(1), GasCycleLimit(0))
     assert context.calls == 1
     if credit == 0:
-      # The host's negative gas balance remains a completed OutOfGas outcome, never a local failure.
+      # The host's saturated zero gas balance remains a completed OutOfGas outcome, never a local failure.
       assert done.error == HostExecutionError.None and done.value.exit == StepExit.OutOfGas
-      assert uint64(machineInfo(done.value.machine).value.gasDeficit) == 81
+      assert uint64(machineInfo(done.value.machine).value.gasDeficit) == 0
     else:
       # Neither writable nor readonly memory changes a local copy-limit refusal into a panic.
       assert done.error == HostExecutionError.HostFailure and done.hostError ==

@@ -34,17 +34,18 @@ type
 proc batchEnvelope*(ending: BatchEnding): seq[byte] =
   ## Assemble two provides around a checkpoint; instruction bytes and opcode boundaries are independently authored.
   var instructions = @[registerImmediate(7, 42), registerImmediate(8, 65536),
-    registerImmediate(9, 1), @[10'u8, 27], @[10'u8, 18], registerImmediate(7, 99),
-    registerImmediate(8, 196608), @[10'u8, 27]]
+    registerImmediate(9, 1), @[10'u8, 28], @[10'u8, 19], registerImmediate(7, 99),
+    registerImmediate(8, 196608), @[10'u8, 28]]
   if ending in {BatchEnding.StorageHalt, BatchEnding.StoragePanic,
       BatchEnding.StorageCheckpointPanic}:
-    instructions.add(registerImmediate(7, 65536))
-    instructions.add(registerImmediate(8, 1))
-    instructions.add(registerImmediate(9, 196608))
-    instructions.add(registerImmediate(10, 1))
+    instructions.add(@[51'u8, 7, 255]) # Current self selector is independent of the preceding provide verdict.
+    instructions.add(registerImmediate(8, 65536))
+    instructions.add(registerImmediate(9, 1))
+    instructions.add(registerImmediate(10, 196608))
+    instructions.add(registerImmediate(11, 1))
     instructions.add(@[10'u8, 5]) # Existing PVM write PR: one-byte raw key/value in the invoking service.
     if ending == BatchEnding.StorageCheckpointPanic:
-      instructions.add(@[10'u8, 18]) # A checkpoint now retains the storage mutation as exceptional state.
+      instructions.add(@[10'u8, 19]) # A checkpoint now retains the storage mutation as exceptional state.
   case ending
   of BatchEnding.Halt, BatchEnding.StorageHalt:
     discard # r8 remains an address rather than the exactly-32-byte halt-return length.
@@ -127,7 +128,7 @@ proc batchFixture*(first = BatchEnding.Halt, second = BatchEnding.Halt,
     let hash = array[32, byte](blake2b256(preimage).value)
     entries.add(serviceMetadataEntry(service, ServiceMetadata(codeHash: CodeHash(hash),
       balance: AccountBalance(if index == 0: 10 else: 20), lastAccumulation: AccountSlot(5)),
-          ByteLimit(89)).value)
+          ByteLimit(ServiceMetadataBytes)).value)
     entries.add(servicePreimageEntry(service, ServicePreimageHash(hash), preimage,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(preimage.len))).value)
   var limits = integrationStoreLimits(writes = writes)

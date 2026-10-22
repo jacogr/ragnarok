@@ -24,7 +24,7 @@ def mapping(state):
     for account in state['accounts']:
         # Metadata is synthetic account presence, not a claim of a complete published JAM state mapping.
         service = account['id']
-        entries.append((account_key(service), bytes(89)))
+        entries.append((account_key(service), bytes(105)))
         for item in account['data']['preimage_blobs']:
             # Exact opaque blobs use the independently implemented preimage namespace.
             digest = bytes.fromhex(item['hash'][2:])

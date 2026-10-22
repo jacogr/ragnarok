@@ -20,7 +20,7 @@ import ../../support/[pvm_assured_outcomes, pvm_computed_storage_program,
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode actual canonical account fields at each state owner rather than substitute copied observations.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      42))).value.bytes, ByteLimit(89)).value.metadata
+      42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   ## Exact prefix bytes include the list count and first record tag; footprint remains one three-byte value.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value

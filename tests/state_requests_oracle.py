@@ -42,6 +42,8 @@ def encode(service,identity,length,slots,config):
         return checked
     if key_limit<32:
         return 'limitexceeded'
+    if length>=2**32-2:
+        return 'invalidlength'
     return key(service,identity,length).hex()+' '+wire(slots).hex()
 
 
@@ -117,7 +119,8 @@ def requests():
     # Source modes are valid tagged alternatives; impossible source arities are not manufactured with unsafe casts.
     def enc(service,identity,length,slots,config=(MAX,MAX,MAX),op='V'):
         lines.append(' '.join(map(str,[op,*config,service,identity.hex(),length,len(slots),*slots])))
-        expected.append(encode(service,identity,length,slots,config) if op=='V' else tree([(key(service,identity,length),wire(slots))])[0].hex())
+        observed=encode(service,identity,length,slots,config)
+        expected.append(observed if op=='V' or observed=='invalidlength' else tree([(key(service,identity,length),wire(slots))])[0].hex())
     # Hostile wire counts remain independently expressible without constructing an invalid source variant.
     def dec(data,config=(MAX,MAX)):
         lines.append(f'D {config[0]} {config[1]} {token(data)}');expected.append(decode(data,config))

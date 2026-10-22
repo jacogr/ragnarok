@@ -60,6 +60,13 @@ class RequestNamespaceHarness(unittest.TestCase):
         with self.assertRaises(ValueError):
             fresh_solicit(restored, case['identity'], U32-1)
 
+    # Current request encoding rejects the historical collision lengths before composition.
+    def test_current_reserved_length_rejection(self):
+        from state_requests_oracle import encode
+        for length in (U32-1,U32):
+            self.assertEqual(encode(7,bytes(32),length,(),(32,3,13)), 'invalidlength')
+        self.assertNotEqual(encode(7,bytes(32),U32-2,(),(32,3,13)), 'invalidlength')
+
     # Both counterexamples use at most one short stored value and one short preimage, never an advertised-size blob.
     def test_small_payloads(self):
         for case in witnesses():

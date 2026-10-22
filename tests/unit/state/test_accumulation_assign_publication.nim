@@ -34,14 +34,14 @@ proc envelope(core: uint64, original: uint32, marker: byte, ending: Ending): seq
   for index in 64..<96: payload[index] = marker+byte(index-64)
   let next = if ending == Restore: uint64(original) else: 77+core
   var instructions = @[registerImmediate(7, core), registerImmediate(8, 196608),
-    registerImmediate(9, next), @[10'u8, 16]]
+    registerImmediate(9, next), @[10'u8, 17]]
   if ending == CheckpointPanic: instructions.add(@[10'u8,
-      18]) # Freeze assignment provenance, queue and roles together.
+      19]) # Freeze assignment provenance, queue and roles together.
   if ending == Restore:
     instructions.add(registerImmediate(7, core))
     instructions.add(registerImmediate(8, 196704))
     instructions.add(registerImmediate(9, uint64(original)))
-    instructions.add(@[10'u8, 16]) # Restore original global bytes without erasing successful-assignment provenance.
+    instructions.add(@[10'u8, 17]) # Restore original global bytes without erasing successful-assignment provenance.
   if ending in {Panic, CheckpointPanic}: instructions.add(@[
       0'u8]) # Genuine guest trap selects the exceptional implication.
   instructions.add(@[50'u8, 0])
@@ -59,10 +59,11 @@ proc expected(fixture: BatchFixture, first, second: Ending): seq[StateEntry] =
     for index, ending in [first, second]:
       let service = ServiceIndex(if index == 0: 42 else: 99)
       if array[31, byte](record.key) == array[31, byte](chapterServiceKey(StateChapter(255), service)):
-        let decoded = decodeServiceMetadata(record.value, ByteLimit(89)).value.metadata
+        let decoded = decodeServiceMetadata(record.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         var account = decoded
         account.balance = AccountBalance(if index == 0: 17 else: 31)
-        row = serviceMetadataEntry(service, account, ByteLimit(89)).value
+        row = serviceMetadataEntry(service, account, ByteLimit(ServiceMetadataBytes)).value
       if ending in {Halt, CheckpointPanic}:
         if array[31, byte](record.key) == array[31, byte](chapterKey(StateChapter(2))):
           for offset in 0..<32: row.value[index*2560+64+offset] = byte((if index ==
@@ -176,8 +177,8 @@ proc checkManagerGate() =
   payload[4] = 99
   let program = guestEnvelope([registerImmediate(7, 77), registerImmediate(8, 196608),
     registerImmediate(9, 0), registerImmediate(10, 0), registerImmediate(11, 0),
-    registerImmediate(12, 0), @[10'u8, 15], registerImmediate(7, 0),
-    registerImmediate(8, 196608), registerImmediate(9, 42), @[10'u8, 16], @[50'u8, 0]],
+    registerImmediate(12, 0), @[10'u8, 16], registerImmediate(7, 0),
+    registerImmediate(8, 196608), registerImmediate(9, 42), @[10'u8, 17], @[50'u8, 0]],
         writable = payload)
   let fixture = batchFixture(firstEnvelope = program, secondEnvelope = guestEnvelope([@[50'u8, 0]]),
     assigners = @[ServiceIndex(42), ServiceIndex(99)], manager = 42)

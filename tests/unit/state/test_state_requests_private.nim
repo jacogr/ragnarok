@@ -29,7 +29,7 @@ proc source(count: int): RequestHistory =
 proc escaped(count: int, policy: RequestEntryConfig): RequestHistoryRead =
   var original = source(count)
   let encoded = serviceRequestEntry(ServiceIndex(1729), default(ServicePreimageHash), RequestLength(
-      high(uint32)), original, policy)
+      high(uint32)-2), original, policy)
   assert encoded.error == RequestError.None
   original = requestedHistory()
   var wire = encoded.value.value

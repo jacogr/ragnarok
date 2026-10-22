@@ -44,7 +44,7 @@ proc source(core = 0'u64, address = 196608'u64, assigner = 99'u64,
     initialAssigner = 42'u32, credit = 100000'u64, data: seq[byte] = payload(),
     suffix: seq[seq[byte]] = @[@[50'u8, 0]]): PreparedAccumulationMachine =
   var instructions = @[registerImmediate(7, core), registerImmediate(8, address),
-    registerImmediate(9, assigner), @[10'u8, 16]]
+    registerImmediate(9, assigner), @[10'u8, 17]]
   for instruction in suffix:
     instructions.add(instruction) # Execute follow-up instructions through the production engine.
   guestProgram(instructions, credit, assigner = initialAssigner, manager = 42, writable = data,
@@ -147,7 +147,7 @@ for available in [0'u64, 1817, 1818, 1819]:
   assert completed.error == AccumulationDispatchError.None, "host gas edge completes"
   let cpu = machineInfo(completed.value.machine).value
   if available < 1818:
-    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 1818-available, "exact assign gas deficit"
+    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0, "exact assign gas deficit"
     assert uint64(cpu.registers[7]) == 0, "OOG preserves core register"
     checkState(context(completed), 0, 42, zeros)
   else:
@@ -157,19 +157,19 @@ assert run(low, limit = 0, params = pvmParameters()).value.exit == StepExit.OutO
 let huge = run(source(credit = high(uint64)))
 assert uint64(machineInfo(huge.value.machine).value.gas) == high(uint64)-price(valid)-1818, "full-width credit subtraction"
 # After handoff the same invoking service cannot authorize another replacement of that core.
-let handed = run(source(suffix = @[registerImmediate(7, 0), @[10'u8, 16], @[50'u8, 0]]))
+let handed = run(source(suffix = @[registerImmediate(7, 0), @[10'u8, 17], @[50'u8, 0]]))
 assert uint64(machineInfo(handed.value.machine).value.registers[7]) == high(uint64)-8, "next call observes current assigner"
 checkState(context(handed), 0, 99, payload())
 for checkpoint in [false, true]:
-  let suffix = (if checkpoint: @[@[10'u8, 18], @[0'u8]] else: @[@[0'u8]])
+  let suffix = (if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])
   let completed = run(source(suffix = suffix))
   assert completed.value.exit == StepExit.Panic, "authored terminal panic"
   let normalized = normalizeAccumulationOutcome(completed)
   checkState(normalized.value.outcomeContext.value, 0, (if checkpoint: 99'u32 else: 42'u32),
     (if checkpoint: payload() else: zeros)) # Checkpoint selects both chapters and both typed owners together.
 for checkpoint in [false, true]:
-  let suffix = (if checkpoint: @[@[10'u8, 18], registerImmediate(7, 0), @[10'u8, 16], @[50'u8, 0]] else:
-    @[registerImmediate(7, 0), @[10'u8, 16], @[50'u8, 0]])
+  let suffix = (if checkpoint: @[@[10'u8, 19], registerImmediate(7, 0), @[10'u8, 17], @[50'u8, 0]] else:
+    @[registerImmediate(7, 0), @[10'u8, 17], @[50'u8, 0]])
   let completed = run(source(credit = price(valid)+2000, suffix = suffix))
   assert completed.error == AccumulationDispatchError.None and completed.value.exit ==
       StepExit.OutOfGas, "second assign exhausts gas"
@@ -178,9 +178,9 @@ for checkpoint in [false, true]:
   checkState(normalizeAccumulationOutcome(completed).value.outcomeContext.value, 0,
     (if checkpoint: 99'u32 else: 42'u32), (if checkpoint: payload() else: zeros)) # OOG selects the exact complete checkpoint.
 # Preserve accepted queues across later storage and yield mutations through all EffectData constructors.
-let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 26],
-  registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
-  registerImmediate(10, 3), @[10'u8, 5], @[50'u8, 0]]))
+let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 27],
+  @[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1), registerImmediate(10, 196608),
+  registerImmediate(11, 3), @[10'u8, 5], @[50'u8, 0]]))
 assert preserved.error == AccumulationDispatchError.None, "assign/yield/storage execution succeeds"
 checkState(context(preserved), 0, 99, payload())
 assert context(preserved).effectInfo.value.hasYield, "yield remains present after storage"

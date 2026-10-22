@@ -1,5 +1,16 @@
 # WebSocket JSON-RPC foundation
 
+## Current unreleased request/account boundary
+
+The [coordinated Gray Paper upgrade](graypaper-unreleased-upgrade.md) uses105-byte
+account metadata. Request lengths are strictly below2^32−2; both reserved E4
+selectors refuse even when their historical colliding keys are absent. The older
+full-E4 ambiguity observations below are retained release-era evidence. Current
+invalid-selector error classification remains a separate API cleanup; no invalid
+request key is hashed or admitted by the current codec. The authored live-RPC fixture
+uses105-byte account records; its expected complete-map root is recomputed by the
+independent trie oracle, with the supplied header and header hash unchanged.
+
 References: [JIP-2 at 14b55b8135285c2239a5ada8a86337907bc17108](https://github.com/polkadot-fellows/JIPs/blob/14b55b8135285c2239a5ada8a86337907bc17108/JIP-2.md),
 Protocol and Methods; [JSON-RPC 2.0](https://www.jsonrpc.org/specification), updated 2013-01-04,
 sections 4–6; [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455), sections 4–7.

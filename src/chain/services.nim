@@ -107,14 +107,14 @@ proc servicePreimage*(view: Genesis, service: ServiceIndex, hash: ServicePreimag
 
 proc serviceRequest*(view: Genesis, service: ServiceIndex, hash: ServicePreimageHash,
     length: RequestLength): ServiceRequestResult =
-  ## Read a fixed request history from the maintained full-E4 request namespace, without length-sized allocation.
-  ## GP 0.8.0 marker lengths remain valid inputs, but present colliding keys cannot be classified safely.
+  ## Read a fixed history from the current bounded request namespace, without length-sized allocation.
+  ## Reserved E4 prefixes refuse namespace derivation; the older ambiguity alternative remains historical.
   let account = serviceData(view, service, ByteLimit(ServiceMetadataBytes))
   if account.error != ServiceReadError.None:
     return ServiceRequestResult(status: account.error) # An absent account cannot supply request state.
   let derived = serviceRequestKey(service, hash, length, ByteLimit(32))
   if derived.error != RequestError.None:
-    return ServiceRequestResult(status: ServiceReadError.BackendFailure) # Hashing failure is not absence.
+    return ServiceRequestResult(status: ServiceReadError.BackendFailure) # Namespace validation/backend refusal is distinct from absent data.
   let found = view.lookup(derived.value)
   if found.error == StateStoreError.MissingKey:
     return ServiceRequestResult(status: ServiceReadError.Missing) # Even colliding namespaces can prove a key absent.

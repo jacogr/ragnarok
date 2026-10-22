@@ -40,14 +40,15 @@ proc profile(): Parameters =
     bytes[index] = 0 # Set the whole E4 memo-size field, with no stale high bytes.
   bytes[110] = 128
   for index in 74..<78:
-    bytes[index] = 0 # A one-slot lookup age makes the literal expired ejection request independently eligible.
+    bytes[index] = 0 # Retain a validated one-slot lookup age; current eject uses empty-account supervisor authorization.
   bytes[74] = 1
   decodeParameters(bytes).value
 
 proc transfer(destination, amount: uint64): seq[seq[byte]] =
   ## Assemble a complete successful-row proposal; the production host supplies its verdict and debit.
-  @[registerImmediate(7, destination), registerImmediate(8, amount), registerImmediate(9, 0),
-    registerImmediate(10, 196608), @[10'u8, 21]]
+  @[@[51'u8, 7, 255], @[51'u8, 9, 0], registerImmediate(8, destination), registerImmediate(10,
+      amount), registerImmediate(11, 0),
+    registerImmediate(12, 196608), @[10'u8, 22]]
 
 proc append(code: var seq[seq[byte]], more: seq[seq[byte]]) =
   ## Preserve authored instruction boundaries through the existing envelope builder.
@@ -59,10 +60,10 @@ proc envelope(amount = 5'u64, destination = 99'u64, checkpoint = false,
   ## Checkpoint after the first debit, then optionally duplicate it before the selected terminal.
   var code = transfer(destination, amount)
   if checkpoint:
-    code.add(@[10'u8, 18]) # Y retains the exact first debit and outgoing sequence together.
+    code.add(@[10'u8, 19]) # Y retains the exact first debit and outgoing sequence together.
   if repeat:
-    code.add(registerImmediate(7, destination))
-    code.add(@[10'u8, 21]) # Same amount/gas/memo: duplicates are separate debits.
+    code.add(registerImmediate(7, high(uint64)))
+    code.add(@[10'u8, 22]) # Same amount/gas/memo: duplicates are separate debits.
   case ending
   of DebitEnding.Halt:
     discard # Ordinary halt selects every regular append.
@@ -71,9 +72,9 @@ proc envelope(amount = 5'u64, destination = 99'u64, checkpoint = false,
   of DebitEnding.Fault:
     code.add(@[52'u8, 2, 0, 0, 4]) # Unmapped physical load selects the same exceptional checkpoint.
   of DebitEnding.OutOfGas:
-    code.add(registerImmediate(7, destination))
-    code.add(registerImmediate(9, 100000))
-    code.add(@[10'u8, 21]) # Valid third proposal exceeds remaining gas before any new debit or append.
+    code.add(registerImmediate(7, high(uint64)))
+    code.add(registerImmediate(11, 100000))
+    code.add(@[10'u8, 22]) # Valid third proposal exceeds remaining gas before any new debit or append.
   of DebitEnding.HashReturn:
     code.add(registerImmediate(7, 65536))
     code.add(registerImmediate(8, 32)) # Readable return hash overrides only the yield.
@@ -102,7 +103,7 @@ proc prepare(source: BatchFixture, first, second: AccumulationDispatchResult,
 proc metadata(state: StateStoreSnapshot, service: uint32): ServiceMetadata =
   ## Decode the exact canonical record rather than trusting a copied batch balance observation.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255),
-    ServiceIndex(service))).value.bytes, ByteLimit(89)).value.metadata
+    ServiceIndex(service))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 
 proc expectedRows(source: BatchFixture, firstBalance, secondBalance: uint64,
     upgrade = false, storage = false): seq[StateEntry] =
@@ -113,7 +114,8 @@ proc expectedRows(source: BatchFixture, firstBalance, secondBalance: uint64,
     for service in [42'u32, 99'u32]:
       if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
           ServiceIndex(service))):
-        var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var account = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         account.balance = AccountBalance(if service == 42: firstBalance else: secondBalance)
         if service == 42 and upgrade:
           var digest = default(array[32, byte])
@@ -127,7 +129,8 @@ proc expectedRows(source: BatchFixture, firstBalance, secondBalance: uint64,
           account.storageItems = AccountStorageItems(1)
           account.storageBytes = AccountStorageBytes(
               36) # Existing self-write fixture's independently derived footprint.
-        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(
+            ServiceMetadataBytes)).value
     result.add(copied)
   if storage:
     result.add(serviceStorageEntry(ServiceIndex(42), @[73'u8], @[3'u8],
@@ -225,9 +228,11 @@ for incoming in [false, true]:
 for storage in [false, true]:
   for before in [false, true]:
     let mutation = (if storage:
-      @[registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
-        registerImmediate(10, 1), @[10'u8, 5]] else:
-      @[registerImmediate(7, 196608), registerImmediate(8, 7), registerImmediate(9, 9), @[10'u8, 20]])
+      @[@[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1), registerImmediate(
+          10, 196608),
+        registerImmediate(11, 1), @[10'u8, 5]] else:
+      @[@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 7), registerImmediate(
+          10, 9), @[10'u8, 21]])
     var code: seq[seq[byte]] = @[]
     if before:
       append(code, mutation) # A later transfer must preserve an existing supported key proof.
@@ -259,13 +264,18 @@ for before in [false, true]:
   var code: seq[seq[byte]] = @[]
   if before:
     append(code, transfer(99, 5)) # Creation must retain an already certified self debit.
-  append(code, @[registerImmediate(7, 196608), registerImmediate(8, 1), registerImmediate(9, 0),
-    registerImmediate(10, 0), registerImmediate(11, 0), registerImmediate(12, high(uint64)), @[
-        10'u8, 19]])
+  append(code, @[@[51'u8, 7, 255], registerImmediate(8, high(uint64)), @[51'u8, 9, 0],
+    registerImmediate(10, 196736), @[10'u8, 20]])
   if not before:
     append(code, transfer(99, 5)) # Transfer must retain the earlier child's membership proof.
   code.add(@[50'u8, 0])
-  let source = fixture(guestEnvelope(code, memo()))
+  var childInput = memo()
+  childInput.setLen(188)
+  for index in 0..<32:
+    let octet = childInput[index]
+    childInput[128+index] = octet # Scalar extraction ends the immutable borrow before the destination mutation.
+  childInput[160] = 1 # Current E4 code length follows that code hash at RW+128.
+  let source = fixture(guestEnvelope(code, childInput))
   let first = batchExecution(source, 0, copyLimit = MemoryByteLimit(128), parameters = profile(),
     transferLimit = ElementLimit(1), createdAccounts = ElementLimit(1),
         serviceProbes = ServiceProbeLimit(1))
@@ -284,7 +294,8 @@ for before in [false, true]:
     digest[index] = input[index] # Literal code-hash proposal is copied exactly into child metadata.
   rows.add(serviceMetadataEntry(child, ServiceMetadata(codeHash: CodeHash(digest),
     storageItems: AccountStorageItems(2), storageBytes: AccountStorageBytes(82),
-    created: AccountSlot(128), parent: ServiceIndex(42)), ByteLimit(89)).value)
+    supervisor: ServiceIndex(42), created: AccountSlot(128), parent: ServiceIndex(42)), ByteLimit(
+        ServiceMetadataBytes)).value)
   rows.add(serviceRequestEntry(child, ServicePreimageHash(digest), RequestLength(1),
       requestedHistory(),
     RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
@@ -300,24 +311,17 @@ for before in [false, true]:
   let digest = ServicePreimageHash(array[32, byte](blake2b256(blob).value))
   var input = memo()
   for index, octet in array[32, byte](digest):
-    input[index] = octet # Eject reads this exact eligible request hash; transfer copies the same fixed memo.
+    input[index] = octet # Eject ignores memo/hash bytes; transfer retains this exact fixed memo.
   var identity = default(array[32, byte])
   identity[0] = 42
   let target = @[
     serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(codeHash: CodeHash(identity),
-        balance: AccountBalance(9),
-      storageItems: AccountStorageItems(2), storageBytes: AccountStorageBytes(84)), ByteLimit(
-          89)).value,
-    serviceRequestEntry(ServiceIndex(77), digest, RequestLength(3), unavailableHistory(RequestSlot(
-        5), RequestSlot(7)),
-      RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
-          3), maxBytes: ByteLimit(13)))).value,
-    servicePreimageEntry(ServiceIndex(77), digest, blob, ServiceEntryLimits(keyBytes: ByteLimit(32),
-        valueBytes: ByteLimit(3))).value]
+      supervisor: ServiceIndex(42), balance: AccountBalance(9)), ByteLimit(
+          ServiceMetadataBytes)).value]
   var code: seq[seq[byte]] = @[]
   if before:
     append(code, transfer(99, 5)) # A later eject must retain the prior debit's supported ancestry.
-  append(code, @[registerImmediate(7, 77), registerImmediate(8, 196608), @[10'u8, 22]])
+  append(code, @[registerImmediate(7, 77), registerImmediate(8, 196608), @[10'u8, 23]])
   if not before:
     append(code, transfer(99, 5)) # A later transfer must preserve the captured deletion facts.
   code.add(@[50'u8, 0])
@@ -336,7 +340,7 @@ for before in [false, true]:
     var removed = false
     for deleted in target:
       if array[31, byte](entry.key) == array[31, byte](deleted.key):
-        removed = true # The three exact eligible target records are absent from the expected posterior.
+        removed = true # The empty target metadata is the only deleted service record.
     if not removed:
       rows.add(entry) # Preserve every unrelated record and the independently credited/debited self metadata.
   var state = source.state
@@ -377,7 +381,8 @@ var writes: seq[StateWrite] = @[]
 for service in [42'u32, 99'u32]:
   var account = metadata(withProvision.state.snapshot.value, service)
   account.balance = AccountBalance(if service == 42: 12 else: 31)
-  let entry = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+  let entry = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(
+      ServiceMetadataBytes)).value
   writes.add(StateWrite(key: entry.key, kind: StateWriteKind.Put, value: entry.value))
 failHash(0)
 discard calibrated.apply(writes).value

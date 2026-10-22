@@ -35,22 +35,23 @@ let input = targetInput()
 
 # Emit one exact upgrade with distinct per-service gas fields and the actual fixed writable input pointer.
 proc upgrade(gas: uint32): seq[seq[byte]] =
-  @[registerImmediate(7, 196608), registerImmediate(8, gas), registerImmediate(9, gas+1), @[10'u8, 20]]
+  @[@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, gas), registerImmediate(10,
+      gas+1), @[10'u8, 21]]
 
 # Assemble repeated upgrade/checkpoint combinations without another bytecode framing implementation.
 proc envelope(gas: uint32, checkpoint = false, panic = false, provide = false,
     repeat = false): seq[byte] =
   var instructions = upgrade(gas)
   if checkpoint:
-    instructions.add(@[10'u8, 18]) # Select the first complete metadata/scope owner on exceptional termination.
+    instructions.add(@[10'u8, 19]) # Select the first complete metadata/scope owner on exceptional termination.
   if repeat:
     for instruction in upgrade(gas+10):
       instructions.add(instruction) # An uncheckpointed later upgrade remains regular only.
   if provide:
     instructions.add(registerImmediate(7, 196608))
-    instructions.add(@[10'u8, 26]) # Yield shares the same metadata-scope lineage before the pending provision.
+    instructions.add(@[10'u8, 27]) # Yield shares the same metadata-scope lineage before the pending provision.
     for instruction in [registerImmediate(7, 42), registerImmediate(8, 65536),
-        registerImmediate(9, 1), @[10'u8, 27]]:
+        registerImmediate(9, 1), @[10'u8, 28]]:
       instructions.add(instruction) # Pending provision must preserve the self-metadata proof.
   instructions.add(if panic: @[0'u8] else: @[50'u8, 0])
   guestEnvelope(instructions, input)
@@ -58,7 +59,7 @@ proc envelope(gas: uint32, checkpoint = false, panic = false, provide = false,
 # Extract canonical metadata by exact own service key; no selected observation supplies the expected values.
 proc metadata(state: StateStoreSnapshot, service: uint32): ServiceMetadata =
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255),
-    ServiceIndex(service))).value.bytes, ByteLimit(89)).value.metadata
+    ServiceIndex(service))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 
 # Plan complete coverage while permitting input execution order to be reversed independently of numeric service order.
 proc prepare(fixture: BatchFixture, first, second: AccumulationDispatchResult,
@@ -76,7 +77,8 @@ proc expected(fixture: BatchFixture, firstGas, secondGas: uint32, incoming = tru
     for ordinal, service in [42'u32, 99'u32]:
       if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
           ServiceIndex(service))):
-        var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var account = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         if incoming:
           account.balance = AccountBalance(if ordinal ==
               0: 17 else: 31) # Distinct original balances plus actual incoming amounts.
@@ -85,7 +87,8 @@ proc expected(fixture: BatchFixture, firstGas, secondGas: uint32, incoming = tru
           account.codeHash = CodeHash(digest)
           account.minimumAccumulationGas = Gas(uint64(gas))
           account.minimumTransferGas = Gas(uint64(gas)+1) # Full independently encoded metadata must match.
-        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(
+            ServiceMetadataBytes)).value
     rows.add(copied) # Preserve all unrelated code, storage, request and opaque chapter entries.
   newStateStore(rows, integrationStoreLimits()).value
 
@@ -145,11 +148,11 @@ block broader_mutation_is_sticky:
   for storage in [false, true]:
     var instructions: seq[seq[byte]] = @[]
     if storage:
-      instructions = @[registerImmediate(7, 65536), registerImmediate(8, 1),
-        registerImmediate(9, 196608), registerImmediate(10, 1), @[10'u8, 5]] # Real self storage mutation.
+      instructions = @[@[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1),
+        registerImmediate(10, 196608), registerImmediate(11, 1), @[10'u8, 5]] # Real self storage mutation.
     else:
-      instructions = @[registerImmediate(7, 196608), registerImmediate(8, 3), @[10'u8,
-          24]] # Real request mutation.
+      instructions = @[@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 3), @[
+          10'u8, 25]] # Real request mutation.
     for instruction in upgrade(7):
       instructions.add(instruction) # A later upgrade cannot relabel the broader lineage as self-metadata-only.
     instructions.add(@[50'u8, 0])
@@ -194,7 +197,8 @@ block late_backend_atomicity:
     account.codeHash = CodeHash(digest)
     account.minimumAccumulationGas = Gas(if service == 42: 7 else: 19)
     account.minimumTransferGas = Gas(if service == 42: 8 else: 20)
-    let entry = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+    let entry = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(
+        ServiceMetadataBytes)).value
     writes.add(StateWrite(key: entry.key, kind: StateWriteKind.Put, value: entry.value))
   failHash(0)
   discard credited.apply(writes).value

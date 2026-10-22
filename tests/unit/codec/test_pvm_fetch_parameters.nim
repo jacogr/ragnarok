@@ -96,7 +96,7 @@ for offset in [0'u64, 1'u64, 24'u64, 33'u64, 66'u64, 121'u64, 122'u64, high(uint
       let count = (if funded: min(requested, 122'u64 - start) else: 0'u64)
       assert reply.action == (if funded: HostAction.Continue else: HostAction.OutOfGas)
       assert uint64(reply.gas) == (if funded: credit - 390 else: 0'u64)
-      assert uint64(reply.gasDeficit) == (if funded: 0'u64 else: 390 - credit)
+      assert uint64(reply.gasDeficit) == 0
       for i in 0..<13:
         # Only funded r7 changes and reports the complete tuple length.
         assert uint64(reply.registers[i]) == (if i == 7 and funded: 122'u64 else: uint64(regs[i]))

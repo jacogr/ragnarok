@@ -1,5 +1,18 @@
 # Accumulation transfer host
 
+## Current unreleased pin
+
+The [coordinated upgrade](graypaper-unreleased-upgrade.md) targets
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. Current transfer is selector22:
+r7/r8 select source/destination (all ones means self), r9 is the mode, r10 the
+amount, r11 the deferred gas and r12 the memo address. Self/liquid deferred
+mode0 is implemented. Direct transfers, foreign funding and modes1–3 retain
+explicit implementation gates. Undefined modes return HUH after memo readability
+and account existence; refusals charge575 only and cannot debit or append. A zero
+memo pointer skips capture on this refusal path. Underfunding drains gas to zero.
+Current deferred-transfer records are154 bytes, including the supervisor-credit
+flag. The release-era details and evidence below describe the historical layout.
+
 ## Scope and authority
 
 Implement transfer (21), Omega_T, against GP 0.8.0 revision

@@ -473,8 +473,8 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
       deletedProofs += uint64(removed)
       createdProofs += uint64(children)
       for ordinal in 0..<removed:
-        if writes.len > high(int) div sizeof(StateWrite)-3:
-          fail(AccumulationBatchError.LimitExceeded) # At most metadata/request/preimage deletions accompany one target.
+        if writes.len >= high(int) div sizeof(StateWrite):
+          fail(AccumulationBatchError.LimitExceeded) # Each empty target contributes one metadata deletion.
         let target = context.effectDeletedAccountAt(AccumulationDeletedAccountIndex(uint64(
             ordinal))).value
         for id in ids:
@@ -490,14 +490,8 @@ proc prepareBatch(inputs: PreparedAccumulationInputs, prior: StateStoreSnapshot,
             fail(AccumulationBatchError.UnsupportedAccountEffects) # Only genuine selected recreation can cancel a captured removal.
           # Present-final prior IDs are outside m; their foreign replacement is also excluded from n.
         elif finalRecord.error == StateStoreError.MissingKey:
-          for deletedKey in [target.requestKey, target.preimageKey]:
-            if accounts.lookup(deletedKey).error != StateStoreError.MissingKey:
-              fail(AccumulationBatchError.UnsupportedAccountEffects) # No leftover foreign component may escape an actual removal.
+          # Current eject proves an empty account: its only serialized component is metadata.
           writes.add(StateWrite(key: key, kind: StateWriteKind.Delete))
-          writes.add(StateWrite(key: target.requestKey, kind: StateWriteKind.Delete))
-          if compareAccountKey(target.requestKey, target.preimageKey) != 0:
-            writes.add(StateWrite(key: target.preimageKey,
-                kind: StateWriteKind.Delete)) # Preserve the parked namespace alias without duplicate descriptors.
           inc deletedCount
         else:
           fail(AccumulationBatchError.UnsupportedAccountEffects) # An invalid final map cannot prove either presence or absence.

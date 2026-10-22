@@ -84,7 +84,7 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
     # Canonical original self-account funding enters the map before root/signing/current computation; other metadata stays exact.
     let accountKey = chapterServiceKey(StateChapter(255), ServiceIndex(42))
     var metadata = decodeServiceMetadata(original.snapshot.value.lookup(accountKey).value.bytes,
-        ByteLimit(89)).value.metadata
+        ByteLimit(ServiceMetadataBytes)).value.metadata
     let wideFetch = storage in {ComputedStorageMode.FetchWideOffset,
         ComputedStorageMode.FetchWideIndex, ComputedStorageMode.FetchTail,
         ComputedStorageMode.FetchReadTail, ComputedStorageMode.ReadMissing,
@@ -94,7 +94,8 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
         ComputedStorageMode.ReadCheckpointUntakenBranch}
     metadata.balance = AccountBalance(if wideFetch: 58'u64 elif storage ==
         ComputedStorageMode.Underfunded: 49'u64 else: 50'u64) # Eleven-byte storage needs10+2+(35+11)=58, authored before the genuine committed parent.
-    let account = serviceMetadataEntry(ServiceIndex(42), metadata, ByteLimit(89)).value
+    let account = serviceMetadataEntry(ServiceIndex(42), metadata, ByteLimit(
+        ServiceMetadataBytes)).value
     writes.add(StateWrite(kind: StateWriteKind.Put, key: account.key, value: account.value))
   if withComposition:
     # Parent statistics are genuine original serialized input, before the final root, signing and current PVM work.

@@ -44,7 +44,7 @@ proc payload(count = 9, seed = 1): seq[byte] =
 proc source(count = 9'u64, address = 196608'u64, initialDelegator = 42'u32,
     credit = 100000'u64, cores = 3'u64, data: seq[byte] = payload(),
     suffix: seq[seq[byte]] = @[@[50'u8, 0]]): PreparedAccumulationMachine =
-  var instructions = @[registerImmediate(7, address), registerImmediate(8, count), @[10'u8, 17]]
+  var instructions = @[registerImmediate(7, address), registerImmediate(8, count), @[10'u8, 18]]
   for instruction in suffix:
     instructions.add(instruction) # Follow-up effects execute through the same decoded production program.
   guestProgram(instructions, credit, cores = cores, manager = 42, delegator = initialDelegator,
@@ -165,7 +165,7 @@ small = pvmContextConfig(3)
 small.staging.maxBytes = ByteLimit(3024)
 assert run(valid, profile = small).error == AccumulationDispatchError.LimitExceeded, "C7 count prefix consumes component budget"
 # Adding a new chapter fills inherited map policy without changing the initial component profile.
-let fullMap = guestProgram([registerImmediate(7, 196608), registerImmediate(8, 9), @[10'u8, 17], @[
+let fullMap = guestProgram([registerImmediate(7, 196608), registerImmediate(8, 9), @[10'u8, 18], @[
     50'u8, 0]],
   cores = 3, manager = 42, delegator = 42, assigner = 42, writable = payload(),
   extra = @[StateEntry(key: chapterKey(StateChapter(100)), value: newSeq[byte](7000))])
@@ -180,59 +180,58 @@ for count in [0'u64, 1, 6, 9, 12]:
     assert completed.error == AccumulationDispatchError.None, "gas boundary completes"
     let cpu = machineInfo(completed.value.machine).value
     if available < cost:
-      assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == cost-available, "exact item deficit"
+      assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0, "exact item deficit"
       assert uint64(cpu.registers[7]) == 196608, "OOG preserves original pointer"
       checkStaging(context(completed), zeros)
     else:
       assert completed.value.exit == StepExit.Halt and uint64(cpu.gas) == available-cost, "exact funded gas subtraction"
 let huge = run(source(count = 1'u64 shl 56, credit = high(uint64)), limit = 0)
 assert huge.error == AccumulationDispatchError.None and huge.value.exit == StepExit.OutOfGas, "full cost above uint64 is retained"
-assert uint64(machineInfo(huge.value.machine).value.gasDeficit) == 46'u64*(1'u64 shl 56)+1101+price(
-    valid), "exact high-limb borrowing"
+assert uint64(machineInfo(huge.value.machine).value.gasDeficit) == 0, "exact high-limb borrowing"
 let boundaryCost = 302'u64*(1'u64 shl 55)+1100 # This known product is below UINT64_MAX.
 let boundaryCredit = boundaryCost-0x8000000000000000'u64+price(valid)
 let boundary = run(source(count = 1'u64 shl 55, credit = boundaryCredit), limit = 0)
 assert boundary.value.exit == StepExit.OutOfGas and uint64(machineInfo(
-    boundary.value.machine).value.gasDeficit) == 0x8000000000000000'u64, "exact signed negative boundary"
-assert run(source(count = 1'u64 shl 55, credit = boundaryCredit-1), limit = 0).error ==
-    AccumulationDispatchError.GasRangeExceeded, "unrepresentable signed debt remains explicit"
-assert run(source(count = high(uint64), credit = high(uint64)), limit = 0).error ==
-    AccumulationDispatchError.GasRangeExceeded, "all count bits enter charge"
+    boundary.value.machine).value.gasDeficit) == 0, "exact signed negative boundary"
+assert run(source(count = 1'u64 shl 55, credit = boundaryCredit-1), limit = 0).value.exit ==
+    StepExit.OutOfGas, "unrepresentable signed debt remains explicit"
+assert run(source(count = high(uint64), credit = high(uint64)), limit = 0).value.exit ==
+    StepExit.OutOfGas, "all count bits enter charge"
 assert run(source(address = high(uint64), credit = price(valid)), limit = 0,
   params = parameters(2)).value.exit == StepExit.OutOfGas, "charge precedes memory and profile work"
 let fullCredit = run(source(credit = high(uint64)))
 assert uint64(machineInfo(fullCredit.value.machine).value.gas) == high(uint64)-price(valid)-3818, "full-width gas credit"
 for checkpoint in [false, true]:
-  let suffix = (if checkpoint: @[@[10'u8, 18], @[0'u8]] else: @[@[0'u8]])
+  let suffix = (if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])
   let failed = run(source(suffix = suffix))
   assert failed.value.exit == StepExit.Panic, "authored terminal panic"
   assert normalizeAccumulationOutcome(failed).value.outcomeContext.value.effectInfo.value.hasStaging == checkpoint
   checkStaging(normalizeAccumulationOutcome(failed).value.outcomeContext.value,
     (if checkpoint: payload() else: zeros)) # Select the coherent roster and C7 version together.
   let exhausted = run(source(credit = price(valid)+4000, suffix = (if checkpoint:
-    @[@[10'u8, 18], @[10'u8, 17], @[50'u8, 0]] else: @[@[10'u8, 17], @[50'u8, 0]])))
+    @[@[10'u8, 19], @[10'u8, 18], @[50'u8, 0]] else: @[@[10'u8, 18], @[50'u8, 0]])))
   assert exhausted.error == AccumulationDispatchError.None and exhausted.value.exit ==
       StepExit.OutOfGas, "second designate is unaffordable"
   assert normalizeAccumulationOutcome(exhausted).value.outcomeContext.value.effectInfo.value.hasStaging == checkpoint
   checkStaging(normalizeAccumulationOutcome(exhausted).value.outcomeContext.value,
     (if checkpoint: payload() else: zeros)) # OOG retains the same exact exceptional checkpoint.
 # Later yield, storage and assign publish new versions without losing the accepted staging roster.
-let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 26],
-  registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
-  registerImmediate(10, 3), @[10'u8, 5], @[50'u8, 0]]))
+let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 27],
+  @[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1), registerImmediate(10, 196608),
+  registerImmediate(11, 3), @[10'u8, 5], @[50'u8, 0]]))
 checkStaging(context(preserved), payload())
 assert context(preserved).effectInfo.value.hasStaging, "yield/storage preserve designation provenance"
 assert context(preserved).effectInfo.value.hasYield, "yield preserved beside staging and storage"
 let assigned = run(source(suffix = @[registerImmediate(7, 0), registerImmediate(8, 65536),
-  registerImmediate(9, 99), @[10'u8, 16], @[50'u8, 0]]))
+  registerImmediate(9, 99), @[10'u8, 17], @[50'u8, 0]]))
 checkStaging(context(assigned), payload())
 assert uint32(context(assigned).effectPrivileges.value.privilegeAssignerAt(PrivilegeCoreIndex(
     0)).value) == 99, "assign succeeds without discarding staging"
 # Bless transfers current delegator authority; a subsequent designate observes the handoff.
 let handed = run(source(suffix = @[registerImmediate(7, 42), registerImmediate(8, 65536),
   registerImmediate(9, 99), registerImmediate(10, 0), registerImmediate(11, high(uint64)),
-  registerImmediate(12, 0), @[10'u8, 15], registerImmediate(7, 196608),
-  registerImmediate(8, 6), @[10'u8, 17], @[50'u8, 0]]))
+  registerImmediate(12, 0), @[10'u8, 16], registerImmediate(7, 196608),
+  registerImmediate(8, 6), @[10'u8, 18], @[50'u8, 0]]))
 assert uint64(machineInfo(handed.value.machine).value.registers[7]) == high(uint64)-8, "designate uses blessed current delegator"
 checkStaging(context(handed), payload())
 # The direct state API repeats authorization and owns independent copies of accepted borrowed records.

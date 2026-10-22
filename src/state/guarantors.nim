@@ -133,7 +133,7 @@ proc table(roster: ValidatorStateSnapshot, entropy: StateEntropyWord, slot: uint
     let record = validatorAt(roster, StateValidatorIndex(i)).value
     values[i] = GuarantorAssignment(core: CoreIndex(core), validator: record)
     if excluded(record.ed25519, offenders):
-      values[i].validator = default(StateValidator) # All fields null; population and core positions stay unchanged.
+      values[i].validator = nullValidator() # Use current nullvalkey; population and core positions stay unchanged.
   GuarantorResult[seq[GuarantorAssignment]](status: GuarantorError.None, completed: values)
 
 proc planGuarantors*(active, previous: ValidatorStateSnapshot, entropy: StateEntropy,

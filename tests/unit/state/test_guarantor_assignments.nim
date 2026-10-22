@@ -106,13 +106,15 @@ proc boundaries() =
   var offenders = @[OffenderKey(bad)]
   let filtered = planGuarantors(active, previous, entropy, StateTime(4), offenders, policy).value
   offenders[0] = default(OffenderKey) # Mutating borrowed offender input cannot alter the retained plan.
+  var nullEd = default(array[32, byte])
+  nullEd[0] = 2
   let nulled = filtered.guarantorAt(GuaranteeSlot(4), GuarantorIndex(0)).value
-  assert array[32, byte](nulled.validator.ed25519) == default(array[32, byte])
+  assert array[32, byte](nulled.validator.ed25519) == nullEd
   assert array[32, byte](nulled.validator.bandersnatch) == default(array[32, byte])
   assert array[144, byte](nulled.validator.bls) == default(array[144, byte])
   assert array[128, byte](nulled.validator.metadata) == default(array[128, byte])
   let priorNull = filtered.guarantorAt(GuaranteeSlot(0), GuarantorIndex(0)).value
-  assert array[32, byte](priorNull.validator.ed25519) == default(array[32, byte])
+  assert array[32, byte](priorNull.validator.ed25519) == nullEd
   let unaffected = filtered.guarantorAt(GuaranteeSlot(4), GuarantorIndex(1)).value
   assert array[32, byte](unaffected.validator.ed25519)[0] == 2
   assert planGuarantors(active, previous, entropy, StateTime(4), [OffenderKey(bad), OffenderKey(

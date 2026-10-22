@@ -13,14 +13,14 @@ import ../../../src/state/[assured_chain, assured_composition, assured_execution
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../../src/codec/[bounded, state_accounts, state_layout, state_service_values,
   state_statistics, state_workqueues]
-import ../../../src/pvm/machine
+import ../../../src/pvm/[machine, step]
 import ../../support/[pvm_assured_outcomes, pvm_computed_storage_program,
   pvm_assured_execution, pvm_assured_composition, arc_evidence]
 
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## The account survives storage deletion; decode its exact canonical fields at each retained full-map owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      42))).value.bytes, ByteLimit(89)).value.metadata
+      42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 proc storage(state: StateStoreSnapshot, present: bool) =
   ## Distinguish actual MissingKey from a present empty value and independently check both storage counters.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
@@ -33,9 +33,13 @@ proc storage(state: StateStoreSnapshot, present: bool) =
     assert found.error == StateStoreError.MissingKey
     assert uint32(account.storageItems) == 0 and uint64(account.storageBytes) == 0
   assert uint64(account.balance) == 50
+proc config(fixture: AssuredOutcomeFixture): AssuredExecutionConfig =
+  ## Five current write-marshalling instructions extend the original seventeen-step count-controlled path.
+  result = assuredExecutionConfig(fixture.queue)
+  result.runner.steps = ExecutionStepLimit(22)
 proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
   ## Execute real count fetch/load/arithmetic/cmov/write instructions under original source parameters and unchanged runner ceilings.
-  let outcome = executeAssuredAccumulation(fixture.queue, assuredExecutionConfig(fixture.queue))
+  let outcome = executeAssuredAccumulation(fixture.queue, config(fixture))
   if outcome.error != AssuredExecutionError.None:
     echo "input-delete execution ", outcome.error
     if outcome.error == AssuredExecutionError.RunnerFailure: echo "runner ",
@@ -78,8 +82,8 @@ assert terminal.termination == AccumulationTermination.Halt and terminal.dimensi
 assert not terminal.hasYield and terminal.transfers == 0 and terminal.provisions == 0
 assert uint64(terminal.gasUsed) == uint64(info.gasUsed)
 storage(selected.outcomeContext.value.effectAccounts.value, false)
-let config = assuredExecutionConfig(fixture.queue)
-var minimal = config
+let policy = config(fixture)
+var minimal = policy
 minimal.runner.copyBytes = MemoryByteLimit(1)
 minimal.runner.completion.batch.selfValueBytes = ByteLimit(0)
 let zeroValues = executeAssuredAccumulation(fixture.queue, minimal)

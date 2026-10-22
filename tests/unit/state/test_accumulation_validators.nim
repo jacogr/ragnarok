@@ -12,7 +12,8 @@ import ../../../src/state/[accumulation_validators, validator_projection, accumu
   accumulation_round, accumulation_inputs, accumulation_service, accumulation_skip,
   accumulation_queue, report_admission, guarantee_credentials, block_transition, block_admission, store]
 import ../../../src/codec/[bounded, header, owned, report_owned, guarantees, block_codec,
-  state_safrole, state_statistics, state_outputs, state_workqueues, state_history, state_layout, state_trie]
+  state_safrole, state_accounts, state_statistics, state_outputs, state_workqueues, state_history,
+  state_layout, state_trie]
 import ../../support/[accumulation_execution_context, report_context, arc_evidence]
 
 # Fault injection starts only after real signatures, accumulation and complete-map construction.
@@ -113,7 +114,7 @@ proc source(base: OwnedReport, available = false, guarantees = 0, blobs = false,
     rounds: ElementLimit(2), gasRows: ElementLimit(1), reports: ElementLimit(1),
         digests: ElementLimit(1),
     services: ElementLimit(1)), accounts: AccumulationTimesLimits(services: ElementLimit(1),
-      writes: ElementLimit(1), bytes: ByteLimit(89)))).value
+      writes: ElementLimit(1), bytes: ByteLimit(ServiceMetadataBytes)))).value
 
 # Traverse the public immutable graph only for independent body/credential/state witnesses.
 proc admission(source: PreparedAccumulationTimes): AdmittedReports =

@@ -126,7 +126,7 @@ proc selftest(baseline: StateChapters, profile: StateProfile) =
   service = StateService(service: ServiceIndex(7), preimages: @[StatePreimageItem()],
     requests: @[StateRequestItem(length: RequestLength(0xfffffffe'u32))])
   let overlap = composeState(baseline, [service], limits, ByteLimit(1))
-  assert overlap.error == StateCompositionError.DuplicateKey
+  assert overlap.error == StateCompositionError.InvalidComponent # Current request lengths exclude both historical aliases.
 
 
 ## Construct a complete typed service source from fixed metadata and explicitly delimited nested items.
@@ -136,7 +136,7 @@ proc service(text: string): StateService =
   assert fields.len == 6
   result.service = ServiceIndex(unsigned(fields[0]))
   let metadata = unhex(fields[1])
-  let decoded = decodeServiceMetadata(metadata, ByteLimit(89))
+  let decoded = decodeServiceMetadata(metadata, ByteLimit(ServiceMetadataBytes))
   assert decoded.error == ServiceMetadataError.None and decoded.value.consumed == metadata.len
   result.metadata = decoded.value.metadata
   # Empty lists carry no synthetic entry, unlike a listed item with an empty value token.

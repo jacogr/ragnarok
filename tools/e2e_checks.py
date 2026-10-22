@@ -117,7 +117,7 @@ def rpc(context):
             observed['passed'] &= observed['parameters']['passed']
         except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
             # A protocol, cleanup or concurrency failure is an independent required E2E verdict.
-            observed = dict(passed=False, failure=str(error))
+            observed = dict(passed=False, failure=repr(error), traceback=traceback.format_exc())
     announce('WebSocket RPC and concurrent peer progress', observed['passed'])
     return observed
 

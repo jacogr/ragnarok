@@ -16,6 +16,20 @@ proc refinementImmediate*(register: byte, value: uint64): seq[byte] =
   ## Independent load_imm_64 encoding preserves every high address/value bit.
   result = @[20'u8, register]
   for index in 0..<8: result.add(byte((value shr (8*index)) and 255))
+proc refinementInnerCreate*(length = 6'u64, pointer = 196608'u64, entry = 0'u64, suffix: seq[seq[
+    byte]] = @[]): seq[seq[byte]] =
+  ## Literal current ABI: compile memory in mode zero, then instantiate its returned module handle.
+  result = @[@[51'u8, 7, 0], refinementImmediate(8, pointer)]
+  # Compact authored immediates keep the independently framed guest below its one-byte length bound.
+  if length < 128: result.add(@[51'u8, 9, byte(length)])
+  else: result.add(refinementImmediate(9, length))
+  result.add(@[10'u8, 9])
+  if entry < 128: result.add(@[51'u8, 8, byte(entry)])
+  else: result.add(refinementImmediate(8, entry))
+  result.add(@[10'u8, 10])
+  for instruction in suffix:
+    result.add(instruction) # Explicit appending avoids unsupported sequence concatenation in this nightly.
+
 proc refinementInputs*(): RefinementInputs =
   ## One actual package item has no extrinsic or imported-segment manifests.
   RefinementInputs(extrinsics: @[newSeq[seq[byte]]()], imports: @[newSeq[FetchSegment]()])
@@ -38,8 +52,13 @@ proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
     for index, octet in instruction:
       code.add(octet)
       starts.add(index == 0) # Only actual instruction starts enter the independently assembled mask.
-  assert code.len > 0 and code.len < 128
-  var raw = @[0'u8, 0, byte(code.len)]
+  assert code.len > 0 and code.len < 192
+  var raw = @[0'u8, 0]
+  if code.len < 128:
+    raw.add(byte(code.len)) # One-byte canonical natural preserves all earlier small guests.
+  else:
+    raw.add(128'u8)
+    raw.add(byte(code.len)) # For 128..191 the canonical natural is prefix128 followed by the low byte.
   for octet in code: raw.add(octet)
   var mask = newSeq[byte]((code.len+7) div 8)
   for index, marked in starts:
@@ -56,7 +75,8 @@ proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
   let hash = array[32, byte](blake2b256(preimage).value)
   var entries: seq[StateEntry] = @[]
   if not missing:
-    entries.add(serviceMetadataEntry(ServiceIndex(42), ServiceMetadata(), ByteLimit(89)).value)
+    entries.add(serviceMetadataEntry(ServiceIndex(42), ServiceMetadata(), ByteLimit(
+        ServiceMetadataBytes)).value)
     entries.add(servicePreimageEntry(ServiceIndex(42), ServicePreimageHash(hash), preimage,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(uint64(
           preimage.len)))).value)
@@ -81,7 +101,7 @@ proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
     RefinementBootstrapLimits(preimage: ByteLimit(4000000), package: ByteLimit(4096),
         arguments: ByteLimit(64),
       initialization: InitializationLimits(envelope: InitializationByteLimit(512),
-          program: ProgramByteLimit(160),
+          program: ProgramByteLimit(256),
         jumps: JumpCountLimit(0), pages: PageLimit(pages)))).value
 proc refinementPrice*(bootstrap: PreparedRefinementBootstrap): uint64 =
   ## Reuse the separately verified gas component for block pricing; host prices/normalization expectations are literal.

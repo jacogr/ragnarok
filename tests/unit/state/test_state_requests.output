@@ -1,1 +1,1 @@
-PASS requests: tagged fields, fixed scope copies, failure guards and explicit key-overlap/duplicate rejection
+PASS requests: tagged fields, fixed scope copies, failure guards and reserved-length rejection

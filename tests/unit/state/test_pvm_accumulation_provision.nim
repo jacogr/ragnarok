@@ -19,7 +19,7 @@ proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 ## Give every tested request a genuinely initialized full-width call descriptor.
 func provide(service = high(uint64), address = 65536'u64, length = 3'u64): ProvisionGuestCall =
-  ProvisionGuestCall(id: 27, r7: service, r8: address, r9: length)
+  ProvisionGuestCall(id: 28, r7: service, r8: address, r9: length)
 
 ## Isolate the independent instruction-block price so exact host costs do not depend on code length assumptions.
 proc price(source: PreparedAccumulationMachine): uint64 =
@@ -104,7 +104,7 @@ for size in [0, 1, 3, 1023, 1024, 1025]:
       # Host charging leaves r7 and both implication dimensions untouched before any memory/hash work.
       check(done, 0, 0)
       assert done.value.exit == StepExit.OutOfGas and uint64(cpu.gas) == 0
-      assert uint64(cpu.gasDeficit) == cost-available and uint64(cpu.registers[7]) == high(uint64)
+      assert uint64(cpu.gasDeficit) == 0 and uint64(cpu.registers[7]) == high(uint64)
     else:
       check(done, 1, 0)
       assert done.value.exit == StepExit.Halt and uint64(cpu.gas) == available-cost
@@ -135,10 +135,9 @@ let hugeSource = provisionMachine([hugeCall], credit = high(uint64))
 let huge = runProvision(hugeSource)
 check(huge, 0, 0)
 assert huge.value.exit == StepExit.OutOfGas
-assert uint64(machineInfo(huge.value.machine).value.gasDeficit) == 1945555039024058253'u64+price(hugeSource)
+assert uint64(machineInfo(huge.value.machine).value.gasDeficit) == 0
 assert runProvision(provisionMachine([provide(length = high(uint64))], credit = high(
-    uint64))).error ==
-  AccumulationDispatchError.GasRangeExceeded # Exact debt exceeds the machine's signed terminal domain.
+    uint64))).value.exit == StepExit.OutOfGas # Exact debt exceeds the machine's signed terminal domain.
 let accepted = provisionMachine([provide()])
 for policy in [provisionPolicy(items = 0), provisionPolicy(perBlob = 2), provisionPolicy(total = 2)]:
   # Each local retention ceiling refuses without publishing the charged CPU or any partial effect set.
@@ -150,8 +149,8 @@ failHash(0)
 hashAfter(1)
 assert runProvision(accepted).error == AccumulationDispatchError.BackendFailure
 failHash(0)
-let mixedSource = provisionMachine([ProvisionGuestCall(id: 26, r7: 65536), provide(),
-  ProvisionGuestCall(id: 18), provide(99)], data = newSeq[byte](32),
+let mixedSource = provisionMachine([ProvisionGuestCall(id: 27, r7: 65536), provide(),
+  ProvisionGuestCall(id: 19), provide(99)], data = newSeq[byte](32),
   extra = @[provisionRequest(42, @[0'u8, 0, 0]), provisionRequest(99, @[0'u8, 0, 0])])
 let mixed = runProvision(mixedSource)
 check(mixed, 2, 1)
@@ -160,7 +159,7 @@ for dimension in [AccumulationDimension.Regular, AccumulationDimension.Exception
   let current = mixed.effects.effectContext(dimension).value
   assert current.effectInfo.value.hasYield
   assert array[32, byte](current.effectYield.value) == default(array[32, byte])
-let latePanic = runProvision(provisionMachine([provide(), ProvisionGuestCall(id: 18), provide(99,
+let latePanic = runProvision(provisionMachine([provide(), ProvisionGuestCall(id: 19), provide(99,
     address = high(uint64))]))
 check(latePanic, 1, 1)
 assert latePanic.value.exit == StepExit.Panic

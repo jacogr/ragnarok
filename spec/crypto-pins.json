@@ -1,15 +1,9 @@
 {
   "schema": 1,
-  "graypaper_commit": "07f041dabd073f9018b418e9ee72e79dd2185401",
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
   "nim": "2.2.12",
   "nim_memory_manager": "arc",
-  "sources": {
-    "boringssl": {
-      "repository": "vacp2p/boringssl",
-      "commit": "88341070936d28e08f82db1326c73d67962cd043",
-      "path": "vendor/boringssl"
-    }
-  },
+  "sources": {},
   "patches": [],
   "wycheproof": {
     "repository": "C2SP/wycheproof",

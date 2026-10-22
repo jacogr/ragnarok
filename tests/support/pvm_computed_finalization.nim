@@ -28,13 +28,14 @@ proc finalizationFixture*(withReady = true, withComposition = false,
       ComputedStorageMode.ReadCheckpointWrapStore, ComputedStorageMode.ReadCheckpointNegativeBranch,
       ComputedStorageMode.ReadCheckpointUntakenBranch}
     limits.completion.batch.selfValueBytes = ByteLimit(if wideValue: 11'u64 else: 3'u64)
-  if storage in {ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail,
+  if storage in {ComputedStorageMode.FetchDelete, ComputedStorageMode.ReadMissing,
+      ComputedStorageMode.FetchReadBack, ComputedStorageMode.FetchReadTail,
       ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
       ComputedStorageMode.ReadCheckpointProtection, ComputedStorageMode.ReadCheckpointWrapLoad,
       ComputedStorageMode.ReadCheckpointWrapStore,
       ComputedStorageMode.ReadCheckpointNegativeBranch,
       ComputedStorageMode.ReadCheckpointUntakenBranch}:
-    limits.steps = ExecutionStepLimit(32) # Admit only the longer read and checkpoint guests before their original execution.
+    limits.steps = ExecutionStepLimit(32) # Current argument marshalling makes count-delete and missing-read paths exceed twenty instructions.
   if storage in {ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,
       ComputedStorageMode.ReadCheckpointProtection, ComputedStorageMode.ReadCheckpointWrapLoad,
       ComputedStorageMode.ReadCheckpointWrapStore,

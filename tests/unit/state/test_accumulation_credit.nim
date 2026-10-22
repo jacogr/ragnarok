@@ -49,7 +49,7 @@ proc root(state: StateStoreSnapshot): array[32, byte] = array[32, byte](state.co
 ## Read actual retained metadata rather than trusting copied service information alone.
 proc account(state: StateStoreSnapshot, service = ServiceIndex(42)): ServiceMetadata =
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), service)).value.bytes,
-    ByteLimit(89)).value.metadata
+    ByteLimit(ServiceMetadataBytes)).value.metadata
 
 ## Independent expected bytes and embedding-map roots cover literal arithmetic and published balance projections.
 proc projections() {.raises.} =
@@ -96,9 +96,9 @@ proc records(raw: seq[byte], includeCode = true, balance = 10'u64): seq[StateEnt
   let hash = array[32, byte](blake2b256(raw).value)
   result = @[serviceMetadataEntry(ServiceIndex(42), ServiceMetadata(codeHash: CodeHash(hash),
     balance: AccountBalance(balance), lastAccumulation: AccountSlot(9),
-        storageItems: AccountStorageItems(3)), ByteLimit(89)).value,
+        storageItems: AccountStorageItems(3)), ByteLimit(ServiceMetadataBytes)).value,
     serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(balance: AccountBalance(50)), ByteLimit(
-        89)).value,
+        ServiceMetadataBytes)).value,
     StateEntry(key: chapterKey(StateChapter(250)), value: @[1'u8, 2, 3])]
   if includeCode:
     result.add(servicePreimageEntry(ServiceIndex(42), ServicePreimageHash(hash), raw,
@@ -156,6 +156,43 @@ proc boundaries(): PreparedAccumulationService =
   assert default(PreparedAccumulationService).servicePriorState.error ==
       AccumulationServiceError.Uninitialized
 
+## Independent components accept full-width credits without requiring their combined sum to fit E8.
+proc supervisorCredits() =
+  let prior = newStateStore(records(@[0'u8], false, high(uint64)), limits()).value.snapshot.value
+  let transfers = inputs([
+    DeferredTransfer(destination: ServiceIndex(42), destinationSupervisor: true,
+      amount: TransferBalance(high(uint64)-1)),
+    DeferredTransfer(destination: ServiceIndex(42), destinationSupervisor: true,
+      amount: TransferBalance(1)),
+    DeferredTransfer(destination: ServiceIndex(42), amount: TransferBalance(0))])
+  let owner = prepareAccumulationService(transfers, InvocationServiceIndex(0), prior,
+    HeaderSlot(3), config()).value
+  let credited = owner.serviceState.value.account
+  assert uint64(credited.balance) == high(uint64)
+  assert uint64(credited.supervisorBalance) == high(uint64)
+  assert uint64(prior.account.supervisorBalance) == 0
+  assert root(prior) != root(owner.serviceState.value)
+  assert root(owner.servicePriorState.value) == root(prior)
+  let skipped = finishUninvokedAccumulation(owner).value.skipState.value.account
+  assert uint64(skipped.supervisorBalance) == high(uint64)
+  # One additional supervised unit fails without spilling into the liquid component or changing the source.
+  let overflowing = inputs([
+    DeferredTransfer(destination: ServiceIndex(42), destinationSupervisor: true,
+      amount: TransferBalance(high(uint64))),
+    DeferredTransfer(destination: ServiceIndex(42), destinationSupervisor: true,
+      amount: TransferBalance(1))])
+  assert prepareAccumulationService(overflowing, InvocationServiceIndex(0), prior, HeaderSlot(3),
+    config()).error == AccumulationServiceError.BalanceOverflow
+  # A liquid overflow remains independent even if the supervised credit would fit exactly.
+  let liquidOverflow = inputs([
+    DeferredTransfer(destination: ServiceIndex(42), destinationSupervisor: true,
+      amount: TransferBalance(1)),
+    DeferredTransfer(destination: ServiceIndex(42), amount: TransferBalance(1))])
+  assert prepareAccumulationService(liquidOverflow, InvocationServiceIndex(0), prior, HeaderSlot(3),
+    config()).error == AccumulationServiceError.BalanceOverflow
+  assert uint64(prior.account.balance) == high(uint64) and uint64(
+      prior.account.supervisorBalance) == 0
+
 ## Inherited local ceilings and late hashing failures leave every source root and metadata byte unchanged.
 proc rollback() =
   let raw = @[0'u8, 7]
@@ -165,7 +202,8 @@ proc rollback() =
   for mode in 0..<3:
     var policy = limits()
     if mode == 0: policy.writes = ElementLimit(0) # Source initialization remains valid without write allowance.
-    elif mode == 1: policy.writeValueBytes = ByteLimit(88) # Exact 89-byte replacement must fit.
+    elif mode == 1: policy.writeValueBytes = ByteLimit(
+        ServiceMetadataBytes-1) # The entire current metadata replacement must fit.
     else: policy.trie.nodes = TrieNodeLimit(uint64(stateTrieRoot(rows,
         policy.trie).value.nodes)) # Same-shape replacement still fits.
     let prior = newStateStore(rows, policy).value.snapshot.value
@@ -228,6 +266,7 @@ proc main() {.raises.} =
   projections()
   let retained = boundaries()
   assert uint64(retained.serviceState.value.account.balance) == 30
+  supervisorCredits()
   rollback()
   lifetime()
   echo "PASS accumulation credit: checked balances, complete roots, code gates, rollback and ARC"

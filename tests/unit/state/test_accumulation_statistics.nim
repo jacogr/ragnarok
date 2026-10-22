@@ -134,8 +134,8 @@ proc checkCompositionHistory(source: PreparedAccumulationConsensus, empty = fals
     for service in [42'u32, 99'u32]:
       let key = chapterServiceKey(StateChapter(255), ServiceIndex(service))
       var bytes = prior.lookup(key).value.bytes
-      for index in 81..84: bytes[index] = (if index ==
-          81: 2'u8 else: 0'u8) # Literal E4 timestamp preserves all other metadata.
+      for index in 97..100: bytes[index] = (if index ==
+          97: 2'u8 else: 0'u8) # Literal E4 timestamp preserves all other metadata.
       assert posterior.lookup(key).value.bytes == bytes
   let checked = checkRecentHistory(ready, yielded)
   assert checked.accumulationRecentEntry.value.value == posterior.lookup(chapterKey(StateChapter(

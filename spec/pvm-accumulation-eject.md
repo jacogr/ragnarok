@@ -1,6 +1,46 @@
 # Accumulation eject host
 
-## Scope and authority
+## Current unreleased authority and scope
+
+Implement current `eject` (23), Omega_J, against Gray Paper commit
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `pvm_invocations.tex` Omega_J
+and `accounts.tex` effective-supervisor definition. Base gas remains458.
+Charge before account work. Register7 is the sole argument; register8 is ignored.
+No memory read, hash argument, request-history lookup or expiry calculation applies.
+
+A full-width ID outside the service domain or absent account returns WHO. A present
+self account returns HUH. For another target, the invoker must match its stored
+supervisor identifier and supervisor creation slot. This is equivalent to the
+current effective-supervisor requirement: a missing/recreated designated supervisor
+falls back to the target itself, which cannot authorize this other invoker.
+Creation in the current invocation slot or nonzero storage items also returns HUH.
+Code-hash identity and old request/history eligibility confer no authority.
+
+Delete the empty account's metadata and credit its liquid plus supervisor balances
+into the invoker's liquid balance in one atomic two-write complete-map update.
+Preserve the invoker's supervisor balance. Each addition is checked before forming
+it; an unrepresentable liquid credit remains a typed local InvalidState refusal,
+not wrapped arithmetic or an invented guest code. Malformed current metadata is a
+local state refusal. Inherited write/byte/node ceilings and backend errors publish
+no partial successor. Preserve exceptional checkpoints and all unrelated owners.
+
+Bounded deletion facts retain only the actual ejected service identity. Current
+empty accounts have no request/preimage components to delete. Batch publication
+uses the selected immutable membership proof and removes only metadata; broader
+concurrent service/supervisor modification coordination remains an explicit gate
+until its current-paper partition/publication adapter is implemented.
+
+Completion checks cover supervisor incarnation, missing/foreign/self targets,
+creation-slot equality, nonempty accounts, dual full-width balances, ignored r8
+with zero copy allowance, charge-before-work, two-write policy, bounded membership
+proofs, immediate/late backend refusal, checkpoints and fresh ownership cycles.
+Local verification is recorded in the coordinated upgrade checkpoint; historical
+release results below do not establish current semantics or Linux CI coverage.
+
+## Historical release implementation and evidence
+
+The following describes the superseded0.8.0 release pin. It is retained as historical
+evidence, not an alternate execution mode or current protocol interpretation.
 
 Implement eject (22), Omega_J, against GP 0.8.0 revision
 `07f041dabd073f9018b418e9ee72e79dd2185401`, pvm_invocations.tex eject row,

@@ -106,7 +106,7 @@ for selector in [3'u64, 4'u64, 5'u64, 6'u64]:
             let count = (if funded: min(requested, uint64(expected.bytes.len) - start) else: 0'u64)
             assert response.action == (if funded: HostAction.Continue else: HostAction.OutOfGas)
             assert uint64(response.gas) == (if funded: credit - price else: 0'u64)
-            assert uint64(response.gasDeficit) == (if funded: 0'u64 else: 1'u64)
+            assert uint64(response.gasDeficit) == 0
             for i in 0..<13:
               # Funded r7 returns full length or NONE, never the copied suffix length.
               let value = (if i != 7 or not funded: uint64(regs[i])

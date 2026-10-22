@@ -58,7 +58,7 @@ proc computedGuarantorAt*(context: ComputedGuarantors, slot: GuaranteeSlot,
   if selected.error == GuarantorError.InvalidIndex: fail(ComputedGuarantorError.InvalidIndex)
   if selected.error != GuarantorError.None: fail(ComputedGuarantorError.InvalidState)
   if uint64(selected.value.core) != uint64(data.core): fail(ComputedGuarantorError.WrongAssignment)
-  if array[32, byte](selected.value.validator.ed25519) == default(array[32, byte]):
+  if array[32, byte](selected.value.validator.ed25519) == array[32, byte](nullValidator().ed25519):
     fail(ComputedGuarantorError.IneligibleValidator) # Phi-null or originally null identities cannot supply an eligible key.
   ComputedGuarantorResult[GuarantorAssignment](status: ComputedGuarantorError.None,
       completed: selected.value)

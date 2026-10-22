@@ -71,7 +71,7 @@ proc official(): OwnedReport {.raises.} =
           1] # Existing combined eight-dependency codec boundary.
       inc structural
       continue
-    assert decoded.error == GuaranteeError.None, f[1]
+    assert decoded.error == GuaranteeError.None, f[1] & " decode " & $decoded.error
     let credentials = verifyGuaranteeCredentials(records(decoded.value), active, previous, entropy,
       StateTime(parseInt(f[4])), offenders, config)
     assert credentials.error == GuaranteeCredentialError.None, f[1] & " " & $credentials.error
@@ -85,10 +85,10 @@ proc official(): OwnedReport {.raises.} =
           value: unhex(parts[1]))) # Exact service identity and source fields.
     let parent = newStateStore(entries, limits()).value.snapshot.value
     let checked = checkReportPolicy(credentials.value, parent, policy(cores))
-    assert checked.error == ReportPolicyError.None, f[1]
+    assert checked.error == ReportPolicyError.None, f[1] & " policy " & $checked.error
     let recent = checkRecentReportAnchors(checked.value, unhex(f[12]), StateTime(parseInt(f[4])),
         anchors(cores))
-    assert recent.error == ReportAnchorError.None, f[1]
+    assert recent.error == ReportAnchorError.None, f[1] & " anchor " & $recent.error
     let knownBytes = unhex(f[13])
     var known = newSeq[PackageHash](knownBytes.len div 32)
     # Transport known_packages exactly as a union, without inventing which chapter or slot held each key.

@@ -47,13 +47,15 @@ proc code(service, destination: uint32, amount, gas: uint64, repeat = false,
   var memo = newSeq[byte](128)
   for index in 0..<128:
     memo[index] = byte((index*7+int(service)) mod 256) # Every source has an independently recognizable complete memo.
-  var instructions = @[registerImmediate(7, uint64(destination)), registerImmediate(8, amount),
-    registerImmediate(9, gas), registerImmediate(10, 196608), @[10'u8, 21]]
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, uint64(
+      destination)),
+    @[51'u8, 9, 0], registerImmediate(10, amount), registerImmediate(11, gas),
+    registerImmediate(12, 196608), @[10'u8, 22]]
   if checkpoint:
-    instructions.add(@[10'u8, 18]) # Select the first debit/outgoing record in Y before later failure.
+    instructions.add(@[10'u8, 19]) # Select the first debit/outgoing record in Y before later failure.
   if repeat:
-    instructions.add(registerImmediate(7, uint64(destination)))
-    instructions.add(@[10'u8, 21]) # Preserve identical amount/gas/memo while making two separate debits.
+    instructions.add(registerImmediate(7, high(uint64)))
+    instructions.add(@[10'u8, 22]) # Preserve identical amount/gas/memo while making two separate debits.
   case stop
   of TransferStop.Halt:
     discard # Regular halt keeps every completed transfer.
@@ -62,9 +64,9 @@ proc code(service, destination: uint32, amount, gas: uint64, repeat = false,
   of TransferStop.Fault:
     instructions.add(@[52'u8, 2, 0, 0, 4]) # Unmapped load selects the same exceptional checkpoint.
   of TransferStop.OutOfGas:
-    instructions.add(registerImmediate(7, uint64(destination)))
-    instructions.add(registerImmediate(9, 20000))
-    instructions.add(@[10'u8, 21]) # Valid proposal exceeds the later service's remaining gas before another debit.
+    instructions.add(registerImmediate(7, high(uint64)))
+    instructions.add(registerImmediate(11, 20000))
+    instructions.add(@[10'u8, 22]) # Valid proposal exceeds the later service's remaining gas before another debit.
   of TransferStop.HashReturn:
     instructions.add(registerImmediate(7, 65536))
     instructions.add(registerImmediate(8, 32)) # Hash-return normalization retains X's outgoing records.
@@ -77,7 +79,7 @@ proc serviceEntries(service: uint32, balance: uint64, raw: seq[byte]): seq[State
   ## Extra ready services enter the original parent before its real root and signatures are built.
   let digest = array[32, byte](blake2b256(raw).value)
   @[serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(codeHash: CodeHash(digest),
-    balance: AccountBalance(balance)), ByteLimit(89)).value,
+    balance: AccountBalance(balance)), ByteLimit(ServiceMetadataBytes)).value,
     servicePreimageEntry(ServiceIndex(service), ServicePreimageHash(digest), raw,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(raw.len))).value]
 
@@ -188,7 +190,7 @@ proc completed(source: PreparedAccumulationReentry): CompletedAccumulationReentr
 proc balance(state: StateStoreSnapshot, service: uint32): uint64 =
   ## Read exact canonical balances from the retained complete map.
   uint64(decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      service))).value.bytes, ByteLimit(89)).value.metadata.balance)
+      service))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata.balance)
 
 proc sameRoot(source: ExecutionFixture, state: StateStoreSnapshot, b99, b77, b88: uint64) =
   ## Independently replace only literal balances in the original full rows, preserving code, chapters and unrelated metadata.
@@ -198,9 +200,11 @@ proc sameRoot(source: ExecutionFixture, state: StateStoreSnapshot, b99, b77, b88
     for service in [99'u32, 77'u32, 88'u32]:
       if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
           ServiceIndex(service))):
-        var metadata = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var metadata = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         metadata.balance = AccountBalance(if service == 99: b99 elif service == 77: b77 else: b88)
-        copied = serviceMetadataEntry(ServiceIndex(service), metadata, ByteLimit(89)).value
+        copied = serviceMetadataEntry(ServiceIndex(service), metadata, ByteLimit(
+            ServiceMetadataBytes)).value
     rows.add(copied) # Expected roots include every unrelated original mapping.
   let wanted = newStateStore(rows, report_context.limits()).value
   assert array[32, byte](state.commitment.root) == array[32, byte](

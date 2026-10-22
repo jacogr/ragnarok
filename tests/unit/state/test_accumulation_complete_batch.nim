@@ -33,7 +33,7 @@ proc skippedFixture(kind = Missing, both = false, incoming = true, writes = 64'u
       if (service == 99 and kind == Missing) or (service == 42 and both):
         let key = chapterServiceKey(StateChapter(255), ServiceIndex(service))
         let metadata = decodeServiceMetadata(result.state.snapshot.value.lookup(key).value.bytes,
-            ByteLimit(89)).value.metadata
+            ByteLimit(ServiceMetadataBytes)).value.metadata
         let blob = servicePreimageEntry(ServiceIndex(service),
           ServicePreimageHash(array[32, byte](metadata.codeHash)), [],
           ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(0))).value
@@ -46,9 +46,11 @@ proc skippedFixture(kind = Missing, both = false, incoming = true, writes = 64'u
     let key = chapterServiceKey(StateChapter(255), ServiceIndex(99))
     for index in 0..<entries.len:
       if array[31, byte](entries[index].key) == array[31, byte](key):
-        var metadata = decodeServiceMetadata(entries[index].value, ByteLimit(89)).value.metadata
+        var metadata = decodeServiceMetadata(entries[index].value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         metadata.codeHash = CodeHash(hash)
-        entries[index] = serviceMetadataEntry(ServiceIndex(99), metadata, ByteLimit(89)).value
+        entries[index] = serviceMetadataEntry(ServiceIndex(99), metadata, ByteLimit(
+            ServiceMetadataBytes)).value
     entries.add(servicePreimageEntry(ServiceIndex(99), ServicePreimageHash(hash), raw,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(1))).value)
   result.entries = entries
@@ -70,9 +72,11 @@ proc expectedRows(fixture: BatchFixture, provisions: bool, credit = true): seq[S
     let key = chapterServiceKey(StateChapter(255), ServiceIndex(service))
     for index in 0..<result.len:
       if credit and array[31, byte](result[index].key) == array[31, byte](key):
-        var metadata = decodeServiceMetadata(result[index].value, ByteLimit(89)).value.metadata
+        var metadata = decodeServiceMetadata(result[index].value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         metadata.balance = AccountBalance(if ordinal == 0: 17 else: 31)
-        result[index] = serviceMetadataEntry(ServiceIndex(service), metadata, ByteLimit(89)).value
+        result[index] = serviceMetadataEntry(ServiceIndex(service), metadata, ByteLimit(
+            ServiceMetadataBytes)).value
     if provisions:
       let raw = (if ordinal == 0: @[73'u8] else: @[81'u8])
       let request = provisionRequest(service, raw)

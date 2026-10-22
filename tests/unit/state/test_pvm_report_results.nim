@@ -19,7 +19,8 @@ proc check(report: RefinedPackage, index: uint64, kind: WorkKind, offset,
   ## Assert independently expected selection/source identity and every replacement segment's full content.
   let selected = report.reportItem(FetchItemIndex(index)).value
   let info = selected.refinedInfo.value
-  assert info.kind == kind and uint64(info.offset) == offset and uint64(info.exports) == declared
+  assert info.kind == kind and uint64(info.offset) == offset and uint64(info.exports) == declared,
+      "item " & $index & " kind " & $info.kind & " expected " & $kind
   assert uint64(info.item) == index and uint32(info.service) == uint32(42+index)
   assert uint32(selected.refinedSource.value.workItemInfo.value.service) == uint32(42+index)
   if kind == WorkKind.Success:
@@ -43,7 +44,8 @@ assert segment[0] == 11 and segment[1] == 12 and segment[2] == 13
 for index in 3..<4104: assert segment[index] == 0
 assert complete.reportInfo.value.items == 2 and uint64(complete.reportInfo.value.exports) == 1
 assert complete.reportInfo.value.blobBytes == 6 and uint64(complete.reportInfo.value.core) == 5
-assert uint64(second.refinedInfo.value.gasUsed) > 3521
+assert uint64(second.refinedInfo.value.gasUsed) > 3521, "export gas " & $uint64(
+    second.refinedInfo.value.gasUsed)
 # Exact protocol budget is accepted; one byte over rejects only the later successful blob.
 for traceBytes in [49145, 49146, 49147]:
   let trace = newSeq[byte](traceBytes)
@@ -64,7 +66,9 @@ for size in [49152, 49153]:
   cap.invocation.output = OutputByteLimit(65536)
   let result = reportRun(reportFixture([guest]), [], cap).value
   let item = result.reportItem(FetchItemIndex(0)).value
-  assert item.refinedInfo.value.kind == (if size == 49152: WorkKind.Success else: WorkKind.Oversize)
+  assert item.refinedInfo.value.kind == (if size ==
+      49152: WorkKind.Success else: WorkKind.Oversize), "output boundary " & $size & " kind " &
+      $item.refinedInfo.value.kind
   if size == 49152:
     assert item.refinedOutput.value.len == size and item.refinedOutput.value[0] == 91
     assert result.reportInfo.value.blobBytes == 49152
@@ -141,9 +145,12 @@ for policy in 0..<6:
     assert refused.error == RefinementReportError.InvocationFailure
     assert refused.invocationError.error == (if policy == 4: RefinementInvocationError.LimitExceeded
       else: RefinementInvocationError.ExecutionFailure)
-let late = reportFixture([reportGuest(returning), reportGuest([@[10'u8, 9], halt])])
+# Select current memory compilation explicitly so the nonempty zero-byte-policy witness reaches its intended local refusal.
+let late = reportFixture([reportGuest(returning), reportGuest([refinementImmediate(7, 0),
+    refinementImmediate(8, 65536), refinementImmediate(9, 1), @[10'u8, 9], halt])])
 let lateFailure = reportRun(late, [])
-assert lateFailure.error == RefinementReportError.InvocationFailure
+assert lateFailure.error == RefinementReportError.InvocationFailure,
+    "nonempty compile exceeds the zero program-byte policy: " & $lateFailure.error
 assert lateFailure.invocationError.error == RefinementInvocationError.HostFailure
 assert lateFailure.invocationError.hostError == RefinementDispatchError.LimitExceeded
 assert reportRun(default(ReportFixture), []).error == RefinementReportError.InvalidPackage

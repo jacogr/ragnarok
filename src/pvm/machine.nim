@@ -21,8 +21,8 @@ type
   MemoryLength* = distinct uint64 ## Natural byte-range length for host memory operations, never a scalar instruction width.
   MemoryByteLimit* = distinct uint64 ## Local payload-copy ceiling; independent of guest lengths and page-allocation limits.
   RegisterValue* = distinct uint64 ## Register values are independent of decoded immediates and addresses.
-  MachineGas* = distinct uint64 ## Nonnegative gas component; a terminal negative balance is represented separately by GasDeficit.
-  GasDeficit* = distinct uint64 ## Magnitude of a negative terminal balance, at most 2^63; nonzero deficit requires zero gas.
+  MachineGas* = distinct uint64 ## Complete unsigned gas balance under the unreleased Gray Paper.
+  GasDeficit* = distinct uint64 ## Reserved-zero compatibility field; signed host gas was removed by GP PR533.
   RegisterFile* = array[13, RegisterValue] ## Every machine snapshot contains exactly thirteen copied register values.
   PageAccess* {.pure.} = enum ## Writable pages are also readable; inaccessible pages may retain bytes for later remapping.
     Inaccessible, ReadOnly, ReadWrite
@@ -485,9 +485,8 @@ proc captureTerminalMachine*(program: Program, memory: Memory,
   ## Program/memory are immutable owned children; no caller-owned mutable state is retained.
   # Even terminal snapshots require genuine program and memory owners.
   if memory.data == nil: return MachineResult[Machine](status: MachineError.InvalidOwner)
-  if uint64(info.gasDeficit) > 0x8000000000000000'u64 or
-      (uint64(info.gasDeficit) != 0 and uint64(info.gas) != 0):
-    # Canonical balances never carry simultaneous credit/debt or exceed the signed negative domain.
+  if uint64(info.gasDeficit) != 0:
+    # The current paper has one unsigned balance; legacy nonzero deficit input is invalid.
     return MachineResult[Machine](status: MachineError.InvalidGasState)
   if codeLength(program).error != ProgramError.None:
     return MachineResult[Machine](status: MachineError.InvalidProgram)

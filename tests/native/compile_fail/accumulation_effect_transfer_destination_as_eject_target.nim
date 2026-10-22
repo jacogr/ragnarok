@@ -8,4 +8,4 @@ import ../../../src/state/accumulation_effects
 import ../../../src/codec/state_service_values
 import ../../../src/chain/parameters
 discard recordAccumulationEject(default(AccumulationEffects), AccumulationTransferDestination(99),
-  default(ServicePreimageHash), default(Parameters))
+  default(Parameters))

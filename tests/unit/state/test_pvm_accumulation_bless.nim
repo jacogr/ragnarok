@@ -49,7 +49,7 @@ proc source(manager = 42'u64, assigners = 65536'u64, delegator = 99'u64,
   var instructions = @[registerImmediate(7, manager), registerImmediate(8, assigners),
     registerImmediate(9, delegator), registerImmediate(10, registrar), registerImmediate(11,
         address),
-    registerImmediate(12, count), @[10'u8, 15]]
+    registerImmediate(12, count), @[10'u8, 16]]
   for instruction in suffix:
     instructions.add(instruction) # Every host call executes through the real decoded guest stream.
   guestProgram(instructions, credit, manager = initialManager, writable = data, spareEntries = 1)
@@ -156,7 +156,7 @@ for count in [0'u64, 1, 2, 3]:
     assert completed.error == AccumulationDispatchError.None, "completed.error == AccumulationDispatchError.None"
     let cpu = machineInfo(completed.value.machine).value
     if available < cost:
-      assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == cost-available, "completed.value.exit == StepExit.OutOfGas and uint64(cpu.g"
+      assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0, "completed.value.exit == StepExit.OutOfGas and uint64(cpu.g"
       assert not normalizeAccumulationOutcome(completed).value.outcomeContext.value.effectInfo.value.hasPrivileges, "unfunded bless has no provenance"
       assert uint64(cpu.registers[7]) == 42, "uint64(cpu.registers[7]) == 42 # No memory capture or stat" # No memory capture or state mutation before affordability.
     else:
@@ -164,18 +164,16 @@ for count in [0'u64, 1, 2, 3]:
 let hugePrototype = source(count = 0x1000000000000000'u64)
 let huge = run(source(count = 0x1000000000000000'u64, credit = high(uint64)), limit = 0)
 assert huge.error == AccumulationDispatchError.None and huge.value.exit == StepExit.OutOfGas, "huge.error == AccumulationDispatchError.None and huge.valu"
-assert uint64(machineInfo(huge.value.machine).value.gasDeficit) == 4611686018427388327'u64+price(
-    hugePrototype), "uint64(machineInfo(huge.value.machine).value.gasDeficit) ="
+assert uint64(machineInfo(huge.value.machine).value.gasDeficit) == 0, "uint64(machineInfo(huge.value.machine).value.gasDeficit) ="
 let boundaryPrototype = source(count = 0x800000000000000'u64)
 let boundaryCredit = 2305843009213694374'u64+price(boundaryPrototype)
 let boundary = run(source(count = 0x800000000000000'u64, credit = boundaryCredit), limit = 0)
 assert boundary.error == AccumulationDispatchError.None and boundary.value.exit ==
     StepExit.OutOfGas, "exact signed debt"
-assert uint64(machineInfo(boundary.value.machine).value.gasDeficit) == 0x8000000000000000'u64, "retain 2^63 debt"
-assert run(source(count = 0x800000000000000'u64, credit = boundaryCredit-1), limit = 0).error ==
-    AccumulationDispatchError.GasRangeExceeded, "unrepresentable debt refuses"
-assert run(source(count = high(uint64)), limit = 0).error ==
-    AccumulationDispatchError.GasRangeExceeded, "run(source(count = high(uint64)), limit = 0).error =="
+assert uint64(machineInfo(boundary.value.machine).value.gasDeficit) == 0, "retain 2^63 debt"
+assert run(source(count = 0x800000000000000'u64, credit = boundaryCredit-1),
+    limit = 0).value.exit == StepExit.OutOfGas, "unrepresentable debt refuses"
+assert run(source(count = high(uint64)), limit = 0).value.exit == StepExit.OutOfGas, "run(source(count = high(uint64)), limit = 0).error =="
 failHash(1)
 assert run(valid).error == AccumulationDispatchError.BackendFailure and hashCalls() == 1, "run(valid).error == AccumulationDispatchError.BackendFailu"
 failHash(0)
@@ -185,7 +183,7 @@ assert uint64(machineInfo(run(unauthorized).value.machine).value.registers[7]) =
 assert hashCalls() == 0, "hashCalls() == 0"
 failHash(0)
 for checkpoint in [false, true]:
-  let suffix = (if checkpoint: @[@[10'u8, 18], @[0'u8]] else: @[@[0'u8]])
+  let suffix = (if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])
   let completed = run(source(suffix = suffix))
   assert completed.value.exit == StepExit.Panic, "completed.value.exit == StepExit.Panic"
   let selected = normalizeAccumulationOutcome(completed).value.outcomeContext.value
@@ -195,9 +193,9 @@ for checkpoint in [false, true]:
 for checkpoint in [false, true]:
   var suffix: seq[seq[byte]] = @[]
   if checkpoint:
-    suffix.add(@[10'u8, 18]) # Retain the successful bless before the later exhaustion.
+    suffix.add(@[10'u8, 19]) # Retain the successful bless before the later exhaustion.
   suffix.add(registerImmediate(12, 1000000))
-  suffix.add(@[10'u8, 15]) # Full host charge exhausts gas before authority or memory checks.
+  suffix.add(@[10'u8, 16]) # Full host charge exhausts gas before authority or memory checks.
   suffix.add(@[50'u8, 0]) # The suspended call retains a valid continuation instruction even though gas is exhausted.
   let completed = run(source(suffix = suffix))
   assert completed.error == AccumulationDispatchError.None and completed.value.exit ==
@@ -205,13 +203,13 @@ for checkpoint in [false, true]:
   let selected = normalizeAccumulationOutcome(completed).value.outcomeContext.value
   assert selected.effectInfo.value.hasPrivileges == checkpoint
 # A successful manager handoff makes the original service unauthorized for its next bless call.
-let handed = run(source(manager = 99, suffix = @[registerImmediate(7, 42), @[10'u8, 15], @[50'u8, 0]]))
+let handed = run(source(manager = 99, suffix = @[registerImmediate(7, 42), @[10'u8, 16], @[50'u8, 0]]))
 assert uint64(machineInfo(handed.value.machine).value.registers[7]) == high(uint64)-8, "uint64(machineInfo(handed.value.machine).value.registers[7"
 checkRoles(context(handed), 99, singleton)
 # Later yield and storage mutations must retain the accepted current privilege snapshot and C(12).
-let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 26],
-  registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
-  registerImmediate(10, 3), @[10'u8, 5], @[50'u8, 0]]))
+let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 27],
+  @[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1), registerImmediate(10, 196608),
+  registerImmediate(11, 3), @[10'u8, 5], @[50'u8, 0]]))
 assert preserved.error == AccumulationDispatchError.None and preserved.value.exit == StepExit.Halt, "preserved.error == AccumulationDispatchError.None and pres"
 checkRoles(context(preserved), 42, singleton)
 assert context(preserved).effectInfo.value.hasPrivileges, "yield and storage retain successful bless provenance"

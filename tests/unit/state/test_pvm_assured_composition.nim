@@ -46,7 +46,7 @@ proc expect[T](outcome: AssuredCompositionResult[T], reason: AssuredCompositionE
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode exact canonical account fields at the actual source, final and composed maps.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      42))).value.bytes, ByteLimit(89)).value.metadata
+      42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 proc storage(state: StateStoreSnapshot) =
   ## Preserve exact guest bytes and independently known one-key footprint through all private state phases.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value

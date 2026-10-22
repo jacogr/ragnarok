@@ -42,16 +42,17 @@ proc transferExecution*(ending = TransferEnding.Halt, checkpoint = true,
   var memo = newSeq[byte](128)
   for index in 0..<128:
     memo[index] = byte((index*7+3) mod 256) # Raw opaque memo contains zero and non-ASCII bytes.
-  var instructions = @[registerImmediate(7, uint64(service)), registerImmediate(8, 5),
-    registerImmediate(9, offeredGas), registerImmediate(10, 196608), @[10'u8, 21]]
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, uint64(service)),
+    @[51'u8, 9, 0], registerImmediate(10, 5), registerImmediate(11, offeredGas),
+    registerImmediate(12, 196608), @[10'u8, 22]]
   if checkpoint:
-    instructions.add(@[10'u8, 18]) # Only the first transfer and debit belong to Y.
+    instructions.add(@[10'u8, 19]) # Only the first transfer and debit belong to Y.
   if second:
-    instructions.add(registerImmediate(7, uint64(service)))
+    instructions.add(registerImmediate(7, high(uint64)))
     if not duplicate:
-      instructions.add(registerImmediate(8, 0))
-      instructions.add(registerImmediate(10, 65536)) # Zero self-transfer with a distinct read-only memo.
-    instructions.add(@[10'u8, 21]) # Duplicate mode preserves amount, gas and memo exactly.
+      instructions.add(registerImmediate(10, 0))
+      instructions.add(registerImmediate(12, 65536)) # Zero self-transfer with a distinct read-only memo.
+    instructions.add(@[10'u8, 22]) # Duplicate mode preserves amount, gas and memo exactly.
   case ending
   of TransferEnding.Halt:
     discard # Ordinary halt keeps the newer regular sequence.
@@ -60,7 +61,7 @@ proc transferExecution*(ending = TransferEnding.Halt, checkpoint = true,
   of TransferEnding.Fault:
     instructions.add(@[52'u8, 2, 0, 0, 4]) # Unmapped load normalizes to panic and selects Y.
   of TransferEnding.OutOfGas:
-    instructions.add(@[10'u8, 28]) # A final unknown call costs 1000, funded with only 999.
+    instructions.add(@[10'u8, 30]) # A final unknown call costs 1000, funded with only 999.
   of TransferEnding.HashReturn:
     instructions.add(registerImmediate(7, 65536))
     instructions.add(registerImmediate(8, 32)) # Readable hash return keeps X's outgoing transfers.

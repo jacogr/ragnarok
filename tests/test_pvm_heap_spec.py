@@ -48,7 +48,7 @@ class HeapSpecificationAdoption(unittest.TestCase):
         """Original source retains credit; vectors already adopt the merged gas-draining rule."""
         text = (ROOT / 'vendor/graypaper/text/pvm_invocations.tex').read_text()
         changelog = (ROOT / 'vendor/jamtestvectors/CHANGELOG.md').read_text()
-        self.assertIn(r'\tup{\oog, \gascounter, h}', text)
+        self.assertIn(r'\max(\gascounter - g, 0)', text)
         self.assertIn('gas counter is drained to zero', changelog)
         self.assertEqual(grow(300, 51, 50, 100), ('oog', 0, 51, 50))
 
@@ -56,7 +56,7 @@ class HeapSpecificationAdoption(unittest.TestCase):
         """A one-byte stack reserves fifteen more pages under the adopted zone ceiling."""
         text = (ROOT / 'vendor/graypaper/text/pvm_invocations.tex').read_text()
         changelog = (ROOT / 'vendor/jamtestvectors/CHANGELOG.md').read_text()
-        self.assertIn(r'\Cpvminitinputsize - \rnp{s}', text)
+        self.assertIn(r'\Cpvminitinputsize - \rnq{s}', text)
         self.assertIn('64 KiB zone size', changelog)
         address_limit = 2**32 - 3 * 65536 - 2**24
         self.assertEqual((address_limit - 4096) // 4096 -

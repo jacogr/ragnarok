@@ -30,7 +30,8 @@ proc fixture(history: seq[byte], anchor = 20'u32, damage = 0,
   var entries: seq[StateEntry] = @[]
   for service in [42'u32, 99, 0, high(uint32), 77]:
     if service != 77 and not (service == 42 and damage == 6):
-      var account = serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(), ByteLimit(89)).value
+      var account = serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(), ByteLimit(
+          ServiceMetadataBytes)).value
       if service == 42 and damage == 3: account.value = @[0'u8] # Malformed selected metadata is a local error.
       entries.add(account)
     if not (service == 42 and damage == 1):
@@ -157,7 +158,7 @@ let panic = run(context, bad, mem).value
 assert panic.action == HostAction.Panic and uint64(panic.registers[7]) == 78
 assert hashCalls() == 0
 let starved = run(context, bad, mem, credit = 1128).value
-assert starved.action == HostAction.OutOfGas and uint64(starved.gasDeficit) == 1
+assert starved.action == HostAction.OutOfGas and uint64(starved.gasDeficit) == 0
 for index in 0..<13: assert uint64(starved.registers[index]) == uint64(bad[index])
 assert hashCalls() == 0
 failHash(0)
@@ -175,7 +176,7 @@ var huge = input
 huge[11] = RegisterValue(high(uint64))
 let hugeResponse = run(context, huge, mem, credit = 0).value
 assert hugeResponse.action == HostAction.OutOfGas
-assert uint64(hugeResponse.gasDeficit) == 4755801206503244901'u64
+assert uint64(hugeResponse.gasDeficit) == 0
 # Independently frozen prices cover ceiling boundaries and fully funded maximal requests.
 for pair in [(0'u64, 1125'u64), (1'u64, 1126'u64), (1024'u64, 1389'u64),
     (1025'u64, 1390'u64), (high(uint64), 4755801206503244901'u64)]:
@@ -185,7 +186,7 @@ for pair in [(0'u64, 1125'u64), (1'u64, 1126'u64), (1024'u64, 1389'u64),
   assert funded.action == HostAction.Continue and uint64(funded.gas) == 0
   assert uint64(funded.registers[7]) == 40
   let short = run(context, regs, mem, credit = pair[1]-1).value
-  assert short.action == HostAction.OutOfGas and uint64(short.gasDeficit) == 1
+  assert short.action == HostAction.OutOfGas and uint64(short.gasDeficit) == 0
   for index in 0..<13: assert uint64(short.registers[index]) == uint64(regs[index])
   assert short.memory.pageImage(PageIndex(48)).value.bytes == mem.pageImage(PageIndex(
       48)).value.bytes

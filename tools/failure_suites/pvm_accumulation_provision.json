@@ -16,14 +16,14 @@
     },
     {
       "identity": {
-        "reason": "gas"
+        "reason": "oog-reason"
       },
       "arguments": [
-        "gas"
+        "oog-reason"
       ],
-      "name": "pvm-accumulation-provision-gas",
-      "diagnostic": "outcome.status == None",
-      "description": "Provide gas failed-result extraction guard"
+      "name": "pvm-accumulation-provision-oog-reason",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Completed unsigned OOG has no engine-failure reason"
     },
     {
       "identity": {

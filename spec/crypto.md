@@ -1,8 +1,8 @@
 # Primitive crypto contract
 
-Baseline: Gray Paper v0.8.0, commit
-`07f041dabd073f9018b418e9ee72e79dd2185401`,
-[Cryptography](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/notation.tex#L155).
+Baseline: unreleased Gray Paper v0.8.0, commit
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
+[Cryptography](https://github.com/gavofyork/graypaper/blob/1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d/text/notation.tex#L163).
 Toolchain/dependency/vector revisions are in [crypto-pins.json](crypto-pins.json).
 
 | Operation | Contract |
@@ -20,21 +20,21 @@ Hash/key/signature values own bytes. Seed handles hide their private retained
 copy and cannot silently substitute a default seed. Failed results carry only
 a reason; defaults fail. Checked success selection remains enabled in release.
 
-## Verification policy remains an explicit protocol question
+## Current ZIP215 verification policy
 
-[RFC 8032 section 5.1.7](https://www.rfc-editor.org/rfc/rfc8032#section-5.1.7)
-allows a cofactored verification equation and a sufficient uncofactored check.
-The Nim adapter preserves pinned BoringSSL's actual verifier policy. The independent RFC8032
-and 151-case Wycheproof corpus is supplemented by explicit exceptional-point probes. BoringSSL
-accepts A=identity, R=identity, S=0 for empty and `abc` messages. It rejects the tested S=group-order
-and all-zero A/R, S=0 encodings. These probes are not an exhaustive exceptional-point corpus.
+The adopted Gray Paper explicitly requires [ZIP215](https://zips.z.cash/zip-0215):
+noncanonical point encodings are accepted, S must be below the group order, and the
+cofactored signature equation is checked. Both `verify` and `verifyZip215` use the same
+maintained Zebra verifier; there is no backend retry or release-policy fallback.
+The protocol null validator uses its newly specified invalid Ed25519 encoding.
 
-A complete JAM integration still needs an explicit normative decision and
-focused independent tests for every exceptional point/canonicality policy. The explicit ZIP215
-capability below prepares the forthcoming specification upgrade without changing this release selection.
-Do not advertise these backend verdicts as a finalized consensus verifier.
-The pinned official JAM vector tree has no standalone primitive-crypto corpus;
-RFC/Wycheproof tests are supplemental primitive evidence, not JAM state tests.
+The independent RFC8032 positives and pinned Wycheproof corpus remain intact. Upstream
+Wycheproof case 151 labels x=0 with the sign bit set as invalid under RFC8032; ZIP215
+accepts this encoding. This one fixed, documented expectation differs from its upstream
+label. See [the exact compatibility record](crypto-zip215-upgrade.md), including historical
+BoringSSL witnesses. These are implementation policy differences, not paper discrepancies.
+The official JAM vector tree has no standalone primitive corpus; these checks do not prove
+complete state-transition/JAM parity.
 
 ## Reproducibility and provenance
 
@@ -47,26 +47,13 @@ Zebra 4.2.0 shares the already locked SHA-2 0.10 closure; Zebra 5 introduces a s
 SHA-2 0.11/curve25519-dalek 5 closure. All registry identities/checksums are locked;
 both primitive pin records verify the lock SHA-256. No upstream source is patched.
 
-The C shim retains BoringSSL for release-policy `verify`; QUIC also still needs BoringSSL.
-XKCP is removed from provisioning and linkage. This consolidates primitive providers but
-adds the ordinary-signature Rust dependency; it does not remove all native dependencies.
-Seed and expanded signing-key owners have explicit zeroizing drop guards. This does not
-claim elimination of all compiler/backend-internal secret copies.
+The C primitive shim forwards only to the locked Rust library. BoringSSL remains a
+QUIC/TLS dependency but is absent from primitive compilation and linkage. XKCP is no
+longer provisioned. Signing-key/seed owners have explicit zeroizing drop guards; this
+does not claim elimination of all compiler/backend-internal secret copies.
 
-### Explicit ZIP215 capability before protocol activation
-
-`verifyZip215` / `rc_ed_verify_zip215` exposes Zebra's maintained
-[ZIP215](https://zips.z.cash/zip-0215) verifier. It accepts noncanonical curve encodings,
-requires S below the group order, and checks the cofactored equation. It is a separate
-explicit operation, never an automatic retry after `verify` fails. The release protocol
-continues to call `verify`. The coordinated unreleased Gray Paper upgrade will change that
-selection together with the null-validator key; this layer does not advance the GP pin.
-
-Focused native witnesses cover A=all-zero (order four), R=identity, S=0 with empty/one-byte
-messages, noncanonical identity A (y=p+1), invalid A=02 followed by zeros, and a failed
-identity equation with S=1. Ordinary RFC/Wycheproof behavior remains checked independently.
-The all-zero-key witness is an implementation compatibility gap for the upcoming GP rule,
-not a Gray Paper discrepancy.
+Focused native witnesses cover cofactored torsion points, noncanonical A/R encodings,
+invalid points, S equal to the group order, normal signatures and altered messages.
 
 The Rust library has a relocatable platform identity; the crypto shim resolves a colocated
 copy through `@loader_path`/`$ORIGIN`. A fresh-process relocation check clears loader-path
@@ -95,8 +82,7 @@ nonzero-before/zero-after inside the wipe callback while memory is live, never a
 injects backend refusals; those test symbols are absent from the production library. Native worker
 checks use independent per-thread seeds and join every successfully started worker on all exits.
 This does not establish concurrent clearing/signing of a shared seed, recoverable ARC allocation
-failure, broader contextual/Bandersnatch parity or Linux behavior. The exceptional-point policy
-above remains an explicit JAM integration gate.
+failure, broader contextual/Bandersnatch parity or Linux behavior. Current ZIP215 activation is covered independently above; Thin VRF parity remains a separate gate.
 
 ## Crypto consolidation completion checks
 
@@ -105,5 +91,4 @@ the existing crypto and Bandersnatch corpora, `make unit SUITE=bandersnatch_owne
 production `make` link, and `make check-python` / `make format-check`. ABI checks include
 missing pointers, nonrepresentable slices, hashes beyond 64 KiB and fresh-process colocated
 loading. Local Darwin evidence does not claim exact-head Linux CI or complete JAM parity.
-The next protocol layer will activate ZIP215 and migrate the null-validator representation
-with the authorized unreleased Gray Paper pin.
+ZIP215 and the null-validator representation advance together in this coordinated pin upgrade.

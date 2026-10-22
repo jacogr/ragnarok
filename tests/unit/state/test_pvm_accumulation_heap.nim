@@ -19,7 +19,7 @@ import ../../support/[pvm_accumulation_context, pvm_accumulation_program,
 proc instructions(request: uint64, repeat = false, panic = false): seq[seq[byte]] =
   result = @[]
   if panic:
-    result.add(@[10'u8, 18]) # Retain account checkpoint before heap growth; terminal CPU memory must still include growth.
+    result.add(@[10'u8, 19]) # Retain account checkpoint before heap growth; terminal CPU memory must still include growth.
   result.add(registerImmediate(7, request))
   result.add(@[10'u8, 1])
   if repeat:
@@ -199,9 +199,11 @@ block batch_publication:
       # Author only literal incoming credits; heap queries have no persistent account writes.
       if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
           ServiceIndex(service))):
-        var metadata = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var metadata = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         metadata.balance = AccountBalance(if ordinal == 0: 17 else: 31)
-        row = serviceMetadataEntry(ServiceIndex(service), metadata, ByteLimit(89)).value
+        row = serviceMetadataEntry(ServiceIndex(service), metadata, ByteLimit(
+            ServiceMetadataBytes)).value
     rows.add(row)
   let expected = newStateStore(rows, integrationStoreLimits()).value
   assert array[32, byte](state.snapshot.value.commitment.root) == array[32, byte](

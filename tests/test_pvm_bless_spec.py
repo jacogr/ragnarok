@@ -15,7 +15,7 @@ class BlessSpecificationGate(unittest.TestCase):
     def test_conflicting_pairs_are_not_a_dictionary(self):
         """The pinned row constructs a set of pairs, allowing conflicting values for one key."""
         text = (ROOT/'vendor/graypaper/text/pvm_invocations.tex').read_text()
-        row = text.split(r'\texttt{bless} = 15', 1)[1].split(r'\texttt{assign} = 16', 1)[0]
+        row = text.split(r'\texttt{bless} = 16', 1)[1].split(r'\texttt{assign} = 17', 1)[0]
         self.assertIn(r'\set{\build{\kv{s}{g}', row)
         pairs = {(1, 1), (1, 2)}
         self.assertEqual(len(pairs), 2)

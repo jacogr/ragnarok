@@ -134,7 +134,7 @@ for requested in [0'u64, 1'u64, 653'u64, 1023'u64, 1024'u64, 1025'u64, high(uint
       let count = (if funded: min(requested, 653'u64 - start) else: 0'u64)
       assert response.action == (if funded: HostAction.Continue else: HostAction.OutOfGas)
       assert uint64(response.gas) == (if funded: credit - price else: 0'u64)
-      assert uint64(response.gasDeficit) == (if funded: 0'u64 else: 1'u64)
+      assert uint64(response.gasDeficit) == 0
       for i in 0..<13:
         # Funded r7 is the full encoded length, not the clipped copy length.
         assert uint64(response.registers[i]) == (if i == 7 and funded: 653'u64 else: uint64(regs[i]))
@@ -158,7 +158,7 @@ assert uint64(panic.gas) == 0 and pageImage(panic.memory, PageIndex(0)).value.by
 assert fetchContextResponse(captured, MachineGas(86), arguments(0, 2, 0), memory,
   MemoryByteLimit(1)).error == FetchError.LimitExceeded
 let oog = fetchContextResponse(captured, MachineGas(85), crossing, memory, MemoryByteLimit(0)).value
-assert oog.action == HostAction.OutOfGas and uint64(oog.gasDeficit) == 1
+assert oog.action == HostAction.OutOfGas and uint64(oog.gasDeficit) == 0
 assert pageImage(memory, PageIndex(0)).value.bytes[0] == 0
 
 # Empty blobs still form a nonempty canonical package, and replacement preserves earlier handles.

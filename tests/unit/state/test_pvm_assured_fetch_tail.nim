@@ -43,7 +43,7 @@ proc expectedBytes(completed: CompletedBlockAccumulation, config: AssuredExecuti
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Inspect exact account fields from each retained canonical full-map owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      42))).value.bytes, ByteLimit(89)).value.metadata
+      42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   ## Exactly one tail byte changes while the following two RW bytes survive and all eight return bytes are stored.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value

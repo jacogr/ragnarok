@@ -44,20 +44,30 @@ proc source(length = 5'u64, address = 196608'u64, accumulation = 123'u64, transf
     gratis = 0'u64, desired = high(uint64), manager = 0'u32, registrar = 0'u32,
     credit = 100000'u64, account = ServiceMetadata(balance: AccountBalance(1000)),
     data: seq[byte] = offered(), extra: seq[StateEntry] = @[], spareEntries = 6,
-    writes = 3'u64, bootstrapProbes = 1'u64,
+    writes = 3'u64, bootstrapProbes = 1'u64, mode = 0'u64,
     suffix: seq[seq[byte]] = @[@[50'u8, 0]]): PreparedAccumulationMachine =
-  var instructions = @[registerImmediate(7, address), registerImmediate(8, length),
-    registerImmediate(9, accumulation), registerImmediate(10, transfer), registerImmediate(11,
-        gratis),
-    registerImmediate(12, desired), @[10'u8, 19]]
+  assert length <= uint64(high(uint32)) # The current request carries a canonical E4 length, never a truncated E8.
+  assert data.len >= 32 # This fixture borrows a complete opaque code hash before packing the current request.
+  var wire = newSeq[byte](60)
+  for i in 0..<32:
+    wire[i] = data[i] # Independent request fields retain every offered hash octet.
+  for i in 0..<4:
+    wire[32+i] = byte((length shr (8*i)) and 255)
+  for field, value in [accumulation, transfer, gratis]:
+    for i in 0..<8:
+      wire[36+field*8+i] = byte((value shr (8*i)) and 255) # Three full-width E8 configuration fields.
+  for i in 32..<data.len:
+    wire.add(data[i]) # Preserve trailing authored preimage bytes after the fixed current request.
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, desired),
+    registerImmediate(9, mode), registerImmediate(10, address), @[10'u8, 20]]
   for instruction in suffix:
     instructions.add(instruction) # Later effects execute through the same decoded production guest stream.
   guestProgram(instructions, credit, manager = manager, registrar = registrar, delegator = 42,
-    assigner = 42, account = account, writable = data, extra = extra, spareEntries = spareEntries,
+    assigner = 42, account = account, writable = wire, extra = extra, spareEntries = spareEntries,
     writes = writes, probes = bootstrapProbes)
 
 # Probe, copy, provision and execution ceilings are local policies, distinct from fixed protocol gas.
-proc run(prepared: PreparedAccumulationMachine, params: Parameters = parameters(), limit = 32'u64,
+proc run(prepared: PreparedAccumulationMachine, params: Parameters = parameters(), limit = 60'u64,
     probes = 3'u64, provisions = default(AccumulationProvisionLimits)): AccumulationDispatchResult =
   executeAccumulationMachine(prepared, params,
     FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1),
@@ -78,9 +88,10 @@ proc context(done: AccumulationDispatchResult, dimension = AccumulationDimension
 # Read complete canonical metadata by its actual current account identity.
 proc metadata(owner: AccumulationEffectContext, service: ServiceIndex): ServiceMetadata =
   let found = owner.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255), service))
-  assert found.error == StateStoreError.None and found.value.byteLength == 89, "complete current account metadata"
-  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(89))
-  assert decoded.error == ServiceMetadataError.None and decoded.value.consumed == 89, "canonical metadata encoding"
+  assert found.error == StateStoreError.None and found.value.byteLength == ServiceMetadataBytes, "complete current account metadata"
+  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
+  assert decoded.error == ServiceMetadataError.None and decoded.value.consumed ==
+      ServiceMetadataBytes, "canonical metadata encoding"
   decoded.value.metadata
 
 # Independently step the small public ID interval, with all intermediate values below 2^33.
@@ -103,6 +114,8 @@ proc checkChild(owner: AccumulationEffectContext, service: ServiceIndex, childBa
       child.minimumTransferGas) == transfer, "full-width minimum gas fields"
   assert uint32(child.created) == 128 and uint32(child.lastAccumulation) == 0 and uint32(
       child.parent) == 42, "slot and parent derive from provenance"
+  assert uint32(child.supervisor) == 42 and uint32(child.supervisorCreated) == 0 and uint64(
+      child.supervisorBalance) == 0, "new liquid child binds the actual supervisor incarnation"
   let hash = array[32, byte](child.codeHash)
   for i in 0..<32:
     assert hash[i] == hashBytes[i], "offered raw hash preserved"
@@ -175,48 +188,66 @@ assert uint64(machineInfo(cashBeforeFull.value.machine).value.registers[7]) == h
 for address in [0'u64, 65536'u64+4096-16, 196608'u64+8192-16, 0x100000000'u64, high(uint64)]:
   let failed = run(source(address = address, gratis = 1, registrar = 42, desired = 42))
   assert failed.error == AccumulationDispatchError.None and failed.value.exit == StepExit.Panic, "bad hash memory precedes HUH/CASH/FULL"
-  assert uint64(machineInfo(failed.value.machine).value.registers[7]) == address, "panic preserves full pointer"
-for length in [0x100000000'u64, high(uint64)]:
-  let failed = run(source(length = length, gratis = 1), limit = 0)
-  assert failed.value.exit == StepExit.Panic, "out-of-domain advertised length panics without truncation"
-for length in [0'u64, uint64(high(uint32))]:
+  assert uint64(machineInfo(failed.value.machine).value.registers[7]) == high(uint64), "panic preserves funding source"
+for length in [uint64(high(uint32))-1, uint64(high(uint32))]:
+  let refused = run(source(length = length, gratis = 1))
+  assert uint64(machineInfo(refused.value.machine).value.registers[7]) == high(uint64)-8, "reserved E4 lengths return HUH before funding or namespace work"
+for length in [0'u64, uint64(high(uint32))-2]:
   let completed = run(source(length = length, accumulation = high(uint64), transfer = high(uint64)),
       params = parameters(0, 0, 0))
   checkChild(context(completed), selected, childBalance = 0, length = uint32(length),
-    accumulation = high(uint64), transfer = high(uint64)) # No reserved length or signed-gas restriction is invented.
-assert run(valid, limit = 31).error == AccumulationDispatchError.LimitExceeded, "fixed hash capture ceiling"
+    accumulation = high(uint64), transfer = high(uint64)) # Current maximal valid length and full-width gas fields remain representable.
+# Undefined current modes are protocol HUH refusals after request capture, with no account mutation.
+for mode in [4'u64, high(uint64)]:
+  let prepared = source(mode = mode)
+  let refused = run(prepared)
+  assert refused.error == AccumulationDispatchError.None and refused.value.exit == StepExit.Halt, "undefined creation mode completes with a guest refusal"
+  assert uint64(machineInfo(refused.value.machine).value.registers[7]) == high(uint64)-8, "undefined creation mode returns HUH"
+  assert uint64(machineInfo(refused.value.machine).value.gas) == 100000-price(prepared)-3855, "undefined mode charges only the fixed creation fee"
+  assert uint64(metadata(context(refused), ServiceIndex(42)).balance) == 1000 and uint32(context(
+      refused).effectInfo.value.nextService) == uint32(selected), "undefined mode preserves creator balance and allocation cursor"
+  assert run(source(mode = mode, address = high(uint64))).value.exit == StepExit.Panic, "complete request capture precedes undefined-mode HUH"
+  assert run(source(mode = mode, address = high(uint64), credit = price(prepared)+3854),
+      limit = 0).value.exit == StepExit.OutOfGas, "unaffordable undefined mode drains gas before capture"
+# Valid alternate modes remain explicit implementation gates until their funding paths are proven.
+for mode in [1'u64, 2, 3]:
+  assert run(source(mode = mode)).error == AccumulationDispatchError.UnsupportedHostCall, "valid alternate creation funding is gated"
+assert run(valid, limit = 59).error == AccumulationDispatchError.LimitExceeded, "complete current request capture ceiling"
 for available in [0'u64, 3854, 3855, 3856]:
   let completed = run(source(credit = price(valid)+available))
   assert completed.error == AccumulationDispatchError.None, "fixed gas boundary completes"
   let cpu = machineInfo(completed.value.machine).value
   if available < 3855:
-    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 3855-available, "exact creation deficit"
-    assert uint64(cpu.registers[7]) == 196608 and uint32(context(
-        completed).effectInfo.value.nextService) == uint32(selected), "OOG preserves pointer and cursor"
+    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0, "creation OOG drains unsigned gas"
+    assert uint64(cpu.registers[7]) == high(uint64) and uint32(context(
+        completed).effectInfo.value.nextService) == uint32(selected), "OOG preserves funding source and cursor"
   else:
     assert completed.value.exit == StepExit.Halt and uint64(cpu.gas) == available-3855, "exact funded charge"
-assert run(source(length = high(uint64), address = high(uint64), credit = price(valid)),
+assert run(source(length = uint64(high(uint32)), address = high(uint64), credit = price(valid)),
     limit = 0).value.exit == StepExit.OutOfGas, "charge precedes input validation"
 checkChild(context(run(source(data = newSeq[byte](32)))), selected, hashBytes = newSeq[byte](
     32)) # Zero offered hashes are ordinary values.
 let fullCredit = run(source(credit = high(uint64)))
 assert uint64(machineInfo(fullCredit.value.machine).value.gas) == high(uint64)-price(valid)-3855, "full-width gas credit subtraction"
 # Repeated creation consumes the current cursor and current balance, retaining all prior children.
-let repeated = run(source(suffix = @[registerImmediate(7, 196608), @[10'u8, 19], registerImmediate(
-    7, 196608), @[10'u8, 19], @[50'u8, 0]]))
+let repeated = run(source(suffix = @[registerImmediate(7, high(uint64)), @[10'u8, 20],
+    registerImmediate(7, high(uint64)), @[10'u8, 20], @[50'u8, 0]]))
 for ordinal in 0..<3:
   checkChild(context(repeated), advance(selected, uint64(
       42*ordinal))) # All created accounts and requests remain present.
 assert uint64(metadata(context(repeated), ServiceIndex(42)).balance) == 436, "three exact creator debits"
 assert uint32(context(repeated).effectInfo.value.nextService) == uint32(advance(selected, 126)), "third public cursor advancement"
 # Initial collision scanning and successor collision scanning have independently explicit ceilings.
-let occupiedA = serviceMetadataEntry(advance(selected), default(ServiceMetadata), ByteLimit(89)).value
-let occupiedB = serviceMetadataEntry(advance(selected, 43), default(ServiceMetadata), ByteLimit(89)).value
+let occupiedA = serviceMetadataEntry(advance(selected), default(ServiceMetadata), ByteLimit(
+    ServiceMetadataBytes)).value
+let occupiedB = serviceMetadataEntry(advance(selected, 43), default(ServiceMetadata), ByteLimit(
+    ServiceMetadataBytes)).value
 let colliding = source(extra = @[occupiedA, occupiedB])
 assert run(colliding, probes = 2).error == AccumulationDispatchError.LimitExceeded, "final absence check consumes a probe"
 let skipped = run(colliding, probes = 3)
 assert uint32(context(skipped).effectInfo.value.nextService) == uint32(advance(selected, 44)), "successor skips occupied initial IDs"
-let initialOccupied = serviceMetadataEntry(selected, default(ServiceMetadata), ByteLimit(89)).value
+let initialOccupied = serviceMetadataEntry(selected, default(ServiceMetadata), ByteLimit(
+    ServiceMetadataBytes)).value
 let initialSkipped = run(source(extra = @[initialOccupied], bootstrapProbes = 2))
 assert uint64(machineInfo(initialSkipped.value.machine).value.registers[7]) == uint64(uint32(
     advance(selected, 1))), "bootstrap selects first unused public ID"
@@ -253,7 +284,7 @@ for rates in [(0'u64, 0'u64, high(uint64)), (high(uint64), high(uint64), high(ui
       params = parameters(base, item, octet))
   assert uint64(machineInfo(refused.value.machine).value.registers[7]) == high(uint64)-6, "wide deposit products return CASH without saturation"
 for checkpoint in [false, true]:
-  let suffix = (if checkpoint: @[@[10'u8, 18], @[0'u8]] else: @[@[0'u8]])
+  let suffix = (if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])
   let failed = run(source(suffix = suffix))
   assert failed.value.exit == StepExit.Panic, "authored terminal panic"
   let chosen = normalizeAccumulationOutcome(failed).value.outcomeContext.value
@@ -262,37 +293,37 @@ for checkpoint in [false, true]:
   assert uint32(chosen.effectInfo.value.nextService) == uint32(if checkpoint: advance(
       selected) else: selected), "panic selects matching cursor checkpoint"
   let exhausted = run(source(credit = price(valid)+4000, suffix = (if checkpoint:
-    @[@[10'u8, 18], registerImmediate(7, 196608), @[10'u8, 19], @[50'u8, 0]] else:
-    @[registerImmediate(7, 196608), @[10'u8, 19], @[50'u8, 0]])))
+    @[@[10'u8, 19], registerImmediate(7, high(uint64)), @[10'u8, 20], @[50'u8, 0]] else:
+    @[registerImmediate(7, high(uint64)), @[10'u8, 20], @[50'u8, 0]])))
   assert exhausted.value.exit == StepExit.OutOfGas, "second creation is unaffordable"
   let retained = normalizeAccumulationOutcome(exhausted).value.outcomeContext.value
   assert uint32(retained.effectInfo.value.nextService) == uint32(if checkpoint: advance(
       selected) else: selected), "OOG selects matching cursor checkpoint"
 # Later regular mutations retain both the created child and the advanced cursor.
-let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 26],
-  registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(9, 196608),
-  registerImmediate(10, 3), @[10'u8, 5], @[50'u8, 0]]))
+let preserved = run(source(suffix = @[registerImmediate(7, 65536), @[10'u8, 27],
+  @[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1), registerImmediate(10, 196608),
+  registerImmediate(11, 3), @[10'u8, 5], @[50'u8, 0]]))
 assert uint64(machineInfo(preserved.value.machine).value.registers[7]) == high(uint64), "storage write succeeds after creation"
 assert context(preserved).effectInfo.value.hasYield and uint32(context(
     preserved).effectInfo.value.nextService) == uint32(advance(selected)), "yield/storage retain advanced cursor"
 checkChild(context(preserved), selected)
 let assigned = run(source(suffix = @[registerImmediate(7, 0), registerImmediate(8, 65536),
-  registerImmediate(9, 99), @[10'u8, 16], @[50'u8, 0]]), limit = 2560)
+  registerImmediate(9, 99), @[10'u8, 17], @[50'u8, 0]]), limit = 2560)
 assert uint64(machineInfo(assigned.value.machine).value.registers[7]) == 0 and uint32(context(
     assigned).effectInfo.value.nextService) == uint32(advance(selected)), "assign retains advanced cursor"
 checkChild(context(assigned), selected)
 let designated = run(source(suffix = @[registerImmediate(7, 65536), registerImmediate(8, 6), @[
-    10'u8, 17], @[50'u8, 0]]), limit = 2016)
+    10'u8, 18], @[50'u8, 0]]), limit = 2016)
 assert uint64(machineInfo(designated.value.machine).value.registers[7]) == 0 and uint32(context(
     designated).effectInfo.value.nextService) == uint32(advance(selected)), "designate retains advanced cursor"
 checkChild(context(designated), selected)
 # Current info observes the creator debit after the new account batch.
 let inspected = run(source(suffix = @[registerImmediate(7, high(uint64)), registerImmediate(8, 196608),
-  registerImmediate(9, 0), registerImmediate(10, 96), @[10'u8, 6], @[50'u8, 0]]), limit = 96)
+  registerImmediate(9, 0), registerImmediate(10, 112), @[10'u8, 6], @[50'u8, 0]]), limit = 112)
 assert inspected.error == AccumulationDispatchError.None and inspected.value.exit == StepExit.Halt, "current info after creation"
 let info = readBytes(memoryOf(inspected.value.machine).value, MemoryAddress(196608), MemoryLength(
-    96), MemoryByteLimit(96)).value
-assert info[32] == 44 and info[33] == 3, "info encodes current creator balance 812"
+    112), MemoryByteLimit(112)).value
+assert info[40] == 44 and info[41] == 3, "info encodes current creator balance 812"
 # Provide can see the child's newly installed request without discarding the advanced cursor.
 let blob = @[7'u8, 8, 9]
 let blobHash = array[32, byte](blake2b256(blob).value)
@@ -301,8 +332,8 @@ for octet in blobHash:
   input.add(octet) # Offered code hash occupies the first 32 guest bytes.
 for octet in blob:
   input.add(octet) # Raw preimage bytes follow the offered hash.
-let provided = run(source(length = 3, data = input, suffix = @[registerImmediate(8, 196640),
-  registerImmediate(9, 3), @[10'u8, 27], @[50'u8, 0]]), provisions = AccumulationProvisionLimits(
+let provided = run(source(length = 3, data = input, suffix = @[registerImmediate(8, 196668),
+  registerImmediate(9, 3), @[10'u8, 28], @[50'u8, 0]]), provisions = AccumulationProvisionLimits(
     items: ElementLimit(1), perBlob: ByteLimit(3), totalBlobBytes: ByteLimit(3)))
 assert provided.error == AccumulationDispatchError.None and uint64(machineInfo(
     provided.value.machine).value.registers[7]) == 0, "provide sees the new request"
@@ -326,6 +357,16 @@ assert recordAccumulationNew(default(AccumulationEffects), proposal, parameters(
     ServiceProbeLimit(1)).error == AccumulationEffectError.Uninitialized, "default pair cannot create a service"
 assert recordAccumulationNew(prepared, proposal, parameters(), ServiceProbeLimit(0)).error ==
     AccumulationEffectError.LimitExceeded, "direct probe exhaustion carries no successor"
+# Direct proposals enforce the same current length bound before backend hashing or allocation probes.
+for length in [high(uint32)-1, high(uint32)]:
+  var invalidProposal = proposal
+  invalidProposal.length = RequestLength(length)
+  failHash(1)
+  assert recordAccumulationNew(prepared, invalidProposal, parameters(), ServiceProbeLimit(
+      1)).error ==
+    AccumulationEffectError.InvalidLength
+  assert hashCalls() == 0, "reserved direct request length precedes backend work"
+  failHash(0)
 # Bless uses current authority and preserves the allocation cursor while handing manager/registrar roles off.
 let managed = run(source(manager = 42))
 var privilegePolicy = pvmContextConfig().privileges

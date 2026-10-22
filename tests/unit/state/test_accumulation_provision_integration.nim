@@ -183,7 +183,7 @@ let numeric = prepareAccumulationProvisions(integrationNumericContexts(), integr
 var numericEntries = entries
 for service in [1'u32, 256'u32]:
   numericEntries.add(serviceMetadataEntry(ServiceIndex(service), default(ServiceMetadata),
-      ByteLimit(89)).value)
+      ByteLimit(ServiceMetadataBytes)).value)
   numericEntries.add(integrationRequest(service, @[
       2'u8])) # Posterior target map is explicit and independent of the contexts' source.
 var numericStore = newStateStore(numericEntries, integrationStoreLimits()).value
@@ -192,7 +192,7 @@ assert integrateAccumulationProvisions(numericStore, numeric, HeaderSlot(7)).err
 for service in [1'u32, 256'u32]:
   assert numericStore.snapshot.value.lookup(servicePreimageKey(ServiceIndex(service), sharedHash,
       ByteLimit(32)).value).value.bytes == @[2'u8]
-let guest = runProvision(provisionMachine([ProvisionGuestCall(id: 27, r7: high(uint64), r8: 65536, r9: 3)]))
+let guest = runProvision(provisionMachine([ProvisionGuestCall(id: 28, r7: high(uint64), r8: 65536, r9: 3)]))
 assert guest.error == AccumulationDispatchError.None and guest.value.exit == StepExit.Halt
 let guestPlan = prepareAccumulationProvisions([guest.effects.effectContext(
     AccumulationDimension.Regular).value], integrationPolicy()).value

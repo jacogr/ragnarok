@@ -82,12 +82,11 @@ for permitted in [0, 1, 2]:
   assert context.calls == permitted
 
 # A terminal host response completes even when its ecalli used the last available guest attempt.
-for action in [HostAction.Halt, HostAction.Panic, HostAction.OutOfGas]:
+for action in [HostAction.Panic, HostAction.OutOfGas]:
   var context = Context(calls: 0, action: action, badMemory: false)
   let stopped = executeWithHost(source(2), context, terminalSecond, ExecutionStepLimit(2),
     HostCallLimit(2), GasCycleLimit(0))
-  let expected = (if action == HostAction.Halt: StepExit.Halt
-    elif action == HostAction.Panic: StepExit.Panic else: StepExit.OutOfGas)
+  let expected = (if action == HostAction.Panic: StepExit.Panic else: StepExit.OutOfGas)
   assert stopped.error == StepError.None and stopped.value.exit == expected
   let cpu = machineInfo(stopped.value.machine).value
   assert uint64(cpu.pc) == 2 and uint64(cpu.gas) == 0 and cpu.blockCharged

@@ -76,8 +76,8 @@ def fresh_solicit(account, identity, length, readable=True, gas=SOLICIT_GAS):
 # Encode exact version-zero metadata with derived footprint; other fixed fields are zero in this structural fixture.
 def metadata(account):
     items, octets = footprint(account)
-    values = [account.balance, 0, 0, octets, account.gratis]
-    return b'\0'+bytes(32)+b''.join(value.to_bytes(8, 'little') for value in values)+items.to_bytes(4, 'little')+bytes(12)
+    values = [account.balance, 0, 0, 0, octets, account.gratis]
+    return b'\0'+bytes(40)+b''.join(value.to_bytes(8, 'little') for value in values)+items.to_bytes(4, 'little')+bytes(12)
 
 
 # Typed composition sources preserve original maps without inventing lookup identities from trie digest bytes.
@@ -129,7 +129,7 @@ def requests():
             verdict = composed(values, [source], (MAX,)*4, 32)
             expected.append(verdict)
             outcomes[phase] = verdict.split()[0]
-        assert outcomes['after'] == 'duplicatekey' and outcomes['before'] != 'duplicatekey' and outcomes['control'] != 'duplicatekey'
+        assert outcomes['after'] == 'invalidcomponent' and outcomes['before'] != 'duplicatekey' and outcomes['control'] != 'duplicatekey'
         items, octets = footprint(witness['after'])
         evidence.append(dict(kind=witness['kind'], length=witness['marker'], lookup_hash=witness['identity'].hex(),
             collision_key=witness['key'].hex(), local_result=witness['status'], assumed_solicit_gas=SOLICIT_GAS,
@@ -138,5 +138,5 @@ def requests():
                 sum(len(v) for v in witness['after'].preimages.values()),
             posterior_items=items, posterior_octets=octets, balance=witness['after'].balance,
             posterior_threshold=threshold(witness['after']), local_checks=local_checks(witness['after']),
-            composition=outcomes, scope='fresh-solicit local rule witness; no PVM execution or genesis reachability claim'))
+            composition=outcomes, scope='historical release fresh-solicit witness; current composition rejects reserved length; no PVM execution claim'))
     return lines, expected, evidence

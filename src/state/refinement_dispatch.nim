@@ -161,27 +161,32 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
       return hostSuccess[RefinementDispatchError](selected.response)
     hostFailure(if exported.error == RefinementExportError.LimitExceeded: RefinementDispatchError.LimitExceeded
       else: RefinementDispatchError.InvalidContext) # No partially appended output on local failure.
-  of 9..14:
+  of 9..15:
     let changed = if uint64(stopped.hostCall) == 9:
-      createInnerMachine(context.machines, cpu.gas, cpu.registers, memory)
+      compileInnerModule(context.machines, cpu.gas, cpu.registers, memory)
     elif uint64(stopped.hostCall) == 10:
-      innerPeekResponse(context.machines, cpu.gas, cpu.registers, memory, context.copyLimit)
+      createInnerMachine(context.machines, cpu.gas, cpu.registers, memory)
     elif uint64(stopped.hostCall) == 11:
-      innerPokeResponse(context.machines, cpu.gas, cpu.registers, memory, context.copyLimit)
+      innerPeekResponse(context.machines, cpu.gas, cpu.registers, memory, context.copyLimit)
     elif uint64(stopped.hostCall) == 12:
-      innerPagesResponse(context.machines, cpu.gas, cpu.registers, memory)
+      innerPokeResponse(context.machines, cpu.gas, cpu.registers, memory, context.copyLimit)
     elif uint64(stopped.hostCall) == 13:
+      innerPagesResponse(context.machines, cpu.gas, cpu.registers, memory)
+    elif uint64(stopped.hostCall) == 14:
       innerInvokeResponse(context.machines, cpu.gas, cpu.registers, memory)
     else:
       expungeInnerMachine(context.machines, cpu.gas, cpu.registers,
           memory) # Every implemented inner host uses one invocation-local map.
+    if changed.error == InnerMachineError.UnsupportedSource:
+      return hostFailure(RefinementDispatchError.UnsupportedHostCall) # Historical compilation needs its authenticated database adapter.
     if changed.error == InnerMachineError.ExecutionFailure:
       context.innerFailure = changed.executionError
       return hostFailure(RefinementDispatchError.ExecutionFailure) # Stage the exact enum reason beside this run's private context.
     if changed.error == InnerMachineError.None:
-      context.machines = changed.value.machines
+      let transition = changed.value
+      context.machines = transition.machines
       return hostSuccess[RefinementDispatchError](
-          changed.value.response) # Response and immutable map move together.
+          transition.response) # Response and immutable map move together.
     hostFailure(if changed.error == InnerMachineError.LimitExceeded: RefinementDispatchError.LimitExceeded
       else: RefinementDispatchError.InvalidContext) # A local capture refusal cannot become protocol HUH/FULL.
   else:

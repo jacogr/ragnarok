@@ -20,7 +20,7 @@ import ../../support/[pvm_assured_outcomes, pvm_computed_storage_program,
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## The account survives successive writes; decode its exact canonical fields at each retained full-map owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      42))).value.bytes, ByteLimit(89)).value.metadata
+      42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 proc storage(state: StateStoreSnapshot) =
   ## The literal tail, untouched gap and full eight-byte length distinguish clipping from stale-parent or count-only returns.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
@@ -80,7 +80,7 @@ storage(selected.outcomeContext.value.effectAccounts.value)
 let policy = config(fixture)
 var minimal = policy
 minimal.runner.copyBytes = MemoryByteLimit(11)
-minimal.runner.steps = ExecutionStepLimit(25)
+minimal.runner.steps = ExecutionStepLimit(27) # Two current account-selector instructions are included.
 let exact = executeAssuredAccumulation(fixture.queue, minimal)
 assert exact.error == AssuredExecutionError.None
 assert exact.value.assuredExecutionCompleted.value.executionInfo.value.batch.selfWrites == 1
@@ -96,7 +96,7 @@ for ceiling in 2..3:
   assert calls.runnerFailure.dispatchFailure.error == AccumulationDispatchError.ExecutionFailure
   assert calls.runnerFailure.dispatchFailure.executionError == StepError.HostCallLimitExceeded
 var short = minimal
-short.runner.steps = ExecutionStepLimit(24)
+short.runner.steps = ExecutionStepLimit(26)
 let steps = executeAssuredAccumulation(fixture.queue, short)
 assert steps.error == AssuredExecutionError.RunnerFailure
 assert steps.runnerFailure.error == AccumulationRunnerError.DispatchFailure

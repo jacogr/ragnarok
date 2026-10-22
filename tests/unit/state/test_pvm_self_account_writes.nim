@@ -31,9 +31,9 @@ let input = guestInput()
 
 # Both services address the same raw key 73; canonical service key derivation must keep their writes disjoint.
 proc write(value = 81'u32, delete = false): seq[seq[byte]] =
-  @[registerImmediate(7, 65536), registerImmediate(8, 1),
-    registerImmediate(9, if value == 81: 196640'u64 else: 196641'u64),
-    registerImmediate(10, if delete: 0'u64 else: 1'u64), @[10'u8, 5]]
+  @[@[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1),
+    registerImmediate(10, if value == 81: 196640'u64 else: 196641'u64),
+    registerImmediate(11, if delete: 0'u64 else: 1'u64), @[10'u8, 5]]
 
 # Append authored instruction sequences without duplicating framing, masks or the production engine.
 proc append(instructions: var seq[seq[byte]], more: seq[seq[byte]]) =
@@ -45,12 +45,12 @@ proc storageEnvelope(checkpoint = false, panic = false, replace = false,
     delete = false, upgrade = false): seq[byte] =
   var instructions = write()
   if checkpoint:
-    instructions.add(@[10'u8, 18]) # Retain the first stored value and its key proof together.
+    instructions.add(@[10'u8, 19]) # Retain the first stored value and its key proof together.
   if replace or delete:
     append(instructions, write(82, delete)) # Reusing one raw key must consume one trace descriptor.
   if upgrade:
-    append(instructions, @[registerImmediate(7, 196608), registerImmediate(8, 7),
-      registerImmediate(9, 9), @[10'u8, 20]]) # Later metadata upgrade must retain broader supported self-entry scope.
+    append(instructions, @[@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 7),
+      registerImmediate(10, 9), @[10'u8, 21]]) # Later metadata upgrade must retain broader supported self-entry scope.
   instructions.add(if panic: @[0'u8] else: @[50'u8, 0])
   guestEnvelope(instructions, input)
 
@@ -69,7 +69,7 @@ proc prepare(fixture: BatchFixture, first, second: AccumulationDispatchResult,
 # Inspect canonical own metadata independently from batch observations or the traced descriptor list.
 proc metadata(state: StateStoreSnapshot, service: uint32): ServiceMetadata =
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255),
-    ServiceIndex(service))).value.bytes, ByteLimit(89)).value.metadata
+    ServiceIndex(service))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 
 # Construct a complete expected map from authored rows and literal own balances/storage counters.
 proc creditedRows(fixture: BatchFixture, firstItems = 0'u32, secondItems = 0'u32,
@@ -80,7 +80,8 @@ proc creditedRows(fixture: BatchFixture, firstItems = 0'u32, secondItems = 0'u32
     for ordinal, service in [42'u32, 99'u32]:
       if array[31, byte](entry.key) == array[31, byte](chapterServiceKey(StateChapter(255),
           ServiceIndex(service))):
-        var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var account = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         account.balance = AccountBalance(if ordinal == 0: 17 else: 31)
         account.storageItems = AccountStorageItems(if ordinal == 0: firstItems else: secondItems)
         account.storageBytes = AccountStorageBytes(if ordinal == 0: firstBytes else: secondBytes)
@@ -88,7 +89,8 @@ proc creditedRows(fixture: BatchFixture, firstItems = 0'u32, secondItems = 0'u32
           account.codeHash = CodeHash(array[32, byte](digest))
           account.minimumAccumulationGas = Gas(7)
           account.minimumTransferGas = Gas(9) # Literal metadata fields are independent from selected current-account reads.
-        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(89)).value
+        copied = serviceMetadataEntry(ServiceIndex(service), account, ByteLimit(
+            ServiceMetadataBytes)).value
     result.add(copied) # Preserve all code, existing storage, requests and opaque chapters.
 
 # Compare the actual complete-map root, never a root reconstructed from partial service state.
@@ -154,14 +156,16 @@ block replacement_and_deletion:
 
 # New request, optional forgetting and optional provide use the same actual self account owner.
 proc requestEnvelope(forget = false, provide = false, checkpoint = false, panic = false): seq[byte] =
-  var instructions = @[registerImmediate(7, 196608), registerImmediate(8, 1), @[10'u8, 24]]
+  var instructions = @[@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 1), @[
+      10'u8, 25]]
   if checkpoint:
-    instructions.add(@[10'u8, 18]) # Retain the requested history before any later regular removal.
+    instructions.add(@[10'u8, 19]) # Retain the requested history before any later regular removal.
   if forget:
-    append(instructions, @[registerImmediate(7, 196608), registerImmediate(8, 1), @[10'u8, 25]])
+    append(instructions, @[@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 1),
+        @[10'u8, 26]])
   if provide:
     append(instructions, @[registerImmediate(7, 42), registerImmediate(8, 196640),
-      registerImmediate(9, 1), @[10'u8, 27]]) # Request creation must compose with later terminal fulfillment.
+      registerImmediate(9, 1), @[10'u8, 28]]) # Request creation must compose with later terminal fulfillment.
   instructions.add(if panic: @[0'u8] else: @[50'u8, 0])
   guestEnvelope(instructions, input)
 
@@ -192,10 +196,11 @@ block delete_existing_prior_storage:
     if array[31, byte](fixture.entries[index].key) == array[31, byte](chapterServiceKey(
         StateChapter(255), ServiceIndex(42))):
       var account = decodeServiceMetadata(fixture.entries[index].value, ByteLimit(
-          89)).value.metadata
+          ServiceMetadataBytes)).value.metadata
       account.storageItems = AccountStorageItems(1)
       account.storageBytes = AccountStorageBytes(36) # The independently seeded existing key has a real deletable footprint.
-      fixture.entries[index] = serviceMetadataEntry(ServiceIndex(42), account, ByteLimit(89)).value
+      fixture.entries[index] = serviceMetadataEntry(ServiceIndex(42), account, ByteLimit(
+          ServiceMetadataBytes)).value
   fixture.state = newStateStore(fixture.entries, integrationStoreLimits()).value
   let plan = prepare(fixture, execute(fixture), execute(fixture, 1)).value
   var state = fixture.state

@@ -57,7 +57,7 @@ proc cycle() =
       assert not machineInfo(original).value.blockCharged
   let charged = gasHostResponse(MachineGas(0), registers, memory)
   assert charged.action == HostAction.OutOfGas and uint64(charged.gas) == 0
-  assert uint64(charged.gasDeficit) == 48
+  assert uint64(charged.gasDeficit) == 0
   for r in 0..<13:
     # Underfunded Omega_G preserves every register under the pinned pre-PR533 equation.
     assert uint64(charged.registers[r]) == uint64(registers[r])

@@ -48,9 +48,11 @@ proc invokeMemory*(blob = innerBlob(), fuel = 100'u64, regs = invokeRegisters(),
   captureMemory([code, first, second], PageLimit(3)).value
 proc invokeMachines*(blob = innerBlob(), cap = innerLimits()): InnerMachines =
   ## Only real machine creation authorizes program/PC/RAM ownership; frames cannot substitute it later.
-  createInnerMachine(captureInnerMachines(cap), MachineGas(100000), innerRegisters(uint64(
-      blob.len)),
-    invokeMemory(blob)).value.machines
+  let memory = invokeMemory(blob)
+  let created = preparedInnerMachine(captureInnerMachines(cap), MachineGas(100000),
+    innerRegisters(uint64(blob.len)), memory).value
+  created.machines
+
 proc invokeArgs*(id = 0'u64, address = 196608'u64): RegisterFile =
   ## Outer argument registers are distinct from the thirteen inner words in caller memory.
   result = innerRegisters()

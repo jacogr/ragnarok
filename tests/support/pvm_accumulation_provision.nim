@@ -50,7 +50,7 @@ proc provisionMachine*(calls: openArray[ProvisionGuestCall], data: seq[byte] = @
   var starts = @[0, 1, 2, 3, 4]
   # Extended-immediate opcodes set all uint64 bits without relying on signed four-byte immediate inference.
   for call in calls:
-    let count = if call.id == 27: 3 elif call.id == 26: 1 else: 0
+    let count = if call.id == 28: 3 elif call.id == 27: 1 else: 0
     let registers = [call.r7, call.r8, call.r9]
     for ordinal in 0..<count:
       starts.add(code.len)
@@ -92,7 +92,8 @@ proc provisionMachine*(calls: openArray[ProvisionGuestCall], data: seq[byte] = @
         entries.add(StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(service)),
             value: @[0'u8])) # Corrupt local state.
       else:
-        entries.add(serviceMetadataEntry(ServiceIndex(service), default(ServiceMetadata), ByteLimit(89)).value)
+        entries.add(serviceMetadataEntry(ServiceIndex(service), default(ServiceMetadata), ByteLimit(
+            ServiceMetadataBytes)).value)
     if requested:
       entries.add(provisionRequest(service, data, history)) # An empty sequence is encoded as canonical outstanding history.
       if data.len > 0: entries.add(provisionRequest(service, @[],

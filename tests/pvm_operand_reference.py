@@ -56,7 +56,7 @@ def operands(code,pc,skip):
     elif kind==9:x=read(pc+2,min(4,max(0,skip-1)),True)
     elif kind==10:displacement=read(pc+2,min(4,max(0,skip-1)),True)
     elif kind==12:
-        encoded=read(pc+2,1);d,jam=min(encoded,12),min(encoded%16,12)
+        encoded=read(pc+2,1);d,jam=min(encoded%16,12),min(encoded%16,12)
     return kind,a,b,d,jam,x% (1<<64),y% (1<<64),displacement
 
 

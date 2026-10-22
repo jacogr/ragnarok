@@ -55,10 +55,10 @@ for unknown in [false, true]:
     if available < cost:
       # Host underflow retains the causing PC and full deficit without wrapping into executable credit.
       assert outcome.exit == StepExit.OutOfGas and uint64(cpu.pc) == 1
-      assert uint64(cpu.gas) == 0 and uint64(cpu.gasDeficit) == cost - available
-      assert stepOnce(outcome.machine, GasCycleLimit(0)).error == StepError.InvalidMachine
+      assert uint64(cpu.gas) == 0 and uint64(cpu.gasDeficit) == 0
+      assert stepOnce(outcome.machine, GasCycleLimit(0)).value.exit == StepExit.Host
       assert execute(outcome.machine, ExecutionStepLimit(0), GasCycleLimit(0)).error ==
-          StepError.InvalidMachine
+          StepError.StepLimitExceeded
     else:
       # The exact cost leaves zero gas but the prepaid guest suffix still halts successfully.
       assert outcome.exit == StepExit.Halt and uint64(cpu.pc) == 0
@@ -105,14 +105,8 @@ for deficit in [1'u64, 0x8000000000000000'u64]:
   info.gas = MachineGas(0)
   info.gasDeficit = GasDeficit(deficit)
   assert captureMachine(code, memory, info).error == MachineError.InvalidGasState
-  let terminal = captureTerminalMachine(code, memory, info)
-  assert terminal.error == MachineError.None
-  assert uint64(machineInfo(terminal.value).value.gasDeficit) == deficit
-  var forged = stopped
-  forged.machine = terminal.value
-  let response = gasHostResponse(MachineGas(100), cpu.registers, memory)
-  assert applyHostResponse(forged, response).error == StepError.InvalidMachine
-  for action in [HostAction.Continue, HostAction.Halt, HostAction.Panic]:
+  assert captureTerminalMachine(code, memory, info).error == MachineError.InvalidGasState
+  for action in [HostAction.Continue, HostAction.Halt, HostAction.Panic, HostAction.OutOfGas]:
     # A negative response cannot be made executable or successful by choosing another action.
     let bad = HostResponse(action: action, gas: MachineGas(0), gasDeficit: GasDeficit(deficit),
       registers: cpu.registers, memory: memory)
@@ -126,15 +120,10 @@ for deficit in [1'u64, 0x8000000000000001'u64, high(uint64)]:
     registers: cpu.registers, memory: memory)
   assert applyHostResponse(stopped, bad).error == StepError.InvalidHostResponse
 
-# Halt metadata cannot be paired with a replaced negative-gas terminal owner to extract output.
-var halt = execute(source(10000, 0), ExecutionStepLimit(2), GasCycleLimit(0)).value
-halt = applyHostResponse(halt, HostResponse(action: HostAction.Halt, gas: MachineGas(0),
-  gasDeficit: GasDeficit(0), registers: cpu.registers, memory: memory)).value
-var negative = cpu
-negative.gas = MachineGas(0)
-negative.gasDeficit = GasDeficit(1)
-halt.machine = captureTerminalMachine(code, memory, negative).value
-assert captureOutput(halt, OutputByteLimit(0)).error == OutputError.InvalidMachine
+# Host mutators cannot synthesize a guest halt under the unreleased paper.
+let invalidHalt = HostResponse(action: HostAction.Halt, gas: MachineGas(0),
+  gasDeficit: GasDeficit(0), registers: cpu.registers, memory: memory)
+assert applyHostResponse(stopped, invalidHalt).error == StepError.InvalidHostResponse
 
 # Complete funded/underfunded invocations retain neither response snapshots nor callback histories.
 proc cycle() =
@@ -149,7 +138,7 @@ proc cycle() =
 cycle()
 let before = getOccupiedMem()
 for iteration in 0..<1000:
-  # Signed terminal balances are plain values and cannot introduce an ARC ownership cycle.
+  # Unsigned terminal balances are plain values and cannot introduce an ARC ownership cycle.
   cycle()
 let after = getOccupiedMem()
 assert before == after

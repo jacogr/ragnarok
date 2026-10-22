@@ -147,15 +147,24 @@ proc prepareAccumulationService*(inputs: PreparedAccumulationInputs, index: Invo
     fail(AccumulationServiceError.MalformedAccount) # No unsupported version or malformed metadata fallback.
   var metadata = account.value.metadata
   let originalBalance = uint64(metadata.balance)
+  let originalSupervisorBalance = uint64(metadata.supervisorBalance)
   var balance = originalBalance
-  # Prepared groups already filter destinations and put transfers before operands, preserving order.
+  var supervisorBalance = originalSupervisorBalance
+  # Filtered source order is retained; each canonical flag chooses one independent unsigned balance.
   for i in 0..<source.transfers:
     let input = inputs.invocationInputAt(index, InvocationInputIndex(uint64(i))).value
-    let amount = uint64(input.transfer.amount)
-    if amount > high(uint64)-balance:
-      fail(AccumulationServiceError.BalanceOverflow) # Ordinary GP addition must remain in the balance domain.
-    balance += amount
+    let transfer = input.transfer
+    let amount = uint64(transfer.amount)
+    if transfer.destinationSupervisor:
+      if amount > high(uint64)-supervisorBalance:
+        fail(AccumulationServiceError.BalanceOverflow) # Supervised credit cannot wrap into liquid balance.
+      supervisorBalance += amount
+    else:
+      if amount > high(uint64)-balance:
+        fail(AccumulationServiceError.BalanceOverflow) # Liquid credit remains in its own full uint64 domain.
+      balance += amount
   metadata.balance = AccountBalance(balance)
+  metadata.supervisorBalance = AccountBalance(supervisorBalance)
   let key = servicePreimageKey(source.service, ServicePreimageHash(array[32, byte](
       metadata.codeHash)), ByteLimit(32))
   if key.error != ServiceValueError.None:
@@ -190,7 +199,7 @@ proc prepareAccumulationService*(inputs: PreparedAccumulationInputs, index: Invo
   else:
     discard # Present account with no code preimage is an ordinary non-executing Psi_A gate.
   var credited = state
-  if balance != originalBalance:
+  if balance != originalBalance or supervisorBalance != originalSupervisorBalance:
     # Fork the entire retained map with inherited ceilings; never reconstruct a partial account-only root.
     var working = state.forkStateStore.value
     let entry = serviceMetadataEntry(source.service, metadata, ByteLimit(

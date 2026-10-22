@@ -1,5 +1,27 @@
 # Host gas accounting and the gas host function
 
+## Current unreleased gas contract
+
+Gray Paper commit `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` adopts
+unsigned saturating host subtraction. Machine gas remains in[0,2^64); insufficient
+credit produces OutOfGas with gas0. Compatibility `GasDeficit` fields are reserved
+zero, and nonzero incoming fields are rejected. No negative balance is published.
+Host Halt responses are rejected; guest Halt remains a distinct execution exit.
+Wide prices/reservations use exact limbs to decide affordability without narrowing.
+Costs exceeding the unsigned credit domain produce OutOfGas rather than a local
+representation error. Gas-used accounting charges the consumed credit only.
+
+The gas host writes r7 only when funded. The unknown-call dispatcher still writes
+WHAT on underfunding because its register update is defined separately. Known
+unsupported hosts remain typed local gates. Current witnesses and coordinated
+verification are recorded in [the pin upgrade](graypaper-unreleased-upgrade.md).
+
+## Historical release contract and evidence
+
+The following records the superseded release representation; it is not a second
+production gas mode.
+
+
 ## Normative scope
 
 This increment implements `Omega_G` (`gas`, identifier 0) and the unknown-call

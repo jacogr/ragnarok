@@ -95,6 +95,10 @@ def test(binary):
         for v in group['tests']:
             actual = query(binary, 'V', public, bytes.fromhex(v['sig']), bytes.fromhex(v['msg']))
             expected = '1' if v['result'] == 'valid' else '0'
+            # ZIP215 accepts x=0 with its sign bit set; this fixed upstream RFC label intentionally differs.
+            if v['tcId'] == 151:
+                assert v['result'] == 'invalid' and v['flags'] == ['InvalidEncoding']
+                expected = '1'
             # Wrong widths are rejected at the typed import boundary rather than entering verification.
             if len(v['sig']) != 128:
                 assert v['result'] == 'invalid'
@@ -107,7 +111,7 @@ def test(binary):
     expected_identity = '1'
     assert query(binary, 'V', identity, identity+zero, b'') == expected_identity
     assert query(binary, 'V', identity, identity+zero, b'abc') == expected_identity
-    assert query(binary, 'V', zero, zero+zero, b'') == '0'
+    assert query(binary, 'V', zero, zero+zero, b'') == '1'
     # S equal to the group order is outside the canonical scalar interval for either provider.
     order = (2**252 + 27742317777372353535851937790883648493).to_bytes(32, 'little')
     assert query(binary, 'V', identity, identity+order, b'') == '0'
@@ -125,7 +129,7 @@ def test(binary):
         assert query(binary, 'V', bytes(n), bytes(64), b'') == 'error'
     for n in (0,1,32,63,65):
         assert query(binary, 'V', bytes(32), bytes(n), b'') == 'error'
-    return {'rfc8032':len(vectors), 'wycheproof':len(verdicts), 'hash_messages':len(cases), 'ownership':'passed', 'native_threads':4, 'rounds_per_thread':128, 'checked_failure':'passed', 'identity_public_key_accepted':expected_identity == '1'}
+    return {'rfc8032':len(vectors), 'wycheproof':len(verdicts), 'hash_messages':len(cases), 'ownership':'passed', 'native_threads':4, 'rounds_per_thread':128, 'checked_failure':'passed', 'identity_public_key_accepted':expected_identity == '1', 'zip215_wycheproof_label_differences':[151]}
 
 
 # Cross-sign independent deterministic fixtures and stress simultaneous calls through separate native processes.

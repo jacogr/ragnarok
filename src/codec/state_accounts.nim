@@ -10,7 +10,7 @@
 import ./[natural, bounded, composite, work_digest, state_layout, state_trie]
 export ServiceIndex, CodeHash, Gas
 
-const ServiceMetadataBytes* = 89 ## Version zero, code hash, five E8 values and four E4 values.
+const ServiceMetadataBytes* = 105 ## Version zero, code hash, supervisor pair, six E8 values and four E4 values.
 
 type
   AccountBalance* = distinct uint64 ## Balance and gratis/deposit offset share token units, distinct from gas or storage size.
@@ -19,7 +19,9 @@ type
   AccountSlot* = distinct uint32 ## Service creation/last-accumulation absolute timeslots are separate from service IDs or record ordinals.
   ServiceMetadata* = object ## Version-zero fixed metadata owns every field by value; nested maps and service identity are outside this payload.
     codeHash*: CodeHash
-    balance*, depositOffset*: AccountBalance
+    balance*, supervisorBalance*, depositOffset*: AccountBalance
+    supervisor*: ServiceIndex
+    supervisorCreated*: AccountSlot
     minimumAccumulationGas*, minimumTransferGas*: Gas
     storageBytes*: AccountStorageBytes
     storageItems*: AccountStorageItems
@@ -79,12 +81,14 @@ proc decodeServiceMetadata*(input: openArray[byte], maxBytes: ByteLimit): Servic
         status: ServiceMetadataError.Truncated) # Require even the final parent-service byte before copying any fields.
   var code = default(array[32, byte])
   for i in 0..<32: code[i] = input[1+i] # Canonical version zero occupies exactly one byte.
-  let metadata = ServiceMetadata(codeHash: CodeHash(code), balance: AccountBalance(read64(input, 33)),
-    minimumAccumulationGas: Gas(read64(input, 41)), minimumTransferGas: Gas(read64(input, 49)),
-    storageBytes: AccountStorageBytes(read64(input, 57)), depositOffset: AccountBalance(read64(
-        input, 65)),
-    storageItems: AccountStorageItems(read32(input, 73)), created: AccountSlot(read32(input, 77)),
-    lastAccumulation: AccountSlot(read32(input, 81)), parent: ServiceIndex(read32(input, 85)))
+  let metadata = ServiceMetadata(codeHash: CodeHash(code),
+    supervisor: ServiceIndex(read32(input, 33)), supervisorCreated: AccountSlot(read32(input, 37)),
+    balance: AccountBalance(read64(input, 41)), supervisorBalance: AccountBalance(read64(input, 49)),
+    minimumAccumulationGas: Gas(read64(input, 57)), minimumTransferGas: Gas(read64(input, 65)),
+    storageBytes: AccountStorageBytes(read64(input, 73)), depositOffset: AccountBalance(read64(
+        input, 81)),
+    storageItems: AccountStorageItems(read32(input, 89)), created: AccountSlot(read32(input, 93)),
+    lastAccumulation: AccountSlot(read32(input, 97)), parent: ServiceIndex(read32(input, 101)))
   ServiceMetadataResult[ServiceMetadataRead](status: ServiceMetadataError.None,
     completed: ServiceMetadataRead(metadata: metadata, consumed: ServiceMetadataBytes))
 
@@ -97,15 +101,19 @@ proc serviceMetadataEntry*(service: ServiceIndex, metadata: ServiceMetadata,
   entry.value[0] = 0 # This source type represents only the supported canonical version-zero schema.
   let code = array[32, byte](metadata.codeHash)
   for i in 0..<32: entry.value[1+i] = code[i] # Code identity is opaque and has no additional length prefix.
-  let wide = [uint64(metadata.balance), uint64(metadata.minimumAccumulationGas), uint64(
-      metadata.minimumTransferGas),
+  for field, value in [uint32(metadata.supervisor), uint32(metadata.supervisorCreated)]:
+    for i in 0..<4:
+      # Supervisor identity and creation epoch bind authority to one concrete account lifetime.
+      entry.value[33+field*4+i] = byte((value shr (i*8)) and 255)
+  let wide = [uint64(metadata.balance), uint64(metadata.supervisorBalance), uint64(
+      metadata.minimumAccumulationGas), uint64(metadata.minimumTransferGas),
     uint64(metadata.storageBytes), uint64(metadata.depositOffset)]
   for field, value in wide:
-    for i in 0..<8: entry.value[33+field*8+i] = byte((value shr (i*8)) and
+    for i in 0..<8: entry.value[41+field*8+i] = byte((value shr (i*8)) and
         255) # Preserve every E8 octet in normative order.
   let narrow = [uint32(metadata.storageItems), uint32(metadata.created), uint32(
       metadata.lastAccumulation), uint32(metadata.parent)]
   for field, value in narrow:
-    for i in 0..<4: entry.value[73+field*4+i] = byte((value shr (i*8)) and
+    for i in 0..<4: entry.value[89+field*4+i] = byte((value shr (i*8)) and
         255) # Parent service is E4, just like timeslots/items.
   ServiceMetadataResult[StateEntry](status: ServiceMetadataError.None, completed: entry)

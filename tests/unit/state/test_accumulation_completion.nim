@@ -102,7 +102,7 @@ proc scenario(base: OwnedReport, guarantees = 0, available = false, blobs = fals
 proc yieldProgram(): seq[byte] =
   ## Literal host-yield/halt code exposes distinct slot/service/input-count commitments across real round history.
   result = @[0'u8]
-  for octet in pvmEnvelope([0'u8, 0, 9, 0, 0, 0, 0, 0, 10, 26, 50, 0, 191, 0]):
+  for octet in pvmEnvelope([0'u8, 0, 9, 0, 0, 0, 0, 0, 10, 27, 50, 0, 191, 0]):
     result.add(octet) # Preserve complete service metadata and JAM envelope framing.
 
 proc checkStagingPublication(base: OwnedReport) =
@@ -112,7 +112,7 @@ proc checkStagingPublication(base: OwnedReport) =
     payload[index] = byte(index+1) # The rest of the six-validator raw roster comes from mapped zero padding.
   var code = @[0'u8]
   for octet in guestEnvelope([registerImmediate(7, 196608), registerImmediate(8, 6),
-    @[10'u8, 17], @[50'u8, 0]], writable = payload):
+    @[10'u8, 18], @[50'u8, 0]], writable = payload):
     code.add(octet) # Preserve ordinary metadata/envelope framing in the signed parent.
   var executionOptions0 = executionFixtureConfig()
   executionOptions0.firstProgram = code

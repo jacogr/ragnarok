@@ -110,7 +110,8 @@ retained = defaultPlan
 let context = detached.outcomeContext.value
 assert context.effectInfo.value.transfers == 2
 let entry = context.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(42))).value
-assert uint64(decodeServiceMetadata(entry.bytes, ByteLimit(89)).value.metadata.balance) == 95
+assert uint64(decodeServiceMetadata(entry.bytes, ByteLimit(
+    ServiceMetadataBytes)).value.metadata.balance) == 95
 # Collection does not require a representable sum of outgoing gas; each full-width gas remains exact.
 let large = normalizeAccumulationOutcome(transferExecution(second = false,
   offeredGas = 0x8000000000000000'u64, credit = high(uint64))).value

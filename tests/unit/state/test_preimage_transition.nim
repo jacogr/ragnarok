@@ -144,7 +144,7 @@ proc entries(items: openArray[Item]): seq[StateEntry] =
       result.add(serviceMetadataEntry(ServiceIndex(item.service), ServiceMetadata(
           balance: AccountBalance(99),
         created: AccountSlot(7), lastAccumulation: AccountSlot(8)), ByteLimit(
-            89)).value) # All metadata fields must remain unchanged.
+            ServiceMetadataBytes)).value) # All metadata fields must remain unchanged.
     result.add(request(item)) # Caller supplies unique request identities in these source fixtures.
 
 ## Assert immutable root equality without invoking hashing during a failure check.
@@ -255,7 +255,7 @@ proc malformed() =
         PreimageTransitionError.MalformedState
   for mode in 0..<2:
     var current = base
-    var value = newSeq[byte](89)
+    var value = newSeq[byte](ServiceMetadataBytes)
     if mode == 0: value.setLen(88) # Exact account metadata width is mandatory.
     else: value[0] = 1 # Unknown account schema version.
     discard current.apply([StateWrite(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)),

@@ -4,7 +4,7 @@
 ## Host-response failure and exit-metadata contract probes selected by command-line arguments.
 ## Each invocation attempts exactly one forbidden result or metadata access.
 
-import std/cmdline
+import std/[assertions, cmdline]
 import ../../src/pvm/[program, machine, initialize, gas, step]
 let selection = paramStr(1)
 let accessor = paramStr(2)
@@ -29,7 +29,7 @@ of "machine":
   # Replacing a public snapshot handle must not bypass owner validation.
   host.machine = default(Machine)
 of "halt":
-  # Successful host terminal exits retain no fault or host-call metadata.
+  # Removed host Halt is rejected before any successful outcome can be selected.
   response.action = HostAction.Halt
 of "panic":
   # Host panic is still a completed response, not a local failure payload.
@@ -41,8 +41,11 @@ else:
   # The continue witness publishes an ordinary Continued outcome without exit metadata.
   discard
 let applied = applyHostResponse(host, response)
+if selection == "halt":
+  assert applied.error == StepError.InvalidHostResponse,
+      "current host Halt is an invalid response" # The following value access must fail at the result guard.
 if accessor == "host":
-  # All four successful response actions must reject stale host-call extraction.
+  # Successful continue/panic/OOG responses reject stale host metadata; rejected Halt has no value.
   discard applied.value.hostCall
 elif accessor == "fault":
   # No host-response action can manufacture a guest fault page.

@@ -2,174 +2,159 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # @@Verification={"arc": "pvm_inner_lifecycle_arc_release"}
 
-## Literal protocol prices, lifecycle priority and immutable full-capacity forks verify Omega_M/Omega_X.
+## Current compile/instantiate/expunge equations preserve independent immutable catalogue and instance owners.
 
 import std/[assertions, syncio]
 import ../../../src/pvm/[inner_machines, machine, program, step]
 import ../../support/[pvm_inner_lifecycle, arc_evidence]
 
-proc create(map: InnerMachines, regs = innerRegisters(), credit = 10000'u64,
-    memory = innerMemory()): InnerMachineResult[InnerMachineTransition] =
-  ## Supply stable original memory and independent protocol gas to a real lifecycle transition.
+# Stable borrowed fixture memory is captured once; returned responses retain its immutable owner.
+let fixtureMemory = innerMemory()
+
+proc compile(map: InnerMachines, size = 6'u64, credit = 10000'u64,
+    pointer = 65536'u64, mode = 0'u64, memory = default(Memory)): InnerMachineResult[
+        InnerMachineTransition] =
+  ## Compile original bytes using current m,p,l arguments and independent gas.
+  var regs = innerRegisters()
+  regs[7] = RegisterValue(mode)
+  regs[8] = RegisterValue(pointer)
+  regs[9] = RegisterValue(size)
+  let source = if memory.pageImage(PageIndex(0)).error ==
+      MachineError.None: memory else: fixtureMemory
+  compileInnerModule(map, MachineGas(credit), regs, source)
+proc create(map: InnerMachines, handle = 0'u64, entry = 0'u64,
+    credit = 10000'u64): InnerMachineResult[InnerMachineTransition] =
+  ## Instance creation takes a catalogue handle and entry, never a memory pointer.
+  var regs = innerRegisters()
+  regs[7] = RegisterValue(handle)
+  regs[8] = RegisterValue(entry)
+  let memory = fixtureMemory
   createInnerMachine(map, MachineGas(credit), regs, memory)
-proc remove(map: InnerMachines, id: uint64, credit = 1000'u64): InnerMachineResult[
-    InnerMachineTransition] =
-  ## Only r7 supplies the full-width identifier; unrelated register sentinels remain present.
-  expungeInnerMachine(map, MachineGas(credit), innerRegisters(pointer = id), innerMemory())
+proc remove(map: InnerMachines, id: uint64, mode = 0'u64,
+    credit = 1000'u64): InnerMachineResult[InnerMachineTransition] =
+  ## Mode zero removes instances; mode one removes only catalogue ownership.
+  var regs = innerRegisters()
+  regs[7] = RegisterValue(mode)
+  regs[8] = RegisterValue(id)
+  let memory = fixtureMemory
+  expungeInnerMachine(map, MachineGas(credit), regs, memory)
+
 let empty = captureInnerMachines(innerLimits())
-let created = create(empty).value
-assert created.response.action == HostAction.Continue
-assert uint64(created.response.gas) == 8137 # 1862+ceil(112*6/1024) = 1863.
-assert uint64(created.response.registers[7]) == 0
-assert created.response.memory.pageImage(PageIndex(16)).value.bytes[3] ==
-    50 # Creation retains the caller memory beside copied code.
-for index in 0..<13:
-  if index != 7: assert uint64(created.response.registers[index]) == uint64(innerRegisters()[
-      index]) # Only r7 changes.
-assert uint64(created.response.registers[8]) == 6 and uint64(created.response.registers[9]) == 0
-assert empty.innerMachineCount.value == 0 and created.machines.innerMachineCount.value == 1
+let compiled = compile(empty).value
+assert uint64(compiled.response.gas) == 8136 # 1862+ceil(264*6/1024)=1864.
+assert uint64(compiled.response.registers[7]) == 0
+assert empty.innerMachineCount.value == 0 and compiled.machines.innerMachineCount.value == 0
+let created = create(compiled.machines).value
+assert uint64(created.response.gas) == 8138 # Instantiation has the fixed 1862 price.
+assert uint64(created.response.registers[7]) == 0 and created.machines.innerMachineCount.value == 1
 var view = created.machines.innerMachine(InnerMachineId(0)).value
-assert uint64(view.pc) == 0 and not view.blockCharged
+assert uint64(view.moduleHandle) == 0 and uint64(view.pc) == 0 and not view.blockCharged
 assert view.memory.pageImage(PageIndex(16)).value.access == PageAccess.Inaccessible
-assert view.memory.pageImage(PageIndex(16)).value.bytes == default(array[4096, byte])
 view.pc = CodeAddress(99)
-view.blockCharged = true
 assert uint64(created.machines.innerMachine(InnerMachineId(0)).value.pc) == 0
-assert not created.machines.innerMachine(InnerMachineId(0)).value.blockCharged
-# Entry PC is retained exactly; empty RAM remains inaccessible even for a nonzero valid entry.
-let secondCode = @[0'u8, 0, 3, 1, 50, 0, 3]
-let nonzero = create(empty, innerRegisters(7, entry = 1), memory = innerMemory(secondCode)).value
-assert uint64(remove(nonzero.machines, 0).value.response.registers[7]) == 1
-# Exact gas and underfunding precede every table decision; debt is never silently clamped away.
-for credit in [0'u64, 1862, 1863]:
-  let done = create(empty, credit = credit).value
-  assert done.response.memory.pageImage(PageIndex(16)).value.bytes[3] ==
-      50 # Every charged creation response retains memory.
-  assert done.response.action == (if credit < 1863: HostAction.OutOfGas else: HostAction.Continue)
-  assert uint64(done.response.gas) == 0
-  assert uint64(done.response.gasDeficit) == (if credit < 1863: 1863-credit else: 0'u64)
-  assert done.machines.innerMachineCount.value == uint32(credit == 1863)
-  if credit < 1863: assert uint64(done.response.registers[7]) == 65536 # No argument mutation on OOG.
-# Independent literal fnmemgas witnesses include the largest guest length, without overflow.
-for row in [(0'u64, 1862'u64), (1'u64, 1863'u64), (9'u64, 1863'u64),
-    (10'u64, 1864'u64), (1024'u64, 1974'u64), (1025'u64, 1975'u64),
-    (high(uint64), 2017612633061984070'u64)]:
-  let done = create(empty, innerRegisters(row[0]), credit = 0).value
-  assert uint64(done.response.gasDeficit) == row[1]
-# Invalid natural ranges panic; empty ranges ignore their pointer then fail deblob with HUH.
+for credit in [0'u64, 1863, 1864]:
+  # Gas is charged before source access and no deficit representation is admitted.
+  let done = compile(empty, credit = credit).value
+  assert done.response.action == (if credit < 1864: HostAction.OutOfGas else: HostAction.Continue)
+  assert uint64(done.response.gas) == 0 and uint64(done.response.gasDeficit) == 0
+for credit in [0'u64, 1861, 1862]:
+  # Exact instantiation affordability precedes handle lookup.
+  let done = create(compiled.machines, credit = credit).value
+  assert done.response.action == (if credit < 1862: HostAction.OutOfGas else: HostAction.Continue)
+  assert uint64(done.response.gas) == 0 and uint64(done.response.gasDeficit) == 0
 for pointer in [0'u64, 69631, 0x100000000'u64, high(uint64)]:
-  assert create(empty, innerRegisters(pointer = pointer)).value.response.action == HostAction.Panic
-let zero = create(empty, innerRegisters(0, high(uint64))).value
-assert zero.response.action == HostAction.Continue
-assert uint64(zero.response.registers[7]) == high(uint64)-8
-for blob in [@[0'u8], @[0'u8, 0, 2, 50, 0, 0], @[0'u8, 0, 1, 2, 1]]:
-  let bad = create(empty, innerRegisters(uint64(blob.len)), memory = innerMemory(blob)).value
-  assert uint64(bad.response.registers[7]) == high(uint64)-8
-  assert bad.machines.innerMachineCount.value == 0
-for entry in [1'u64, 2, high(uint64)]:
-  assert uint64(create(empty, innerRegisters(entry = entry)).value.response.registers[7]) == high(uint64)-8
-# Inner-machine creation selects the same JAM profile as outer guest initialization.
-for blob in [@[0'u8, 0, 1, 1, 1], @[0'u8, 0, 3, 170, 0, 0, 1],
-    @[0'u8, 5, 1, 0, 1]]:
-  let refused = create(empty, innerRegisters(uint64(blob.len)), memory = innerMemory(blob)).value
-  assert uint64(refused.response.registers[7]) == high(uint64)-8
-  assert refused.machines.innerMachineCount.value == 0
-# A nonempty zero-width table still creates an inner machine, with no usable dynamic entries.
-let zeroWidth = @[1'u8, 0, 4, 10, 0, 50, 8, 5]
-let zeroCreated = create(empty, innerRegisters(uint64(zeroWidth.len), entry = 2),
-  memory = innerMemory(zeroWidth)).value
-assert uint64(zeroCreated.response.registers[7]) == 0 and
-    zeroCreated.machines.innerMachineCount.value == 1
-let zeroProgram = zeroCreated.machines.innerMachine(InnerMachineId(0)).value.program
-assert jumpTarget(zeroProgram, JumpIndex(0)).error == ProgramError.InvalidIndex
+  # A fully charged inaccessible source panics without publishing a handle.
+  assert compile(empty, pointer = pointer).value.response.action == HostAction.Panic
+assert uint64(compile(empty, size = 0, pointer = high(uint64)).value.response.registers[7]) == high(uint64)-8
+assert uint64(compile(empty, mode = 2).value.response.registers[7]) == high(uint64)-8
+assert compile(empty, mode = 1).error == InnerMachineError.UnsupportedSource
+assert uint64(create(empty).value.response.registers[7]) == high(uint64)-3
+assert uint64(create(compiled.machines, entry = 1).value.response.registers[7]) == high(uint64)-8
+let nonzeroCode = @[0'u8, 0, 3, 1, 50, 0, 3]
+let nonzero = compile(empty, size = 7, memory = innerMemory(nonzeroCode)).value.machines
+assert uint64(remove(create(nonzero, entry = 1).value.machines, 0).value.response.registers[7]) == 1
 
-# GP-PVM-009 is retained through actual inner-machine capture, independently of raw paper owners.
-let destinationBytes = @[0'u8, 0, 11, 51, 1, 7, 51, 2, 11, 190, 33, 16, 50, 0, 73, 2]
-let destinationCreated = create(empty, innerRegisters(uint64(destinationBytes.len)),
-  memory = innerMemory(destinationBytes)).value
-let destinationOwner = destinationCreated.machines.innerMachine(InnerMachineId(0)).value.program
-assert byte(instruction(destinationOwner, CodeAddress(6)).value.d) == 0
-let destinationPaper = decodeProgram(destinationBytes, CodeAddress(0), ProgramByteLimit(100),
-    JumpCountLimit(0)).value
-assert byte(instruction(destinationPaper, CodeAddress(6)).value.d) == 12
-assert empty.innerMachineCount.value == 0
-
-# Populate every slot, delete a middle hole, reuse the minimum hole and retain earlier snapshots unchanged.
-var full = empty
+var full = compiled.machines
 for id in 0..<63:
+  # Multiple instances share one module without consuming duplicate program bytes.
   let appended = create(full).value
   assert uint64(appended.response.registers[7]) == uint64(id)
   full = appended.machines
-let denied = create(full, innerRegisters(high(uint64), high(uint64)), high(uint64)).value
-assert denied.response.action == HostAction.Continue and uint64(denied.response.registers[7]) ==
-    high(uint64)-4
-assert denied.machines.innerMachineCount.value == 63 # FULL before unreadability or local size cap.
-assert create(full, credit = 1862).value.response.action == HostAction.OutOfGas
-let deleted = remove(full, 12).value
-assert deleted.response.memory.pageImage(PageIndex(16)).value.bytes[0] ==
-    0 # Host response retains the original program memory.
-assert uint64(deleted.response.registers[7]) == 0 and deleted.machines.innerMachineCount.value == 62
-assert full.innerMachine(InnerMachineId(12)).error == InnerMachineError.None
-assert deleted.machines.innerMachine(InnerMachineId(12)).error == InnerMachineError.Missing
-assert uint64(create(deleted.machines).value.response.registers[7]) == 12
+assert uint64(create(full, handle = high(uint64)).value.response.registers[7]) == high(uint64)-4
+assert create(full, credit = 1861).value.response.action == HostAction.OutOfGas
+let deleted = remove(full, 12).value.machines
+assert full.innerMachineCount.value == 63 and deleted.innerMachineCount.value == 62
+assert uint64(create(deleted).value.response.registers[7]) == 12
 for id in [63'u64, 0x100000000'u64, high(uint64)]:
+  # Full-width unknown identifiers cannot alias a valid instance after narrowing.
   assert uint64(remove(full, id).value.response.registers[7]) == high(uint64)-3
-  assert full.innerMachine(InnerMachineId(id)).error == InnerMachineError.Missing
-for credit in [334'u64, 335]:
-  let done = remove(created.machines, 0, credit).value
-  assert done.response.action == (if credit < 335: HostAction.OutOfGas else: HostAction.Continue)
-  assert done.response.memory.pageImage(PageIndex(16)).value.bytes[3] ==
-      50 # Both deletion and OOG retain readable input memory.
-  assert done.machines.innerMachineCount.value == uint32(credit < 335)
-  assert uint64(done.response.gasDeficit) == (if credit < 335: 1'u64 else: 0'u64)
-# Each independent local policy refuses without publishing response or a new map.
+assert uint64(remove(full, 0, mode = 2).value.response.registers[7]) == high(uint64)-8
+assert remove(full, 0, credit = 334).value.response.action == HostAction.OutOfGas
+
+var catalogue = empty
+for handle in 0..<128:
+  # Module capacity is independent of the smaller running-instance limit.
+  let appended = compile(catalogue).value
+  assert uint64(appended.response.registers[7]) == uint64(handle)
+  catalogue = appended.machines
+assert uint64(compile(catalogue, pointer = 0).value.response.registers[7]) == high(uint64)-4
+let hole = remove(catalogue, 12, mode = 1).value.machines
+assert uint64(compile(hole).value.response.registers[7]) == 12
+
+var cap = innerLimits()
+cap.total = InnerProgramLimit(6)
+let only = compile(captureInnerMachines(cap)).value.machines
+let live = create(only).value.machines
+let detached = remove(live, 0, mode = 1).value.machines
+assert detached.innerMachineCount.value == 1
+assert uint64(create(detached).value.response.registers[7]) == high(uint64)-3
+assert compile(detached).error == InnerMachineError.LimitExceeded # Live instance retains bytes after catalogue removal.
+let released = remove(detached, 0).value.machines
+assert uint64(compile(released).value.response.registers[7]) ==
+    0 # Final owner releases bytes and handle together.
+assert compile(remove(live, 0).value.machines).error ==
+    InnerMachineError.LimitExceeded # Catalogue still retains bytes.
 for policy in 0..<3:
-  var cap = innerLimits()
-  case policy
-  of 0: cap.items = InnerMachineLimit(0) # Zero item policy is local, never protocol FULL.
-  of 1: cap.program = ProgramByteLimit(5) # A valid six-byte blob exceeds this independent copy/parse cap.
-  else: cap.total = InnerProgramLimit(5) # Aggregate storage is separate from the per-program cap.
-  assert create(captureInnerMachines(cap)).error == InnerMachineError.LimitExceeded
-var capped = innerLimits()
-capped.total = InnerProgramLimit(6)
-let first = create(captureInnerMachines(capped)).value.machines
-assert create(first).error == InnerMachineError.LimitExceeded
-assert create(remove(first, 0).value.machines).error == InnerMachineError.None # Deletion recovers byte capacity.
-capped = innerLimits()
-capped.jumps = JumpCountLimit(0)
-let jumpBlob = @[1'u8, 1, 2, 2, 50, 0, 1]
-assert create(captureInnerMachines(capped), innerRegisters(7), memory = innerMemory(
-    jumpBlob)).error ==
-  InnerMachineError.LimitExceeded
+  # Independent local policies refuse without a partial module or instance successor.
+  var limits = innerLimits()
+  if policy == 0: limits.items = InnerMachineLimit(0) # Module preparation may still succeed.
+  elif policy == 1: limits.program = ProgramByteLimit(5) # Per-module bound.
+  else: limits.total = InnerProgramLimit(5) # Aggregate retained bytes.
+  if policy == 0:
+    assert create(compile(captureInnerMachines(limits)).value.machines).error ==
+        InnerMachineError.LimitExceeded
+  else:
+    assert compile(captureInnerMachines(limits)).error == InnerMachineError.LimitExceeded
+assert compile(default(InnerMachines)).error == InnerMachineError.InvalidContext
+assert compileInnerModule(empty, MachineGas(10000), innerRegisters(), default(Memory)).error ==
+    InnerMachineError.InvalidMemory
 assert create(default(InnerMachines)).error == InnerMachineError.InvalidContext
-assert create(empty, memory = default(Memory)).error == InnerMachineError.InvalidMemory
 assert remove(default(InnerMachines), 0).error == InnerMachineError.InvalidContext
 assert default(InnerMachines).innerMachineCount.error == InnerMachineError.InvalidContext
-assert default(InnerMachines).innerMachine(InnerMachineId(0)).error ==
-    InnerMachineError.InvalidContext
-# Fresh maps, forks, failed appends and deletes must release all program/memory owners with ARC.
+
 proc cycle() =
-  ## Drop all local immutable generations on return; no mutable shared map can retain released programs.
-  var cap = innerLimits()
-  cap.total = InnerProgramLimit(6)
-  let original = captureInnerMachines(cap)
+  ## Release every shared module/instance generation after catalogue and final instance removal.
   let memory = innerMemory()
-  let created = createInnerMachine(original, MachineGas(10000), innerRegisters(), memory)
-  let map = created.value.machines
-  let refused = createInnerMachine(map, MachineGas(10000), innerRegisters(), memory)
-  assert refused.error == InnerMachineError.LimitExceeded
-  let removed = expungeInnerMachine(map, MachineGas(1000), innerRegisters(pointer = 0), memory)
-  assert removed.value.machines.innerMachineCount.value == 0
-  assert removed.value.response.memory.pageImage(PageIndex(16)).value.bytes[3] == 50
-  let absent = expungeInnerMachine(original, MachineGas(1000), innerRegisters(pointer = 0), memory)
-  assert uint64(absent.value.response.registers[7]) == high(uint64)-3
-  assert absent.value.response.memory.pageImage(PageIndex(16)).value.bytes[3] == 50
-  let starved = expungeInnerMachine(map, MachineGas(334), innerRegisters(pointer = 0), memory)
-  assert starved.value.response.action == HostAction.OutOfGas
-  assert starved.value.response.memory.pageImage(PageIndex(16)).value.bytes[3] == 50
+  var args = innerRegisters()
+  args[7] = RegisterValue(0)
+  args[8] = RegisterValue(65536)
+  args[9] = RegisterValue(6)
+  let compiled = compileInnerModule(captureInnerMachines(innerLimits()), MachineGas(10000), args, memory).value
+  args[7] = compiled.response.registers[7]
+  args[8] = RegisterValue(0)
+  let live = createInnerMachine(compiled.machines, MachineGas(10000), args, memory).value
+  args[7] = RegisterValue(1)
+  args[8] = RegisterValue(0)
+  let detached = expungeInnerMachine(live.machines, MachineGas(1000), args, memory).value
+  assert detached.machines.innerMachineCount.value == 1 and
+      compiled.machines.innerMachineCount.value == 0
+  args[7] = RegisterValue(0)
+  let released = expungeInnerMachine(detached.machines, MachineGas(1000), args, memory).value
+  assert released.machines.innerMachineCount.value == 0
+
 cycle()
 let before = getOccupiedMem()
-for iteration in 0..<1000: cycle()
+for iteration in 0..<1000: cycle() # Independent roots must not retain ARC cycles.
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("pvm_inner_lifecycle", 1000, before, after)

@@ -48,6 +48,13 @@ type
   ValidatorStateSnapshot* = object ## Value handles share private immutable storage; replacing one handle cannot alter another snapshot.
     data: nil ValidatorStateData
 
+func nullValidator*(): StateValidator =
+  ## Current nullvalkey keeps Bandersnatch/BLS/metadata zero and uses the invalid Ed25519 encoding02 followed by31 zero bytes.
+  ## Return an owned fixed record; this is a protocol constant, not an alternate decoder or a validity claim for other keys.
+  var ed = default(array[32, byte])
+  ed[0] = 2
+  StateValidator(ed25519: StateEdKey(ed))
+
 func error*[T](value: StateComponentResult[T]): StateComponentError =
   ## Failure reasons are readable without granting access to a value, owner or consumed progress.
   value.status

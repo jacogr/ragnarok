@@ -37,13 +37,13 @@ for id in [1'u8]:
   let done = run(prepared(id))
   assert done.error == AccumulationDispatchError.None and done.value.exit == StepExit.Halt
   assert uint64(machineInfo(done.value.machine).value.registers[7]) == 50
-for id in [7'u8, 8, 9, 10, 11, 12, 13, 14, 28, 127, 255]:
+for id in [7'u8, 8, 9, 10, 11, 12, 13, 14, 15, 30, 127, 255]:
   # Refine-only identifiers and the sign-extended full-width identifier all use F's fallback.
   let done = run(prepared(id))
   assert done.error == AccumulationDispatchError.None
   assert done.value.exit == StepExit.Halt
   assert uint64(machineInfo(done.value.machine).value.registers[7]) == high(uint64)-1
-for id in [0'u8, 1, 2, 28, 255]:
+for id in [0'u8, 1, 2, 30, 255]:
   let cost = (if id == 0: 48'u64 elif id == 1: 275'u64 elif id == 2: 390'u64 else: 1000'u64)
   let source = prepared(id)
   let initial = source.accumulationMachine.value
@@ -56,10 +56,9 @@ for id in [0'u8, 1, 2, 28, 255]:
     if available < cost:
       # Terminal deficits retain causing PC and preserve r7 except for F's mandatory WHAT assignment.
       assert done.value.exit == StepExit.OutOfGas
-      assert uint64(cpu.gas) == 0 and uint64(cpu.gasDeficit) == (if id ==
-          1: 0'u64 else: cost-available)
+      assert uint64(cpu.gas) == 0 and uint64(cpu.gasDeficit) == 0
       assert uint64(cpu.pc) == 5
-      let expected = (if id == 28 or id == 255: high(uint64)-1 else: 0xfeff0000'u64)
+      let expected = (if id == 30 or id == 255: high(uint64)-1 else: 0xfeff0000'u64)
       assert uint64(cpu.registers[7]) == expected
     else:
       # Funded calls execute the prepaid return; zero requested bytes still returns parameter length.
@@ -125,12 +124,12 @@ proc checkYield(done: AccumulationDispatchResult, dimension: AccumulationDimensi
     assert context.effectYield.error == AccumulationEffectError.YieldAbsent # No fabricated commitment.
 
 let halt = @[50'u8, 0]
-let yieldCall = @[10'u8, 26]
-let checkpointCall = @[10'u8, 18]
+let yieldCall = @[10'u8, 27]
+let checkpointCall = @[10'u8, 19]
 let regular = AccumulationDimension.Regular
 let exceptional = AccumulationDimension.Exceptional
-for id in [18'u8, 26]:
-  let cost = (if id == 18: 103'u64 else: 98'u64)
+for id in [19'u8, 27]:
+  let cost = (if id == 19: 103'u64 else: 98'u64)
   let initial = prepared(id).accumulationMachine.value
   let price = uint64(blockGas(programOf(initial).value, CodeAddress(5), GasCycleLimit(200)).value)
   for available in [0'u64, cost-1, cost, cost+1]:
@@ -139,16 +138,16 @@ for id in [18'u8, 26]:
     let cpu = machineInfo(done.value.machine).value
     if available < cost:
       assert done.value.exit == StepExit.OutOfGas
-      assert uint64(cpu.gasDeficit) == (if id == 1: 0'u64 else: cost-available) and uint64(
+      assert uint64(cpu.gasDeficit) == 0 and uint64(
           cpu.gas) == 0
       assert uint64(cpu.pc) == 5 and uint64(cpu.registers[7]) == 0xfeff0000'u64
       checkYield(done, regular, false)
     else:
       assert done.value.exit == StepExit.Halt
       assert uint64(cpu.gas) == available-cost and uint64(cpu.gasDeficit) == 0
-      assert uint64(cpu.registers[7]) == (if id == 18: available-cost else: 0'u64)
+      assert uint64(cpu.registers[7]) == (if id == 19: available-cost else: 0'u64)
       # A funded yield captures initial invocation arguments; later explicit-pointer tests check all bytes.
-      assert done.effects.effectContext(regular).value.effectInfo.value.hasYield == (id == 26)
+      assert done.effects.effectContext(regular).value.effectInfo.value.hasYield == (id == 27)
     for i in 0..<13:
       if i != 7:
         assert uint64(cpu.registers[i]) == uint64(machineInfo(initial).value.registers[
@@ -165,16 +164,16 @@ let repeated = runEffects(history)
 checkYield(repeated, regular, true, 81)
 checkYield(repeated, exceptional, true, 73)
 assert uint64(machineInfo(history.accumulationMachine.value).value.gas) == 10000
-for finalId in [18'u8, 26]:
+for finalId in [19'u8, 27]:
   # A final unaffordable call cannot replace an already divergent regular/exceptional pair.
-  let cost = (if finalId == 18: 103'u64 else: 98'u64)
+  let cost = (if finalId == 19: 103'u64 else: 98'u64)
   let instructions = [registerImmediate(7, 65536), yieldCall, checkpointCall, registerImmediate(7, 196608),
     yieldCall, @[10'u8, finalId], halt]
   let prototype = guestProgram(instructions).accumulationMachine.value
   let price = uint64(blockGas(programOf(prototype).value, CodeAddress(5), GasCycleLimit(1000)).value)
   let done = runEffects(guestProgram(instructions, price+98+103+98+cost-1))
   assert done.value.exit == StepExit.OutOfGas
-  assert uint64(machineInfo(done.value.machine).value.gasDeficit) == 1
+  assert uint64(machineInfo(done.value.machine).value.gasDeficit) == 0
   assert uint64(machineInfo(done.value.machine).value.registers[7]) == 0
   checkYield(done, regular, true, 81)
   checkYield(done, exceptional, true, 73)
@@ -204,10 +203,10 @@ assert trapped.value.exit == StepExit.Panic
 checkYield(trapped, regular, true, 73)
 checkYield(trapped, exceptional, false)
 # Copy policy refuses locally after affordability, while an underfunded call never attempts copying.
-assert runEffects(prepared(26), copyLimit = 31).error == AccumulationDispatchError.LimitExceeded
-let yieldPrice = uint64(blockGas(programOf(prepared(26).accumulationMachine.value).value,
+assert runEffects(prepared(27), copyLimit = 31).error == AccumulationDispatchError.LimitExceeded
+let yieldPrice = uint64(blockGas(programOf(prepared(27).accumulationMachine.value).value,
   CodeAddress(5), GasCycleLimit(200)).value)
-assert runEffects(prepared(26, yieldPrice), copyLimit = 0).value.exit == StepExit.OutOfGas
+assert runEffects(prepared(27, yieldPrice), copyLimit = 0).value.exit == StepExit.OutOfGas
 assert runEffects(history, calls = 2).executionError == StepError.HostCallLimitExceeded
 assert runEffects(history, steps = 2).executionError == StepError.StepLimitExceeded
 assert runEffects(guestProgram([halt], includeContexts = false)).error ==
@@ -228,7 +227,7 @@ proc patternedPrepared(sequence: openArray[GuestCall],
   var starts = @[0, 1, 2, 3, 4]
   # Every yield receives an explicit pointer, including signed/full-width and inaccessible cases.
   for call in sequence:
-    if call[0] == 26:
+    if call[0] == 27:
       starts.add(code.len)
       code.add(51); code.add(7)
       for i in 0..<4: code.add(byte((call[1] shr (8*i)) and 255)) # Literal E4 signed immediate.
@@ -260,8 +259,8 @@ proc patternedPrepared(sequence: openArray[GuestCall],
       jumps: JumpCountLimit(0), pages: PageLimit(5))).value
 
 # A nonconstant 32-byte commitment detects truncation, byte swaps and incorrect zero padding.
-let patterned = runEffects(patternedPrepared([(26'u8, 65536'u32), (18'u8, 0'u32),
-  (26'u8, 65568'u32)]))
+let patterned = runEffects(patternedPrepared([(27'u8, 65536'u32), (19'u8, 0'u32),
+  (27'u8, 65568'u32)]))
 assert patterned.error == AccumulationDispatchError.None and patterned.value.exit == StepExit.Halt
 for dimension in [AccumulationDimension.Regular, AccumulationDimension.Exceptional]:
   # The checkpoint retains every patterned byte while the later yield captures a present zero value.

@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Exact PolkaVM module limits apply only to JAM capture; raw paper code/count domains remain available.
+## The current paper and PolkaVM share exact module code, jump-count and width limits.
 
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, initialize, inner_machines, step]
@@ -14,8 +14,8 @@ for row in [(@[224'u8, 255, 255, 255], 16777215'u64),
   var wire = row[0]
   for octet in [0'u8, 1, 0, 1]: wire.add(octet)
   let raw = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(high(uint64)))
-  assert raw.error == ProgramError.None
-  assert uint64(jumpTarget(raw.value, JumpIndex(row[1]-1)).value) == 0
+  assert raw.error == (if row[1] <= 16777216: ProgramError.None else: ProgramError.InvalidProgram)
+  if row[1] <= 16777216: assert uint64(jumpTarget(raw.value, JumpIndex(row[1]-1)).value) == 0
   let jam = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(high(uint64)))
   let accepted = row[1] <= 16777216'u64
   assert jam.error == (if accepted: ProgramError.None else: ProgramError.InvalidProgram)
@@ -33,7 +33,7 @@ for row in [(@[224'u8, 255, 255, 255], 16777215'u64),
   var innerPolicy = innerLimits()
   innerPolicy.jumps = JumpCountLimit(high(uint64))
   let empty = captureInnerMachines(innerPolicy)
-  let created = createInnerMachine(empty, MachineGas(10000), innerRegisters(uint64(wire.len)),
+  let created = preparedInnerMachine(empty, MachineGas(10000), innerRegisters(uint64(wire.len)),
       innerMemory(wire)).value
   assert created.response.action == HostAction.Continue
   assert uint64(created.response.registers[7]) == (if accepted: 0'u64 else: high(uint64)-8)
@@ -50,7 +50,8 @@ for row in [(33554431, [225'u8, 255, 255, 255]), (33554432, [226'u8, 0, 0, 0]),
   for index in (6+size)..<wire.len: wire[index] = 255
   if size mod 8 != 0: wire[wire.len-1] = byte((1 shl (size mod 8))-1)
   let raw = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(40000000), JumpCountLimit(0))
-  assert raw.error == ProgramError.None and raw.value.codeLength.value == uint64(size)
+  assert raw.error == (if size <= 33554432: ProgramError.None else: ProgramError.InvalidProgram)
+  if size <= 33554432: assert raw.value.codeLength.value == uint64(size)
   let jam = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(40000000), JumpCountLimit(0))
   assert jam.error == (if size <= 33554432: ProgramError.None else: ProgramError.InvalidProgram)
   if size <= 33554432: assert jam.value.codeLength.value == uint64(size)

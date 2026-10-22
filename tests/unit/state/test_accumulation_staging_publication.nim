@@ -33,13 +33,13 @@ proc payload(count: int, seed: int): seq[byte] =
     result[index] = byte((index*7+seed) mod 256) # All four opaque fields and duplicate records retain their wire order.
 proc designateProgram(count, original: int, ending: Ending): seq[byte] =
   ## The real host reads complete mapped memory; zero-padded memory after the payload can restore the original roster.
-  var instructions = @[registerImmediate(7, 196608), registerImmediate(8, uint64(count)), @[10'u8, 17]]
+  var instructions = @[registerImmediate(7, 196608), registerImmediate(8, uint64(count)), @[10'u8, 18]]
   if ending == CheckpointPanic:
-    instructions.add(@[10'u8, 18]) # Freeze roster and provenance in the exceptional implication.
+    instructions.add(@[10'u8, 19]) # Freeze roster and provenance in the exceptional implication.
   if ending == Restore:
     instructions.add(registerImmediate(7, uint64(196608+336*count)))
     instructions.add(registerImmediate(8, uint64(original)))
-    instructions.add(@[10'u8, 17]) # Both real successful calls remain observable even when final C(7) equals the original bytes.
+    instructions.add(@[10'u8, 18]) # Both real successful calls remain observable even when final C(7) equals the original bytes.
   if ending in {Panic, CheckpointPanic}:
     instructions.add(@[0'u8]) # A genuine guest trap selects the exceptional snapshot.
   if ending == HashReturn:
@@ -53,8 +53,8 @@ proc managerProgram(): seq[byte] =
   for octet in payload(9, 7): bytes.add(octet) # Three zero assigners precede a different nine-validator roster.
   guestEnvelope([registerImmediate(7, 42), registerImmediate(8, 196608),
     registerImmediate(9, 42), registerImmediate(10, 0), registerImmediate(11, 0),
-    registerImmediate(12, 0), @[10'u8, 15], registerImmediate(7, 196620),
-    registerImmediate(8, 9), @[10'u8, 17], @[50'u8, 0]], writable = bytes)
+    registerImmediate(12, 0), @[10'u8, 16], registerImmediate(7, 196620),
+    registerImmediate(8, 9), @[10'u8, 18], @[50'u8, 0]], writable = bytes)
 proc policy(count, original: int): AccumulationBatchLimits =
   ## Exact aggregate original/output C(7) bytes are independent of the manager/queue publication policy.
   result = batchPolicy()
@@ -92,10 +92,11 @@ proc expected(source: BatchFixture, count, original: int, ending: Ending,
       let service = ServiceIndex(if index == 0: 42 else: 99)
       if (subset == 0 or subset == index+1) and array[31, byte](entry.key) == array[31, byte](
           chapterServiceKey(StateChapter(255), service)):
-        var account = decodeServiceMetadata(entry.value, ByteLimit(89)).value.metadata
+        var account = decodeServiceMetadata(entry.value, ByteLimit(
+            ServiceMetadataBytes)).value.metadata
         account.balance = AccountBalance(if index == 0: 17 else: 31)
         row = serviceMetadataEntry(service, account, ByteLimit(
-            89)).value # A subset receives only its actual invoking service credit.
+            ServiceMetadataBytes)).value # A subset receives only its actual invoking service credit.
     result.add(row)
 proc check(count, original: int, ending: Ending, handoff = false, reverse = false) =
   ## Exact budgets publish complete-map roots; refusals, hash failures and stale callers preserve all prior owners.
@@ -195,9 +196,9 @@ proc checkStoreLimit() =
   assert sameStateSnapshot(caller.snapshot.value, source.state.snapshot.value)
 proc checkUnsupported() =
   ## An untracked storage write followed by designate cannot erase unsupported account ancestry.
-  let code = guestEnvelope([registerImmediate(7, 196608), registerImmediate(8, 1),
-    registerImmediate(9, 196609), registerImmediate(10, 1), @[10'u8, 5],
-    registerImmediate(7, 196608), registerImmediate(8, 9), @[10'u8, 17], @[50'u8, 0]],
+  let code = guestEnvelope([@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 1),
+    registerImmediate(10, 196609), registerImmediate(11, 1), @[10'u8, 5],
+    registerImmediate(7, 196608), registerImmediate(8, 9), @[10'u8, 18], @[50'u8, 0]],
     writable = payload(9, 41))
   let source = batchFixture(firstEnvelope = code, secondEnvelope = guestEnvelope([@[50'u8, 0]]),
     cores = 3, delegator = 42)

@@ -1,5 +1,23 @@
 # Accumulation forget host
 
+## Current unreleased Gray Paper contract
+
+Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `pvm_invocations.tex`,
+selects forget as host 26. Register r7 selects an account (all ones means self).
+Hash pointer and advertised request length occupy r8/r9. Lengths must be strictly
+below 2^32-2; both reserved E4 values return HUH before memory/backend work. Public
+effect APIs reject the same values as `InvalidLength`. Legal request keys stay separate
+from storage/preimage namespaces.
+Current self mutations preserve r8/r9 and accept explicit self or the sentinel.
+Foreign supervised mutations remain explicit `UnsupportedHostCall` gates. The old
+register layout is never accepted as an alternate production ABI.
+The historical full-E4 vector witness is now a rejected length. Its public hash and
+slot also seed a separate authored maximum-legal-length boundary case; this is not
+claimed as unchanged current parity with that historical vector.
+
+The sections below preserve historical release implementation and verification records.
+
+
 ## Scope and authority
 
 Implement forget (25), Omega_F, against GP 0.8.0 revision

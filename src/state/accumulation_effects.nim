@@ -12,7 +12,7 @@ import ../chain/parameters
 import ../crypto/primitives
 import ./[accumulation_context, accumulation_invocation, store, preimages]
 
-const AccumulationAccountInfoBytes* = 96 ## Fixed Omega_I record, excluding serialized metadata's version byte.
+const AccumulationAccountInfoBytes* = 112 ## Fixed Omega_I record, excluding serialized metadata's version byte.
 
 type
   AccumulationEffectError* {.pure.} = enum ## No refused/default operation exposes a partial context, fabricated hash or successful empty owner.
@@ -40,7 +40,6 @@ type
   AccumulationDeletedAccountIndex* = distinct uint64 ## A deletion ordinal cannot substitute a service identity or ejection target.
   AccumulationDeletedAccount* = object ## Copied successful-ejection facts; final absence is checked in the producing context.
     service*: ServiceIndex ## Actual target whose balance was reclaimed by this invocation.
-    requestKey*, preimageKey*: StateKey ## Exact canonical deletion keys, including any physical namespace alias.
   # Immutable fixed facts retain neither account values nor parent effect graphs.
   DeletedAccountsData = ref object
     values: seq[AccumulationDeletedAccount]
@@ -64,7 +63,7 @@ type
   AccumulationDesiredService* = distinct uint64 ## Full-width proposal: only registrar values below 65536 select a reserved uint32 ID.
   AccumulationNewService* = object ## Copied creation proposal; account identity, parent, slot and starting balance are derived by the state operation.
     codeHash*: CodeHash     ## Raw offered hash; creation neither requires nor publishes its preimage.
-    length*: RequestLength  ## The advertised code request length retains the entire E4 domain.
+    length*: RequestLength  ## The encoded E4 length must exclude the two reserved namespace values.
     accumulationGas*: Gas   ## Minimum per-item gas, without signed narrowing.
     transferGas*: Gas       ## Minimum per-transfer gas, without signed narrowing.
     gratis*: AccountBalance ## Nonzero offset requires the current manager.
@@ -254,9 +253,8 @@ proc prepareCreatedAccount(previous: EffectData, service: ServiceIndex, requestK
   AccumulationEffectResult[CreatedAccountsData](status: AccumulationEffectError.None,
     completed: CreatedAccountsData(values: values))
 
-# Bound the exact successful-ejection keys before allocating proof storage or hashing the candidate account map.
-proc prepareDeletedAccount(previous: EffectData, service: ServiceIndex, requestKey,
-    preimageKey: StateKey):
+# Bound successful-ejection membership before allocating proof storage or hashing the candidate map.
+proc prepareDeletedAccount(previous: EffectData, service: ServiceIndex):
     AccumulationEffectResult[DeletedAccountsData] =
   if previous.accountScope == AccumulationAccountScope.Unsupported or uint64(
       previous.deletedLimit) == 0:
@@ -268,9 +266,8 @@ proc prepareDeletedAccount(previous: EffectData, service: ServiceIndex, requestK
         status: AccumulationEffectError.LimitExceeded) # No candidate balance or partial key owner escapes.
   var values = newSeq[AccumulationDeletedAccount](count+1)
   for index, value in previous.deleted.values:
-    values[index] = value # Fixed immutable keys do not retain a chain of old effect versions.
-  values[count] = AccumulationDeletedAccount(service: service, requestKey: requestKey,
-      preimageKey: preimageKey)
+    values[index] = value # Fixed service identities do not retain a chain of old effect versions.
+  values[count] = AccumulationDeletedAccount(service: service)
   AccumulationEffectResult[DeletedAccountsData](status: AccumulationEffectError.None,
     completed: DeletedAccountsData(values: values))
 
@@ -572,8 +569,8 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
   let previous = data.regular.data
   assert previous != nil # Only private constructors publish initialized children.
   let size = uint64(bytes.len)
-  if size > uint64(high(uint32)):
-    fail(AccumulationEffectError.InvalidLength) # Keep the pinned request-length domain without namespace restrictions.
+  if size >= uint64(high(uint32))-1:
+    fail(AccumulationEffectError.InvalidLength) # Current request lengths exclude both reserved namespace prefixes.
   if size > uint64(limits.perBlob) or previous.provisions.largest > uint64(limits.perBlob) or
       previous.provisions.bytes > uint64(limits.totalBlobBytes) or
       uint64(previous.provisions.values.len) > uint64(limits.items):
@@ -656,18 +653,18 @@ proc consumeAccountDeposit(metadata: ServiceMetadata, parameters: Parameters,
       return false # FULL includes products larger than the complete available budget.
   true
 
-## Compare threshold to balance using the equivalent deposit <= balance+gratis equation.
-## Even full-width configured rates and footprint fields cannot overflow this comparison.
+## Compare the deposit with both balance components plus gratis using a bounded two-limb sum.
+## Three full-width terms need at most two carry bits; subtraction never narrows the protocol domains.
 proc funded(metadata: ServiceMetadata, parameters: Parameters): bool =
-  let balance = uint64(metadata.balance)
-  let gratis = uint64(metadata.depositOffset)
   var low = 0'u64
   var upper = 0'u64
-  if gratis > high(uint64)-balance:
-    upper = 1 # Preserve the 65th bit of available balance plus gratis.
-    low = gratis-(high(uint64)-balance)-1
-  else:
-    low = balance+gratis # Proven representable before addition.
+  for amount in [uint64(metadata.balance), uint64(metadata.supervisorBalance), uint64(
+      metadata.depositOffset)]:
+    if amount > high(uint64)-low:
+      inc upper
+      low = amount-(high(uint64)-low)-1 # Preserve the carry without forming an overflowing addition.
+    else:
+      low += amount # The preceding comparison proves the complete low-limb sum fits.
   consumeAccountDeposit(metadata, parameters, low, upper)
 
 proc effectAccountInfo*(context: AccumulationEffectContext, service: ServiceIndex,
@@ -709,18 +706,22 @@ proc effectAccountInfo*(context: AccumulationEffectContext, service: ServiceInde
   let hash = array[32, byte](metadata.codeHash)
   for i in 0..<32:
     bytes[i] = hash[i] # Raw hash has no version, count or prefix.
-  for field, value in [uint64(metadata.balance), minimum, uint64(metadata.minimumAccumulationGas),
-      uint64(metadata.minimumTransferGas), uint64(metadata.storageBytes)]:
+  for field, value in [uint32(metadata.supervisor), uint32(metadata.supervisorCreated)]:
+    for i in 0..<4:
+      bytes[32+field*4+i] = byte((value shr (8*i)) and 255) # Supervisor identity includes its creation slot.
+  for field, value in [uint64(metadata.balance), uint64(metadata.supervisorBalance), minimum,
+      uint64(metadata.minimumAccumulationGas), uint64(metadata.minimumTransferGas), uint64(
+          metadata.storageBytes)]:
     for i in 0..<8:
-      bytes[32+field*8+i] = byte((value shr (8*i)) and 255) # Five exact E8 values occupy bytes32..71.
+      bytes[40+field*8+i] = byte((value shr (8*i)) and 255) # Six exact E8 values precede the item count.
   for i in 0..<4:
-    bytes[72+i] = byte((uint32(metadata.storageItems) shr (8*i)) and 255) # Items alone use E4 before gratis.
+    bytes[88+i] = byte((uint32(metadata.storageItems) shr (8*i)) and 255) # Items use E4 before gratis.
   for i in 0..<8:
-    bytes[76+i] = byte((gratis shr (8*i)) and 255) # Preserve all gratis bits after the E4 item field.
+    bytes[92+i] = byte((gratis shr (8*i)) and 255) # Preserve all gratis bits after the E4 item field.
   for field, value in [uint32(metadata.created), uint32(metadata.lastAccumulation), uint32(
       metadata.parent)]:
     for i in 0..<4:
-      bytes[84+field*4+i] = byte((value shr (8*i)) and 255) # Exact E4 slots/parent finish the fixed record.
+      bytes[100+field*4+i] = byte((value shr (8*i)) and 255) # Exact E4 slots and parent finish the record.
   AccumulationEffectResult[array[AccumulationAccountInfoBytes, byte]](
     status: AccumulationEffectError.None, completed: bytes)
 
@@ -1028,6 +1029,8 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
     fail(AccumulationEffectError.Uninitialized) # Defaults have no creator or allocation provenance.
   if not parameters.valid:
     fail(AccumulationEffectError.InvalidParameters) # Funding never uses a fabricated deposit schedule.
+  if uint32(source.length) >= high(uint32)-1:
+    fail(AccumulationEffectError.InvalidLength) # Validate public proposals before funding, probing or namespace hashing.
   let previous = data.regular.data
   assert previous != nil # Private pairs retain complete current contexts.
   let self = previous.initial.contextInfo.value.service
@@ -1050,6 +1053,7 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
     storageItems: AccountStorageItems(2), storageBytes: AccountStorageBytes(81'u64+uint64(uint32(
         source.length))),
     created: AccountSlot(uint32(slot)), lastAccumulation: AccountSlot(0),
+    supervisor: self, supervisorCreated: creator.created, supervisorBalance: AccountBalance(0),
         parent: self) # E4 length+81 fits uint64.
   var low = 0'u64
   var upper = 0'u64
@@ -1271,110 +1275,83 @@ proc commitAccumulationTransfer*(prepared: PreparedAccumulationTransfer, limit: 
       exceptional: data.exceptional)))
 
 proc recordAccumulationEject*(effects: AccumulationEffects, target: AccumulationEjectTarget,
-    hash: ServicePreimageHash, parameters: Parameters): AccumulationEffectResult[
-        AccumulationEffects] =
-  ## Remove an eligible other current service and credit its balance atomically; UnknownService is WHO and NotRequested is HUH.
-  ## The source invocation supplies time. Guest charging/hash capture precedes this call; inherited store policy bounds four writes.
-  ## InvalidState refuses unrepresentable balance addition; no partial removal or credited successor escapes any failure.
-  # Select only complete successor pairs after all row conditions and Merklization succeed.
+    parameters: Parameters): AccumulationEffectResult[AccumulationEffects] =
+  ## Remove an empty junior created before this invocation and reclaim both balances into self liquid funds.
+  ## Current Omega_J authenticates the effective supervisor by identifier and creation slot, with no hash input.
+  ## UnknownService is WHO; self, unauthorized, newly created or nonempty accounts return NotRequested/HUH.
+  ## Complete metadata deletion and caller credit require two bounded atomic writes; overflow refuses locally.
   template fail(reason: AccumulationEffectError) =
     return AccumulationEffectResult[AccumulationEffects](status: reason)
   let data = effects.data
   if data == nil:
-    fail(AccumulationEffectError.Uninitialized) # Defaults cannot authorize reclamation.
+    fail(AccumulationEffectError.Uninitialized) # Default pairs cannot authorize account reclamation.
   if not parameters.valid:
-    fail(AccumulationEffectError.InvalidParameters) # Expunge age must come from validated parameters.
+    fail(AccumulationEffectError.InvalidParameters) # Preserve the validated invocation-profile contract.
   let previous = data.regular.data
-  assert previous != nil # Published pairs retain a complete current child.
+  assert previous != nil # Initialized pairs retain a complete regular account owner.
   let self = previous.initial.contextInfo.value.service
-  if uint64(target) > uint64(high(uint32)) or uint64(target) == uint64(uint32(self)):
-    fail(AccumulationEffectError.UnknownService) # Reject high bits and self before constructing a narrow identity.
+  if uint64(target) > uint64(high(uint32)):
+    fail(AccumulationEffectError.UnknownService) # Full-width IDs never alias a valid service after narrowing.
   let service = ServiceIndex(uint32(uint64(target)))
   let accountKey = chapterServiceKey(StateChapter(255), service)
   let found = previous.accounts.lookup(accountKey)
   if found.error == StateStoreError.MissingKey:
-    fail(AccumulationEffectError.UnknownService) # Orphan map entries cannot create an account.
+    fail(AccumulationEffectError.UnknownService) # Membership precedes every eligibility condition.
   if found.error != StateStoreError.None or found.value.byteLength != ServiceMetadataBytes:
-    fail(AccumulationEffectError.MalformedState) # Malformed current metadata is not WHO.
+    fail(AccumulationEffectError.MalformedState) # Corrupt metadata is a local state refusal, not WHO.
   let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
   if decoded.error != ServiceMetadataError.None:
-    fail(AccumulationEffectError.MalformedState) # Require exact canonical version-zero metadata.
-  let account = decoded.value.metadata
-  var identity = default(array[32, byte])
-  for i in 0..<4:
-    identity[i] = byte((uint32(self) shr (8*i)) and
-        255) # E32 service identity is little-endian and zero-extended, never hashed.
-  if array[32, byte](account.codeHash) != identity:
-    fail(AccumulationEffectError.UnknownService) # Code ownership is tested before footprint/history.
-  let octets = uint64(account.storageBytes)
-  let length = (if octets < 81: 0'u64 else: octets-81)
-  if uint32(account.storageItems) != 2 or length > uint64(high(uint32)):
-    fail(AccumulationEffectError.NotRequested) # Exactly one request and no storage; an out-of-domain length cannot name a request.
-  let requestKey = serviceRequestKey(service, hash, RequestLength(uint32(length)), ByteLimit(32))
-  if requestKey.error != RequestError.None:
-    fail(AccumulationEffectError.BackendFailure) # Failed namespace hashing cannot fabricate HUH.
-  let requested = previous.accounts.lookup(requestKey.value)
-  if requested.error == StateStoreError.MissingKey:
-    fail(AccumulationEffectError.NotRequested) # The exact hash/derived length pair must exist.
-  if requested.error != StateStoreError.None or requested.value.byteLength > 13:
-    fail(AccumulationEffectError.MalformedState) # Bound history copying before inspecting its canonical shape.
-  let history = decodeRequestHistory(requested.value.bytes,
-    RequestHistoryConfig(items: ElementLimit(3), maxBytes: ByteLimit(13)))
-  if history.error != RequestError.None or history.value.consumed != requested.value.byteLength:
-    fail(AccumulationEffectError.MalformedState) # Neither malformed prefixes nor trailing bytes are a row refusal.
-  if history.value.history.state != RequestState.Unavailable:
-    fail(AccumulationEffectError.NotRequested) # Only exactly two slots qualify; requested/available/restored shapes return HUH.
-  let time = uint64(uint32(previous.initial.contextInvocation.value.bootstrapInfo.value.slot))
-  let period = parameters.get(maxLookupAnchorAge)+4800
-  if uint64(uint32(history.value.history.unavailableFrom))+period >= time:
-    fail(AccumulationEffectError.NotRequested) # Widened sums fit below 2^34; strict age also handles mathematical negative cutoffs.
+    fail(AccumulationEffectError.MalformedState) # Require one exact current canonical metadata encoding.
+  if uint32(service) == uint32(self):
+    fail(AccumulationEffectError.NotRequested) # A present invoker cannot eject itself, even as its own supervisor.
   let creator = previous.accounts.lookup(chapterServiceKey(StateChapter(255), self))
   if creator.error != StateStoreError.None or creator.value.byteLength != ServiceMetadataBytes:
-    fail(AccumulationEffectError.MalformedState) # Credit requires genuine current self metadata.
+    fail(AccumulationEffectError.MalformedState) # Reclamation requires genuine current invoker metadata.
   let original = decodeServiceMetadata(creator.value.bytes, ByteLimit(ServiceMetadataBytes))
   if original.error != ServiceMetadataError.None:
-    fail(AccumulationEffectError.MalformedState) # No repaired or default caller metadata.
+    fail(AccumulationEffectError.MalformedState) # Never repair the invoker or fabricate its creation slot.
+  let account = decoded.value.metadata
   var metadata = original.value.metadata
-  if uint64(account.balance) > high(uint64)-uint64(metadata.balance):
-    fail(AccumulationEffectError.InvalidState) # No representable balance exists for this sum; never wrap or invent a guest code.
-  metadata.balance = AccountBalance(uint64(metadata.balance)+uint64(account.balance))
-  let preimageKey = servicePreimageKey(service, hash, ByteLimit(32))
-  if preimageKey.error != ServiceValueError.None:
-    fail(AccumulationEffectError.BackendFailure) # No deletion on failed namespace derivation.
+  let time = previous.initial.contextInvocation.value.bootstrapInfo.value.slot
+  if uint32(account.supervisor) != uint32(self) or
+      uint32(account.supervisorCreated) != uint32(metadata.created) or
+      uint32(account.created) == uint32(time) or uint32(account.storageItems) != 0:
+    fail(AccumulationEffectError.NotRequested) # A missing/recreated supervisor falls back to the target itself and cannot authorize this other invoker.
+  for amount in [uint64(account.balance), uint64(account.supervisorBalance)]:
+    if amount > high(uint64)-uint64(metadata.balance):
+      fail(AccumulationEffectError.InvalidState) # Neither component may overflow the reclaimed liquid balance.
+    metadata.balance = AccountBalance(uint64(metadata.balance)+amount) # The preceding comparison proves this sum fits.
+  let captured = prepareDeletedAccount(previous, service)
+  if captured.error != AccumulationEffectError.None:
+    fail(captured.error) # Bound immutable membership proof capacity before Merklization or publication.
   let credited = serviceMetadataEntry(self, metadata, ByteLimit(ServiceMetadataBytes)).value
   var working = forkStateStore(previous.accounts).value
-  var writes = @[
+  let changed = working.apply([
     StateWrite(key: accountKey, kind: StateWriteKind.Delete),
-    StateWrite(key: requestKey.value, kind: StateWriteKind.Delete),
-    StateWrite(key: credited.key, kind: StateWriteKind.Put, value: credited.value)]
-  if array[31, byte](preimageKey.value) != array[31, byte](requestKey.value):
-    writes.add(StateWrite(key: preimageKey.value, kind: StateWriteKind.Delete)) # Equal pinned namespace keys need only one physical deletion.
-  let captured = prepareDeletedAccount(previous, service, requestKey.value, preimageKey.value)
-  if captured.error != AccumulationEffectError.None:
-    fail(captured.error) # Bound deletion proof capacity before hashing the candidate or publishing reclaimed balance.
-  let changed = working.apply(writes)
+    StateWrite(key: credited.key, kind: StateWriteKind.Put, value: credited.value)])
   case changed.error
   of StateStoreError.None:
-    discard # A single complete-map commit publishes credit and every removed account component.
+    discard # One complete-map commit publishes deletion and both reclaimed balance components.
   of StateStoreError.LimitExceeded:
-    fail(AccumulationEffectError.LimitExceeded) # Four-write policy is independent from protocol eligibility.
+    fail(AccumulationEffectError.LimitExceeded) # Inherited two-write/byte/node policy is independent of protocol eligibility.
   of StateStoreError.BackendFailure:
-    fail(AccumulationEffectError.BackendFailure) # Old balances and all target entries survive failed hashing.
+    fail(AccumulationEffectError.BackendFailure) # A failed trie hash leaves both original accounts untouched.
   else:
-    fail(AccumulationEffectError.InvalidState) # Namespace collisions or other invariants expose no partial successor.
+    fail(AccumulationEffectError.InvalidState) # No partial successor escapes other map invariant failures.
   let candidate = successorData(previous, changed.value)
   if previous.accountScope != AccumulationAccountScope.Unsupported and uint64(
       previous.deletedLimit) != 0:
-    candidate.accountScope = AccumulationAccountScope.DeletedAccounts # Only successful eligible eject calls certify these foreign removals.
+    candidate.accountScope = AccumulationAccountScope.DeletedAccounts # Successful bounded ejections alone certify foreign removals.
     candidate.deleted = captured.value
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
 
-proc effectRequestHistory*(context: AccumulationEffectContext, hash: ServicePreimageHash,
+proc effectServiceRequestHistory*(context: AccumulationEffectContext, service: ServiceIndex,
+    hash: ServicePreimageHash,
     length: RequestLength): AccumulationEffectResult[RequestHistory] =
-  ## Copy the invoking service's current exact request history; NotRequested distinguishes absence from a present empty history.
+  ## Copy the selected current service's exact request history; NotRequested distinguishes absence from a present empty history.
   ## Captures at most thirteen canonical bytes; malformed/trailing state and namespace backend failures expose no history.
   # Default and failed reads carry only their reason, never a fabricated requested state.
   template fail(reason: AccumulationEffectError) =
@@ -1382,7 +1359,16 @@ proc effectRequestHistory*(context: AccumulationEffectContext, hash: ServicePrei
   let data = context.data
   if data == nil:
     fail(AccumulationEffectError.Uninitialized) # No default context can supply a service identity or account backing.
-  let service = data.initial.contextInfo.value.service
+  if uint32(length) >= high(uint32)-1:
+    fail(AccumulationEffectError.InvalidLength) # Invalid E4 domains never become namespace backend failures.
+  let account = data.accounts.lookup(chapterServiceKey(StateChapter(255), service))
+  if account.error == StateStoreError.MissingKey:
+    fail(AccumulationEffectError.UnknownService) # Missing service is distinct from an absent request.
+  if account.error != StateStoreError.None or account.value.byteLength != ServiceMetadataBytes:
+    fail(AccumulationEffectError.MalformedState) # No malformed account may supply a request namespace.
+  if decodeServiceMetadata(account.value.bytes, ByteLimit(ServiceMetadataBytes)).error !=
+      ServiceMetadataError.None:
+    fail(AccumulationEffectError.MalformedState) # Keep canonical metadata checks independent of history decoding.
   let key = serviceRequestKey(service, hash, length, ByteLimit(32))
   if key.error != RequestError.None:
     fail(AccumulationEffectError.BackendFailure) # Namespace hashing refusal cannot turn into NONE.
@@ -1397,6 +1383,14 @@ proc effectRequestHistory*(context: AccumulationEffectContext, hash: ServicePrei
     fail(AccumulationEffectError.MalformedState) # Prefix acceptance cannot hide trailing or malformed canonical state.
   AccumulationEffectResult[RequestHistory](status: AccumulationEffectError.None,
     completed: decoded.value.history)
+
+proc effectRequestHistory*(context: AccumulationEffectContext, hash: ServicePreimageHash,
+    length: RequestLength): AccumulationEffectResult[RequestHistory] =
+  ## Select the invocation's actual self service while retaining the same current immutable account backing.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[RequestHistory](status: AccumulationEffectError.Uninitialized)
+  effectServiceRequestHistory(context, data.initial.contextInfo.value.service, hash, length)
 
 proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreimageHash,
     length: RequestLength, parameters: Parameters): AccumulationEffectResult[AccumulationEffects] =

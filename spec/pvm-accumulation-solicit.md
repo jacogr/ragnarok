@@ -1,5 +1,20 @@
 # Accumulation solicit host
 
+## Current unreleased Gray Paper contract
+
+Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `pvm_invocations.tex`,
+selects solicit as host 25. Register r7 selects an account (all ones means self).
+Hash pointer and advertised request length occupy r8/r9. Lengths must be strictly
+below 2^32-2; both reserved E4 values return HUH before memory/backend work. Public
+effect APIs reject the same values as `InvalidLength`. Legal request keys stay separate
+from storage/preimage namespaces.
+Current self mutations preserve r8/r9 and accept explicit self or the sentinel.
+Foreign supervised mutations remain explicit `UnsupportedHostCall` gates. The old
+register layout is never accepted as an alternate production ABI.
+
+The sections below preserve historical release implementation and verification records.
+
+
 ## Scope and authority
 
 Implement solicit (24), Omega_S, against GP 0.8.0 revision

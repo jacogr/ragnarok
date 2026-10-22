@@ -136,6 +136,6 @@ proc activityFixture*(base: OwnedReport, available = false, guarantees = 0, blob
     rounds: ElementLimit(2), gasRows: ElementLimit(2), reports: ElementLimit(1),
         digests: ElementLimit(1),
     services: ElementLimit(2)), accounts: AccumulationTimesLimits(services: ElementLimit(2),
-      writes: ElementLimit(2), bytes: ByteLimit(178)))).value
+      writes: ElementLimit(2), bytes: ByteLimit(210)))).value
   ActivityFixture(source: prepareAccumulationValidators(times, activityValidatorConfig()).value,
     entries: fixture.entries)

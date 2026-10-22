@@ -410,12 +410,12 @@ proc fetchValue(gas: MachineGas, registers: RegisterFile, memory: Memory,
     return FetchResult(status: FetchError.InvalidMemory)
   let requested = uint64(registers[9])
   # Splitting before multiplication computes ceil(rate*z/1024) for all uint64 z without overflow.
-  # Private callers use rate <= 400 and base <= 390, so the total and any deficit fit signed 64 bits.
+  # Private callers use rate <= 400 and base <= 390, so each complete cost fits uint64.
   let cost = base + (requested div 1024) * rate + ((requested mod 1024) * rate + 1023) div 1024
   if uint64(gas) < cost:
     # General-host underfunding takes precedence over guest memory and local copy-size checks.
     return FetchResult(status: FetchError.None, completed: HostResponse(
-      action: HostAction.OutOfGas, gas: MachineGas(0), gasDeficit: GasDeficit(cost - uint64(gas)),
+      action: HostAction.OutOfGas, gas: MachineGas(0), gasDeficit: GasDeficit(0),
       registers: registers, memory: memory))
   var response = HostResponse(action: HostAction.Continue, gas: MachineGas(uint64(gas) - cost),
     gasDeficit: GasDeficit(0), registers: registers, memory: memory)

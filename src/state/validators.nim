@@ -101,7 +101,7 @@ proc planValidatorRotation*(staging, pending, active, previous: ValidatorStateSn
   for i in 0..<count:
     let record = validatorAt(staging, StateValidatorIndex(uint64(i))).value
     if excluded(record.ed25519, offenders):
-      records[i] = default(StateValidator) # All 336 bytes become zero; cardinality and ordinal remain intact.
+      records[i] = nullValidator() # Current nullvalkey preserves cardinality/ordinal and uses the invalid Ed25519 encoding02.
     else:
       records[i] = record # Copy Bandersnatch, Ed25519, BLS and metadata fields exactly.
   # Reuse the roster codec to capture a new immutable pending owner; C(7) here is temporary framing only.

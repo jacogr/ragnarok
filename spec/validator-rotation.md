@@ -1,5 +1,20 @@
 # Validator roster and ring-root rotation
 
+## Current unreleased null-validator rule
+
+The coordinated upgrade targets Gray Paper commit
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `safrole.tex` nullvalkey.
+Offender replacement keeps the Bandersnatch/BLS/metadata fields zero and sets
+Ed25519 to02 followed by31 zero bytes. Planning and guarantor filtering share
+that owned fixed constant. Authored witnesses inspect its exact bytes.
+Release vector roster projections explicitly translate historical all-zero null
+records into this current constant; they remain derived fixtures with original
+source hashes, not claims of new official vectors. Historical evidence below
+predates this rule.
+
+## Historical release contract and evidence
+
+
 Protocol target: Gray Paper **0.8.0**, revision
 `07f041dabd073f9018b418e9ee72e79dd2185401`, `text/safrole.tex` Key Rotation
 (`validatorkeys`, `valcount`, rotation tuple and `blacklistfilter`), with `text/header.tex`

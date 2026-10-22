@@ -37,7 +37,8 @@ proc credentialConfig*(cores: uint64): GuaranteeCredentialConfig =
 proc policy*(cores: uint64, gas = 10000000'u64): ReportPolicyConfig =
   ## Keep gas limits per report, with independent pool/account byte ceilings.
   ReportPolicyConfig(pools: AuthorizationConfig(cores: CoreCount(cores), maxHashes: ElementLimit(cores*8),
-    maxBytes: ByteLimit(100000)), accountBytes: ByteLimit(89), reportGas: ReportGasLimit(gas))
+    maxBytes: ByteLimit(100000)), accountBytes: ByteLimit(ServiceMetadataBytes),
+        reportGas: ReportGasLimit(gas))
 
 
 proc limits*(): StateStoreLimits =
@@ -133,5 +134,5 @@ proc entriesFor*(reports: openArray[OwnedReport], minimum = 10'u64): seq[StateEn
     let metadata = ServiceMetadata(codeHash: digest.codeHash, minimumAccumulationGas: Gas(minimum),
       minimumTransferGas: Gas(high(uint64)))
     result.add(serviceMetadataEntry(digest.service, metadata, ByteLimit(
-        89)).value) # Transfer gas is deliberately unrelated.
+        ServiceMetadataBytes)).value) # Transfer gas is deliberately unrelated.
 

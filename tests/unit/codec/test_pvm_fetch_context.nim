@@ -49,7 +49,7 @@ for selector in [1'u64, 2'u64, 16'u64, 17'u64, high(uint64)]:
           if credit < price:
             # Underfunding precedes NONE assignment and retains the full exact deficit.
             assert response.action == HostAction.OutOfGas
-            assert uint64(response.gas) == 0 and uint64(response.gasDeficit) == price - credit
+            assert uint64(response.gas) == 0 and uint64(response.gasDeficit) == 0
           else:
             # A funded absent value continues with NONE regardless of requested length or pointer.
             assert response.action == HostAction.Continue

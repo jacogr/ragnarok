@@ -24,7 +24,7 @@ type
     Halt,   ## One jump-indirect halt costs 22 gas under the pinned pipeline.
     Panic,  ## Checkpoint followed by trap spends the whole block and checkpoint charges.
     Exhausted, ## An unaffordable basic block leaves its positive gas unchanged under the pinned PVM rule.
-    HostExhausted, ## A funded block followed by an underfunded checkpoint produces negative host gas.
+    HostExhausted, ## A funded block followed by an underfunded checkpoint drains remaining host gas to zero.
     Missing ## Absent code preimage supplies a certified zero-gas skip.
   ExecutionFixture* = object ## Mutable fixture descriptors feed production certificate constructors without replacing verdicts.
     round*: BlockAccumulationRound ## Genuine admitted-parent bound initial plan.
@@ -55,7 +55,7 @@ proc executionQueueConfig*(): AccumulationQueueConfig =
 proc code(ending: ExecutionEnding): seq[byte] =
   result = @[0'u8]
   let envelope = if ending in {ExecutionEnding.Panic, ExecutionEnding.HostExhausted}:
-    pvmEnvelope([0'u8, 0, 8, 0, 0, 0, 0, 0, 10, 18, 0, 191])
+    pvmEnvelope([0'u8, 0, 8, 0, 0, 0, 0, 0, 10, 19, 0, 191])
   else: pvmEnvelope() # Five trap opcodes precede the actual entry-5 halt instruction.
   for octet in envelope: result.add(octet)
 
@@ -113,7 +113,7 @@ proc executionFixture*(base: OwnedReport, options = executionFixtureConfig()): E
     let hash = array[32, byte](blake2b256(raw).value)
     if ordinal == 1:
       entries.add(serviceMetadataEntry(service, ServiceMetadata(codeHash: CodeHash(hash),
-          balance: AccountBalance(options.secondBalance)), ByteLimit(89)).value)
+          balance: AccountBalance(options.secondBalance)), ByteLimit(ServiceMetadataBytes)).value)
     let ending = (if ordinal == 0: options.first else: options.second)
     if ending != ExecutionEnding.Missing:
       entries.add(servicePreimageEntry(service, ServicePreimageHash(hash), raw,

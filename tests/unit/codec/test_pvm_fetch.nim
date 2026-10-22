@@ -52,7 +52,7 @@ for requested in 0'u64..2050:
     if credit < price:
       # An underfunded call does not copy even the writable prefix.
       assert response.action == HostAction.OutOfGas
-      assert uint64(response.gas) == 0 and uint64(response.gasDeficit) == 1
+      assert uint64(response.gas) == 0 and uint64(response.gasDeficit) == 0
       registersEqual(response, regs, 4090)
       assert pageImage(response.memory, PageIndex(0)).value.bytes[4090] == 0
     else:
@@ -77,7 +77,7 @@ for offset in [0'u64, 40'u64, high(uint64)]:
   assert response.action == HostAction.Continue and uint64(response.gas) == 0
   registersEqual(response, regs, 40)
   let debt = fetchTraceResponse(MachineGas(0), regs, original, trace, MemoryByteLimit(0)).value
-  assert debt.action == HostAction.OutOfGas and uint64(debt.gasDeficit) == maximumPrice
+  assert debt.action == HostAction.OutOfGas and uint64(debt.gasDeficit) == 0
 
 for pointer in [8192'u64, 12288'u64, 0x100000000'u64, high(uint64)]:
   let regs = arguments(2, pointer, 0, 1)
@@ -125,7 +125,7 @@ for requested in [0'u64, 1'u64, high(uint64)]:
     (if requested == 0: 0'u8 else: 71'u8)
   let debt = fetchEntropyResponse(MachineGas(102), regs, original, FetchEntropy(entropy),
     MemoryByteLimit(0)).value
-  assert debt.action == HostAction.OutOfGas and uint64(debt.gasDeficit) == 1
+  assert debt.action == HostAction.OutOfGas and uint64(debt.gasDeficit) == 0
   registersEqual(debt, regs, 4095)
 
 let emptyResult = default(FetchResult)
@@ -166,7 +166,7 @@ proc cycle() =
       if credit == 0:
         # Underflow keeps the causing PC and the full terminal deficit.
         assert applied.exit == StepExit.OutOfGas
-        assert uint64(machineInfo(applied.machine).value.gasDeficit) == 81
+        assert uint64(machineInfo(applied.machine).value.gasDeficit) == 0
       elif pointer == 8192:
         # The host's permission panic terminates at the causing ecalli.
         assert applied.exit == StepExit.Panic

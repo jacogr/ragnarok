@@ -21,7 +21,7 @@ def invocation(operands, transfers, allowances):
     for service in sorted(services):
         selected = [t for t in transfers if t[1] == service]
         reports = operands.get(service, [])
-        gas = allowances.get(service, 0) + sum(t[4] for t in selected)
+        gas = allowances.get(service, 0) + sum(t[5] for t in selected)
         gas += sum(parse('O', item, BROAD)[2][4] for item in reports)
         result.append((service, gas, len(selected), [wire('T', t) for t in selected]+reports))
     return result
@@ -40,7 +40,7 @@ def prepare(folder):
             int(group.split(':')[0]): [bytes.fromhex(x) for x in group.split(':')[1].split(',')]
             for group in fields[8].split(';')}
         ids = [0, 1, 9, 42, 1729, 2**32-1]
-        transfers = [(rng.choice(ids), rng.choice(ids), rng.randrange(2**64),
+        transfers = [(rng.choice(ids), rng.choice(ids), 0, rng.randrange(2**64),
                       bytes([i+ordinal % 128])*128, rng.choice((0, 1, 127, 128, 16384)))
                      for i in range(rng.randrange(9))]
         allowances = {s: rng.choice((0, 1, 128, 100000)) for s in rng.sample(ids, rng.randrange(7))}

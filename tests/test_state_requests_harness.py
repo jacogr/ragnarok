@@ -44,15 +44,18 @@ class RequestHistoryHarness(unittest.TestCase):
         self.assertNotEqual(key(1,bytes(32),127),key(1,bytes(32),128))
         self.assertNotEqual(key(1,bytes(32),0),key(2,bytes(32),0))
 
-    # The full stated length domain overlaps other namespaces at its top values; do not hide the ambiguity.
-    def test_namespace_overlap(self):
+    # Preserve the historical release overlap equations even though current admission excludes both prefixes.
+    def test_historical_namespace_overlap(self):
         self.assertEqual(key(1,bytes(32),2**32-2),value_key('P',1,bytes(32)))
         self.assertEqual(key(1,bytes(32),2**32-1),value_key('S',1,bytes(32)))
 
-    # No admissible-length rule is invented while the stated E4 domain overlaps other namespace prefixes.
-    @unittest.skip('Pending normative clarification: funded small-payload local witnesses pass solicit/account predicates but overlap preimage/storage keys; see spec/request-namespace.md')
+    # Adopted PR542 excludes exactly the two reserved E4 prefixes; the maximal valid request remains representable.
     def test_resolved_namespace_policy(self):
-        self.fail('Replace this pending gate with the clarified valid-state cross-map constraint; do not silently restrict lengths or change key domains.')
+        for length in (2**32-2, 2**32-1):
+            # Admission refuses before interpreting a historical colliding key as a request history.
+            self.assertEqual(encode(1,bytes(32),length,(),(32,3,13)),'invalidlength')
+        self.assertEqual(encode(1,bytes(32),2**32-3,(),(32,3,13)),
+                         key(1,bytes(32),2**32-3).hex()+' 00')
 
 
 # Importing literal tests never builds native code or executes upstream generators.

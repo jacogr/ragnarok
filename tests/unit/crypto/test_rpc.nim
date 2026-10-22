@@ -8,6 +8,7 @@
 ## interface.
 
 import std/[assertions, syncio, base64]
+from ../../../src/codec/state_accounts import ServiceMetadataBytes
 import ../../../src/version
 import ../../../src/lib/json_writer
 import ../../../src/chain/[services, statistics, beefy, reports]
@@ -237,10 +238,10 @@ for malformed in ["{\"genesis_header\":\"00\"}", "{\"genesis_state\":{}}",
 # Independently frozen namespace keys exercise metadata, storage, preimages, and malformed imported state.
 let serviceState = genesisState[0..^2] &
   ",\"ff2a0000000000000000000000000000000000000000000000000000000000\":\"" &
-      "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" &
+      "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" &
           "\"" &
   ",\"ffff00ff00ff00ff0000000000000000000000000000000000000000000000\":\"" &
-      "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" &
+      "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" &
           "\"" &
   ",\"ff2b0000000000000000000000000000000000000000000000000000000000\":\"" & "01" & "\"" &
   ",\"2a4400fe00350040f10d6e55e19ac2da6b7f208e390f292a3f3b1daf21ce82\":\"" &
@@ -264,7 +265,7 @@ let dataCall = serviceCall("serviceData", "42", "")
 let valueCall = serviceCall("serviceValue", "42", ",\"a2V5\"")
 let preimageCall = serviceCall("servicePreimage", "42",
     ",\"ozvvs2aASJ8rCJyozanvt6/zrATgh54DpzsAAMMnzOQ=\"")
-assert respond(dataCall, serviceInfo) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\"}"
+assert respond(dataCall, serviceInfo) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
 assert respond(valueCall, serviceInfo) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"aGVsbG8Ad29ybGQ=\"}"
 assert respond(preimageCall, serviceInfo) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"cHJlaW1hZ2UA\"}"
 assert "\"result\":\"\"" in respond(serviceCall("serviceValue", "42", ",\"\""), serviceInfo)
@@ -296,9 +297,10 @@ let batchAnswer = respond("[" & repeat(bigIdCall & ",", 15) & bigIdCall & "]", s
 assert batchAnswer.len <= 65535 and batchAnswer.split("\"id\":").len == 17
 assert "\"code\":0" in batchAnswer and "\"result\"" in batchAnswer
 # Retained read views survive caller edits to independent extracted byte copies.
-assert services.serviceData(default(Genesis), ServiceIndex(42), ByteLimit(89)).error ==
-    ServiceReadError.Uninitialized
-let readMetadata = services.serviceData(serviceGenesis.value, ServiceIndex(42), ByteLimit(89))
+assert services.serviceData(default(Genesis), ServiceIndex(42), ByteLimit(
+    ServiceMetadataBytes)).error == ServiceReadError.Uninitialized
+let readMetadata = services.serviceData(serviceGenesis.value, ServiceIndex(42), ByteLimit(
+    ServiceMetadataBytes))
 assert readMetadata.error == ServiceReadError.None
 var extracted = readMetadata.value.bytes
 extracted[0] = 99
@@ -455,11 +457,11 @@ proc discoveryInfo(accounts: string): ClientInfo =
       genesisParameters.value)))
 var accounts = ""
 for service in [256'u32, 255'u32, 0'u32, 1'u32]: # Deliberately neither numeric nor serialized-key order.
-  accounts.add(",\"" & accountHex(service) & "\":\"" & repeat("00", 89) & "\"")
+  accounts.add(",\"" & accountHex(service) & "\":\"" & repeat("00", ServiceMetadataBytes) & "\"")
 # Exact key matching rejects near-account keys; exact metadata matching rejects unsupported/extended values.
-accounts.add(",\"" & accountHex(2)[0..^3] & "01\":\"" & repeat("00", 89) & "\"")
-accounts.add(",\"" & accountHex(3) & "\":\"01" & repeat("00", 88) & "\"")
-accounts.add(",\"" & accountHex(4) & "\":\"" & repeat("00", 90) & "\"")
+accounts.add(",\"" & accountHex(2)[0..^3] & "01\":\"" & repeat("00", ServiceMetadataBytes) & "\"")
+accounts.add(",\"" & accountHex(3) & "\":\"01" & repeat("00", ServiceMetadataBytes-1) & "\"")
+accounts.add(",\"" & accountHex(4) & "\":\"" & repeat("00", ServiceMetadataBytes+1) & "\"")
 let discovered = discoveryInfo(accounts)
 accounts = "" # The retained scalar list cannot alias mutable source text.
 assert respond(listCall, discovered) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[0,1,255,256]}"
@@ -472,7 +474,7 @@ var manyAccounts = ""
 var mediumServices = default(ClientInfo)
 for index in 0..<6000:
   manyAccounts.add(",\"" & accountHex(4_000_000_000'u32 + uint32(index)) & "\":\"" & repeat("00",
-      89) & "\"")
+      ServiceMetadataBytes) & "\"")
   if index == 3999: mediumServices = discoveryInfo(
       manyAccounts) # Retain a list that fits alone but not twice.
 let mediumBatch = respond("[" & listCall & "," & listCall & "]", mediumServices)
@@ -512,9 +514,9 @@ assert "\"result\":null" in respond(requestCall("9"), requestsInfo)
 assert "\"result\":[]" in respond(requestCall("4294967293"), requestsInfo)
 for length in ["4", "5", "6"]: # Excess count, trailing bytes and overlong count must not become successful histories.
   assert "\"code\":0" in respond(requestCall(length), requestsInfo)
-for length in ["4294967294", "4294967295"]: # Present marker keys are ambiguous even if their bytes look like a history.
-  assert "Request namespace ambiguous" in respond(requestCall(length), requestsInfo)
-  assert "\"result\":null" in respond(requestCall(length).replace(repeat("A", 43) & "=", "AQ" &
+for length in ["4294967294", "4294967295"]: # Current reserved selectors refuse independently of whether a matching key is present.
+  assert "\"code\":0" in respond(requestCall(length), requestsInfo)
+  assert "\"code\":0" in respond(requestCall(length).replace(repeat("A", 43) & "=", "AQ" &
       repeat("A", 41) & "="), requestsInfo)
 assert "\"result\":null" in respond(requestCall("0").replace(",42,", ",41,"), requestsInfo)
 assert "\"code\":0" in respond(requestCall("0").replace(",42,", ",43,"), requestsInfo)
@@ -1370,7 +1372,7 @@ assert getOccupiedMem() <= statsSubscriptionBaseline + 256
 # Service-data subscriptions distinguish absent accounts from malformed records and bind each selector independently.
 const SubscribeAccount = "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeServiceData\",\"params\":[42,false],\"id\":61}"
 let unsubscribeAccount = UnsubscribeBest.replace("unsubscribeBestBlock", "unsubscribeServiceData")
-let accountBlob = quote(repeat("A", 119) & "=") # Independent Base64 encoding of the fixture's 89 zero bytes.
+let accountBlob = quote(repeat("A", 140)) # Independent Base64 encoding of the fixture's 105 zero bytes.
 let absentAccountUpdate = initialBestUpdate.replace("subscribeBestBlock",
     "subscribeServiceData").replace(
   "\"slot\":7}", "\"slot\":7,\"value\":null}")
@@ -1580,7 +1582,8 @@ for index in 0..<maximumPreimageBytes.len:
   maximumPreimageBytes[index] = byte('x') # The digest fixture commits to exactly 32 KiB of x bytes.
 let maximumPreimageHead = childSnapshot(serviceInfo.chain.bestBlock.value, 8,
   genesisParameters.value, accounts = @[
-  StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)), value: newSeq[byte](89)),
+  StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)), value: newSeq[byte](
+      ServiceMetadataBytes)),
   StateEntry(key: maximumPreimageKey.value, value: maximumPreimageBytes)])
 let maximumPreimageInfo = ClientInfo(chain: genesisView(maximumPreimageHead))
 var boundedPreimages = default(RpcSession)
@@ -1593,7 +1596,8 @@ assert base64.encode(repeat("x", 32768)) in maximumUpdate
 maximumPreimageBytes.add(byte('x'))
 let oversizedPreimageHead = childSnapshot(maximumPreimageHead.value, 9, genesisParameters.value,
   accounts = @[
-  StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)), value: newSeq[byte](89)),
+  StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)), value: newSeq[byte](
+      ServiceMetadataBytes)),
   StateEntry(key: maximumPreimageKey.value, value: maximumPreimageBytes)])
 assert boundedPreimages.queueChainUpdates(oversizedPreimageHead)
 assert boundedPreimages.nextUpdate() == preimageFailure # Oversize takes the same terminal path without copying or hashing it.
@@ -1979,12 +1983,12 @@ proc publicationLifecycle() =
       "\"subscription\":2").replace(genesisHash,
     base64.encode(array[32, byte](missingStatsHead.value.blockHash))).replace("\"slot\":7",
         "\"slot\":30"))
-  var metadata = newSeq[byte](89)
+  var metadata = newSeq[byte](ServiceMetadataBytes)
   for atSlot in 31'u32..34'u32:
     var accounts: seq[StateEntry] = @[]
     if atSlot == 31 or atSlot == 32:
       if atSlot == 32:
-        metadata[33] = 1 # Alter the account balance while retaining the supported version and framing.
+        metadata[41] = 1 # Alter the current liquid balance after both supervisor-ID fields while retaining the supported version and framing.
       accounts.add(StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)),
           value: metadata))
     elif atSlot == 34:
@@ -2010,7 +2014,7 @@ proc publicationLifecycle() =
       ByteLimit(3))
   assert storageKey.error == ServiceValueError.None
   let accountEntry = StateEntry(key: chapterServiceKey(StateChapter(255), ServiceIndex(42)),
-      value: newSeq[byte](89))
+      value: newSeq[byte](ServiceMetadataBytes))
   let emptyStorageHead = childSnapshot(owner.chain.bestBlock.value, 35, genesisParameters.value,
       accounts = @[accountEntry])
   assert owner.publishBlock(emptyStorageHead) == ViewAdvanceError.None

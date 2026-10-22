@@ -54,17 +54,13 @@ proc main() =
       default(RequestHistory), config)
   let preimage = servicePreimageEntry(ServiceIndex(0), hash, @[], ServiceEntryLimits(
       keyBytes: ByteLimit(32), valueBytes: ByteLimit(0)))
-  assert requestPreimage.error == RequestError.None and preimage.error == ServiceValueError.None
-  assert array[31, byte](requestPreimage.value.key) == array[31, byte](preimage.value.key)
+  assert requestPreimage.error == RequestError.InvalidLength and preimage.error ==
+      ServiceValueError.None
   let requestStorage = serviceRequestKey(ServiceIndex(0), hash, RequestLength(high(uint32)),
       ByteLimit(32))
-  let storage = serviceStorageKey(ServiceIndex(0), array[32, byte](hash), ByteLimit(32))
-  assert requestStorage.error == RequestError.None and storage.error == ServiceValueError.None
-  assert array[31, byte](requestStorage.value) == array[31, byte](storage.value)
-  let combined = stateTrieRoot([requestPreimage.value, preimage.value], StateTrieLimits(
-      items: ElementLimit(2), perValue: ByteLimit(13),
-    totalValueBytes: ByteLimit(26), nodes: TrieNodeLimit(1000)))
-  assert combined.error == StateTrieError.DuplicateKey # Composition rejects overlapping mappings instead of silently overwriting one.
-  echo "PASS requests: tagged fields, fixed scope copies, failure guards and explicit key-overlap/duplicate rejection"
+  assert requestStorage.error == RequestError.InvalidLength # Current preimagelen excludes storage and preimage namespace markers.
+  let maximum = serviceRequestKey(ServiceIndex(0), hash, RequestLength(high(uint32)-2), ByteLimit(32))
+  assert maximum.error == RequestError.None # The highest allowed length remains an exact fixed E4 prefix.
+  echo "PASS requests: tagged fields, fixed scope copies, failure guards and reserved-length rejection"
 
 main()

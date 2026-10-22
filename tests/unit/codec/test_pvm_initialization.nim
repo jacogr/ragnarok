@@ -212,7 +212,7 @@ let nonzero = initializeMachine(envelope([], [], [0'u8, 0, 2, 0, 0, 3], 0, 0), [
 assert uint64(machineInfo(nonzero).value.pc) == 1
 assert uint64(machineInfo(nonzero).value.gas) == high(uint64)
 
-# GP-PVM-009 reaches the actual JAM initializer: high destination byte changes the return register.
+# Current paper and JAM initialization agree on the third register byte's low nibble.
 block:
   let bytes = @[0'u8, 0, 11, 51, 1, 7, 51, 2, 11, 190, 33, 16, 50, 0, 73, 2]
   let initialized = start(envelope([], [], bytes, 0, 0), [], 0).value
@@ -221,12 +221,13 @@ block:
   let jam = execute(initialized, ExecutionStepLimit(4), GasCycleLimit(1000)).value
   assert jam.exit == StepExit.Panic and uint64(machineInfo(jam.machine).value.registers[0]) == 18
   assert uint64(machineInfo(jam.machine).value.registers[12]) == 0
-  # Raw paper capture leaves r0 as the halt address and writes the same addition result into r12.
+  # Raw capture follows the same current-paper register rule and reaches the same invalid dynamic target.
   let raw = decodeProgram(bytes, CodeAddress(0), ProgramByteLimit(100), JumpCountLimit(0)).value
   let paperSource = captureMachine(raw, memoryOf(initialized).value, machineInfo(
       initialized).value).value
   let paper = execute(paperSource, ExecutionStepLimit(4), GasCycleLimit(1000)).value
-  assert paper.exit == StepExit.Halt and uint64(machineInfo(paper.machine).value.registers[12]) == 18
+  assert paper.exit == StepExit.Panic and uint64(machineInfo(paper.machine).value.registers[0]) == 18
+  assert uint64(machineInfo(paper.machine).value.registers[12]) == 0
   assert uint64(machineInfo(initialized).value.registers[0]) == 0xffff0000'u64
 
 # Seeded mutations exercise untrusted fields and code without permitting a partial success owner.

@@ -50,13 +50,14 @@ proc payload(): seq[byte] =
 
 # Construct genuine current-self/other-service histories and explicitly bounded write capacity.
 proc source(present = false, history = requestedHistory(), length = 3'u32, offered = 3'u64,
-    address = 196608'u64, credit = 100000'u64, slot = 128'u32,
+    address = 196608'u64, selector = high(uint64), credit = 100000'u64, slot = 128'u32,
     account = ServiceMetadata(balance: AccountBalance(1000)), writes = 2'u64,
     malformed = false, wire: seq[byte] = @[], preimage = false,
     data: seq[byte] = payload(), suffix: seq[seq[byte]] = @[@[50'u8, 0]], extra: seq[
         StateEntry] = @[]): PreparedAccumulationMachine =
   var entries = extra
-  entries.add(serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(89)).value)
+  entries.add(serviceMetadataEntry(ServiceIndex(99), default(ServiceMetadata), ByteLimit(
+      ServiceMetadataBytes)).value)
   entries.add(serviceRequestEntry(ServiceIndex(99), hash, RequestLength(length), requestedHistory(), config).value)
   var metadata = account
   if present:
@@ -72,7 +73,8 @@ proc source(present = false, history = requestedHistory(), length = 3'u32, offer
     entries.add(servicePreimageEntry(ServiceIndex(42), hash, blob,
       ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(
           3))).value) # Restoration must preserve the retained unavailable blob.
-  var instructions = @[registerImmediate(7, address), registerImmediate(8, offered), @[10'u8, 24]]
+  var instructions = @[registerImmediate(7, selector), registerImmediate(8, address),
+    registerImmediate(9, offered), @[10'u8, 25]]
   for instruction in suffix:
     instructions.add(instruction) # Later hosts observe this exact execution's current effects.
   guestProgram(instructions, credit, extra = entries, writable = data, account = metadata,
@@ -101,14 +103,23 @@ proc context(done: AccumulationDispatchResult, dimension = AccumulationDimension
 # Inspect canonical current caller metadata independently from request decoding.
 proc metadata(owner: AccumulationEffectContext): ServiceMetadata =
   let found = owner.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(42))).value
-  decodeServiceMetadata(found.bytes, ByteLimit(89)).value.metadata
+  decodeServiceMetadata(found.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 
 # Assert exact guest result and unchanged advertised length on every funded row verdict.
-proc resultCode(done: AccumulationDispatchResult, code: uint64, length = 3'u64) =
+proc resultCode(done: AccumulationDispatchResult, code: uint64, second = 196608'u64) =
+  ## Check the exact verdict and second output/input word, including query calls in a composed guest.
   assert done.value.exit == StepExit.Halt, "funded row resumes guest"
   let cpu = machineInfo(done.value.machine).value
-  assert uint64(cpu.registers[7]) == code and uint64(cpu.registers[8]) == length, "exact verdict with unchanged r8"
+  assert uint64(cpu.registers[7]) == code and uint64(cpu.registers[8]) == second,
+    "expected verdict/word " & $code & "/" & $second & " got " & $uint64(cpu.registers[7]) & "/" &
+        $uint64(cpu.registers[8])
 
+
+# Foreign supervised mutations are explicit local gates; current self selection remains executable.
+assert run(source(selector = 99)).error == AccumulationDispatchError.UnsupportedHostCall
+assert run(source(selector = 0x10000002a'u64)).error ==
+    AccumulationDispatchError.UnsupportedHostCall
+resultCode(run(source(selector = 42)), 0)
 let valid = source()
 let done = run(valid)
 resultCode(done, 0)
@@ -171,26 +182,30 @@ let restoreFull = run(source(present = true, history = unavailableHistory(Reques
 resultCode(restoreFull, high(uint64)-4) # Unchanged footprint still requires current funding before resource policy.
 assert context(restoreFull).effectRequestHistory(hash, RequestLength(3)).value.state ==
     RequestState.Unavailable, "FULL does not restore history"
-for length in [0'u32, high(uint32)-1, high(uint32)]:
+for length in [0'u32, high(uint32)-2]:
   let completed = run(source(length = length, offered = uint64(length)), params = parameters(0, 0, 0))
-  resultCode(completed, 0, uint64(length))
+  resultCode(completed, 0)
+  assert uint64(machineInfo(completed.value.machine).value.registers[9]) == uint64(length)
   assert uint64(metadata(context(completed)).storageBytes) == 81'u64+uint64(length), "complete E4 footprint and pinned namespace prefixes"
-for offered in [0x100000003'u64, high(uint64)]:
+for offered in [uint64(high(uint32))-1, uint64(high(uint32)), 0x100000003'u64, high(uint64)]:
   let prepared = source(offered = offered, address = high(uint64), malformed = true)
   failHash(1)
   let completed = run(prepared, copy = 0)
   assert hashCalls() == 0, "HUH precedes capture policy and hashing"
   failHash(0)
-  resultCode(completed, high(uint64)-8, offered)
+  resultCode(completed, high(uint64)-8, high(uint64))
+  assert uint64(machineInfo(completed.value.machine).value.registers[9]) == offered
 for address in [0'u64, 65536'u64+4096-16, 196608'u64+8192-16, 0x100000000'u64, high(uint64)]:
   let completed = run(source(address = address))
   let cpu = machineInfo(completed.value.machine).value
-  assert completed.value.exit == StepExit.Panic and uint64(cpu.registers[7]) == address and uint64(
-      cpu.registers[8]) == 3,
+  assert completed.value.exit == StepExit.Panic and uint64(cpu.registers[7]) == high(uint64) and
+      uint64(cpu.registers[8]) == address and
+    uint64(cpu.registers[9]) == 3,
     "memory panic preserves original inputs before state checks"
   assert uint64(cpu.gas) == 100000-price(valid)-2193, "charged memory panic"
-resultCode(run(source(address = 65536)), 0) # Any readable RO hash can be solicited without a preimage.
-resultCode(run(source(address = 196608'u64+4096-16)), 0) # Complete cross-page RW hash is readable.
+resultCode(run(source(address = 65536)), 0, second = 65536) # Any readable RO hash can be solicited without a preimage.
+resultCode(run(source(address = 196608'u64+4096-16)), 0,
+    second = 196608'u64+4096-16) # Complete cross-page RW hash is readable.
 assert run(valid, copy = 31).error == AccumulationDispatchError.LimitExceeded, "exact fixed input copy budget"
 for wire in [newSeq[byte](0), @[4'u8], @[128'u8, 0], @[2'u8, 0], @[0'u8, 0], newSeq[byte](14)]:
   assert run(source(present = true, malformed = true, wire = wire)).error ==
@@ -200,9 +215,9 @@ for available in [0'u64, 2192, 2193, 2194]:
   let completed = run(source(credit = price(valid)+available))
   let cpu = machineInfo(completed.value.machine).value
   if available < 2193:
-    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) ==
-        2193-available and
-      uint64(cpu.registers[7]) == 196608 and uint64(cpu.registers[8]) == 3, "exact fee deficit preserves original registers"
+    assert completed.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0 and
+      uint64(cpu.registers[7]) == high(uint64) and uint64(cpu.registers[8]) == 196608 and uint64(
+          cpu.registers[9]) == 3, "exact fee deficit preserves original registers"
   else:
     resultCode(completed, 0)
     assert uint64(cpu.gas) == available-2193, "funded fixed fee edge"
@@ -226,20 +241,24 @@ for octets in [high(uint64)-84, high(uint64)-83, high(uint64)]:
     assert uint64(metadata(context(completed)).storageBytes) == high(uint64), "exact E8 octet addition edge"
   else:
     assert completed.error == AccumulationDispatchError.InvalidContext, "unrepresentable footprint remains local"
-let repeated = run(source(suffix = @[registerImmediate(7, 196608), @[10'u8, 24], @[50'u8, 0]]))
+let repeated = run(source(suffix = @[registerImmediate(7, high(uint64)), registerImmediate(8,
+    196608), @[10'u8, 25], @[50'u8, 0]]))
 resultCode(repeated, high(uint64)-8)
 assert uint32(metadata(context(repeated)).storageItems) == 2, "repeated solicitation cannot double-count footprint"
-let twice = run(source(suffix = @[registerImmediate(7, 196608), registerImmediate(8, 4), @[10'u8,
-    24], @[50'u8, 0]]))
-resultCode(twice, 0, 4)
+let twice = run(source(suffix = @[registerImmediate(7, high(uint64)), registerImmediate(8, 196608),
+    registerImmediate(9, 4), @[10'u8, 25], @[50'u8, 0]]))
+resultCode(twice, 0)
+assert uint64(machineInfo(twice.value.machine).value.registers[9]) == 4
 assert uint32(metadata(context(twice)).storageItems) == 4 and uint64(metadata(context(
     twice)).storageBytes) == 169,
   "same hash with distinct lengths creates independent requests"
-let queried = run(source(suffix = @[registerImmediate(7, 196608), @[10'u8, 23], @[50'u8, 0]]))
+let queried = run(source(suffix = @[registerImmediate(7, high(uint64)), registerImmediate(8,
+    196608), @[10'u8, 24], @[50'u8, 0]]))
 resultCode(queried, 0, 0) # Current query sees new empty history rather than NONE.
 let queriedRestore = run(source(present = true, history = unavailableHistory(RequestSlot(1),
     RequestSlot(2)),
-  suffix = @[registerImmediate(7, 196608), @[10'u8, 23], @[50'u8, 0]]))
+  suffix = @[registerImmediate(7, high(uint64)), registerImmediate(8, 196608), @[10'u8, 24], @[
+      50'u8, 0]]))
 resultCode(queriedRestore, 0x0000000100000003'u64,
     0x0000008000000002'u64) # Current query observes the appended slot 128.
 var providedInput = payload()
@@ -247,7 +266,7 @@ for octet in blob:
   providedInput.add(octet) # Real provided bytes follow the fixed solicitation hash.
 let provided = run(source(data = providedInput, suffix = @[registerImmediate(7, 42),
     registerImmediate(8, 196640),
-  registerImmediate(9, 3), @[10'u8, 27], @[50'u8, 0]]))
+  registerImmediate(9, 3), @[10'u8, 28], @[50'u8, 0]]))
 assert context(provided).effectInfo.value.provisions == 1 and
   context(provided).effectProvisionAt(AccumulationProvisionIndex(
       0)).value.copyProvisionBytes.value == blob, "provide sees newly solicited current-self request"
@@ -302,13 +321,14 @@ assert changed.effectContext(AccumulationDimension.Exceptional).value.effectRequ
     RequestLength(3)).error ==
   AccumulationEffectError.NotRequested, "exceptional history stays independent"
 for checkpoint in [false, true]:
-  let panicked = run(source(suffix = (if checkpoint: @[@[10'u8, 18], @[0'u8]] else: @[@[0'u8]])))
+  let panicked = run(source(suffix = (if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])))
   let selected = normalizeAccumulationOutcome(panicked).value.outcomeContext.value
   assert selected.effectRequestHistory(hash, RequestLength(3)).error ==
     (if checkpoint: AccumulationEffectError.None else: AccumulationEffectError.NotRequested), "panic selects matching request/footprint checkpoint"
   let exhausted = run(source(credit = price(valid)+2400, suffix = (if checkpoint:
-    @[@[10'u8, 18], registerImmediate(7, 196608), @[10'u8, 24], @[50'u8, 0]] else:
-    @[registerImmediate(7, 196608), @[10'u8, 24], @[50'u8, 0]])))
+    @[@[10'u8, 19], registerImmediate(7, high(uint64)), registerImmediate(8, 196608), @[10'u8, 25],
+        @[50'u8, 0]] else:
+    @[registerImmediate(7, high(uint64)), registerImmediate(8, 196608), @[10'u8, 25], @[50'u8, 0]])))
   assert exhausted.value.exit == StepExit.OutOfGas, "second solicitation fee is unaffordable"
   let selectedOog = normalizeAccumulationOutcome(exhausted).value.outcomeContext.value
   assert selectedOog.effectRequestHistory(hash, RequestLength(3)).error ==

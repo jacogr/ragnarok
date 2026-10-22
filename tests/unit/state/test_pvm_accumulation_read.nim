@@ -36,7 +36,7 @@ proc entries(): seq[StateEntry] =
   result = @[]
   for service in [0'u32, 99'u32, high(uint32)]:
     result.add(serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(), ByteLimit(
-        89)).value) # Self comes from bootstrap.
+        ServiceMetadataBytes)).value) # Self comes from bootstrap.
   for item in [(42'u32, 73'u8, 9000), (42'u32, 0'u8, 0), (99'u32, 73'u8, 17),
       (99'u32, 81'u8, 32), (0'u32, 73'u8, 5), (high(uint32), 73'u8, 7), (100'u32, 73'u8, 1)]:
     let (service, identity, size) = item
@@ -175,7 +175,7 @@ for witness in [(0'u64, 2462'u64), (1'u64, 2463'u64), (1023'u64, 2710'u64),
     let cpu = machineInfo(done.value.machine).value
     if available < cost:
       assert done.value.exit == StepExit.OutOfGas and uint64(cpu.gas) == 0
-      assert uint64(cpu.gasDeficit) == cost-available and uint64(cpu.registers[7]) ==
+      assert uint64(cpu.gasDeficit) == 0 and uint64(cpu.registers[7]) ==
           42 # No key/read/write before affordability.
     else:
       assert done.value.exit == StepExit.Halt and uint64(cpu.gas) == available-cost
@@ -190,8 +190,7 @@ assert uint64(machineInfo(wide.value.machine).value.gas) == high(uint64)-price(
 let unfunded = source(address = high(uint64), length = high(uint64))
 let debt = run(unfunded, limit = 32)
 assert debt.value.exit == StepExit.OutOfGas
-assert uint64(machineInfo(debt.value.machine).value.gasDeficit) == 4467570830351534494'u64-(
-    100000-price(unfunded))
+assert uint64(machineInfo(debt.value.machine).value.gasDeficit) == 0
 assert run(source(length = 65), limit = 64).error == AccumulationDispatchError.LimitExceeded
 let malformed = source(99, extra = @[StateEntry(key: chapterServiceKey(StateChapter(255),
     ServiceIndex(99)), value: @[0'u8])])
@@ -231,23 +230,23 @@ for witness in [(0'u64, 2407'u64), (1'u64, 2409'u64), (1023'u64, 4142'u64),
   let prepared = source(keyLength = size, length = 0, credit = price(prototype)+cost-1)
   let done = run(prepared, limit = 0)
   assert done.value.exit == StepExit.OutOfGas
-  assert uint64(machineInfo(done.value.machine).value.gasDeficit) == 1
+  assert uint64(machineInfo(done.value.machine).value.gasDeficit) == 0
 # A cost above uint64 with funded low-limb borrow still yields a representable exact debt.
 let hugePrototype = source(keyLength = 0xb000000000000000'u64, length = 0)
 let huge = source(keyLength = 0xb000000000000000'u64, length = 0, credit = high(uint64))
 let borrowed = run(huge, limit = 0)
 assert borrowed.error == AccumulationDispatchError.None and borrowed.value.exit == StepExit.OutOfGas
 assert uint64(machineInfo(borrowed.value.machine).value.gasDeficit) ==
-    3053440547357198696'u64+price(hugePrototype) # Frozen from unbounded integer arithmetic.
+    0 # Frozen from unbounded integer arithmetic.
 # Adding the full value term also crosses the cost limb without losing its carry.
 let combinedPrototype = source(keyLength = 0xb000000000000000'u64, length = high(uint64))
 let combined = run(source(keyLength = 0xb000000000000000'u64, length = high(uint64),
     credit = high(uint64)), limit = 0)
 assert combined.error == AccumulationDispatchError.None and combined.value.exit == StepExit.OutOfGas
 assert uint64(machineInfo(combined.value.machine).value.gasDeficit) ==
-    7521011377708730728'u64+price(combinedPrototype)
-assert run(source(keyLength = high(uint64), length = high(uint64)), limit = 0).error ==
-    AccumulationDispatchError.GasRangeExceeded
+    0
+assert run(source(keyLength = high(uint64), length = high(uint64)), limit = 0).value.exit ==
+    StepExit.OutOfGas
 # Both cost terms participate at the exact signed-negative limit; one less gas refuses locally.
 let boundaryPrototype = source(keyLength = 6917529027641081856'u64,
     length = 2305843009213693952'u64)
@@ -255,9 +254,9 @@ let boundaryCredit = 3062447746611939687'u64+price(boundaryPrototype)
 let boundary = run(source(keyLength = 6917529027641081856'u64, length = 2305843009213693952'u64,
     credit = boundaryCredit), limit = 0)
 assert boundary.error == AccumulationDispatchError.None and boundary.value.exit == StepExit.OutOfGas
-assert uint64(machineInfo(boundary.value.machine).value.gasDeficit) == 0x8000000000000000'u64
+assert uint64(machineInfo(boundary.value.machine).value.gasDeficit) == 0
 assert run(source(keyLength = 6917529027641081856'u64, length = 2305843009213693952'u64,
-    credit = boundaryCredit-1), limit = 0).error == AccumulationDispatchError.GasRangeExceeded
+    credit = boundaryCredit-1), limit = 0).value.exit == StepExit.OutOfGas
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let done = run(valid)

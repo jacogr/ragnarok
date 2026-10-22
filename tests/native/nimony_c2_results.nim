@@ -21,7 +21,7 @@ proc errorInfo(kind: WorkKind): OperandInfo =
   operandInfo(decodeOperand(wire, policy).value.owner).value
 # A valid fixed transfer selects the opposite decoded branch without exposing a private discriminator.
 proc decodedTransfer(): AccumulationValue =
-  var wire = newSeq[byte](153)
+  var wire = newSeq[byte](154)
   wire[0] = 1
   decodeAccumulationInput(wire, policy).value.value
 case paramStr(1)
@@ -36,12 +36,12 @@ of "av-consumed":
 of "transfer-value":
   # Failed/default operations cannot authorize a value, retained owner or progress.
   let parsed = if useDefault: default(RecordResult[TransferRead]) else: decodeTransfer([],
-      ByteLimit(153))
+      ByteLimit(154))
   echo uint64(parsed.value.value.amount)
 of "transfer-consumed":
   # Failed/default operations cannot authorize a value, retained owner or progress.
   let parsed = if useDefault: default(RecordResult[TransferRead]) else: decodeTransfer([],
-      ByteLimit(153))
+      ByteLimit(154))
   echo parsed.value.consumed
 of "operand-owner":
   # Failed/default operations cannot authorize a value, retained owner or progress.
@@ -71,7 +71,7 @@ of "av-write":
 of "transfer-write":
   # Failed/default operations cannot authorize a value, retained owner or progress.
   let parsed = if useDefault: default(RecordResult[int]) else: encodeTransfer(default(
-      DeferredTransfer), ByteLimit(153), output)
+      DeferredTransfer), ByteLimit(154), output)
   echo parsed.value
 of "operand-write":
   # Failed/default operations cannot authorize a value, retained owner or progress.

@@ -7,6 +7,29 @@ This register records findings encountered during implementation, not an exhaust
 paper audit. Entries below have not been filed upstream by this work; no claim is
 made about whether a later paper revision already fixes them.
 
+## Current upgrade disposition — 2026-10-21
+
+The authorized current target is unreleased Gray Paper
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`; VERSION remains0.8.0.
+The historical release evidence below retains its original exact pins and witnesses.
+Current source hashes in `pins.json` describe the new target, not those historical files.
+
+The current deblob equation supplies the width, code-size and table-count limits
+(GP-PVM-005/007) and masks the third register's low nibble (GP-PVM-009).
+PR533, merged at `0c0664eb52ba92afd8d21cef96c0e1da506eddfe`, resolves the
+unsigned gas result-domain issue (GP-PVM-010): host underfunding now clamps to zero,
+and host mutators cannot return Halt. These are resolved historical discrepancies,
+not continuing exceptions to the current paper. The independent destination corpus
+now checks zero scoped paper/JAM differences. The16 interpreted comparison pairs pass
+against the unchanged pinned PolkaVM implementation; this is scoped fixture evidence,
+not a full upstream Rust/fuzz-suite run.
+
+PR542 also bounds `preimagelen` below2^32−2, excluding the two request-key aliases
+recorded by the historical M1 namespace witnesses. Current production rejects these
+lengths explicitly; the old mathematical witnesses remain historical evidence only.
+See [the coordinated upgrade contract](graypaper-unreleased-upgrade.md) for exact
+scope, remaining implementation gates and verification requirements.
+
 ## Baseline and reporting policy
 
 Reviewed on2026-10-21 against Gray Paper0.8.0

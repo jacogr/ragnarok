@@ -1,5 +1,17 @@
 # Accumulation service creation host
 
+## Current unreleased pin
+
+The [coordinated upgrade](graypaper-unreleased-upgrade.md) targets
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. Current `new` is selector20:
+r7 selects the funding account (all ones means self), r8 selects the desired ID,
+r9 selects the funding mode and r10 points to the complete60-byte request
+(hash32, length E4, minimum accumulation gas E8, minimum transfer gas E8, gratis E8).
+The implemented self/liquid mode0 creates supervisor metadata bound to the
+creator's actual incarnation. Modes1–3 and foreign funding remain typed gates;
+undefined modes return HUH after input validation. Underfunding drains gas to zero.
+The release-era details and verification below describe the historical layout.
+
 ## Scope and authority
 
 Implement new (19), Omega_N, against GP 0.8.0 revision

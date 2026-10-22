@@ -38,7 +38,7 @@ func originalCredit(mode: ComputedStorageMode): uint64 =
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode exact canonical account metadata from each retained full-map owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      42))).value.bytes, ByteLimit(89)).value.metadata
+      42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   ## Absence differs from a present empty value; footprint and item count follow the actual stored byte length.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value

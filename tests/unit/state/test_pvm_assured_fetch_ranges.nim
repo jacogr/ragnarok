@@ -20,7 +20,7 @@ import ../../support/[pvm_assured_outcomes, pvm_computed_storage_program,
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Inspect actual canonical account fields at each full-state owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      42))).value.bytes, ByteLimit(89)).value.metadata
+      42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 proc rangeConfig(queue: AssuredAccumulationQueue): AssuredExecutionConfig =
   ## Authorize exactly the eleven real final bytes; original parameters and all other independent execution ceilings stay inherited.
   result = assuredExecutionConfig(queue)

@@ -92,8 +92,8 @@
         "host"
       ],
       "name": "pvm-host-response-halt-host",
-      "diagnostic": "outcome.kind == Host",
-      "description": "Host response metadata halt host"
+      "diagnostic": "r.status == None",
+      "description": "Rejected host Halt cannot expose host metadata"
     },
     {
       "identity": {
@@ -105,8 +105,8 @@
         "fault"
       ],
       "name": "pvm-host-response-halt-fault",
-      "diagnostic": "outcome.kind == Fault",
-      "description": "Host response metadata halt fault"
+      "diagnostic": "r.status == None",
+      "description": "Rejected host Halt cannot expose fault metadata"
     },
     {
       "identity": {

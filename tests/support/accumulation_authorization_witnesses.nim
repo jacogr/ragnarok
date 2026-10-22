@@ -28,13 +28,13 @@ proc assignProgram(): seq[byte] =
   for index in 64..<96: payload[index] = byte(index-63)
   result = @[0'u8]
   let code = guestEnvelope([registerImmediate(7, 0), registerImmediate(8, 196608),
-    registerImmediate(9, 42), @[10'u8, 16], @[50'u8, 0]], writable = payload)
+    registerImmediate(9, 42), @[10'u8, 17], @[50'u8, 0]], writable = payload)
   for octet in code: result.add(octet)
 proc managerProgram(): seq[byte] =
   ## The signed manager guest hands off its role and removes both original allowances without changing queues.
   let code = guestEnvelope([registerImmediate(7, 99), registerImmediate(8, 196608),
     registerImmediate(9, 17), registerImmediate(10, 23), registerImmediate(11, 196608),
-    registerImmediate(12, 0), @[10'u8, 15], @[50'u8, 0]],
+    registerImmediate(12, 0), @[10'u8, 16], @[50'u8, 0]],
     writable = @[42'u8, 0, 0, 0, 99, 0, 0, 0])
   result = @[0'u8]
   for octet in code: result.add(octet) # Stored service code retains the empty metadata prefix.

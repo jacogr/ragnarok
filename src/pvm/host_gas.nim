@@ -1,20 +1,20 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 gas host function and unknown-call fallback with exact terminal deficits.
+## GP 0.8.0 gas host function and unknown-call fallback with unsigned saturating gas charges.
 ## Exposes gasHostResponse and unknownHostResponse for trusted host dispatchers. Neither owns context
 ## nor performs external effects; responses retain immutable memory and copied registers.
 
 import ./[machine, step]
 
 # Subtract a fixed, bounded protocol cost without signed narrowing or unsigned underflow.
-# Terminal negative gas is canonical zero credit plus a positive deficit, not a clamped balance.
+# Underfunding drains the complete unsigned balance to zero.
 func charged(gas: MachineGas, cost: uint64, registers: RegisterFile, memory: Memory): HostResponse =
   let available = uint64(gas)
   if available < cost:
-    # Comparison proves subtraction safe; these fixed costs are far below the signed deficit bound.
+    # The failed comparison selects zero without unsigned subtraction.
     return HostResponse(action: HostAction.OutOfGas, gas: MachineGas(0),
-      gasDeficit: GasDeficit(cost - available), registers: registers, memory: memory)
+      gasDeficit: GasDeficit(0), registers: registers, memory: memory)
   HostResponse(action: HostAction.Continue, gas: MachineGas(available - cost),
     gasDeficit: GasDeficit(0), registers: registers, memory: memory)
 

@@ -21,7 +21,7 @@ proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 # Small explicit work and rewrite policies never allocate from their maxima.
-proc limits(services = 3'u64, writes = 2'u64, bytes = 178'u64): AccumulationTimesLimits =
+proc limits(services = 3'u64, writes = 2'u64, bytes = 210'u64): AccumulationTimesLimits =
   AccumulationTimesLimits(services: ElementLimit(services), writes: ElementLimit(writes),
       bytes: ByteLimit(bytes))
 
@@ -91,10 +91,10 @@ proc predecessor(fixture: ReentryFixture, provided = false): PreparedAccumulatio
 
 # Independent byte replacement expresses T's E4 field, without decoding/re-encoding the expected successor.
 proc replaced(original: seq[byte], slot: uint32): seq[byte] =
-  assert original.len == 89, "fixed metadata witness extent"
+  assert original.len == 105, "fixed metadata witness extent"
   result = newSeq[byte](original.len)
   for index in 0..<original.len: result[index] = original[index]
-  for index in 0..<4: result[81+index] = byte((slot shr (index*8)) and 255)
+  for index in 0..<4: result[97+index] = byte((slot shr (index*8)) and 255)
 
 proc pureCases() =
   ## Every nominal fixed field must survive a timestamp update, including full-width balances/footprints/gas.
@@ -106,10 +106,12 @@ proc pureCases() =
         uint64)-3),
     storageItems: AccountStorageItems(high(uint32)), created: AccountSlot(high(uint32)-1),
     lastAccumulation: AccountSlot(0x10203040'u32), parent: ServiceIndex(high(uint32)))
-  let first = serviceMetadataEntry(ServiceIndex(42), metadata, ByteLimit(89)).value
+  let first = serviceMetadataEntry(ServiceIndex(42), metadata, ByteLimit(
+      ServiceMetadataBytes)).value
   var current = metadata
   current.lastAccumulation = AccountSlot(high(uint32))
-  let second = serviceMetadataEntry(ServiceIndex(99), current, ByteLimit(89)).value
+  let second = serviceMetadataEntry(ServiceIndex(99), current, ByteLimit(
+      ServiceMetadataBytes)).value
   let unrelated = StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 4, 2])
   let prior = newStateStore([first, second, unrelated], report_context.limits()).value.snapshot.value
   let emptyMap = newStateStore([], report_context.limits()).value.snapshot.value
@@ -117,7 +119,7 @@ proc pureCases() =
   let expected = replaced(first.value, high(uint32))
   failHash(3)
   var projected = projectAccumulationTimes(prior, services, AccountSlot(high(uint32)), limits(
-      writes = 1, bytes = 89)).value
+      writes = 1, bytes = 105)).value
   assert projected.entries.len == 1, "one changed surviving account"
   assert projected.entries[0].value == expected, "literal four-byte timestamp replacement"
   assert projected.info.services == 3 and projected.info.accounts == 2 and projected.info.absent == 1
@@ -138,7 +140,7 @@ proc pureCases() =
   for keys in [@[ServiceIndex(42), ServiceIndex(42)], @[ServiceIndex(99), ServiceIndex(42)]]:
     assert projectAccumulationTimes(prior, keys, AccountSlot(0), limits()).error ==
         AccumulationTimesError.NonCanonical
-  for short in [limits(services = 2), limits(writes = 0), limits(bytes = 88)]:
+  for short in [limits(services = 2), limits(writes = 0), limits(bytes = 104)]:
     assert projectAccumulationTimes(prior, [ServiceIndex(42), ServiceIndex(99), ServiceIndex(100)],
         AccountSlot(high(uint32)), short).error == AccumulationTimesError.LimitExceeded
   let full = limits(services = high(uint64), writes = high(uint64), bytes = high(uint64))
@@ -146,8 +148,8 @@ proc pureCases() =
       AccountSlot(high(uint32)), full).value.entries[0].value == expected
   assert hashCalls() == 0, "projection and all policy refusals are hash-free"
   failHash(0)
-  # Whole stored values must be exactly 89 bytes; a valid prefix is not an account record.
-  for size in [0, 88, 90]:
+  # Whole stored values must be exactly 105 bytes; a valid prefix is not an account record.
+  for size in [0, 104, 106]:
     let entry = StateEntry(key: first.key, value: newSeq[byte](size))
     let malformed = newStateStore([entry], report_context.limits()).value.snapshot.value
     failHash(3)
@@ -156,7 +158,7 @@ proc pureCases() =
     assert hashCalls() == 0
     failHash(0)
   for version in [1'u8, 128]:
-    var bytes = newSeq[byte](89)
+    var bytes = newSeq[byte](ServiceMetadataBytes)
     bytes[0] = version
     let malformed = newStateStore([StateEntry(key: second.key, value: bytes), first],
         report_context.limits()).value.snapshot.value
@@ -182,7 +184,8 @@ proc main() {.raises.} =
   for index in 0..<raw.len: wire[index] = byte(raw[index])
   let base = decodeOwnedReport(wire, 2).value
   let extra = serviceMetadataEntry(ServiceIndex(7), ServiceMetadata(balance: AccountBalance(314),
-    created: AccountSlot(1), lastAccumulation: AccountSlot(1)), ByteLimit(89)).value
+    created: AccountSlot(1), lastAccumulation: AccountSlot(1)), ByteLimit(
+        ServiceMetadataBytes)).value
   let fixture = reentryFixture(base, incomingReports = 2, extra = @[extra])
   let source = predecessor(fixture)
   let prior = source.accumulationRecentState.value
@@ -223,8 +226,8 @@ proc main() {.raises.} =
     assert array[31, byte](entry.key) == array[31, byte](key)
     assert entry.value == replaced(prior.lookup(key).value.bytes, 2)
   var copied = plan.accumulationTimeEntryAt(AccumulationTimeIndex(0)).value
-  copied.value[81] = 7
-  assert plan.accumulationTimeEntryAt(AccumulationTimeIndex(0)).value.value[81] == 2
+  copied.value[97] = 7
+  assert plan.accumulationTimeEntryAt(AccumulationTimeIndex(0)).value.value[97] == 2
   var observed = plan.accumulationTimesInfo.value
   observed.updated = high(int)
   assert plan.accumulationTimesInfo.value.updated == 2
@@ -268,7 +271,7 @@ proc main() {.raises.} =
     case kind
     of 0: short.accounts.services = ElementLimit(1)
     of 1: short.accounts.writes = ElementLimit(1)
-    of 2: short.accounts.bytes = ByteLimit(177)
+    of 2: short.accounts.bytes = ByteLimit(209)
     else: short.statistics.rounds = ElementLimit(3)
     failHash(3)
     let refused = prepareAccumulationTimes(source, short)
@@ -302,7 +305,7 @@ proc main() {.raises.} =
     let current = prepareAccumulationTimes(source, cfg).value
     assert array[32, byte](current.accumulationTimesState.value.commitment.root) == array[32, byte](
         candidate.commitment.root)
-    assert prior.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(42))).value.bytes[81] == 0
+    assert prior.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(42))).value.bytes[97] == 0
   let after = getOccupiedMem()
   assert before == after, "timestamp candidate ARC release"
   recordArcRelease("accumulation_times", 1000, before, after)

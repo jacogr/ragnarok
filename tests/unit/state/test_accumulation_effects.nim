@@ -37,7 +37,8 @@ proc check(context: AccumulationEffectContext, present: bool, expected: OutputCo
   let state = initial.contextAccounts.value
   assert state.lookup(chapterKey(StateChapter(250))).value.bytes == @[9'u8, 4, 2]
   let metadata = state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(42))).value
-  assert uint64(decodeServiceMetadata(metadata.bytes, ByteLimit(89)).value.metadata.balance) == 17
+  assert uint64(decodeServiceMetadata(metadata.bytes, ByteLimit(
+      ServiceMetadataBytes)).value.metadata.balance) == 17
   assert uint32(initial.contextSelf.value.lastAccumulation) == 3
   assert uint32(initial.contextPrivileges.value.privilegeInfo.value.manager) == 11
   assert initial.contextQueues.value.authorizerCount(AuthorizationCoreIndex(1)).value == 80
@@ -49,7 +50,8 @@ proc check(context: AccumulationEffectContext, present: bool, expected: OutputCo
   assert uint64(service.serviceInputAt(InvocationInputIndex(0)).value.transfer.amount) == 7
   let original = service.servicePriorState.value.lookup(chapterServiceKey(StateChapter(255),
       ServiceIndex(42))).value
-  assert uint64(decodeServiceMetadata(original.bytes, ByteLimit(89)).value.metadata.balance) == 10
+  assert uint64(decodeServiceMetadata(original.bytes, ByteLimit(
+      ServiceMetadataBytes)).value.metadata.balance) == 10
 
 ## Independent versions distinguish yield replacement, explicit checkpoints and present zero commitments.
 proc versions(): AccumulationEffectContext =

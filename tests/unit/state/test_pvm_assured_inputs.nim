@@ -21,7 +21,7 @@ import ../../support/[pvm_assured_outcomes, pvm_computed_storage_program,
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode the actual account at the original, selected and published map owners.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      42))).value.bytes, ByteLimit(89)).value.metadata
+      42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   ## Exact guest-derived bytes distinguish actual input consumption from the unchanged initial writable prefix.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value

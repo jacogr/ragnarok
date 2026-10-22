@@ -35,7 +35,7 @@ proc expect[T](outcome: AssuredExecutionResult[T], reason: AssuredExecutionError
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode the exact account rather than inferring storage effects from equal roots.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
-      42))).value.bytes, ByteLimit(89)).value.metadata
+      42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
 proc storage(state: StateStoreSnapshot) =
   ## Independently check guest bytes and the existing single-key footprint.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value

@@ -42,17 +42,18 @@ proc facts(): ServiceMetadata =
 proc entries(): seq[StateEntry] =
   result = @[]
   for service in [0'u32, 99, high(uint32)]:
-    result.add(serviceMetadataEntry(ServiceIndex(service), facts(), ByteLimit(89)).value)
+    result.add(serviceMetadataEntry(ServiceIndex(service), facts(), ByteLimit(
+        ServiceMetadataBytes)).value)
 
 ## Load all host inputs at full width and execute the real info host followed by halt.
-proc source(target = 99'u64, destination = 196736'u64, offset = 0'u64, length = 96'u64,
+proc source(target = 99'u64, destination = 196736'u64, offset = 0'u64, length = 112'u64,
     credit = 100000'u64, extra: seq[StateEntry] = entries()): PreparedAccumulationMachine =
   guestProgram([registerImmediate(7, target), registerImmediate(8, destination),
     registerImmediate(9, offset), registerImmediate(10, length), @[10'u8, 6], @[50'u8, 0]],
     credit, extra = extra, account = facts())
 
 ## Run only this prepared invocation with independent copy and engine ceilings.
-proc run(prepared: PreparedAccumulationMachine, limit = 96'u64,
+proc run(prepared: PreparedAccumulationMachine, limit = 112'u64,
     parameters: Parameters = schedule()): AccumulationDispatchResult =
   executeAccumulationMachine(prepared, parameters,
     FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1),
@@ -72,23 +73,25 @@ proc bytes(done: AccumulationDispatchResult, address, length: uint64): seq[byte]
 let golden = @[
   3'u8, 10'u8, 17'u8, 24'u8, 31'u8, 38'u8, 45'u8, 52'u8, 59'u8, 66'u8, 73'u8, 80'u8,
   87'u8, 94'u8, 101'u8, 108'u8, 115'u8, 122'u8, 129'u8, 136'u8, 143'u8, 150'u8, 157'u8, 164'u8,
-  171'u8, 178'u8, 185'u8, 192'u8, 199'u8, 206'u8, 213'u8, 220'u8, 17'u8, 34'u8, 51'u8, 68'u8,
-  85'u8, 102'u8, 119'u8, 136'u8, 52'u8, 38'u8, 34'u8, 30'u8, 8'u8, 6'u8, 4'u8, 2'u8,
-  136'u8, 119'u8, 102'u8, 85'u8, 68'u8, 51'u8, 34'u8, 17'u8, 16'u8, 50'u8, 84'u8, 118'u8,
-  152'u8, 186'u8, 220'u8, 254'u8, 8'u8, 7'u8, 6'u8, 5'u8, 4'u8, 3'u8, 2'u8, 1'u8,
-  13'u8, 12'u8, 11'u8, 10'u8, 8'u8, 7'u8, 6'u8, 5'u8, 4'u8, 3'u8, 2'u8, 1'u8,
-  64'u8, 48'u8, 32'u8, 16'u8, 128'u8, 112'u8, 96'u8, 80'u8, 208'u8, 192'u8, 176'u8, 160'u8]
-assert golden.len == 96
+  171'u8, 178'u8, 185'u8, 192'u8, 199'u8, 206'u8, 213'u8, 220'u8, 0'u8, 0'u8, 0'u8, 0'u8,
+  0'u8, 0'u8, 0'u8, 0'u8, 17'u8, 34'u8, 51'u8, 68'u8, 85'u8, 102'u8, 119'u8, 136'u8,
+  0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 0'u8, 52'u8, 38'u8, 34'u8, 30'u8,
+  8'u8, 6'u8, 4'u8, 2'u8, 136'u8, 119'u8, 102'u8, 85'u8, 68'u8, 51'u8, 34'u8, 17'u8,
+  16'u8, 50'u8, 84'u8, 118'u8, 152'u8, 186'u8, 220'u8, 254'u8, 8'u8, 7'u8, 6'u8, 5'u8,
+  4'u8, 3'u8, 2'u8, 1'u8, 13'u8, 12'u8, 11'u8, 10'u8, 8'u8, 7'u8, 6'u8, 5'u8,
+  4'u8, 3'u8, 2'u8, 1'u8, 64'u8, 48'u8, 32'u8, 16'u8, 128'u8, 112'u8, 96'u8, 80'u8,
+  208'u8, 192'u8, 176'u8, 160'u8]
+assert golden.len == 112
 for target in [0'u64, 99, uint64(high(uint32))]:
   let prepared = source(target)
   let done = run(prepared)
   assert done.error == AccumulationDispatchError.None and done.value.exit == StepExit.Halt
   let cpu = machineInfo(done.value.machine).value
-  assert uint64(cpu.registers[7]) == 96 and uint64(cpu.gas) == 100000-price(prepared)-703
-  assert bytes(done, 196736, 96) == golden
-  assert bytes(done, 196735, 1) == @[0'u8] and bytes(done, 196832, 1) == @[0'u8]
+  assert uint64(cpu.registers[7]) == 112 and uint64(cpu.gas) == 100000-price(prepared)-703
+  assert bytes(done, 196736, 112) == golden
+  assert bytes(done, 196735, 1) == @[0'u8] and bytes(done, 196848, 1) == @[0'u8]
   assert uint64(cpu.registers[8]) == 196736 and uint64(cpu.registers[9]) == 0 and uint64(
-      cpu.registers[10]) == 96
+      cpu.registers[10]) == 112
   for dimension in [AccumulationDimension.Regular, AccumulationDimension.Exceptional]:
     let context = done.effects.effectContext(dimension).value
     let before = prepared.machineBootstrap.value.bootstrapService.value.serviceState.value
@@ -101,20 +104,20 @@ for target in [42'u64, high(uint64)]:
   let done = run(prepared)
   let metadata = decodeServiceMetadata(prepared.machineBootstrap.value.bootstrapService.value.serviceState.value.lookup(
     chapterServiceKey(StateChapter(255), ServiceIndex(42))).value.bytes, ByteLimit(
-        89)).value.metadata
+        ServiceMetadataBytes)).value.metadata
   let expectedHash = array[32, byte](metadata.codeHash)
-  let actual = bytes(done, 196736, 96)
-  for i in 0..<96:
+  let actual = bytes(done, 196736, 112)
+  for i in 0..<112:
     assert actual[i] == (if i < 32: expectedHash[i] else: golden[i])
-for offset in [0'u64, 1, 31, 32, 39, 40, 71, 72, 75, 76, 83, 84, 95, 96, 97, high(uint64)]:
-  for requested in [0'u64, 1, 7, 96, high(uint64)]:
+for offset in [0'u64, 1, 31, 32, 39, 40, 71, 72, 75, 76, 83, 84, 95, 112, 97, high(uint64)]:
+  for requested in [0'u64, 1, 7, 112, high(uint64)]:
     # Clipping happens before narrowing; enormous requests retain a constant gas cost.
-    let first = min(offset, 96'u64)
-    let count = min(requested, 96-first)
+    let first = min(offset, 112'u64)
+    let count = min(requested, 112-first)
     let destination = (if count == 0: high(uint64) else: 196736'u64)
     let done = run(source(destination = destination, offset = offset, length = requested), limit = count)
     assert done.error == AccumulationDispatchError.None and done.value.exit == StepExit.Halt
-    assert uint64(machineInfo(done.value.machine).value.registers[7]) == 96
+    assert uint64(machineInfo(done.value.machine).value.registers[7]) == 112
     var expected: seq[byte] = @[]
     for i in 0..<int(count):
       expected.add(golden[int(first)+i]) # Enumerate expected window independently of implementation slicing.
@@ -134,15 +137,15 @@ for destination in [0'u64, 65536, 196608'u64+8192-48, 0x100000000'u64, high(uint
     let after = pageImage(memoryOf(done.value.machine).value, PageIndex(page)).value
     assert before.bytes == after.bytes # No accessible prefix changes when any output byte is unwritable.
 let crossing = run(source(destination = 196608'u64+4096-48))
-assert bytes(crossing, 196608'u64+4096-48, 96) == golden
-assert run(source(length = 96), limit = 95).error == AccumulationDispatchError.LimitExceeded
+assert bytes(crossing, 196608'u64+4096-48, 112) == golden
+assert run(source(length = 112), limit = 95).error == AccumulationDispatchError.LimitExceeded
 for available in [0'u64, 702, 703, 704]:
   let prototype = source()
   let prepared = source(credit = price(prototype)+available)
   let done = run(prepared)
   let cpu = machineInfo(done.value.machine).value
   if available < 703:
-    assert done.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 703-available
+    assert done.value.exit == StepExit.OutOfGas and uint64(cpu.gasDeficit) == 0
     assert uint64(cpu.registers[7]) == 99 # No memory or account work precedes affordability.
   else:
     assert done.value.exit == StepExit.Halt and uint64(cpu.gas) == available-703
@@ -150,7 +153,7 @@ let corrupt = source(extra = @[StateEntry(key: chapterServiceKey(StateChapter(25
     99)), value: @[0'u8])])
 assert run(corrupt).error == AccumulationDispatchError.MalformedState
 for firstByte in [1'u8, 128'u8]:
-  var bad = newSeq[byte](89)
+  var bad = newSeq[byte](ServiceMetadataBytes)
   bad[0] = firstByte # Unsupported schema and noncanonical version bytes cannot become a fixed host record.
   let malformed = source(extra = @[StateEntry(key: chapterServiceKey(StateChapter(255),
       ServiceIndex(99)), value: bad)])
@@ -163,23 +166,24 @@ let valid = source()
 failHash(1)
 let noBackend = run(valid)
 assert noBackend.error == AccumulationDispatchError.None and hashCalls() == 0
-assert bytes(noBackend, 196736, 96) == golden
+assert bytes(noBackend, 196736, 112) == golden
 failHash(0)
 
 ## Query exact threshold fields through the public immutable context API, independently of guest clipping.
-proc minimum(metadata: ServiceMetadata, parameters: Parameters): AccumulationEffectResult[array[96, byte]] =
-  let prepared = source(extra = @[serviceMetadataEntry(ServiceIndex(99), metadata, ByteLimit(89)).value])
+proc minimum(metadata: ServiceMetadata, parameters: Parameters): AccumulationEffectResult[array[112, byte]] =
+  let prepared = source(extra = @[serviceMetadataEntry(ServiceIndex(99), metadata, ByteLimit(
+      ServiceMetadataBytes)).value])
   let context = run(prepared, parameters = parameters)
   if context.error != AccumulationDispatchError.None:
-    return default(AccumulationEffectResult[array[96,
+    return default(AccumulationEffectResult[array[112,
         byte]]) # Dedicated overflow assertions inspect dispatcher refusal separately.
   context.effects.effectContext(AccumulationDimension.Regular).value.effectAccountInfo(ServiceIndex(
       99), parameters)
 
 ## Independent E8 extraction for expected arithmetic, without using the encoder's shifts or field array.
-proc threshold(bytes: array[96, byte]): uint64 =
+proc threshold(bytes: array[112, byte]): uint64 =
   result = 0
-  for i in countdown(47, 40):
+  for i in countdown(63, 56):
     result = result*256+uint64(bytes[i]) # Exactly eight octets fit uint64, even at UINT64_MAX.
 
 for witness in [(0'u64, 10'u64), (9'u64, 1'u64), (10'u64, 0'u64), (11'u64, 0'u64), (high(uint64), 0'u64)]:
@@ -189,7 +193,7 @@ for witness in [(0'u64, 10'u64), (9'u64, 1'u64), (10'u64, 0'u64), (11'u64, 0'u64
 let wide = ServiceMetadata(storageItems: AccountStorageItems(1), depositOffset: AccountBalance(high(uint64)))
 assert threshold(minimum(wide, schedule(high(uint64), high(uint64), 0)).value) == high(uint64)
 let overflow = source(extra = @[serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(
-    storageItems: AccountStorageItems(1)), ByteLimit(89)).value])
+    storageItems: AccountStorageItems(1)), ByteLimit(ServiceMetadataBytes)).value])
 assert run(overflow, parameters = schedule(high(uint64), 1, 0)).error ==
     AccumulationDispatchError.MalformedState
 let defaultContext = default(AccumulationEffectContext)
@@ -201,21 +205,21 @@ assert initialized.effectAccountInfo(ServiceIndex(99), default(Parameters)).erro
 assert initialized.effectAccountInfo(ServiceIndex(100), schedule()).error ==
     AccumulationEffectError.UnknownService
 # A prior storage write changes the footprint and therefore info's dependent minimum balance.
-let written = guestProgram([registerImmediate(7, 65536), registerImmediate(8, 1), registerImmediate(
-    9, 196608),
-  registerImmediate(10, 3), @[10'u8, 5], registerImmediate(7, high(uint64)), registerImmediate(8, 196736),
-  registerImmediate(9, 0), registerImmediate(10, 96), @[10'u8, 6], @[50'u8, 0]],
+let written = guestProgram([@[51'u8, 7, 255], registerImmediate(8, 65536), registerImmediate(9, 1),
+    registerImmediate(10, 196608),
+  registerImmediate(11, 3), @[10'u8, 5], registerImmediate(7, high(uint64)), registerImmediate(8, 196736),
+  registerImmediate(9, 0), registerImmediate(10, 112), @[10'u8, 6], @[50'u8, 0]],
   100000, account = ServiceMetadata(balance: AccountBalance(10000)), spareEntries = 1)
 let current = run(written)
 assert current.error == AccumulationDispatchError.None and current.value.exit == StepExit.Halt
 let currentRecord = current.effects.effectContext(
     AccumulationDimension.Regular).value.effectAccountInfo(ServiceIndex(42), schedule()).value
 assert threshold(currentRecord) == 126 # 10+2+3*(34+1+3), after the actual preceding write.
-assert bytes(current, 196736, 96) == @currentRecord
+assert bytes(current, 196736, 112) == @currentRecord
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let done = run(valid)
-  assert bytes(done, 196736, 96) == golden # Repeated queries retain only immutable source state and release every memory successor.
+  assert bytes(done, 196736, 112) == golden # Repeated queries retain only immutable source state and release every memory successor.
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("pvm_accumulation_info", 1000, before, after)

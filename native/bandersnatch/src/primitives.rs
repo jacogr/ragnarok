@@ -81,7 +81,7 @@ pub unsafe extern "C" fn rcr_ed_sign(
     })
 }
 
-/// ZIP215 acceptance is explicit; the release protocol still selects its existing verifier.
+/// ZIP215 acceptance is explicit; the C shim owns protocol selection without a verifier fallback.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcr_ed_verify_zip215(
     key: *const u8,

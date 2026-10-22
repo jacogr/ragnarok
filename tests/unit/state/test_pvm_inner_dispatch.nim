@@ -24,8 +24,8 @@ proc raw(source: PreparedRefinementBootstrap, cap = limits()): RefinementDispatc
   let captured = source.bootstrapHosts([], refinementInputs(), ExportOffset(7), cap.capture).value
   executeRefinement(captured, cap.copy, cap.exports, cap.steps, cap.calls, cap.cycles, cap.inner)
 let halt = @[50'u8, 0]
-let source = refinementFixture([refinementImmediate(7, 196608), refinementImmediate(8, 6),
-  refinementImmediate(9, 0), @[10'u8, 9], @[10'u8, 14], halt], writable = innerBlob())
+let source = refinementFixture(refinementInnerCreate(length = 6, entry = 0, suffix = @[ @[51'u8, 7,
+    0], @[51'u8, 8, 0], @[10'u8, 15], halt]), writable = innerBlob())
 for replay in 0..<2:
   let done = raw(source).value
   assert done.outcome.exit == StepExit.Halt
@@ -33,17 +33,18 @@ for replay in 0..<2:
       0 # Delete returns the genuine created entry PC.
   let normalized = run(source).value.refinementInfo.value
   assert normalized.kind == WorkKind.Success and uint64(normalized.exports) == 0
-  assert uint64(normalized.gasUsed) >= 2198 # Literal lifecycle prices; instruction pricing adds independently.
+  assert uint64(normalized.gasUsed) >= 4061 # Literal lifecycle prices; instruction pricing adds independently.
 # Repeated create finds zero, proving each separate run starts empty even when a previous guest retained its machine.
-let retain = refinementFixture([refinementImmediate(7, 196608), refinementImmediate(8, 6),
-  refinementImmediate(9, 0), @[10'u8, 9], halt], writable = innerBlob())
+let retain = refinementFixture(refinementInnerCreate(length = 6, entry = 0, suffix = @[halt]),
+    writable = innerBlob())
 for replay in 0..<2:
   assert uint64(raw(retain).value.outcome.machine.machineInfo.value.registers[7]) == 0
-let absent = refinementFixture([refinementImmediate(7, 0), @[10'u8, 14], halt])
+let absent = refinementFixture([refinementImmediate(7, 0), @[51'u8, 7, 0], @[51'u8, 8, 0], @[10'u8,
+    15], halt])
 assert uint64(raw(absent).value.outcome.machine.machineInfo.value.registers[7]) == high(uint64)-3
 # Creation at a nonzero valid entry is reflected by expunge, rather than replaced by a fabricated default PC.
-let nonzero = refinementFixture([refinementImmediate(7, 196608), refinementImmediate(8, 7),
-  refinementImmediate(9, 1), @[10'u8, 9], @[10'u8, 14], halt],
+let nonzero = refinementFixture(refinementInnerCreate(length = 7, entry = 1, suffix = @[ @[51'u8, 7,
+    0], @[51'u8, 8, 0], @[10'u8, 15], halt]),
   writable = @[0'u8, 0, 3, 1, 50, 0, 3])
 assert uint64(raw(nonzero).value.outcome.machine.machineInfo.value.registers[7]) == 1
 # Local inner allocation policies are refusals without normalized output, gas metadata or export leakage.
@@ -60,20 +61,20 @@ for policy in 0..<3:
   else:
     assert outcome.error == RefinementInvocationError.None
 # Invalid deblob is a charged HUH response; unreadability is protocol panic, both distinct from local refusal.
-let invalid = refinementFixture([refinementImmediate(7, 196608), refinementImmediate(8, 3),
-  refinementImmediate(9, 0), @[10'u8, 9], halt])
+let invalid = refinementFixture([refinementImmediate(7, 0), refinementImmediate(8, 196608),
+  refinementImmediate(9, 3), @[10'u8, 9], halt])
 assert uint64(raw(invalid).value.outcome.machine.machineInfo.value.registers[7]) == high(uint64)-8
-let panic = refinementFixture([refinementImmediate(7, high(uint64)), refinementImmediate(8, 6),
-  @[10'u8, 9], halt])
+let panic = refinementFixture([refinementImmediate(7, 0), refinementImmediate(8, high(uint64)),
+  refinementImmediate(9, 6), @[10'u8, 9], halt])
 assert run(panic).value.refinementInfo.value.kind == WorkKind.Panic
-let starved = refinementFixture([refinementImmediate(7, 196608), refinementImmediate(8, 6),
-  @[10'u8, 9], halt], credit = 100, writable = innerBlob())
+let starved = refinementFixture([refinementImmediate(7, 0), refinementImmediate(8, 196608),
+  refinementImmediate(9, 6), @[10'u8, 9], halt], credit = 100, writable = innerBlob())
 assert run(starved).value.refinementInfo.value.kind == WorkKind.OutOfGas
 # Fresh bootstraps, captured environments, inner maps and local-failure scratch runs all release under ARC.
 proc cycle() =
   ## Do not retain source or output handles across independent lifetime iterations.
-  let fresh = refinementFixture([refinementImmediate(7, 196608), refinementImmediate(8, 6),
-    refinementImmediate(9, 0), @[10'u8, 9], @[10'u8, 14], halt], writable = innerBlob())
+  let fresh = refinementFixture(refinementInnerCreate(length = 6, entry = 0, suffix = @[ @[51'u8, 7,
+      0], @[51'u8, 8, 0], @[10'u8, 15], halt]), writable = innerBlob())
   assert run(fresh).value.refinementInfo.value.kind == WorkKind.Success
   var cap = limits()
   cap.inner.items = InnerMachineLimit(0)

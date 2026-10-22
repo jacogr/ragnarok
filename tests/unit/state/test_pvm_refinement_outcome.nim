@@ -141,7 +141,8 @@ cap.copy = MemoryByteLimit(2)
 let copyFailure = run(refinementFixture(fetchInstructions), cap)
 assert copyFailure.error == RefinementInvocationError.HostFailure
 assert copyFailure.hostError == RefinementDispatchError.LimitExceeded
-let limitedInner = run(refinementFixture([@[10'u8, 9], halt]))
+let limitedInner = run(refinementFixture([refinementImmediate(7, 0), refinementImmediate(8, 196608),
+  refinementImmediate(9, 3), @[10'u8, 9], halt]))
 assert limitedInner.error == RefinementInvocationError.HostFailure
 assert limitedInner.hostError == RefinementDispatchError.LimitExceeded
 # Saved output/source/exports remain immutable after extraction, copied metadata mutation and independent replay.

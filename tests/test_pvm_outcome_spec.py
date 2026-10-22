@@ -21,7 +21,7 @@ class OutcomeSpecificationAdoption(unittest.TestCase):
         self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),
                          pins['source_sha256']['text/pvm_invocations.tex'])
         text = source.read_text()
-        self.assertIn(r'\is{\ao¬provisions}{\imXY_\im¬provisions}', text)
+        self.assertNotIn(r'\is{\ao¬provisions}{\imXY_\im¬provisions}', text)
         self.assertIn(r'\is{\ao¬provisions}{\imX_\im¬provisions}', text)
         self.assertIn(r'\is{\ao¬provisions}{\imY_\im¬provisions}', text)
 
@@ -31,7 +31,7 @@ class OutcomeSpecificationAdoption(unittest.TestCase):
         source = ROOT / 'vendor/graypaper/text/pvm.tex'
         self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),
                          pins['source_sha256']['text/pvm.tex'])
-        self.assertIn(r"u = \gascounter - \max(\gascounter', 0)", source.read_text())
+        self.assertIn(r"u = \gascounter - \gascounter'", source.read_text())
 
     def test_nonempty_hash_return_provisions(self):
         """The reviewed merge fixes C to X without changing the GP/vector repository pins."""
@@ -41,7 +41,8 @@ class OutcomeSpecificationAdoption(unittest.TestCase):
         self.assertEqual(adoption['commit'], '0c0664eb52ba92afd8d21cef96c0e1da506eddfe')
         self.assertEqual(adoption['source_sha256'],
                          'e36d6aaf4b84f06632cd427e5d9a04cff082b47cb4bc1e37a34ad68bec3ea6fd')
-        self.assertEqual(adoption['base_graypaper_commit'], pins['graypaper']['commit'])
+        self.assertEqual(adoption['base_graypaper_commit'], '07f041dabd073f9018b418e9ee72e79dd2185401')
+        self.assertEqual(pins['graypaper']['release_status'], 'unreleased')
         self.assertEqual(adoption['vectors_commit'], pins['vectors']['commit'])
         self.assertIn('regular X', adoption['scope'])
 

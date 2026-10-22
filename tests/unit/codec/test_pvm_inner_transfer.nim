@@ -62,7 +62,7 @@ for row in [(0'u64, 377'u64, 297'u64), (1'u64, 378'u64, 298'u64),
   for peek in [false, true]:
     let done = transfer(peek, empty, transferRegisters(size = row[0]), credit = 0, cap = 0).value
     assert done.response.action == HostAction.OutOfGas
-    assert uint64(done.response.gasDeficit) == (if peek: row[1] else: row[2])
+    assert uint64(done.response.gasDeficit) == 0
     assert uint64(done.response.registers[7]) == 0
     assert done.response.memory.pageImage(PageIndex(48)).value.bytes[0] == 165
 for peek in [false, true]:
@@ -72,7 +72,7 @@ for peek in [false, true]:
     let done = transfer(peek, empty, args, credit).value
     assert done.response.action == (if credit < cost: HostAction.OutOfGas else: HostAction.Continue)
     assert uint64(done.response.gas) == 0
-    assert uint64(done.response.gasDeficit) == (if credit < cost: 1'u64 else: 0'u64)
+    assert uint64(done.response.gasDeficit) == 0
   let bad = transferRegisters(caller = high(uint64), size = 1, id = high(uint64))
   assert transfer(peek, empty, bad, credit = 0, cap = 0).value.response.action ==
       HostAction.OutOfGas
@@ -106,7 +106,7 @@ for peek in [false, true]:
 assert transfer(true, empty, transferRegisters(caller = 65536)).value.response.action ==
     HostAction.Panic # Peek's outer destination must be writable.
 # An unselected second machine and all source snapshots survive a poke unchanged.
-let pair = createInnerMachine(empty, MachineGas(10000), innerRegisters(), innerMemory()).value.machines
+let pair = preparedInnerMachine(empty, MachineGas(10000), innerRegisters(), innerMemory()).value.machines
 let one = transfer(false, pair, regs).value.machines
 assert ram(one, 1).pageImage(PageIndex(16)).value.access == PageAccess.Inaccessible
 assert ram(pair).pageImage(PageIndex(16)).value.bytes[4095] == 0

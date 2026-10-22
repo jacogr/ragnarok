@@ -10,7 +10,7 @@ python3 tools/setup_submodules.py
 | Submodule | Purpose |
 | --- | --- |
 | `vendor/lsquic` | QUIC transport, including its recorded QPACK/HPACK children |
-| `vendor/boringssl` | TLS and release-policy Ed25519 verification |
+| `vendor/boringssl` | QUIC/TLS |
 | `vendor/ark-vrf` | Draft-29 release-reference ark-vrf 0.2.2 backend |
 | `vendor/bandersnatch-vrf-spec` | Published historical suite vectors and SRS |
 | `vendor/graypaper` | Pinned Gray Paper specification |

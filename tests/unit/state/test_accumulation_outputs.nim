@@ -23,16 +23,16 @@ proc program(ending: Ending): seq[byte] =
   var instructions: seq[seq[byte]] = @[]
   if ending != ZeroReturn:
     instructions.add(registerImmediate(7, 65536))
-    instructions.add(@[10'u8, 26]) # Yield the 32 readable RO bytes: 73 followed by zeros.
+    instructions.add(@[10'u8, 27]) # Yield the 32 readable RO bytes: 73 followed by zeros.
   case ending
   of YieldHalt:
     instructions.add(registerImmediate(8, 0)) # A non-32-byte halt preserves the regular yield.
   of YieldPanic:
     instructions.add(@[0'u8]) # No checkpoint retains the earlier regular yield.
   of CheckpointPanic:
-    instructions.add(@[10'u8, 18])
+    instructions.add(@[10'u8, 19])
     instructions.add(registerImmediate(7, 196608))
-    instructions.add(@[10'u8, 26])
+    instructions.add(@[10'u8, 27])
     instructions.add(@[0'u8]) # The later RW yield is discarded; checkpoint RO yield survives.
   of ReturnOverride:
     instructions.add(registerImmediate(7, 196608))

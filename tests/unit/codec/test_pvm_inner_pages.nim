@@ -25,7 +25,7 @@ for row in [(0'u64, 448'u64), (1'u64, 517'u64), (2'u64, 517'u64),
     assert done.response.action == (if credit < row[
         1]: HostAction.OutOfGas else: HostAction.Continue)
     assert uint64(done.response.gas) == 0
-    assert uint64(done.response.gasDeficit) == (if credit < row[1]: 1'u64 else: 0'u64)
+    assert uint64(done.response.gasDeficit) == 0
     assert done.response.memory.pageImage(PageIndex(16)).value.bytes[3] == 50
     for index in 0..<13:
       if credit < row[1] or index != 7:
@@ -74,21 +74,22 @@ assert ram(freed).pageImage(PageIndex(16)).value.bytes == default(array[4096, by
 assert pages(freed, pageRegisters(first = 17)).error == InnerMachineError.None
 assert pages(pageMachines(0)).error == InnerMachineError.LimitExceeded
 # Successful updating of machine zero retains the second machine's original inaccessible memory and metadata.
-let pair = createInnerMachine(empty, MachineGas(10000), innerRegisters(), innerMemory()).value.machines
+let pair = preparedInnerMachine(empty, MachineGas(10000), innerRegisters(), innerMemory()).value.machines
 let changed = pages(pair).value.machines
 assert ram(changed, 1).pageImage(PageIndex(16)).value.access == PageAccess.Inaccessible
 assert uint64(changed.innerMachine(InnerMachineId(1)).value.pc) == 0
 assert ram(pair).pageImage(PageIndex(16)).value.access == PageAccess.Inaccessible
 # Exact representable high costs retain OOG debt; larger natural costs/debts are explicit local implementation refusals.
 let large = pages(empty, pageRegisters(count = 0x100000000'u64), 0).value
-assert uint64(large.response.gasDeficit) == 519691043091'u64 # 275+121*2^32, priced before invalid geometry.
-assert pages(empty, pageRegisters(count = high(uint64)), 0).error == InnerMachineError.LimitExceeded
-assert pages(empty, pageRegisters(count = 100000000000000000'u64), 0).error ==
-    InnerMachineError.LimitExceeded
+assert uint64(large.response.gasDeficit) == 0
+assert pages(empty, pageRegisters(count = high(uint64)), 0).value.response.action ==
+    HostAction.OutOfGas
+assert pages(empty, pageRegisters(count = 100000000000000000'u64), 0).value.response.action ==
+    HostAction.OutOfGas
 let boundary = pages(empty, pageRegisters(count = 76226215180617980'u64), 47).value
-assert uint64(boundary.response.gasDeficit) == 0x8000000000000000'u64 # Exact maximum canonical deficit remains representable.
-assert pages(empty, pageRegisters(count = 76226215180617980'u64), 46).error ==
-    InnerMachineError.LimitExceeded
+assert uint64(boundary.response.gasDeficit) == 0
+assert pages(empty, pageRegisters(count = 76226215180617980'u64), 46).value.response.action ==
+    HostAction.OutOfGas
 let invalid = pages(empty, pageRegisters(99, count = high(uint64)), 80).value
 assert uint64(invalid.response.registers[7]) == high(
     uint64)-8 # Invalid mode costs only 80 and never multiplies count.

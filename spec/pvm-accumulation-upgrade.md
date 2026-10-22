@@ -1,5 +1,15 @@
 # Accumulation upgrade host
 
+## Current unreleased pin
+
+The [coordinated upgrade](graypaper-unreleased-upgrade.md) targets
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. Current upgrade is selector21:
+r7 selects the account (all ones means self), r8 points to the hash, r9/r10 carry
+the minimum accumulation/transfer gas. The self path preserves supervisor fields
+and current account-write proofs. Foreign supervised mutation remains an explicit
+implementation gate. Underfunding drains gas to zero. The details and verification
+below retain the historical release argument layout.
+
 ## Scope and authority
 
 Implement upgrade (20), Omega_U, against GP 0.8.0 revision
