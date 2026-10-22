@@ -36,5 +36,11 @@ proc main() =
     valueBytes: ByteLimit(2))).error == ProofViewError.DuplicateKey
   let empty = verifyStateProofs([], root, limits, aggregate).value
   assert captureProofView(empty, root, ProofViewLimits()).value.valid
+  assert view.lookup(key).value.present and view.lookup(key).value.bytes == @[byte 7]
+  assert not view.lookup(other).value.present
+  assert view.lookup(chapterKey(StateChapter(3))).error == ProofViewError.MissingWitness
+  assert default(ProofView).lookup(key).error == ProofViewError.Uninitialized
+  let noEvidence = captureProofView(empty, root, ProofViewLimits()).value
+  assert noEvidence.lookup(key).error == ProofViewError.MissingWitness
   echo "state-proof-view: ok"
 main()
