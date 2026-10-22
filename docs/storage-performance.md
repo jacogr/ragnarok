@@ -168,3 +168,8 @@ the CI matrix. Hot/sweep locality comparisons remain at 1,024/8,192 entries; no 
 hot case is reported. Only benchmark fixture budgets increase; production policies/defaults and
 the existing short-run matrix are unchanged. Exact complete maps, history and held readers are
 validated at the larger size too.
+
+Successful sustained summaries also bind every raw case to its actual native command, built
+executable and exact 13-sample argument. The checked ARC/Clang release/LTO plan is required; later
+checks-off, danger or observed-profile overrides cannot supply speed samples. A correctly shaped
+raw table alone cannot substitute a cheaper backend, executable or sample plan.

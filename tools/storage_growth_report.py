@@ -160,6 +160,28 @@ def aggregate_growth(passes):
     return cases
 
 
+def _validate_commands(checks):
+    """Tie every measured run to the checked native build and its exact declared thirteen-sample plan."""
+    commands=[check.get('command') for check in checks]
+    for command in commands:
+        if type(command) is not list or not 0<len(command)<=128 or any(type(v) is not str or not 0<len(v)<=4096 or '\x00' in v for v in command):
+            raise ValueError('Invalid sustained command provenance')
+    build=commands[0]
+    required=['--mm:arc','--cc:clang','-d:release','--opt:speed','--boundchecks:on','--passC:-flto','--passL:-flto']
+    if len(build)<11 or build[1]!='c' or build[2:9]!=required or tuple(build[-1].replace('\\','/').split('/')[-3:])!=('tests','performance','storage_growth_workload.nim'):
+        raise ValueError('Invalid sustained checked build plan')
+    forbidden=('--checks:off','--boundchecks:off','--rangechecks:off','--assertions:off','-d:danger','--define:danger','-d:storageIoCounts','--define:storageIoCounts')
+    if any(v in forbidden or any(v.startswith(prefix) and v!=expected for prefix,expected in (('--mm:','--mm:arc'),('--cc:','--cc:clang'),('--opt:','--opt:speed'))) for v in build):
+        raise ValueError('Unchecked or observed profile cannot supply speed samples')
+    outputs=[v.removeprefix('--out:') for v in build if v.startswith('--out:')]
+    if len(outputs)!=1:
+        raise ValueError('Ambiguous sustained native executable')
+    expected=[(e,n,steps,p) for order in (ENGINES,tuple(reversed(ENGINES))) for e in order for n,steps,p in CASES]
+    for command,(engine,count,steps,pattern) in zip(commands[1:],expected):
+        if len(command)!=7 or command[0]!=outputs[0] or command[1:4]!=[engine,str(count),str(steps)] or command[5:]!=['13',pattern]:
+            raise ValueError('Sustained command differs from measured case/sample plan')
+
+
 def validate_growth(report):
     """Native completion, source-bound binary identity and raw-derived statistics all remain mandatory."""
     if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=11:
@@ -179,6 +201,7 @@ def validate_growth(report):
         if type(duration) not in (int,float) or not math.isfinite(duration) or duration<0 or type(log) is not str or not 0<len(log)<=4096:
             raise ValueError('Invalid sustained native evidence')
         logs.append(log)
+    _validate_commands(checks)
     if len(set(logs))!=len(logs) or report.get('error'):
         raise ValueError('Duplicate or failed sustained evidence')
     cases=aggregate_growth(report.get('passes'))
