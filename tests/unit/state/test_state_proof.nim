@@ -47,7 +47,7 @@ proc main() =
   assert verifyStateProof(proof, default(StateRoot), key, limits).error ==
       StateProofError.RootMismatch
   assert verifyStateProof(proof, root, chapterKey(StateChapter(2)), limits).error ==
-      StateProofError.KeyMismatch
+      StateProofError.InvalidProof
   assert verifyStateProof(captureStateProof([leaf], [byte 8], limits).value, root, key,
       limits).error == StateProofError.MissingValue
   for size in [0, 32, 33, 100]:
@@ -72,5 +72,21 @@ proc main() =
     branchRoot, chapterKey(StateChapter(128)), limits).error == StateProofError.InvalidProof
   assert verifyStateProof(default(StateProof), default(StateRoot), key, limits).error ==
       StateProofError.Uninitialized
+  let other = chapterKey(StateChapter(2))
+  let absent = captureStateProof([leaf], [], limits).value
+  assert not verifyStateProof(absent, root, other, limits).value.present
+  let siblingAbsence = captureStateProof([branch, leaf], [], limits).value
+  assert not verifyStateProof(siblingAbsence, branchRoot, other, limits).value.present
+  let misplaced = encodeStateBranch(default(StateNodeHash), hashStateNode(leaf).value)
+  let misplacedRoot = StateRoot(array[32, byte](hashStateNode(misplaced).value))
+  let falsePrefix = captureStateProof([misplaced, leaf], [], limits).value
+  assert verifyStateProof(falsePrefix, misplacedRoot, chapterKey(StateChapter(128)),
+      limits).error == StateProofError.KeyMismatch
+  for size in [32, 33]:
+    # Absence needs only the terminal node; a long neighbor value is never fetched or disclosed.
+    let neighbor = encodeStateLeaf(key, newSeq[byte](size), ByteLimit(33)).value
+    let neighborRoot = StateRoot(array[32, byte](hashStateNode(neighbor).value))
+    let collision = captureStateProof([neighbor], [], limits).value
+    assert not verifyStateProof(collision, neighborRoot, other, limits).value.present
   echo "state-proof: ok"
 main()
