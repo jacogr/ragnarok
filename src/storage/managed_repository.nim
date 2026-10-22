@@ -123,15 +123,16 @@ proc initializeManagedRepository*(repository: var ManagedRepository, path: strin
     limits: ManagedLimits, schema = StorageSchema.FullNodesV1): FileError =
   ## Preflight a complete nonzero-generation seed before creating an absent managed directory.
   if repository.active: return FileError.Busy
-  let encoded = encodeRepositorySnapshot(selection, chain, schema, context, snapshotLimits(limits))
+  var encoded = encodeRepositorySnapshot(selection, chain, schema, context, snapshotLimits(limits))
   if encoded.error != SnapshotError.None: return snapshotFailure(encoded.error)
+  let snapshotEncoding = encoded.takeValue # All checksum, staging and length reads borrow this sole owner.
   let restored = cloneRepositorySelection(selection, limits.repository)
   if restored.error == RepositoryError.LimitExceeded: return FileError.LimitExceeded
   if restored.error != RepositoryError.None: return FileError.InvalidJournal
   var selectedContext = newSeq[byte](context.len)
   for index, octet in context: selectedContext[index] = octet # Borrowed application bytes never become a mutable alias.
   let manifest = encodeManagedManifest(chain, schema, ManagedEpoch(1), selection.generation,
-    selection.commitment.root, encoded.value.checksum, ByteLimit(ManagedManifestBytes))
+    selection.commitment.root, snapshotEncoding.checksum, ByteLimit(ManagedManifestBytes))
   if manifest.error != ManifestError.None: return FileError.BackendFailure
   let header = encodeManagedJournalHeader(manifest.value.checksum, limits.journalBytes)
   if header.error != ManifestError.None: return FileError.LimitExceeded
@@ -141,7 +142,7 @@ proc initializeManagedRepository*(repository: var ManagedRepository, path: strin
   var reason = initializeManagedDirectory(repository.directory, path)
   if reason != FileError.None: return reason
   reason = createManagedFile(repository.directory, ManagedFileKind.Snapshot, ManagedEpoch(1),
-    encoded.value.bytes, limits.snapshotBytes)
+    snapshotEncoding.bytes, limits.snapshotBytes)
   if reason != FileError.None: return reason
   reason = createManagedFile(repository.directory, ManagedFileKind.Journal, ManagedEpoch(1),
     header.value, limits.journalBytes)
@@ -157,7 +158,7 @@ proc initializeManagedRepository*(repository: var ManagedRepository, path: strin
   repository.chain = chain
   repository.schema = schema
   repository.epoch = ManagedEpoch(1)
-  repository.snapshotBytes = uint64(encoded.value.bytes.len)
+  repository.snapshotBytes = uint64(snapshotEncoding.bytes.len)
   repository.limits = limits
   repository.poisoned = false
   repository.active = true # Only the synchronized manifest grants a selected live revision.
