@@ -348,3 +348,12 @@ it still refuses an intact torn tail. Confirmation failure cannot undo visible t
 subsequent exact-token repair may finish synchronization of that same independent prefix. Every
 case preserves its complete maps and old readers without accepting incomplete data or choosing
 a rollback point from the physical layout.
+
+## Interrupted trusted-extent truncation
+
+Both explicit recovery paths retry ftruncate EINTR only on the same live descriptor and already
+authorized exact extent. Repeating that operation is idempotent; it never chooses another prefix.
+Native observation proves strict startup makes no truncation call, two interruptions precede one
+genuine truncation, and EIO grants no live owner or implicit repair. Complete readers and exact
+subsequent prefix confirmation remain covered. Process-specific fixture names preserve failed
+forensics across reruns without changing serialized database bytes.

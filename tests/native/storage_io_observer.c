@@ -10,7 +10,7 @@
 
 /* Bounded scalar configuration performs no allocation or logging at an observed call boundary. */
 static int selected, skipped, remaining, reason;
-static uint64_t calls[4];
+static uint64_t calls[STORAGE_IO_LAST+1];
 static size_t write_limit;
 static int zero_skip, zero_remaining;
 
@@ -19,14 +19,14 @@ void storage_io_reset(void) {
     selected = skipped = remaining = reason = 0;
     write_limit = 0;
     zero_skip = zero_remaining = 0;
-    for (int index = 0; index < 4; index++) {
+    for (int index = 0; index <= STORAGE_IO_LAST; index++) {
         /* Each known operation begins with an independently observable zero count. */
         calls[index] = 0;
     }
 }
 int storage_io_arm(int operation, int skip, int failures, int error) {
     /* Invalid controls cannot index the private observer array or select unspecified behavior. */
-    if (operation < STORAGE_IO_READ || operation > STORAGE_IO_FSYNC || skip < 0 || failures < 0) {
+    if (operation < STORAGE_IO_READ || operation > STORAGE_IO_LAST || skip < 0 || failures < 0) {
         /* Refuse invalid indexing and signed countdowns before changing any controls. */
         return -1;
     }
@@ -38,7 +38,7 @@ int storage_io_arm(int operation, int skip, int failures, int error) {
 }
 uint64_t storage_io_calls(int operation) {
     /* Invalid query IDs are inert; tests additionally require their chosen operation to execute. */
-    if (operation < STORAGE_IO_READ || operation > STORAGE_IO_FSYNC) {
+    if (operation < STORAGE_IO_READ || operation > STORAGE_IO_LAST) {
         /* Unknown operations expose no counter or mutable observer storage. */
         return 0;
     }
@@ -120,4 +120,11 @@ int storage_io_fsync(int descriptor) {
         return -1;
     }
     return fsync(descriptor);
+}
+int storage_io_ftruncate(int descriptor, off_t extent) {
+    /* Refusal does not select a prefix or mutate bytes; the caller supplies the already trusted extent. */
+    if (refuse(STORAGE_IO_FTRUNCATE)) {
+        return -1;
+    }
+    return ftruncate(descriptor, extent);
 }

@@ -28,3 +28,7 @@ proc zeroWrites*(skip, count: cint): cint {.importc: "storage_io_zero_writes", c
 proc pendingZeroWrites*(): cint {.importc: "storage_io_zero_remaining", cdecl,
     header: "observer.h".}
   ## Require intended zero-progress outcomes to be consumed by the real storage write loop.
+let truncateIo* {.importc: "STORAGE_IO_FTRUNCATE", header: "observer.h".}: cint
+  ## Observe only explicit physical truncation, never granting a recovery prefix or rollback point.
+proc storageProcessId*(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
+  ## Supported SDK pid_t is int; fixture names stay process-specific without changing the pinned runtime.

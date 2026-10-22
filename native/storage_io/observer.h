@@ -8,7 +8,8 @@
 #include <sys/types.h>
 #include <stddef.h>
 /* Exact observer operations are separate from production storage error domains. */
-enum { STORAGE_IO_READ = 1, STORAGE_IO_WRITE = 2, STORAGE_IO_FSYNC = 3 };
+enum { STORAGE_IO_READ = 1, STORAGE_IO_WRITE = 2, STORAGE_IO_FSYNC = 3, STORAGE_IO_FTRUNCATE = 4,
+       STORAGE_IO_LAST = STORAGE_IO_FTRUNCATE };
 /* Remove all fault/short-write controls and reset call counters. */
 void storage_io_reset(void);
 /* Select a bounded count of failures after a bounded number of real calls. */
@@ -29,4 +30,6 @@ ssize_t storage_io_read(int descriptor, void *buffer, size_t count);
 ssize_t storage_io_write(int descriptor, const void *buffer, size_t count);
 /* Forward actual barriers except explicitly selected test refusals. */
 int storage_io_fsync(int descriptor);
+/* Forward actual trusted-extent truncation except bounded injected refusals. */
+int storage_io_ftruncate(int descriptor, off_t extent);
 #endif

@@ -23,7 +23,7 @@ def validate_requirements(records):
     allowed = {
         'libraries': {'crypto', 'observer', 'bandersnatch', 'bandersnatch_observer', 'quic', 'storage_io'},
         'includes': {'crypto', 'bandersnatch', 'quic', 'storage_io'},
-        'observers': {'setup_new', 'setup_free', 'key_new', 'key_free', 'verify', 'commit', 'ring_verify', 'io_read', 'io_write', 'io_fsync'},
+        'observers': {'setup_new', 'setup_free', 'key_new', 'key_free', 'verify', 'commit', 'ring_verify', 'io_read', 'io_write', 'io_fsync', 'io_ftruncate'},
         'defines': {'integration'},
     }
     for name, record in records.items():

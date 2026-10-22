@@ -144,9 +144,15 @@ proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
     if uint64(count) > remaining: return FileResult[seq[byte]](status: FileError.LimitExceeded)
     for i in 0..<count: bytes.add(buffer[i])
   FileResult[seq[byte]](status: FileError.None, completed: bytes)
-proc truncateFile(fd: cint, extent: int64): cint {.importc: "ftruncate", cdecl,
+proc truncateNative(fd: cint, extent: int64): cint {.importc: "ftruncate", cdecl,
     header: "<unistd.h>".}
   ## Supported native Linux/macOS SDKs use 64-bit off_t; host-bounded extents are proved before conversion.
+proc truncateFile(fd: cint, extent: int64): cint =
+  ## Retry only EINTR on the same already-authorized extent; repeating that truncation is idempotent.
+  while true:
+    let status = truncateNative(fd, extent)
+    if status == 0 or posix.errno() != interrupted: return status
+    # No new generation/root or extent can be chosen while this native owner holds the lease.
 proc incompleteTail(bytes: openArray[byte], offset: int, limit: ByteLimit, contextual: bool): bool =
   ## Admit only an incomplete final frame, never a complete corrupt frame or oversized length attack.
   let remaining = bytes.len-offset
