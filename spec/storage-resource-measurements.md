@@ -140,3 +140,9 @@ Current managed-heap observations remain distinct from peak RSS and OS page-cach
 Complete-map extraction owns independent key/value payloads that remain valid after physical owner retirement. Fixture graphs retire before the owner checkpoint. Native validation covers
 the retained values after owner close, and every scope must return to its exact allocator baseline.
 Current managed-heap observations remain distinct from peak RSS and OS page-cache behavior.
+
+### Lookups lifetime
+
+4096 spread public record copies retain their full independent payloads after source close and fixture retirement. Fixture graphs retire before the owner checkpoint. Native validation covers
+the retained values after owner close, and every scope must return to its exact allocator baseline.
+Current managed-heap observations remain distinct from peak RSS and OS page-cache behavior.
