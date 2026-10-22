@@ -223,3 +223,13 @@ proc planProofAccount*(service: ServiceIndex, limit: ElementLimit): ServiceProof
     ServiceProofPlan] =
   ## Request only exact account metadata; no nested-map completeness is implied.
   capturePlan([chapterServiceKey(StateChapter(255), service)], limit)
+
+proc planProofStorage*(service: ServiceIndex, key: openArray[byte], keyBytes: ByteLimit,
+    limit: ElementLimit): ServiceProofResult[ServiceProofPlan] =
+  ## Request account and exact selector dependencies; limits precede hashing and plan allocation.
+  if uint64(limit) < 2 or uint64(key.len) > uint64(keyBytes):
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.LimitExceeded)
+  let derived = serviceStorageKey(service, key, keyBytes)
+  if derived.error != ServiceValueError.None:
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.BackendFailure)
+  capturePlan([chapterServiceKey(StateChapter(255), service), derived.value], limit)
