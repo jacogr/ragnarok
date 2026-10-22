@@ -59,3 +59,11 @@ requires exactly one witness per revision in order, with exact backend/case/samp
 sum cannot exceed the enclosing publication batch interval. The same per-call clock overhead is
 present for all backends; formatting and CSV publication remain outside timing. Structured reports
 are reparsed through the same coverage contract, and boolean/substituted values are refused.
+
+## Separate SDK observation
+
+The `storageIoCounts` test executable uses the existing maintained OS observer and disarms every
+fault/short-progress control. It observes one complete sample per configured trajectory and emits
+only operation counts. Ordinary speed builds compile observation away and never link the
+observer. Counter snapshots precede printing; reset boundaries exclude setup, validation,
+fixture cleanup and owner close outside the named operation. No production fault hook is added.

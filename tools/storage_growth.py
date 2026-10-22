@@ -14,7 +14,8 @@ from storage_growth_report import ENGINES,CASES,PHASES,METRICS,parse_growth,aggr
 
 ROOT=Path(__file__).resolve().parents[1]
 SOURCES=('tests/performance/storage_growth_workload.nim','tests/support/storage_growth_samples.nim',
-         'tools/storage_growth.py','tools/storage_growth_report.py')
+         'tools/storage_growth.py','tools/storage_growth_report.py',
+         'tests/support/storage_growth_io.nim','tests/support/storage_io.nim')
 
 
 def growth_csv(report):

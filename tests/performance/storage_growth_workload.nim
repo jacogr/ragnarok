@@ -4,7 +4,7 @@
 ## Sustained public repository operations retain exact complete maps across restart and reclamation.
 import std/[assertions, syncio, cmdline, monotimes, times]
 import std/posix/posix
-import ../support/[storage_growth_samples, managed_storage_samples]
+import ../support/[storage_growth_samples, managed_storage_samples, storage_growth_io]
 import ../../src/storage/[full_state_trie, node_records, node_repository, file_repository,
   managed_repository,
   database_identity, managed_manifest]
@@ -24,6 +24,8 @@ proc main() {.raises.} =
   let folder = paramStr(4)
   assert paramStr(5) in ["1", "13"]
   let samples = if paramStr(5) == "1": 1 else: 13
+  when defined(storageIoCounts):
+    assert samples == 1 # Counter witnesses are separate single runs, never speed samples.
   let pattern = paramStr(6)
   assert pattern in ["sweep", "hot"]
   let hot = pattern == "hot"
@@ -55,6 +57,7 @@ proc main() {.raises.} =
       assert initializeManagedFileRepository(disk, path, default(StorageChainId), selection, [],
           managed) == FileError.None
     var latencies = newSeq[int64](publications)
+    beginGrowthIo()
     let publicationStart = getMonoTime()
     for index, change in fixture.changes:
       let revisionStart = getMonoTime()
@@ -64,26 +67,33 @@ proc main() {.raises.} =
         discard disk.publish(disk.snapshot.value, change).value # Disk includes actual synchronization for every revision.
       latencies[index] = elapsed(revisionStart) # Retain each complete public call without formatting in timing.
     let publicationNs = elapsed(publicationStart)
+    endGrowthIo(engine, count, publications, pattern, sample, "publication")
     let held = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
     assert uint64(held.generation) == uint64(publications+1)
     assert array[32, byte](held.commitment.root) == array[32, byte](expected)
     let identity = selectRepositoryRoots(held, [expected], ElementLimit(1)).value
     var snapshots = newSeq[RepositoryView](4096)
+    beginGrowthIo()
     let snapshotStart = getMonoTime()
     for index in 0..<snapshots.len:
       snapshots[index] = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
     let snapshotsNs = elapsed(snapshotStart)
+    endGrowthIo(engine, count, publications, pattern, sample, "snapshots")
     for retained in snapshots:
       assert identity.matches(retained) # Exact admitted ownership is stronger than matching root metadata.
+    beginGrowthIo()
     let extractionStart = getMonoTime()
     let extracted = restoreStateEntries(held, expected, limits.codec.trie).value
     let extractionBeforeNs = elapsed(extractionStart)
+    endGrowthIo(engine, count, publications, pattern, sample, "extraction_before")
     checkGrowthEntries(extracted, count, publications, hot)
     var observed = newSeq[TrieRecord](4096)
+    beginGrowthIo()
     let readsStart = getMonoTime()
     for index in 0..<observed.len:
       observed[index] = held.lookupNode(fixture.reads[(index*2053) mod count]).value
     let readsBeforeNs = elapsed(readsStart)
+    endGrowthIo(engine, count, publications, pattern, sample, "reads_before")
     for index, record in observed:
       assert array[32, byte](record.digest) == array[32, byte](fixture.reads[(
           index*2053) mod count])
@@ -91,12 +101,14 @@ proc main() {.raises.} =
     var reopenNs = -1'i64
     if engine != "memory":
       assert disk.close == FileError.None
+      beginGrowthIo()
       let reopenStart = getMonoTime()
       if engine == "journal":
         assert openFileRepository(disk, path, default(StorageChainId), journal) == FileError.None
       else:
         assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
       reopenNs = elapsed(reopenStart)
+      endGrowthIo(engine, count, publications, pattern, sample, "reopen")
       assert uint64(disk.snapshot.value.generation) == uint64(publications+1)
       checkGrowthHead(disk.snapshot.value, expected, count, publications, hot)
     let storedNodes = held.storedNodes
@@ -124,6 +136,7 @@ proc main() {.raises.} =
     var compactedJournalBytes = -1'i64
     if engine != "journal":
       # Retain the same explicit nine-root union in both backends, including all real managed barriers.
+      beginGrowthIo()
       let retentionStart = getMonoTime()
       if engine == "memory":
         let selected = selectRepositoryRoots(held, roots, ElementLimit(9)).value
@@ -135,6 +148,7 @@ proc main() {.raises.} =
         let receipt = disk.compact(disk.snapshot.value, roots).value
         assert receipt.cleanup == FileError.None and uint64(receipt.epoch) == 2
       retentionNs = elapsed(retentionStart)
+      endGrowthIo(engine, count, publications, pattern, sample, "retention")
       let retained = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
       retainedNodes = retained.storedNodes
       checkGrowth(retained, roots[0], count, 0, hot)
@@ -149,13 +163,16 @@ proc main() {.raises.} =
         retainedJournalBytes = int64(retainedUsage.journalBytes)
         # Reopen the nine-root epoch before current-only reclamation, validating every retained complete map.
         assert disk.close == FileError.None
+        beginGrowthIo()
         let retainedReopenStart = getMonoTime()
         assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
         retainedReopenNs = elapsed(retainedReopenStart)
+        endGrowthIo(engine, count, publications, pattern, sample, "retained_reopen")
         checkGrowthHead(disk.snapshot.value, expected, count, publications, hot)
         checkGrowth(disk.snapshot.value, roots[0], count, 0, hot)
         for revision in publications-7..publications:
           checkGrowth(disk.snapshot.value, fixture.roots[revision], count, revision, hot)
+      beginGrowthIo()
       let maintenanceStart = getMonoTime()
       if engine == "memory":
         let selected = selectRepositoryRoots(retained, [expected], ElementLimit(1)).value
@@ -167,19 +184,24 @@ proc main() {.raises.} =
         let receipt = disk.compact(disk.snapshot.value, [expected]).value
         assert receipt.cleanup == FileError.None and uint64(receipt.epoch) == 3
       maintenanceNs = elapsed(maintenanceStart)
+      endGrowthIo(engine, count, publications, pattern, sample, "maintenance")
       let current = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
       currentNodes = current.storedNodes
       assert currentNodes < retainedNodes and retainedNodes <= storedNodes
       assert uint64(current.generation) == uint64(publications+1)
+      beginGrowthIo()
       let extractionAfterStart = getMonoTime()
       let extractedAfter = restoreStateEntries(current, expected, limits.codec.trie).value
       extractionAfterNs = elapsed(extractionAfterStart)
+      endGrowthIo(engine, count, publications, pattern, sample, "extraction_after")
       checkGrowthEntries(extractedAfter, count, publications, hot)
       var observedAfter = newSeq[TrieRecord](4096)
+      beginGrowthIo()
       let readsAfterStart = getMonoTime()
       for index in 0..<observedAfter.len:
         observedAfter[index] = current.lookupNode(fixture.reads[(index*2053) mod count]).value
       readsAfterNs = elapsed(readsAfterStart)
+      endGrowthIo(engine, count, publications, pattern, sample, "reads_after")
       for index, record in observedAfter:
         assert array[32, byte](record.digest) == array[32, byte](fixture.reads[(
             index*2053) mod count])
@@ -191,9 +213,11 @@ proc main() {.raises.} =
         compactedSnapshotBytes = int64(usage.snapshotBytes)
         compactedJournalBytes = int64(usage.journalBytes)
         assert disk.close == FileError.None
+        beginGrowthIo()
         let compactedReopenStart = getMonoTime()
         assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
         compactedReopenNs = elapsed(compactedReopenStart)
+        endGrowthIo(engine, count, publications, pattern, sample, "compacted_reopen")
         assert uint64(disk.snapshot.value.generation) == uint64(publications+1)
         checkGrowthHead(disk.snapshot.value, expected, count, publications, hot)
     if disk.opened:
@@ -213,17 +237,21 @@ proc main() {.raises.} =
       let record = retained.lookupNode(digest).value
       assert array[32, byte](record.digest) == array[32, byte](digest)
       checkGrowthRecord(record, count, publications, hot)
-    for index, duration in latencies:
-      # Emit observations only after all complete-map/lifetime validation and native namespace cleanup.
-      echo "publication\t", count, "\t", publications, "\t", pattern, "\t", sample,
-        "\t", index+1, "\t", duration
-    echo "growth\t", count, "\t", publications, "\t", pattern, "\t", sample, "\t", publicationNs, "\t",
-      reopenNs, "\t", retentionNs, "\t", maintenanceNs, "\t", retainedReopenNs, "\t",
-          compactedReopenNs, "\t", extractionBeforeNs, "\t", extractionAfterNs, "\t", readsBeforeNs,
-              "\t", readsAfterNs, "\t", snapshotsNs, "\t", storedNodes, "\t", retainedNodes,
-      "\t", currentNodes, "\t", snapshotBytes, "\t", journalBytes, "\t", retainedSnapshotBytes,
-          "\t", retainedJournalBytes, "\t", compactedSnapshotBytes,
-      "\t", compactedJournalBytes
+    when not defined(storageIoCounts):
+      # Observed builds emit only SDK counters; their instrumented timings never become speed samples.
+      for index, duration in latencies:
+        # Emit observations only after all complete-map/lifetime validation and native namespace cleanup.
+        echo "publication\t", count, "\t", publications, "\t", pattern, "\t", sample,
+          "\t", index+1, "\t", duration
+      echo "growth\t", count, "\t", publications, "\t", pattern, "\t", sample, "\t", publicationNs,
+          "\t",
+        reopenNs, "\t", retentionNs, "\t", maintenanceNs, "\t", retainedReopenNs, "\t",
+            compactedReopenNs, "\t", extractionBeforeNs, "\t", extractionAfterNs, "\t",
+                readsBeforeNs, "\t", readsAfterNs, "\t", snapshotsNs, "\t", storedNodes, "\t",
+                    retainedNodes,
+        "\t", currentNodes, "\t", snapshotBytes, "\t", journalBytes, "\t", retainedSnapshotBytes,
+            "\t", retainedJournalBytes, "\t", compactedSnapshotBytes,
+        "\t", compactedJournalBytes
   assert seed.close == RepositoryError.None
 try:
   main()
