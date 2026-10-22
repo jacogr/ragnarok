@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, storage-diagnostics, storage-pressure, full]
+        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, storage-diagnostics, storage-pressure, full]
         default: full
         required: true
 
@@ -472,13 +472,6 @@ jobs:
             build/tests/storage-benchmark/results.json
             build/tests/storage-benchmark/samples.csv
             build/tests/storage-benchmark/summary.md
-            build/tests/storage-benchmark/growth/*.log
-            build/tests/storage-benchmark/growth/results.json
-            build/tests/storage-benchmark/growth/samples.csv
-            build/tests/storage-benchmark/growth/publications.csv
-            build/tests/storage-benchmark/growth/io/*.log
-            build/tests/storage-benchmark/growth/io/results.json
-            build/tests/storage-benchmark/growth/io/calls.csv
             build/tests/storage-resources/*.log
             build/tests/storage-resources/results.json
             build/tests/storage-resources/*.csv
@@ -509,6 +502,40 @@ jobs:
             build/tests/storage-memory-ceilings/summary.md
             build/tests/storage-memory-ceilings/status.md
             build/tests/storage-resource-summary.md
+            build/ci/*.log
+
+  # Sustained growth keeps all repetitions on its own runner, independent of other storage panels.
+  bench-storage-growth:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+    name: Perf Storage Growth
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Measure sustained storage growth and SDK IO
+        run: make bench-storage-growth
+      - name: Show sustained storage growth
+        if: always()
+        run: make summary-storage-growth SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      - name: Retain sustained storage evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: bench-storage-growth-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            build/tests/storage-growth-benchmark/results.json
+            build/tests/storage-growth-benchmark/summary.md
+            build/tests/storage-growth-benchmark/growth/*.log
+            build/tests/storage-growth-benchmark/growth/results.json
+            build/tests/storage-growth-benchmark/growth/samples.csv
+            build/tests/storage-growth-benchmark/growth/publications.csv
+            build/tests/storage-growth-benchmark/growth/io/*.log
+            build/tests/storage-growth-benchmark/growth/io/results.json
+            build/tests/storage-growth-benchmark/growth/io/calls.csv
             build/ci/*.log
 
   # Explicit Linux diagnosis keeps ptrace and symbolized comparisons outside speed measurements.

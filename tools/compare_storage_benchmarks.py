@@ -32,15 +32,20 @@ def compare_reports(baseline,candidate,allowed_sources=()):
     changed={name for name in baseline['sources'] if baseline['sources'][name]!=candidate['sources'][name]}
     if changed-allowed:
         raise ValueError('Storage comparison has unapproved source differences: '+', '.join(sorted(changed-allowed)))
-    if baseline['growth']['io']['observations']!=candidate['growth']['io']['observations']:
+    scope=baseline.get('panel','combined')
+    if scope!=candidate.get('panel','combined'):
+        raise ValueError('Storage comparison panel scope differs')
+    if scope!='comparison' and baseline['growth']['io']['observations']!=candidate['growth']['io']['observations']:
         raise ValueError('CPU storage comparison changed observed SDK work')
     lines=['# Storage benchmark comparison','',f'Baseline: `{baseline["head"]}`. Candidate: `{candidate["head"]}`.',
         'Matching checked profile, native primitive closure and recorded host metadata; all raw statistics and command plans revalidated.',
         'Approved changed sources: '+(', '.join('`'+name+'`' for name in sorted(changed)) or 'none')+'.',
-        'Observed SDK work and selected physical counters are identical. Speedup is baseline / candidate median.','',
+        'Selected physical counters are identical; sustained reports also match observed SDK work. Speedup is baseline / candidate median.','',
         '| Panel | Entries | Workload | Operation | Backend | Baseline µs | Candidate µs | Speedup |',
         '| --- | ---: | --- | --- | --- | ---: | ---: | ---: |']
-    for panel in ('short','sustained'):
+    panels=('short',) if scope=='comparison' else (('sustained',) if scope=='growth' else ('short','sustained'))
+    for panel in panels:
+        # Scope-identical reports compare only measurements owned by their actual CI job.
         before=baseline['cases'] if panel=='short' else baseline['growth']['cases']
         after=candidate['cases'] if panel=='short' else candidate['growth']['cases']
         if len(before)!=len(after):
