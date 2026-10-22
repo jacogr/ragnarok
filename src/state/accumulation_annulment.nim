@@ -39,6 +39,10 @@ type
     else:
       discard      # Refusal retains only its typed reason.
 
+func sameAccumulationAnnulment*(left, right: PreparedAccumulationAnnulment): bool =
+  ## Compare initialized certificate identity; equal contents or two defaults cannot replace one checked source.
+  left.data != nil and left.data == right.data
+
 func error*[T](outcome: AccumulationAnnulmentResult[T]): AccumulationAnnulmentError =
   ## Inspect the reason without granting result mutation.
   outcome.status

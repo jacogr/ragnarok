@@ -1,0 +1,73 @@
+{
+  "source": "tests/native/accumulation_selected_writes_results.nim",
+  "build_name": "accumulation-selected-writes-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "selected-writes-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected physical writes default extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "selected-writes-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected physical writes refused extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "selected-writes-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected physical writes info extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "prior"
+      },
+      "arguments": [
+        "prior"
+      ],
+      "name": "selected-writes-prior",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected physical writes prior extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "new"
+      },
+      "arguments": [
+        "new"
+      ],
+      "name": "selected-writes-new",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected physical writes new extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "write"
+      },
+      "arguments": [
+        "write"
+      ],
+      "name": "selected-writes-write",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected physical writes write extraction guard"
+    }
+  ]
+}
