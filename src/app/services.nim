@@ -45,7 +45,7 @@ type
 
 type
   ServiceDiskOperation {.pure.} = enum ## One private tag selects the receipt/cleanup path for the shared native disk slot.
-    Publication, Maintenance
+    Publication, Maintenance, CurrentPublication
 
 type Services* = object             ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
   rpc*: Server
@@ -75,6 +75,9 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   maintenanceAdmission: DiskWorkerError
   diskOperation: ServiceDiskOperation
   diskPublication: PreparedDiskPublication
+  currentDiskPublication: PreparedCurrentDiskPublication
+  currentDiskStageOutcome: DiskChainResult[PreparedCurrentDiskPublication]
+  currentDiskAdmission: DiskWorkerError
   diskTicket: DiskPublicationTicket
   diskStageOutcome: DiskChainResult[PreparedDiskPublication]
   diskCommitOutcome: DiskChainResult[RepositoryGeneration]
@@ -112,6 +115,8 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.maintenanceCompletion)
   `=wasMoved`(services.startupMaintenance)
   `=wasMoved`(services.diskPublication)
+  `=wasMoved`(services.currentDiskPublication)
+  `=wasMoved`(services.currentDiskStageOutcome)
   `=wasMoved`(services.diskTicket)
   `=wasMoved`(services.diskStageOutcome)
   `=wasMoved`(services.diskCommitOutcome)
@@ -143,6 +148,8 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.maintenanceCompletion)
   `=destroy`(services.startupMaintenance)
   `=destroy`(services.diskPublication)
+  `=destroy`(services.currentDiskPublication)
+  `=destroy`(services.currentDiskStageOutcome)
   `=destroy`(services.diskTicket)
   `=destroy`(services.diskStageOutcome)
   `=destroy`(services.diskCommitOutcome)
@@ -174,12 +181,54 @@ proc finishDiskMaintenance(services: var Services, completion: DiskPublicationCo
   services.diskMaintenance = default(PreparedDiskMaintenance)
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil
+proc finishCurrentDiskPublication(services: var Services, completion: DiskPublicationCompletion) =
+  ## Collection/join ends all borrows before exact receipt/context checks and canonical/RPC installation.
+  if completion.kind == DiskCompletionKind.Completed:
+    let receipt = completion.value
+    services.diskCommitOutcome = receipt # Preserve the actual IO result, including uncertainty, independently of handoff status.
+    if receipt.error != DiskChainError.None:
+      services.diskFaulted = true
+      services.currentAdoption.refusePublication(CurrentHandoffError.DurabilityRefused)
+    elif not confirmsCurrentDiskPublication(services.disk,
+        services.currentDiskPublication, receipt.value):
+      services.diskFaulted = true
+      services.currentAdoption.refusePublication(CurrentHandoffError.DurabilityRefused)
+    else:
+      let prepared = services.currentDiskPublication.chainUpdate
+      if not services.canonical.canInstallPrepared(prepared):
+        services.diskFaulted = true
+        services.currentAdoption.refusePublication(CurrentHandoffError.StaleState)
+      elif services.chainRpc and not services.canonical.canInstallPrepared(services.rpc, prepared,
+          services.rpcLease):
+        services.diskFaulted = true
+        services.currentAdoption.refusePublication(CurrentHandoffError.RpcRefused)
+      else:
+        if services.chainRpc:
+          services.canonical.installPrepared(services.rpc, prepared, services.rpcLease)
+        else:
+          services.canonical.installPrepared(prepared) # Disabled RPC still installs only after the same confirmed IO receipt.
+        services.currentAdoption.completePublication(services.canonical.installedPrepared(prepared))
+  else:
+    assert completion.kind == DiskCompletionKind.NotExecuted
+    services.currentAdoption.refusePublication(CurrentHandoffError.DurabilityRefused) # Joined queued work creates no IO success.
+  services.currentDiskPublication = default(PreparedCurrentDiskPublication)
+  services.diskOperation = ServiceDiskOperation.Publication
+  services.publishing = false
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+
 proc finishDiskPublication(services: var Services, completion: DiskPublicationCompletion) =
   ## Called only after collect/join retires all native temporaries; install before reopening RPC access.
   if not services.publishing: return
-  if services.diskOperation == ServiceDiskOperation.Maintenance:
+  case services.diskOperation
+  of ServiceDiskOperation.Maintenance:
     services.finishDiskMaintenance(completion)
-    return
+    return # Physical maintenance has no application installation outcome.
+  of ServiceDiskOperation.CurrentPublication:
+    services.finishCurrentDiskPublication(completion)
+    return # Current completion uses its exact saved publication and never a legacy update.
+  of ServiceDiskOperation.Publication:
+    discard # Preserve the existing legacy receipt/install path below.
   if completion.kind == DiskCompletionKind.Completed:
     services.diskCommitOutcome = completion.value
     if completion.value.error == DiskChainError.None:
@@ -207,6 +256,18 @@ proc stopDiskPublication*(services: var Services) =
 func diskPublicationActive*(services: Services): bool =
   ## Scalar-only observation is permitted while canonical graphs remain exclusively borrowed.
   services.publishing
+proc diskPublicationPhase*(services: var Services): DiskWorkerPhase =
+  ## Scalar-only synchronized observation grants no access to a Done job's still-leased graph.
+  services.diskWorker.phase
+func currentDiskPreparationOutcome*(services: Services): DiskChainResult[
+    PreparedCurrentDiskPublication] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Only an actual current host staging refusal is retained; default never grants publication authority.
+  services.currentDiskStageOutcome
+func currentDiskPublicationAdmissionError*(services: Services): DiskWorkerError =
+  ## Observe the actual current worker admission reason without touching any leased ARC owner.
+  services.currentDiskAdmission
+
 func diskPublicationOutcome*(services: Services): DiskChainResult[RepositoryGeneration] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Preserve the actual last IO receipt, including across close, until a later startup/job replaces it.
@@ -430,6 +491,9 @@ proc setupDisk(services: var Services, options: Options, limits: StateStoreLimit
   if services.diskFaulted: return false # Startup has no callbacks/listeners or foreign ARC borrowers yet.
   services.diskEnabled = true
   services.diskStageOutcome = default(DiskChainResult[PreparedDiskPublication])
+  services.currentDiskStageOutcome = default(DiskChainResult[PreparedCurrentDiskPublication])
+  services.currentDiskPublication = default(PreparedCurrentDiskPublication)
+  services.currentDiskAdmission = DiskWorkerError.Uninitialized
   services.diskCommitOutcome = default(DiskChainResult[RepositoryGeneration])
   try:
     if not services.diskWorker.start(): return false # Exactly one idle native thread is started at the final Services address.
@@ -645,7 +709,9 @@ proc enqueueBlockInput*(services: var Services, input: var BlockInput, id: Block
   input.enqueue(id, services.canonical, services.adoption, composition)
 
 func currentAccumulationPhase*(services: Services): CurrentHandoffPhase =
-  ## Scalar observation exposes no pending update, graph alias or completed child.
+  ## Maintenance delays graph-bearing acknowledgment until its native lease ends, just like ordinary publication.
+  if services.publishing and services.diskOperation == ServiceDiskOperation.Maintenance:
+    return CurrentHandoffPhase.Publishing
   services.currentAdoption.phase
 
 proc enqueueCurrentAccumulation*(services: var Services,
@@ -655,8 +721,8 @@ proc enqueueCurrentAccumulation*(services: var Services,
     return CurrentHandoffAdmission.Busy # Cancellation and Done do not release an outstanding native lease.
   if services.adoption.stage != AccumulationHandoffStage.Idle:
     return CurrentHandoffAdmission.Busy # A legacy pending or unacknowledged outcome retains producer capacity.
-  if not services.started or services.diskEnabled or services.diskFaulted:
-    return CurrentHandoffAdmission.Unavailable # Current disk scheduling is a subsequent integration boundary.
+  if not services.started or services.diskFaulted:
+    return CurrentHandoffAdmission.Unavailable # No current job can bypass closed ownership or uncertain physical state.
   services.currentAdoption.enqueue(services.canonical, update)
 
 proc takeCurrentAccumulation*(services: var Services): CurrentHandoffResult {.requires:
@@ -857,6 +923,38 @@ proc stageDiskPublication(services: var Services): bool =
   services.adoption.markPublishing() # Drop pending source/limits before any native graph access is possible.
   true
 
+proc stageCurrentDiskPublication(services: var Services): bool =
+  ## Retire every local current/context alias before the caller grants the native disk borrow.
+  services.currentDiskStageOutcome = default(DiskChainResult[PreparedCurrentDiskPublication])
+  services.currentDiskAdmission = DiskWorkerError.Uninitialized
+  services.diskCommitOutcome = default(DiskChainResult[
+      RepositoryGeneration]) # No previous job's receipt can authorize this attempt.
+  if services.diskFaulted:
+    services.currentAdoption.refusePublication(CurrentHandoffError.DurabilityRefused)
+    return false
+  let prepared = services.currentAdoption.pendingUpdate
+  if not services.canonical.canInstallPrepared(prepared):
+    services.currentAdoption.refusePublication(CurrentHandoffError.StaleState)
+    return false
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil or (services.chainRpc and not services.canonical.canInstallPrepared(
+      services.rpc, prepared, services.rpcLease)):
+    discard services.rpc.resumeChain(services.rpcLease)
+    services.rpcLease = nil
+    services.currentAdoption.refusePublication(CurrentHandoffError.RpcRefused)
+    return false # A foreign pause or refused enabled listener grants no disk operation or canonical fallback.
+  let staged = prepareDiskPublication(services.disk, services.canonical, prepared,
+    services.diskId, services.diskLimits.contextBytes)
+  if staged.error != DiskChainError.None:
+    services.currentDiskStageOutcome = staged
+    discard services.rpc.resumeChain(services.rpcLease)
+    services.rpcLease = nil
+    services.currentAdoption.refusePublication(CurrentHandoffError.DurabilityRefused)
+    return false
+  services.currentDiskPublication = staged.value
+  services.currentAdoption.markPublishing() # Freeze the expected child before the native operation can begin.
+  true
+
 func startupDiskMaintenanceOutcome*(services: Services): DiskChainResult[
     ManagedCompaction] {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
@@ -995,6 +1093,21 @@ proc tick*(services: var Services, peers: uint32) =
       return # Poll only scalar worker state while RPC/canonical graphs remain borrowed.
     services.finishDiskPublication(services.diskWorker.collect(services.diskTicket))
   if services.diskEnabled:
+    if services.currentAdoption.phase == CurrentHandoffPhase.Pending and
+        services.stageCurrentDiskPublication():
+      let admitted = services.diskWorker.submit(services.disk, services.currentDiskPublication)
+      services.currentDiskAdmission = admitted.error
+      if admitted.error == DiskWorkerError.None:
+        services.diskTicket = admitted.value
+        services.diskOperation = ServiceDiskOperation.CurrentPublication
+        services.publishing = true
+        services.ui.tick()
+        return # Only scalar polling/independent UI work may follow a successful native borrow.
+      services.currentDiskPublication = default(PreparedCurrentDiskPublication)
+      services.currentAdoption.refusePublication(CurrentHandoffError.DurabilityRefused)
+      services.diskFaulted = true
+      discard services.rpc.resumeChain(services.rpcLease)
+      services.rpcLease = nil # A refused worker borrowed no graph and produced no IO receipt.
     if services.adoption.stage == AccumulationHandoffStage.Pending and
         services.stageDiskPublication():
       let admitted = services.diskWorker.submit(services.disk, services.diskPublication)
@@ -1004,7 +1117,8 @@ proc tick*(services: var Services, peers: uint32) =
       services.publishing = true
       services.ui.tick()
       return # No managed canonical/source alias may be touched or retired after successful admission.
-    if services.adoption.stage == AccumulationHandoffStage.Finished and
+    if (services.adoption.stage == AccumulationHandoffStage.Finished or
+        services.currentAdoption.phase == CurrentHandoffPhase.Finished) and
         services.maintenanceDue() and services.beginDiskMaintenance():
       services.ui.tick()
       return # No canonical/RPC graph aliases are touched until scalar polling observes the maintenance completion.

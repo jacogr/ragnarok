@@ -19,9 +19,8 @@ No guest replay, capture, hashing or disk IO occurs during this current installa
 
 Finished success/refusal requires explicit acknowledgment; cancellation applies only before
 installation. Shutdown joins preparation/proof/disk owners before retiring current handoff aliases.
-RPC proof-session routing and pause/exclusion retain their existing ownership. Current disk-backed
-enqueue is explicitly unavailable until its separate durability layer; production transport/download
-producers still select legacy APIs at this point.
+RPC proof-session routing and pause/exclusion retain their existing ownership. The separate [current durable Services layer](pvm-current-services-disk.md) supersedes the temporary
+disk-backed enqueue gate. Production transport/download producers still select legacy APIs at this point.
 
 Completion witnesses use actual signed current children and an independently serialized complete
 original parent chainspec. They cover native current preparation, unchanged head after collection,
