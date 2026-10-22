@@ -25,3 +25,6 @@ ARC retirements and strict payload/stage/private/root-domain guards. Run
 `make unit SUITE=state_account_review_checkpoint`.
 
 Observed locally: selected native suite, 7 strict runtime guards, 9 exact compiler rejections and genuine positive control passed; inventory and pinned formatting passed. 1,000 ARC cycles retained 217,376 bytes before and after.
+
+Consumer selection, error handling and authority boundaries are documented in the
+[complete-source account guide](../docs/state-account-reviews.md).
