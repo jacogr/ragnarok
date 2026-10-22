@@ -27,7 +27,7 @@ DOCKER ?= docker
 DOCKER_IMAGE ?= ragnarok:local
 DOCKER_PLATFORM ?= linux/amd64
 
-.PHONY: bench-storage summary-storage-benchmark bench-pvm summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
@@ -83,7 +83,7 @@ sources:
 	mkdir -p build/ci
 	$(PYTHON) tools/setup_submodules.py 2>&1 | tee build/ci/sources.log
 
-# Ubuntu installs missing native prerequisites here, so CI needs no separate package/bootstrap recipe.
+# Ubuntu installs missing prerequisites with bounded network waits and retained pre-toolchain logs.
 host-tools:
 	@if [ "$$(uname -s)" = Linux ] && command -v apt-get >/dev/null; then \
 	  packages='build-essential clang lld cmake zlib1g-dev openssl'; missing=0; \
@@ -91,8 +91,10 @@ host-tools:
 	    if [ "$$(dpkg-query -W -f='$${Status}' "$$package" 2>/dev/null || true)" != 'install ok installed' ]; then missing=1; fi; \
 	  done; \
 	  if [ "$$missing" = 1 ]; then \
-	    sudo apt-get update; \
-	    sudo apt-get install --no-install-recommends -y $$packages; \
+	    mkdir -p build/ci; \
+	    apt_options='-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=60'; \
+	    sudo timeout --kill-after=10s 300s apt-get $$apt_options -o APT::Update::Error-Mode=any update 2>&1 | tee build/ci/host-tools-update.log; \
+	    sudo apt-get $$apt_options install --no-install-recommends -y $$packages 2>&1 | tee build/ci/host-tools-install.log; \
 	  fi; \
 	fi
 
@@ -186,6 +188,25 @@ unit: setup
 format: toolchain rust-tools
 	. ./build/toolchain/env.sh; $(PYTHON) tools/format.py
 # Storage measures matching public operations; Make provisions the checked native crypto toolchain first.
+# Separate whole-process resource observations never contribute speed samples to Perf Storage.
+bench-storage-fresh-reopen: setup
+	$(PYTHON) tools/storage_fresh_reopen.py
+
+bench-storage-file-cache:
+	$(PYTHON) tools/storage_file_cache.py
+
+bench-storage-deployment: setup
+	$(PYTHON) tools/storage_deployment_benchmark.py
+
+bench-storage-lifetimes: setup
+	$(PYTHON) tools/storage_lifetime_benchmark.py
+
+bench-storage-allocations: setup
+	$(PYTHON) tools/storage_allocation_benchmark.py
+
+bench-storage-resources: setup
+	$(PYTHON) tools/storage_resources.py
+
 bench-storage: setup
 	$(PYTHON) tools/storage_benchmark.py
 
@@ -193,6 +214,9 @@ format-check: toolchain rust-tools
 	. ./build/toolchain/env.sh; $(PYTHON) tools/format.py --check
 
 # Summaries can run after a failed job; do not trigger setup or disguise a missing report.
+summary-storage-resources:
+	$(PYTHON) tools/summarize_storage_resources.py --output "$(SUMMARY_OUTPUT)"
+
 summary-storage-benchmark:
 	mkdir -p build/ci build/tests/storage-benchmark
 	$(PYTHON) tools/summarize_tests.py --kind storage-benchmark --report build/tests/storage-benchmark/results.json --output "$(SUMMARY_OUTPUT)" --artifact build/tests/storage-benchmark/summary.md

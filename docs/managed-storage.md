@@ -115,3 +115,7 @@ The [process-crash guide](storage-process-crashes.md) explains strict restart, v
 work, exact independent repair tokens, source-preserving migration and bounded cleanup after a
 writer dies. Its native qualification covers actual process termination; hardware power-loss
 certification and production-scale layout performance require separate evidence.
+
+For live-owner/read-view retention, larger synthetic fixtures and fresh-process restart resource
+observations, see the [resource measurement guide](storage-resource-measurements.md). Its explicit
+cache-advice receipts do not establish cold storage, device I/O or hardware power-loss durability.

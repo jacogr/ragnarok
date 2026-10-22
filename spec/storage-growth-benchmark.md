@@ -139,3 +139,17 @@ complete Perf Storage, Python/CI safeguards, formatting, inventory and whitespac
 validation is also applied to the archived pre-index baseline. Exact head, upstream reconciliation,
 source/build identities, raw results, timings and preserved parked-file manifests remain under
 ignored `build/`. No new M1 or complete protocol state-serialization claim is introduced.
+
+## Independent process-resource controls
+
+An isolated Python observer can run one complete native trajectory and record whole-child peak RSS
+and page faults, excluding the observer. Darwin byte and Linux KiB units normalize to bytes;
+unsupported hosts, previously accumulated child usage and unsuccessful native exits refuse.
+Failure removes stale counter artifacts. Counters cover the entire native process, including
+fixtures, validation and any waited descendants; they do not isolate storage-owner memory.
+
+The output parser admits an explicit one-sample resource plan while its ordinary speed callers
+continue to require all thirteen samples. Resource timings never enter the speed report schema.
+Real fresh-child positive controls, stale-artifact failure checks, both host unit conversions and
+unchanged speed-sample coverage qualify this boundary. OS caches remain unchanged; page faults
+alone neither establish cold-cache behavior nor count physical device reads.
