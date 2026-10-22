@@ -80,3 +80,8 @@ checks exact/suffixed/truncated values and measures zero extra hashes during typ
 `readGlobalEntropy` returns four copied ordered words under an explicit byte ceiling. Exact128-byte
 extent is required; no absent or malformed value becomes default entropy. Native coverage checks
 all128 truncated prefixes, trailing bytes, positional bytes, source independence and byte limits.
+
+`readGlobalHistory` retains the current recent-block/dictionary/optional-peak codec and all independent
+caller ceilings. The exact whole chapter must decode; native coverage authenticates each truncated
+prefix and a suffix, preserves absent versus present-zero peaks, and checks block/byte/configuration
+refusals separately from missing or absent chapter evidence.
