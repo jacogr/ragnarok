@@ -1,0 +1,4 @@
+managed preflight: Snapshot
+managed preflight: Current
+managed preflight: Journal
+PASS managed read preflight: bounded refusal under one-MiB heap, unchanged extents and lease reuse

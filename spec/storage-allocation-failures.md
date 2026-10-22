@@ -55,3 +55,15 @@ in the standard Make/Hastur path; the heap cap belongs only to per-suite test pr
 No new M1 completion claim is introduced; complete protocol serialization remains separate.
 Controlled resident-memory/paging experiments require a suitable Linux execution environment;
 the local Docker daemon is unavailable. Hardware/filesystem power-loss work remains separate.
+
+## Managed reader witness
+
+The new `storage_managed_read_preflight` native suite runs under the explicit one-MiB hard
+heap test profile. Before the managed-reader change it compiled and reached its flushed
+`managed preflight: Snapshot` marker, then terminated with exit134 (SIGABRT) while trying to
+buffer a sparse16 MiB file under a configured4 MiB read ceiling. The original failed fixture
+is preserved in `build/storage-db5-managed-before-fixture/`; the Make log is
+`build/storage-db5-managed-before.log`. Compiler-error iterations are not runtime evidence.
+The native requirement allowlist admits only the fixed `nimMaxHeap=1` test define; production
+and other suite profiles retain their existing settings. Arbitrary heap values, recoverable OOM
+and unchecked defines remain refused by harness tests.
