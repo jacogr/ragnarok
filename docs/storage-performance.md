@@ -115,3 +115,8 @@ epoch and the selected current-only epoch. Compacted reopen exists only for mana
 other backends receive no fabricated observation. Each nine-root restart revalidates every retained
 complete map and the exact selected root/generation before current-only reclamation. File close
 and post-open map validation stay outside the reopen intervals. The OS cache remains live.
+
+Selected-file extents are retained for the original files, nine-root epoch and current-only epoch.
+The nine-root journal must be header-only and its physical node inventory must match the admitted
+view. File extents remain unavailable for memory and for unsupported journal reclamation. Every
+physical counter is identical across repetitions of the same fixture, including warmups.

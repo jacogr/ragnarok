@@ -95,6 +95,8 @@ proc main() {.raises.} =
     var maintenanceNs = -1'i64
     var retainedNodes = -1
     var currentNodes = -1
+    var retainedSnapshotBytes = -1'i64
+    var retainedJournalBytes = -1'i64
     var compactedSnapshotBytes = -1'i64
     var compactedJournalBytes = -1'i64
     if engine != "journal":
@@ -116,6 +118,12 @@ proc main() {.raises.} =
       for revision in publications-7..publications:
         checkGrowth(retained, fixture.roots[revision], count, revision, hot)
       if engine == "managed":
+        let retainedUsage = disk.managedUsage.value
+        assert retainedUsage.storedNodes == retainedNodes
+        assert retainedUsage.journalBytes == uint64(ManagedJournalHeaderBytes)
+        assert retainedUsage.snapshotBytes <= uint64(high(int64))
+        retainedSnapshotBytes = int64(retainedUsage.snapshotBytes)
+        retainedJournalBytes = int64(retainedUsage.journalBytes)
         # Reopen the nine-root epoch before current-only reclamation, validating every retained complete map.
         assert disk.close == FileError.None
         let retainedReopenStart = getMonoTime()
@@ -170,7 +178,8 @@ proc main() {.raises.} =
     echo "growth\t", count, "\t", publications, "\t", pattern, "\t", sample, "\t", publicationNs, "\t",
       reopenNs, "\t", retentionNs, "\t", maintenanceNs, "\t", retainedReopenNs, "\t",
           compactedReopenNs, "\t", storedNodes, "\t", retainedNodes,
-      "\t", currentNodes, "\t", snapshotBytes, "\t", journalBytes, "\t", compactedSnapshotBytes,
+      "\t", currentNodes, "\t", snapshotBytes, "\t", journalBytes, "\t", retainedSnapshotBytes,
+          "\t", retainedJournalBytes, "\t", compactedSnapshotBytes,
       "\t", compactedJournalBytes
   assert seed.close == RepositoryError.None
 try:

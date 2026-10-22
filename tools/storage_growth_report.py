@@ -14,7 +14,7 @@ PATTERNS=('sweep','hot')
 CASES=tuple((count,steps,pattern) for count in COUNTS for steps in PUBLICATIONS for pattern in PATTERNS)
 PHASES=('publication','reopen','retention','maintenance','retained_reopen','compacted_reopen')
 METRICS=('stored_nodes','retained_nodes','current_nodes','snapshot_bytes','journal_bytes',
-         'compacted_snapshot_bytes','compacted_journal_bytes')
+         'retained_snapshot_bytes','retained_journal_bytes','compacted_snapshot_bytes','compacted_journal_bytes')
 LABELS=('Sustained publication','Strict disk reopen','Nine-root reclamation','Current-root reclamation','Strict nine-root reopen','Strict current-root reopen')
 
 
@@ -64,7 +64,7 @@ def parse_growth(output,engine,count,steps,pattern='sweep'):
             raise ValueError('Invalid sustained reclamation counts')
         for metric in METRICS[3:]:
             value=row[metric]
-            missing=engine=='memory' or (engine=='journal' and metric.startswith('compacted_'))
+            missing=engine=='memory' or (engine=='journal' and metric.startswith(('retained_','compacted_')))
             zero=engine=='journal' and metric=='snapshot_bytes'
             if (missing and value!=-1) or (zero and value!=0) or (not missing and not zero and not 0<value<(1<<63)):
                 raise ValueError('Invalid sustained selected-file extent')
@@ -160,7 +160,7 @@ def aggregate_growth(passes):
 
 def validate_growth(report):
     """Native completion, source-bound binary identity and raw-derived statistics all remain mandatory."""
-    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=5:
+    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=6:
         raise ValueError('Invalid sustained report status/schema')
     if re.fullmatch('[0-9a-f]{64}',str(report.get('native_binary_sha256'))) is None:
         raise ValueError('Invalid sustained native identity')
@@ -247,7 +247,7 @@ def summarize_growth(report):
         'File growth includes selected snapshot/journal framing; it is not device write amplification, allocated blocks or total directory usage.',
         'The comparison associates elapsed work with a longer trajectory; it does not isolate OS cache or host effects.']
     lines+=['','Selected physical records and files (not total directory usage or reader memory):','',
-        '| Entries | Publications | Updates | Backend | Stored / nine-root / current records | Selected bytes before / current-only |',
+        '| Entries | Publications | Updates | Backend | Stored / nine-root / current records | Selected bytes initial / nine-root / current-only |',
         '| ---: | ---: | --- | --- | ---: | ---: |']
     for case in cases:
         if case['phase']!='publication':
@@ -256,8 +256,9 @@ def summarize_growth(report):
             m=case['engines'][engine]['metrics']
             counts=' / '.join('—' if m[k]==-1 else str(m[k]) for k in METRICS[:3])
             before='—' if engine=='memory' else str(m['snapshot_bytes']+m['journal_bytes'])
+            retained='—' if engine!='managed' else str(m['retained_snapshot_bytes']+m['retained_journal_bytes'])
             after='—' if engine!='managed' else str(m['compacted_snapshot_bytes']+m['compacted_journal_bytes'])
-            lines.append(f'| {case["items"]} | {case["publications"]} | {case["pattern"]} | {engine} | {counts} | {before} / {after} |')
+            lines.append(f'| {case["items"]} | {case["publications"]} | {case["pattern"]} | {engine} | {counts} | {before} / {retained} / {after} |')
     lines+=['','† Absolute timing noise and ‡ paired-ratio order sensitivity use the same thresholds as the short workload.',
         'Sweep advances across keys; hot revisits 256 keys with distinct complete revision payloads.',
         'Disk publication synchronizes each revision; memory publication is not durable. Reopen uses the live OS cache.',

@@ -20,6 +20,7 @@ def output(engine,count,steps,pattern='sweep'):
             500+sample if engine=='managed' else -1,600+sample if engine=='managed' else -1]
         metrics=[count*3+500,-1 if engine=='journal' else count*3+50,-1 if engine=='journal' else count*3,
             -1 if engine=='memory' else (0 if engine=='journal' else 1000),-1 if engine=='memory' else 2000,
+            950 if engine=='managed' else -1,72 if engine=='managed' else -1,
             900 if engine=='managed' else -1,72 if engine=='managed' else -1]
         for revision in range(1,steps+1):
             rows.append('publication\t'+'\t'.join(map(str,[count,steps,pattern,sample,revision,100+sample]))+'\n')
@@ -31,7 +32,7 @@ def fixture():
     """Create complete reverse-order report evidence with independent exact median expectations."""
     passes=[{f'{e}-{n}-{s}-{p}':parse_growth(output(e,n,s,p),e,n,s,p) for e in order for n,s,p in CASES}
         for order in (ENGINES,tuple(reversed(ENGINES)))]
-    return dict(status='checks-passed',schema_version=5,native_binary_sha256='a'*64,passes=passes,
+    return dict(status='checks-passed',schema_version=6,native_binary_sha256='a'*64,passes=passes,
         cases=aggregate_growth(passes),checks=[dict(exit_code=0,elapsed_seconds=0.01,log=f'{i}.log') for i in range(49)])
 
 
@@ -133,6 +134,18 @@ class StorageGrowthReportTests(unittest.TestCase):
                 self.assertIsNone(case['engines']['journal'])
                 self.assertIsNotNone(case['engines']['managed'])
                 self.assertIsNone(case['ratios']['managed'])
+
+    def test_retained_file_extents_are_explicit_and_stable(self):
+        report=fixture()
+        for observations in report['passes']:
+            for row in observations['managed-1024-64-sweep']:
+                row['retained_snapshot_bytes']+=1
+        with self.assertRaises(ValueError):
+            validate_growth(report)
+        for engine in ('memory','journal'):
+            raw=output(engine,1024,64)
+            rows=parse_growth(raw,engine,1024,64)
+            self.assertEqual(rows[0]['retained_snapshot_bytes'],-1)
 
     def test_physical_work_stays_identical(self):
         report=fixture();report['passes'][1]['managed-1024-64-sweep'][0]['stored_nodes']+=1
