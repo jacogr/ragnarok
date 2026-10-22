@@ -1,0 +1,84 @@
+{
+  "build_name": "state-global-read-contracts",
+  "cases": [
+    {
+      "arguments": [
+        "global-default"
+      ],
+      "description": "Guard global read global-default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "global-default"
+      },
+      "name": "state-global-read-global-default"
+    },
+    {
+      "arguments": [
+        "global-missing"
+      ],
+      "description": "Guard global read global-missing",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "global-missing"
+      },
+      "name": "state-global-read-global-missing"
+    },
+    {
+      "arguments": [
+        "global-limit"
+      ],
+      "description": "Guard global read global-limit",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "global-limit"
+      },
+      "name": "state-global-read-global-limit"
+    },
+    {
+      "arguments": [
+        "plan-duplicate"
+      ],
+      "description": "Guard global read plan-duplicate",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "plan-duplicate"
+      },
+      "name": "state-global-read-plan-duplicate"
+    },
+    {
+      "arguments": [
+        "planned-default"
+      ],
+      "description": "Guard global read planned-default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "planned-default"
+      },
+      "name": "state-global-read-planned-default"
+    },
+    {
+      "arguments": [
+        "planned-proof-reason"
+      ],
+      "description": "Guard global read planned-proof-reason",
+      "diagnostic": "outcome.status == ProofFailure",
+      "identity": {
+        "reason": "planned-proof-reason"
+      },
+      "name": "state-global-read-planned-proof-reason"
+    },
+    {
+      "arguments": [
+        "planned-limit"
+      ],
+      "description": "Guard global read planned-limit",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "planned-limit"
+      },
+      "name": "state-global-read-planned-limit"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_global_read_contracts.nim"
+}

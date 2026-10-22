@@ -148,3 +148,12 @@ an authenticated fact; default plans/views refuse and explicit empty projections
 service account and proven absence, performs typed chapter reads before/after RPV1 transport,
 checks exact scope and count/byte policies, and measures zero backend work during projection.
 Complete-map authority is never inferred from the number of retained global chapters.
+
+## Guarded outcomes and ownership
+
+Global/planned result discriminators, payloads and nested reasons remain private. Five compiler
+privacy fixtures reject external field access. Seven registered runtime probes require the exact
+success/nested-failure assertion for default, missing, limited and duplicate outcomes; a positive
+control performs actual successful extraction. `state_global_read_lifecycle` repeatedly invokes
+every typed global family, all sixteen chapter captures, exact projection and refusal paths across
+1000 ARC cycles after warmup, requiring identical live allocation before/after.
