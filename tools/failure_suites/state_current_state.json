@@ -1,0 +1,77 @@
+{
+  "build_name": "state-current-state-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard current state default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-current-state-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard current state invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-current-state-invalid"
+    },
+    {
+      "arguments": [
+        "manifest"
+      ],
+      "description": "Guard current state manifest",
+      "diagnostic": "outcome.status == ManifestFailure",
+      "identity": {
+        "reason": "manifest"
+      },
+      "name": "state-current-state-manifest"
+    },
+    {
+      "arguments": [
+        "inventory"
+      ],
+      "description": "Guard current state inventory",
+      "diagnostic": "outcome.status == InventoryFailure",
+      "identity": {
+        "reason": "inventory"
+      },
+      "name": "state-current-state-inventory"
+    },
+    {
+      "arguments": [
+        "globals"
+      ],
+      "description": "Guard current state globals",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "globals"
+      },
+      "name": "state-current-state-globals"
+    },
+    {
+      "arguments": [
+        "facts"
+      ],
+      "description": "Guard current state facts",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "facts"
+      },
+      "name": "state-current-state-facts"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_state_results.nim"
+}
