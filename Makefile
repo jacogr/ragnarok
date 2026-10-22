@@ -83,7 +83,7 @@ sources:
 	mkdir -p build/ci
 	$(PYTHON) tools/setup_submodules.py 2>&1 | tee build/ci/sources.log
 
-# Ubuntu installs missing native prerequisites here, so CI needs no separate package/bootstrap recipe.
+# Ubuntu installs missing prerequisites with bounded network waits and retained pre-toolchain logs.
 host-tools:
 	@if [ "$$(uname -s)" = Linux ] && command -v apt-get >/dev/null; then \
 	  packages='build-essential clang lld cmake zlib1g-dev openssl'; missing=0; \
@@ -91,8 +91,10 @@ host-tools:
 	    if [ "$$(dpkg-query -W -f='$${Status}' "$$package" 2>/dev/null || true)" != 'install ok installed' ]; then missing=1; fi; \
 	  done; \
 	  if [ "$$missing" = 1 ]; then \
-	    sudo apt-get update; \
-	    sudo apt-get install --no-install-recommends -y $$packages; \
+	    mkdir -p build/ci; \
+	    apt_options='-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=60'; \
+	    sudo timeout --kill-after=10s 300s apt-get $$apt_options -o APT::Update::Error-Mode=any update 2>&1 | tee build/ci/host-tools-update.log; \
+	    sudo apt-get $$apt_options install --no-install-recommends -y $$packages 2>&1 | tee build/ci/host-tools-install.log; \
 	  fi; \
 	fi
 

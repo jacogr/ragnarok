@@ -118,6 +118,85 @@ assert not any(name.startswith('test_') for name in sys.modules)
                 self.assertTrue((destination/'environment.json').is_file())
                 self.assertTrue((destination/'env.sh').is_file())
 
+    def test_host_package_network_bounds_and_failure_logs(self):
+        """Bound stalled updates, retain setup diagnostics, and stop after package-manager failures."""
+        cases = (('Linux', False, '', False), ('Linux', False, 'update', False),
+                 ('Linux', False, 'install', False), ('Linux', False, '', True),
+                 ('Linux', True, '', False), ('Darwin', False, '', False))
+        for system, ready, failure, timeout in cases:
+            # Fake every privileged/network command; execute the real Make recipe on both host branches.
+            with self.subTest(system=system, ready=ready, failure=failure, timeout=timeout), tempfile.TemporaryDirectory() as temporary:
+                folder = Path(temporary)
+                shutil.copyfile(ROOT/'Makefile', folder/'Makefile')
+                (folder/'spec').mkdir()
+                shutil.copyfile(ROOT/'spec/bandersnatch-pins.json', folder/'spec/bandersnatch-pins.json')
+                binary = folder/'bin'
+                binary.mkdir()
+                stub = '#!'+sys.executable+'\n'+r"""import json, os, sys
+from pathlib import Path
+name = Path(sys.argv[0]).name
+args = sys.argv[1:]
+if name == 'uname':
+    print(os.environ['FIXTURE_SYSTEM'])
+    sys.exit(0)
+if name == 'dpkg-query':
+    if os.environ['FIXTURE_READY'] == '1':
+        print('install ok installed')
+        sys.exit(0)
+    sys.exit(1)
+with Path('calls').open('a') as output:
+    output.write(json.dumps([name, *args])+'\n')
+if name == 'sudo':
+    os.execvp(args[0], args)
+if name == 'timeout':
+    if os.environ['FIXTURE_TIMEOUT'] == '1':
+        print('deliberate update deadline', file=sys.stderr)
+        sys.exit(124)
+    os.execvp(args[2], args[2:])
+stage = 'update' if args[-1] == 'update' else 'install'
+print(stage+' fixture output')
+if os.environ['FIXTURE_FAILURE'] == stage:
+    print('deliberate '+stage+' failure', file=sys.stderr)
+    sys.exit(7)
+"""
+                for name in ('uname', 'dpkg-query', 'sudo', 'timeout', 'apt-get'):
+                    # PATH resolves to these fixtures before any host executable, including sudo.
+                    command = binary/name
+                    command.write_text(stub)
+                    command.chmod(0o755)
+                environment = dict(os.environ, PATH=str(binary)+os.pathsep+os.environ['PATH'],
+                    FIXTURE_SYSTEM=system, FIXTURE_READY=str(int(ready)),
+                    FIXTURE_FAILURE=failure, FIXTURE_TIMEOUT=str(int(timeout)))
+                result = subprocess.run(['make', 'host-tools', 'PYTHON='+sys.executable], cwd=folder,
+                    env=environment, capture_output=True, text=True, timeout=10)
+                if system != 'Linux' or ready:
+                    # Provisioned hosts and non-APT hosts never enter privileged setup.
+                    self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+                    self.assertFalse((folder/'calls').exists())
+                    continue
+                self.assertEqual(result.returncode == 0, not failure and not timeout, result.stdout+result.stderr)
+                calls = [json.loads(line) for line in (folder/'calls').read_text().splitlines()]
+                bounded = next(row for row in calls if row[0] == 'sudo')
+                self.assertEqual(bounded[:5], ['sudo', 'timeout', '--kill-after=10s', '300s', 'apt-get'])
+                self.assertIn('APT::Update::Error-Mode=any', bounded)
+                for row in (row for row in calls if row[0] == 'apt-get'):
+                    # Both network stages retain bounded acquisition retries and lock waits.
+                    for option in ('Acquire::Retries=3', 'Acquire::http::Timeout=30',
+                                   'Acquire::https::Timeout=30', 'DPkg::Lock::Timeout=60'):
+                        self.assertIn(option, row)
+                update = (folder/'build/ci/host-tools-update.log').read_text()
+                if timeout or failure == 'update':
+                    # A timed-out or failed update cannot be hidden by tee or proceed to installation.
+                    self.assertIn('deliberate', update)
+                    self.assertFalse(any(row[0] == 'apt-get' and 'install' in row for row in calls))
+                    self.assertFalse((folder/'build/ci/host-tools-install.log').exists())
+                else:
+                    self.assertIn('update fixture output', update)
+                    install = (folder/'build/ci/host-tools-install.log').read_text()
+                    self.assertIn('install fixture output', install)
+                    if failure:
+                        self.assertIn('deliberate install failure', install)
+
     # Real Make must recover from an absent build tree and preserve a failed command through tee.
     def test_clean_bootstrap_and_failure_status(self):
         with tempfile.TemporaryDirectory() as temporary:
