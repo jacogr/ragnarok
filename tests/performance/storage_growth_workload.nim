@@ -18,8 +18,8 @@ proc main() {.raises.} =
   assert paramCount() == 6
   let engine = paramStr(1)
   assert engine in ["memory", "journal", "managed"]
-  assert paramStr(2) in ["1024", "8192"] and paramStr(3) in ["64", "256"]
-  let count = if paramStr(2) == "1024": 1024 else: 8192
+  assert paramStr(2) in ["1024", "8192", "32768"] and paramStr(3) in ["64", "256"]
+  let count = if paramStr(2) == "1024": 1024 elif paramStr(2) == "8192": 8192 else: 32768
   let publications = if paramStr(3) == "64": 64 else: 256
   let folder = paramStr(4)
   assert paramStr(5) in ["1", "13"]
@@ -28,6 +28,7 @@ proc main() {.raises.} =
     assert samples == 1 # Counter witnesses are separate single runs, never speed samples.
   let pattern = paramStr(6)
   assert pattern in ["sweep", "hot"]
+  assert count != 32768 or pattern == "sweep" # Bound the largest matrix to two representative sweep trajectories.
   let hot = pattern == "hot"
   let limits = growthLimits()
   let journal = JournalLimits(repository: limits, bytes: ByteLimit(33554432))

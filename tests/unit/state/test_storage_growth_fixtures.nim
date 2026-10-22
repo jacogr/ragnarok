@@ -9,7 +9,9 @@ import ../../../src/codec/state_layout
 
 for hot in [false, true]:
   # Hot keys revisit256 identities; sweep keys advance across the full map.
-  for count in [1024, 8192]:
+  for count in [1024, 8192, 32768]:
+    if hot and count == 32768:
+      continue # The largest benchmark uses only the explicitly bounded sweep trajectories.
     # Both map sizes exercise exactly the same bounded four-key updates and independently authored maps.
     for publications in [64, 256]:
       let fixture = prepareGrowth(count, publications, hot)

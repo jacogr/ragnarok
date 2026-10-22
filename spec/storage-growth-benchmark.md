@@ -67,3 +67,11 @@ fault/short-progress control. It observes one complete sample per configured tra
 only operation counts. Ordinary speed builds compile observation away and never link the
 observer. Counter snapshots precede printing; reset boundaries exclude setup, validation,
 fixture cleanup and owner close outside the named operation. No production fault hook is added.
+
+## Bounded larger-state cases
+
+Add 32,768-entry sweep trajectories at 64/256 publications while keeping hot/sweep comparisons at
+1,024/8,192 entries. The exact case plan is ten trajectories per backend and opposite-order pass.
+Fixture policies allow 32,768 values of 256 bytes and 100,000 nodes, with explicit separate aggregate
+record/value/frame budgets. Selected snapshot/journal limits remain bounded at 32 MiB. These are
+benchmark-only budgets, not a production policy or state-interface change.

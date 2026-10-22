@@ -53,7 +53,7 @@ def run_growth(compiler,library,folder,publish):
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
     for name in ('results.json','samples.csv','publications.csv','io/results.json','io/calls.csv'):
         (folder/name).unlink(missing_ok=True)
-    report=dict(status='running',schema_version=10,checks=[],passes=[],cases=[])
+    report=dict(status='running',schema_version=11,checks=[],passes=[],cases=[])
     def save():
         # Parent source/profile/toolchain provenance covers this panel and all SOURCES explicitly.
         publish(folder/'results.json',json.dumps(report,indent=2)+'\n')

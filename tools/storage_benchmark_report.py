@@ -11,7 +11,7 @@ from storage_growth_report import summarize_growth
 from storage_growth import SOURCES as GROWTH_SOURCES
 from storage_growth_io import SOURCE_FIELDS as IO_SOURCE_FIELDS
 
-REPORT_VERSION=22
+REPORT_VERSION=23
 PROFILE='checked native ARC/Clang release opt:speed boundchecks:on LTO'
 NATIVE_SOURCES=('native/crypto/primitive_bridge.c','native/crypto/primitive_bridge.h',
     'native/crypto/rust_primitives.h','native/bandersnatch/Cargo.lock','tools/build_bandersnatch.py',
