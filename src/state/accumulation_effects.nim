@@ -725,9 +725,50 @@ proc effectAccountInfo*(context: AccumulationEffectContext, service: ServiceInde
   AccumulationEffectResult[array[AccumulationAccountInfoBytes, byte]](
     status: AccumulationEffectError.None, completed: bytes)
 
+# Decode one bounded current record without hashing or fabricating a missing participant.
+proc currentAccountMetadata(accounts: StateStoreSnapshot, service: ServiceIndex):
+    AccumulationEffectResult[ServiceMetadata] =
+  let found = accounts.lookup(chapterServiceKey(StateChapter(255), service))
+  if found.error == StateStoreError.MissingKey:
+    return AccumulationEffectResult[ServiceMetadata](
+        status: AccumulationEffectError.UnknownService) # Existence precedes authority.
+  if found.error != StateStoreError.None:
+    return AccumulationEffectResult[ServiceMetadata](
+        status: AccumulationEffectError.InvalidState) # Invalid snapshots cannot prove absence.
+  if found.value.byteLength != ServiceMetadataBytes:
+    return AccumulationEffectResult[ServiceMetadata](
+        status: AccumulationEffectError.MalformedState) # Bound the canonical metadata copy first.
+  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
+  if decoded.error != ServiceMetadataError.None:
+    return AccumulationEffectResult[ServiceMetadata](
+        status: AccumulationEffectError.MalformedState) # No malformed identity may authorize reassignment.
+  AccumulationEffectResult[ServiceMetadata](status: AccumulationEffectError.None,
+      completed: decoded.value.metadata)
+
+# Effective supervision binds the designated service incarnation; missing/recreated accounts fall back to self.
+proc effectiveSupervisor(accounts: StateStoreSnapshot, service: ServiceIndex,
+    metadata: ServiceMetadata): AccumulationEffectResult[ServiceIndex] =
+  if uint32(metadata.supervisor) == uint32(service):
+    return AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None,
+        completed: service) # Self designation and fallback select the same authority.
+  let designated = currentAccountMetadata(accounts, metadata.supervisor)
+  if designated.error == AccumulationEffectError.UnknownService:
+    return AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None,
+        completed: service) # A missing designation grants no authority to a future account.
+  if designated.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[ServiceIndex](
+        status: designated.error) # Malformed backing is a local refusal, not a guessed fallback.
+  let selected = if uint32(designated.value.created) == uint32(metadata.supervisorCreated):
+    metadata.supervisor
+  else:
+    service # Reusing an ID with a different creation slot cannot inherit authority.
+  AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None, completed: selected)
+
 proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openArray[byte],
-    parameters: Parameters, limit: ByteLimit): AccumulationEffectResult[AccumulationStorageChange] =
-  ## Apply one raw self-storage mutation atomically, retaining both initial provenance and checkpoint.
+    parameters: Parameters, limit: ByteLimit, target: ServiceIndex): AccumulationEffectResult[
+        AccumulationStorageChange] =
+  ## Apply one raw self/supervised storage mutation atomically, retaining initial provenance and checkpoint.
+  ## UnknownService/NotRequested distinguish absent targets from unauthorized writes before namespace hashing.
   ## Borrowed bytes remain stable during this call; the complete-map store independently captures accepted values.
   ## Empty values delete the key. Success retains the successor and distinguishes absent/present-empty prior values.
   ## StorageFull is a funding refusal; copy/store limits, malformed counters and backend failure publish no successor.
@@ -743,15 +784,21 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
     fail(AccumulationEffectError.LimitExceeded) # Bound both borrowed extents before hashing/allocation.
   let previous = data.regular.data
   assert previous != nil # Private constructors retain complete current account snapshots.
-  let service = previous.initial.contextInfo.value.service
+  let self = previous.initial.contextInfo.value.service
+  let service = target
   let accountKey = chapterServiceKey(StateChapter(255), service)
-  let account = previous.accounts.lookup(accountKey)
-  if account.error != StateStoreError.None or account.value.byteLength != ServiceMetadataBytes:
-    fail(AccumulationEffectError.MalformedState) # Self must have complete canonical metadata.
-  let decoded = decodeServiceMetadata(account.value.bytes, ByteLimit(ServiceMetadataBytes))
-  if decoded.error != ServiceMetadataError.None:
-    fail(AccumulationEffectError.MalformedState) # Never repair corrupt metadata as a side effect.
-  var metadata = decoded.value.metadata
+  let selected = currentAccountMetadata(previous.accounts, service)
+  if selected.error != AccumulationEffectError.None:
+    if selected.error == AccumulationEffectError.UnknownService and uint32(service) == uint32(self):
+      fail(AccumulationEffectError.MalformedState) # Preserve the self API's refusal to reconstruct a missing invoker.
+    fail(selected.error) # Foreign target existence precedes supervision and namespace hashing.
+  var metadata = selected.value
+  if uint32(service) != uint32(self):
+    let authority = effectiveSupervisor(previous.accounts, service, metadata)
+    if authority.error != AccumulationEffectError.None:
+      fail(authority.error) # Malformed supervisor provenance remains a local state refusal.
+    if uint32(authority.value) != uint32(self):
+      fail(AccumulationEffectError.NotRequested) # HUH never hashes or mutates an unauthorized namespace.
   let derived = serviceStorageKey(service, key, limit)
   if derived.error != ServiceValueError.None:
     fail(AccumulationEffectError.BackendFailure) # No alternate namespace on failed hashing.
@@ -791,9 +838,13 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
   let writes = [StateWrite(key: accountKey, kind: StateWriteKind.Put,
       value: encoded.value), StateWrite(key: derived.value,
       kind: (if value.len == 0: StateWriteKind.Delete else: StateWriteKind.Put), value: owned)]
-  let keys = prepareSelfAccountKeys(previous, writes)
-  if keys.error != AccumulationEffectError.None:
-    fail(keys.error) # Trace capacity refusal precedes candidate map hashing.
+  var keys = previous.accountKeys
+  if uint32(service) == uint32(self):
+    let traced = prepareSelfAccountKeys(previous, writes)
+    if traced.error != AccumulationEffectError.None:
+      fail(traced.error) # Self trace capacity refusal precedes candidate map hashing.
+    keys = traced.value # Foreign writes cannot impersonate self-key provenance.
+
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -805,13 +856,28 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
     fail(AccumulationEffectError.BackendFailure) # Merklization failure leaves the source owner untouched.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial successor on any store invariant failure.
-  let candidate = selfAccountData(previous, changed.value, keys.value)
+  let candidate = if uint32(service) == uint32(self):
+    selfAccountData(previous, changed.value, keys)
+  else:
+    successorData(previous, changed.value) # Foreign execution remains unsupported for parallel publication.
   let current = AccumulationEffectContext(data: candidate)
   let successor = AccumulationEffects(data: PairData(source: data.source, regular: current,
     exceptional: data.exceptional))
   AccumulationEffectResult[AccumulationStorageChange](status: AccumulationEffectError.None,
     completed: AccumulationStorageChange(effects: successor, hadValue: hadValue,
       previousBytes: oldBytes))
+
+proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openArray[byte],
+    parameters: Parameters, limit: ByteLimit): AccumulationEffectResult[AccumulationStorageChange] =
+  ## Preserve self-only callers through the same checked target operation and immutable trace publication.
+  let data = effects.data
+  if data == nil:
+    return AccumulationEffectResult[AccumulationStorageChange](
+        status: AccumulationEffectError.Uninitialized) # Defaults own no target.
+  let current = data.regular.data
+  assert current != nil # Private pairs retain both complete dimensions.
+  recordAccumulationStorage(effects, key, value, parameters, limit,
+      current.initial.contextInfo.value.service)
 
 # Numeric order canonicalizes the host's set independently of little-endian wire ordering.
 func comparePrivilege(left, right: AlwaysAccumulate): int =
@@ -1194,45 +1260,6 @@ proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash
   assert current != nil # Private effect pairs retain both initialized dimensions.
   recordAccumulationUpgrade(effects, codeHash, accumulationGas, transferGas,
       current.initial.contextInfo.value.service)
-
-# Decode one bounded current record without hashing or fabricating a missing participant.
-proc currentAccountMetadata(accounts: StateStoreSnapshot, service: ServiceIndex):
-    AccumulationEffectResult[ServiceMetadata] =
-  let found = accounts.lookup(chapterServiceKey(StateChapter(255), service))
-  if found.error == StateStoreError.MissingKey:
-    return AccumulationEffectResult[ServiceMetadata](
-        status: AccumulationEffectError.UnknownService) # Existence precedes authority.
-  if found.error != StateStoreError.None:
-    return AccumulationEffectResult[ServiceMetadata](
-        status: AccumulationEffectError.InvalidState) # Invalid snapshots cannot prove absence.
-  if found.value.byteLength != ServiceMetadataBytes:
-    return AccumulationEffectResult[ServiceMetadata](
-        status: AccumulationEffectError.MalformedState) # Bound the canonical metadata copy first.
-  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
-  if decoded.error != ServiceMetadataError.None:
-    return AccumulationEffectResult[ServiceMetadata](
-        status: AccumulationEffectError.MalformedState) # No malformed identity may authorize reassignment.
-  AccumulationEffectResult[ServiceMetadata](status: AccumulationEffectError.None,
-      completed: decoded.value.metadata)
-
-# Effective supervision binds the designated service incarnation; missing/recreated accounts fall back to self.
-proc effectiveSupervisor(accounts: StateStoreSnapshot, service: ServiceIndex,
-    metadata: ServiceMetadata): AccumulationEffectResult[ServiceIndex] =
-  if uint32(metadata.supervisor) == uint32(service):
-    return AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None,
-        completed: service) # Self designation and fallback select the same authority.
-  let designated = currentAccountMetadata(accounts, metadata.supervisor)
-  if designated.error == AccumulationEffectError.UnknownService:
-    return AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None,
-        completed: service) # A missing designation grants no authority to a future account.
-  if designated.error != AccumulationEffectError.None:
-    return AccumulationEffectResult[ServiceIndex](
-        status: designated.error) # Malformed backing is a local refusal, not a guessed fallback.
-  let selected = if uint32(designated.value.created) == uint32(metadata.supervisorCreated):
-    metadata.supervisor
-  else:
-    service # Reusing an ID with a different creation slot cannot inherit authority.
-  AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None, completed: selected)
 
 proc recordAccumulationSupervisor*(effects: AccumulationEffects, target, supervisor: ServiceIndex):
     AccumulationEffectResult[AccumulationEffects] =

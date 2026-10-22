@@ -37,13 +37,19 @@ proc entries(): seq[StateEntry] =
 proc source(keyAddress = 65536'u64, keyLength = 1'u64, valueAddress = 196608'u64,
     valueLength = 3'u64, credit = 100000'u64, existing = false, balance = 10000'u64,
     gratis = 0'u64, spare = 1, selector = high(uint64), suffix: seq[seq[byte]] = @[@[50'u8,
-        0]]): PreparedAccumulationMachine =
+        0]], extra: seq[StateEntry] = @[]): PreparedAccumulationMachine =
   var code = @[registerImmediate(7, selector), registerImmediate(8, keyAddress),
     registerImmediate(9, keyLength), registerImmediate(10, valueAddress),
     registerImmediate(11, valueLength), @[10'u8, 5]]
   for instruction in suffix:
     code.add(instruction) # Every authored instruction retains its real opcode boundary.
-  guestProgram(code, credit, extra = (if existing: entries() else: @[]),
+  var added: seq[StateEntry] = @[]
+  if existing:
+    for entry in entries():
+      added.add(entry) # Existing self storage retains its original independent fixture.
+  for entry in extra:
+    added.add(entry) # Foreign account/storage rows enter the same complete immutable source map.
+  guestProgram(code, credit, extra = added,
     account = ServiceMetadata(balance: AccountBalance(balance), depositOffset: AccountBalance(
         gratis),
       storageItems: AccountStorageItems(if existing: 1'u32 else: 0'u32),
@@ -51,11 +57,12 @@ proc source(keyAddress = 65536'u64, keyLength = 1'u64, valueAddress = 196608'u64
 
 ## Execute through the actual dispatcher; local copy and machine budgets are independent of protocol gas.
 proc run(prepared: PreparedAccumulationMachine, limit = 64'u64,
-    parameters: Parameters = schedule()): AccumulationDispatchResult =
+    parameters: Parameters = schedule(), traces = 0'u64): AccumulationDispatchResult =
   executeAccumulationMachine(prepared, parameters,
     FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1),
       operand: OperandLimits(maxBytes: ByteLimit(132))), MemoryByteLimit(limit),
-    ExecutionStepLimit(100), HostCallLimit(10), GasCycleLimit(1000), pvmContextConfig())
+    ExecutionStepLimit(100), HostCallLimit(10), GasCycleLimit(1000), pvmContextConfig(),
+    accountWriteKeys = ElementLimit(traces))
 
 ## Actual prepaid block cost is independent of frozen host-price witnesses.
 proc price(prepared: PreparedAccumulationMachine): uint64 =
@@ -149,7 +156,9 @@ assert run(source(spare = 0)).error == AccumulationDispatchError.LimitExceeded
 let selectedSelf = run(source(selector = 42))
 assert selectedSelf.error == AccumulationDispatchError.None and selectedSelf.value.exit == StepExit.Halt
 for selector in [99'u64, 0x10000002a'u64]:
-  assert run(source(selector = selector)).error == AccumulationDispatchError.UnsupportedHostCall
+  let missing = run(source(selector = selector))
+  assert missing.error == AccumulationDispatchError.None and uint64(machineInfo(
+      missing.value.machine).value.registers[7]) == high(uint64)-3, "foreign missing/wide selectors return WHO"
 
 let valid = source()
 failHash(1)
@@ -278,11 +287,133 @@ assert recordAccumulationStorage(baseEffects, @[], @[], default(Parameters), Byt
   AccumulationEffectError.InvalidParameters
 assert recordAccumulationStorage(baseEffects, @[1'u8], @[], schedule(), ByteLimit(0)).error ==
   AccumulationEffectError.LimitExceeded
+# Foreign writes use only the selected target's counters, namespace, funding and current supervisor incarnation.
+proc foreignMetadata(existing = false, supervisor = 42'u32, incarnation = 0'u32,
+    balance = 10000'u64, protected = 17'u64): StateEntry =
+  ## Distinct metadata exposes cross-account debit/reset bugs; only footprint fields are mutable here.
+  serviceMetadataEntry(ServiceIndex(99), ServiceMetadata(supervisor: ServiceIndex(supervisor),
+      supervisorCreated: AccountSlot(incarnation), balance: AccountBalance(balance),
+      supervisorBalance: AccountBalance(protected), minimumAccumulationGas: Gas(23),
+          minimumTransferGas: Gas(29),
+      storageItems: AccountStorageItems(if existing: 1'u32 else: 0'u32),
+      storageBytes: AccountStorageBytes(if existing: 38'u64 else: 0'u64),
+      created: AccountSlot(7), lastAccumulation: AccountSlot(11), parent: ServiceIndex(13)),
+      ByteLimit(ServiceMetadataBytes)).value
+let foreignKey = serviceStorageKey(ServiceIndex(99), @[73'u8], ByteLimit(1)).value
+let oldForeign = serviceStorageEntry(ServiceIndex(99), @[73'u8], @[3'u8, 4, 5],
+    ServiceEntryLimits(keyBytes: ByteLimit(1), valueBytes: ByteLimit(3))).value
+for existing in [false, true]:
+  for length in [0'u64, 1, 3]:
+    let account = foreignMetadata(existing)
+    var extra = @[account]
+    if existing:
+      extra.add(oldForeign) # Counters and the exact prior value are independently coherent.
+    let prepared = source(selector = 99, valueLength = length, extra = extra)
+    let done = run(prepared)
+    assert done.error == AccumulationDispatchError.None and done.value.exit == StepExit.Halt,
+        "supervised target write completes"
+    assert uint64(machineInfo(done.value.machine).value.registers[7]) ==
+        (if existing: 3'u64 else: high(uint64)), "foreign write reports only its own previous value length"
+    let current = accounts(done)
+    let wire = current.lookup(account.key).value.bytes
+    let facts = decodeServiceMetadata(wire, ByteLimit(ServiceMetadataBytes)).value.metadata
+    assert uint32(facts.storageItems) == (if length == 0: 0'u32 else: 1'u32) and
+        uint64(facts.storageBytes) == (if length == 0: 0'u64 else: 35+length), "foreign footprint follows exact raw-key/value bytes"
+    for index in 0..<ServiceMetadataBytes:
+      if index notin 73..80 and index notin 89..92:
+        assert wire[index] == account.value[index], "all foreign non-footprint metadata stays byte-identical"
+    assert current.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(42))).value.bytes ==
+        accounts(done, exceptional).lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
+            42))).value.bytes,
+        "foreign storage does not modify invoker metadata"
+    assert accounts(done, exceptional).lookup(account.key).value.bytes == account.value,
+        "prior checkpoint keeps original target metadata"
+    let found = current.lookup(foreignKey)
+    assert found.error == (if length == 0: StateStoreError.MissingKey else: StateStoreError.None),
+        "foreign key insertion/deletion uses the selected namespace"
+    assert done.effects.effectContext(regular).value.effectAccountScope.value ==
+        AccumulationAccountScope.Unsupported,
+        "foreign storage needs parallel modified-account publication proof"
+# WHO/HUH do not attempt namespace hashing, and memory faults retain priority for every selector.
+for selector in [100'u64, uint64(high(uint32))+43, high(uint64)-1]:
+  let prepared = source(selector = selector)
+  failHash(1)
+  let rejected = run(prepared)
+  assert uint64(machineInfo(rejected.value.machine).value.registers[7]) == high(uint64)-3 and
+      hashCalls() == 0,
+      "missing target returns WHO before namespace work"
+  failHash(0)
+  let fault = run(source(selector = selector, keyAddress = 0))
+  assert fault.value.exit == StepExit.Panic and uint64(machineInfo(
+      fault.value.machine).value.registers[7]) == selector,
+      "memory panic precedes target absence"
+for account in [foreignMetadata(supervisor = 99), foreignMetadata(incarnation = 1)]:
+  let prepared = source(selector = 99, extra = @[account])
+  failHash(1)
+  let rejected = run(prepared)
+  assert uint64(machineInfo(rejected.value.machine).value.registers[7]) == high(uint64)-8 and
+      hashCalls() == 0,
+      "unauthorized or stale supervisor receives HUH without namespace hashing"
+  failHash(0)
+# Target funding combines its own two balances, regardless of the invoker's larger liquid balance.
+for protected in [37'u64, 38]:
+  let account = foreignMetadata(balance = 0, protected = protected)
+  let done = run(source(selector = 99, extra = @[account]), parameters = schedule(base = 0, item = 0))
+  assert uint64(machineInfo(done.value.machine).value.registers[7]) ==
+      (if protected == 38: high(uint64) else: high(uint64)-4), "target funding determines exact FULL boundary"
+  assert uint64(decodeServiceMetadata(accounts(done).lookup(account.key).value.bytes,
+      ByteLimit(ServiceMetadataBytes)).value.metadata.supervisorBalance) == protected,
+      "storage reservation does not debit supervisor funds"
+# Retain genuine policy/backend refusals and old account owners for the new state API overload.
+let foreignAccount = foreignMetadata()
+let foreignSource = source(selector = 99, extra = @[foreignAccount])
+let foreignEffects = prepareAccumulationEffects(prepareAccumulationContexts(
+    foreignSource.machineBootstrap.value, pvmContextConfig()).value).value
+assert recordAccumulationStorage(default(AccumulationEffects), @[], @[], schedule(), ByteLimit(0),
+    ServiceIndex(99)).error == AccumulationEffectError.Uninitialized, "default effects grant no target namespace"
+let accepted = recordAccumulationStorage(foreignEffects, @[73'u8], @[81'u8], schedule(), ByteLimit(
+    1), ServiceIndex(99)).value.effects
+let restoredForeign = recordAccumulationStorage(accepted, @[73'u8], @[], schedule(), ByteLimit(1),
+    ServiceIndex(99)).value.effects
+let laterSelf = recordAccumulationStorage(restoredForeign, @[73'u8], @[], schedule(), ByteLimit(
+    1)).value.effects
+assert laterSelf.effectContext(regular).value.effectAccountScope.value ==
+    AccumulationAccountScope.Unsupported,
+    "foreign restoration and later self writes cannot erase broad mutation ancestry"
+let tracedForeign = run(foreignSource, traces = 1)
+let tracedSelf = recordAccumulationStorage(tracedForeign.effects, @[73'u8], @[], schedule(),
+    ByteLimit(1)).value.effects
+assert tracedSelf.effectContext(regular).value.effectAccountScope.value ==
+    AccumulationAccountScope.Unsupported,
+    "enabled bounded self tracing cannot relabel earlier foreign ancestry"
+for successful in [0, 1, 3]:
+  failAfter(cint(successful))
+  let refused = recordAccumulationStorage(foreignEffects, @[73'u8], @[81'u8], schedule(), ByteLimit(
+      1), ServiceIndex(99))
+  assert refused.error == AccumulationEffectError.BackendFailure, "foreign namespace/candidate hash refusal stays atomic"
+  failHash(0)
+  assert foreignEffects.effectContext(regular).value.effectAccounts.value.lookup(
+      foreignAccount.key).value.bytes == foreignAccount.value,
+      "failed foreign write retains original metadata"
+assert run(source(selector = 99, extra = @[foreignAccount], spare = 0)).error ==
+    AccumulationDispatchError.LimitExceeded, "foreign key growth obeys inherited store bounds"
+for checkpoint in [false, true]:
+  let failed = run(source(selector = 99, extra = @[foreignAccount], suffix = (if checkpoint:
+    @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]])))
+  let selected = normalizeAccumulationOutcome(failed).value.outcomeContext.value
+  assert (selected.effectAccounts.value.lookup(foreignKey).error == StateStoreError.None) ==
+      checkpoint,
+      "panic selects the matching foreign storage checkpoint"
+  assert (selected.effectAccountScope.value == AccumulationAccountScope.Unsupported) == checkpoint,
+      "checkpoint ownership keeps foreign ancestry paired"
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let done = run(valid)
   assert stored(accounts(done)).value.bytes == @[81'u8, 0,
       0] # Every execution releases all private candidate maps.
+  let foreignDone = run(foreignSource)
+  assert accounts(foreignDone).lookup(foreignKey).value.bytes == @[81'u8, 0, 0],
+      "every supervised execution releases its complete foreign candidate"
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("pvm_accumulation_write", 1000, before, after)

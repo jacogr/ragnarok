@@ -75,6 +75,8 @@ of "transfer-prepare": discard prepareAccumulationTransfer(pair, AccumulationTra
   TransferBalance(0), Gas(0), default(TransferMemo), default(Parameters)).value # Failed validation has no plan.
 of "transfer-commit": discard commitAccumulationTransfer(default(PreparedAccumulationTransfer),
   ElementLimit(0)).value # Default plans cannot publish a successor.
+of "storage-target": discard recordAccumulationStorage(pair, @[], @[], default(Parameters),
+    ByteLimit(0), ServiceIndex(99)).value # Failed target writes expose no successor or prior-value facts.
 of "supervisor": discard recordAccumulationSupervisor(pair, ServiceIndex(42), ServiceIndex(
     99)).value # Failed reassignment carries no effects.
 of "upgrade": discard recordAccumulationUpgrade(pair, default(CodeHash), Gas(0), Gas(

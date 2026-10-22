@@ -245,6 +245,17 @@
     },
     {
       "arguments": [
+        "storage-target"
+      ],
+      "description": "Accumulation target storage selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "storage-target"
+      },
+      "name": "accumulation-effect-storage-target"
+    },
+    {
+      "arguments": [
         "account-info"
       ],
       "description": "Accumulation account info selected-success guard",

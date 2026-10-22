@@ -337,15 +337,23 @@ proc writeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid owners never authorize state writes.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let self = uint64(uint32(current.effectInfo.value.service))
-  if uint64(cpu.registers[7]) != high(uint64) and uint64(cpu.registers[7]) != self:
-    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Foreign supervised writes require their mutation/publication path.
+  let raw = uint64(cpu.registers[7])
+  let target = if raw == high(uint64): self else: raw
+  if target > uint64(high(uint32)):
+    response.registers[7] = RegisterValue(high(uint64)-3)
+    return hostSuccess[AccumulationDispatchError](
+        response) # Complete memory capture precedes WHO without narrowing full-width IDs.
   let changed = recordAccumulationStorage(context.effects, key.value, value.value,
-    context.parameters, ByteLimit(uint64(context.copyLimit)))
+    context.parameters, ByteLimit(uint64(context.copyLimit)), ServiceIndex(uint32(target)))
   case changed.error
   of AccumulationEffectError.None:
     context.effects = changed.value.effects # Publish only a complete metadata/storage successor.
     response.registers[7] = RegisterValue(if changed.value.hadValue:
       uint64(changed.value.previousBytes) else: high(uint64))
+  of AccumulationEffectError.UnknownService:
+    response.registers[7] = RegisterValue(high(uint64)-3) # WHO precedes authority and funding.
+  of AccumulationEffectError.NotRequested:
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH retains both implication dimensions.
   of AccumulationEffectError.StorageFull:
     response.registers[7] = RegisterValue(high(uint64)-4) # FULL preserves the prior pair.
   of AccumulationEffectError.LimitExceeded:
