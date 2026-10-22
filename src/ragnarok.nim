@@ -10,7 +10,7 @@
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
 import ./quic/[session, transport, integration, offload]
-import ./app/[options, download_command]
+import ./app/[options, download_command, current_download_command]
 import ./version
 
 # CLI entry point returns through all normal ARC/native teardown before process exit.
@@ -30,6 +30,8 @@ proc main(): int =
       stdout.writeLine("Usage: ragnarok server|client PORT CERT KEY PEER ALPN TIMEOUT [MODE] [OPTIONS]")
       stdout.writeLine("       ragnarok mesh LOCAL_PORT REMOTE_PORT CERT KEY LOCAL_KEY PEER_KEY ALPN GATE [OPTIONS]")
       stdout.writeLine("       ragnarok download PORT CERT KEY PEER ALPN TIMEOUT POLICY [PORT PEER ...] [OPTIONS]")
+      stdout.writeLine("       ragnarok download-current PORT CERT KEY PEER ALPN TIMEOUT CURRENT_POLICY [PORT PEER ...] [OPTIONS]")
+      stdout.writeLine("         download-current requires ragnarok-current-download-policy-v1; discovery permission must match the requested mode.")
       stdout.writeLine("       ragnarok --version | --help")
       stdout.writeLine("Options: --with-telemetry --telemetry HOST:PORT --chain FILE")
       stdout.writeLine("         --with-rpc --rpc-port NUMBER --with-ui --ui-port NUMBER --dev-ui-dir DIRECTORY")
@@ -42,11 +44,11 @@ proc main(): int =
       stdout.writeLine("         --state-migrate-from LEGACY_PATH (managed only; requires a separate new --state-db destination)")
       stdout.writeLine("         --state-checkpoint FILE --state-trust FILE --state-header FILE --state-checkpoint-bytes BYTES")
       stdout.writeLine("         Checkpoint imports require independent trusted identity/header; restart retains one unfinalized head.")
-      stdout.writeLine("         --download-ancestor FILE (repeat newest-first; download only, maximum 64)")
-      stdout.writeLine("         --download-local-ancestors (download only; prepend all retained local parents)")
-      stdout.writeLine("         --download-remote-ancestors COUNT (download only; fetch up to 1..64 older parents)")
-      stdout.writeLine("         --download-discover-ancestors COUNT (download only; fetch on demand, 1..64 headers per run)")
-      stdout.writeLine("         --download-blocks COUNT (download only, default 1, range 1..64)")
+      stdout.writeLine("         --download-ancestor FILE (repeat newest-first; download commands only, maximum 64)")
+      stdout.writeLine("         --download-local-ancestors (download commands only; prepend all retained local parents)")
+      stdout.writeLine("         --download-remote-ancestors COUNT (download commands only; fetch up to 1..64 older parents)")
+      stdout.writeLine("         --download-discover-ancestors COUNT (download commands only; fetch on demand, 1..64 headers per run)")
+      stdout.writeLine("         --download-blocks COUNT (download commands only, default 1, range 1..64)")
       stdout.writeLine("State limits are unsigned budgets; supplied complete state is structurally checked.")
       return 0
     if options.argumentCount() >= 1 and options.argument(1) == "download":
@@ -59,6 +61,16 @@ proc main(): int =
         return 0 # Command owners have already retired callbacks and canonical Services.
       stderr.writeLine("DOWNLOAD_FAILED " & $outcome.error)
       return 2 # Invalid/unavailable/exhausted downloads never imply an adopted child.
+    if options.argumentCount() >= 1 and options.argument(1) == "download-current":
+      let outcome = runCurrentDownloads(options)
+      if outcome.requestedBlocks > 1:
+        stdout.writeLine("CURRENT_DOWNLOAD_PROGRESS adopted=" & $outcome.adoptedBlocks &
+          " requested=" & $outcome.requestedBlocks) # Only confirmed actual prefix progress survives joined teardown.
+      if outcome.error == CurrentDownloadCommandResult.Adopted:
+        stdout.writeLine("CURRENT_DOWNLOAD_ADOPTED")
+        return 0 # Native streams, current execution and durable/RPC leases have already retired.
+      stderr.writeLine("CURRENT_DOWNLOAD_FAILED " & $outcome.error)
+      return 2 # A refused/exhausted current run does not imply successful adoption.
     # Retained dual-role peers have a separate bounded CLI and preserve normal proof workloads.
     if options.argumentCount() >= 1 and options.argument(1) == "mesh":
       let baseline = getOccupiedMem()

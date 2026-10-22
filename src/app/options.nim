@@ -312,16 +312,18 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
   if candidate.chain.len > 0 and not (candidate.telemetry or candidate.rpc or
       candidate.ui or candidate.state): return false
   if candidate.ui and candidate.uiNumber == candidate.rpcNumber: return false
+  let downloadCommand = candidate.positional.len > 0 and
+    candidate.positional[0] in ["download", "download-current"] # Both explicit pipelines share only command-shape validation.
   if candidate.telemetry or candidate.rpc or candidate.ui or candidate.state or
       candidate.management:
-    if candidate.positional.len == 0 or candidate.positional[0] notin ["server", "client", "mesh", "download"]:
+    if candidate.positional.len == 0 or candidate.positional[0] notin ["server", "client", "mesh",
+        "download", "download-current"]:
       return false # Socket services belong to network commands, never no-socket selftests.
-  if candidate.positional.len > 0 and candidate.positional[0] == "download":
+  if downloadCommand:
     if not candidate.state or candidate.telemetry: return false # Downloads require explicit canonical state; outgoing telemetry is not wired yet.
   if candidate.ancestorFiles.len > 0 or "--download-blocks" in seen or candidate.localAncestors or
       candidate.remoteAncestors > 0 or candidate.discoverAncestors > 0:
-    if candidate.positional.len == 0 or candidate.positional[0] != "download" or
-        not candidate.state:
+    if not downloadCommand or not candidate.state:
       return false # Other commands must not silently ignore supplied download controls.
   if candidate.remoteAncestors > 0 and candidate.discoverAncestors > 0:
     return false # Up-front fixed acquisition and child-driven discovery are explicit alternative command modes.
