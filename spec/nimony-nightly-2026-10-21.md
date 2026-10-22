@@ -63,3 +63,11 @@ controls also preserved every stored byte. These are compatibility controls, not
 resource panels or new speed/resource measurements. Earlier production-module/guard verification
 covers unchanged runtime sources and compiler pins; the new storage inputs have this additional
 qualification. Local raw evidence is under `build/ci/nimony-storage-*`.
+
+The subsequent memory-ceiling tranche was reconciled through master `ebd27f7b` with the same
+held compiler pin. All 46 newly changed master files are byte-identical to master; no runtime,
+build-profile or compiler-pin adjustment was needed. All 148 storage Python safeguards and
+46 Make/CI safeguards passed. `make bench-storage-memory-ceilings` and its setup-free summary
+passed: eight unrestricted native consumers validated complete maps and retained selected bytes;
+three Darwin probes and all twelve capped attempts remained explicitly unavailable. This supplies
+no Linux limit-enforcement evidence. The candidate remains held pending the next published nightly.
