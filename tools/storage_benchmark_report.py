@@ -10,7 +10,7 @@ import statistics
 from storage_growth_report import summarize_growth
 from storage_growth import SOURCES as GROWTH_SOURCES
 
-REPORT_VERSION=14
+REPORT_VERSION=15
 PROFILE='checked native ARC/Clang release opt:speed boundchecks:on LTO'
 REQUIRED_SOURCES=('tests/performance/storage_workload.nim','tests/support/managed_storage_samples.nim',
     'tests/support/storage_samples.nim','tools/storage_benchmark.py','tools/storage_benchmark_report.py',

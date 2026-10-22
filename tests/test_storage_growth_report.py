@@ -30,7 +30,7 @@ def fixture():
     """Create complete reverse-order report evidence with independent exact median expectations."""
     passes=[{f'{e}-{n}-{s}-{p}':parse_growth(output(e,n,s,p),e,n,s,p) for e in order for n,s,p in CASES}
         for order in (ENGINES,tuple(reversed(ENGINES)))]
-    return dict(status='checks-passed',schema_version=3,native_binary_sha256='a'*64,passes=passes,
+    return dict(status='checks-passed',schema_version=4,native_binary_sha256='a'*64,passes=passes,
         cases=aggregate_growth(passes),checks=[dict(exit_code=0,elapsed_seconds=0.01,log=f'{i}.log') for i in range(49)])
 
 
@@ -43,6 +43,29 @@ class StorageGrowthReportTests(unittest.TestCase):
         self.assertEqual(cases[0]['engines']['memory']['median_ns'],107.5*64)
         self.assertIn('Sustained storage workload',summarize_growth(report))
         self.assertIn('Strict disk reopen | — |',summarize_growth(report))
+
+    def test_latency_tails_and_normalized_work_are_raw_derived(self):
+        report=fixture();latency=report['cases'][0]['engines']['memory']['latency']
+        self.assertEqual(latency['calls'],1280)
+        self.assertEqual(latency['median_ns'],107.5)
+        self.assertEqual(latency['p95_ns'],112)
+        self.assertEqual(latency['max_ns'],112)
+        self.assertEqual(latency['mean_call_ns'],107.5)
+        self.assertAlmostEqual(latency['writes_per_second'],4e9/107.5)
+        self.assertIn('correlated',summarize_growth(report))
+
+    def test_latency_warmups_are_excluded_and_max_is_not_p95(self):
+        report=fixture();rows=report['passes'][0]['memory-1024-64-sweep']
+        rows[0]['publication_samples'][0]=1000000
+        rows[0]['publication']+=1000000
+        rows[-1]['publication_samples'][-1]=10000
+        rows[-1]['publication']+=10000
+        report['cases']=aggregate_growth(report['passes'])
+        latency=report['cases'][0]['engines']['memory']['latency']
+        self.assertEqual(latency['p95_ns'],112)
+        self.assertEqual(latency['max_ns'],10000)
+        self.assertEqual(latency['median_ns'],107.5)
+        validate_growth(report)
 
     def test_exact_configuration_and_sample_coverage(self):
         raw=output('memory',1024,64)
