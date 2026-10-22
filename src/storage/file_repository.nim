@@ -137,7 +137,7 @@ proc readNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "re
     header: "<unistd.h>".}
   ## Supported Linux/macOS SDKs return signed-long ssize_t; explicit headers preserve the native ABI.
 proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
-  ## Fixed chunks detect one excess byte without trusting file-size metadata for allocation.
+  ## Actual reads decide the extent; bounded regular metadata seeds one directly filled buffer.
   let maximum = min(uint64(limit), uint64(high(int)))
   var metadata = default(Stat)
   if posix.fstat(fd, metadata) != 0 or not S_ISREG(metadata.st_mode) or metadata.st_size < 0:
@@ -145,7 +145,23 @@ proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
   if uint64(metadata.st_size) > maximum:
     return FileResult[seq[byte]](status: FileError.LimitExceeded)
   # A bounded stat extent seeds capacity only; actual reads still decide post-stat growth and EOF.
-  var bytes = newSeqOfCap[byte](int(metadata.st_size))
+  var bytes = newSeq[byte](int(metadata.st_size))
+  var filled = 0
+  while filled < bytes.len:
+    # Each native write stays inside the actually owned sequence after any genuine short read.
+    let requested = min(bytes.len-filled, 4096)
+    let count = readNative(fd, addr bytes[filled], csize_t(requested))
+    if count < 0:
+      # EINTR retains the same filled prefix; only a permanent error terminates this read.
+      if posix.errno() != interrupted: return FileResult[seq[byte]](status: FileError.IoFailure)
+    elif count == 0:
+      # Actual early EOF trims preallocated storage to the exact observed prefix, without zero padding.
+      bytes.setLen(filled)
+      return FileResult[seq[byte]](status: FileError.None, completed: bytes)
+    else:
+      # Positive progress is bounded by the real writable window before advancing its cursor.
+      if count > requested: return FileResult[seq[byte]](status: FileError.IoFailure)
+      filled += int(count)
   var buffer = default(array[4096, byte])
   while true:
     let remaining = maximum-uint64(bytes.len)
