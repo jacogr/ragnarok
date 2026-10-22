@@ -89,3 +89,11 @@ timings. The fixed fixture must have identical counters across all warmups, meas
 and reversed-order passes. Memory file extents and unsupported post-compaction journal extents
 remain unavailable; a legacy snapshot is exactly zero. Selected-file bytes exclude unknown or
 staged files and graph memory retained by old readers, so they are not total resource usage.
+
+## Retained snapshot acquisition
+
+A separate phase acquires 4,096 immutable public snapshots for every backend, with the output
+array allocated before timing. Every handle must match the exact admitted head. The handles stay
+alive across history/current reclamation, strict restart and native owner close, then independently
+resolve a known physical leaf. This measures resident snapshot ownership, not disk reads; payload
+lookup remains a separate phase and all lifetime validation stays outside timing.

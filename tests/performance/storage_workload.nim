@@ -123,6 +123,14 @@ proc main() {.raises.} =
     let publicationNs = elapsed(publicationStart)
     let view = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
     check(view, trie, count, expected, deep, valueBytes)
+    let identity = selectRepositoryRoots(view, [expected], ElementLimit(1)).value
+    var snapshots = newSeq[RepositoryView](4096)
+    let snapshotStart = getMonoTime()
+    for index in 0..<snapshots.len:
+      snapshots[index] = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
+    let snapshotNs = elapsed(snapshotStart)
+    for retained in snapshots:
+      assert identity.matches(retained) # Every acquired immutable handle names the exact admitted head.
     var observed = newSeq[TrieRecord](4096)
     let readStart = getMonoTime()
     for index in 0..<observed.len:
@@ -224,10 +232,15 @@ proc main() {.raises.} =
       else:
         removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2), ManagedEpoch(3)])
     assert memory.close == RepositoryError.None
+    for retained in snapshots:
+      assert identity.matches(retained) # Native owner close and compaction cannot revoke retained snapshots.
+      let record = retained.lookupNode(reads[0]).value
+      assert record.kind == TrieRecordKind.Leaf
+      assert array[32, byte](record.digest) == array[32, byte](reads[0])
     echo "sample\t", count, "\t", topology, "\t", valueBytes, "\t", sample, "\t", publicationNs,
         "\t", readNs, "\t", extractNs, "\t", reopenNs, "\t", maintenanceNs, "\t", retentionNs, "\t",
-            storedNodes, "\t", selectedNodes, "\t", snapshotBytes,
-        "\t", journalBytes, "\t", compactedSnapshotBytes, "\t", compactedJournalBytes
+        snapshotNs, "\t", storedNodes, "\t", selectedNodes, "\t", snapshotBytes, "\t", journalBytes,
+        "\t", compactedSnapshotBytes, "\t", compactedJournalBytes
   assert seed.close == RepositoryError.None
 try:
   main()

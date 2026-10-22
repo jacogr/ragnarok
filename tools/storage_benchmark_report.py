@@ -9,9 +9,9 @@ COUNTS=(1024,8192)
 TOPOLOGIES=('leading','trailing')
 VALUE_BYTES=(16,256)
 CASES=tuple((count,topology,value_bytes) for count in COUNTS for topology in TOPOLOGIES for value_bytes in VALUE_BYTES)
-PHASES=('publication','reads','extraction','reopen','maintenance','retention')
+PHASES=('publication','reads','extraction','reopen','maintenance','retention','snapshots')
 METRICS=('stored_nodes','selected_nodes','snapshot_bytes','journal_bytes','compacted_snapshot_bytes','compacted_journal_bytes')
-LABELS=('16 publications','4,096 warm-view reads','Complete-map extraction','Strict disk reopen','Current-root reclamation','Nine-root reclamation')
+LABELS=('16 publications','4,096 warm-view reads','Complete-map extraction','Strict disk reopen','Current-root reclamation','Nine-root reclamation','4,096 retained snapshots')
 
 
 # Native success alone cannot substitute for all warmup/sample identities and positive timings.
