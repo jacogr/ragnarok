@@ -47,3 +47,11 @@ matched the runner's Markdown exactly. Forty-eight focused Python checks cover s
 failed-run/missing-report behavior, CI grouping/triggers/artifacts and existing PVM report behavior.
 Verification inventory, workflow YAML syntax and whitespace checks pass. These local results do
 not claim an Actions/Linux timing result; the CI job records its own host and source provenance.
+
+## Key topology coverage
+
+Each backend/size now runs both leading and trailing two-byte key identities. Trailing identities
+share 232 additional prefix bits and exercise deep routing without changing the authored key/value
+count or update semantics. Native output, JSON cases, CSV and Markdown retain the topology identity;
+missing or mismatched shapes refuse comparison. All complete maps and individual read payloads
+remain validated outside timing. The existing Perf Storage job stays adjacent to Perf PVM.
