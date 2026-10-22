@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_SOURCE_METADATA",
+  "files": {
+    "current-state-source-metadata.txt": "e6111da9fcd9eb3ac6db5f4abdcc25577da4f14d0f197c8b5db8c528ee5f74bf"
+  },
+  "target": "current-state-source-metadata.txt"
+}

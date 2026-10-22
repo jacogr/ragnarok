@@ -1,0 +1,216 @@
+{
+  "graypaper": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "sources": [
+    {
+      "blob_sha256": "8bbe5c892288b533e815064607639d4db0370d33a5cf0e32ef82eba76411cb5a",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "9f8dbeefc41670672f2ce899c0b55c3d41ff26d509bec604870d0199ddf02386",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/fuzzy/00000001.json",
+      "phase": "pre_state",
+      "published_root": "7cbff2a92258dda7ed12b506b619a14768126a0925dacc726e7551f08984a882",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "8bbe5c892288b533e815064607639d4db0370d33a5cf0e32ef82eba76411cb5a",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "f23218adf3439f664f2924f4b86fab1cfd0a8f87961dedca578834206c88d38d",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/fuzzy/00000001.json",
+      "phase": "post_state",
+      "published_root": "1f6f8990761c04d123b059df7a429f87095d2dd7c9c12e0034aa320e581d1799",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "871de7dca138a21ea68d1134ed3e72c820263e4ee72fa619d43791255d1b55ab",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "f23218adf3439f664f2924f4b86fab1cfd0a8f87961dedca578834206c88d38d",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/fuzzy/00000002.json",
+      "phase": "pre_state",
+      "published_root": "1f6f8990761c04d123b059df7a429f87095d2dd7c9c12e0034aa320e581d1799",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "871de7dca138a21ea68d1134ed3e72c820263e4ee72fa619d43791255d1b55ab",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "ad36f74f43df5388da449333d11b91dd2cdfff5718d7b1415d52b6c34f8cbcc5",
+      "entries": 26,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 9,
+      "path": "traces/fuzzy/00000002.json",
+      "phase": "post_state",
+      "published_root": "b589048dd127173576ceb307e12758f52fd1b27076001f21816546861390fc64",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "d9240735d452e9d9d4a528b8c57ca3583bac86b6ece21bc78e9f8d8e6d3815a8",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "ad36f74f43df5388da449333d11b91dd2cdfff5718d7b1415d52b6c34f8cbcc5",
+      "entries": 26,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 9,
+      "path": "traces/fuzzy/00000003.json",
+      "phase": "pre_state",
+      "published_root": "b589048dd127173576ceb307e12758f52fd1b27076001f21816546861390fc64",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "d9240735d452e9d9d4a528b8c57ca3583bac86b6ece21bc78e9f8d8e6d3815a8",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "1b268909ab3022498f9bfeafd8c9d70aae601c3a5af294595b1ad61d264a8dcd",
+      "entries": 26,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 9,
+      "path": "traces/fuzzy/00000003.json",
+      "phase": "post_state",
+      "published_root": "9cb22d92f50a7089056f9a9ef225b0443be56df3be19e0492591fd25a8553ce3",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "f906e14c7bdee39b223b67402ed9e34579ea9d097dcb193e584833f0e3f3c009",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "620e29cf528fc890e23045991c451c14c2cad7537f014fb6ac9c4747a9fac430",
+      "entries": 83,
+      "metadata_rows": 7,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 60,
+      "path": "traces/fuzzy/00000010.json",
+      "phase": "pre_state",
+      "published_root": "64d3856675b71673191ab208cfaebda4a8614cb898ccd6d7586d8ab5d6e62999",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "f906e14c7bdee39b223b67402ed9e34579ea9d097dcb193e584833f0e3f3c009",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "220ab96c4a4c09b4fe6e4eb474958b2a473bb1b9383f6517b0aad336a10536af",
+      "entries": 93,
+      "metadata_rows": 7,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 70,
+      "path": "traces/fuzzy/00000010.json",
+      "phase": "post_state",
+      "published_root": "1d28798b45e157636a3a4b7f0aacd43ea93630d171874e8997095227cf6e307b",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "cbc75d1e204e2416675ebbdf6e7051b5ad1da865a45533a5f9bb23a2cc84b678",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "07866a088cb0da334cb8b497e62daefbb903ad03bbdf94cdb7442c8b8d3ea724",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/storage/00000001.json",
+      "phase": "pre_state",
+      "published_root": "d6e78dc07a9ae915ada8306bf0da89b11044a2d4ee71ae0c5faf61f34f6b3a0c",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "cbc75d1e204e2416675ebbdf6e7051b5ad1da865a45533a5f9bb23a2cc84b678",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "1235ab42cb4ce5c51b20e28183843b7afe4f714599337af63a496b496e064a11",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/storage/00000001.json",
+      "phase": "post_state",
+      "published_root": "48dc323d05aa152a53fb4f38b690d8198994f9fdb86bf1a6300b306cc79f86f9",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "3264d15312075fa07547ea33a659e7e8052cb938cdc21f859b042352bae324ff",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "1235ab42cb4ce5c51b20e28183843b7afe4f714599337af63a496b496e064a11",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/storage/00000002.json",
+      "phase": "pre_state",
+      "published_root": "48dc323d05aa152a53fb4f38b690d8198994f9fdb86bf1a6300b306cc79f86f9",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "3264d15312075fa07547ea33a659e7e8052cb938cdc21f859b042352bae324ff",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "eea52e8d7d76f810965d423d8b281425f451a9c2d16e513abc7ace5a066db69a",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/storage/00000002.json",
+      "phase": "post_state",
+      "published_root": "d5ca7716c78bd4bce3155652aa337e668f92f0d8e648d508b5b3fb5050609056",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "5ee767aa015ea8742a10c3a8e3af934e3544ab25d046cf49c5a2b3095c5d7c26",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "07866a088cb0da334cb8b497e62daefbb903ad03bbdf94cdb7442c8b8d3ea724",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/preimages/00000001.json",
+      "phase": "pre_state",
+      "published_root": "d6e78dc07a9ae915ada8306bf0da89b11044a2d4ee71ae0c5faf61f34f6b3a0c",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "5ee767aa015ea8742a10c3a8e3af934e3544ab25d046cf49c5a2b3095c5d7c26",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "ef061a519b7eb7bf4e1a73bd2c70f0423071224e5f907ca01f002102cbefe266",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/preimages/00000001.json",
+      "phase": "post_state",
+      "published_root": "d7b28b50795c4c209c35e2444cb1f50ce910f384826e0eac4ea13457fed24da3",
+      "unmodified_current_metadata": false
+    }
+  ],
+  "vectors": "d3c089c9a1d5352ad353626d7a2db8589f137b2a"
+}

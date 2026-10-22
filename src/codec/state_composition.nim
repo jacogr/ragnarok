@@ -87,7 +87,8 @@ proc `[]=`*(chapters: var StateChapters, chapter: StateChapterId, value: StateCh
         chapter)-1] = value
 
 ## Reject unsupported shared profiles before any decoder traverses caller input.
-proc valid(profile: StateProfile): bool =
+proc valid*(profile: StateProfile): bool =
+  ## Check structural cardinality/clock domains only; no cross-chapter validity or chain authority is inferred.
   validConfig(AssuranceConfig(cores: profile.cores, validators: profile.current)) and
     validConfig(AssuranceConfig(cores: profile.cores, validators: profile.previous)) and
     uint64(profile.epochSlots) > 0

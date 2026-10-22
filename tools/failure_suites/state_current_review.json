@@ -1,0 +1,88 @@
+{
+  "build_name": "state-current-review-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard current review default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-current-review-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard current review invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-current-review-invalid"
+    },
+    {
+      "arguments": [
+        "profile"
+      ],
+      "description": "Guard current review profile",
+      "diagnostic": "outcome.status == ProfileFailure",
+      "identity": {
+        "reason": "profile"
+      },
+      "name": "state-current-review-profile"
+    },
+    {
+      "arguments": [
+        "preparation"
+      ],
+      "description": "Guard current review preparation",
+      "diagnostic": "outcome.status == PreparationFailure",
+      "identity": {
+        "reason": "preparation"
+      },
+      "name": "state-current-review-preparation"
+    },
+    {
+      "arguments": [
+        "execution"
+      ],
+      "description": "Guard current review execution",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "identity": {
+        "reason": "execution"
+      },
+      "name": "state-current-review-execution"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Guard current review source",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source"
+      },
+      "name": "state-current-review-source"
+    },
+    {
+      "arguments": [
+        "review"
+      ],
+      "description": "Guard current review review",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "review"
+      },
+      "name": "state-current-review-review"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_review_results.nim"
+}

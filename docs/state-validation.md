@@ -61,3 +61,6 @@ These synchronous bounded operations belong outside transport callbacks. Observe
 single-threaded snapshot and canonical ARC lease rules when accessing source graphs. Serialization
 matching does not validate account/preimage relationships, signatures, state transitions, finality,
 Thin VRF or full current-pin JAM parity. Historical release vectors remain historical evidence.
+
+For the authenticated current producer path, original full-Parameters selection, retained supplied
+raw keys and remaining producer/parity gates, see [current qualification](state-current-qualification.md).

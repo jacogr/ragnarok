@@ -1,0 +1,29 @@
+{
+  "build_name": "state-supplied-services-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard supplied services default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-supplied-services-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard supplied services invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-supplied-services-invalid"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_supplied_services_results.nim"
+}

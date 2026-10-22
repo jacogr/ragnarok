@@ -1,0 +1,73 @@
+{
+  "build_name": "state-planned-review-checkpoint-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard planned review checkpoint default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-planned-review-checkpoint-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard planned review checkpoint invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-planned-review-checkpoint-invalid"
+    },
+    {
+      "arguments": [
+        "serialization"
+      ],
+      "description": "Guard planned review checkpoint serialization",
+      "diagnostic": "outcome.status == SerializationFailure",
+      "identity": {
+        "reason": "serialization"
+      },
+      "name": "state-planned-review-checkpoint-serialization"
+    },
+    {
+      "arguments": [
+        "inventory"
+      ],
+      "description": "Guard planned review checkpoint inventory",
+      "diagnostic": "outcome.status == InventoryFailure",
+      "identity": {
+        "reason": "inventory"
+      },
+      "name": "state-planned-review-checkpoint-inventory"
+    },
+    {
+      "arguments": [
+        "preparation"
+      ],
+      "description": "Guard planned review checkpoint preparation",
+      "diagnostic": "outcome.status == PreparationFailure",
+      "identity": {
+        "reason": "preparation"
+      },
+      "name": "state-planned-review-checkpoint-preparation"
+    },
+    {
+      "arguments": [
+        "execution"
+      ],
+      "description": "Guard planned review checkpoint execution",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "identity": {
+        "reason": "execution"
+      },
+      "name": "state-planned-review-checkpoint-execution"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_planned_review_checkpoint_results.nim"
+}

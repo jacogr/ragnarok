@@ -19,14 +19,15 @@ proc currentActivityFixture*(base: OwnedReport, available = false, guarantees = 
     hugeRefinement = false, executed = false, provided = false, parentPools: seq[AuthorizerRow] = @[],
     authorizationQueue: seq[byte] = @[], omitAuthorizationQueue = false,
     withDispute = false, withTicket = false, shiftPending = false,
-    storeWrites = 1000'u64): CurrentActivityFixture =
+    storeWrites = 1000'u64, completeState = false): CurrentActivityFixture =
   ## All signatures, current guests/selection, statistics, timestamps, queues and recent history remain genuine prerequisites.
   let fixture = executionFixture(base, activityOptions(available = available,
       guarantees = guarantees, blobs = blobs, requested = requested, missingLast = missingLast,
       disordered = disordered, slot = slot, hugeRefinement = hugeRefinement, executed = executed,
       provided = provided, parentPools = parentPools, authorizationQueue = authorizationQueue,
       omitAuthorizationQueue = omitAuthorizationQueue, withDispute = withDispute,
-      withTicket = withTicket, shiftPending = shiftPending, storeWrites = storeWrites))
+      withTicket = withTicket, shiftPending = shiftPending, storeWrites = storeWrites,
+      completeState = completeState))
   var limits = currentSequenceDriverLimits()
   if provided:
     limits.initial.guests.provisions = provisionPolicy(items = 2, perBlob = 1, total = 2)

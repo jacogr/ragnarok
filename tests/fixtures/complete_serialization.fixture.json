@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_COMPLETE_SERIALIZATION",
+  "files": {
+    "complete-serialization.txt": "0c3aa0205b42f09cdcd621e364d009aaceedfcd05da60dfcd53c01370b8209ae"
+  },
+  "target": "complete-serialization.txt"
+}
