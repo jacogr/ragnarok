@@ -144,14 +144,17 @@ proc readAll(fd: cint, limit: ByteLimit): ManagedIoResult[seq[byte]] =
     let requested = min(bytes.len-filled, 4096)
     let count = readNative(fd, addr bytes[filled], csize_t(requested))
     if count < 0:
-      if posix.errno() == interrupted: continue # EINTR transferred no bytes and changes no cursor.
-      return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
-    if count == 0:
-      # A file shortened after fstat contributes only its actually observed prefix, never zero padding.
+      # EINTR retains the same filled prefix; only a permanent error terminates this read.
+      if posix.errno() != interrupted: return ManagedIoResult[seq[byte]](
+          status: FileError.IoFailure)
+    elif count == 0:
+      # Actual early EOF trims preallocated storage to the exact observed prefix, without zero padding.
       bytes.setLen(filled)
       return ManagedIoResult[seq[byte]](status: FileError.None, completed: bytes)
-    if count > requested: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
-    filled += int(count) # requested <= bytes.len-filled proves this addition stays within the owned extent.
+    else:
+      # Positive progress is bounded by the real writable window before advancing its cursor.
+      if count > requested: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
+      filled += int(count)
   var buffer = default(array[4096, byte])
   while true:
     let requested = int(min(maximum-uint64(bytes.len), 4095'u64))+1
