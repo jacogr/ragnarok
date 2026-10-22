@@ -12,6 +12,7 @@ let result = if argument == "default": default(AccumulationContinuationResult[Pr
   else: planAccumulationContinuation(default(CompletedBlockAccumulation), default(
       AccumulationContinuationLimits))
 case argument
+of "pending": discard owner.continuationPending.value # Default plans have no producer-bound pending owner.
 of "info": discard owner.continuationInfo.value # No fabricated prefix or budget.
 of "source": discard owner.continuationSource.value # No synthetic admitted execution.
 of "transfers": discard owner.continuationTransfers.value # No caller-substituted outgoing collection.

@@ -102,7 +102,7 @@ proc driveAccumulation*(source: CompletedBlockAccumulation, parameters: Paramete
     return AccumulationDriverResult(status: AccumulationDriverError.DepthExceeded) # A dispatched continuation needs at least a stopped first reentry.
   let inputs = prepareAccumulationContinuationInputs(selected.value,
     AccumulationContinuationInputConfig(operands: limits.preparation.operands,
-      inputs: limits.preparation.inputs))
+      inputs: limits.preparation.inputs, partition: limits.preparation.partition))
   if inputs.error != AccumulationContinuationInputError.None:
     return AccumulationDriverResult(status: AccumulationDriverError.InputFailure,
       inputReason: inputs) # No partially applied initial batch or selected inputs survive failure.

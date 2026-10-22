@@ -13,7 +13,8 @@ import ./[accumulation_continuation_execution, accumulation_continuation_inputs,
   accumulation_provisions, accumulation_transfers, accumulation_service, report_admission,
   block_transition,
   block_admission, accumulation_dispatch, accumulation_skip, accumulation_effects,
-  accumulation_context, accumulation_invocation, store]
+  accumulation_context, accumulation_invocation, accumulation_pending_transfers,
+  accumulation_transfer_partition, store]
 
 type
   AccumulationReentryDepth* = distinct uint64 ## Retained reentry ordinal starts at one and is distinct from report counts or gas.
@@ -22,6 +23,7 @@ type
     selection*: AccumulationContinuationLimits ## Inspected outcomes/transfers/memos/reports/digests, including rejected reports.
     operands*: AccumulationOperandConfig ## Only newly selected report payloads count toward these limits.
     inputs*: AccumulationInputConfig ## Combined transfer/report groups; no recurring allowances.
+    partition*: TransferPartitionLimits ## Explicit pending-record/active-service/predicate limits; zero allows only empty transfer work.
   AccumulationReentryInfo* = object ## Copied next-entry facts retain cumulative progress without claiming later execution or final publication.
     depth*: AccumulationReentryDepth ## First reentry is one; repeated advance increments only below its explicit cap.
     completedPrefix*: AccumulationReportPrefix ## Total original reports processed by initial and completed later rounds.
@@ -33,18 +35,19 @@ type
     reportGas*: Gas      ## Declared digest gas reserved by this newly selected report range.
     dispatch*: bool      ## True exactly when reentry selects reports or transfers; stopped sources cannot restart.
   AccumulationReentryError* {.pure.} = enum ## Refusals expose no earlier range, source, inputs or state candidate.
-    Uninitialized,  ## Default result or preparation handle.
-    None,           ## Complete selected success permits guarded extraction.
-    NoPrevious,     ## First reentry has only the original continuation root, no prior completed reentry.
-    Stopped,        ## A completed n=0 entry cannot authorize another advance.
-    InvalidSource,  ## No genuine completed continuation or valid range/gas provenance.
-    InvalidIndex,   ## Full-width selected-report ordinal is outside the retained range.
-    LimitExceeded,  ## Independent selection inspection budget exhausted.
+    Uninitialized,   ## Default result or preparation handle.
+    None,            ## Complete selected success permits guarded extraction.
+    NoPrevious,      ## First reentry has only the original continuation root, no prior completed reentry.
+    Stopped,         ## A completed n=0 entry cannot authorize another advance.
+    InvalidSource,   ## No genuine completed continuation or valid range/gas provenance.
+    InvalidIndex,    ## Full-width selected-report ordinal is outside the retained range.
+    LimitExceeded,   ## Independent selection inspection budget exhausted.
     UnsupportedTransfers, ## Reserved historical refusal; transfer support now requires explicit count/memo policy.
-    OperandFailure, ## Inspect the selected range materialization reason.
-    InputFailure,   ## Inspect the combined transfer/report grouping reason.
-    ServiceFailure, ## Inspect the actual retained-state service resolution reason.
-    BatchFailure    ## Inspect the actual failed private batch application's nested reasons.
+    OperandFailure,  ## Inspect the selected range materialization reason.
+    InputFailure,    ## Inspect the combined transfer/report grouping reason.
+    ServiceFailure,  ## Inspect the actual retained-state service resolution reason.
+    BatchFailure,    ## Inspect the actual failed private batch application's nested reasons.
+    PartitionFailure ## Current post-batch supervision partition refused; inspect partitionError.
   # Acyclic immutable storage retains exact completed source, original queue and complete prepared successor.
   ReentryData = ref object
     source: CompletedAccumulationContinuation
@@ -53,6 +56,8 @@ type
     info: AccumulationReentryInfo
     inputs: PreparedAccumulationInputs
     transfers: PreparedAccumulationTransfers
+    pending: PreparedPendingTransfers
+    partition: PreparedTransferPartition
     state: StateStoreSnapshot
     slot: HeaderSlot
   PreparedAccumulationReentry* = object ## Reentry preparation is not later execution, final recursion or block publication.
@@ -67,6 +72,8 @@ type
       inputReason: AccumulationInputError
     of ServiceFailure:
       serviceReason: AccumulationServiceError
+    of PartitionFailure:
+      partitionReason: TransferPartitionError
     of BatchFailure:
       failed: AccumulationBatchResult[StateStoreSnapshot] # Invariant: genuinely failed, so no successful snapshot exists.
     else:
@@ -109,6 +116,7 @@ type
     root: CompletedAccumulationContinuation
     previous: nil ReentryExecutionData
     prior: StateStoreSnapshot
+    previousPartition: PreparedTransferPartition
     batch: PreparedAccumulationBatch
     start, processed: AccumulationReportPrefix
     budget, gasUsed: Gas
@@ -123,6 +131,11 @@ func value*[T](outcome: AccumulationReentryResult[T]): T {.inline,
     requires: outcome.status == AccumulationReentryError.None.} =
   ## Retain complete selected success only.
   outcome.completed
+func partitionError*[T](outcome: AccumulationReentryResult[T]): TransferPartitionError {.inline,
+    requires: outcome.status == AccumulationReentryError.PartitionFailure.} =
+  ## Inspect only an actual current-state transfer-partition refusal.
+  outcome.partitionReason
+
 func operandError*[T](outcome: AccumulationReentryResult[T]): AccumulationOperandError {.inline,
     requires: outcome.status == AccumulationReentryError.OperandFailure.} =
   ## Inspect only the actual selected-range refusal.
@@ -187,6 +200,25 @@ proc reentryState*(plan: PreparedAccumulationReentry): AccumulationReentryResult
         status: AccumulationReentryError.Uninitialized) # No partial or default map.
   AccumulationReentryResult[StateStoreSnapshot](status: AccumulationReentryError.None,
       completed: data.state)
+proc reentryPending*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
+    PreparedPendingTransfers] =
+  ## Retain queued-old/new producer ownership and proven reservation arithmetic for this exact entry.
+  let data = plan.data
+  if data == nil:
+    return AccumulationReentryResult[PreparedPendingTransfers](
+        status: AccumulationReentryError.Uninitialized) # No default pending source.
+  AccumulationReentryResult[PreparedPendingTransfers](status: AccumulationReentryError.None,
+      completed: data.pending)
+proc reentryTransferPartition*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
+    PreparedTransferPartition] =
+  ## Retain the exact accepted inputs and held subsequence used for the following carry.
+  let data = plan.data
+  if data == nil:
+    return AccumulationReentryResult[PreparedTransferPartition](
+        status: AccumulationReentryError.Uninitialized) # No fabricated input partition.
+  AccumulationReentryResult[PreparedTransferPartition](status: AccumulationReentryError.None,
+      completed: data.partition)
+
 proc reentryReportAt*(plan: PreparedAccumulationReentry,
     index: ContinuationReportIndex): AccumulationReentryResult[OwnedReport] =
   ## Retain the selected report at its nominal local ordinal; earlier processed reports remain inaccessible here.
@@ -220,105 +252,136 @@ proc prepareReentryAccumulationService*(plan: PreparedAccumulationReentry,
 
 proc prepareReentryStep(step: ReentryStep,
     config: AccumulationReentryConfig): AccumulationReentryResult[PreparedAccumulationReentry] =
-  # Share bounded selection/materialization and exact-prior application for first and repeated entries.
-  # Private step inputs retain actual certificates; no caller may substitute raw range, budget or state fields.
+  ## Select reports with old gas still reserved, apply the actual preceding batch and classify old-before-new pending records.
   template fail(reason: AccumulationReentryError) =
     return AccumulationReentryResult[PreparedAccumulationReentry](status: reason)
   if uint64(step.executions) > uint64(config.selection.executions):
-    fail(AccumulationReentryError.LimitExceeded) # Bound even outcomes with no outgoing transfers.
+    fail(AccumulationReentryError.LimitExceeded) # Bound even producers with no selected outgoing transfers.
   let batch = step.batch
   let collected = prepareBatchAccumulationTransfers(batch, AccumulationTransferCollectionLimits(
-    sources: config.selection.executions, transfers: config.selection.transfers,
-    memoBytes: config.selection.memoBytes))
+      sources: config.selection.executions, transfers: config.selection.transfers,
+      memoBytes: config.selection.memoBytes))
   if collected.error == AccumulationBatchError.LimitExceeded:
-    fail(AccumulationReentryError.LimitExceeded) # Independent source/item/memo limits bound every canonical capture.
+    fail(AccumulationReentryError.LimitExceeded) # Canonical source/memo capture is independently bounded.
   if collected.error != AccumulationBatchError.None:
-    fail(AccumulationReentryError.InvalidSource) # Only the private step's genuine completed batch may authorize outgoing values.
+    fail(AccumulationReentryError.InvalidSource) # Only this genuine completion may supply newly emitted values.
   let transfers = collected.value
   let transferCount = transfers.transferCollectionInfo.value.transfers
-  if not step.dispatch and transferCount != 0:
-    fail(AccumulationReentryError.InvalidSource) # A certified n=0 entry cannot emit transfers or restart execution.
-  var available = uint64(step.gasUsed)
-  for index in 0..<transferCount:
-    let value = transfers.collectedTransferAt(CollectedTransferIndex(uint64(index))).value
-    if uint64(value.gas) > available:
-      fail(AccumulationReentryError.InvalidSource) # Retained transfers paid their offer before commit; never fabricate a larger refund.
-    available -= uint64(value.gas)
-  let transferGas = uint64(step.gasUsed)-available
+  let pending = prepareCarriedPendingTransfers(step.previousPartition, transfers, step.budget,
+      PendingTransferLimits(sources: config.selection.executions,
+          transfers: config.selection.transfers, memoBytes: config.selection.memoBytes))
+  if pending.error == PendingTransferError.LimitExceeded:
+    fail(AccumulationReentryError.LimitExceeded) # Bound old queued plus new records and their actual producer traversal.
+  if pending.error != PendingTransferError.None:
+    fail(AccumulationReentryError.InvalidSource) # A valid completed predecessor preserves its old gas reservation.
+  let pendingInfo = pending.value.pendingTransferInfo.value
+  if uint64(pendingInfo.gasUsed) != uint64(step.gasUsed) or (not step.dispatch and
+      pendingInfo.transfers != 0):
+    fail(AccumulationReentryError.InvalidSource) # Actual producer use matches the completion; stopped entries cannot restart.
   let initial = step.root.executionContinuation.value.continuationPlan.value.continuationSource.value
   let blockQueue = initial.executionRound.value.roundBlockQueue.value
   let queue = blockQueue.accumulationProjection.value
   let count = queue.accumulationCount.value
   let previous = uint64(step.start)
-  if previous > uint64(count) or uint64(step.processed) > uint64(count) - previous or
-      uint64(step.gasUsed) > uint64(step.budget):
-    fail(AccumulationReentryError.InvalidSource) # Prove addition, native conversion and gas subtraction first.
-  let start = previous + uint64(step.processed)
-  let reportBudget = uint64(step.budget) - uint64(step.gasUsed)
-  # transferGas <= actual gas proves restoration cannot exceed the prior budget or wrap.
-  let budget = reportBudget + transferGas
+  if previous > uint64(count) or uint64(step.processed) > uint64(count)-previous:
+    fail(AccumulationReentryError.InvalidSource) # Prove cumulative queue offset conversion before addition.
+  let start = previous+uint64(step.processed)
+  let reportBudget = uint64(pendingInfo.reportBudget)
+  let budget = pendingInfo.budget
   var remaining = reportBudget
   var prefix = 0'u64
   var reports = 0'u64
   var digests = 0'u64
   if step.dispatch:
     for index in int(start)..<count:
-      # n=0 is terminal in accseq; only an actually dispatched source can authorize further traversal.
       if reports >= uint64(config.selection.reports): fail(AccumulationReentryError.LimitExceeded)
-      inc reports
+      inc reports # Inspected rejected reports count too.
       let report = queue.accumulationAt(AccumulationIndex(uint64(index))).value
       let length = ownedReportInfo(report).value.digestCount
       var candidate = remaining
       var fits = true
       for digest in 0..<length:
-        # Every inspected digest consumes work, even when its report later fails affordability.
         if digests >= uint64(config.selection.digests): fail(AccumulationReentryError.LimitExceeded)
         inc digests
         let gas = uint64(ownedReportDigest(report, digest).value.accumulateGas)
         if gas > candidate:
           fits = false
-          break # Neither earlier digest reservations nor later cheaper reports may bypass this report.
+          break # No later report may bypass this unaffordable whole report.
         candidate -= gas
-      if not fits: break # Commit none of the rejected whole report.
+      if not fits: break # Commit neither this report's prefix nor its partial gas reservation.
       remaining = candidate
-      inc prefix # Bounded by the original native queue length.
+      inc prefix
   let operands = prepareAccumulationOperandRange(queue, AccumulationReportStart(start),
-    AccumulationReportPrefix(prefix), config.operands)
+      AccumulationReportPrefix(prefix), config.operands)
   if operands.error != AccumulationOperandError.None:
     return AccumulationReentryResult[PreparedAccumulationReentry](
-      status: AccumulationReentryError.OperandFailure,
-      operandReason: operands.error) # No partial projection or state candidate survives refusal.
-  if uint64(transferCount) > uint64(config.inputs.inputs):
-    return AccumulationReentryResult[PreparedAccumulationReentry](status:
-      AccumulationReentryError.InputFailure, inputReason: AccumulationInputError.LimitExceeded) # Refuse descriptors before copying fixed transfers.
-  # Canonical capture already proved this fixed-record native allocation extent.
-  var values = newSeq[DeferredTransfer](transferCount)
-  for index in 0..<transferCount:
-    values[index] = transfers.collectedTransferAt(CollectedTransferIndex(uint64(
-        index))).value # Destination grouping preserves the canonical source/append order.
-  let inputs = prepareAccumulationInputs(operands.value, values, [], config.inputs)
-  if inputs.error != AccumulationInputError.None:
+        status: AccumulationReentryError.OperandFailure,
+
+operandReason: operands.error) # Bounded selected-range capture precedes private state application.
+  let activeInputs = prepareAccumulationInputs(operands.value, [], [], config.inputs)
+  if activeInputs.error != AccumulationInputError.None:
     return AccumulationReentryResult[PreparedAccumulationReentry](
-      status: AccumulationReentryError.InputFailure,
-      inputReason: inputs.error) # No recurring free allowance or unverified replacement transfer group is introduced.
+        status: AccumulationReentryError.InputFailure,
+
+inputReason: activeInputs.error) # Report-only grouping must fit independently of transfer classification.
+  let serviceCount = if pendingInfo.transfers == 0: 0 else: activeInputs.value.invocationServiceCount.value
+  let transferOverflow = uint64(pendingInfo.transfers) > uint64(config.partition.transfers)
+  let serviceOverflow = uint64(serviceCount) > uint64(config.partition.services)
+  let workOverflow = uint64(pendingInfo.transfers) > uint64(config.partition.checks)
+  let extentOverflow = serviceCount > high(int) div sizeof(ServiceIndex)
+  if transferOverflow or serviceOverflow or workOverflow or extentOverflow:
+    return AccumulationReentryResult[PreparedAccumulationReentry](
+        status: AccumulationReentryError.PartitionFailure,
+
+partitionReason: TransferPartitionError.LimitExceeded) # Bound obvious source/minimum work before state hashing.
+  var active = newSeq[ServiceIndex](serviceCount)
+  for index in 0..<serviceCount:
+    active[index] = activeInputs.value.invocationServiceAt(InvocationServiceIndex(uint64(
+        index))).value.service # No always allowance recurs in accseq.
   var working = forkStateStore(step.prior).value
   let applied = applyAccumulationBatch(working, batch)
   if applied.error != AccumulationBatchError.None:
     return AccumulationReentryResult[PreparedAccumulationReentry](
-      status: AccumulationReentryError.BatchFailure,
-      failed: applied) # Retain only a genuinely failed parent; release private inputs/state candidates.
+        status: AccumulationReentryError.BatchFailure,
+
+failed: applied) # Refusal discards the entire private successor.
+  let partition = pending.value.partitionPendingTransfers(applied.value, active, config.partition)
+  if partition.error == PendingTransferError.PartitionFailure:
+    return AccumulationReentryResult[PreparedAccumulationReentry](
+        status: AccumulationReentryError.PartitionFailure,
+
+partitionReason: partition.partitionError) # Actual post-state metadata and work refusals remain visible.
+  if partition.error != PendingTransferError.None:
+    fail(AccumulationReentryError.InvalidSource) # A genuine pending owner always reaches the kernel.
+  let accepted = partition.value.partitionCount(TransferPartitionKind.Accepted).value
+  if uint64(accepted) > uint64(config.inputs.inputs):
+    return AccumulationReentryResult[PreparedAccumulationReentry](
+        status: AccumulationReentryError.InputFailure,
+
+inputReason: AccumulationInputError.LimitExceeded) # Bound accepted descriptors before copying them.
+  var values = newSeq[DeferredTransfer](accepted)
+  for index in 0..<accepted:
+    values[index] = partition.value.partitionTransferAt(TransferPartitionKind.Accepted,
+        TransferPartitionIndex(uint64(index))).value # Stable accepted order precedes destination grouping.
+  let inputs = prepareAccumulationInputs(operands.value, values, [], config.inputs)
+  if inputs.error != AccumulationInputError.None:
+    return AccumulationReentryResult[PreparedAccumulationReentry](
+        status: AccumulationReentryError.InputFailure,
+
+inputReason: inputs.error) # Queued records do not become invocation descriptors in this entry.
   let stage = blockQueue.accumulationAdmission.value.reportBlockStage.value.value
   let slot = headerInfo(stage.admitted.admittedHeader).value.unsigned.slot
   AccumulationReentryResult[PreparedAccumulationReentry](status: AccumulationReentryError.None,
-    completed: PreparedAccumulationReentry(data: ReentryData(source: step.root,
-      previous: step.previous, queue: queue,
-      info: AccumulationReentryInfo(depth: step.depth, completedPrefix: AccumulationReportPrefix(
-          start),
-        pendingReports: count-int(start), prefix: AccumulationReportPrefix(prefix), budget: Gas(
-            budget),
-        transfers: transferCount, transferGas: Gas(transferGas),
-        reportGas: Gas(reportBudget-remaining), dispatch: prefix != 0 or transferCount != 0),
-      inputs: inputs.value, transfers: transfers, state: applied.value, slot: slot)))
+      completed: PreparedAccumulationReentry(data: ReentryData(source: step.root,
+          previous: step.previous, queue: queue,
+          info: AccumulationReentryInfo(depth: step.depth,
+              completedPrefix: AccumulationReportPrefix(start), pendingReports: count-int(start),
+                  prefix: AccumulationReportPrefix(prefix), budget: budget,
+              transfers: transferCount, transferGas: pendingInfo.outgoingGas,
+              reportGas: Gas(reportBudget-remaining), dispatch: prefix != 0 or accepted != 0),
+          inputs: inputs.value, transfers: transfers, pending: pending.value,
+              partition: partition.value,
+          state: applied.value, slot: slot)))
 
 proc reentryPrevious*(plan: PreparedAccumulationReentry): AccumulationReentryResult[
     CompletedAccumulationReentry] =
@@ -342,6 +405,7 @@ proc prepareAccumulationReentry*(source: CompletedAccumulationContinuation,
         status: AccumulationReentryError.InvalidSource) # No default completion authorizes first entry.
   let facts = completed.value
   prepareReentryStep(ReentryStep(root: source, previous: nil,
+    previousPartition: source.executionContinuation.value.continuationTransferPartition.value,
     prior: source.executionContinuation.value.continuationState.value,
     batch: source.executionBatch.value,
     start: facts.round.completedPrefix, processed: facts.round.prefix, budget: facts.round.budget,
@@ -508,7 +572,8 @@ proc prepareAccumulationReentry*(source: CompletedAccumulationReentry,
   if uint64(current.info.depth) >= uint64(depth):
     return AccumulationReentryResult[PreparedAccumulationReentry](
         status: AccumulationReentryError.LimitExceeded) # Prove increment representability and cap compliance before any step work.
-  prepareReentryStep(ReentryStep(root: current.source, previous: data, prior: current.state,
+  prepareReentryStep(ReentryStep(root: current.source, previous: data,
+    previousPartition: current.partition, prior: current.state,
     batch: data.batch, start: current.info.completedPrefix, processed: current.info.prefix,
     budget: current.info.budget, gasUsed: data.gasUsed,
     executions: data.batch.batchInfo.value.executions,

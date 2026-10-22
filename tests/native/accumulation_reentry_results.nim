@@ -12,6 +12,9 @@ let result = if argument == "default": default(AccumulationReentryResult[Prepare
   else: prepareAccumulationReentry(default(CompletedAccumulationContinuation), default(
       AccumulationReentryConfig))
 case argument
+of "pending": discard owner.reentryPending.value # No default owner or unrelated nested partition reason.
+of "partition": discard owner.reentryTransferPartition.value # No default owner or unrelated nested partition reason.
+of "wrong-partition": discard result.partitionError # No default owner or unrelated nested partition reason.
 of "previous": discard owner.reentryPrevious.value # Defaults have no immediate predecessor.
 of "cycle-default":
   discard prepareAccumulationReentry(default(CompletedAccumulationReentry), default(

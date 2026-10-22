@@ -12,6 +12,8 @@
     {"identity": {"reason": "wrong-input"}, "arguments": ["wrong-input"], "name": "accumulation-continuation-inputs-wrong-input", "diagnostic": "outcome.status == InputFailure", "description": "Continuation inputs wrong-input extraction guard"},
     {"identity": {"reason": "wrong-service"}, "arguments": ["wrong-service"], "name": "accumulation-continuation-inputs-wrong-service", "diagnostic": "outcome.status == ServiceFailure", "description": "Continuation inputs wrong-service extraction guard"},
     {"identity": {"reason": "wrong-batch"}, "arguments": ["wrong-batch"], "name": "accumulation-continuation-inputs-wrong-batch", "diagnostic": "outcome.status == BatchFailure", "description": "Continuation inputs wrong-batch extraction guard"},
-    {"identity": {"reason": "start"}, "arguments": ["start"], "name": "accumulation-continuation-inputs-start", "diagnostic": "outcome.status == None", "description": "Continuation inputs start extraction guard"}
+    {"identity": {"reason": "start"}, "arguments": ["start"], "name": "accumulation-continuation-inputs-start", "diagnostic": "outcome.status == None", "description": "Continuation inputs start extraction guard"},
+    {"identity": {"reason": "partition"}, "arguments": ["partition"], "name": "accumulation-continuation-inputs-partition", "diagnostic": "outcome.status == None", "description": "Scheduling partition extraction guard"},
+    {"identity": {"reason": "wrong-partition"}, "arguments": ["wrong-partition"], "name": "accumulation-continuation-inputs-wrong-partition", "diagnostic": "outcome.status == PartitionFailure", "description": "Scheduling wrong-partition extraction guard"}
   ]
 }

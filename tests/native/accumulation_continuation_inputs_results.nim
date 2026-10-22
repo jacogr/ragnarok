@@ -12,6 +12,8 @@ let result = if argument == "default": default(AccumulationContinuationInputResu
   else: prepareAccumulationContinuationInputs(default(PreparedAccumulationContinuation), default(
       AccumulationContinuationInputConfig))
 case argument
+of "partition": discard owner.continuationTransferPartition.value # No default owner or unrelated nested partition reason.
+of "wrong-partition": discard result.partitionError # No default owner or unrelated nested partition reason.
 of "inputs": discard owner.continuationInputs.value # No fabricated empty input owner.
 of "state": discard owner.continuationState.value # No fabricated posterior map.
 of "plan": discard owner.continuationPlan.value # No fabricated source provenance.

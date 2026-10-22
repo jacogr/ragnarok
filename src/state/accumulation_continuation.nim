@@ -6,7 +6,7 @@
 
 import ../codec/[bounded, work_digest, report_owned]
 import ./[accumulation_execution, accumulation_round, accumulation_queue, accumulation_operands,
-  accumulation_round_transfers, accumulation_transfers]
+  accumulation_round_transfers, accumulation_transfers, accumulation_pending_transfers]
 
 type
   AccumulationContinuationLimits* = object ## Independent traversal ceilings include inspected but unaffordable work.
@@ -37,6 +37,7 @@ type
     source: CompletedBlockAccumulation
     queue: AccumulationQueuePlan
     transfers: PreparedRoundAccumulationTransfers
+    pending: PreparedPendingTransfers
     info: AccumulationContinuationInfo
   PreparedAccumulationContinuation* = object ## Only a completed admitted initial round can authorize this transfer-aware initial recursive prefix plan.
     data: nil ContinuationData
@@ -86,6 +87,16 @@ proc continuationTransfers*(plan: PreparedAccumulationContinuation):
   AccumulationContinuationResult[PreparedRoundAccumulationTransfers](
     status: AccumulationContinuationError.None, completed: data.transfers)
 
+proc continuationPending*(plan: PreparedAccumulationContinuation): AccumulationContinuationResult[
+    PreparedPendingTransfers] =
+  ## Retain the actual initial pending owner whose producer usage and prior budget match this completion.
+  let data = plan.data
+  if data == nil:
+    return AccumulationContinuationResult[PreparedPendingTransfers](
+        status: AccumulationContinuationError.Uninitialized) # No default pending source.
+  AccumulationContinuationResult[PreparedPendingTransfers](
+      status: AccumulationContinuationError.None, completed: data.pending)
+
 proc continuationReportAt*(plan: PreparedAccumulationContinuation, index: ContinuationReportIndex):
     AccumulationContinuationResult[OwnedReport] =
   ## Retain one selected report at a local ordinal; completed-prefix reports cannot be readdressed through this accessor.
@@ -122,14 +133,24 @@ proc planAccumulationContinuation*(source: CompletedBlockAccumulation,
   if transfers.error != AccumulationRoundTransferError.None:
     fail(AccumulationContinuationError.InvalidSource) # No inconsistent completed owner can authorize recursive gas restoration.
   let outgoing = transfers.value.roundTransferInfo.value
+  let pending = prepareInitialPendingTransfers(transfers.value.roundTransferCollection.value,
+      facts.round.budget, PendingTransferLimits(sources: limits.executions,
+          transfers: limits.transfers, memoBytes: limits.memoBytes))
+  if pending.error == PendingTransferError.LimitExceeded:
+    fail(AccumulationContinuationError.LimitExceeded) # Bound the additional owned pending capture too.
+  if pending.error != PendingTransferError.None:
+    fail(AccumulationContinuationError.InvalidSource) # A real completion must retain valid budget and producer usage.
+  let pendingInfo = pending.value.pendingTransferInfo.value
+  if uint64(pendingInfo.gasUsed) != uint64(facts.gasUsed) or uint64(pendingInfo.outgoingGas) !=
+      uint64(outgoing.gas):
+    fail(AccumulationContinuationError.InvalidSource) # Actual normalized producer totals must match the authenticated completion.
   let queue = source.executionRound.value.roundBlockQueue.value.accumulationProjection.value
   let count = queue.accumulationCount.value
   let start = uint64(facts.round.prefix)
   if start > uint64(count) or uint64(facts.gasUsed) > uint64(facts.round.budget):
     fail(AccumulationContinuationError.InvalidSource) # Prove suffix conversion and recursive budget subtraction.
-  let reportBudget = uint64(facts.round.budget) - uint64(facts.gasUsed)
-  # The bound collector proves outgoing.gas <= actual gas, so this addition cannot exceed the original budget.
-  let budget = reportBudget + uint64(outgoing.gas)
+  let reportBudget = uint64(pendingInfo.reportBudget)
+  let budget = uint64(pendingInfo.budget)
   var remaining = reportBudget
   var prefix = 0'u64
   var reports = 0'u64
@@ -159,7 +180,7 @@ proc planAccumulationContinuation*(source: CompletedBlockAccumulation,
   AccumulationContinuationResult[PreparedAccumulationContinuation](
     status: AccumulationContinuationError.None,
     completed: PreparedAccumulationContinuation(data: ContinuationData(source: source, queue: queue,
-      transfers: transfers.value,
+      transfers: transfers.value, pending: pending.value,
       info: AccumulationContinuationInfo(completedPrefix: facts.round.prefix,
         pendingReports: count-int(start), prefix: AccumulationReportPrefix(prefix), budget: Gas(
             budget),
