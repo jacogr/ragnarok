@@ -68,3 +68,11 @@ Primary contracts: [systemd resource controls](https://www.freedesktop.org/softw
 and [Linux cgroup v2](https://docs.kernel.org/admin-guide/cgroup-v2.html).
 Controlled pressure does not prove out-of-core operation or device power-loss durability.
 Complete full/light protocol serialization remains a separate workstream; no new M1 claim.
+
+
+Linux IO parsing follows `blkcg_print_one_stat`: it prints a device name but omits all
+read/write fields when rbytes/wbytes/rios/wios are all zero. This exact zero-elision is admitted;
+partially present base fields remain errors. Optional latency/cost gauges stay in raw text and
+are excluded from cumulative deltas, since gauges and windowed counters may decrease.
+Discard metrics are not inferred from omitted read/write fields. See
+[the kernel implementation](https://github.com/torvalds/linux/blob/master/block/blk-cgroup.c).

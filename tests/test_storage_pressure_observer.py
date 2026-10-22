@@ -37,6 +37,16 @@ class PressureObserverTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             sample_status('VmRSS: 1 kB\nVmRSS: 2 kB\n')
 
+    def test_kernel_zero_elision_and_optional_latency_gauges(self):
+        """Device-only lines mean zero read/write counters; optional gauges must never be subtracted."""
+        zero = dict(rbytes=0, wbytes=0, rios=0, wios=0)
+        self.assertEqual(metrics.io_counters('8:0 \n'), {'8:0': zero})
+        self.assertEqual(metrics.io_counters('8:0 depth=2 cost.vrate=100.00\n'), {'8:0': zero})
+        self.assertEqual(metrics.io_counters('8:0 rbytes=1 wbytes=0 rios=1 wios=0 depth=1\n'),
+                         {'8:0': dict(rbytes=1, wbytes=0, rios=1, wios=0)})
+        with self.assertRaises(ValueError):
+            metrics.io_counters('8:0 rbytes=1\n')
+
     def test_gauges_may_fall_while_counters_increase(self):
         """Resident bytes are not cumulative; reclaim counters and PSI totals are."""
         before = snapshot()

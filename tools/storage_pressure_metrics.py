@@ -3,6 +3,7 @@
 
 """Parse fresh, private cgroup-v2 memory/reclaim/IO receipts without confusing them with RSS."""
 from pathlib import Path
+import re
 from storage_limit_budget import natural
 from storage_limit_cgroup import scalar, events
 from storage_limit_psi import parse_psi
@@ -37,13 +38,21 @@ def io_counters(raw):
         if len(device) != 2 or any(not v.isdecimal() for v in device) or parts[0] in result:
             raise ValueError('Invalid cgroup IO device')
         row = {}
+        seen = set()
+        base = {'rbytes', 'wbytes', 'rios', 'wios'}
         for field in parts[1:]:
             key, sep, value = field.partition('=')
-            if not sep or key in row or not key.isalpha():
+            if not sep or key in seen or re.fullmatch('[a-z][a-z0-9_.]*', key) is None:
                 raise ValueError('Invalid cgroup IO counter')
-            row[key] = natural(value)
-        if not {'rbytes', 'wbytes', 'rios', 'wios'} <= row.keys():
-            raise ValueError('Missing cgroup IO counters')
+            seen.add(key)
+            if key in base:
+                row[key] = natural(value)
+            # Optional latency/cost gauges remain in raw text; they are not monotonic byte counters.
+        if not row:
+            # blkcg_print_one_stat omits all four fields exactly when all four are zero.
+            row = {key: 0 for key in base}
+        elif set(row) != base:
+            raise ValueError('Partial cgroup IO counters')
         result[parts[0]] = row
     return result
 
