@@ -1,0 +1,106 @@
+{
+  "source": "tests/native/accumulation_current_authorization_results.nim",
+  "build_name": "accumulation-current-authorization-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-authorization-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current authorizer extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-authorization-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current authorizer extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "current-authorization-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Current authorizer extraction: source"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "current-authorization-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Current authorizer extraction: info"
+    },
+    {
+      "identity": {
+        "reason": "entry"
+      },
+      "arguments": [
+        "entry"
+      ],
+      "name": "current-authorization-entry",
+      "diagnostic": "outcome.status == None",
+      "description": "Current authorizer extraction: entry"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "current-authorization-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Current authorizer extraction: state"
+    },
+    {
+      "identity": {
+        "reason": "codec"
+      },
+      "arguments": [
+        "codec"
+      ],
+      "name": "current-authorization-codec",
+      "diagnostic": "outcome.status == CodecFailure",
+      "description": "Current authorizer extraction: codec"
+    },
+    {
+      "identity": {
+        "reason": "authorization"
+      },
+      "arguments": [
+        "authorization"
+      ],
+      "name": "current-authorization-authorization",
+      "diagnostic": "outcome.status == AuthorizationFailure",
+      "description": "Current authorizer extraction: authorization"
+    },
+    {
+      "identity": {
+        "reason": "backend"
+      },
+      "arguments": [
+        "backend"
+      ],
+      "name": "current-authorization-backend",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Current authorizer extraction: backend"
+    }
+  ]
+}
