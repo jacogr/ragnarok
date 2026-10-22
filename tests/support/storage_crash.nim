@@ -21,3 +21,8 @@ proc abortCrash*() {.importc: "storage_io_crash_abort", cdecl, header: "observer
   ## Kill/reap only the exact owned child on parent fixture failure; never retry a retired PID.
 proc crashCount*(): uint64 {.importc: "storage_io_crash_count", cdecl, header: "observer.h".}
   ## Inspect only a validated child receipt's actual successful-operation count.
+let crashStopped* {.importc: "STORAGE_CRASH_STOPPED", header: "observer.h".}: cint
+  ## A verified still-owned stop is distinct from a successfully killed/reaped child.
+proc waitCrash*(timeoutMs: cint = 10000): cint {.importc: "storage_io_crash_wait", cdecl,
+    header: "observer.h".}
+  ## Verify the exact stop receipt while retaining the child for a real parent-side contention check.
