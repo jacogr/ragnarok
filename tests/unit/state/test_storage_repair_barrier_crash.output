@@ -1,0 +1,1 @@
+PASS storage_repair_barrier_crash: exact token, actual recovery boundary, strict visible-prefix admission and resumed publication
