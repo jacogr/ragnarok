@@ -108,3 +108,10 @@ host-specific measurements never replace recovery authority or independent check
 The [I/O failure guide](storage-io-failures.md) maps actual syscall boundaries to ownership,
 uncertainty and explicit restart/cleanup behavior. It records the native refusal matrices and
 keeps storage receipts separate from the stricter Services maintenance-failure policy.
+
+## Process interruption and restart
+
+The [process-crash guide](storage-process-crashes.md) explains strict restart, visible-but-unreturned
+work, exact independent repair tokens, source-preserving migration and bounded cleanup after a
+writer dies. Its native qualification covers actual process termination; hardware power-loss
+certification and production-scale layout performance require separate evidence.
