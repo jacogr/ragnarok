@@ -1,0 +1,15 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "complete_serialization"
+  ],
+  "includes": [
+    "crypto"
+  ],
+  "libraries": [
+    "observer"
+  ],
+  "observers": [],
+  "prepared": false
+}
