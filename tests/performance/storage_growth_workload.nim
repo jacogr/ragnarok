@@ -66,7 +66,7 @@ proc main() {.raises.} =
     let held = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
     assert uint64(held.generation) == uint64(publications+1)
     assert array[32, byte](held.commitment.root) == array[32, byte](expected)
-    checkGrowth(held, expected, count, publications, hot)
+    checkGrowthHead(held, expected, count, publications, hot)
     var reopenNs = -1'i64
     if engine != "memory":
       assert disk.close == FileError.None
@@ -77,7 +77,7 @@ proc main() {.raises.} =
         assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
       reopenNs = elapsed(reopenStart)
       assert uint64(disk.snapshot.value.generation) == uint64(publications+1)
-      checkGrowth(disk.snapshot.value, expected, count, publications, hot)
+      checkGrowthHead(disk.snapshot.value, expected, count, publications, hot)
     let storedNodes = held.storedNodes
     var snapshotBytes = -1'i64
     var journalBytes = -1'i64
@@ -89,6 +89,8 @@ proc main() {.raises.} =
       assert usage.snapshotBytes <= uint64(high(int64)) and usage.journalBytes <= uint64(high(int64))
       snapshotBytes = int64(usage.snapshotBytes)
       journalBytes = int64(usage.journalBytes)
+    var retainedReopenNs = -1'i64
+    var compactedReopenNs = -1'i64
     var retentionNs = -1'i64
     var maintenanceNs = -1'i64
     var retainedNodes = -1
@@ -113,6 +115,16 @@ proc main() {.raises.} =
       checkGrowth(retained, roots[0], count, 0, hot)
       for revision in publications-7..publications:
         checkGrowth(retained, fixture.roots[revision], count, revision, hot)
+      if engine == "managed":
+        # Reopen the nine-root epoch before current-only reclamation, validating every retained complete map.
+        assert disk.close == FileError.None
+        let retainedReopenStart = getMonoTime()
+        assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
+        retainedReopenNs = elapsed(retainedReopenStart)
+        checkGrowthHead(disk.snapshot.value, expected, count, publications, hot)
+        checkGrowth(disk.snapshot.value, roots[0], count, 0, hot)
+        for revision in publications-7..publications:
+          checkGrowth(disk.snapshot.value, fixture.roots[revision], count, revision, hot)
       let maintenanceStart = getMonoTime()
       if engine == "memory":
         let selected = selectRepositoryRoots(retained, [expected], ElementLimit(1)).value
@@ -128,7 +140,7 @@ proc main() {.raises.} =
       currentNodes = current.storedNodes
       assert currentNodes < retainedNodes and retainedNodes <= storedNodes
       assert uint64(current.generation) == uint64(publications+1)
-      checkGrowth(current, expected, count, publications, hot)
+      checkGrowthHead(current, expected, count, publications, hot)
       if engine == "managed":
         let usage = disk.managedUsage.value
         assert usage.journalBytes == uint64(ManagedJournalHeaderBytes)
@@ -136,9 +148,11 @@ proc main() {.raises.} =
         compactedSnapshotBytes = int64(usage.snapshotBytes)
         compactedJournalBytes = int64(usage.journalBytes)
         assert disk.close == FileError.None
+        let compactedReopenStart = getMonoTime()
         assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
+        compactedReopenNs = elapsed(compactedReopenStart)
         assert uint64(disk.snapshot.value.generation) == uint64(publications+1)
-        checkGrowth(disk.snapshot.value, expected, count, publications, hot)
+        checkGrowthHead(disk.snapshot.value, expected, count, publications, hot)
     if disk.opened:
       assert disk.close == FileError.None
       if engine == "journal":
@@ -147,14 +161,15 @@ proc main() {.raises.} =
       else:
         removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2), ManagedEpoch(3)])
     assert memory.close == RepositoryError.None
-    checkGrowth(held, expected, count, publications,
+    checkGrowthHead(held, expected, count, publications,
         hot) # Retired files and owner close cannot revoke immutable readers.
     for index, duration in latencies:
       # Emit observations only after all complete-map/lifetime validation and native namespace cleanup.
       echo "publication\t", count, "\t", publications, "\t", pattern, "\t", sample,
         "\t", index+1, "\t", duration
     echo "growth\t", count, "\t", publications, "\t", pattern, "\t", sample, "\t", publicationNs, "\t",
-      reopenNs, "\t", retentionNs, "\t", maintenanceNs, "\t", storedNodes, "\t", retainedNodes,
+      reopenNs, "\t", retentionNs, "\t", maintenanceNs, "\t", retainedReopenNs, "\t",
+          compactedReopenNs, "\t", storedNodes, "\t", retainedNodes,
       "\t", currentNodes, "\t", snapshotBytes, "\t", journalBytes, "\t", compactedSnapshotBytes,
       "\t", compactedJournalBytes
   assert seed.close == RepositoryError.None

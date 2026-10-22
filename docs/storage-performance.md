@@ -109,3 +109,9 @@ The growth table compares 64 and 256 publications after dividing time by the fou
 authored work. It shows added physical records and selected-file byte growth per authored value
 byte. File growth is not device write amplification or filesystem allocation. Compare the same
 entry count, update locality and backend; opposite-order uncertainty remains visible.
+
+Strict sustained reopen is now timed for the original un-compacted journal, the selected nine-root
+epoch and the selected current-only epoch. Compacted reopen exists only for managed storage;
+other backends receive no fabricated observation. Each nine-root restart revalidates every retained
+complete map and the exact selected root/generation before current-only reclamation. File close
+and post-open map validation stay outside the reopen intervals. The OS cache remains live.
