@@ -364,3 +364,28 @@ proc verifyServiceProofs*(plan: ServiceProofPlan, queries: openArray[StateProofQ
   if captured.error != ProofViewError.None:
     return ServiceProofResult[ProofView](status: ServiceProofError.InvalidValue)
   ServiceProofResult[ProofView](status: ServiceProofError.None, completed: captured.value)
+
+proc viewFailure[T](outcome: ProofViewResult[T]): ServiceProofResult[T] =
+  ## Preserve proof authentication details; local framing errors remain malformed values, not absent state.
+  case outcome.error
+  of ProofViewError.ProofFailure:
+    ServiceProofResult[T](status: ServiceProofError.ProofFailure, proofReason: outcome.proofError)
+  of ProofViewError.LimitExceeded, ProofViewError.LengthOverflow:
+    ServiceProofResult[T](status: ServiceProofError.LimitExceeded)
+  of ProofViewError.Uninitialized:
+    ServiceProofResult[T](status: ServiceProofError.Uninitialized)
+  else:
+    ServiceProofResult[T](status: ServiceProofError.InvalidValue)
+
+proc encodeServiceProofs*(view: ProofView, plan: ServiceProofPlan, viewLimits: ProofViewLimits,
+    perProof: StateProofLimits, wireBytes: ByteLimit): ServiceProofResult[seq[byte]] =
+  ## Encode existing RPV1 only for the exact requested key set; no new root authority is embedded.
+  let matched = matchesProofPlan(view, plan)
+  if matched.error != ServiceProofError.None:
+    return ServiceProofResult[seq[byte]](status: matched.error)
+  if not matched.value:
+    return ServiceProofResult[seq[byte]](status: ServiceProofError.InvalidInput)
+  let encoded = encodeProofView(view, viewLimits, perProof, wireBytes)
+  if encoded.error != ProofViewError.None:
+    return viewFailure(encoded)
+  ServiceProofResult[seq[byte]](status: ServiceProofError.None, completed: encoded.value)
