@@ -58,3 +58,16 @@ Use the observations to distinguish transient buffering/copy costs from retained
 completed reclaim/swap operation and hard-cap failure. Timings on shared CI are descriptive;
 this is not an optimization speedup claim or proof of out-of-core operation. Record actual
 conclusions in the [feature contract](../spec/storage-resident-pressure.md) before item3.
+
+The qualified [Linux run39803656520](https://github.com/jacogr/ragnarok/actions/runs/39803656520)
+recorded all48 attempts and16 passing unrestricted controls. All32,768-entry treatments
+completed. At131,072 entries, max128/no-swap caused local OOM kills in both backends;
+high128/no-swap treatments reached the35-second deadline. With256 MiB swap allowed, journal
+completed both passes with actual paging and242.6–244.7 MiB swap peaks; managed reached
+the deadline and full256 MiB swap peak in both passes. These conclusions apply to the
+combined controls in the table, including high128, rather than an isolated hard-cap test.
+
+The next bounded optimization should address transient read-buffer growth and owned byte
+copies, then repeat this panel before changing retained graph layout. The complete measured
+table, provenance and interpretation are in the [feature record](../spec/storage-resident-pressure.md#qualified-linux-results-and-item3-recommendation).
+The panel qualifies OS pressure behavior; storage still materializes the complete graph.
