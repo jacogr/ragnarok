@@ -82,3 +82,17 @@ root/generation and the independently retained view remain required.
 The existing short-read suite now requires zero payload read calls for a known oversized
 journal; managed CURRENT still precedes snapshot refusal. Post-stat growth needs a separate
 real-IO witness so metadata cannot bypass the existing excess-byte guard.
+
+## Post-stat growth witness
+
+The test-only SDK observer can borrow one caller-owned writable regular descriptor and grow its
+exact inode once, immediately before the next real read, after the storage reader's stat.
+Configuration rejects invalid/read-only descriptors, shrinking or greater-than64 KiB extents,
+and replacement of an active cue. Execution rechecks device/inode and current extent before
+real ftruncate; failure supplies no positive read result. Reset forgets the borrowed descriptor
+without closing it. No production call path, native runtime or allocator uses this cue.
+`storage_read_growth` exercises actual growth and real eight-byte short reads for managed
+snapshot/CURRENT/journal reads, managed append open and ordinary journal owner open. Each starts
+below its read ceiling and then exceeds it by one byte; pending-cue consumption and actual read
+calls must prove the path executed. Refusal preserves the test-authored grown extent/prefix.
+The tests alone remove their deliberate tails before positive strict reopens.
