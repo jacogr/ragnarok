@@ -81,3 +81,59 @@ partially present base fields remain errors. Optional latency/cost gauges stay i
 are excluded from cumulative deltas, since gauges and windowed counters may decrease.
 Discard metrics are not inferred from omitted read/write fields. See
 [the kernel implementation](https://github.com/torvalds/linux/blob/master/block/blk-cgroup.c).
+
+## Qualified Linux results and item3 recommendation
+
+[Linux run39803656520](https://github.com/jacogr/ragnarok/actions/runs/39803656520) passed
+on clean implementation `0c36419979294e72c1630caf33415550acb3b25a`, including this observer
+and its dependent panel. The `storage-resident-pressure-1` artifact retains the native binary,
+raw receipts, selected-byte fingerprints, JSON/CSV and complete per-attempt table. Host:
+Linux7.0.0-1017-azure x86_64/glibc2.39, AMD EPYC7763, Ubuntu Clang18.1.3; pinned Nimony
+`5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`, checked ARC/release/speed/Clang LTO.
+The panel validated all48 planned attempts:34 completed, four confirmed local cgroup OOM
+kills and ten35-second bounded stalls. All16 unrestricted controls passed. No swap rows
+were unavailable. All completed reopens checked generation17, exact producer root, complete
+map, retained view after close and final ARC baseline544 bytes. All selected file fingerprints
+remained unchanged after every outcome, and all owned services retired.
+
+Both passes gave the same treatment outcomes:
+
+| Entries/backend | Unrestricted native RSS | Open/closed retained Nim | Soft high128/max512, no swap | High128/max128, no swap | High128/max256, no swap | High128/max256, swap256 |
+| --- | ---: | ---: | --- | --- | --- | --- |
+| 32,768 journal | 89.9–90.3 MiB | 18.7 MiB | completed | completed | completed | completed, zero swap peak |
+| 32,768 managed | 104.2–104.4 MiB | 18.7 MiB | completed | completed | completed | completed, zero swap peak |
+| 131,072 journal | 331.3–331.4 MiB | 74.2 MiB | deadline | local OOM kill | deadline | completed |
+| 131,072 managed | 390.0–404.0 MiB | 74.2 MiB | deadline | local OOM kill | deadline | deadline |
+
+The two larger no-swap soft-pressure treatments spent32.7–34.3 seconds in full memory
+stall before the deadline; the max256 treatment retains high128, so this does not establish
+failure under an isolated256 MiB hard cap without soft pressure. Tight max128/no-swap rows
+had exactly one local OOM kill each. Expected treatment failures are recorded observations;
+they do not count as successful constrained reopens.
+
+Large journal swap rows completed with native RSS130.2/130.4 MiB, unit lifetime memory
+peaks128.2 MiB and swap peaks242.6/244.7 MiB. Raw unit counters show238,316/243,738
+swap pages in and249,764/246,800 out. The unit's `8:0` read bytes were
+1,032,421,376/1,054,187,520 and write bytes1,023,045,632/1,010,909,184. Large managed
+swap rows reached the full256 MiB swap peak and the deadline in both passes, with
+140,204/141,792 pages in,184,420/189,488 out and22.6–24.1 seconds of full memory stall.
+These are actual paging/reclaim/IO observations, with substantial repeated traffic. Native
+RSS and unit peaks use distinct accounting and sampling boundaries and must not be subtracted.
+
+The artifact was independently reparsed after download: all422 recorded source hashes and
+the retained native binary SHA256 matched; all raw kernel/native receipts, plan order, controls,
+byte preservation and cleanup validated. Only build-path comparison was relocated to the
+recorded Linux root for validation on macOS; imported commands were never executed. Native
+binary SHA256: `5415b8269d05447147efbd465cc3db69de3b1a5f762d4a372f72530906376c95`.
+The later qualification commits change prose only; covered source/build inputs remain identical.
+Local checks cover70 focused Python tests, inventory and workflow YAML syntax.
+
+For item3, first reduce transient read-buffer growth and owned byte-sequence duplication,
+using the ordinary allocating callers established by the allocation-diagnosis layer. Preserve
+validation, exact selected bytes/roots, complete maps and retained-view ownership. Re-run
+this same panel after each bounded change and compare peak memory, paging/reclaim and strict
+completion, then decide whether retained graph layout needs further work. The gap between
+retained Nim bytes and RSS includes allocator/runtime/loader overhead and does not quantify
+copy bytes by itself. Actual swap lets journal complete this fixture but does not establish
+acceptable storage latency, managed completion, or out-of-core storage: both readers still
+materialize the full graph. No item3 optimization is implemented by this experiment.
