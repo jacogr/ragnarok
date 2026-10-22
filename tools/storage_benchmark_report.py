@@ -7,10 +7,10 @@ import math
 from pathlib import PurePosixPath
 import re
 import statistics
-from storage_growth_report import summarize_growth, validate_growth
+from storage_growth_report import summarize_growth
 from storage_growth import SOURCES as GROWTH_SOURCES
 
-REPORT_VERSION=13
+REPORT_VERSION=14
 PROFILE='checked native ARC/Clang release opt:speed boundchecks:on LTO'
 REQUIRED_SOURCES=('tests/performance/storage_workload.nim','tests/support/managed_storage_samples.nim',
     'tests/support/storage_samples.nim','tools/storage_benchmark.py','tools/storage_benchmark_report.py',
@@ -78,7 +78,7 @@ def validate_provenance(report):
         values=hardware.get(field)
         require(type(values) in (list,tuple) and len(values)==3 and
                 all(type(v) in (int,float) and math.isfinite(v) and v>=0 for v in values),field)
-    validate_growth(report.get('growth'))
+    growth_summary=summarize_growth(report.get('growth'))
     checks=report.get('checks')
     require(type(checks) is list and len(checks)==1+2*len(ENGINES)*len(CASES),'native checks')
     logs=[]
@@ -89,6 +89,7 @@ def validate_provenance(report):
         require(type(elapsed) in (int,float) and math.isfinite(elapsed) and elapsed>=0,'native elapsed')
         logs.append(check['log'])
     require(len(set(logs))==len(logs) and not report.get('error'),'successful evidence')
+    return growth_summary # Parent rendering reuses this already validated child text in the same call.
 
 
 # Native success alone cannot substitute for all warmup/sample identities and positive timings.
@@ -183,7 +184,7 @@ def summarize_benchmark(report):
         raise ValueError('Unknown storage benchmark status')
     lines=['## Storage speed comparison','','**Status: '+status+'**','']
     if status=='checks-passed':
-        validate_provenance(report)
+        growth_summary=validate_provenance(report)
         cases=aggregate(report['passes'])
         if json.dumps(report['cases'],sort_keys=True,allow_nan=False)!=json.dumps(cases,sort_keys=True,allow_nan=False):
             raise ValueError('Storage statistics do not match raw validated samples')
@@ -216,7 +217,7 @@ def summarize_benchmark(report):
                     after=str(metrics['compacted_snapshot_bytes']+metrics['compacted_journal_bytes']) if engine=='managed' else '—'
                     lines.append(f'| {case["items"]} | {case["topology"]} | {case["value_bytes"]} | {case["batch_width"]} | {engine} | '+
                         f'{metrics["stored_nodes"]} / {metrics["selected_nodes"]} | {before} / {after} |')
-        lines+=['',summarize_growth(report['growth']).rstrip()]
+        lines+=['',growth_summary.rstrip()]
     else:
         lines+=['No complete validated comparison is available.']
     if report.get('error'):

@@ -28,8 +28,18 @@ def parse_growth(output,engine,count,steps,pattern='sweep'):
     if engine not in ENGINES or type(count) is not int or count not in COUNTS or type(steps) is not int or steps not in PUBLICATIONS or pattern not in PATTERNS:
         raise ValueError('Unknown sustained storage configuration')
     rows=[]
+    durations=[]
     for line in output.splitlines():
         fields=line.split('\t')
+        if fields[0]=='publication':
+            # Every native call has one bounded ordered witness, tied to the enclosing sample identity.
+            if len(fields)!=7 or fields[3]!=pattern or any(re.fullmatch(r'0|[1-9][0-9]{0,18}',v) is None for v in (*fields[1:3],*fields[4:])):
+                raise ValueError('Invalid publication latency output')
+            size,publications,sample,revision,duration=map(int,(*fields[1:3],*fields[4:]))
+            if (size,publications,sample)!=(count,steps,len(rows)) or revision!=len(durations)+1 or revision>steps or not 0<duration<(1<<63):
+                raise ValueError('Invalid publication latency identity')
+            durations.append(duration)
+            continue
         if len(fields)!=5+len(PHASES)+len(METRICS) or fields[0]!='growth' or fields[3]!=pattern or any(
                 re.fullmatch(r'-1|0|[1-9][0-9]{0,18}',value) is None for value in (*fields[1:3],*fields[4:])):
             raise ValueError('Invalid sustained storage output')
@@ -37,6 +47,10 @@ def parse_growth(output,engine,count,steps,pattern='sweep'):
         if size!=count or publications!=steps or sample!=len(rows) or sample>=13:
             raise ValueError('Invalid sustained sample identity')
         row=dict(items=size,publications=publications,pattern=pattern,sample=sample,**dict(zip((*PHASES,*METRICS),values)))
+        if len(durations)!=steps or sum(durations)>row['publication']:
+            raise ValueError('Incomplete or impossible publication latency coverage')
+        row['publication_samples']=durations
+        durations=[]
         for phase in PHASES:
             value=row[phase]
             if (unavailable(engine,phase) and value!=-1) or (not unavailable(engine,phase) and not 0<value<(1<<63)):
@@ -55,9 +69,19 @@ def parse_growth(output,engine,count,steps,pattern='sweep'):
             if (missing and value!=-1) or (zero and value!=0) or (not missing and not zero and not 0<value<(1<<63)):
                 raise ValueError('Invalid sustained selected-file extent')
         rows.append(row)
-    if len(rows)!=13:
+    if len(rows)!=13 or durations:
         raise ValueError('Incomplete sustained sample coverage')
     return rows
+
+
+def _encode_rows(rows):
+    """Reconstruct canonical native evidence so structured reports retain every ordered call witness."""
+    output=[]
+    for row in rows:
+        for revision,duration in enumerate(row['publication_samples'],1):
+            output.append('publication\t'+'\t'.join(map(str,(row['items'],row['publications'],row['pattern'],row['sample'],revision,duration)))+'\n')
+        output.append('growth\t'+'\t'.join(str(row[k]) for k in ('items','publications','pattern','sample',*PHASES,*METRICS))+'\n')
+    return ''.join(output)
 
 
 def aggregate_growth(passes):
@@ -75,9 +99,17 @@ def aggregate_growth(passes):
         for engine in ENGINES:
             groups=[p[f'{engine}-{count}-{steps}-{pattern}'] for p in passes]
             for group in groups:
-                if type(group) is not list or any(type(r) is not dict or set(r)!=set(('items','publications','pattern','sample',*PHASES,*METRICS)) or any(type(v) is not int for k,v in r.items() if k!='pattern') or r.get('pattern')!=pattern for r in group):
-                    raise ValueError('Invalid structured sustained sample')
-                encoded=''.join('growth\t'+'\t'.join(str(row[k]) for k in ('items','publications','pattern','sample',*PHASES,*METRICS))+'\n' for row in group)
+                if type(group) is not list:
+                    raise ValueError('Invalid structured sustained sample group')
+                for row in group:
+                    # Lists and scalar fields are typed before canonical text is reconstructed.
+                    if type(row) is not dict or set(row)!=set(('items','publications','pattern','sample',*PHASES,*METRICS,'publication_samples')):
+                        raise ValueError('Invalid structured sustained sample')
+                    if row['pattern']!=pattern or any(type(v) is not int for k,v in row.items() if k not in ('pattern','publication_samples')):
+                        raise ValueError('Invalid structured sustained scalar')
+                    if type(row['publication_samples']) is not list or any(type(v) is not int for v in row['publication_samples']):
+                        raise ValueError('Invalid structured publication latencies')
+                encoded=_encode_rows(group)
                 if parse_growth(encoded,engine,count,steps,pattern)!=group:
                     raise ValueError('Noncanonical sustained samples')
             if any(any(r[k]!=groups[0][0][k] for k in METRICS) for group in groups for r in group):
@@ -116,7 +148,7 @@ def aggregate_growth(passes):
 
 def validate_growth(report):
     """Native completion, source-bound binary identity and raw-derived statistics all remain mandatory."""
-    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=2:
+    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=3:
         raise ValueError('Invalid sustained report status/schema')
     if re.fullmatch('[0-9a-f]{64}',str(report.get('native_binary_sha256'))) is None:
         raise ValueError('Invalid sustained native identity')
