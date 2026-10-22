@@ -75,3 +75,19 @@ Add 32,768-entry sweep trajectories at 64/256 publications while keeping hot/swe
 Fixture policies allow 32,768 values of 256 bytes and 100,000 nodes, with explicit separate aggregate
 record/value/frame budgets. Selected snapshot/journal limits remain bounded at 32 MiB. These are
 benchmark-only budgets, not a production policy or state-interface change.
+
+## Measured immutable search directory
+
+A three-second sample of the archived checked baseline showed complete graph admission dominating
+publication. The private repository table now derives 257 first-byte offsets from its already
+sorted immutable cells. Graph lookup narrows only the binary-search interval; full 32-byte equality,
+all routing/cycle/count/byte checks and orphan rejection remain mandatory. Every table constructor
+(initial owner, sorted publication merge, image admission and selection clone) derives its own
+directory. The physical format, public API and independent root/checkpoint authority are unchanged.
+
+Matched opposite-program-order A/B runs retained three warmups and ten measured samples per pass
+on the same host and checked profile. 256-publication memory sweeps improved by 1.565× at 8,192
+entries and 1.366× at 32,768 entries; extraction and reclamation also improved. Logs, exact input
+hashes and executable identities are under `build/storage-growth-ab-prefix-graph/`. These are
+local observations, not production throughput or hardware durability claims. The directory adds
+257 machine-word offsets per immutable table; reader handles share their exact table owner.
