@@ -16,6 +16,9 @@
     {"identity": {"reason": "wrong-service"}, "arguments": ["wrong-service"], "name": "accumulation-reentry-wrong-service", "diagnostic": "outcome.status == ServiceFailure", "description": "Accumulation reentry wrong-service extraction guard"},
     {"identity": {"reason": "wrong-batch"}, "arguments": ["wrong-batch"], "name": "accumulation-reentry-wrong-batch", "diagnostic": "outcome.status == BatchFailure", "description": "Accumulation reentry wrong-batch extraction guard"},
     {"identity": {"reason": "previous"}, "arguments": ["previous"], "name": "accumulation-reentry-previous", "diagnostic": "outcome.status == None", "description": "Accumulation reentry previous extraction guard"},
-    {"identity": {"reason": "cycle-default"}, "arguments": ["cycle-default"], "name": "accumulation-reentry-cycle-default", "diagnostic": "outcome.status == None", "description": "Accumulation reentry cycle-default extraction guard"}
+    {"identity": {"reason": "cycle-default"}, "arguments": ["cycle-default"], "name": "accumulation-reentry-cycle-default", "diagnostic": "outcome.status == None", "description": "Accumulation reentry cycle-default extraction guard"},
+    {"identity": {"reason": "pending"}, "arguments": ["pending"], "name": "accumulation-reentry-pending", "diagnostic": "outcome.status == None", "description": "Scheduling pending extraction guard"},
+    {"identity": {"reason": "partition"}, "arguments": ["partition"], "name": "accumulation-reentry-partition", "diagnostic": "outcome.status == None", "description": "Scheduling partition extraction guard"},
+    {"identity": {"reason": "wrong-partition"}, "arguments": ["wrong-partition"], "name": "accumulation-reentry-wrong-partition", "diagnostic": "outcome.status == PartitionFailure", "description": "Scheduling wrong-partition extraction guard"}
   ]
 }

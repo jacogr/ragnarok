@@ -11,7 +11,9 @@ import ../../src/state/[accumulation_execution, accumulation_round, accumulation
   accumulation_continuation, accumulation_continuation_inputs, accumulation_continuation_invocation,
   accumulation_continuation_execution, accumulation_reentry, accumulation_reentry_invocation,
   accumulation_inputs, accumulation_service, accumulation_invocation, accumulation_machine,
-  accumulation_dispatch, accumulation_skip, accumulation_transfers, accumulation_provisions,
+  accumulation_dispatch, accumulation_skip, accumulation_transfers, accumulation_pending_transfers,
+  accumulation_transfer_partition,
+  accumulation_provisions,
   accumulation_outputs, accumulation_finalization, accumulation_statistics, store]
 import ../../src/pvm/[initialize, machine, program, step, gas, host_fetch]
 import ../../src/crypto/primitives
@@ -42,15 +44,21 @@ proc profile(): Parameters =
   decodeParameters(bytes).value
 
 proc code(service, destination: uint32, amount, gas: uint64, repeat = false,
-    stop = TransferStop.Halt, checkpoint = false): seq[byte] =
+    stop = TransferStop.Halt, checkpoint = false, nominate = false): seq[byte] =
   ## Emit exact duplicate transfers around optional checkpoint/terminal instructions, using the maintained guest framing.
   var memo = newSeq[byte](128)
   for index in 0..<128:
     memo[index] = byte((index*7+int(service)) mod 256) # Every source has an independently recognizable complete memo.
-  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, uint64(
+  var instructions: seq[seq[byte]] = @[]
+  if nominate:
+    instructions.add(registerImmediate(7, uint64(service)))
+    instructions.add(registerImmediate(8, 77))
+    instructions.add(@[10'u8, 29]) # Change only the sender's own supervision before committing its transfer outputs.
+  for instruction in @[registerImmediate(7, high(uint64)), registerImmediate(8, uint64(
       destination)),
     @[51'u8, 9, 0], registerImmediate(10, amount), registerImmediate(11, gas),
-    registerImmediate(12, 196608), @[10'u8, 22]]
+    registerImmediate(12, 196608), @[10'u8, 22]]:
+    instructions.add(instruction) # Preserve the transfer call framing after any supervisor host.
   if checkpoint:
     instructions.add(@[10'u8, 19]) # Select the first debit/outgoing record in Y before later failure.
   if repeat:
@@ -90,7 +98,7 @@ proc run(invocation: PreparedAccumulationInvocation): AccumulationDispatchResult
         0), pages: PageLimit(5))).value
   var contexts = pvmContextConfig()
   contexts.privileges = executionRoundConfig().privileges
-  executeAccumulationMachine(machine, profile(), FetchAccumulationLimits(items: ElementLimit(3),
+  executeAccumulationMachine(machine, profile(), FetchAccumulationLimits(items: ElementLimit(8),
       bytes: ByteLimit(1024),
     operand: OperandLimits(maxBytes: ByteLimit(512))), MemoryByteLimit(128), ExecutionStepLimit(100),
     HostCallLimit(10), GasCycleLimit(1000), contexts, transferLimit = ElementLimit(3))
@@ -102,11 +110,13 @@ proc config(): AccumulationReentryConfig =
   AccumulationReentryConfig(selection: AccumulationContinuationLimits(executions: ElementLimit(3),
       transfers: ElementLimit(3),
     memoBytes: ByteLimit(384), reports: ElementLimit(2), digests: ElementLimit(2)),
-    operands: executionRoundConfig().operands, inputs: inputs)
+    operands: executionRoundConfig().operands, inputs: inputs,
+    partition: TransferPartitionLimits(transfers: ElementLimit(8), services: ElementLimit(8),
+      checks: ElementLimit(1024)))
 
 proc fixture(base: OwnedReport, stop = TransferStop.Halt, checkpoint = false,
     zeroGas = false, mixed = false, lateOnly = false, missing = false, large = false,
-        budget = 200000'u64): TransferFixture =
+        budget = 200000'u64, supervised = false, changedSupervisor = false): TransferFixture =
   ## Initial 42 -> 99 plus duplicated 99 -> 77 funds later 77 -> 88; each round uses actual complete-source execution.
   var halt = @[0'u8]
   for octet in guestEnvelope([@[50'u8, 0]]):
@@ -114,6 +124,13 @@ proc fixture(base: OwnedReport, stop = TransferStop.Halt, checkpoint = false,
   let c77 = code(77, 88, 3, if large: high(uint64)-30000 elif zeroGas: 0'u64 else: 10000'u64,
       stop = stop, checkpoint = checkpoint)
   var extra = serviceEntries(77, 10, c77)
+  if supervised:
+    var metadata = decodeServiceMetadata(extra[0].value, ByteLimit(
+        ServiceMetadataBytes)).value.metadata
+    metadata.supervisor = ServiceIndex(99)
+    metadata.supervisorCreated = AccountSlot(0)
+    extra[0] = serviceMetadataEntry(ServiceIndex(77), metadata, ByteLimit(
+        ServiceMetadataBytes)).value # Bind the real current supervisor incarnation before signing.
   if missing:
     extra.setLen(1) # Preserve metadata and known code hash while withholding its preimage for a genuine skip.
   for entry in serviceEntries(88, 7, halt):
@@ -130,7 +147,8 @@ proc fixture(base: OwnedReport, stop = TransferStop.Halt, checkpoint = false,
   executionOptions0.first = ending
   executionOptions0.second = secondEnding
   executionOptions0.firstProgram = code(42, 99, 0, firstGas)
-  executionOptions0.secondProgram = code(99, 77, 2, secondGas, repeat = not large)
+  executionOptions0.secondProgram = code(99, 77, 2, secondGas, repeat = not large,
+      nominate = changedSupervisor)
   executionOptions0.secondBalance = 20
   executionOptions0.signed.extra = extra
   executionOptions0.signed.ready = ready
@@ -146,10 +164,10 @@ proc fixture(base: OwnedReport, stop = TransferStop.Halt, checkpoint = false,
   let done = completeBlockAccumulation(initial.round, [b, a], [], executionLimits()).value
   let selected = planAccumulationContinuation(done, config().selection).value
   let context = prepareAccumulationContinuationInputs(selected, AccumulationContinuationInputConfig(
-    operands: policy.operands, inputs: policy.inputs)).value
+    operands: policy.operands, inputs: policy.inputs, partition: config().partition)).value
   assert uint64(selected.continuationInfo.value.prefix) == (if lateOnly: 1'u64 else: 0'u64)
   let count = context.continuationInputs.value.invocationServiceCount.value
-  assert count == (if lateOnly or large: 1 else: 2)
+  assert count == (if lateOnly or large or supervised or changedSupervisor: 1 else: 2)
   var executions: seq[AccumulationDispatchResult] = @[]
   var skips: seq[SkippedAccumulation] = @[]
   for index in countdown(count-1, 0):
@@ -232,8 +250,76 @@ proc finished(source: CompletedAccumulationContinuation): PreparedFinalAccumulat
   limits.log = OutputLogConfig(items: ElementLimit(10), maxBytes: ByteLimit(1024))
   prepareFinalAccumulation(completed(next), limits).value
 
+proc checkScheduledTransfers(base: OwnedReport) =
+  ## Genuine execution proves accepted-only inputs, current-state supervision, carried-only dispatch and bounded ownership.
+  for changed in [false, true]:
+    let source = fixture(base, supervised = not changed, changedSupervisor = changed)
+    let input = source.later.executionContinuation.value
+    let partition = input.continuationTransferPartition.value
+    assert partition.partitionCount(TransferPartitionKind.Accepted).value == 1
+    assert partition.partitionCount(TransferPartitionKind.Queued).value == 2
+    assert input.continuationInputs.value.invocationServiceCount.value == 1
+    var policy = config()
+    policy.selection.transfers = ElementLimit(8)
+    policy.selection.memoBytes = ByteLimit(1024)
+    let next = prepareAccumulationReentry(source.later, policy).value
+    let pending = next.reentryPending.value.pendingTransferInfo.value
+    assert pending.carried == 2 and pending.outgoing == 2 and pending.transfers == 4
+    assert uint64(pending.carriedGas) == 20000 and uint64(pending.outgoingGas) == 20000
+    assert uint64(pending.reservedGas) == 40000
+    let priorBudget = uint64(source.later.executionInfo.value.round.budget)
+    let used = uint64(source.later.executionInfo.value.gasUsed)
+    assert uint64(pending.budget) == priorBudget-used+20000 # Only newly paid gas is restored; held gas is never refunded again.
+    assert uint64(pending.budget) == uint64(pending.reportBudget)+40000
+    assert next.reentryInputs.value.invocationServiceAt(InvocationServiceIndex(
+        0)).value.transfers == 4
+    assert next.reentryTransferPartition.value.partitionCount(TransferPartitionKind.Queued).value == 0
+    for kind in 0..<3:
+      var limited = policy
+      case kind
+      of 0: limited.partition.transfers = ElementLimit(3) # Combined old/new records consume the cap.
+      of 1: limited.partition.checks = ElementLimit(0) # Predicate traversal needs an explicit work grant.
+      else: limited.selection.transfers = ElementLimit(3) # Pending ownership bounds carried plus outgoing too.
+      let refused = prepareAccumulationReentry(source.later, limited)
+      if kind < 2:
+        assert refused.error == AccumulationReentryError.PartitionFailure
+        assert refused.partitionError == TransferPartitionError.LimitExceeded
+      else:
+        assert refused.error == AccumulationReentryError.LimitExceeded
+    var tail = next
+    while tail.reentryInfo.value.dispatch:
+      tail = prepareAccumulationReentry(completed(tail), policy, AccumulationReentryDepthLimit(
+          4)).value # Complete every held record exactly once before final statistics.
+    let finalized = prepareFinalAccumulation(completed(tail), historyPolicy()).value
+    let activity = prepareAccumulationStatistics(finalized, statisticsPolicy()).value
+    assert activity.statisticsInfo.value.transfers == 6
+    let junior = activity.statisticsAt(StatisticsServiceIndex(1)).value
+    assert uint32(junior.service) == 77
+    assert uint64(junior.statistics.counters[ServiceMeasure.TransferCount]) == 4
+  let zero = fixture(base, supervised = true, zeroGas = true)
+  let queued = zero.later.executionContinuation.value.continuationTransferPartition.value
+  assert queued.partitionCount(TransferPartitionKind.Queued).value == 2
+  let next = prepareAccumulationReentry(zero.later, config()).value
+  let info = next.reentryInfo.value
+  let pending = next.reentryPending.value.pendingTransferInfo.value
+  assert info.transfers == 0 and uint64(info.transferGas) == 0 and info.dispatch
+  assert pending.carried == 2 and pending.outgoing == 0 and pending.transfers == 2
+  assert uint64(info.budget) == uint64(zero.later.executionInfo.value.round.budget)
+  let stopped = prepareAccumulationReentry(completed(next), config(), AccumulationReentryDepthLimit(2)).value
+  assert not stopped.reentryInfo.value.dispatch
+  assert stopped.reentryPending.value.pendingTransferInfo.value.transfers == 0
+  assert default(PreparedAccumulationReentry).reentryPending.error ==
+      AccumulationReentryError.Uninitialized
+  assert default(PreparedAccumulationReentry).reentryTransferPartition.error ==
+      AccumulationReentryError.Uninitialized
+  assert default(PreparedAccumulationContinuationInputs).continuationTransferPartition.error ==
+      AccumulationContinuationInputError.Uninitialized
+  assert default(PreparedAccumulationContinuation).continuationPending.error ==
+      AccumulationContinuationError.Uninitialized
+
 proc checkTransferReentry*(base: OwnedReport) =
   ## Exercise genuine transfer chains, destination statistics, rollback, independent limits, real roots and ARC release.
+  checkScheduledTransfers(base) # Verify the current GP scheduler before the legacy independent-root chains.
   let source = fixture(base)
   let first = prepareAccumulationReentry(source.later, config()).value
   let firstInfo = first.reentryInfo.value
@@ -389,16 +475,16 @@ proc checkTransferReentry*(base: OwnedReport) =
     of 0: limited.selection.executions = ElementLimit(1) # Bound both completed service outcomes.
     of 1: limited.selection.transfers = ElementLimit(2) # Duplicate transfers consume separate record budgets.
     of 2: limited.selection.memoBytes = ByteLimit(383) # Every one of the three fixed memos needs 128 bytes.
-    of 3: limited.inputs.inputs = ElementLimit(2) # Refuse transfer descriptors before state work.
+    of 3: limited.inputs.inputs = ElementLimit(2) # Accepted descriptor limits follow current-state partitioning.
     else: limited.inputs.services = ElementLimit(1) # A late destination-union group also consumes capacity.
-    failHash(1)
+    failHash(cint(if mode < 3: 1 else: 0)) # Only source-local bounds precede private batch hashing.
     let refused = prepareAccumulationReentry(source.later, limited)
     if mode < 3:
       assert refused.error == AccumulationReentryError.LimitExceeded
     else:
       assert refused.error == AccumulationReentryError.InputFailure and refused.inputError ==
           AccumulationInputError.LimitExceeded
-    assert hashCalls() == 0
+    if mode < 3: assert hashCalls() == 0 # Source count/memo refusals still perform no state work.
     failHash(0)
   for successful in [0, 2]:
     hashAfter(cint(successful))

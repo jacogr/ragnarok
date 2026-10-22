@@ -9,7 +9,8 @@ import ../../src/codec/[bounded, composite, header, c2_records, report_owned, ow
   work_report, work_digest, state_accounts, state_service_values, state_layout, state_workqueues, state_trie]
 import ../../src/state/[accumulation_execution, accumulation_round, accumulation_batch,
   accumulation_dispatch, accumulation_skip, accumulation_outcome, accumulation_context,
-  accumulation_transfers, accumulation_round_transfers, accumulation_continuation,
+  accumulation_transfers, accumulation_transfer_partition, accumulation_round_transfers,
+  accumulation_continuation,
   accumulation_continuation_inputs, accumulation_inputs, accumulation_service,
   accumulation_operands,
   accumulation_provisions, store]
@@ -119,7 +120,8 @@ proc limits(executions = 2'u64, transfers = 3'u64,
 proc inputConfig(): AccumulationContinuationInputConfig =
   ## Existing bounded report ranges combine with transferred destination groups and no recurring allowances.
   AccumulationContinuationInputConfig(operands: executionRoundConfig().operands,
-      inputs: executionRoundConfig().inputs)
+      inputs: executionRoundConfig().inputs, partition: TransferPartitionLimits(
+        transfers: ElementLimit(8), services: ElementLimit(8), checks: ElementLimit(1024)))
 
 proc balance(state: StateStoreSnapshot, service: uint32): uint64 =
   ## Inspect the actual complete map's canonical balance rather than trusting copied grouping facts.
@@ -194,7 +196,7 @@ proc checkTransferContinuation*(base: OwnedReport) =
   assert uint32(supplied.source) == 99 and uint64(supplied.amount) == 5
   var limitedConfig = inputConfig()
   limitedConfig.inputs.inputs = ElementLimit(2)
-  failHash(1)
+  failHash(0) # Accepted-group limits depend on current supervision, after private batch application.
   let limited = prepareAccumulationContinuationInputs(plan, limitedConfig)
   assert limited.error == AccumulationContinuationInputError.InputFailure and limited.inputError ==
       AccumulationInputError.LimitExceeded
@@ -207,7 +209,7 @@ proc checkTransferContinuation*(base: OwnedReport) =
     let short = prepareAccumulationContinuationInputs(plan, combined)
     assert short.error == AccumulationContinuationInputError.InputFailure and short.inputError ==
         AccumulationInputError.LimitExceeded
-  assert hashCalls() == 0, "combined input and late destination-group limits refuse before state hashing"
+  failHash(1) # Backend refusal still discards the privately applied candidate.
   let refused = prepareAccumulationContinuationInputs(plan, inputConfig())
   assert refused.error == AccumulationContinuationInputError.BatchFailure
   assert refused.batchFailure.storeError == StateStoreError.BackendFailure

@@ -4,28 +4,31 @@
 ## Bind selected continuation range inputs to the actual privately applied initial batch state.
 ## Retains immutable source/input/full-map owners; never accepts replacement provenance or publishes caller state.
 
-import ../codec/[bounded, c2_records, header]
+import ../codec/[bounded, c2_records, header, state_accounts]
 import ./[accumulation_continuation, accumulation_execution, accumulation_round, accumulation_queue,
   accumulation_operands, accumulation_inputs, accumulation_batch, accumulation_service,
   accumulation_round_transfers, accumulation_transfers, report_admission, block_transition,
-  block_admission, store]
+  block_admission, accumulation_pending_transfers, accumulation_transfer_partition, store]
 
 type
   AccumulationContinuationInputConfig* = object ## Independent selected-range C.2 and service-input materialization budgets.
     operands*: AccumulationOperandConfig ## Bounds apply only to selected continuation reports and their payloads.
     inputs*: AccumulationInputConfig ## Bounds combined transfer/report groups; no recurring allowances are supplied.
+    partition*: TransferPartitionLimits ## Explicit pending-record/active-service/predicate work; zero grants only empty transfer work.
   AccumulationContinuationInputError* {.pure.} = enum ## Refusals expose no partially prepared inputs, state or source plan.
-    Uninitialized,  ## Default result or owner without initialized preparation.
-    None,           ## Complete selected success permits guarded extraction.
-    InvalidPlan,    ## No genuine prepared continuation was supplied.
-    OperandFailure, ## Selected range materialization refused; inspect operandError.
-    InputFailure,   ## Transfer/report service grouping refused; inspect inputError.
-    ServiceFailure, ## Service resolution refused; inspect serviceError.
-    BatchFailure    ## Actual private batch application refused; inspect the failed parent's guarded reasons.
+    Uninitialized,   ## Default result or owner without initialized preparation.
+    None,            ## Complete selected success permits guarded extraction.
+    InvalidPlan,     ## No genuine prepared continuation was supplied.
+    OperandFailure,  ## Selected range materialization refused; inspect operandError.
+    InputFailure,    ## Transfer/report service grouping refused; inspect inputError.
+    ServiceFailure,  ## Service resolution refused; inspect serviceError.
+    BatchFailure,    ## Actual private batch application refused; inspect the failed parent's guarded reasons.
+    PartitionFailure ## Current post-state supervision partition refused; inspect partitionError.
   # Private acyclic owner retains only complete range inputs and the actual initial-batch successor.
   ContinuationInputData = ref object
     plan: PreparedAccumulationContinuation
     inputs: PreparedAccumulationInputs
+    partition: PreparedTransferPartition
     state: StateStoreSnapshot
     slot: HeaderSlot
   PreparedAccumulationContinuationInputs* = object ## Only genuine continuation selection plus successful private batch application constructs this owner.
@@ -40,6 +43,8 @@ type
       inputReason: AccumulationInputError
     of ServiceFailure:
       serviceReason: AccumulationServiceError
+    of PartitionFailure:
+      partitionReason: TransferPartitionError
     of BatchFailure:
       failed: AccumulationBatchResult[StateStoreSnapshot] # Invariant: the retained parent is refused, so no snapshot payload exists.
     else:
@@ -77,6 +82,23 @@ func batchFailure*[T](outcome: AccumulationContinuationInputResult[T]): Accumula
 requires: outcome.status == AccumulationContinuationInputError.BatchFailure.} =
   ## Inspect the actually refused batch result, preserving every nested terminal/provision/store reason contract.
   outcome.failed
+
+func partitionError*[T](outcome: AccumulationContinuationInputResult[
+    T]): TransferPartitionError {.inline,
+
+requires: outcome.status == AccumulationContinuationInputError.PartitionFailure.} =
+  ## Inspect only a genuinely selected post-state transfer partition refusal.
+  outcome.partitionReason
+
+proc continuationTransferPartition*(owner: PreparedAccumulationContinuationInputs): AccumulationContinuationInputResult[
+    PreparedTransferPartition] =
+  ## Retain the exact accepted/queued classification that supplied this entry's invocation inputs.
+  let data = owner.data
+  if data == nil:
+    return AccumulationContinuationInputResult[PreparedTransferPartition](
+        status: AccumulationContinuationInputError.Uninitialized) # No default input partition.
+  AccumulationContinuationInputResult[PreparedTransferPartition](
+      status: AccumulationContinuationInputError.None, completed: data.partition)
 
 proc continuationInputs*(owner: PreparedAccumulationContinuationInputs): AccumulationContinuationInputResult[
     PreparedAccumulationInputs] =
@@ -126,47 +148,81 @@ proc prepareContinuationAccumulationService*(owner: PreparedAccumulationContinua
 proc prepareAccumulationContinuationInputs*(plan: PreparedAccumulationContinuation,
     config: AccumulationContinuationInputConfig): AccumulationContinuationInputResult[
         PreparedAccumulationContinuationInputs] =
-  ## Materialize the selected range and bound outgoing transfers with empty allowances, then apply the actual initial batch privately.
-  ## Preserve inherited store ceilings and publish an owner only after all input and state phases succeed.
+  ## Materialize selected reports, apply the actual initial batch privately and partition pending records against that successor.
+  ## Only accepted transfers become invocation inputs; queued records remain bound to the returned partition.
   let selected = plan.continuationInfo
   if selected.error != AccumulationContinuationError.None:
     return AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
-        status: AccumulationContinuationInputError.InvalidPlan) # Default plans cannot authorize state application.
+        status: AccumulationContinuationInputError.InvalidPlan) # No fabricated source plan.
   let source = plan.continuationSource.value
   let round = source.executionRound.value
   let queue = round.roundBlockQueue.value
   let operands = prepareAccumulationOperandRange(queue.accumulationProjection.value,
-    AccumulationReportStart(uint64(selected.value.completedPrefix)), selected.value.prefix,
-        config.operands)
+      AccumulationReportStart(uint64(selected.value.completedPrefix)), selected.value.prefix,
+          config.operands)
   if operands.error != AccumulationOperandError.None:
     return AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
-      status: AccumulationContinuationInputError.OperandFailure,
-      operandReason: operands.error) # No earlier projection escapes before state work.
-  let count = selected.value.transfers
-  if uint64(count) > uint64(config.inputs.inputs):
+        status: AccumulationContinuationInputError.OperandFailure,
+
+operandReason: operands.error) # Selected range limits precede any private state work.
+  let activeInputs = prepareAccumulationInputs(operands.value, [], [], config.inputs)
+  if activeInputs.error != AccumulationInputError.None:
     return AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
-      status: AccumulationContinuationInputError.InputFailure,
-      inputReason: AccumulationInputError.LimitExceeded) # Refuse transfer descriptors before allocating their temporary copy.
-  let collected = plan.continuationTransfers.value.roundTransferCollection.value
-  # The same retained collection proved this fixed-record native extent before copying; no caller count is accepted.
-  var transfers = newSeq[DeferredTransfer](count)
-  for index in 0..<count:
-    transfers[index] = collected.collectedTransferAt(CollectedTransferIndex(uint64(
-        index))).value # Preserve canonical source/append order before destination grouping.
-  let inputs = prepareAccumulationInputs(operands.value, transfers, [], config.inputs)
-  if inputs.error != AccumulationInputError.None:
+        status: AccumulationContinuationInputError.InputFailure,
+
+inputReason: activeInputs.error) # Report-only grouping is already required regardless of transfer classification.
+  let pending = plan.continuationPending.value
+  let count = pending.pendingTransferInfo.value.transfers
+  let serviceCount = if count == 0: 0 else: activeInputs.value.invocationServiceCount.value
+  let transferOverflow = uint64(count) > uint64(config.partition.transfers)
+  let serviceOverflow = uint64(serviceCount) > uint64(config.partition.services)
+  let workOverflow = uint64(count) > uint64(config.partition.checks)
+  let extentOverflow = serviceCount > high(int) div sizeof(ServiceIndex)
+  if transferOverflow or serviceOverflow or workOverflow or extentOverflow:
     return AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
-      status: AccumulationContinuationInputError.InputFailure,
-      inputReason: inputs.error) # No recurring allowances or earlier input owner accompanies refusal.
+        status: AccumulationContinuationInputError.PartitionFailure,
+
+partitionReason: TransferPartitionError.LimitExceeded) # Prove source and minimum work bounds before applying any batch.
+  var active = newSeq[ServiceIndex](serviceCount)
+  for index in 0..<serviceCount:
+    active[index] = activeInputs.value.invocationServiceAt(InvocationServiceIndex(uint64(
+        index))).value.service # Only report services are active before transfer partitioning.
   let stage = queue.accumulationAdmission.value.reportBlockStage.value.value
   var working = forkStateStore(stage.admitted.admittedState).value
   let applied = applyAccumulationBatch(working, source.executionBatch.value)
   if applied.error != AccumulationBatchError.None:
     return AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
-      status: AccumulationContinuationInputError.BatchFailure,
-      failed: applied) # Only failed enum alternatives survive; the private candidate and inputs are released.
+        status: AccumulationContinuationInputError.BatchFailure,
+
+failed: applied) # No private successor is published on a later partition/input refusal.
+  let partition = pending.partitionPendingTransfers(applied.value, active, config.partition)
+  if partition.error == PendingTransferError.PartitionFailure:
+    return AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
+        status: AccumulationContinuationInputError.PartitionFailure,
+
+partitionReason: partition.partitionError) # Preserve actual malformed-state and work-limit reasons.
+  if partition.error != PendingTransferError.None:
+    return AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
+        status: AccumulationContinuationInputError.InvalidPlan) # Only a genuine pending owner can reach partitioning.
+  let accepted = partition.value.partitionCount(TransferPartitionKind.Accepted).value
+  if uint64(accepted) > uint64(config.inputs.inputs):
+    return AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
+        status: AccumulationContinuationInputError.InputFailure,
+
+inputReason: AccumulationInputError.LimitExceeded) # Bound accepted descriptors before allocating their temporary copy.
+  var transfers = newSeq[DeferredTransfer](accepted)
+  for index in 0..<accepted:
+    transfers[index] = partition.value.partitionTransferAt(TransferPartitionKind.Accepted,
+        TransferPartitionIndex(uint64(index))).value # Preserve accepted source order before destination grouping.
+  let inputs = prepareAccumulationInputs(operands.value, transfers, [], config.inputs)
+  if inputs.error != AccumulationInputError.None:
+    return AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
+        status: AccumulationContinuationInputError.InputFailure,
+
+inputReason: inputs.error) # Final grouping sees only deliverable transfers and no recurring allowances.
   let slot = headerInfo(stage.admitted.admittedHeader).value.unsigned.slot
   AccumulationContinuationInputResult[PreparedAccumulationContinuationInputs](
-    status: AccumulationContinuationInputError.None,
-    completed: PreparedAccumulationContinuationInputs(data: ContinuationInputData(plan: plan,
-      inputs: inputs.value, state: applied.value, slot: slot)))
+          status: AccumulationContinuationInputError.None,
+          completed: PreparedAccumulationContinuationInputs(
+          data: ContinuationInputData(plan: plan, inputs: inputs.value, partition: partition.value,
+              state: applied.value, slot: slot)))
