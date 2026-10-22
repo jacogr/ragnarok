@@ -82,3 +82,9 @@ strict reopen/reclamation and final owner close. It requires one sample and excl
 Ordinary speed builds compile these checkpoints away. Closed checkpoints deliberately retain the
 held views and fixture, making the observed ownership boundary explicit rather than claiming a
 fully released process.
+
+Allocator output admission requires the exact available phase order followed by one fully validated
+native trajectory. Missing, duplicate, reordered, late, negative, noncanonical or overflowing
+checkpoints refuse. Backend and workload substitution still fail the existing native parser.
+Allocation rows carry current Nim heap bytes and physical counters only; all duration values are
+discarded after validating the native witnesses.
