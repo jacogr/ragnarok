@@ -72,3 +72,11 @@ terminate only affected subscriptions with an error. Preimage selectors retain f
 and reuse bounded reads plus content-hash verification. Request selectors add a nominal length
 and return fixed validated histories through the same slot-array serializer as queries.
 Disconnect releases the entire session.
+
+
+Canonical server/client/mesh Services bindings expose bounded asynchronous state proofs.
+RPC retains only detached selectors and connection-local completion authority; Services
+claims one after request contexts retire, uses the existing single-slot proof worker and
+exclusive chain lease, then collects before queueing detached output. Public framing and
+resource limits are specified in [RPC state proofs](../../spec/rpc-state-proofs.md).
+Download orchestration keeps this capability disabled while it retains external parent aliases.
