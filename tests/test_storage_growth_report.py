@@ -15,12 +15,14 @@ def output(engine,count,steps,pattern='sweep'):
     """Authored complete observations include unavailable sentinels, not measurements from the native code."""
     rows=[]
     for sample in range(13):
-        times=[100+sample,-1 if engine=='memory' else 200+sample,
+        times=[(100+sample)*steps,-1 if engine=='memory' else 200+sample,
             -1 if engine=='journal' else 300+sample,-1 if engine=='journal' else 400+sample]
         metrics=[count*3+500,-1 if engine=='journal' else count*3+50,-1 if engine=='journal' else count*3,
             -1 if engine=='memory' else (0 if engine=='journal' else 1000),-1 if engine=='memory' else 2000,
             900 if engine=='managed' else -1,72 if engine=='managed' else -1]
-        rows.append('growth\t'+'\t'.join(map(str,[count,steps,pattern,sample,*times,*metrics]))+'\n')
+        for revision in range(1,steps+1):
+            rows.append('publication\t'+'\t'.join(map(str,[count,steps,pattern,sample,revision,100+sample]))+'\n')
+        rows.append('growth\t' +'\t'.join(map(str,[count,steps,pattern,sample,*times,*metrics]))+'\n')
     return ''.join(rows)
 
 
@@ -28,7 +30,7 @@ def fixture():
     """Create complete reverse-order report evidence with independent exact median expectations."""
     passes=[{f'{e}-{n}-{s}-{p}':parse_growth(output(e,n,s,p),e,n,s,p) for e in order for n,s,p in CASES}
         for order in (ENGINES,tuple(reversed(ENGINES)))]
-    return dict(status='checks-passed',schema_version=2,native_binary_sha256='a'*64,passes=passes,
+    return dict(status='checks-passed',schema_version=3,native_binary_sha256='a'*64,passes=passes,
         cases=aggregate_growth(passes),checks=[dict(exit_code=0,elapsed_seconds=0.01,log=f'{i}.log') for i in range(49)])
 
 
@@ -38,7 +40,7 @@ class StorageGrowthReportTests(unittest.TestCase):
     def test_complete_raw_derived_panel(self):
         report=fixture();cases=validate_growth(report)
         self.assertEqual(len(cases),32)
-        self.assertEqual(cases[0]['engines']['memory']['median_ns'],107.5)
+        self.assertEqual(cases[0]['engines']['memory']['median_ns'],107.5*64)
         self.assertIn('Sustained storage workload',summarize_growth(report))
         self.assertIn('Strict disk reopen | — |',summarize_growth(report))
 
@@ -61,11 +63,23 @@ class StorageGrowthReportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'positive-control'):
             aggregate_growth(report['passes'])
 
+    def test_complete_ordered_publication_witnesses(self):
+        raw=output('memory',1024,64)
+        lines=raw.splitlines()
+        invalid=['\n'.join(lines[1:])+'\n',raw.replace('\t0\t1\t100','\t0\t2\t100',1),
+            raw.replace('\t0\t1\t100','\t0\t1\t6401',1),raw+lines[0]+'\n']
+        for bad in invalid:
+            with self.subTest(bad=bad[:60]),self.assertRaises(ValueError):
+                parse_growth(bad,'memory',1024,64)
+        report=fixture();report['passes'][0]['memory-1024-64-sweep'][0]['publication_samples'][0]=True
+        with self.assertRaises(ValueError):
+            validate_growth(report)
+
     def test_bounded_canonical_values(self):
         raw=output('managed',1024,64)
         for replacement in ('0','-1',str(1<<63),'True','100.0','+100','0100'):
             with self.subTest(value=replacement),self.assertRaises(ValueError):
-                parse_growth(raw.replace('\t100\t','\t'+replacement+'\t',1),'managed',1024,64)
+                parse_growth(raw.replace('\t6400\t','\t'+replacement+'\t',1),'managed',1024,64)
 
     def test_unavailable_operations_and_extents(self):
         for engine in ('memory','journal'):

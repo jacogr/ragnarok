@@ -51,3 +51,11 @@ can substitute for the other. Generation256 retains its full revision encoding.
 At 64 publications the two patterns issue identical writes; physical counters must match as a
 positive control. At 256 publications hot keys have been revisited four times while sweep keys
 have advanced across 1,024 identities. No locality timing is an OS cache-eviction claim.
+
+## Per-publication latency witnesses
+
+Every prepared publication has one monotonic duration, emitted after all validation. Raw evidence
+requires exactly one witness per revision in order, with exact backend/case/sample binding. Their
+sum cannot exceed the enclosing publication batch interval. The same per-call clock overhead is
+present for all backends; formatting and CSV publication remain outside timing. Structured reports
+are reparsed through the same coverage contract, and boolean/substituted values are refused.

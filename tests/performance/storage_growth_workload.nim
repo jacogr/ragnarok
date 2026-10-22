@@ -53,12 +53,15 @@ proc main() {.raises.} =
     else:
       assert initializeManagedFileRepository(disk, path, default(StorageChainId), selection, [],
           managed) == FileError.None
+    var latencies = newSeq[int64](publications)
     let publicationStart = getMonoTime()
-    for change in fixture.changes:
+    for index, change in fixture.changes:
+      let revisionStart = getMonoTime()
       if engine == "memory":
         discard memory.publish(memory.snapshot.value, change).value
       else:
         discard disk.publish(disk.snapshot.value, change).value # Disk includes actual synchronization for every revision.
+      latencies[index] = elapsed(revisionStart) # Retain each complete public call without formatting in timing.
     let publicationNs = elapsed(publicationStart)
     let held = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
     assert uint64(held.generation) == uint64(publications+1)
@@ -146,6 +149,10 @@ proc main() {.raises.} =
     assert memory.close == RepositoryError.None
     checkGrowth(held, expected, count, publications,
         hot) # Retired files and owner close cannot revoke immutable readers.
+    for index, duration in latencies:
+      # Emit observations only after all complete-map/lifetime validation and native namespace cleanup.
+      echo "publication\t", count, "\t", publications, "\t", pattern, "\t", sample,
+        "\t", index+1, "\t", duration
     echo "growth\t", count, "\t", publications, "\t", pattern, "\t", sample, "\t", publicationNs, "\t",
       reopenNs, "\t", retentionNs, "\t", maintenanceNs, "\t", storedNodes, "\t", retainedNodes,
       "\t", currentNodes, "\t", snapshotBytes, "\t", journalBytes, "\t", compactedSnapshotBytes,
