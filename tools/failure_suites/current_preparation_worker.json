@@ -1,0 +1,21 @@
+{
+  "build_name": "current-preparation-worker-results",
+  "cases": [
+    {
+      "arguments": [
+        "current"
+      ],
+      "description": "Current worker completion extraction guard",
+      "diagnostic": "completion.status == CurrentCompleted",
+      "identity": {
+        "reason": "current"
+      },
+      "name": "current-preparation-worker-completion"
+    }
+  ],
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "source": "tests/native/current_preparation_worker_results.nim"
+}
