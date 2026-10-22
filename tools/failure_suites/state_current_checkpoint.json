@@ -1,0 +1,88 @@
+{
+  "build_name": "state-current-checkpoint-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard current checkpoint default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-current-checkpoint-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard current checkpoint invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-current-checkpoint-invalid"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard current checkpoint reason",
+      "diagnostic": "outcome.status == EncodingFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-current-checkpoint-reason"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Guard current checkpoint info",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "info"
+      },
+      "name": "state-current-checkpoint-info"
+    },
+    {
+      "arguments": [
+        "bytes"
+      ],
+      "description": "Guard current checkpoint bytes",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "bytes"
+      },
+      "name": "state-current-checkpoint-bytes"
+    },
+    {
+      "arguments": [
+        "finality"
+      ],
+      "description": "Guard current checkpoint finality",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "finality"
+      },
+      "name": "state-current-checkpoint-finality"
+    },
+    {
+      "arguments": [
+        "origin"
+      ],
+      "description": "Guard current checkpoint origin",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "origin"
+      },
+      "name": "state-current-checkpoint-origin"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_checkpoint_results.nim"
+}
