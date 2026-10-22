@@ -1,0 +1,172 @@
+{
+  "source": "tests/native/accumulation_current_round_results.nim",
+  "build_name": "accumulation-current-round-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-round-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current round extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-round-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current round extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "guest"
+      },
+      "arguments": [
+        "guest"
+      ],
+      "name": "current-round-guest",
+      "diagnostic": "outcome.status == GuestFailure",
+      "description": "Current round extraction: guest"
+    },
+    {
+      "identity": {
+        "reason": "account"
+      },
+      "arguments": [
+        "account"
+      ],
+      "name": "current-round-account",
+      "diagnostic": "outcome.status == AccountFailure",
+      "description": "Current round extraction: account"
+    },
+    {
+      "identity": {
+        "reason": "provision"
+      },
+      "arguments": [
+        "provision"
+      ],
+      "name": "current-round-provision",
+      "diagnostic": "outcome.status == ProvisionFailure",
+      "description": "Current round extraction: provision"
+    },
+    {
+      "identity": {
+        "reason": "global"
+      },
+      "arguments": [
+        "global"
+      ],
+      "name": "current-round-global",
+      "diagnostic": "outcome.status == GlobalFailure",
+      "description": "Current round extraction: global"
+    },
+    {
+      "identity": {
+        "reason": "output"
+      },
+      "arguments": [
+        "output"
+      ],
+      "name": "current-round-output",
+      "diagnostic": "outcome.status == OutputFailure",
+      "description": "Current round extraction: output"
+    },
+    {
+      "identity": {
+        "reason": "transfer"
+      },
+      "arguments": [
+        "transfer"
+      ],
+      "name": "current-round-transfer",
+      "diagnostic": "outcome.status == TransferFailure",
+      "description": "Current round extraction: transfer"
+    },
+    {
+      "identity": {
+        "reason": "pending"
+      },
+      "arguments": [
+        "pending"
+      ],
+      "name": "current-round-pending",
+      "diagnostic": "outcome.status == PendingFailure",
+      "description": "Current round extraction: pending"
+    },
+    {
+      "identity": {
+        "reason": "globals"
+      },
+      "arguments": [
+        "globals"
+      ],
+      "name": "current-round-globals",
+      "diagnostic": "outcome.status == None",
+      "description": "Current round extraction: globals"
+    },
+    {
+      "identity": {
+        "reason": "outputs"
+      },
+      "arguments": [
+        "outputs"
+      ],
+      "name": "current-round-outputs",
+      "diagnostic": "outcome.status == None",
+      "description": "Current round extraction: outputs"
+    },
+    {
+      "identity": {
+        "reason": "transfers"
+      },
+      "arguments": [
+        "transfers"
+      ],
+      "name": "current-round-transfers",
+      "diagnostic": "outcome.status == None",
+      "description": "Current round extraction: transfers"
+    },
+    {
+      "identity": {
+        "reason": "pending-owner"
+      },
+      "arguments": [
+        "pending-owner"
+      ],
+      "name": "current-round-pending-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Current round extraction: pending-owner"
+    },
+    {
+      "identity": {
+        "reason": "guests"
+      },
+      "arguments": [
+        "guests"
+      ],
+      "name": "current-round-guests",
+      "diagnostic": "outcome.status == None",
+      "description": "Current round extraction: guests"
+    },
+    {
+      "identity": {
+        "reason": "snapshot"
+      },
+      "arguments": [
+        "snapshot"
+      ],
+      "name": "current-round-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Current round extraction: snapshot"
+    }
+  ]
+}

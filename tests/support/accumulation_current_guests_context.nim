@@ -3,9 +3,10 @@
 
 ## Current tiny-chain guest proof ceilings reuse maintained signed-runner engine configuration.
 import ../../src/chain/parameters
-import ../../src/codec/[bounded, work_digest]
+import ../../src/codec/[bounded, work_digest, composite, state_authorization, state_safrole, state_privileges]
 import ../../src/state/[accumulation_guest_runner, accumulation_annulment, accumulation_coverage,
-    accumulation_account_stage, accumulation_account_selection, accumulation_creation_union, accumulation_selected_writes]
+    accumulation_account_stage, accumulation_account_selection, accumulation_creation_union,
+    accumulation_selected_writes, accumulation_global_stage, accumulation_global_roles]
 import ./accumulation_runner_context
 proc currentGuestLimits*(): AccumulationGuestLimits =
   ## Reuse maintained tiny-chain engine ceilings while explicitly enabling current proof capture.
@@ -34,3 +35,15 @@ proc currentGuestParameters*(): Parameters =
   var wire = encodeParameters(runnerParameters())
   for index in 0..<24: wire[index] = 0 # Complete independent deposit words, not host return hooks.
   decodeParameters(wire).value
+
+proc currentGlobalStageLimits*(): AccumulationGlobalStageLimits =
+  ## Fixed two-core queues and six-validator rosters have independent original/output byte and work caps.
+  AccumulationGlobalStageLimits(roles: AccumulationGlobalRoleLimits(
+    privileges: PrivilegeConfig(cores: CoreCount(2), maxAlways: ElementLimit(2),
+        maxBytes: ByteLimit(1000)),
+    outcomes: ElementLimit(2), checks: ElementLimit(256), totalBytes: ByteLimit(2000)),
+    queues: AuthorizationConfig(cores: CoreCount(2), maxHashes: ElementLimit(160),
+        maxBytes: ByteLimit(5120)),
+    staging: ValidatorStateConfig(cores: CoreCount(2), validators: ElementLimit(6),
+        maxBytes: ByteLimit(2017)),
+    totalBytes: ByteLimit(20000))
