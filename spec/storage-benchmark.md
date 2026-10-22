@@ -80,3 +80,12 @@ strict managed restart. Current-only managed reclamation then runs against that 
 the selected root and generation never advance. Both phases preserve pre-compaction readers.
 The journal layout remains explicitly unavailable. Synthetic revision retention supplies neither
 block finality nor checkpoint trust, and fixture expectations are prepared outside timing.
+
+## Physical work and selected-file extents
+
+Raw samples and CSV retain stored/current record counts and actual selected snapshot/journal byte
+extents before and after reclamation. A separate Markdown table explains the physical work behind
+timings. The fixed fixture must have identical counters across all warmups, measured repetitions
+and reversed-order passes. Memory file extents and unsupported post-compaction journal extents
+remain unavailable; a legacy snapshot is exactly zero. Selected-file bytes exclude unknown or
+staged files and graph memory retained by old readers, so they are not total resource usage.

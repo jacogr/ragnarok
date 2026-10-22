@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
-from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,VALUE_BYTES,CASES,PHASES,parse_output,aggregate,summarize_benchmark
+from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,VALUE_BYTES,CASES,PHASES,METRICS,parse_output,aggregate,summarize_benchmark
 from summarize_tests import summarize
 
 
@@ -22,7 +22,9 @@ def output(engine,count,topology='leading',value_bytes=256):
     # Unsupported reopen/reclamation operations remain explicit sentinels in otherwise complete samples.
     return ''.join(f'sample\t{count}\t{topology}\t{value_bytes}\t{s}\t'+
         '\t'.join(map(str,[100+s,200+s,300+s,-1 if engine=='memory' else 400+s,
-                           -1 if engine=='journal' else 500+s,-1 if engine=='journal' else 600+s]))+'\n' for s in range(13))
+                           -1 if engine=='journal' else 500+s,-1 if engine=='journal' else 600+s,count*3+100,count*3,
+            -1 if engine=='memory' else (0 if engine=='journal' else 100),
+            -1 if engine=='memory' else 200,90 if engine=='managed' else -1,72 if engine=='managed' else -1]))+'\n' for s in range(13))
 
 
 def passes():
@@ -94,6 +96,19 @@ class StorageBenchmarkTests(unittest.TestCase):
                 lines[0][5+PHASES.index(phase)]=invalid
                 with self.subTest(phase=phase,engine=engine),self.assertRaises(ValueError):
                     parse_output('\n'.join('\t'.join(line) for line in lines)+'\n',engine,1024)
+
+    def test_physical_metadata_is_bounded_and_stable(self):
+        """Impossible extents or changing fixture sizes cannot annotate a successful comparison."""
+        lines=[line.split('\t') for line in output('managed',1024).splitlines()]
+        for metric,invalid in [('selected_nodes','0'),('snapshot_bytes','-1')]:
+            bad=copy.deepcopy(lines)
+            bad[0][5+len(PHASES)+METRICS.index(metric)]=invalid
+            with self.subTest(metric=metric),self.assertRaises(ValueError):
+                parse_output('\n'.join('\t'.join(row) for row in bad)+'\n','managed',1024)
+        raw=passes()
+        raw[0]['managed-1024-leading-256'][0]['stored_nodes']+=1
+        with self.assertRaises(ValueError):
+            aggregate(raw)
 
     def test_missing_backend_pass_or_forged_statistic(self):
         raw=passes()
