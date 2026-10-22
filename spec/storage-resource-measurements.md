@@ -152,3 +152,12 @@ Current managed-heap observations remain distinct from peak RSS and OS page-cach
 An opaque selected-root plan retains its exact immutable source and permits a complete independent clone after close. Fixture graphs retire before the owner checkpoint. Native validation covers
 the retained values after owner close, and every scope must return to its exact allocator baseline.
 Current managed-heap observations remain distinct from peak RSS and OS page-cache behavior.
+
+## Exported lifetime witnesses
+
+The isolated-lifetime panel exports every available checkpoint, explicit `-1` sentinel and child
+RSS/fault counter in `lifetimes.csv`. Rendering reparses the same raw native rows. Source-owned
+extra artifacts cannot escape the panel directory or overwrite its result/summary. Any late export
+failure retires every public success artifact while retaining failed JSON and the originating log.
+The summary shows owner, held and closed boundaries separately so retained readers and copied
+payloads cannot be mistaken for the same ownership behavior.
