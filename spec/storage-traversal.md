@@ -307,3 +307,12 @@ is then independently interrupted twice before forwarding a genuine successful b
 case must consume its faults, select epoch two with unchanged generation/root, reclaim obsolete
 records, strictly reopen the complete map and preserve earlier held readers after owner close.
 The loop is bounded by an explicit upper limit and includes predecessor retirement barriers.
+
+## Refused epoch barriers
+
+An independent single-EIO case targets every barrier observed in real managed replacement. A
+refused staged-file or selection barrier poisons the live owner; a confirmed selection followed
+by failed predecessor-directory synchronization instead exposes its actual cleanup receipt.
+Strict reopen validates whichever CURRENT is visible, without choosing an older epoch or changing
+root/generation. Complete old readers survive every refusal and owner retirement. These syscall
+witnesses preserve uncertainty and do not certify filesystem power-loss behavior.
