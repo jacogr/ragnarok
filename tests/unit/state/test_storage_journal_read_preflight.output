@@ -1,0 +1,2 @@
+journal preflight
+PASS journal read preflight: bounded refusal under one-MiB heap, unchanged prefix and strict reopen

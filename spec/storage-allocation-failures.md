@@ -67,3 +67,18 @@ is preserved in `build/storage-db5-managed-before-fixture/`; the Make log is
 The native requirement allowlist admits only the fixed `nimMaxHeap=1` test define; production
 and other suite profiles retain their existing settings. Arbitrary heap values, recoverable OOM
 and unchecked defines remain refused by harness tests.
+
+## Journal reader witness
+
+The new `storage_journal_read_preflight` suite constructs a valid tiny journal and holds its
+immutable view, then adds an exclusive sparse tail to16 MiB without a large memory buffer.
+Under its configured4 MiB file ceiling and one-MiB test heap, the unmodified journal reader
+compiled and aborted after the `journal preflight` marker (exit134). The preserved log and
+fixture are `build/storage-db5-journal-before.log` and
+`build/storage-db5-journal-before-fixture`. After early extent refusal, the same fixture must
+return LimitExceeded, retain its full extent and valid prefix, release the failed open's lock,
+and strictly reopen after the test alone removes its deliberately authored tail. Exact original
+root/generation and the independently retained view remain required.
+The existing short-read suite now requires zero payload read calls for a known oversized
+journal; managed CURRENT still precedes snapshot refusal. Post-stat growth needs a separate
+real-IO witness so metadata cannot bypass the existing excess-byte guard.
