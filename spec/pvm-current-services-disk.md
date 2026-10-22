@@ -35,9 +35,9 @@ subscription/query, and strict restart with every key/value compared to independ
 current state. Run `make unit SUITE=pvm_current_services_disk`; the memory, legacy disk boundary
 and managed maintenance suites remain affected regressions. The
 [current Services boundaries](pvm-current-services-boundaries.md) add actual single-file IO
-failure, enabled-RPC staging refusal and joined shutdown/restart witnesses. Managed file failures
-and maintenance interleavings still need additional Services-specific witnesses; lower-level current
-disk/worker tests remain independent evidence. Local macOS qualification does not establish
+failure, enabled-RPC staging refusal and joined shutdown/restart witnesses. The [current maintenance orderings](pvm-current-services-maintenance.md) cover retained Pending and
+Finished updates, automatic compaction and joined maintenance. Managed file failures still need
+additional Services-specific witnesses; lower-level current disk/worker tests remain independent evidence. Local macOS qualification does not establish
 exact-head Linux CI, production transport migration or complete JAM/ThinVRF parity.
 
 Local macOS ARC/Clang validation passed for the new four-combination integration suite, current

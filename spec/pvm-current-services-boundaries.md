@@ -27,8 +27,8 @@ has joined before fork.
 
 Run `make unit SUITE=pvm_current_services_boundaries`; the existing current disk integration suite
 also exercises the shared setup helper. The selected profile retains assertions and bounds checks
-under ARC/Clang. Managed file-failure variants, post-commit RPC refusal and current maintenance
-interleavings remain separate work. These witnesses do not establish exact-head Linux CI or
+under ARC/Clang. Managed file-failure variants and post-commit RPC refusal remain separate work. The
+[current maintenance suite](pvm-current-services-maintenance.md) covers selected compaction orderings. These witnesses do not establish exact-head Linux CI or
 production transport/full JAM/ThinVRF parity.
 
 Local macOS validation passed: the boundary suite and affected current disk integration suite,
