@@ -117,3 +117,14 @@ proc readProofRequest*(view: ProofView, service: ServiceIndex, hash: ServicePrei
     return ServiceProofResult[RequestHistory](status: ServiceProofError.InvalidValue)
   ServiceProofResult[RequestHistory](status: ServiceProofError.None,
       completed: decoded.value.history)
+
+proc proofPreimageRequested*(view: ProofView, service: ServiceIndex, hash: ServicePreimageHash,
+    length: RequestLength): ServiceProofResult[bool] =
+  ## Proven absent accounts/requests are false; unknown witnesses and malformed state cannot decide solicitation.
+  let history = view.readProofRequest(service, hash, length)
+  if history.error == ServiceProofError.AbsentValue:
+    return ServiceProofResult[bool](status: ServiceProofError.None, completed: false)
+  if history.error != ServiceProofError.None:
+    return ServiceProofResult[bool](status: history.error)
+  ServiceProofResult[bool](status: ServiceProofError.None,
+    completed: history.value.state == RequestState.Requested)
