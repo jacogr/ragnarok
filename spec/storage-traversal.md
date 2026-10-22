@@ -400,3 +400,10 @@ contextual two-root migration. The original journal remains byte-identical, lock
 with both complete historical maps and detached opaque context. Failed destinations expose no
 owner; retry remains absent-only, and strict admission uses only a complete visible CURRENT.
 No migration result confers independent checkpoint-import trust or interprets application context.
+
+## Explicit staging-cleanup refusal
+
+Each of the three bounded staging unlinks and its directory barrier is permanently refused in
+turn. Confirmed CURRENT and selected bytes/maps remain unchanged. Strict restart preserves
+remaining forensic files; an explicit idempotent cleanup retry finishes the immediate successor
+only. Farther epoch files remain byte-identical throughout and are never scanned for authority.
