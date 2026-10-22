@@ -95,3 +95,9 @@ byte/aggregate-hash ceilings. Authenticated membership alone does not establish 
 existing immutable ordered roster with exact population/extent validation. No key-validity claim is
 added. Native coverage exercises all three identities, cross-roster missing evidence, fixed null-key
 bytes, retained order/source independence, truncation/suffix and population/byte/profile refusals.
+
+`readGlobalSafrole` returns the existing immutable chapter4 owner, preserving ordered pending
+rosters, opaque ring roots, tagged ticket/key schedules and accumulated tickets. Native coverage
+uses both schedule variants, nested boundary truncations and suffixes, exact child extraction,
+missing/absent evidence and independent accumulator/byte/epoch-policy refusals. This adds no
+cryptographic key validation, ticket verification or epoch transition behavior.
