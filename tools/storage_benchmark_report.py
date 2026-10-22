@@ -11,12 +11,15 @@ from storage_growth_report import summarize_growth
 from storage_growth import SOURCES as GROWTH_SOURCES
 from storage_growth_io import SOURCE_FIELDS as IO_SOURCE_FIELDS
 
-REPORT_VERSION=21
+REPORT_VERSION=22
 PROFILE='checked native ARC/Clang release opt:speed boundchecks:on LTO'
+NATIVE_SOURCES=('native/crypto/primitive_bridge.c','native/crypto/primitive_bridge.h',
+    'native/crypto/rust_primitives.h','native/bandersnatch/Cargo.lock','tools/build_bandersnatch.py',
+    'spec/bandersnatch-pins.json')
 REQUIRED_SOURCES=('tests/performance/storage_workload.nim','tests/support/managed_storage_samples.nim',
     'tests/support/storage_samples.nim','tools/storage_benchmark.py','tools/storage_benchmark_report.py',
     'tools/native_checks.py','tools/native_source_identity.py','tools/pvm_reference.py',
-    'tools/build_crypto.py','spec/crypto-pins.json','spec/toolchain.json','Makefile','.github/workflows/ci.yml',*GROWTH_SOURCES)
+    'tools/build_crypto.py','spec/crypto-pins.json','spec/toolchain.json','Makefile','.github/workflows/ci.yml',*GROWTH_SOURCES,*NATIVE_SOURCES)
 
 ENGINES=('memory','journal','managed')
 COUNTS=(1024,8192)
@@ -43,6 +46,10 @@ def validate_provenance(report):
     require(digest(report.get('head'),40) and type(report.get('worktree_dirty')) is bool,'source revision')
     for field in ('crypto_sha256','compiler_sha256','native_binary_sha256'):
         require(digest(report.get(field),64),field)
+    components=report.get('native_components')
+    require(type(components) is dict and set(components)=={'bridge','provider_loader','provider_build'},'native closure')
+    require(all(digest(v,64) for v in components.values()) and components['bridge']==report['crypto_sha256'] and
+        components['provider_loader']==components['provider_build'],'native closure identity')
     for field,expected in (('warmups_per_pass',3),('measured_samples_per_pass',10),('pass_count',2)):
         require(type(report.get(field)) is int and report[field]==expected,field)
     for field,expected in (('backends',ENGINES),('item_counts',COUNTS),('key_topologies',TOPOLOGIES),

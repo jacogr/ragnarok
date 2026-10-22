@@ -38,7 +38,7 @@ def passes():
 
 def report_fixture():
     """Authored portable provenance makes report validation independent of a real compiler or host."""
-    report=dict(status='checks-passed',passes=passes(),schema_version=REPORT_VERSION,profile=PROFILE,
+    report=dict(native_components=dict(bridge='a'*64,provider_loader='b'*64,provider_build='b'*64),status='checks-passed',passes=passes(),schema_version=REPORT_VERSION,profile=PROFILE,
         head='a'*40,worktree_dirty=False,crypto_sha256='a'*64,compiler_sha256='b'*64,native_binary_sha256='c'*64,
         warmups_per_pass=3,measured_samples_per_pass=10,pass_count=2,pass_orders=[list(ENGINES),list(reversed(ENGINES))],
         backends=list(ENGINES),item_counts=list(COUNTS),key_topologies=list(TOPOLOGIES),value_sizes=list(VALUE_BYTES),
@@ -51,6 +51,15 @@ def report_fixture():
     report['cases']=aggregate(report['passes'])
     report['growth']=growth_fixture()
     return report
+
+
+def fake_components(library):
+    """Keep the dependency closure explicit without linking real native code in artifact-sequencing tests."""
+    paths=dict(bridge=library,provider_loader=library.parent/'loader-provider',provider_build=library.parent/'build-provider')
+    for name in ('provider_loader','provider_build'):
+        if not paths[name].exists():
+            paths[name].write_bytes(b'fixture locked Rust provider')
+    return paths
 
 
 @contextmanager
@@ -82,6 +91,7 @@ def native_stub(folder):
             storage_benchmark,'installed',return_value=(folder/'compiler',{})),patch.object(
             storage_benchmark,'crypto_sources',return_value={}),patch.object(
             storage_benchmark,'build_crypto',return_value=library),patch.object(
+            storage_benchmark,'crypto_components',side_effect=fake_components),patch.object(
             storage_benchmark,'cpu_model',return_value='fixture CPU'),patch.object(
             storage_benchmark.NativeChecks,'build',return_value=(
                 dict(exit_code=0,log='native-build.log',elapsed_seconds=0.001),folder/'binary')),patch.object(
@@ -141,6 +151,22 @@ class StorageBenchmarkTests(unittest.TestCase):
         report=report_fixture();report['growth']['io']['observer_header_sha256']='f'*64
         with self.assertRaisesRegex(ValueError,'SDK observer_header'):
             summarize_benchmark(report)
+
+    def test_missing_or_mixed_native_provider_refuses_success(self):
+        for bad in (None,dict(bridge='a'*64,provider_loader='b'*64,provider_build='c'*64)):
+            report=report_fixture();report['native_components']=bad
+            with self.assertRaisesRegex(ValueError,'native closure'):
+                summarize_benchmark(report)
+
+    def test_input_drift_refuses_final_success(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary)
+            with native_stub(folder) as runner,patch.object(runner,'verify_inputs',side_effect=RuntimeError('input drift')):
+                with self.assertRaisesRegex(RuntimeError,'input drift'):
+                    runner.run()
+            self.assertEqual(json.loads((folder/'results.json').read_text())['status'],'failed')
+            self.assertFalse((folder/'samples.csv').exists())
+            self.assertIn('Status: failed',(folder/'summary.md').read_text())
 
     def test_missing_duplicate_or_wrong_sample(self):
         raw=output('memory',1024)
@@ -317,6 +343,7 @@ class StorageBenchmarkTests(unittest.TestCase):
                     storage_benchmark,'installed',return_value=(folder/'compiler',{})),patch.object(
                     storage_benchmark,'crypto_sources',return_value=paths) as sources,patch.object(
                     storage_benchmark,'build_crypto',side_effect=build_crypto) as crypto,patch.object(
+                    storage_benchmark,'crypto_components',side_effect=fake_components),patch.object(
                     storage_benchmark.NativeChecks,'build',side_effect=native_build) as native:
                 with self.assertRaisesRegex(RuntimeError,'Storage benchmark build failed'):
                     storage_benchmark.run()
