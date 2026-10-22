@@ -283,7 +283,7 @@ proc publish*(repository: var ManagedRepository, expected: RepositoryView, batch
   if size.error != FileError.None: return ManagedResult[RepositoryView](status: size.error)
   let maximum = min(uint64(repository.limits.journalBytes), uint64(high(int)))
   let remaining = ByteLimit(maximum-size.value) # The journal lease admitted its size under this ceiling.
-  let frame = if repository.schema == StorageSchema.FullStateV1:
+  var frame = if repository.schema == StorageSchema.FullStateV1:
     encodeContextJournalFrame(prepared.value.generation, batch, selectedContext,
       repository.limits.contextBytes, repository.limits.repository.codec, remaining)
   else:
@@ -292,9 +292,10 @@ proc publish*(repository: var ManagedRepository, expected: RepositoryView, batch
     return ManagedResult[RepositoryView](status: FileError.LimitExceeded)
   if frame.error != FrameError.None:
     return ManagedResult[RepositoryView](status: FileError.InvalidFrame, frameReason: frame.error)
+  let bytes = frame.takeValue # Keep one checked frame owner through every synchronization/write barrier.
   var reason = synchronize(repository.directory)
   if reason == FileError.None: reason = appendManagedJournal(repository.journal, [])
-  if reason == FileError.None: reason = appendManagedJournal(repository.journal, frame.value)
+  if reason == FileError.None: reason = appendManagedJournal(repository.journal, bytes)
   if reason != FileError.None:
     repository.poisoned = true # Partial/uncertain bytes revoke fresh live operations until explicit reopen.
     return ManagedResult[RepositoryView](status: reason)
