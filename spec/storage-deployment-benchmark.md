@@ -23,3 +23,13 @@ publishes every physical delta, independently compares all seed/current keys and
 checks exact generation/root, closes the owner and repeats the retained-map checks. Revision
 expectations are closed form rather than derived from the mutation loop. Separate1,024/32,768-entry
 controls cover16/64 publications before larger native panels consume the same fixture.
+
+## Native backend lifecycle
+
+A dedicated larger-workload executable populates memory, synchronized journal or managed storage
+through unchanged public APIs, then retires prepared fixtures before sampling live owner bytes.
+Every current map is compared against independent complete key/value expectations. Disk backends
+strictly close/reopen and validate again; the held original view remains complete after final owner
+close. Every native owner and synthetic namespace retires, and final allocator usage must match
+the starting baseline. Missing memory-reopen observations carry `-1`. Generation and physical
+inventory remain explicit scalar witnesses, with no timing or power-loss claim.
