@@ -14,20 +14,6 @@ import ../../../src/state/[accumulation_account_stage, accumulation_block_guests
 import ../../support/[accumulation_execution_context, accumulation_runner_context,
   accumulation_current_guests_context, pvm_accumulation_program, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
-proc policy(): AccumulationAccountStageLimits =
-  ## Charge complete inventory/providers separately from logical selection, creation facts and physical write copies.
-  AccumulationAccountStageLimits(entries: ElementLimit(100), providers: ElementLimit(2),
-    selection: AccumulationAccountSelectionLimits(accounts: ElementLimit(8), outcomes: ElementLimit(2),
-      skipped: ElementLimit(2), checks: ElementLimit(512)),
-    creation: AccumulationCreationLimits(outcomes: ElementLimit(2), creations: ElementLimit(4),
-      accounts: ElementLimit(2), checks: ElementLimit(256)),
-    writes: SelectedAccountWriteLimits(accounts: ElementLimit(10), facts: ElementLimit(64),
-      writes: ElementLimit(8), checks: ElementLimit(512), valueBytes: ByteLimit(2048)))
-proc parameters(): Parameters =
-  ## Zero-deposit chain configuration isolates actual creation while keeping the genuine admitted profile.
-  var wire = encodeParameters(runnerParameters())
-  for index in 0..<24: wire[index] = 0 # Complete independent deposit words, not host return hooks.
-  decodeParameters(wire).value
 proc createProgram(): seq[byte] =
   ## A genuine automatic new host creates metadata and its empty code request before halting.
   var payload = newSeq[byte](60)
@@ -62,8 +48,9 @@ proc main() {.raises.} =
   guestLimits.calls = HostCallLimit(32)
   guestLimits.modifiedAccounts = ElementLimit(8)
   guestLimits.accountWriteFacts = ElementLimit(8)
-  let guests = runBlockAccumulationGuests(fixture.round, parameters(), guestLimits).value
-  let prepared = prepareAccumulationAccountStage(guests, policy())
+  let guests = runBlockAccumulationGuests(fixture.round, currentGuestParameters(),
+      guestLimits).value
+  let prepared = prepareAccumulationAccountStage(guests, currentAccountStageLimits())
   assert prepared.error == AccumulationAccountStageError.None, $prepared.error
   let stage = prepared.value
   let info = stage.accountStageInfo.value
@@ -88,7 +75,7 @@ proc main() {.raises.} =
   assert array[32, byte](manual.commitment.root) == array[32, byte](after.commitment.root)
   assert sameStateSnapshot(fixture.state.snapshot.value, prior)
   for mode in 0..<4:
-    var limits = policy()
+    var limits = currentAccountStageLimits()
     case mode
     of 0: limits.entries = ElementLimit(0) # Inventory work must fail before scanning.
     of 1: limits.providers = ElementLimit(1) # Every no-op/ready provider still consumes traversal capacity.
@@ -98,25 +85,26 @@ proc main() {.raises.} =
         AccumulationAccountStageError.None
   var disabled = guestLimits
   disabled.accountWriteFacts = ElementLimit(0)
-  let noFacts = runBlockAccumulationGuests(fixture.round, parameters(), disabled).value
-  let refused = prepareAccumulationAccountStage(noFacts, policy())
+  let noFacts = runBlockAccumulationGuests(fixture.round, currentGuestParameters(), disabled).value
+  let refused = prepareAccumulationAccountStage(noFacts, currentAccountStageLimits())
   assert refused.error == AccumulationAccountStageError.WriteFailure
   assert refused.writeFailure == SelectedAccountWriteError.IncompleteFacts
   disabled = guestLimits
   disabled.createdAccounts = ElementLimit(0)
-  let noCreation = runBlockAccumulationGuests(fixture.round, parameters(), disabled).value
-  let creationFailure = prepareAccumulationAccountStage(noCreation, policy())
+  let noCreation = runBlockAccumulationGuests(fixture.round, currentGuestParameters(),
+      disabled).value
+  let creationFailure = prepareAccumulationAccountStage(noCreation, currentAccountStageLimits())
   assert creationFailure.error == AccumulationAccountStageError.CreationFailure
   assert creationFailure.creationFailure == AccumulationCreationError.IncompleteFacts
   failHash(1)
-  let backend = prepareAccumulationAccountStage(guests, policy())
+  let backend = prepareAccumulationAccountStage(guests, currentAccountStageLimits())
   assert backend.error == AccumulationAccountStageError.StoreFailure
   assert backend.storeFailure == StateStoreError.BackendFailure
   failHash(0)
   assert sameStateSnapshot(fixture.state.snapshot.value, prior), "late private Merkle refusal never publishes source state"
   let unchanged = executionFixture(base)
   let noWrites = runBlockAccumulationGuests(unchanged.round, runnerParameters(), currentGuestLimits()).value
-  let identity = prepareAccumulationAccountStage(noWrites, policy()).value
+  let identity = prepareAccumulationAccountStage(noWrites, currentAccountStageLimits()).value
   assert identity.accountStageInfo.value.writes == 0
   assert sameStateSnapshot(identity.accountStageSnapshot.value, unchanged.state.snapshot.value)
   var malformedOptions = executionFixtureConfig()
@@ -125,23 +113,24 @@ proc main() {.raises.} =
   let malformed = executionFixture(base, malformedOptions)
   let malformedGuests = runBlockAccumulationGuests(malformed.round, runnerParameters(),
       currentGuestLimits()).value
-  let badAccount = prepareAccumulationAccountStage(malformedGuests, policy())
+  let badAccount = prepareAccumulationAccountStage(malformedGuests, currentAccountStageLimits())
   assert badAccount.error == AccumulationAccountStageError.SelectionFailure
   assert badAccount.selectionFailure == AccumulationAccountSelectionError.MalformedState
   var emptyOptions = executionFixtureConfig()
   emptyOptions.empty = true
   let empty = executionFixture(base, emptyOptions)
   let emptyGuests = runBlockAccumulationGuests(empty.round, runnerParameters(), currentGuestLimits()).value
-  let emptyStage = prepareAccumulationAccountStage(emptyGuests, policy()).value
+  let emptyStage = prepareAccumulationAccountStage(emptyGuests, currentAccountStageLimits()).value
   assert emptyStage.accountStageInfo.value.priorAccounts == 2
   assert sameStateSnapshot(emptyStage.accountStageSnapshot.value, empty.state.snapshot.value), "empty execution still covers the complete prior account domain"
-  assert prepareAccumulationAccountStage(default(BlockAccumulationGuests), policy()).error ==
-      AccumulationAccountStageError.InvalidSource
+  let invalidSource = prepareAccumulationAccountStage(default(BlockAccumulationGuests),
+      currentAccountStageLimits())
+  assert invalidSource.error == AccumulationAccountStageError.InvalidSource
   assert default(PreparedAccumulationAccountStage).accountStageSnapshot.error ==
       AccumulationAccountStageError.Uninitialized
   let before = getOccupiedMem()
   for iteration in 0..<1000:
-    let local = prepareAccumulationAccountStage(guests, policy()).value
+    let local = prepareAccumulationAccountStage(guests, currentAccountStageLimits()).value
     assert local.accountStageInfo.value.newAccounts ==
         1 # New paths, complete selected owners and inherited forks all release.
   let occupied = getOccupiedMem()
