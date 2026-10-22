@@ -1,0 +1,40 @@
+{
+  "source": "tests/native/accumulation_current_publication_results.nim",
+  "build_name": "accumulation-current-publication-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-publication-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current publication extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-publication-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current publication extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "backend"
+      },
+      "arguments": [
+        "backend"
+      ],
+      "name": "current-publication-backend",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Current publication extraction: backend"
+    }
+  ]
+}
