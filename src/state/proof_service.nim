@@ -3,6 +3,7 @@
 
 ## Typed service reads consume authenticated partial evidence without claiming a complete account map.
 ## Missing witnesses, proven absence and malformed present bytes remain separate outcomes.
+import ./proof_plan
 import ./[proof_view, trie_proof]
 import ../crypto/primitives
 import ../codec/[bounded, state_accounts, state_layout, state_service_values, state_requests, state_trie]
@@ -173,27 +174,33 @@ proc readProofCode*(view: ProofView, service: ServiceIndex, slot: RequestSlot,
   let hash = ServicePreimageHash(array[32, byte](account.value.codeHash))
   view.readProofHistoricalPreimage(service, hash, slot, limit)
 
-type
-  PlanData = ref object ## Root-independent query identities share an immutable acyclic owner.
-    keys: seq[StateKey]
-  ServiceProofPlan* = object ## A query plan requests evidence; it never grants verified state or root authority.
-    data: nil PlanData
+type ServiceProofPlan* = object ## Existing semantic selectors wrap the common immutable requested-key owner.
+  plan: StateProofPlan
 
+func planReason(reason: ProofPlanError): ServiceProofError =
+  ## Keep every existing service-plan refusal spelling while sharing bounded query mechanics.
+  case reason
+  of ProofPlanError.None: ServiceProofError.None
+  of ProofPlanError.Uninitialized: ServiceProofError.Uninitialized
+  of ProofPlanError.InvalidInput: ServiceProofError.InvalidInput
+  of ProofPlanError.InvalidIndex: ServiceProofError.InvalidIndex
+  of ProofPlanError.LimitExceeded: ServiceProofError.LimitExceeded
+
+func toStateProofPlan*(plan: ServiceProofPlan): StateProofPlan =
+  ## Expose only immutable root-free requested identities; a default semantic plan stays invalid.
+  plan.plan
 func valid*(plan: ServiceProofPlan): bool =
   ## Defaults cannot silently request an empty successful read.
-  plan.data != nil
+  plan.plan.valid
 func len*(plan: ServiceProofPlan): int =
-  ## Inspect the exact retained query count without allocating key copies.
-  let data = plan.data
-  if data == nil: 0 else: data.keys.len
+  ## The retained query count is scalar-only and never copies canonical state.
+  plan.plan.len
 proc keyAt*(plan: ServiceProofPlan, index: int): ServiceProofResult[StateKey] =
-  ## Bind ordinal extraction to this immutable owner and reject negative/out-of-range positions.
-  let data = plan.data
-  if data == nil:
-    return ServiceProofResult[StateKey](status: ServiceProofError.Uninitialized)
-  if index < 0 or index >= data.keys.len:
-    return ServiceProofResult[StateKey](status: ServiceProofError.InvalidIndex)
-  ServiceProofResult[StateKey](status: ServiceProofError.None, completed: data.keys[index])
+  ## Preserve typed service ordinal errors while returning fixed copied key bytes.
+  let selected = plan.plan.keyAt(index)
+  if selected.error != ProofPlanError.None:
+    return ServiceProofResult[StateKey](status: planReason(selected.error))
+  ServiceProofResult[StateKey](status: ServiceProofError.None, completed: selected.value)
 func comparePlanKey(left, right: StateKey): int =
   ## Canonical byte order matches partial-view enumeration independently of semantic selectors.
   let a = array[31, byte](left)
@@ -205,22 +212,13 @@ func comparePlanKey(left, right: StateKey): int =
   0
 proc capturePlan(keys: openArray[StateKey], limit: ElementLimit): ServiceProofResult[
     ServiceProofPlan] =
-  ## Private fixed selector constructors bound all key copies before allocating an immutable plan.
-  if uint64(keys.len) > uint64(limit) or keys.len > high(int) div sizeof(StateKey):
-    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.LimitExceeded)
-  var copied = newSeq[StateKey](keys.len)
-  for i, key in keys:
-    # Insertion keeps tiny dependency sets deterministic without importing a mutable generic container.
-    var at = i
-    while at > 0 and comparePlanKey(copied[at-1], key) > 0:
-      let previous = copied[at-1]
-      copied[at] = previous
-      dec at
-    if at > 0 and comparePlanKey(copied[at-1], key) == 0:
-      return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.InvalidInput)
-    copied[at] = key
+  ## Semantic constructors share generic count, allocation, canonical-order and duplicate checks.
+  let captured = captureStateProofPlan(keys, limit)
+  if captured.error != ProofPlanError.None:
+    return ServiceProofResult[ServiceProofPlan](status: planReason(captured.error))
   ServiceProofResult[ServiceProofPlan](status: ServiceProofError.None,
-    completed: ServiceProofPlan(data: PlanData(keys: copied)))
+    completed: ServiceProofPlan(plan: captured.value))
+
 proc planProofAccount*(service: ServiceIndex, limit: ElementLimit): ServiceProofResult[
     ServiceProofPlan] =
   ## Request only exact account metadata; no nested-map completeness is implied.
@@ -287,39 +285,12 @@ proc planProofCode*(view: ProofView, service: ServiceIndex, length: RequestLengt
 
 proc mergeProofPlans*(left, right: ServiceProofPlan,
     limit: ElementLimit): ServiceProofResult[ServiceProofPlan] =
-  ## Union sorted requested identities, counting exact unique output before allocation; no hashing occurs.
-  let a = left.data
-  let b = right.data
-  if a == nil:
-    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.Uninitialized)
-  if b == nil:
-    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.Uninitialized)
-  var i = 0
-  var j = 0
-  var count = 0
-  while i < a.keys.len or j < b.keys.len:
-    # Coalesce only equal key identities; query plans contain no values or conflicting root claims.
-    if uint64(count) >= uint64(limit) or count >= high(int) div sizeof(StateKey):
-      return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.LimitExceeded)
-    let order = if i == a.keys.len: 1
-      elif j == b.keys.len: -1
-      else: comparePlanKey(a.keys[i], b.keys[j])
-    if order <= 0: inc i
-    if order >= 0: inc j
-    inc count
-  var keys = newSeq[StateKey](count)
-  i = 0
-  j = 0
-  for at in 0..<count:
-    # Revisit immutable inputs only after exact count/native allocation extents have been established.
-    let order = if i == a.keys.len: 1
-      elif j == b.keys.len: -1
-      else: comparePlanKey(a.keys[i], b.keys[j])
-    keys[at] = if order <= 0: a.keys[i] else: b.keys[j]
-    if order <= 0: inc i
-    if order >= 0: inc j
+  ## Preserve exact service union semantics while delegating both bounded passes to one owner implementation.
+  let merged = mergeStateProofPlans(left.plan, right.plan, limit)
+  if merged.error != ProofPlanError.None:
+    return ServiceProofResult[ServiceProofPlan](status: planReason(merged.error))
   ServiceProofResult[ServiceProofPlan](status: ServiceProofError.None,
-    completed: ServiceProofPlan(data: PlanData(keys: keys)))
+    completed: ServiceProofPlan(plan: merged.value))
 
 func proofError*[T](outcome: ServiceProofResult[T]): StateProofError {.inline,
     requires: outcome.status == ServiceProofError.ProofFailure.} =
