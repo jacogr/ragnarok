@@ -9,8 +9,9 @@ import re
 import statistics
 from storage_growth_report import summarize_growth
 from storage_growth import SOURCES as GROWTH_SOURCES
+from storage_growth_io import SOURCE_FIELDS as IO_SOURCE_FIELDS
 
-REPORT_VERSION=20
+REPORT_VERSION=21
 PROFILE='checked native ARC/Clang release opt:speed boundchecks:on LTO'
 REQUIRED_SOURCES=('tests/performance/storage_workload.nim','tests/support/managed_storage_samples.nim',
     'tests/support/storage_samples.nim','tools/storage_benchmark.py','tools/storage_benchmark_report.py',
@@ -79,6 +80,8 @@ def validate_provenance(report):
         require(type(values) in (list,tuple) and len(values)==3 and
                 all(type(v) in (int,float) and math.isfinite(v) and v>=0 for v in values),field)
     growth_summary=summarize_growth(report.get('growth'))
+    for field,name in IO_SOURCE_FIELDS.items():
+        require(report['growth']['io'][field]==sources[name],'SDK '+field)
     checks=report.get('checks')
     require(type(checks) is list and len(checks)==1+2*len(ENGINES)*len(CASES),'native checks')
     logs=[]

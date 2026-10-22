@@ -28,9 +28,11 @@ def native_stub(folder):
         assert samples==13
         log=folder/(name+'.log');log.write_text(output(engine,count,steps,pattern))
         return dict(exit_code=0,elapsed_seconds=0.01,log=str(log))
+    from test_storage_growth_io import fixture as io_fixture
     with patch.object(storage_growth.NativeChecks,'build',return_value=(dict(exit_code=0,
             elapsed_seconds=0.01,log=str(folder/'build.log')),binary)),patch.object(
-            storage_growth,'command',side_effect=command):
+            storage_growth,'command',side_effect=command),patch.object(
+            storage_growth,'run_io',return_value=io_fixture()):
         yield
 
 
@@ -69,6 +71,16 @@ class StorageGrowthExecutionTests(unittest.TestCase):
                 atomic_text(path,value)
             with native_stub(folder),self.assertRaisesRegex(OSError,'publication CSV refused'):
                 storage_growth.run_growth('compiler','library',folder,publish)
+            self.assertEqual(json.loads((folder/'results.json').read_text())['status'],'failed')
+            self.assertFalse((folder/'samples.csv').exists())
+            self.assertFalse((folder/'publications.csv').exists())
+
+    def test_sdk_failure_fails_sustained_panel(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary)
+            with native_stub(folder),patch.object(storage_growth,'run_io',side_effect=RuntimeError('SDK refused')):
+                with self.assertRaisesRegex(RuntimeError,'SDK refused'):
+                    storage_growth.run_growth('compiler','library',folder,atomic_text)
             self.assertEqual(json.loads((folder/'results.json').read_text())['status'],'failed')
             self.assertFalse((folder/'samples.csv').exists())
             self.assertFalse((folder/'publications.csv').exists())

@@ -466,4 +466,7 @@ jobs:
             build/tests/storage-benchmark/growth/results.json
             build/tests/storage-benchmark/growth/samples.csv
             build/tests/storage-benchmark/growth/publications.csv
+            build/tests/storage-benchmark/growth/io/*.log
+            build/tests/storage-benchmark/growth/io/results.json
+            build/tests/storage-benchmark/growth/io/calls.csv
             build/ci/*.log
