@@ -29,6 +29,11 @@ func error*[T](outcome: FrameResult[T]): FrameError =
 func value*[T](outcome: FrameResult[T]): T {.inline, requires: outcome.status == FrameError.None.} =
   ## Extract only a complete checked frame or byte buffer.
   outcome.completed
+proc takeValue*[T](outcome: var FrameResult[T]): T {.inline,
+    requires: outcome.status == FrameError.None.} =
+  ## Transfer checked bytes or replay context once; the consumed source loses its success authority.
+  result = move(outcome.completed)
+  outcome = FrameResult[T](status: FrameError.Uninitialized)
 func recordError*[T](outcome: FrameResult[T]): RecordError {.requires: outcome.status ==
     FrameError.InvalidRecords.} =
   ## Access only the selected inner physical-record refusal.
