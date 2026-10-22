@@ -13,7 +13,8 @@ import ../../src/state/[report_admission, report_assignments, report_policy, rep
   safrole_transition, disputes, availability, report_transition]
 import ../../src/codec/[block_codec, header, bounded, guarantees, assurances, state_safrole,
   state_consensus, state_disputes, state_layout, state_trie, state_history, state_availability,
-  state_workqueues, state_authorization, tickets, report_owned, owned, work_report, composite, work_digest]
+  state_workqueues, state_authorization, state_outputs, tickets, report_owned, owned, work_report,
+  composite, work_digest]
 import ../../src/crypto/[primitives, extrinsic_commitment, assurance_context]
 import ../../src/bandersnatch/bandersnatch
 import ./report_context
@@ -161,6 +162,7 @@ type SignedBlockFixtureConfig* = object ## Authored signed-parent/block data is 
   refinement*: seq[RefineLoad]     ## Optional per-digest refinement observations.
   parentPools*: seq[AuthorizerRow] ## Explicit canonical original authorizer pools.
   storeWrites*: uint64             ## Inherited store mutation-count ceiling.
+  completeState*: bool ## New authored complete-map mode uses empty C16 instead of the rollback-only C250 sentinel.
 
 proc signedBlockFixtureConfig*(): SignedBlockFixtureConfig =
   ## Preserve the existing tiny signed profile and resource defaults in one place.
@@ -168,7 +170,7 @@ proc signedBlockFixtureConfig*(): SignedBlockFixtureConfig =
       withAvailable: false, extra: @[], accountCode: @[], ready: @[], preimageWire: @[],
       poolCopies: 1, refinementGas: high(uint64), historyPeaks: @[], targetSlot: 0'u32,
       withTicket: false, shiftPending: false, guaranteeSlot: 0'u32, refinement: @[], parentPools: @[],
-      storeWrites: 1000'u64)
+      storeWrites: 1000'u64, completeState: false)
 
 proc authored*(base: OwnedReport, options = signedBlockFixtureConfig()): Context =
   ## Author a signed advancing block (slot 2 by default), then run real disputes/Safrole/assurance processing.
@@ -286,8 +288,12 @@ proc authored*(base: OwnedReport, options = signedBlockFixtureConfig()): Context
     accumulated[11] = @[duplicate] # A later incoming package duplicates parent pipeline state.
   entries.add(accumulatedStateEntry(accumulated, cfg.packages.queues).value)
   if options.mode == 13: entries.delete(entries.len-2) # Parent ready chapter is mandatory even on an empty batch.
-  entries.add(StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 4,
-      2])) # Opaque state must survive publication and rollback.
+  if options.completeState:
+    entries.add(outputLogEntry([], OutputLogConfig(items: ElementLimit(0), maxBytes: ByteLimit(
+        1))).value) # Author canonical empty C16 before commitments and signatures.
+  else:
+    entries.add(StateEntry(key: chapterKey(StateChapter(250)), value: @[9'u8, 4,
+      2])) # Existing scoped fixtures preserve the opaque rollback sentinel by default.
   # Extra chapters enter the parent root committed by the signed candidate and report guarantees.
   for entry in options.extra: entries.add(entry)
   var bounds = limits()
