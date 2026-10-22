@@ -1,0 +1,51 @@
+{
+  "build_name": "state-preimage-linkage-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard preimage linkage default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-preimage-linkage-default"
+    },
+    {
+      "arguments": [
+        "offender"
+      ],
+      "description": "Guard preimage linkage offender",
+      "diagnostic": "outcome.status == MissingRequest",
+      "identity": {
+        "reason": "offender"
+      },
+      "name": "state-preimage-linkage-offender"
+    },
+    {
+      "arguments": [
+        "ordinal"
+      ],
+      "description": "Guard preimage linkage ordinal",
+      "diagnostic": "outcome.status == MissingRequest",
+      "identity": {
+        "reason": "ordinal"
+      },
+      "name": "state-preimage-linkage-ordinal"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Guard preimage linkage source",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source"
+      },
+      "name": "state-preimage-linkage-source"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_preimage_linkage_results.nim"
+}
