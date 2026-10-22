@@ -129,7 +129,7 @@ proc readNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "re
     header: "<unistd.h>".}
   ## Supported Linux/macOS SDKs return signed-long ssize_t; explicit headers preserve the native ABI.
 proc readAll(fd: cint, limit: ByteLimit): ManagedIoResult[seq[byte]] =
-  ## Detect one excess byte without trusting file-size metadata or allocating beyond the configured limit.
+  ## Seed bounded capacity from the held regular inode; actual reads decide growth, shrink and EOF.
   let maximum = min(uint64(limit), uint64(high(int)))
   var metadata = default(Stat)
   if posix.fstat(fd, metadata) != 0 or not S_ISREG(metadata.st_mode) or metadata.st_size < 0:
@@ -137,7 +137,24 @@ proc readAll(fd: cint, limit: ByteLimit): ManagedIoResult[seq[byte]] =
   if uint64(metadata.st_size) > maximum:
     return ManagedIoResult[seq[byte]](status: FileError.LimitExceeded)
   # A bounded regular extent seeds capacity only; reads still decide post-stat growth, shrink and EOF.
-  var bytes = newSeqOfCap[byte](int(metadata.st_size))
+  var bytes = newSeq[byte](int(metadata.st_size))
+  var filled = 0
+  while filled < bytes.len:
+    # Native writes stay inside the actually owned sequence, even after genuine short progress.
+    let requested = min(bytes.len-filled, 4096)
+    let count = readNative(fd, addr bytes[filled], csize_t(requested))
+    if count < 0:
+      # EINTR retains the same filled prefix; only a permanent error terminates this read.
+      if posix.errno() != interrupted: return ManagedIoResult[seq[byte]](
+          status: FileError.IoFailure)
+    elif count == 0:
+      # Actual early EOF trims preallocated storage to the exact observed prefix, without zero padding.
+      bytes.setLen(filled)
+      return ManagedIoResult[seq[byte]](status: FileError.None, completed: bytes)
+    else:
+      # Positive progress is bounded by the real writable window before advancing its cursor.
+      if count > requested: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
+      filled += int(count)
   var buffer = default(array[4096, byte])
   while true:
     let requested = int(min(maximum-uint64(bytes.len), 4095'u64))+1
