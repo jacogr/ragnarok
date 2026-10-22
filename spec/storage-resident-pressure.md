@@ -23,7 +23,8 @@ and kernel memory: they are not identical to child RSS. Ancestor limits remain v
 Use systemd's transient-service API, never edit a parent cgroup or global VM policy. The outer
 owner remains outside each constrained group. A small Python observer inside the unit starts
 one native child, raises only that child's OOM victim preference, samples its actual membership
-and gauges, and collects exact wait4 RSS/fault/block counters. OOMPolicy=continue preserves
+and gauges, and collects exact wait4 RSS/fault/block counters. A child-owned pre-exec membership receipt
+preserves the actual inherited cgroup identity even if that PID exits before live sampling. OOMPolicy=continue preserves
 observer evidence when a constrained child dies. Only local max/oom/oom_kill event deltas plus
 SIGKILL establish the classified local cgroup OOM outcome; unrelated signals stay unclassified.
 

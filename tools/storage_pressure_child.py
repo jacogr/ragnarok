@@ -14,10 +14,12 @@ from storage_limit_cgroup import resolve
 from storage_limit_status import parse_status
 from storage_pressure_metrics import read_raw, parse, derive, outcome
 
-def child_setup():
+def child_setup(membership_log):
     """Prefer this disposable child as the unit OOM victim; never alter an ancestor's OOM policy."""
     Path('/proc/self/oom_score_adj').write_text('1000\n')
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    # This same PID inherits its membership across exec even if it exits before parent sampling.
+    Path(membership_log).write_text(Path('/proc/self/cgroup').read_text())
 
 
 def sample_status(raw):
@@ -40,9 +42,13 @@ def observe(group, arguments, log):
     timed_out = False
     started = time.monotonic()
     with Path(log).open('w') as output:
+        membership_log = Path(log).with_suffix('.membership.log')
         process = subprocess.Popen(arguments, stdout=output, stderr=subprocess.STDOUT,
-                                   preexec_fn=child_setup)
+                                   preexec_fn=lambda: child_setup(membership_log))
         try:
+            membership = membership_log.read_text()
+            if resolve(membership, Path('/proc/self/mountinfo').read_text()) != str(group):
+                raise ValueError('Pre-exec child escaped its private cgroup')
             while True:
                 # Nonblocking wait4 preserves final child rusage without Popen.poll reaping it first.
                 pid, status, usage = os.wait4(process.pid, os.WNOHANG)
