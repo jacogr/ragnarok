@@ -8,7 +8,7 @@ from storage_resource_panel import ROOT, run_panel, validate_panel
 
 SOURCE = ROOT/'tests/performance/storage_lifetime_workload.nim'
 DEFINES = ()
-SCENARIOS = ('fixture',)
+SCENARIOS = ('fixture', 'owner')
 CASES = tuple((scenario, count) for scenario in SCENARIOS for count in (8192, 32768))
 FIELDS = ('checks', 'baseline', 'fixture', 'owner', 'held', 'closed', 'released')
 
@@ -28,10 +28,14 @@ def parse(output, case):
             any(re.fullmatch(r'-1|0|[1-9][0-9]{0,18}', v) is None for v in fields[4:])):
         raise ValueError('Invalid lifetime control identity/counters')
     row = dict(zip(FIELDS, map(int, fields[4:])))
-    if (any(v >= 1<<63 for v in row.values()) or row['checks'] != count+64 or row['baseline'] < 0 or
-            row['fixture'] <= row['baseline'] or row['released'] != row['baseline'] or
-            any(row[k] != -1 for k in ('owner', 'held', 'closed'))):
+    if (any(v >= 1<<63 for v in row.values()) or row['checks'] != (count+64 if scenario == 'fixture' else count) or row['baseline'] < 0 or
+            row['released'] != row['baseline']):
         raise ValueError('Invalid fixture retirement witnesses')
+    if scenario == 'fixture':
+        if row['fixture'] <= row['baseline'] or any(row[k] != -1 for k in ('owner', 'held', 'closed')):
+            raise ValueError('Invalid fixture-only stages')
+    elif row['fixture'] != -1 or row['held'] != -1 or row['owner'] <= row['baseline'] or row['closed'] != row['baseline']:
+        raise ValueError('Invalid isolated owner stages')
     return row
 
 
@@ -41,11 +45,11 @@ def summarize(report):
     lines = ['# Storage isolated lifetimes', '',
              'Current Nim allocator observations cover only objects alive at the named boundary.',
              'Whole-child peak RSS includes setup and validation; independent peaks are never subtracted.', '',
-             '| Scenario | Entries | Baseline bytes | Fixture bytes | Released bytes | Peak RSS bytes |',
-             '| --- | ---: | ---: | ---: | ---: | ---: |']
+             '| Scenario | Entries | Baseline bytes | Fixture bytes | Owner bytes | Released bytes | Peak RSS bytes |',
+             '| --- | ---: | ---: | ---: | ---: | ---: | ---: |']
     for run in runs:
         scenario, count = run['case']; row = run['observed']
-        lines.append(f'| {scenario} | {count} | {row["baseline"]} | {row["fixture"]} | {row["released"]} | {run["resources"]["peak_rss_bytes"]} |')
+        lines.append(f'| {scenario} | {count} | {row["baseline"]} | {row["fixture"]} | {row["owner"]} | {row["released"]} | {run["resources"]["peak_rss_bytes"]} |')
     return '\n'.join(lines)+'\n'
 
 

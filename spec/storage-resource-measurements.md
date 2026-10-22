@@ -116,3 +116,9 @@ peaks or allowing fixture graphs to remain alive in subsequent storage-owner mea
 all prepared-root checks and exact baseline equality after scope exit. Its raw witnesses and
 fresh-child RSS/fault counters remain in a separate artifact directory. Reports do not infer
 repository memory by subtracting peak values from independently running processes.
+
+The `owner` lifetime scenario constructs the same 64-publication memory repository inside a helper,
+then retires all prepared fixture graphs before observing it. Full-map validation still checks every
+key/value and local generation. No immutable reader escapes; ordinary close and scope exit must
+both return the allocator to the exact baseline. Its owner bytes are therefore measured directly,
+not estimated by subtracting separate process peaks.

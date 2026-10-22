@@ -4,7 +4,7 @@
 ## Isolated lifetime controls retire prepared fixtures before measuring retained repository objects.
 import std/assertions
 import ./[storage_growth_samples, storage_allocations]
-import ../../src/storage/node_records
+import ../../src/storage/[node_records, node_repository]
 import ../../src/codec/state_layout
 
 type LifetimeObservation* = object
@@ -33,3 +33,33 @@ proc fixtureLifetime*(count: int): LifetimeObservation =
   result.checks = observed.checks
   result.released = occupiedStorageBytes()
   assert result.fixture > result.baseline and result.released == result.baseline
+
+proc isolatedMemoryOwner*(count: int): NodeRepository =
+  ## Return one ordinary repository; prepared changes and expected-read fixtures retire on return.
+  let fixture = prepareGrowth(count, 64)
+  result = newNodeRepository(growthLimits())
+  discard result.publish(result.snapshot.value, fixture.seed).value
+  for change in fixture.changes:
+    # Each authored delta still enters the public complete-graph admission path.
+    discard result.publish(result.snapshot.value, change).value
+
+proc checkLifetimeOwner*(owner: NodeRepository, count: int): int =
+  ## Validation views retire in this scope before the caller measures an explicit owner close.
+  let view = owner.snapshot.value
+  checkGrowthHead(view, view.commitment.root, count, 64)
+  result = count
+
+proc memoryOwnerLifetime*(count: int): LifetimeObservation =
+  ## Observe the owner after fixture retirement and prove full allocator release on ordinary close.
+  result = emptyLifetime()
+  block:
+    var owner = isolatedMemoryOwner(count)
+    result.owner = occupiedStorageBytes()
+    result.checks = checkLifetimeOwner(owner, count)
+    assert owner.close == RepositoryError.None
+    result.closed = occupiedStorageBytes()
+  result.released = occupiedStorageBytes()
+  assert result.owner > result.baseline, "owner not live"
+  assert result.closed == result.baseline, "owner close baseline=" & $result.baseline & " closed=" &
+      $result.closed & " released=" & $result.released
+  assert result.released == result.baseline
