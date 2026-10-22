@@ -8,6 +8,7 @@ import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"tools"))
 import json
 import platform
+import resource
 import subprocess
 import tempfile
 from unittest.mock import patch
@@ -21,7 +22,9 @@ class LimitIntegrationTests(unittest.TestCase):
     """Exercise the host probe and the orchestration boundary around unchanged native controls."""
     def test_real_disposable_host_probe(self):
         """Only the probe subprocess changes limits; the Python discovery process remains uncapped."""
+        inherited=resource.getrlimit(resource.RLIMIT_AS)
         result=subprocess.run([sys.executable,PROBE,str(CAPS[0])],capture_output=True,text=True,check=True,timeout=10)
+        self.assertEqual(resource.getrlimit(resource.RLIMIT_AS),inherited)
         observed=validate_probe(json.loads(result.stdout),CAPS[0])
         if platform.system()=='Darwin':
             self.assertEqual(observed['limit']['status'],'unsupported')
