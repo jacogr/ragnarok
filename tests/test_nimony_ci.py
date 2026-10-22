@@ -57,7 +57,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, storage-diagnostics, storage-pressure, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         self.assertNotIn('synchronize', triggers)
         self.assertNotIn('opened', triggers)
@@ -228,23 +228,47 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('name: Perf Storage', text)
         index = jobs.index('bench-pvm')
         self.assertEqual(jobs[index:index+2], ['bench-pvm', 'bench-storage'])
+        self.assertEqual(jobs[index:index+3], ['bench-pvm', 'bench-storage', 'bench-storage-growth'])
 
     def test_storage_perf_scope_and_summary(self):
         """Storage shares the Perf group while retaining independent validated artifacts and failure status."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = text.split('  bench-storage:\n', 1)[1]
+        section = text.split('  bench-storage:\n', 1)[1].split('  bench-storage-growth:\n',1)[0]
         for trigger in ("github.event_name == 'push'", "inputs.suite == 'perf'", "inputs.suite == 'bench-storage'",
                         "inputs.suite == 'full'", "github.event.label.name == 'ci:perf'", "github.event.label.name == 'ci:full'"):
             self.assertIn(trigger, section)
         self.assertEqual(section.count('run: make bench-storage\n'), 1)
         self.assertIn('summary-storage-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', section)
         self.assertIn('if: always()', section)
-        for name in ('results.json', 'samples.csv', 'summary.md', 'growth/results.json',
-                     'growth/samples.csv', 'growth/publications.csv', 'growth/io/*.log',
-                     'growth/io/results.json', 'growth/io/calls.csv'):
+        for name in ('results.json', 'samples.csv', 'summary.md'):
             self.assertIn('build/tests/storage-benchmark/'+name, section)
         self.assertNotIn('continue-on-error', section)
         self.assertNotIn('needs:', section)
+
+    def test_storage_growth_is_an_independent_perf_job(self):
+        """Growth preserves dispatch/group triggers, strict failure and artifacts without serial dependencies."""
+        text=(ROOT/'.github/workflows/ci.yml').read_text()
+        short=text.split('  bench-storage:\n',1)[1].split('  bench-storage-growth:\n',1)[0]
+        growth=text.split('  bench-storage-growth:\n',1)[1].split('  storage-diagnostics:\n',1)[0]
+        self.assertIn('name: Perf Storage Growth',growth)
+        for trigger in ("github.event_name == 'push'", "inputs.suite == 'perf'", "inputs.suite == 'bench-storage-growth'",
+                        "inputs.suite == 'full'", "github.event.label.name == 'ci:perf'", "github.event.label.name == 'ci:full'"):
+            # An explicit short-only dispatch remains short-only; group requests still execute both jobs.
+            self.assertIn(trigger,growth)
+        self.assertNotIn("inputs.suite == 'bench-storage'",growth)
+        self.assertEqual(growth.count('run: make bench-storage-growth\n'),1)
+        self.assertIn('summary-storage-growth SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"',growth)
+        self.assertIn('timeout-minutes: 30',growth)
+        self.assertIn('if: always()',growth)
+        self.assertIn('name: bench-storage-growth-${{ github.run_attempt }}',growth)
+        for name in ('results.json','summary.md','growth/results.json','growth/samples.csv',
+                     'growth/publications.csv','growth/io/*.log','growth/io/results.json','growth/io/calls.csv'):
+            self.assertIn('build/tests/storage-growth-benchmark/'+name,growth)
+        for section in (short,growth):
+            # A failed panel remains a failure and independent runners cannot serialize each other.
+            self.assertNotIn('needs:',section)
+            self.assertNotIn('continue-on-error',section)
+        self.assertNotIn('/growth/',short)
 
     # The shared native builder must work before any historical driver has created its output directory.
     def test_bandersnatch_clean_build_directory(self):
@@ -628,8 +652,8 @@ class StorageResourceCISafeguards(unittest.TestCase):
     """All resource panels stay beside the existing speed panel in one opt-in Perf Storage job."""
 
     def test_resource_panels_and_artifacts_remain_grouped(self):
-        """No new CI trigger, label, extra job or replacement speed command is introduced."""
-        text=(ROOT/'.github/workflows/ci.yml').read_text(); section=text.split('  bench-storage:\n',1)[1]
+        """Resource panels remain with the ordinary comparison after sustained growth moves out."""
+        text=(ROOT/'.github/workflows/ci.yml').read_text(); section=text.split('  bench-storage:\n',1)[1].split('  bench-storage-growth:\n',1)[0]
         self.assertEqual(section.count('run: make bench-storage\n'),1)
         self.assertIn('run: make bench-storage-resources bench-storage-allocations bench-storage-lifetimes bench-storage-deployment bench-storage-fresh-reopen bench-storage-file-cache',section)
         self.assertIn('summary-storage-resources SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"',section)

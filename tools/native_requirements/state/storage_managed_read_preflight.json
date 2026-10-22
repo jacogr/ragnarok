@@ -1,0 +1,10 @@
+{
+  "defines": [
+    "nimMaxHeap=1"
+  ],
+  "directory": "state",
+  "includes": [],
+  "libraries": [],
+  "observers": [],
+  "prepared": false
+}

@@ -83,3 +83,36 @@ page packing and hardware/filesystem/device power-loss qualification remain sepa
 Complete protocol serialization remains owned by the state workstream; no new M1 completion is
 claimed. See the [feature contract](../spec/storage-memory-ceilings.md) and
 [resource interpretation guide](storage-resource-measurements.md).
+
+## Configured file limits versus allocator exhaustion
+
+Known regular files larger than a caller's physical byte ceiling now return `LimitExceeded`
+before the reader grows its detached buffer. The reader still enforces actual byte counts and
+one excess byte if the file grows after stat. Native one-MiB-heap regressions cover both layouts,
+and real post-stat growth witnesses preserve that final read-loop check.
+
+A file byte ceiling is not a heap/RSS budget. A file that fits its declared ceiling may still
+exhaust memory during buffering or complete-graph reconstruction. The pinned allocator's OS
+page-mapping failure aborts outside ordinary exception recovery; this change does not make those
+failures catchable or cure the original large128 MiB constrained opens. See the
+[allocation-failure evidence](../spec/storage-allocation-failures.md) for the exact observed
+fail-stop path, bounded fix and remaining Linux qualification scope.
+
+To diagnose the original constrained Linux aborts separately from performance measurements,
+run `make diagnose-storage-aborts` on Linux. Make provisions LLDB through the normal bounded
+host-tools setup. The ordinary panel runs first; a separate checked release/LTO build with
+debug symbols supplies bounded abort backtraces under the same child-only128 MiB limit.
+Unrestricted controls and selected-byte checks bracket each diagnostic attempt. Results live
+under `build/tests/storage-abort-diagnostics/`; its summary reports captured traces, requiring
+source inspection to identify the allocating caller. The explicit `storage-diagnostics` CI
+scope also runs the new preflight and post-stat growth regressions on Linux.
+
+
+The completed [Linux qualification](../spec/storage-allocation-failures.md#completed-linux-allocating-call-diagnosis)
+locates the ordinary journal abort in detached read-buffer growth and the ordinary managed
+abort in copying the successful snapshot byte result into the decoder call. Both precede
+complete-graph admission. The symbolized managed comparison aborts earlier during snapshot
+buffering, so its caller is reported separately. All Linux reader regressions, ordinary controls,
+byte-preservation checks and four fatal call-chain captures passed. General allocator exhaustion
+still follows the existing fail-stop policy; removing measured copies/growth overhead is the next
+bounded optimization, rather than treating this as a recoverable exception or a paging result.

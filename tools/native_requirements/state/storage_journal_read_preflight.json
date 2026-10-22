@@ -1,0 +1,14 @@
+{
+  "defines": [
+    "nimMaxHeap=1"
+  ],
+  "directory": "state",
+  "includes": [
+    "crypto"
+  ],
+  "libraries": [
+    "crypto"
+  ],
+  "observers": [],
+  "prepared": false
+}

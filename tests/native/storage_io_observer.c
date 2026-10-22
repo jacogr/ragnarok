@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/file.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include <time.h>
 #include <sys/wait.h>
@@ -20,6 +21,11 @@ static uint64_t calls[STORAGE_IO_LAST+1];
 static size_t write_limit, read_limit;
 static int reuse_close, reused_descriptor = -1;
 static int zero_skip, zero_remaining;
+/* A single-threaded fixture retains ownership; the controller checks identity before its one write. */
+static int growth_descriptor = -1, growth_pending;
+static off_t growth_extent;
+static dev_t growth_device;
+static ino_t growth_inode;
 
 
 
@@ -270,6 +276,9 @@ void storage_io_reset(void) {
     selected = skipped = remaining = reason = 0;
     write_limit = read_limit = 0;
     zero_skip = zero_remaining = 0;
+    /* Forget the borrowed fixture descriptor without closing or otherwise transferring its ownership. */
+    growth_descriptor = -1;
+    growth_pending = 0;
     for (int index = 0; index <= STORAGE_IO_LAST; index++) {
         /* Each known operation begins with an independently observable zero count. */
         calls[index] = 0;
@@ -302,6 +311,27 @@ int storage_io_remaining(void) {
 void storage_io_read_limit(size_t limit) {
     /* Genuine reads may stop short; zero disables the cap without changing EOF semantics. */
     read_limit = limit;
+}
+int storage_io_grow_on_read(int descriptor, int64_t extent) {
+    /* Refuse invalid, shrinking, excessive or replacement controls before touching active state. */
+    struct stat metadata;
+    int flags = descriptor < 0 ? -1 : fcntl(descriptor, F_GETFL);
+    if (flags < 0 || (flags & O_ACCMODE) == O_RDONLY ||
+        descriptor < 0 || extent < 0 || extent > 65536 || growth_pending ||
+        fstat(descriptor, &metadata) != 0 || !S_ISREG(metadata.st_mode) ||
+        metadata.st_size < 0 || metadata.st_size >= extent) {
+        return -1;
+    }
+    growth_descriptor = descriptor;
+    growth_extent = (off_t)extent;
+    growth_device = metadata.st_dev;
+    growth_inode = metadata.st_ino;
+    growth_pending = 1;
+    return 0;
+}
+int storage_io_growth_pending(void) {
+    /* A one-shot pending flag distinguishes an executed growth from a skipped read path. */
+    return growth_pending;
 }
 void storage_io_write_limit(size_t limit) {
     /* Optional real short writes exercise progress followed by interruption; zero removes the cap. */
@@ -344,6 +374,23 @@ ssize_t storage_io_read(int descriptor, void *buffer, size_t count) {
     if (refuse(STORAGE_IO_READ)) {
         /* A rejected read must not modify caller bytes or fabricate progress. */
         return -1;
+    }
+    if (growth_pending) {
+        /* The reader has completed its stat; extend only the exact separately owned fixture inode. */
+        struct stat metadata;
+        int owned = growth_descriptor;
+        growth_descriptor = -1;
+        growth_pending = 0;
+        if (fstat(owned, &metadata) != 0 || metadata.st_dev != growth_device ||
+            metadata.st_ino != growth_inode || metadata.st_size < 0 ||
+            metadata.st_size > growth_extent) {
+            errno = EINVAL;
+            return -1;
+        }
+        if (ftruncate(owned, growth_extent) != 0) {
+            /* Failed real fixture IO supplies no positive read progress or growth claim. */
+            return -1;
+        }
     }
     if (read_limit != 0 && count > read_limit) {
         /* Only actual positive kernel results advance the caller-owned byte extent. */

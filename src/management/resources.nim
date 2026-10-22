@@ -108,7 +108,8 @@ proc residentBytes(output: var uint64): bool =
         pages = pages * 10 + digit
         inc digits
     let size = pageSize()
-    digits > 0 and size > 0 and product(pages, uint64(size), output)
+    if digits == 0 or size <= 0: return false # Validate before unsigned conversion or any output mutation.
+    result = product(pages, uint64(size), output) # Explicit result assignment avoids deferred expression lowering.
   else:
     false # Unsupported platforms expose null rather than substituting peak RSS.
 

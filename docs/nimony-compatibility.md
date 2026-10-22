@@ -90,3 +90,20 @@ see the [source-sensitive native cache record](../spec/pvm-native-cache-identity
 The October 21 nightly fixes the reproduced imported-generic invalidation failure; project-owned
 source epochs have been removed after the same-cache control passed. Native ABI, compiler,
 configuration and worker/profile cache isolation remain in place.
+
+## Deferred Linux RSS return
+
+At pin `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`, the management RSS helper's Linux
+branch ended a proc with deferred descriptor cleanup using
+`digits > 0 and size > 0 and product(pages, uint64(size), output)`.
+Linux x86-64 semantic lowering aborted with
+`[Bug] and/or should have been handled by the expression elimination pass xelim.nim`.
+The macOS conditional branch did not exercise that expression. Replacing only the Boolean
+expression with a bare call exposed a subsequent `nimony_model.nim` `n.isTagLit` assertion.
+An explicit invalid-input guard followed by `result = product(...)` compiled successfully.
+Keep the cleanup, validation and checked multiplication; no compiler or runtime patch is needed.
+
+The Linux branch can be checked on macOS with the pinned compiler's supported command:
+`nimony check --os:linux --cpu:amd64 --mm:arc --cc:clang -d:release src/management/resources.nim`.
+Use a private `--nimcache` for each target/module. This proves target semantic lowering only;
+Linux native tests still own linking, OS behavior and ownership evidence.
