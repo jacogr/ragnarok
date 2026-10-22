@@ -1,0 +1,1 @@
+PASS storage_managed_bootstrap_write_crash: three real staged writes, no implicit CURRENT selection and exact forensic files
