@@ -62,3 +62,12 @@ Every backend, size and key topology now runs 16-byte inline and 256-byte out-of
 Fixture identity includes the payload length in native samples, JSON, CSV and Markdown. Aggregation
 revalidates that identity rather than accepting timings substituted from a cheaper representation.
 The complete authored payload and exact selected root remain positive controls for every sample.
+
+## Current-root reclamation
+
+A separate phase selects and clones the current complete root in memory, or performs actual
+managed compaction including file/namespace synchronization and predecessor retirement. The
+journal layout has no equivalent operation and displays an explicit unavailable sentinel, with
+no fabricated ratio. Root/generation, reclaimed records, header-only selected journal, strict
+post-compaction restart and held pre-compaction maps are validated outside timing. The original
+reopen phase remains before compaction so it still measures full journal admission.

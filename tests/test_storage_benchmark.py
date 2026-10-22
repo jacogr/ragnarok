@@ -19,8 +19,10 @@ from summarize_tests import summarize
 
 # Authored complete sample grids isolate report correctness from machine-dependent timing values.
 def output(engine,count,topology='leading',value_bytes=256):
-    return ''.join(f'sample\t{count}\t{topology}\t{value_bytes}\t{s}\t{100+s}\t{200+s}\t{300+s}\t'+
-                   str(-1 if engine=='memory' else 400+s)+'\n' for s in range(13))
+    # Unsupported reopen/reclamation operations remain explicit sentinels in otherwise complete samples.
+    return ''.join(f'sample\t{count}\t{topology}\t{value_bytes}\t{s}\t'+
+        '\t'.join(map(str,[100+s,200+s,300+s,-1 if engine=='memory' else 400+s,
+                           -1 if engine=='journal' else 500+s]))+'\n' for s in range(13))
 
 
 def passes():
@@ -41,7 +43,7 @@ class StorageBenchmarkTests(unittest.TestCase):
         self.assertIn('Strict disk reopen | — |',text)
         self.assertIn('memory publication is not durable',text)
         self.assertIn('warm resident',text)
-        self.assertEqual(len(report['cases']),32)
+        self.assertEqual(len(report['cases']),40)
         self.assertEqual(report['cases'][0]['engines']['memory']['median_ns'],107.5)
 
     def test_missing_duplicate_or_wrong_sample(self):
@@ -78,11 +80,18 @@ class StorageBenchmarkTests(unittest.TestCase):
     def test_positive_bounded_durations_and_explicit_reopen(self):
         raw=output('memory',1024)
         for old,new in [('\t100\t','\t0\t'),('\t100\t','\t-2\t'),
-                        ('\t100\t','\t'+str(1<<63)+'\t'),('\t-1\n','\t10\n')]:
+                        ('\t100\t','\t'+str(1<<63)+'\t'),('\t-1\t','\t10\t')]:
             with self.subTest(new=new),self.assertRaises(ValueError):
                 parse_output(raw.replace(old,new),'memory',1024)
         with self.assertRaises(ValueError):
-            parse_output(output('journal',1024).replace('\t400\n','\t-1\n'),'journal',1024)
+            parse_output(output('journal',1024).replace('\t400\t','\t-1\t'),'journal',1024)
+
+    def test_no_fabricated_maintenance_for_journal(self):
+        """A layout without online replacement cannot acquire a positive reclamation timing."""
+        with self.assertRaises(ValueError):
+            parse_output(output('journal',1024).replace('\t-1\n','\t500\n'),'journal',1024)
+        with self.assertRaises(ValueError):
+            parse_output(output('managed',1024).replace('\t500\n','\t-1\n'),'managed',1024)
 
     def test_missing_backend_pass_or_forged_statistic(self):
         raw=passes()
