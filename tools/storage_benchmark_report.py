@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Validate complete storage samples and render truthful memory/journal/managed speed tables."""
+import json
 import math
 from pathlib import PurePosixPath
 import re
 import statistics
 
-REPORT_VERSION=10
+REPORT_VERSION=11
 PROFILE='checked native ARC/Clang release opt:speed boundchecks:on LTO'
 REQUIRED_SOURCES=('tests/performance/storage_workload.nim','tests/support/managed_storage_samples.nim',
     'tests/support/storage_samples.nim','tools/storage_benchmark.py','tools/storage_benchmark_report.py',
@@ -157,8 +158,18 @@ def aggregate(passes):
                     values=sorted(groups[0]+groups[1])
                     medians=[statistics.median(group) for group in groups]
                     engines[engine]=dict(median_ns=statistics.median(values),min_ns=min(values),
-                        max_ns=max(values),metrics={k:rows[0][0][k] for k in METRICS},noisy=max(medians)/min(medians)>1.25 or values[18]/values[1]>2)
-            cases.append(dict(items=count,topology=topology,value_bytes=value_bytes,batch_width=batch_width,phase=phase,engines=engines))
+                        max_ns=max(values),pass_medians_ns=medians,metrics={k:rows[0][0][k] for k in METRICS},noisy=max(medians)/min(medians)>1.25 or values[18]/values[1]>2)
+            ratios={}
+            for engine in ENGINES[1:]:
+                memory=engines['memory'];other=engines[engine]
+                if memory is None or other is None:
+                    ratios[engine]=None
+                else:
+                    # Opposite-order pass medians expose ratios hidden by pooling across host drift.
+                    paired=[other['pass_medians_ns'][i]/memory['pass_medians_ns'][i] for i in range(2)]
+                    ratios[engine]=dict(pooled=other['median_ns']/memory['median_ns'],
+                        pass_ratios=paired,unstable=max(paired)/min(paired)>1.25)
+            cases.append(dict(items=count,topology=topology,value_bytes=value_bytes,batch_width=batch_width,phase=phase,engines=engines,ratios=ratios))
     return cases
 
 
@@ -171,7 +182,7 @@ def summarize_benchmark(report):
     if status=='checks-passed':
         validate_provenance(report)
         cases=aggregate(report['passes'])
-        if report['cases']!=cases:
+        if json.dumps(report['cases'],sort_keys=True,allow_nan=False)!=json.dumps(cases,sort_keys=True,allow_nan=False):
             raise ValueError('Storage statistics do not match raw validated samples')
         lines+=['Microseconds per fixed batch: median [min–max], 20 measured samples; three warmups per pass.',
             'Two passes reverse backend order. Fixture preparation and result validation are excluded.','',
@@ -184,11 +195,13 @@ def summarize_benchmark(report):
                 cells.append('—' if item is None else
                     f'{item["median_ns"]/1000:.2f} [{item["min_ns"]/1000:.2f}–{item["max_ns"]/1000:.2f}]'+(' †' if item['noisy'] else ''))
             memory=case['engines']['memory']
-            ratios=['—' if memory is None or case['engines'][e] is None else
-                f'{case["engines"][e]["median_ns"]/memory["median_ns"]:.2f}×' for e in ENGINES[1:]]
+            ratios=[]
+            for engine in ENGINES[1:]:
+                ratio=case['ratios'][engine]
+                ratios.append('—' if ratio is None else f'{ratio["pooled"]:.2f}×'+(' ‡' if ratio['unstable'] else ''))
             lines.append('| '+str(case['items'])+' | '+case['topology']+' | '+str(case['value_bytes'])+' | '+str(case['batch_width'])+' | '+LABELS[PHASES.index(case['phase'])]+' | '+
                          ' | '.join(cells+ratios)+' |')
-        lines+=['','† Noisy: pass medians differ by >25% or central sample spread exceeds 2×; ratios are provisional.']
+        lines+=['','† Noisy: pass medians differ by >25% or central sample spread exceeds 2×; ratios are provisional.','‡ Unstable ratio: opposite-order pass-median ratios differ by >25%; pooling can hide order or host effects.']
         lines+=['','Selected physical storage (not total directory usage or memory retained by readers):','',
             '| Entries | Key topology | Value bytes | Batch writes | Backend | Stored / current records | Selected bytes before / after |',
             '| ---: | --- | ---: | ---: | --- | ---: | ---: |']

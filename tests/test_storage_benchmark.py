@@ -193,6 +193,38 @@ class StorageBenchmarkTests(unittest.TestCase):
             with self.subTest(boundary=boundary),self.assertRaises(ValueError):
                 summarize_benchmark(bad)
 
+    def test_opposite_order_ratios_expose_hidden_drift(self):
+        """Equal pooled medians must not hide reversed-order comparisons that disagree strongly."""
+        report=report_fixture()
+        for index,observations in enumerate(report['passes']):
+            for row in observations['memory-1024-leading-16-1']:
+                row['publication']=1000 if index==0 else 100
+            for row in observations['journal-1024-leading-16-1']:
+                row['publication']=100 if index==0 else 1000
+        report['cases']=aggregate(report['passes'])
+        ratio=report['cases'][0]['ratios']['journal']
+        self.assertEqual(ratio['pooled'],1)
+        self.assertEqual(ratio['pass_ratios'],[0.1,10])
+        self.assertTrue(ratio['unstable'])
+        self.assertIn('1.00× ‡',summarize_benchmark(report))
+        report['cases'][0]['ratios']['journal']['pooled']=0.01
+        with self.assertRaises(ValueError):
+            summarize_benchmark(report)
+
+    def test_common_host_drift_does_not_invent_ratio_instability(self):
+        """Both absolute series may move together while the within-pass comparison remains stable."""
+        report=report_fixture()
+        for index,observations in enumerate(report['passes']):
+            for row in observations['memory-1024-leading-16-1']:
+                row['publication']=1000*(index+1)
+            for row in observations['journal-1024-leading-16-1']:
+                row['publication']=2000*(index+1)
+        report['cases']=aggregate(report['passes'])
+        case=report['cases'][0]
+        self.assertTrue(case['engines']['memory']['noisy'])
+        self.assertEqual(case['ratios']['journal']['pass_ratios'],[2,2])
+        self.assertFalse(case['ratios']['journal']['unstable'])
+
     def test_failure_does_not_show_old_table(self):
         text=summarize_benchmark(dict(status='failed',error='native assertion',cases=[dict(old=True)]))
         self.assertIn('Status: failed',text)
