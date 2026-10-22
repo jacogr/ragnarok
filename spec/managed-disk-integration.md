@@ -260,3 +260,18 @@ The current production executable builds with the maintained checked native prof
 --help, --version and --selftest succeed. Format checking, verification inventory, changed-document
 relative links and git whitespace checks pass. This tranche stops at twenty dependent layers.
 Local validation does not claim remote CI success or physical power-loss certification.
+
+## Services operation dispatch
+
+Services selects ordinary publication or managed maintenance with one private operation enum.
+Successful native admission records the actual operation beside its ticket; completion routes to
+that operation's existing receipt and retirement path. Startup and joined retirement reset the
+selector to ordinary publication. No public API, physical format, storage algorithm, lease,
+compaction policy or IO result changes. The current PVM publication payload is a separate next
+consumer, rather than an ambiguous combination of boolean operation flags.
+
+Local macOS validation passed `disk_services_boundaries` (actual joined publication, kernel IO
+uncertainty, frozen parent and strict restart), `managed_services_maintenance` (actual maintenance
+receipt and exclusion), Services/production-entry semantic checking and changed-source pinned
+formatter idempotence. No new mirrored tests were added for this private representation change.
+Linux CI was not requested.
