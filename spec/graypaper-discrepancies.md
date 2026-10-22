@@ -30,6 +30,13 @@ lengths explicitly; the old mathematical witnesses remain historical evidence on
 See [the coordinated upgrade contract](graypaper-unreleased-upgrade.md) for exact
 scope, remaining implementation gates and verification requirements.
 
+Current Omega_F explicitly separates empty-request deletion from expired two-slot
+request/preimage deletion. This resolves the historical unbound-y observation in
+[forget](pvm-accumulation-forget.md). A real solicit/forget guest at a different
+advertised length proves that the existing available preimage and its history must
+survive; current production now preserves them. This is implementation alignment
+with the current row, not a new paper discrepancy or a PolkaVM host-parity claim.
+
 ## Baseline and reporting policy
 
 Reviewed on2026-10-21 against Gray Paper0.8.0

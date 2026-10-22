@@ -64,8 +64,10 @@ Supervisor29 now authenticates current effective authority and atomically reassi
 self/foreign metadata, with self publication and the same foreign batch gate.
 Supervised storage writes now authenticate and mutate the target account in retained
 invocation state; their foreign publication still needs the same conflict selection.
-Foreign request mutations, other foreign funding paths, alternative funding modes
-and direct transfers are explicit `UnsupportedHostCall` gates while
+Supervised solicit/forget now mutate target requests in retained invocation state,
+using actual invocation time and the same explicit foreign publication boundary.
+Other foreign funding paths, alternative funding modes and direct transfers remain
+explicit `UnsupportedHostCall` gates while
 their account mutation/publication proofs are migrated. The previous argument layout
 is never accepted as a production fallback. These gates are incomplete implementation,
 not discrepancies in the normative paper.

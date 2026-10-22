@@ -764,6 +764,27 @@ proc effectiveSupervisor(accounts: StateStoreSnapshot, service: ServiceIndex,
     service # Reusing an ID with a different creation slot cannot inherit authority.
   AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None, completed: selected)
 
+# Non-privileged mutations admit the service itself or its current effective supervisor, before namespace work.
+proc authorizedAccountMetadata(previous: EffectData,
+    service: ServiceIndex): AccumulationEffectResult[ServiceMetadata] =
+  let self = previous.initial.contextInfo.value.service
+  let selected = currentAccountMetadata(previous.accounts, service)
+  if selected.error != AccumulationEffectError.None:
+    if selected.error == AccumulationEffectError.UnknownService and uint32(service) == uint32(self):
+      return AccumulationEffectResult[ServiceMetadata](
+          status: AccumulationEffectError.MalformedState) # Never reconstruct a missing current invoker.
+    return AccumulationEffectResult[ServiceMetadata](
+        status: selected.error) # A missing foreign account is protocol WHO.
+  if uint32(service) != uint32(self):
+    let authority = effectiveSupervisor(previous.accounts, service, selected.value)
+    if authority.error != AccumulationEffectError.None:
+      return AccumulationEffectResult[ServiceMetadata](
+          status: authority.error) # Malformed provenance cannot grant authority.
+    if uint32(authority.value) != uint32(self):
+      return AccumulationEffectResult[ServiceMetadata](
+          status: AccumulationEffectError.NotRequested) # HUH precedes history/storage hashing and funding.
+  selected # Canonical fixed metadata is copied, with no retained borrow or mutable authority token.
+
 proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openArray[byte],
     parameters: Parameters, limit: ByteLimit, target: ServiceIndex): AccumulationEffectResult[
         AccumulationStorageChange] =
@@ -787,18 +808,10 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
   let self = previous.initial.contextInfo.value.service
   let service = target
   let accountKey = chapterServiceKey(StateChapter(255), service)
-  let selected = currentAccountMetadata(previous.accounts, service)
+  let selected = authorizedAccountMetadata(previous, service)
   if selected.error != AccumulationEffectError.None:
-    if selected.error == AccumulationEffectError.UnknownService and uint32(service) == uint32(self):
-      fail(AccumulationEffectError.MalformedState) # Preserve the self API's refusal to reconstruct a missing invoker.
-    fail(selected.error) # Foreign target existence precedes supervision and namespace hashing.
+    fail(selected.error) # Canonical target and authority precede namespace hashing.
   var metadata = selected.value
-  if uint32(service) != uint32(self):
-    let authority = effectiveSupervisor(previous.accounts, service, metadata)
-    if authority.error != AccumulationEffectError.None:
-      fail(authority.error) # Malformed supervisor provenance remains a local state refusal.
-    if uint32(authority.value) != uint32(self):
-      fail(AccumulationEffectError.NotRequested) # HUH never hashes or mutates an unauthorized namespace.
   let derived = serviceStorageKey(service, key, limit)
   if derived.error != ServiceValueError.None:
     fail(AccumulationEffectError.BackendFailure) # No alternate namespace on failed hashing.
@@ -1529,8 +1542,9 @@ proc effectRequestHistory*(context: AccumulationEffectContext, hash: ServicePrei
   effectServiceRequestHistory(context, data.initial.contextInfo.value.service, hash, length)
 
 proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreimageHash,
-    length: RequestLength, parameters: Parameters): AccumulationEffectResult[AccumulationEffects] =
-  ## Create an empty current-self request or restore an unavailable history using the invocation's own slot.
+    length: RequestLength, parameters: Parameters, target: ServiceIndex): AccumulationEffectResult[
+        AccumulationEffects] =
+  ## Create an empty self/supervised request or restore an unavailable history using the invocation's own slot.
   ## NotRequested is HUH for other shapes; StorageFull is FULL after exact prospective funding. Balance and existing preimages never change.
   ## Publish metadata/history atomically under inherited write limits; InvalidState rejects unrepresentable footprint counters.
   # All refused/default operations carry only a reason, never a partially requested successor.
@@ -1543,7 +1557,13 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
     fail(AccumulationEffectError.InvalidParameters) # Funding cannot use a fabricated schedule.
   let previous = data.regular.data
   assert previous != nil # Private pair construction retains initialized current contexts.
-  let prior = data.regular.effectRequestHistory(hash, length)
+  if uint32(length) >= high(uint32)-1:
+    fail(AccumulationEffectError.InvalidLength) # Current length HUH precedes all target/history work.
+  let self = previous.initial.contextInfo.value.service
+  let selected = authorizedAccountMetadata(previous, target)
+  if selected.error != AccumulationEffectError.None:
+    fail(selected.error) # WHO and authority HUH precede request namespace hashing.
+  let prior = data.regular.effectServiceRequestHistory(target, hash, length)
   var history = requestedHistory()
   var fresh = false
   case prior.error
@@ -1557,15 +1577,8 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
       RequestSlot(uint32(slot))) # Append the actual invocation time without age checks or timestamp repair.
   else:
     fail(prior.error) # Preserve malformed state and backend errors from the bounded current-history reader.
-  let self = previous.initial.contextInfo.value.service
-  let accountKey = chapterServiceKey(StateChapter(255), self)
-  let found = previous.accounts.lookup(accountKey)
-  if found.error != StateStoreError.None or found.value.byteLength != ServiceMetadataBytes:
-    fail(AccumulationEffectError.MalformedState) # The genuine current caller must retain canonical metadata.
-  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
-  if decoded.error != ServiceMetadataError.None:
-    fail(AccumulationEffectError.MalformedState) # No repair or default metadata can authorize a request.
-  var metadata = decoded.value.metadata
+  let accountKey = chapterServiceKey(StateChapter(255), target)
+  var metadata = selected.value
   if fresh:
     let added = 81'u64+uint64(uint32(length)) # E4 length plus fixed overhead is below 2^33.
     if uint32(metadata.storageItems) > high(uint32)-2 or uint64(metadata.storageBytes) > high(uint64)-added:
@@ -1574,7 +1587,7 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
     metadata.storageBytes = AccountStorageBytes(uint64(metadata.storageBytes)+added)
   if not funded(metadata, parameters):
     fail(AccumulationEffectError.StorageFull) # FULL applies even to a restoration whose footprint did not change.
-  let request = serviceRequestEntry(self, hash, length, history,
+  let request = serviceRequestEntry(target, hash, length, history,
     RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
         3), maxBytes: ByteLimit(13))))
   if request.error != RequestError.None:
@@ -1582,12 +1595,16 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
   var writes = @[StateWrite(key: request.value.key, kind: StateWriteKind.Put,
       value: request.value.value)]
   if fresh:
-    let encoded = serviceMetadataEntry(self, metadata, ByteLimit(ServiceMetadataBytes)).value
+    let encoded = serviceMetadataEntry(target, metadata, ByteLimit(ServiceMetadataBytes)).value
     writes.add(StateWrite(key: accountKey, kind: StateWriteKind.Put,
         value: encoded.value)) # Only creation changes metadata; restoration needs one write.
-  let keys = prepareSelfAccountKeys(previous, writes)
-  if keys.error != AccumulationEffectError.None:
-    fail(keys.error) # Unique-key capacity is proved before hashing any candidate account state.
+  var keys = previous.accountKeys
+  if uint32(target) == uint32(self):
+    let traced = prepareSelfAccountKeys(previous, writes)
+    if traced.error != AccumulationEffectError.None:
+      fail(traced.error) # Self-key capacity precedes candidate hashing.
+    keys = traced.value # Foreign request keys never enter the self-key proof.
+
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -1599,15 +1616,32 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
     fail(AccumulationEffectError.BackendFailure) # Previous accounts and request histories survive failed hashing.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial successor escapes other complete-map invariants.
-  let current = AccumulationEffectContext(data: selfAccountData(previous, changed.value, keys.value))
+  let candidate = if uint32(target) == uint32(self):
+    selfAccountData(previous, changed.value, keys)
+  else:
+    successorData(previous, changed.value) # Foreign execution awaits parallel modified-account selection.
+  let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
         exceptional: data.exceptional)))
 
-proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreimageHash,
+proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreimageHash,
     length: RequestLength, parameters: Parameters): AccumulationEffectResult[AccumulationEffects] =
-  ## Forget the exact current-self request using invocation time; NotRequested is HUH for missing or insufficiently aged histories.
-  ## Pinned vector preimage_len_bound-3 resolves empty requests as immediate deletion. No funding check or balance debit applies.
+  ## Preserve self-only callers through the same bounded canonical target operation.
+  let data = effects.data
+  if data == nil:
+    return AccumulationEffectResult[AccumulationEffects](
+        status: AccumulationEffectError.Uninitialized) # Defaults own no invoker identity.
+  let current = data.regular.data
+  assert current != nil # Private pairs retain initialized dimensions.
+  recordAccumulationSolicit(effects, hash, length, parameters,
+      current.initial.contextInfo.value.service)
+
+proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreimageHash,
+    length: RequestLength, parameters: Parameters, target: ServiceIndex): AccumulationEffectResult[
+        AccumulationEffects] =
+  ## Forget the exact self/supervised request using invocation time; NotRequested is HUH for missing or insufficiently aged histories.
+  ## Current Omega_F removes empty requests immediately, without deleting their preimage. No funding check or balance debit applies.
   ## Replacement needs one write; removal atomically updates footprint and deletes request/preimage in at most three writes.
   # No partial history, footprint or account successor escapes any refusal.
   template fail(reason: AccumulationEffectError) =
@@ -1619,16 +1653,23 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     fail(AccumulationEffectError.InvalidParameters) # Expunge age requires genuine validated parameters.
   let previous = data.regular.data
   assert previous != nil # Published pairs retain initialized current contexts.
-  let prior = data.regular.effectRequestHistory(hash, length)
+  if uint32(length) >= high(uint32)-1:
+    fail(AccumulationEffectError.InvalidLength) # Current length HUH precedes all target/history work.
+  let self = previous.initial.contextInfo.value.service
+  let selected = authorizedAccountMetadata(previous, target)
+  if selected.error != AccumulationEffectError.None:
+    fail(selected.error) # WHO and authority HUH precede request namespace hashing.
+  let prior = data.regular.effectServiceRequestHistory(target, hash, length)
   if prior.error != AccumulationEffectError.None:
     fail(prior.error) # Preserve HUH absence, malformed canonical state and namespace backend failures.
   let time = uint32(previous.initial.contextInvocation.value.bootstrapInfo.value.slot)
   let history = prior.value
   var replacement = requestedHistory()
   var remove = false
+  var removePreimage = false
   case history.state
   of RequestState.Requested:
-    remove = true # Pinned service-0 slot-45 witness deletes [] immediately despite the GP's unbound y condition.
+    remove = true # The current empty-history row removes only the request; no preimage deletion is implied.
   of RequestState.Available:
     replacement = unavailableHistory(history.since, RequestSlot(
         time)) # One slot always appends actual invocation time, with no age/funding condition.
@@ -1636,49 +1677,49 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     if uint64(uint32(history.unavailableFrom))+parameters.get(maxLookupAnchorAge)+4800 >= uint64(time):
       fail(AccumulationEffectError.NotRequested) # Strict widened expiry also handles nonpositive cutoffs without underflow.
     remove = true
+    removePreimage = true # Only the expired two-slot row removes the retained preimage as well.
   of RequestState.Reavailable:
     if uint64(uint32(history.removedAt))+parameters.get(maxLookupAnchorAge)+4800 >= uint64(time):
       fail(AccumulationEffectError.NotRequested) # Expiry uses the second slot, never the later restoration time.
     replacement = unavailableHistory(history.restoredAt, RequestSlot(
         time)) # Retain latest availability and append current removal time.
-  let self = previous.initial.contextInfo.value.service
   var writes: seq[StateWrite] = @[]
   if remove:
-    let accountKey = chapterServiceKey(StateChapter(255), self)
-    let found = previous.accounts.lookup(accountKey)
-    if found.error != StateStoreError.None or found.value.byteLength != ServiceMetadataBytes:
-      fail(AccumulationEffectError.MalformedState) # Real current metadata must authorize exact footprint subtraction.
-    let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
-    if decoded.error != ServiceMetadataError.None:
-      fail(AccumulationEffectError.MalformedState) # No repair or default metadata while forgetting.
-    var metadata = decoded.value.metadata
+    let accountKey = chapterServiceKey(StateChapter(255), target)
+    var metadata = selected.value
     let removed = 81'u64+uint64(uint32(length)) # Complete E4 length plus fixed overhead fits below 2^33.
     if uint32(metadata.storageItems) < 2 or uint64(metadata.storageBytes) < removed:
       fail(AccumulationEffectError.MalformedState) # Inconsistent stored counters cannot underflow into a fabricated footprint.
     metadata.storageItems = AccountStorageItems(uint32(metadata.storageItems)-2)
     metadata.storageBytes = AccountStorageBytes(uint64(metadata.storageBytes)-removed)
-    let encoded = serviceMetadataEntry(self, metadata, ByteLimit(ServiceMetadataBytes)).value
-    let request = serviceRequestKey(self, hash, length, ByteLimit(32))
+    let encoded = serviceMetadataEntry(target, metadata, ByteLimit(ServiceMetadataBytes)).value
+    let request = serviceRequestKey(target, hash, length, ByteLimit(32))
     if request.error != RequestError.None:
       fail(AccumulationEffectError.BackendFailure) # Stop on failed request derivation without more namespace work.
-    let preimage = servicePreimageKey(self, hash, ByteLimit(32))
-    if preimage.error != ServiceValueError.None:
-      fail(AccumulationEffectError.BackendFailure) # Namespace failure leaves all original account components valid.
     writes.add(StateWrite(key: accountKey, kind: StateWriteKind.Put, value: encoded.value))
     writes.add(StateWrite(key: request.value, kind: StateWriteKind.Delete))
-    if array[31, byte](request.value) != array[31, byte](preimage.value):
-      writes.add(StateWrite(key: preimage.value, kind: StateWriteKind.Delete)) # One shared pinned physical key requires one deletion.
+    if removePreimage:
+      let preimage = servicePreimageKey(target, hash, ByteLimit(32))
+      if preimage.error != ServiceValueError.None:
+        fail(AccumulationEffectError.BackendFailure) # Failed derivation leaves every original component intact.
+      if array[31, byte](request.value) != array[31, byte](preimage.value):
+        writes.add(StateWrite(key: preimage.value,
+            kind: StateWriteKind.Delete)) # Avoid duplicate physical deletion descriptors.
   else:
-    let request = serviceRequestEntry(self, hash, length, replacement,
+    let request = serviceRequestEntry(target, hash, length, replacement,
       RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(items: ElementLimit(
           3), maxBytes: ByteLimit(13))))
     if request.error != RequestError.None:
       fail(AccumulationEffectError.BackendFailure) # Failed canonical replacement has no request payload to publish.
     writes.add(StateWrite(key: request.value.key, kind: StateWriteKind.Put,
         value: request.value.value)) # Replacement changes no metadata or preimage.
-  let keys = prepareSelfAccountKeys(previous, writes)
-  if keys.error != AccumulationEffectError.None:
-    fail(keys.error) # Unique-key capacity is proved before hashing any candidate account state.
+  var keys = previous.accountKeys
+  if uint32(target) == uint32(self):
+    let traced = prepareSelfAccountKeys(previous, writes)
+    if traced.error != AccumulationEffectError.None:
+      fail(traced.error) # Self-key capacity precedes candidate hashing.
+    keys = traced.value # Foreign request keys never enter the self-key proof.
+
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -1690,7 +1731,22 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     fail(AccumulationEffectError.BackendFailure) # Previous maps survive even late candidate hashing failure.
   else:
     fail(AccumulationEffectError.InvalidState) # No partial effects escape other store invariants.
-  let current = AccumulationEffectContext(data: selfAccountData(previous, changed.value, keys.value))
+  let candidate = if uint32(target) == uint32(self):
+    selfAccountData(previous, changed.value, keys)
+  else:
+    successorData(previous, changed.value) # Foreign execution awaits parallel modified-account selection.
+  let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
         exceptional: data.exceptional)))
+proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreimageHash,
+    length: RequestLength, parameters: Parameters): AccumulationEffectResult[AccumulationEffects] =
+  ## Preserve self-only callers through the same bounded canonical target operation.
+  let data = effects.data
+  if data == nil:
+    return AccumulationEffectResult[AccumulationEffects](
+        status: AccumulationEffectError.Uninitialized) # Defaults own no invoker identity.
+  let current = data.regular.data
+  assert current != nil # Private pairs retain initialized dimensions.
+  recordAccumulationForget(effects, hash, length, parameters,
+      current.initial.contextInfo.value.service)

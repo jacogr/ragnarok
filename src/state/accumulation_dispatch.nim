@@ -1038,14 +1038,19 @@ proc solicitResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     hash[i] = captured.value[i] # Copied fixed input cannot alias guest memory in a published successor.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let self = uint64(uint32(current.effectInfo.value.service))
-  if uint64(cpu.registers[7]) != high(uint64) and uint64(cpu.registers[7]) != self:
-    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Foreign supervised request mutation is an explicit implementation gate.
+  let raw = uint64(cpu.registers[7])
+  let target = if raw == high(uint64): self else: raw
+  if target > uint64(high(uint32)):
+    response.registers[7] = RegisterValue(high(uint64)-3)
+    return hostSuccess[AccumulationDispatchError](response) # Length and memory validation precede full-width WHO.
   let changed = recordAccumulationSolicit(context.effects, ServicePreimageHash(hash), RequestLength(
-      uint32(length)), context.parameters)
+      uint32(length)), context.parameters, ServiceIndex(uint32(target)))
   case changed.error
   of AccumulationEffectError.None:
     context.effects = changed.value
     response.registers[7] = RegisterValue(0) # OK publishes the complete new/restored request.
+  of AccumulationEffectError.UnknownService:
+    response.registers[7] = RegisterValue(high(uint64)-3) # Target absence precedes authority/history HUH.
   of AccumulationEffectError.NotRequested:
     response.registers[7] = RegisterValue(high(uint64)-8) # HUH rejects all other existing history shapes.
   of AccumulationEffectError.StorageFull:
@@ -1091,14 +1096,19 @@ proc forgetResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memo
     hash[i] = captured.value[i] # Fixed independent input cannot alias guest memory in a published owner.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let self = uint64(uint32(current.effectInfo.value.service))
-  if uint64(cpu.registers[7]) != high(uint64) and uint64(cpu.registers[7]) != self:
-    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Foreign supervised request mutation is an explicit implementation gate.
+  let raw = uint64(cpu.registers[7])
+  let target = if raw == high(uint64): self else: raw
+  if target > uint64(high(uint32)):
+    response.registers[7] = RegisterValue(high(uint64)-3)
+    return hostSuccess[AccumulationDispatchError](response) # Length and memory validation precede full-width WHO.
   let changed = recordAccumulationForget(context.effects, ServicePreimageHash(hash), RequestLength(
-      uint32(length)), context.parameters)
+      uint32(length)), context.parameters, ServiceIndex(uint32(target)))
   case changed.error
   of AccumulationEffectError.None:
     context.effects = changed.value
     response.registers[7] = RegisterValue(0) # OK publishes complete removal or replacement.
+  of AccumulationEffectError.UnknownService:
+    response.registers[7] = RegisterValue(high(uint64)-3) # Target absence precedes authority/history HUH.
   of AccumulationEffectError.NotRequested:
     response.registers[7] = RegisterValue(high(uint64)-8) # HUH covers missing or insufficiently aged requests.
   of AccumulationEffectError.MalformedState:

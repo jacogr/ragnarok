@@ -59,8 +59,12 @@ of "designate": discard recordAccumulationDesignate(pair, [], default(
     ValidatorStateConfig)).value # Failed mutation has no successor.
 of "new": discard recordAccumulationNew(pair, default(AccumulationNewService), default(Parameters),
     ServiceProbeLimit(0)).value # Failed creation has no successor or service ID.
+of "forget-target": discard recordAccumulationForget(pair, default(ServicePreimageHash),
+    RequestLength(3), default(Parameters), ServiceIndex(77)).value # Failed target operations carry no successor.
 of "forget": discard recordAccumulationForget(pair, default(ServicePreimageHash),
   RequestLength(3), default(Parameters)).value # Failed/default forgetting has no successor payload.
+of "solicit-target": discard recordAccumulationSolicit(pair, default(ServicePreimageHash),
+    RequestLength(3), default(Parameters), ServiceIndex(77)).value # Failed target operations carry no successor.
 of "solicit": discard recordAccumulationSolicit(pair, default(ServicePreimageHash),
   RequestLength(3), default(Parameters)).value # A refused/default solicitation exposes no successor.
 of "request": discard context.effectRequestHistory(default(ServicePreimageHash),

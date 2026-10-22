@@ -264,8 +264,16 @@ block explicit_limits_and_disabled_trace:
     "default context has no key payload"
   let short = batchFixture(firstEnvelope = requestEnvelope(forget = true),
       secondEnvelope = guestEnvelope([@[50'u8, 0]]))
-  assert execute(short, keys = 1).error == AccumulationDispatchError.LimitExceeded,
-    "forget needs both request and preimage deletion keys in its trace, even when neither remains present"
+  let minimal = execute(short, keys = 1)
+  assert minimal.error == AccumulationDispatchError.None,
+      "current empty-request forgetting fits its one touched request key"
+  assert minimal.effects.effectContext(AccumulationDimension.Regular).value.effectAccountWriteCount.value ==
+      1,
+      "an unchanged preimage consumes no trace slot"
+  let minimalPlan = prepare(short, minimal, execute(short, 1)).value
+  assert minimalPlan.batchInfo.value.selfWrites == 1 and
+      minimalPlan.batchInfo.value.selfValueBytes == 0,
+      "publication retains the exact absent final request without a fabricated preimage deletion"
 
 # New requested history is merged before fnprovide, making the pending provision valid on the combined private candidate.
 let fixture = batchFixture(firstEnvelope = requestEnvelope(provide = true),

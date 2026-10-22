@@ -9,13 +9,33 @@ below 2^32-2; both reserved E4 values return HUH before memory/backend work. Pub
 effect APIs reject the same values as `InvalidLength`. Legal request keys stay separate
 from storage/preimage namespaces.
 Current self mutations preserve r8/r9 and accept explicit self or the sentinel.
-Foreign supervised mutations remain explicit `UnsupportedHostCall` gates. The old
+Supervised target mutations now authenticate effective authority before namespace
+hashing, use the target account's metadata/history/preimage keys, and retain the
+invoking service's actual slot. Foreign ancestry stays Unsupported for parallel
+publication until modified-account conflict selection is implemented. The old
 register layout is never accepted as an alternate production ABI.
+
+Scope/completion: add nominal target overloads while preserving self APIs and
+bounded self-key traces. Check length HUH before memory, then panic/WHO/authority
+ordering, both account incarnations, target-only footprint/funding, immutable
+checkpoints, typed backend/store failures, exact histories and ARC. Verify genuine
+foreign mutation remains a batch publication gate and self tracing stays bounded.
+Current Omega_F explicitly removes only the request for an empty history. An expired
+two-slot history removes both request and preimage. This resolves the historical
+unbound-y wording below; current production follows the distinct row updates,
+including preservation of a stored preimage in an authored empty-request map.
 The historical full-E4 vector witness is now a rejected length. Its public hash and
 slot also seed a separate authored maximum-legal-length boundary case; this is not
 claimed as unchanged current parity with that historical vector.
 
 The sections below preserve historical release implementation and verification records.
+
+A reachable regression starts with hash h available at actual length3. A guest then
+solicits `(h,4)` and forgets that empty extra request. Only the `(h,4)` reservation
+is removed: `(h,3)`, its available history and the three-byte preimage remain. The
+native two-host witness restores the complete original map, releases the reservation of two
+items and85 bytes, and fits one bounded request-key trace slot. Expired two-slot
+forgetting still removes request and preimage under a three-write store policy.
 
 
 ## Scope and authority
@@ -99,3 +119,22 @@ future witnesses. The final passing forget run was retained while checking its
 affected consumers; no full module sweep or unchanged privacy probes were run.
 Existing gates and pins remain unchanged. Next bounded work: accumulation host
 integration coverage and remaining-gate audit.
+
+## Supervised mutation verification
+
+Local macOS solicit/forget, account-publication, bounded-self-write, storage-write,
+supervisor, effects, dispatch, batch and accumulation-integration suites passed
+with stable1000-cycle ARC evidence. The request suites release both self and
+foreign successors. All264 production modules passed semantic compilation.
+Compiler rejection guards and43 strict accumulation-effect result probes passed,
+including both nominal target and failed-target extraction cases. The14 failure,
+40 verification and14 request-namespace harness tests and inventory passed.
+
+Foreign creation/restoration/removal uses target-only metadata, funding and preimage
+namespaces, preserves invoker state, and remains an explicit parallel-publication
+gate. Both sentinel/length/memory/WHO/HUH orders and immutable checkpoint selection
+are covered. The real different-length solicit/forget roundtrip preserves an
+available blob and restores its complete prior map with one traced request key.
+These are local checks, not exact-head Linux CI, PolkaVM host-parity or complete
+parallel/JAM parity. Evidence is under `build/supervised-requests-*` and
+`build/tests/supervised-requests-guards/results.json`.
