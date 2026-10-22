@@ -38,6 +38,11 @@ func value*[T](outcome: RecordResult[T]): T {.inline,
 func zero(hash: StateNodeHash): bool =
   ## The all-zero address is reserved for an empty physical subtree.
   array[32, byte](hash) == default(array[32, byte])
+proc takeValue*[T](outcome: var RecordResult[T]): T {.inline,
+    requires: outcome.status == RecordError.None.} =
+  ## Transfer one validated transport owner; the consumed result exposes only Uninitialized afterward.
+  result = move(outcome.completed)
+  outcome = RecordResult[T](status: RecordError.Uninitialized)
 proc compareHash(a, b: StateNodeHash): int =
   ## Lexicographic fixed identities support bounded duplicate rejection.
   let left = array[32, byte](a)
