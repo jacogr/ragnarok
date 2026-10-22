@@ -40,7 +40,8 @@ under `build/modified-accounts-*` and
 `build/tests/modified-accounts-guards/results.json`. Local macOS evidence does not
 claim complete parallel/JAM parity, PolkaVM host parity or exact-head Linux CI.
 
-Next: retain the corresponding per-service physical account-write keys, then
-apply current accpar conflict annulment/account selection and enable foreign
-publication through those bound proofs. Modification membership alone does not
+The corresponding [physical account-write facts](pvm-account-write-facts.md) are
+now retained through independent bounded capture. Next implement current
+transfer partitioning, then accpar conflict annulment/account selection and
+enable foreign publication through those bound proofs. Modification membership alone does not
 prove which serialized storage/request/preimage keys belong to a selected account.
