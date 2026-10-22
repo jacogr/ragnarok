@@ -229,3 +229,10 @@ Every actual bounded unlink/directory-sync boundary is killed independently. The
 prefix and remaining forensic bytes are checked before and after strict restart. CURRENT, selected
 files, complete authored maps and farther epoch files stay byte-identical. Explicit idempotent
 cleanup finishes only its requested staging/retired names; selected/future retirement is refused.
+
+## storage_retired_cleanup_crash
+
+Every actual bounded unlink/directory-sync boundary is killed independently. The exact removed
+prefix and remaining forensic bytes are checked before and after strict restart. CURRENT, selected
+files, complete authored maps and farther epoch files stay byte-identical. Explicit idempotent
+cleanup finishes only its requested staging/retired names; selected/future retirement is refused.

@@ -1,0 +1,18 @@
+{
+  "defines": [],
+  "directory": "state",
+  "includes": [
+    "crypto",
+    "storage_io"
+  ],
+  "libraries": [
+    "crypto",
+    "storage_io"
+  ],
+  "observers": [
+    "io_fsync",
+    "io_renameat",
+    "io_unlinkat"
+  ],
+  "prepared": false
+}
