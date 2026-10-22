@@ -452,6 +452,10 @@ for foreign in [false, true]:
     let childId = ServiceIndex(uint32(uint64(machineInfo(completed.value.machine).value.registers[7])))
     let owner = context(completed)
     let child = metadata(owner, childId)
+    assert owner.effectCreatedAccountFactCount.value == 1,
+      "enabled creation membership is complete for self and foreign funders"
+    let fact = owner.effectCreatedAccountFactAt(AccumulationCreatedAccountIndex(0)).value
+    assert uint32(fact.service) == uint32(childId), "proof records actual allocation under every funding mode"
     assert uint64(child.balance) == (if mode < 2: 188'u64 else: 0'u64) and
         uint64(child.supervisorBalance) == (if mode < 2: 0'u64 else: 188'u64), "destination mode selects exactly one child funding pool"
     assert uint32(child.parent) == 42 and uint32(child.supervisor) == 42 and uint32(
