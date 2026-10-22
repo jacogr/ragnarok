@@ -331,10 +331,11 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   if retained.error != RepositoryError.None:
     return ManagedResult[ManagedCompaction](status: FileError.InvalidRetention)
   let plan = retained.value
-  let encoded = encodeRepositorySnapshot(plan, repository.chain, repository.schema,
+  var encoded = encodeRepositorySnapshot(plan, repository.chain, repository.schema,
     repository.context, snapshotLimits(repository.limits))
   if encoded.error != SnapshotError.None:
     return ManagedResult[ManagedCompaction](status: snapshotFailure(encoded.error))
+  let snapshotEncoding = encoded.takeValue # Physical replacement borrows one encoded snapshot throughout staging.
   let restored = cloneRepositorySelection(plan, repository.limits.repository)
   if restored.error == RepositoryError.LimitExceeded:
     return ManagedResult[ManagedCompaction](status: FileError.LimitExceeded)
@@ -343,7 +344,7 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   let next = ManagedEpoch(uint64(repository.epoch)+1)
   let manifest = encodeManagedManifest(repository.chain, repository.schema, next,
     selected.generation,
-    selected.commitment.root, encoded.value.checksum, ByteLimit(ManagedManifestBytes))
+    selected.commitment.root, snapshotEncoding.checksum, ByteLimit(ManagedManifestBytes))
   if manifest.error != ManifestError.None:
     return ManagedResult[ManagedCompaction](status: FileError.BackendFailure)
   let header = encodeManagedJournalHeader(manifest.value.checksum, repository.limits.journalBytes)
@@ -353,7 +354,7 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   defer:
     if journal.opened: discard journal.close # Staging never retires the selected old journal on failure.
   var reason = createManagedFile(repository.directory, ManagedFileKind.Snapshot, next,
-    encoded.value.bytes, repository.limits.snapshotBytes)
+    snapshotEncoding.bytes, repository.limits.snapshotBytes)
   if reason == FileError.None:
     reason = createManagedFile(repository.directory, ManagedFileKind.Journal, next,
       header.value, repository.limits.journalBytes)
@@ -377,7 +378,7 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   let moved = moveManagedJournal(repository.journal, journal)
   repository.memory = restored.value # The private selected context remains byte-identical through physical replacement.
   repository.epoch = next
-  repository.snapshotBytes = uint64(encoded.value.bytes.len)
+  repository.snapshotBytes = uint64(snapshotEncoding.bytes.len)
   if closed != FileError.None or moved != FileError.None:
     repository.poisoned = true
     return ManagedResult[ManagedCompaction](status: FileError.RecoveryRequired)
