@@ -113,3 +113,11 @@ changed keys respectively. The independent complete-map/history expectations use
 width, while preparation and Merklization remain outside publication timing. Native output, raw
 JSON, CSV and both Markdown tables retain batch width; smaller substituted batches refuse parsing
 or aggregation. Checked mutation policies bound each batch to four writes and 1,024 value bytes.
+
+## Complete artifact publication
+
+Progress/final JSON, CSV and Markdown use closed temporary files with atomic replacement. Final
+success follows complete CSV and validated Markdown. Late CSV write, CSV replacement or summary
+refusal records failure and removes the final CSV. Tests drive complete authored raw passes
+through actual artifact sequencing and independently refuse every late boundary. This concerns
+report visibility, not durable database or filesystem power-loss certification.
