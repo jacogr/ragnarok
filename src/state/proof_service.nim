@@ -233,3 +233,13 @@ proc planProofStorage*(service: ServiceIndex, key: openArray[byte], keyBytes: By
   if derived.error != ServiceValueError.None:
     return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.BackendFailure)
   capturePlan([chapterServiceKey(StateChapter(255), service), derived.value], limit)
+
+proc planProofPreimage*(service: ServiceIndex, hash: ServicePreimageHash,
+    limit: ElementLimit): ServiceProofResult[ServiceProofPlan] =
+  ## Request account and exact selector dependencies; limits precede hashing and plan allocation.
+  if uint64(limit) < 2:
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.LimitExceeded)
+  let derived = servicePreimageKey(service, hash, ByteLimit(32))
+  if derived.error != ServiceValueError.None:
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.BackendFailure)
+  capturePlan([chapterServiceKey(StateChapter(255), service), derived.value], limit)
