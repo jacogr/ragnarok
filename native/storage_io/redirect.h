@@ -29,4 +29,8 @@
 #define renameat storage_io_renameat
 #endif
 
+#ifdef RAGNAROK_STORAGE_IO_UNLINKAT
+#define unlinkat storage_io_unlinkat
+#endif
+
 #endif

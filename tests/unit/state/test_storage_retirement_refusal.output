@@ -1,0 +1,1 @@
+PASS storage_retirement_refusal: consumed native refusal, strict selected restart and explicit idempotent cleanup

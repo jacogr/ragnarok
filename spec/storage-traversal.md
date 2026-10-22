@@ -371,3 +371,9 @@ and complete bytes/maps survive. No blocking lock mode or wait/backoff policy is
 A consumed native rename refusal leaves CURRENT byte-identical, poisons the failed owner, and
 retains staged files for diagnosis. Strict restart selects the old complete epoch; only explicit
 bounded staging cleanup permits a replacement retry. Held readers retain their original map.
+
+## Refused retired-file unlink
+
+Refusal at either retired journal or snapshot unlink follows confirmed epoch selection. The
+receipt reports cleanup failure separately, while strict restart keeps the new complete epoch.
+Explicit retired-epoch cleanup is idempotent; no refusal authorizes rollback or directory scans.
