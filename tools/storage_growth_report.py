@@ -12,10 +12,10 @@ COUNTS=(1024,8192)
 PUBLICATIONS=(64,256)
 PATTERNS=('sweep','hot')
 CASES=tuple((count,steps,pattern) for count in COUNTS for steps in PUBLICATIONS for pattern in PATTERNS)
-PHASES=('publication','reopen','retention','maintenance','retained_reopen','compacted_reopen','extraction_before','extraction_after','reads_before','reads_after')
+PHASES=('publication','reopen','retention','maintenance','retained_reopen','compacted_reopen','extraction_before','extraction_after','reads_before','reads_after','snapshots')
 METRICS=('stored_nodes','retained_nodes','current_nodes','snapshot_bytes','journal_bytes',
          'retained_snapshot_bytes','retained_journal_bytes','compacted_snapshot_bytes','compacted_journal_bytes')
-LABELS=('Sustained publication','Strict disk reopen','Nine-root reclamation','Current-root reclamation','Strict nine-root reopen','Strict current-root reopen','Complete-map extraction before reclamation','Current-only complete-map extraction','4096 spread resident reads before reclamation','4096 current-only spread resident reads')
+LABELS=('Sustained publication','Strict disk reopen','Nine-root reclamation','Current-root reclamation','Strict nine-root reopen','Strict current-root reopen','Complete-map extraction before reclamation','Current-only complete-map extraction','4096 spread resident reads before reclamation','4096 current-only spread resident reads','4096 retained snapshots')
 
 
 def unavailable(engine,phase):
@@ -160,7 +160,7 @@ def aggregate_growth(passes):
 
 def validate_growth(report):
     """Native completion, source-bound binary identity and raw-derived statistics all remain mandatory."""
-    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=8:
+    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=9:
         raise ValueError('Invalid sustained report status/schema')
     if re.fullmatch('[0-9a-f]{64}',str(report.get('native_binary_sha256'))) is None:
         raise ValueError('Invalid sustained native identity')

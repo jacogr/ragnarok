@@ -67,6 +67,14 @@ proc main() {.raises.} =
     let held = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
     assert uint64(held.generation) == uint64(publications+1)
     assert array[32, byte](held.commitment.root) == array[32, byte](expected)
+    let identity = selectRepositoryRoots(held, [expected], ElementLimit(1)).value
+    var snapshots = newSeq[RepositoryView](4096)
+    let snapshotStart = getMonoTime()
+    for index in 0..<snapshots.len:
+      snapshots[index] = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
+    let snapshotsNs = elapsed(snapshotStart)
+    for retained in snapshots:
+      assert identity.matches(retained) # Exact admitted ownership is stronger than matching root metadata.
     let extractionStart = getMonoTime()
     let extracted = restoreStateEntries(held, expected, limits.codec.trie).value
     let extractionBeforeNs = elapsed(extractionStart)
@@ -198,6 +206,13 @@ proc main() {.raises.} =
     assert memory.close == RepositoryError.None
     checkGrowthHead(held, expected, count, publications,
         hot) # Retired files and owner close cannot revoke immutable readers.
+    for index, retained in snapshots:
+      # Every acquired handle remains independently readable after both compactions and native owner close.
+      assert identity.matches(retained)
+      let digest = fixture.reads[(index*2053) mod count]
+      let record = retained.lookupNode(digest).value
+      assert array[32, byte](record.digest) == array[32, byte](digest)
+      checkGrowthRecord(record, count, publications, hot)
     for index, duration in latencies:
       # Emit observations only after all complete-map/lifetime validation and native namespace cleanup.
       echo "publication\t", count, "\t", publications, "\t", pattern, "\t", sample,
@@ -205,7 +220,7 @@ proc main() {.raises.} =
     echo "growth\t", count, "\t", publications, "\t", pattern, "\t", sample, "\t", publicationNs, "\t",
       reopenNs, "\t", retentionNs, "\t", maintenanceNs, "\t", retainedReopenNs, "\t",
           compactedReopenNs, "\t", extractionBeforeNs, "\t", extractionAfterNs, "\t", readsBeforeNs,
-              "\t", readsAfterNs, "\t", storedNodes, "\t", retainedNodes,
+              "\t", readsAfterNs, "\t", snapshotsNs, "\t", storedNodes, "\t", retainedNodes,
       "\t", currentNodes, "\t", snapshotBytes, "\t", journalBytes, "\t", retainedSnapshotBytes,
           "\t", retainedJournalBytes, "\t", compactedSnapshotBytes,
       "\t", compactedJournalBytes

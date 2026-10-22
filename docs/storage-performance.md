@@ -132,3 +132,8 @@ deterministic multiplicative permutation across the current complete map. Addres
 arrays are prepared before timing; full keys, digests and every returned payload are checked after
 timing. The same reads run again after current-only reclamation in memory/managed storage. This
 compares resident physical table search and owned result extraction, not cold/random disk IO.
+
+The sustained panel times acquisition of 4,096 immutable public snapshots for every backend. The
+result array is allocated before timing. Exact source-owner matches are checked after acquisition,
+and every handle resolves an independently checked leaf after reclamation, strict reopen and
+native owner close. This measures retained resident ownership, not disk access or reader memory.
