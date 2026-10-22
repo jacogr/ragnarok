@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Build and execute bounded, validated memory versus durable storage benchmarks."""
+import argparse
 import csv
 import hashlib
 import json
@@ -109,20 +110,28 @@ def verify_inputs(report,compiler,library,binary):
     require(subprocess.check_output(['clang','--version'],text=True).splitlines()[0]==report['clang'],'Clang version')
     require(hashlib.sha256(Path(compiler).read_bytes()).hexdigest()==report['compiler_sha256'],'compiler')
     require(component_hashes(crypto_components(library))==report['native_components'],'native components')
-    expected=[(Path(binary),report['native_binary_sha256']),
-        (BUILD/'growth/growth-native',report['growth']['native_binary_sha256']),
-        (BUILD/'growth/io/growth-io-native',report['growth']['io']['native_binary_sha256']),
-        (BUILD/'growth/io/storage-io-observer.o',report['growth']['io']['observer_object_sha256'])]
+    expected=[]
+    if report.get('panel','combined') != 'growth':
+        # Only executables actually built by this scope can establish its successful evidence.
+        expected.append((Path(binary),report['native_binary_sha256']))
+    if report.get('panel','combined') != 'comparison':
+        # Growth owns both the ordinary executable and its independently observed IO artifacts.
+        expected.extend([(BUILD/'growth/growth-native',report['growth']['native_binary_sha256']),
+            (BUILD/'growth/io/growth-io-native',report['growth']['io']['native_binary_sha256']),
+            (BUILD/'growth/io/storage-io-observer.o',report['growth']['io']['observer_object_sha256'])])
     for path,digest in expected:
         require(hashlib.sha256(path.read_bytes()).hexdigest()==digest,'executable/object '+path.name)
 
 
 # Persist progress and failures before rendering any comparison; older success cannot survive a failed rerun.
-def run():
+def run(panel='combined'):
+    """Run one explicit panel or the historical combined command without borrowing another scope's success."""
+    if panel not in ('comparison','growth','combined'):
+        raise ValueError('Unknown storage benchmark panel')
     BUILD.mkdir(parents=True,exist_ok=True)
     for name in ('summary.md','samples.csv','results.json','growth/results.json','growth/samples.csv','growth/publications.csv','growth/io/results.json','growth/io/calls.csv'):
         (BUILD/name).unlink(missing_ok=True)
-    report=dict(status='running',checks=[],passes=[],cases=[])
+    report=dict(status='running',panel=panel,checks=[],passes=[],cases=[])
     def save():
         # Full raw samples and source/toolchain identities stay downloadable independently of Markdown.
         atomic_text(BUILD/'results.json',json.dumps(report,indent=2)+'\n')
@@ -148,27 +157,37 @@ def run():
             phase_names=list(PHASES),physical_metrics=list(METRICS),batch_widths=list(BATCH_WIDTHS),value_sizes=list(VALUE_BYTES),key_topologies=list(TOPOLOGIES),warmups_per_pass=3,measured_samples_per_pass=10,pass_count=2,
             pass_orders=[list(ENGINES),list(reversed(ENGINES))])
         save()
-        build,binary=NativeChecks(BUILD).build(compiler,source,'storage-native',crypto_library=library)
-        build.pop('output',None);report['checks'].append(build);save()
-        if build['exit_code']!=0:
-            raise RuntimeError('Storage benchmark build failed: '+build['log'])
-        report['native_binary_sha256']=hashlib.sha256(Path(binary).read_bytes()).hexdigest()
-        for order in (ENGINES,tuple(reversed(ENGINES))):
-            observations={}
-            for engine in order:
-                for count,topology,value_bytes,batch_width in CASES:
-                    with tempfile.TemporaryDirectory(prefix=engine+'-'+topology+'-',dir=BUILD) as folder:
-                        evidence=command([binary,engine,count,folder,topology,value_bytes,batch_width],f'pass{len(report["passes"])}-{engine}-{count}-{topology}-{value_bytes}-{batch_width}',BUILD,timeout=300)
-                    report['checks'].append(evidence);save()
-                    if evidence['exit_code']!=0:
-                        raise RuntimeError('Storage workload failed: '+evidence['log'])
-                    observations[f'{engine}-{count}-{topology}-{value_bytes}-{batch_width}']=parse_output(Path(evidence['log']).read_text(),engine,count,topology,value_bytes,batch_width)
-            report['passes'].append(observations);save()
-        report['growth']=run_growth(compiler,library,BUILD/'growth',atomic_text)
+        binary=None
+        if panel != 'growth':
+            # The ordinary comparison and growth execute on independent CI runners.
+            build,binary=NativeChecks(BUILD).build(compiler,source,'storage-native',crypto_library=library)
+            build.pop('output',None);report['checks'].append(build);save()
+            if build['exit_code']!=0:
+                raise RuntimeError('Storage benchmark build failed: '+build['log'])
+            report['native_binary_sha256']=hashlib.sha256(Path(binary).read_bytes()).hexdigest()
+            for order in (ENGINES,tuple(reversed(ENGINES))):
+                observations={}
+                for engine in order:
+                    for count,topology,value_bytes,batch_width in CASES:
+                        with tempfile.TemporaryDirectory(prefix=engine+'-'+topology+'-',dir=BUILD) as folder:
+                            evidence=command([binary,engine,count,folder,topology,value_bytes,batch_width],f'pass{len(report["passes"])}-{engine}-{count}-{topology}-{value_bytes}-{batch_width}',BUILD,timeout=300)
+                        report['checks'].append(evidence);save()
+                        if evidence['exit_code']!=0:
+                            raise RuntimeError('Storage workload failed: '+evidence['log'])
+                        observations[f'{engine}-{count}-{topology}-{value_bytes}-{batch_width}']=parse_output(Path(evidence['log']).read_text(),engine,count,topology,value_bytes,batch_width)
+                report['passes'].append(observations);save()
+        if panel != 'comparison':
+            # Preserve the entire sustained matrix and SDK controls in the growth scope.
+            report['growth']=run_growth(compiler,library,BUILD/'growth',atomic_text)
         verify_inputs(report,compiler,library,binary)
-        report['cases']=aggregate(report['passes']);report['status']='checks-passed'
+        if panel != 'growth':
+            # No short comparison or invented short speed samples belong to a growth-only run.
+            report['cases']=aggregate(report['passes'])
+        report['status']='checks-passed'
         report['hardware']['load_average_end']=os.getloadavg()
-        write_samples(report)
+        if panel != 'growth':
+            # Sustained samples have their own source-owned CSV and publication records.
+            write_samples(report)
         summary=summarize_benchmark(report)
         atomic_text(BUILD/'summary.md',summary)
         print(summary)
@@ -184,4 +203,11 @@ def run():
 
 # Imports expose inert orchestration for tests; Make alone owns provisioning and execution sequencing.
 if __name__=='__main__':
-    run()
+    # Direct combined runs remain available; Make selects the two independent CI scopes explicitly.
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--panel',choices=('comparison','growth','combined'),default='combined')
+    args=parser.parse_args()
+    if args.panel=='growth':
+        # Local sequential runs keep each job's public report and compiler outputs independently.
+        BUILD=ROOT/'build/tests/storage-growth-benchmark'
+    run(args.panel)

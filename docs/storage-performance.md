@@ -1,12 +1,21 @@
 # Storage performance
 
-`Perf Storage` is grouped beside `Perf PVM` in CI. Both storage panels and independent SDK controls
-run in that one job, using pinned checked Nimony ARC/Clang release optimization with LTO:
+`Perf Storage` and `Perf Storage Growth` are independent jobs beside `Perf PVM` in CI.
+The comparison/resource panels and the sustained-growth matrix run on separate runners, using
+pinned checked Nimony ARC/Clang release optimization with LTO:
 
 ```sh
 make bench-storage
 make summary-storage-benchmark SUMMARY_OUTPUT=build/storage-summary.md
+make bench-storage-growth
+make summary-storage-growth SUMMARY_OUTPUT=build/storage-growth-summary.md
 ```
+
+Both jobs keep the full existing workload, three warmups and ten measured samples per case in
+each of two opposite backend orders. Group/full requests and master pushes run both independently;
+`bench-storage` and `bench-storage-growth` dispatches select one job. Each retains its own
+30-minute budget, failure status and artifact. This split shortens the serial CI path without
+claiming a measured end-to-end saving or reducing total benchmark work.
 
 Make owns setup and compilation. A failed build, assertion, IO operation, timeout, missing sample,
 invalid provenance or late artifact write fails the job. The setup-free summary command refuses
@@ -76,10 +85,13 @@ bytes transferred or storage-device operations.
 
 ## Artifacts and reproducibility
 
-`build/tests/storage-benchmark` owns:
+`build/tests/storage-benchmark/` owns the short panel’s `results.json`, `samples.csv`,
+`summary.md` and logs in the `bench-storage-<attempt>` artifact.
 
-- `results.json`, `samples.csv`, `summary.md` and logs for the complete job and short panel.
-- `growth/results.json`, `growth/samples.csv` and `growth/publications.csv` for sustained raw data.
+The `bench-storage-growth-<attempt>` artifact owns `build/tests/storage-growth-benchmark/`:
+
+- Parent `results.json`/`summary.md` for provenance and the validated sustained table.
+- `growth/results.json`, `growth/samples.csv`, `growth/publications.csv` for sustained raw data.
 - `growth/io/results.json`, `growth/io/calls.csv` and logs for independent SDK evidence.
 
 CI retains these alongside its Markdown summary. Source hashes, exact revision/dirty state, pinned

@@ -35,7 +35,7 @@ missing/duplicate/invalid sample fails the command. Partial runs cannot produce 
 previous summary/CSV success is removed before execution. Timeouts retire the native process group.
 
 `make summary-storage-benchmark SUMMARY_OUTPUT=...` works without setup and makes missing or
-invalid reports visibly fail. The Actions job calls it with `$GITHUB_STEP_SUMMARY` under `always()`
+invalid reports visibly fail. The Perf Storage job calls it with `$GITHUB_STEP_SUMMARY` under `always()`
 and retains raw artifacts for thirty days. It runs on master pushes, `perf`/`full` dispatch,
 `ci:perf`/`ci:full` labels, or storage-only `bench-storage` dispatch. No remote run is requested merely
 by adding this job. Python safeguards cover complete coverage, invalid timing/unavailable reopen,
@@ -151,3 +151,13 @@ tests cover late artifact refusal, typed provenance, substituted cases and unsta
 ratios. These local results do not claim remote CI or complete protocol serialization. The
 [operator interpretation guide](../docs/storage-performance.md) explains reproduction, operation
 boundaries, unavailable cells, physical counters, noise markers and retained provenance.
+
+## Independent sustained-growth job
+
+`make bench-storage` now selects only the complete short comparison. Sustained growth and
+its SDK IO controls run through `make bench-storage-growth` in the independent
+`Perf Storage Growth` job; see the [growth contract](storage-growth-benchmark.md#independent-growth-ci-ownership).
+Both retain their original samples and checked build profile. Resource panels remain with
+Perf Storage. Group/full/master triggers run both jobs; individual dispatches select only
+the named job. Short reports explicitly declare `panel: comparison` and cannot claim growth
+success. Historical combined reports retain their full validation contract.

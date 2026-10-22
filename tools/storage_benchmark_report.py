@@ -43,9 +43,11 @@ def validate_provenance(report):
         return isinstance(value,str) and re.fullmatch('[0-9a-f]{'+str(length)+'}',value) is not None
     require(type(report.get('schema_version')) is int and report['schema_version']==REPORT_VERSION,'schema')
     require(report.get('profile')==PROFILE,'checked profile')
+    panel=report.get('panel','combined')
+    require(panel in ('comparison','growth','combined'),'panel scope')
     require(digest(report.get('head'),40) and type(report.get('worktree_dirty')) is bool,'source revision')
     for field in ('crypto_sha256','compiler_sha256','native_binary_sha256'):
-        require(digest(report.get(field),64),field)
+        require((field=='native_binary_sha256' and panel=='growth') or digest(report.get(field),64),field)
     components=report.get('native_components')
     require(type(components) is dict and set(components)=={'bridge','provider_loader','provider_build'},'native closure')
     require(all(digest(v,64) for v in components.values()) and components['bridge']==report['crypto_sha256'] and
@@ -57,13 +59,18 @@ def validate_provenance(report):
         value=report.get(field)
         require(type(value) is list and value==list(expected) and
                 all(type(item) is type(expected[0]) for item in value),field)
-    orders=[list(ENGINES),list(reversed(ENGINES))]
-    require(report.get('pass_orders')==orders,'opposite backend orders')
-    passes=report.get('passes')
-    require(type(passes) is list and len(passes)==2,'complete passes')
-    for order,observations in zip(orders,passes):
-        expected=[f'{e}-{n}-{t}-{v}-{w}' for e in order for n,t,v,w in CASES]
-        require(type(observations) is dict and list(observations)==expected,'observed backend order')
+    if panel == 'growth':
+        # Growth-only reports must not carry a partial or stale short comparison.
+        require(report.get('passes')==[] and report.get('cases')==[] and 'native_binary_sha256' not in report,'growth-only coverage')
+    else:
+        # The short comparison retains its complete workload and opposite backend orders.
+        orders=[list(ENGINES),list(reversed(ENGINES))]
+        require(report.get('pass_orders')==orders,'opposite backend orders')
+        passes=report.get('passes')
+        require(type(passes) is list and len(passes)==2,'complete passes')
+        for order,observations in zip(orders,passes):
+            expected=[f'{e}-{n}-{t}-{v}-{w}' for e in order for n,t,v,w in CASES]
+            require(type(observations) is dict and list(observations)==expected,'observed backend order')
     sources=report.get('sources')
     require(type(sources) is dict and len(REQUIRED_SOURCES)<=len(sources)<=16384,'source manifest')
     require(set(REQUIRED_SOURCES)<=set(sources),'required sources')
@@ -86,11 +93,17 @@ def validate_provenance(report):
         values=hardware.get(field)
         require(type(values) in (list,tuple) and len(values)==3 and
                 all(type(v) in (int,float) and math.isfinite(v) and v>=0 for v in values),field)
-    growth_summary=summarize_growth(report.get('growth'))
-    for field,name in IO_SOURCE_FIELDS.items():
-        require(report['growth']['io'][field]==sources[name],'SDK '+field)
+    growth_summary=''
+    if panel == 'comparison':
+        # A short-only report cannot silently embed stale growth evidence from a previous run.
+        require('growth' not in report,'comparison-only coverage')
+    else:
+        # Reparse the same full sustained/SDK contract in both standalone and historical combined reports.
+        growth_summary=summarize_growth(report.get('growth'))
+        for field,name in IO_SOURCE_FIELDS.items():
+            require(report['growth']['io'][field]==sources[name],'SDK '+field)
     checks=report.get('checks')
-    require(type(checks) is list and len(checks)==1+2*len(ENGINES)*len(CASES),'native checks')
+    require(type(checks) is list and len(checks)==(0 if panel=='growth' else 1+2*len(ENGINES)*len(CASES)),'native checks')
     logs=[]
     for check in checks:
         require(type(check) is dict and type(check.get('exit_code')) is int and check['exit_code']==0,'native exit')
@@ -192,9 +205,13 @@ def summarize_benchmark(report):
     status=report['status']
     if status not in ('running','failed','checks-passed'):
         raise ValueError('Unknown storage benchmark status')
-    lines=['## Storage speed comparison','','**Status: '+status+'**','']
+    title='Storage sustained growth' if report.get('panel')=='growth' else 'Storage speed comparison'
+    lines=['## '+title,'','**Status: '+status+'**','']
     if status=='checks-passed':
         growth_summary=validate_provenance(report)
+        if report.get('panel')=='growth':
+            # Validation above includes the full child matrix, SDK witnesses and parent provenance.
+            return "\n".join(lines)+growth_summary
         cases=aggregate(report['passes'])
         if json.dumps(report['cases'],sort_keys=True,allow_nan=False)!=json.dumps(cases,sort_keys=True,allow_nan=False):
             raise ValueError('Storage statistics do not match raw validated samples')
