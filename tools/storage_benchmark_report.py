@@ -7,13 +7,15 @@ import math
 from pathlib import PurePosixPath
 import re
 import statistics
+from storage_growth_report import summarize_growth, validate_growth
+from storage_growth import SOURCES as GROWTH_SOURCES
 
-REPORT_VERSION=11
+REPORT_VERSION=12
 PROFILE='checked native ARC/Clang release opt:speed boundchecks:on LTO'
 REQUIRED_SOURCES=('tests/performance/storage_workload.nim','tests/support/managed_storage_samples.nim',
     'tests/support/storage_samples.nim','tools/storage_benchmark.py','tools/storage_benchmark_report.py',
     'tools/native_checks.py','tools/native_source_identity.py','tools/pvm_reference.py',
-    'tools/build_crypto.py','spec/crypto-pins.json','spec/toolchain.json','Makefile','.github/workflows/ci.yml')
+    'tools/build_crypto.py','spec/crypto-pins.json','spec/toolchain.json','Makefile','.github/workflows/ci.yml',*GROWTH_SOURCES)
 
 ENGINES=('memory','journal','managed')
 COUNTS=(1024,8192)
@@ -76,6 +78,7 @@ def validate_provenance(report):
         values=hardware.get(field)
         require(type(values) in (list,tuple) and len(values)==3 and
                 all(type(v) in (int,float) and math.isfinite(v) and v>=0 for v in values),field)
+    validate_growth(report.get('growth'))
     checks=report.get('checks')
     require(type(checks) is list and len(checks)==1+2*len(ENGINES)*len(CASES),'native checks')
     logs=[]
@@ -213,6 +216,7 @@ def summarize_benchmark(report):
                     after=str(metrics['compacted_snapshot_bytes']+metrics['compacted_journal_bytes']) if engine=='managed' else '—'
                     lines.append(f'| {case["items"]} | {case["topology"]} | {case["value_bytes"]} | {case["batch_width"]} | {engine} | '+
                         f'{metrics["stored_nodes"]} / {metrics["selected_nodes"]} | {before} / {after} |')
+        lines+=['',summarize_growth(report['growth']).rstrip()]
     else:
         lines+=['No complete validated comparison is available.']
     if report.get('error'):
