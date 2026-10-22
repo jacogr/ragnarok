@@ -9,7 +9,7 @@
 import std/[syncio, strutils, base64, assertions]
 import ./options
 import ./[checkpoint_recovery, checkpoint_trust]
-import ./handoff
+import ./[handoff, current_handoff, current_block_input]
 import ./candidate
 import ./block_input
 import ./preparation_worker
@@ -21,7 +21,8 @@ import ../codec/bounded
 import ../crypto/primitives
 import ../codec/[block_codec, header, state_trie]
 import ./chain as application_chain
-import ../state/[store, disk_store, accumulation_finalization, accumulation_completion, accumulation_publication]
+import ../state/[store, disk_store, accumulation_finalization, accumulation_completion,
+    accumulation_publication, accumulation_current_update]
 import ../storage/[file_repository, node_repository, node_records, record_codec, database_identity,
     managed_repository, managed_manifest]
 import ../chain/provider
@@ -50,6 +51,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   chainText: string
   canonical: ApplicationChain
   adoption: AccumulationHandoff
+  currentAdoption: CurrentAccumulationHandoff
   worker: PreparationWorker
   proofWorker: StateProofWorker
   proofInput: ProofQuery
@@ -119,6 +121,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.chainText)
   `=wasMoved`(services.canonical)
   `=wasMoved`(services.adoption)
+  `=wasMoved`(services.currentAdoption)
 
 proc `=copy`*(destination: var Services, source: Services) {.error: "Application Services owns descriptors".}
 proc `=dup`*(source: Services): Services {.error.}
@@ -149,6 +152,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.chainText)
   `=destroy`(services.canonical)
   `=destroy`(services.adoption)
+  `=destroy`(services.currentAdoption)
 
 proc finishDiskMaintenance(services: var Services, completion: DiskPublicationCompletion) =
   ## Joined/collected maintenance ends the physical lease without changing canonical/RPC state or adoption receipts.
@@ -246,6 +250,7 @@ proc close*(services: var Services) =
   services.telemetry.close()
   services.rpc = default(Server) # Server.close retires sockets; replacement also releases its retained history/configuration.
   services.adoption = default(AccumulationHandoff) # Retire pending or unacknowledged immutable owners on shutdown.
+  services.currentAdoption = default(CurrentAccumulationHandoff) # Native workers joined before current graph retirement.
   if services.disk.opened: discard services.disk.close
   services.diskEnabled = false
   services.diskManaged = false
@@ -590,7 +595,8 @@ proc stateSnapshot*(services: Services): StateStoreResult[StateStoreSnapshot] {.
 
 proc applyAccumulation*(services: var Services, source: PreparedFinalAccumulation,
     limits: AccumulationCompositionLimits): ApplicationChainResult[BlockSnapshot] {.requires:
-    not (services.proofing or services.preparing or services.publishing).} =
+    not (services.proofing or services.preparing or services.publishing) and
+      services.currentAdoption.phase == CurrentHandoffPhase.Idle.} =
   ## Publish between dispatcher turns using the startup RPC choice; enabled-listener refusal never falls back.
   if services.diskEnabled: return durabilityRequired() # Explicit disk consumers enqueue and poll; dispatcher IO must stay nonblocking.
   if services.chainRpc:
@@ -608,12 +614,14 @@ proc enqueueAccumulation*(services: var Services, source: PreparedFinalAccumulat
     limits: AccumulationCompositionLimits): AccumulationEnqueueError {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
   ## Hand one finalized candidate to the next dispatcher turn; canonical authority is rechecked at adoption.
+  if services.currentAdoption.phase != CurrentHandoffPhase.Idle: return AccumulationEnqueueError.Busy
   services.adoption.enqueue(services.canonical, source, limits)
 
 proc enqueueCandidate*(services: var Services, candidate: OwnedBlock,
     ancestors: openArray[OwnedHeader], limits: ApplicationCandidateLimits,
     composition: AccumulationCompositionLimits): ApplicationCandidateResult {.requires:
-    not (services.proofing or services.preparing or services.publishing).} =
+    not (services.proofing or services.preparing or services.publishing) and
+      services.currentAdoption.phase == CurrentHandoffPhase.Idle.} =
   ## Prepare from this selected head and queue the genuine successor; publication waits for the next service tick.
   services.adoption.enqueueCandidate(services.canonical, candidate, ancestors, limits, composition)
 
@@ -626,9 +634,43 @@ proc beginBlockInput*(services: Services, input: var BlockInput, extent: ByteLim
 
 proc enqueueBlockInput*(services: var Services, input: var BlockInput, id: BlockInputId,
     composition: AccumulationCompositionLimits): BlockInputResult {.requires:
-    not (services.proofing or services.preparing or services.publishing).} =
+    not (services.proofing or services.preparing or services.publishing) and
+      services.currentAdoption.phase == CurrentHandoffPhase.Idle.} =
   ## Explicit producer work runs outside transport callbacks; finalized success waits for a later adoption tick.
   input.enqueue(id, services.canonical, services.adoption, composition)
+
+func currentAccumulationPhase*(services: Services): CurrentHandoffPhase =
+  ## Scalar observation exposes no pending update, graph alias or completed child.
+  services.currentAdoption.phase
+
+proc enqueueCurrentAccumulation*(services: var Services,
+    update: PreparedCurrentChainUpdate): CurrentHandoffAdmission =
+  ## Share producer capacity with legacy work and reject native/disk exclusion before canonical graph reads.
+  if services.proofing or services.preparing or services.publishing:
+    return CurrentHandoffAdmission.Busy # Cancellation and Done do not release an outstanding native lease.
+  if services.adoption.stage != AccumulationHandoffStage.Idle:
+    return CurrentHandoffAdmission.Busy # A legacy pending or unacknowledged outcome retains producer capacity.
+  if not services.started or services.diskEnabled or services.diskFaulted:
+    return CurrentHandoffAdmission.Unavailable # Current disk scheduling is a subsequent integration boundary.
+  services.currentAdoption.enqueue(services.canonical, update)
+
+proc takeCurrentAccumulation*(services: var Services): CurrentHandoffResult {.requires:
+    not (services.proofing or services.preparing or services.publishing) and
+      services.currentAdoption.phase == CurrentHandoffPhase.Finished.} =
+  ## Acknowledge only the retained current installation result after every native lease ends.
+  services.currentAdoption.take()
+
+proc cancelCurrentAccumulation*(services: var Services): bool =
+  ## Cancellation cannot revoke publication or release a preparation/proof/disk borrow.
+  if services.proofing or services.preparing or services.publishing: return false
+  services.currentAdoption.cancel()
+
+proc beginBlockInput*(services: Services, input: var CurrentBlockInput, extent: ByteLimit,
+    ancestors: openArray[OwnedHeader], resources: CurrentBlockInputLimits,
+    policies: CurrentCandidateLimits): CurrentBlockInputAdmission {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Current reception binds the canonical parent and frozen policies before a later native execution lease.
+  input.begin(services.canonical, extent, ancestors, resources, policies)
 
 func stateProofActive*(services: Services): bool =
   ## Cancelled and Done proof jobs retain exclusion until exact collection or joined stop.
@@ -640,7 +682,8 @@ proc stateProofAvailable*(services: Services): bool =
     return false # A native borrower owns the graph or no stable service owner exists.
   if services.diskFaulted or services.rpc.chainPaused:
     return false # Uncertain IO and foreign RPC suspension cannot grant proof access.
-  if services.adoption.stage != AccumulationHandoffStage.Idle:
+  if services.adoption.stage != AccumulationHandoffStage.Idle or
+      services.currentAdoption.phase != CurrentHandoffPhase.Idle:
     return false # Pending/unacknowledged adoption retains its existing exclusive producer capacity.
   services.canonical.stateSnapshot.error == StateStoreError.None
 
@@ -721,7 +764,8 @@ proc preparationAvailable*(services: Services): bool =
     return false # Existing native work owns all shared graph aliases.
   if services.diskFaulted or services.rpc.chainPaused:
     return false # IO uncertainty or another RPC lease forbids new execution.
-  if services.adoption.stage != AccumulationHandoffStage.Idle:
+  if services.adoption.stage != AccumulationHandoffStage.Idle or
+      services.currentAdoption.phase != CurrentHandoffPhase.Idle:
     return false # Pending and unacknowledged work retain bounded producer capacity.
   services.canonical.stateSnapshot.error == StateStoreError.None
 
@@ -736,6 +780,20 @@ proc beginPreparation*(services: var Services, input: var BlockInput,
   else:
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # A refused input grants no lease and restores ordinary RPC ticks.
+  admitted
+
+proc beginPreparation*(services: var Services, input: var CurrentBlockInput,
+    id: CurrentBlockInputId): PreparationAdmission {.raises,
+        requires: services.preparationAvailable.} =
+  ## Pause RPC before current submission; all external input/canonical aliases remain frozen until collect or join.
+  discard services.worker.start() # The existing fixed-address thread handles both payload alternatives.
+  services.rpcLease = services.rpc.pauseChain()
+  let admitted = services.worker.submit(input, id, services.canonical)
+  if admitted.error == PreparationError.None:
+    services.preparing = true # No host graph work follows successful native admission.
+  else:
+    discard services.rpc.resumeChain(services.rpcLease)
+    services.rpcLease = nil # Refused submission grants no lease or current authority.
   admitted
 
 proc preparationPhase*(services: var Services): PreparationPhase =
@@ -944,6 +1002,12 @@ proc tick*(services: var Services, peers: uint32) =
         services.maintenanceDue() and services.beginDiskMaintenance():
       services.ui.tick()
       return # No canonical/RPC graph aliases are touched until scalar polling observes the maintenance completion.
+  elif services.currentAdoption.phase == CurrentHandoffPhase.Pending:
+    if services.chainRpc:
+      services.currentAdoption.process(services.canonical,
+          services.rpc) # Exact RPC history is mandatory; no canonical fallback.
+    else:
+      services.currentAdoption.process(services.canonical) # Installation consumes only the already captured current update.
   elif services.chainRpc:
     services.adoption.process(services.canonical, services.rpc) # Enabled listener failure remains a completed refusal.
   else:

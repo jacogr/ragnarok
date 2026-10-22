@@ -1,0 +1,20 @@
+{
+  "build_name": "current-services-memory-results",
+  "cases": [
+    {
+      "arguments": [],
+      "description": "Current Services acknowledgment guard",
+      "diagnostic": "phase(services.currentAdoption) == Finished",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "current-services-memory-default"
+    }
+  ],
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/current_services_memory_results.nim"
+}
