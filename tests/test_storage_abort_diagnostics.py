@@ -13,12 +13,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 import storage_abort_diagnostics as diagnostic
 
 TRACE = '''Process 17 stopped
-* thread #1, stop reason = breakpoint 1.1
+* thread #1, stop reason = signal SIGABRT
 (lldb) thread backtrace --count 64
   * frame #0: 0x123 libc.so.6`abort + 1
     frame #1: 0x456 symbols-native`raiseOutOfMem + 2
 (lldb) continue
-Process 17 exited with status = 6 (0x00000006) terminated due to signal 6
+Process 17 exited with status = 6 (0x00000006)
 '''
 
 
@@ -29,10 +29,10 @@ class AbortDiagnosticTests(unittest.TestCase):
         """Each missing native event invalidates an otherwise plausible debugger transcript."""
         self.assertEqual(len(diagnostic.validate_trace(TRACE)), 2)
         for old, new in (
-                ('stop reason = breakpoint', 'stop reason = signal'),
+                ('stop reason = signal SIGABRT', 'stop reason = signal SIGSEGV'),
                 ('`abort + 1', '`unrelated + 1'),
                 ('    frame #1:', '    other #1:'),
-                ('terminated due to signal 6', 'exited normally')):
+                ('exited with status = 6 (0x00000006)', 'exited with status = 0 (0x00000000)')):
             with self.subTest(event=old), self.assertRaises(ValueError):
                 diagnostic.validate_trace(TRACE.replace(old, new))
 
@@ -51,6 +51,7 @@ class AbortDiagnosticTests(unittest.TestCase):
                          'open', 'journal', '131072', '/tmp/owned', 'a'*64])
         self.assertIn('settings set target.disable-aslr false', argv)
         self.assertIn('settings set target.process.stop-on-exec false', argv)
+        self.assertIn('process handle SIGABRT --stop true --notify true --pass true', argv)
         self.assertIn('thread backtrace --count 64', argv)
         self.assertEqual(argv[separator-2:separator], ['-o', 'continue'])
 

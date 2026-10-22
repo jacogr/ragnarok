@@ -130,8 +130,8 @@ memory-ceiling panel. Every Linux cap probe must establish enforcement. It then 
 same fresh-reopen source with C debug information (`-g`) as a separate comparison binary.
 LLDB remains uncapped and follows the existing disposable limit launcher's exec into each
 131,072-entry native consumer under128 MiB. The launcher must read back the applied soft
-limit with the original hard bound. An actual `abort` breakpoint, bounded native backtrace
-and fatal SIGABRT continuation are all required; debugger exit zero is insufficient.
+limit with the original hard bound. An actual SIGABRT stop, bounded native backtrace containing `abort`
+and fatal signal continuation are all required; debugger exit zero is insufficient.
 
 Separate strict unrestricted symbolized consumers bracket each backend's abort attempt,
 checking complete maps, exact producer root/generation, retained views and final ARC release.

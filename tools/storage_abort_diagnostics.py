@@ -40,25 +40,24 @@ def debugger_command(debugger, binary, receipt, backend, owned, root):
     return [debugger, '--batch',
             '-o', 'settings set target.disable-aslr false',
             '-o', 'settings set target.process.stop-on-exec false',
-            '-o', 'breakpoint set --name abort',
-            '-o', 'process handle SIGABRT --stop false --notify true --pass true',
+            '-o', 'process handle SIGABRT --stop true --notify true --pass true',
             '-o', 'run', '-o', 'thread backtrace --count 64', '-o', 'continue',
             '--', sys.executable, str(EXEC), str(receipt), str(CAP), '--',
             str(binary), 'open', backend, str(COUNT), str(owned), root]
 
 
 def validate_trace(raw):
-    """Require an actual abort breakpoint, native frames and fatal continuation, never debugger exit alone.
+    """Require an actual SIGABRT stop, native abort frames and fatal continuation, never debugger exit alone.
 
     A captured stack is evidence for manual call-site diagnosis, not an automatic OOM classification.
     Symbolized and ordinary executions remain separate because adding DWARF can affect layout.
     """
     trace = raw.split('(lldb) thread backtrace --count 64', 1)[-1].split('(lldb) continue', 1)[0]
     frames = re.findall(r'^\s*\*?\s*frame #\d+:.*$', trace, re.MULTILINE)
-    if ('stop reason = breakpoint' not in raw or len(frames) < 2 or
-            not re.search(r'\babort\b', frames[0]) or
-            'terminated due to signal 6' not in raw):
-        raise ValueError('Missing native abort breakpoint/backtrace/fatal continuation')
+    if ('stop reason = signal SIGABRT' not in raw or len(frames) < 2 or
+            not any(re.search(r'(?:__GI_)?abort\b', frame) for frame in frames) or
+            re.search(r'Process [0-9]+ exited with status = 6 \(0x00000006\)', raw) is None):
+        raise ValueError('Missing native SIGABRT stop/backtrace/fatal continuation')
     return frames
 
 
