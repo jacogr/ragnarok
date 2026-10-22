@@ -73,7 +73,14 @@ def refusals_encoded():
     return ''.join(f'{mode} {chapter} {wire.hex()}\n'
                    for mode, chapter, wire in refusal_cases()).encode()
 
+def multiservice_encoded():
+    """Four disjoint IDs per source cover metadata plus all three service namespaces."""
+    values = chapters()
+    return ''.join(checkpoint(entries(values, [source(4*group+i)[1] for i in range(4)])).hex()+'\n'
+                   for group in range(8)).encode()
+
 if __name__ == '__main__':
     # Explicit regeneration changes only the authored fixture; descriptors are reviewed separately.
     (Path(__file__).parent/'fixtures/complete-serialization.txt').write_bytes(encoded())
     (Path(__file__).parent/'fixtures/serialization-refusals.txt').write_bytes(refusals_encoded())
+    (Path(__file__).parent/'fixtures/multiservice-serialization.txt').write_bytes(multiservice_encoded())

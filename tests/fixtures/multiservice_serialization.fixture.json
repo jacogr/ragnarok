@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_MULTISERVICE_SERIALIZATION",
+  "files": {
+    "multiservice-serialization.txt": "a34065f5b08975a386f695d661bbabb5162cb7186ca19e0ff6f276ef8d2c1675"
+  },
+  "target": "multiservice-serialization.txt"
+}

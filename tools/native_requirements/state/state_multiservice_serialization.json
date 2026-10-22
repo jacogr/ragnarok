@@ -1,0 +1,16 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "composition_chapters",
+    "multiservice_serialization"
+  ],
+  "includes": [
+    "crypto"
+  ],
+  "libraries": [
+    "observer"
+  ],
+  "observers": [],
+  "prepared": false
+}
