@@ -90,14 +90,6 @@ def validate_receipt(report, unit, bounds):
             raise ValueError('Workload OOM eligibility or identity was not established')
         if resolve(row['child_membership_raw'], report['mountinfo_raw']) != group:
             raise ValueError('Substituted native cgroup identity')
-        if type(row['samples']) is not int or not 0 <= row['samples'] <= 10000:
-            raise ValueError('Missing bounded native sampling evidence')
-        peaks = row['sampled_peaks']
-        if ((row['samples'] == 0 and peaks is not None) or
-                (row['samples'] > 0 and (type(peaks) is not dict or
-                 set(peaks) != {'rss', 'swap', 'anon', 'file', 'cgroup_swap'} or
-                 any(type(v) is not int or not 0 <= v < 1 << 63 for v in peaks.values())))):
-            raise ValueError('Invalid sampled pressure gauges')
         resources = row['resources']
         expected = {'peak_rss_bytes', 'minor_faults', 'major_faults', 'input_blocks', 'output_blocks'}
         if (type(resources) is not dict or set(resources) != expected or

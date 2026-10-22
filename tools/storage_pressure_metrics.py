@@ -9,7 +9,7 @@ from storage_limit_cgroup import scalar, events
 from storage_limit_psi import parse_psi
 
 FILES = ('memory.current', 'memory.peak', 'memory.high', 'memory.max',
-         'memory.swap.current', 'memory.swap.max', 'memory.events.local',
+         'memory.swap.current', 'memory.swap.max', 'memory.swap.peak', 'memory.events.local',
          'memory.stat', 'memory.pressure', 'memory.oom.group', 'io.stat')
 
 
@@ -117,6 +117,10 @@ def derive(before, after):
                               {k: after['memory.stat'][k] for k in stat_keys}),
                 stalls_us=delta({k: before['memory.pressure'][k]['total'] for k in ('some', 'full')},
                                 {k: after['memory.pressure'][k]['total'] for k in ('some', 'full')}),
+                swap_pages=delta({k: before['memory.stat'][k] for k in ('pswpin', 'pswpout')},
+                                 {k: after['memory.stat'][k] for k in ('pswpin', 'pswpout')})
+                if all(k in value['memory.stat'] for k in ('pswpin', 'pswpout')
+                       for value in (before, after)) else None,
                 io=devices)
 
 

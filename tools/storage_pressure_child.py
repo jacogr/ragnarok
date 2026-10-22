@@ -6,12 +6,12 @@ import json
 import os
 from pathlib import Path
 import resource
+import signal
 import subprocess
 import sys
 import time
 
 from storage_limit_cgroup import resolve
-from storage_limit_status import parse_status
 from storage_pressure_metrics import read_raw, parse, derive, outcome
 
 def child_setup(membership_log):
@@ -27,90 +27,57 @@ def child_setup(membership_log):
         oom_score_adj_raw=adjustment, pid=os.getpid()))+'\n')
 
 
-def sample_status(raw):
-    """Missing transition-time Vm fields are unavailable samples; malformed kernel rows still fail."""
-    try:
-        return parse_status(raw)
-    except ValueError as error:
-        if str(error) == 'Incomplete process memory status':
-            return None
-        raise
-
-
-def observe(group, arguments, log):
-    """wait4 owns exact child RSS/faults/block operations; sampled gauges are explicitly approximate."""
+def observe(group, arguments, log, mounts):
+    """Wait without pressure-time allocations; the kernel owns exact child/group RSS, swap and faults."""
     before_raw = read_raw(group)
     before = parse(before_raw)
-    peaks = dict(rss=0, swap=0, anon=0, file=0, cgroup_swap=0)
-    samples = 0
-    membership = None
+    process = None
     timed_out = False
     started = time.monotonic()
-    with Path(log).open('w') as output:
-        membership_log = Path(log).with_suffix('.membership.log')
-        process = subprocess.Popen(arguments, stdout=output, stderr=subprocess.STDOUT,
-                                   preexec_fn=lambda: child_setup(membership_log))
-        try:
-            identity_raw = membership_log.read_text()
-            child_identity = json.loads(identity_raw)
-            membership = child_identity['membership_raw']
-            if child_identity['pid'] != process.pid or child_identity['oom_score_adj_raw'] != '1000\n':
-                raise ValueError('Invalid native child OOM/identity receipt')
-            if resolve(membership, Path('/proc/self/mountinfo').read_text()) != str(group):
-                raise ValueError('Pre-exec child escaped its private cgroup')
-            while True:
-                # Nonblocking wait4 preserves final child rusage without Popen.poll reaping it first.
-                pid, status, usage = os.wait4(process.pid, os.WNOHANG)
-                if pid:
-                    process.returncode = os.waitstatus_to_exitcode(status)
-                    break
-                if time.monotonic()-started > 35:
-                    # Even missing proc samples must obey the native observation deadline.
-                    timed_out = True
-                    process.kill()
-                    _, status, usage = os.wait4(process.pid, 0)
-                    process.returncode = os.waitstatus_to_exitcode(status)
-                    break
-                try:
-                    raw_member = Path(f'/proc/{process.pid}/cgroup').read_text()
-                    status_raw = Path(f'/proc/{process.pid}/status').read_text()
-                except FileNotFoundError:
-                    # The exact final counters still come from wait4 when exit races procfs.
-                    time.sleep(0.002)
-                    continue
-                actual = resolve(raw_member, Path('/proc/self/mountinfo').read_text())
-                if actual != str(group):
-                    raise ValueError('Native child escaped its private cgroup')
-                membership = raw_member
-                memory = sample_status(status_raw)
-                if memory is None:
-                    # Exec/exit can temporarily remove Vm fields while State still reports running.
-                    time.sleep(0.002)
-                    continue
-                current = parse(read_raw(group))
-                peaks['rss'] = max(peaks['rss'], memory['VmRSS'])
-                peaks['swap'] = max(peaks['swap'], memory['VmSwap'])
-                peaks['anon'] = max(peaks['anon'], current['memory.stat']['anon'])
-                peaks['file'] = max(peaks['file'], current['memory.stat']['file'])
-                peaks['cgroup_swap'] = max(peaks['cgroup_swap'], current['memory.swap.current'])
-                samples += 1
-                time.sleep(0.02)
-        finally:
-            if process.returncode is None:
-                # The unit's RuntimeMaxSec is an independent backstop if the outer runner is killed.
-                process.kill()
-                _, status, _ = os.wait4(process.pid, 0)
-                process.returncode = os.waitstatus_to_exitcode(status)
+
+    def stop_child(signum, frame):
+        """The prearmed deadline sends only SIGKILL; no procfs reads or sampling allocations are needed."""
+        nonlocal timed_out
+        timed_out = True
+        if process is not None and process.returncode is None:
+            try:
+                os.kill(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # Exit can win the exact deadline; wait4 still owns the final status.
+
+    previous = signal.signal(signal.SIGALRM, stop_child)
+    membership_log = Path(log).with_suffix('.membership.log')
+    try:
+        signal.alarm(35)
+        with Path(log).open('w') as output:
+            process = subprocess.Popen(arguments, stdout=output, stderr=subprocess.STDOUT,
+                                       preexec_fn=lambda: child_setup(membership_log))
+            if timed_out:
+                os.kill(process.pid, signal.SIGKILL)
+            _, status, usage = os.wait4(process.pid, 0)
+            process.returncode = os.waitstatus_to_exitcode(status)
+    finally:
+        # Restore the caller's signal ownership even after spawn/wait/log failures.
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+        if process is not None and process.returncode is None:
+            process.kill()
+            _, status, _ = os.wait4(process.pid, 0)
+            process.returncode = os.waitstatus_to_exitcode(status)
     after_raw = read_raw(group)
     evidence = derive(before, parse(after_raw))
-    if membership is None:
-        raise ValueError('No live native cgroup membership witness')
+    identity_raw = membership_log.read_text()
+    child_identity = json.loads(identity_raw)
+    membership = child_identity['membership_raw']
+    if (child_identity['pid'] != process.pid or child_identity['oom_score_adj_raw'] != '1000\n' or
+            resolve(membership, mounts) != str(group)):
+        raise ValueError('Invalid native child OOM/cgroup identity receipt')
     return dict(arguments=arguments, before_raw=before_raw, after_raw=after_raw,
                 evidence=evidence, timed_out=timed_out,
                 outcome='observer-timeout' if timed_out else outcome(process.returncode, evidence),
-                exit_code=process.returncode, sampled_peaks=peaks if samples else None, samples=samples,
-                child_membership_raw=child_identity['membership_raw'], child_pid=process.pid,
-                child_identity_raw=identity_raw, elapsed_seconds=time.monotonic()-started,
+                exit_code=process.returncode, child_membership_raw=membership,
+                child_pid=process.pid, child_identity_raw=identity_raw,
+                elapsed_seconds=time.monotonic()-started,
                 resources=dict(peak_rss_bytes=usage.ru_maxrss*1024,
                                minor_faults=usage.ru_minflt, major_faults=usage.ru_majflt,
                                input_blocks=usage.ru_inblock, output_blocks=usage.ru_oublock),
@@ -151,14 +118,14 @@ def run(unit, target, high, maximum, swap, arguments):
             # The positive worker touches one MiB; the bounded negative worker touches up to96 MiB.
             code = 'import sys,time; n=int(sys.argv[1]); b=bytearray(n); b[::4096]=bytes([91])*len(b[::4096]); time.sleep(.1); print("touched",n,flush=True)'
             for name, size in (('positive', 1024*1024), ('negative', 96*1024*1024)):
-                row = observe(group, [sys.executable, '-c', code, str(size)], path.with_name(name+'.log'))
+                row = observe(group, [sys.executable, '-c', code, str(size)], path.with_name(name+'.log'), mounts)
                 report['runs'].append(row)
                 path.write_text(json.dumps(report, indent=2)+'\n')
             if report['runs'][0]['outcome'] != 'completed' or report['runs'][1]['outcome'] != 'local-cgroup-oom-kill':
                 raise ValueError('Private cgroup did not establish bounded positive/negative controls')
         else:
             # Native output is interpreted by the outer workload parser; this observer owns OS evidence.
-            row = observe(group, arguments, path.with_suffix('.native.log'))
+            row = observe(group, arguments, path.with_suffix('.native.log'), mounts)
             report['runs'].append(row)
         report['status'] = 'observed'
     except Exception as error:

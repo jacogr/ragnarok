@@ -12,7 +12,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 import storage_pressure_metrics as metrics
 import storage_pressure_scope as scope
-from storage_pressure_child import sample_status
+import storage_pressure_child as child
+from types import SimpleNamespace
 
 UNIT = 'ragnarok-storage-pressure-'+'a'*32+'.service'
 
@@ -31,11 +32,52 @@ def snapshot():
 class PressureObserverTests(unittest.TestCase):
     """Signal/resource interpretation must come from private kernel receipts rather than assumptions."""
 
-    def test_exec_exit_samples_are_unavailable_not_malformed(self):
-        """Linux may omit Vm fields before State becomes Z; this must not erase final wait4 evidence."""
-        self.assertIsNone(sample_status('Name: worker\nState: R (running)\nPid: 17\n'))
-        with self.assertRaises(ValueError):
-            sample_status('VmRSS: 1 kB\nVmRSS: 2 kB\n')
+    def test_wait4_and_kernel_peaks_need_no_live_proc_sampling(self):
+        """Reads occur only outside child execution, avoiding the observed procfs ENOMEM under caps."""
+        self.run_observer_case(False)
+
+    def test_deadline_kills_child_and_restores_alarm(self):
+        """A stalled child remains a distinct observation and cannot leave the caller's timer armed."""
+        self.run_observer_case(True)
+
+    def run_observer_case(self, timeout):
+        """Drive real receipt parsing around a fake wait4 child, with timer ownership checked explicitly."""
+        member = '0::/system.slice/'+UNIT+'\n'
+        mounts = '29 23 0:26 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n'
+        events = []
+        process = SimpleNamespace(pid=17, returncode=None)
+        usage = SimpleNamespace(ru_maxrss=4, ru_minflt=2, ru_majflt=0, ru_inblock=1, ru_oublock=0)
+        handlers = []
+        def register(sig, callback):
+            handlers.append(callback)
+            return 0
+        def waiting(pid, options):
+            events.append('wait')
+            if timeout:
+                handlers[0](14, None)
+            return (17, 9 if timeout else 0, usage)
+        def reading(group):
+            events.append('read')
+            return snapshot()
+        with tempfile.TemporaryDirectory() as owned:
+            log = Path(owned)/'native.log'
+            def spawning(*args, **kwargs):
+                log.with_suffix('.membership.log').write_text(json.dumps(dict(
+                    pid=17, membership_raw=member, oom_score_adj_raw='1000\n')))
+                return process
+            with patch.object(child, 'read_raw', side_effect=reading), \
+                    patch.object(child.subprocess, 'Popen', side_effect=spawning), \
+                    patch.object(child.os, 'wait4', side_effect=waiting), \
+                    patch.object(child.os, 'kill') as kill, \
+                    patch.object(child.signal, 'signal', side_effect=register), \
+                    patch.object(child.signal, 'alarm') as alarm:
+                row = child.observe(Path('/sys/fs/cgroup/system.slice')/UNIT, ['/tmp/native'], log, mounts)
+            self.assertEqual(events, ['read', 'wait', 'read'])
+            self.assertEqual(row['resources']['peak_rss_bytes'], 4096)
+            self.assertEqual(row['outcome'], 'observer-timeout' if timeout else 'completed')
+            self.assertEqual([call.args[0] for call in alarm.call_args_list], [35, 0])
+            self.assertEqual(handlers[-1], 0)
+            self.assertEqual(kill.call_count, int(timeout))
 
     def test_kernel_zero_elision_and_optional_latency_gauges(self):
         """Device-only lines mean zero read/write counters; optional gauges must never be subtracted."""

@@ -22,9 +22,9 @@ and kernel memory: they are not identical to child RSS. Ancestor limits remain v
 
 Use systemd's transient-service API, never edit a parent cgroup or global VM policy. The outer
 owner remains outside each constrained group. A small Python observer inside the unit starts
-one native child, raises only that child's OOM victim preference, samples its actual membership
-and gauges, and collects exact wait4 RSS/fault/block counters. A child-owned pre-exec membership receipt
-preserves the actual inherited cgroup identity even if that PID exits before live sampling. OOMPolicy=continue and observer-only OOMScoreAdjust=-1000 preserve
+one native child, raises only that child's OOM victim preference, records its actual inherited membership
+and collects exact wait4 RSS/fault/block counters. A child-owned pre-exec membership receipt
+preserves the actual inherited cgroup identity even if that PID exits before parent inspection. OOMPolicy=continue and observer-only OOMScoreAdjust=-1000 preserve
 observer evidence when a constrained child dies. Every child raises and reads back its own
 score1000 before exec, so workloads remain eligible victims. Both raw adjustments and the
 child PID/membership receipt are checked. Immunity does not bypass the cgroup memory limit. Only local max/oom/oom_kill event deltas plus
@@ -40,12 +40,17 @@ systemd, privilege, kernel fields or limit enforcement fails explicitly before n
 
 ## Evidence and interpretation
 
-Retain raw memory.current/peak/high/max, memory.swap.current/max, memory.events.local,
+Retain raw memory.current/peak/high/max, memory.swap.current/peak/max, memory.events.local,
 memory.stat, memory.pressure and io.stat before/after each native child. Kernel memory.peak
 covers the unit's lifetime including its observer; wait4 supplies exact native-child peak RSS.
-Sampled anonymous/file/swap/process gauges are approximate maxima with explicit sample counts. Exec/exit snapshots with missing Vm fields are unavailable;
-a child with no usable samples has null sampled gauges, while exact wait4/kernel peaks remain.
-Reclaim/fault/stall/device counters are monotonic deltas, never byte-gauge subtraction.
+Kernel memory.swap.peak is also read at both boundaries. Optional memory.stat pswpin/pswpout
+counters supply exact unit page-in/out deltas when available; absence remains null.
+The observer performs no procfs sampling while memory is constrained: kernel allocations for
+proc reads themselves can return ENOMEM. It waits in wait4 under a prearmed35-second alarm,
+then reads counter receipts only after the native process exits. Alarm ownership is restored
+on every path. Reclaim/fault/stall/device counters are monotonic deltas; peaks are lifetime
+high-water marks, never gauge subtraction. The unit includes observer startup/resume overhead.
+
 
 Before each attempt, hash only the exclusive closed synthetic namespace, then advise eviction
 only for its regular owned files with POSIX_FADV_DONTNEED. The advisory is not a cold-cache
