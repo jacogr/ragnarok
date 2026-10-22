@@ -199,3 +199,12 @@ before witness decoding. Shared framing/pre-copy aggregate quotas and atomic
 authentication remain mandatory. Exact verified identities must also match;
 wrong roots and malformed framing never return a prefix view.
 Suite `state_proof_service_decoding` verifies round trips and receiving policy.
+
+## Receiving tampering and late failure
+
+`state_proof_service_tampering` rejects every strict wire prefix and every
+one-bit octet mutation of a real two-fact response, plus suffixes and a replaced
+last witness under a foreign root. No earlier verified prefix escapes a later
+failure. Source evidence and an unchanged complete response remain readable
+after all refusals. These are bounded authored transport tests, not fuzzing or
+a public network-protocol claim.
