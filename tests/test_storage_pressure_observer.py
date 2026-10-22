@@ -1,0 +1,131 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+"""Reject false resident-pressure evidence, unsafe service targets and uncapped/uncleaned launches."""
+from copy import deepcopy
+import json
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
+import storage_pressure_metrics as metrics
+import storage_pressure_scope as scope
+
+UNIT = 'ragnarok-storage-pressure-'+'a'*32+'.service'
+
+
+def snapshot():
+    """A minimal complete kernel receipt keeps byte gauges distinct from event counters."""
+    raw = {key: '0\n' for key in metrics.FILES}
+    raw.update({'memory.high': '67108864\n', 'memory.max': '67108864\n',
+                'memory.events.local': 'low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\n',
+                'memory.stat': 'anon 0\nfile 0\npgfault 0\npgmajfault 0\npgscan 0\npgsteal 0\n',
+                'memory.pressure': 'some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n',
+                'io.stat': ''})
+    return raw
+
+
+class PressureObserverTests(unittest.TestCase):
+    """Signal/resource interpretation must come from private kernel receipts rather than assumptions."""
+
+    def test_gauges_may_fall_while_counters_increase(self):
+        """Resident bytes are not cumulative; reclaim counters and PSI totals are."""
+        before = snapshot()
+        before['memory.current'] = '1000\n'
+        after = snapshot()
+        after['memory.events.local'] = 'low 0\nhigh 2\nmax 1\noom 0\noom_kill 0\n'
+        evidence = metrics.derive(metrics.parse(before), metrics.parse(after))
+        self.assertEqual(evidence['events']['high'], 2)
+        self.assertEqual(evidence['events']['max'], 1)
+
+    def test_missing_and_malformed_kernel_data_fail(self):
+        """Missing telemetry, group-wide killing and malformed device rows cannot become zero evidence."""
+        for field, value in (('memory.stat', 'anon 0\n'), ('memory.oom.group', '1\n'),
+                             ('io.stat', '8:0 rbytes=1 rbytes=2\n'),
+                             ('memory.current', '-1\n')):
+            raw = snapshot()
+            raw[field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                metrics.parse(raw)
+        raw = snapshot()
+        del raw['memory.peak']
+        with self.assertRaises(ValueError):
+            metrics.parse(raw)
+
+    def test_only_local_oom_evidence_classifies_sigkill(self):
+        """Global/shared OOM observations or an unexplained kill do not establish local cap exhaustion."""
+        evidence = dict(events=dict(max=0, oom=0, oom_kill=0))
+        self.assertEqual(metrics.outcome(-9, evidence), 'signal-unclassified')
+        for key in ('max', 'oom', 'oom_kill'):
+            evidence['events'][key] = 1
+        self.assertEqual(metrics.outcome(-9, evidence), 'local-cgroup-oom-kill')
+        self.assertEqual(metrics.outcome(-6, evidence), 'signal-unclassified')
+        self.assertEqual(metrics.outcome(0, evidence), 'completed')
+
+    def test_counter_rollback_and_io_disappearance_fail(self):
+        """Monotonic evidence cannot be silently clamped; new device activity starts at zero."""
+        with self.assertRaises(ValueError):
+            metrics.delta({'pgscan': 2}, {'pgscan': 1})
+        with self.assertRaises(ValueError):
+            metrics.delta({'rbytes': 1}, {})
+        self.assertEqual(metrics.delta({}, {'rbytes': 4096}), {'rbytes': 4096})
+
+    def test_cleanup_cannot_target_external_units(self):
+        """Even valid-looking slices, parent services and malformed identifiers are refused before sudo."""
+        for unit in ('system.slice', 'sshd.service', '../'+UNIT, UNIT+'; true',
+                     'ragnarok-storage-pressure-.service'):
+            with patch.object(scope.subprocess, 'run') as run, self.assertRaises(ValueError):
+                scope.cleanup(unit)
+            run.assert_not_called()
+
+    def test_launch_is_bounded_and_stays_in_own_service(self):
+        """Systemd controls apply to a fresh service, as the current user, with two independent timeouts."""
+        argv = scope.launch_arguments(UNIT, '/tmp/result.json', 64*1024**2, 128*1024**2, 0,
+                                      ['/tmp/native', 'open'])
+        self.assertEqual(argv[:3], ['sudo', '-n', 'systemd-run'])
+        for flag in ('--unit='+UNIT, '--property=MemoryHigh=67108864',
+                     '--property=MemoryMax=134217728', '--property=MemorySwapMax=0',
+                     '--property=OOMPolicy=continue', '--property=RuntimeMaxSec=45',
+                     '--property=KillMode=control-group', '--collect'):
+            self.assertIn(flag, argv)
+        self.assertNotIn('set-property', argv)
+        with self.assertRaises(ValueError):
+            scope.launch_arguments(UNIT, '/tmp/result', 0, 1024**3, 0, ['probe'])
+
+    def test_timeout_still_stops_owned_detached_unit(self):
+        """Killing the outer process group cannot retire a systemd service; cleanup must run explicitly."""
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.object(scope.platform, 'system', return_value='Linux'), \
+                patch.object(scope, 'command', side_effect=TimeoutError('observer timeout')), \
+                patch.object(scope, 'cleanup', return_value={'state': 'inactive'}) as cleanup, \
+                self.assertRaises(TimeoutError):
+            scope.execute(['probe'], (67108864, 67108864, 0), folder, 'probe')
+        cleanup.assert_called_once()
+        scope.validate_unit(cleanup.call_args.args[0])
+
+    def test_substituted_receipt_counter_is_rejected(self):
+        """The original text, not a mutable summary, owns every attributed event and outcome."""
+        raw = snapshot()
+        evidence = metrics.derive(metrics.parse(raw), metrics.parse(raw))
+        member = '0::/system.slice/'+UNIT+'\n'
+        mounts = '29 23 0:26 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n'
+        report = dict(status='observed', unit=UNIT, initial_raw=raw,
+                      group='/sys/fs/cgroup/system.slice/'+UNIT, membership_raw=member,
+                      mountinfo_raw=mounts, runs=[dict(before_raw=raw, after_raw=raw,
+                      evidence=evidence, exit_code=0, outcome='completed', samples=1,
+                      child_membership_raw=member, resources=dict(peak_rss_bytes=4096,
+                      minor_faults=1, major_faults=0, input_blocks=0, output_blocks=0))])
+        scope.validate_receipt(report, UNIT, (67108864, 67108864, 0))
+        altered = deepcopy(report)
+        altered['runs'][0]['evidence']['events']['high'] = 100
+        with self.assertRaises(ValueError):
+            scope.validate_receipt(altered, UNIT, (67108864, 67108864, 0))
+
+    def test_unsupported_host_cannot_claim_success(self):
+        """Darwin is not a Linux pressure run; no command or privileged cleanup may be attempted."""
+        with patch.object(scope.platform, 'system', return_value='Darwin'), \
+                patch.object(scope, 'command') as command, self.assertRaises(RuntimeError):
+            scope.execute(['probe'], (67108864, 67108864, 0), '/tmp', 'probe')
+        command.assert_not_called()
