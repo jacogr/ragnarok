@@ -45,3 +45,16 @@ Consumers must supply independent trust and copy policy. Nested generation/proof
 and semantic/encoding failures remain typed and expose no prefix.
 `application_proof_query_execution` independently receives the response, checks
 identity, exact/short output policies, detached copies and generation refusal.
+
+## Reusable native slot
+
+`StateProofWorker` has one condition-driven thread and one slot. Successful
+submission moves the caller query; refusal preserves it. A host-only retained
+namespace and nonwrapping generation reject foreign/stale tickets. The host
+polls scalar phase only. Queued/Running/Done and cancelled work retain capacity
+and exclusive selected-state access until matching Done collection or joined
+close. Execution temporaries retire before Done publication. Cancellation is
+logical discard, never preemption of crypto/FFI. Close joins before dropping
+query/result owners; live relocation/copy and unjoined destruction are forbidden.
+`application_proof_worker` covers native generation, capacity, exact collection,
+foreign/stale tokens, Done cancellation, reuse, restart and active joined close.
