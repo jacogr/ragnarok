@@ -1,0 +1,29 @@
+{
+  "build_name": "state-service-supervision-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard service supervision default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-service-supervision-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard service supervision invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-service-supervision-invalid"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_service_supervision_results.nim"
+}
