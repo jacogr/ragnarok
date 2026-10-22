@@ -49,6 +49,30 @@ class StorageGrowthExecutionTests(unittest.TestCase):
             self.assertEqual(sum(row['warmup']=='False' for row in rows),480)
             self.assertEqual(json.loads((folder/'results.json').read_text()),report)
 
+    def test_publication_csv_preserves_every_call_and_warmup(self):
+        from test_storage_growth_report import fixture
+        rows=csv.DictReader(io.StringIO(storage_growth.publication_csv(fixture())))
+        total=measured=0
+        for row in rows:
+            total+=1
+            measured+=row['warmup']=='False'
+            self.assertLessEqual(int(row['revision']),int(row['publications']))
+        self.assertEqual(total,99840)
+        self.assertEqual(measured,76800)
+
+    def test_late_publication_csv_failure_removes_both_raw_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary)
+            def publish(path,value):
+                # The batch CSV has already published when the per-call artifact fails.
+                if path.name=='publications.csv': raise OSError('publication CSV refused')
+                atomic_text(path,value)
+            with native_stub(folder),self.assertRaisesRegex(OSError,'publication CSV refused'):
+                storage_growth.run_growth('compiler','library',folder,publish)
+            self.assertEqual(json.loads((folder/'results.json').read_text())['status'],'failed')
+            self.assertFalse((folder/'samples.csv').exists())
+            self.assertFalse((folder/'publications.csv').exists())
+
     def test_build_refusal_stops_before_execution(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder=Path(temporary)
