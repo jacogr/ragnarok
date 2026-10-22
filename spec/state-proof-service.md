@@ -115,3 +115,12 @@ hashing. No plan grants state authority. Suite `state_proof_plan_request` checks
 exact namespace identities and short policies. Historical lengths are hints for
 requested evidence; readers independently choose the actual authenticated length
 and return missing witness if the hint omitted that identity.
+
+## Historical query planning
+
+`planProofHistorical` derives the current namespace and includes the canonical
+account dependency in a sorted immutable plan. Count/key policy precedes key
+hashing. No plan grants state authority. Suite `state_proof_plan_historical` checks
+exact namespace identities and short policies. Historical lengths are hints for
+requested evidence; readers independently choose the actual authenticated length
+and return missing witness if the hint omitted that identity.
