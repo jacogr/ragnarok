@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_ACCOUNT_FOOTPRINT_CORPUS",
+  "files": {
+    "account-footprint-corpus.txt": "746991f7e34cdf7cb20001d8ccb5d6504b9ccd4303b6ae3ff7924470b9986bf1"
+  },
+  "target": "account-footprint-corpus.txt"
+}

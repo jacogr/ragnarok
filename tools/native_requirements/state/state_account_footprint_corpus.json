@@ -1,0 +1,15 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "account_footprint_corpus"
+  ],
+  "includes": [
+    "crypto"
+  ],
+  "libraries": [
+    "observer"
+  ],
+  "observers": [],
+  "prepared": false
+}
