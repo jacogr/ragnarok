@@ -90,3 +90,8 @@ refusals separately from missing or absent chapter evidence.
 variable-pool/fixed80-entry queue validation. The native suite covers both kinds, cross-kind missing
 witnesses, exact row ordering, detached hashes, malformed boundaries/suffixes, configuration and
 byte/aggregate-hash ceilings. Authenticated membership alone does not establish a valid chapter.
+
+`readGlobalValidators` selects only Staging/Active/Previous, bounds complete bytes, and returns the
+existing immutable ordered roster with exact population/extent validation. No key-validity claim is
+added. Native coverage exercises all three identities, cross-roster missing evidence, fixed null-key
+bytes, retained order/source independence, truncation/suffix and population/byte/profile refusals.
