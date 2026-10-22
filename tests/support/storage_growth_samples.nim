@@ -27,13 +27,14 @@ proc growthValue*(index, revision: int): seq[byte] =
     result[position] = byte((index+position) and 255) # Deterministic full payload is checked after timing.
   for position in 0..<4:
     result[position] = byte((revision shr (position*8)) and 255) # Independent complete revision encoding.
-proc growthRevision*(index, count, publications: int): int =
+proc growthRevision*(index, count, publications: int, hot = false): int =
   ## Closed-form latest write ordinal is independent of the mutation-preparation loop.
   assert count in [1024, 8192] and publications >= 0 and publications <= 256
   assert index >= 0 and index < count
   let writes = publications*4
-  if index >= writes: return 0 # Untouched entries retain their exact seed payload.
-  let ordinal = index+((writes-1-index) div count)*count
+  let period = if hot: 256 else: count
+  if index >= min(writes, period): return 0 # Untouched entries retain their exact seed payload.
+  let ordinal = index+((writes-1-index) div period)*period
   ordinal div 4+1
 proc growthLimits*(): RepositoryLimits =
   ## Bound complete graphs and accumulated revisions without weakening production admission checks.
@@ -42,7 +43,7 @@ proc growthLimits*(): RepositoryLimits =
   RepositoryLimits(codec: RecordLimits(trie: trie,
     records: TrieExportLimits(records: TrieNodeLimit(100000), valueBytes: ByteLimit(4194304)),
     encoded: ByteLimit(16777216)), records: ElementLimit(200000), valueBytes: ByteLimit(8388608))
-proc prepareGrowth*(count, publications: int): StorageGrowthFixture =
+proc prepareGrowth*(count, publications: int, hot = false): StorageGrowthFixture =
   ## Prepare Merklized seed/changes once, outside all measured publication/reopen/retention intervals.
   assert count in [1024, 8192] and publications in [64, 256]
   result = default(StorageGrowthFixture)
@@ -57,17 +58,17 @@ proc prepareGrowth*(count, publications: int): StorageGrowthFixture =
   for revision in 1..publications:
     var writes: seq[TrieWrite] = @[]
     for offset in 0..<4:
-      let index = ((revision-1)*4+offset) mod count
+      let index = ((revision-1)*4+offset) mod (if hot: 256 else: count)
       writes.add(TrieWrite(key: growthKey(index), kind: TrieWriteKind.Put,
         value: growthValue(index, revision)))
     let next = state.apply(writes).value
     result.changes.add(exportTrieChanges(state, next, limits.codec.records).value)
     result.roots.add(next.commitment.root)
     state = next # Every root corresponds to exactly one prepared four-key physical publication.
-proc checkGrowth*(view: RepositoryView, root: StateRoot, count, publications: int) =
+proc checkGrowth*(view: RepositoryView, root: StateRoot, count, publications: int, hot = false) =
   ## Check every authored key/value using closed-form update expectations outside measured intervals.
   let entries = restoreHistoricalStateEntries(view, root, growthLimits().codec.trie).value
   assert entries.len == count
   for index, entry in entries:
     assert array[31, byte](entry.key) == array[31, byte](growthKey(index))
-    assert entry.value == growthValue(index, growthRevision(index, count, publications))
+    assert entry.value == growthValue(index, growthRevision(index, count, publications, hot))

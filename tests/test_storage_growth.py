@@ -24,9 +24,9 @@ def native_stub(folder):
     binary=folder/'binary';binary.write_bytes(b'checked sustained fixture')
     def command(arguments,name,*args,**kwargs):
         # Real logs carry every declared case and all thirteen independently authored observations.
-        executable,engine,count,steps,owned,samples=arguments
+        executable,engine,count,steps,owned,samples,pattern=arguments
         assert samples==13
-        log=folder/(name+'.log');log.write_text(output(engine,count,steps))
+        log=folder/(name+'.log');log.write_text(output(engine,count,steps,pattern))
         return dict(exit_code=0,elapsed_seconds=0.01,log=str(log))
     with patch.object(storage_growth.NativeChecks,'build',return_value=(dict(exit_code=0,
             elapsed_seconds=0.01,log=str(folder/'build.log')),binary)),patch.object(
@@ -43,10 +43,10 @@ class StorageGrowthExecutionTests(unittest.TestCase):
             with native_stub(folder):
                 report=storage_growth.run_growth('compiler','library',folder,atomic_text)
             self.assertEqual(report['status'],'checks-passed')
-            self.assertEqual(len(report['checks']),25)
+            self.assertEqual(len(report['checks']),49)
             rows=list(csv.DictReader(io.StringIO((folder/'samples.csv').read_text())))
-            self.assertEqual(len(rows),312)
-            self.assertEqual(sum(row['warmup']=='False' for row in rows),240)
+            self.assertEqual(len(rows),624)
+            self.assertEqual(sum(row['warmup']=='False' for row in rows),480)
             self.assertEqual(json.loads((folder/'results.json').read_text()),report)
 
     def test_build_refusal_stops_before_execution(self):
