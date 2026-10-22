@@ -91,3 +91,9 @@ entries and 1.366× at 32,768 entries; extraction and reclamation also improved.
 hashes and executable identities are under `build/storage-growth-ab-prefix-graph/`. These are
 local observations, not production throughput or hardware durability claims. The directory adds
 257 machine-word offsets per immutable table; reader handles share their exact table owner.
+
+Public physical-node lookup now uses the same immutable directory after its existing owner check.
+It still compares the entire address and returns an independently owned record payload. Matched
+A/B runs against the graph-directory implementation measured 1.13–1.27× faster spread resident
+reads across the 8,192/32,768-entry trajectories, with essentially unchanged publication cost.
+Exact inputs and opposite-order observations: `build/storage-growth-ab-prefix-lookups/`.

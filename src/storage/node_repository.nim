@@ -235,7 +235,7 @@ proc lookupNode*(view: RepositoryView, digest: StateNodeHash): RepositoryResult[
   ## Missing physical data is distinct from an empty child and from a default read view.
   let data = view.data
   if data == nil: return RepositoryResult[TrieRecord](status: RepositoryError.Uninitialized)
-  let index = position(data.table.records, digest)
+  let index = position(data.table, digest)
   if index < 0: return RepositoryResult[TrieRecord](status: RepositoryError.MissingNode)
   RepositoryResult[TrieRecord](status: RepositoryError.None, completed: copyRecord(
       data.table.records[index]))
