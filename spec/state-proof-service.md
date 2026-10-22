@@ -37,3 +37,12 @@ remains `MissingWitness`. Raw keys use the shared reserved storage namespace, wi
 key limits before hashing and value limits before exposing the immutable lookup.
 Present empty keys and values are supported. Suite `state_proof_service_storage`
 covers those boundaries, account absence and one-short response policy.
+
+## Preimage reader
+
+`readProofPreimage` authenticates account and preimage in the same view, bounds
+actual content before copying, and checks Blake2b against the advertised hash.
+Malformed committed state cannot supply a different blob at a valid preimage key.
+Empty present preimages remain valid; content/backend errors never become absence.
+Suite `state_proof_service_preimage` covers content mismatch, missing evidence,
+orphan entries, proven absence and exact/short output limits.

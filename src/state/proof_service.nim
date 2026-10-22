@@ -4,6 +4,7 @@
 ## Typed service reads consume authenticated partial evidence without claiming a complete account map.
 ## Missing witnesses, proven absence and malformed present bytes remain separate outcomes.
 import ./[proof_view, trie_proof]
+import ../crypto/primitives
 import ../codec/[bounded, state_accounts, state_layout, state_service_values]
 
 type
@@ -72,3 +73,22 @@ proc readProofStorage*(view: ProofView, service: ServiceIndex, key: openArray[by
   if derived.error != ServiceValueError.None:
     return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.BackendFailure)
   presentRead(view, derived.value, limits.valueBytes)
+
+proc readProofPreimage*(view: ProofView, service: ServiceIndex, hash: ServicePreimageHash,
+    limit: ByteLimit): ServiceProofResult[VerifiedStateLookup] =
+  ## Authenticate the same-root account and bounded preimage, then verify its actual content digest.
+  let account = view.readProofAccount(service)
+  if account.error != ServiceProofError.None:
+    return ServiceProofResult[VerifiedStateLookup](status: account.error)
+  let derived = servicePreimageKey(service, hash, ByteLimit(32))
+  if derived.error != ServiceValueError.None:
+    return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.BackendFailure)
+  let found = presentRead(view, derived.value, limit)
+  if found.error != ServiceProofError.None:
+    return found
+  let digest = blake2b256(found.value.bytes)
+  if digest.error != CryptoError.None:
+    return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.BackendFailure)
+  if array[32, byte](digest.value) != array[32, byte](hash):
+    return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.InvalidValue)
+  found
