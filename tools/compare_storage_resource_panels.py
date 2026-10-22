@@ -26,7 +26,7 @@ def compare(panel, baseline, candidate, allowed=()):
     for field in ('source', 'defines', 'cases', 'profile', 'schema_version'):
         if baseline[field] != candidate[field]:
             raise ValueError('Resource comparison plan differs: '+field)
-    for field in ('compiler_sha256', 'native_components', 'clang', 'toolchain'):
+    for field in ('compiler_sha256', 'native_components', 'clang', 'toolchain', 'python_identity'):
         if baseline['inputs'][field] != candidate['inputs'][field]:
             raise ValueError('Resource comparison build differs: '+field)
     for field in ('platform', 'machine', 'cpu', 'page_size_bytes'):

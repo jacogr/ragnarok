@@ -19,7 +19,10 @@ def fixture(module):
     """Every case has independently authored native output plus a matching checked build/execution receipt."""
     binary = '/fixture/panel-native'
     build = ['/fixture/nimony', 'c', '--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on',
-             '--passC:-flto', '--passL:-flto', *['-d:'+v for v in module.DEFINES], '--out:'+binary, str(module.SOURCE)]
+             '--passC:-flto', '--passL:-flto', '--passC:-I'+str(panel.ROOT/'native/crypto'),
+             '--passL:'+str(panel.ROOT/'build/crypto/libragnarok_crypto.dylib'),
+             '--passL:-Wl,-rpath,'+str(panel.ROOT/'build/crypto'),
+             *['-d:'+v for v in module.DEFINES], '--nimcache:/fixture/cache', '--out:'+binary, str(module.SOURCE)]
     with tempfile.TemporaryDirectory() as folder:
         observed_environment = environment(folder)
     sources = source_hashes([*benchmark_sources(), *sorted((panel.ROOT/'tools').glob('storage_*.py')),
@@ -29,7 +32,7 @@ def fixture(module):
     report = dict(status='checks-passed', schema_version=getattr(panel, 'PANEL_VERSION', 2), profile=panel.PROFILE,
         source=str(module.SOURCE), defines=list(module.DEFINES), cases=[list(c) for c in module.CASES],
         native_binary_sha256='a'*64, python_executable=sys.executable, python_identity=python_identity,
-        inputs=dict(sources=sources, head='b'*40, dirty=False, compiler_sha256='c'*64, clang='fixture clang',
+        inputs=dict(sources=sources, python_identity=python_identity, head='b'*40, dirty=False, compiler_sha256='c'*64, clang='fixture clang',
                     native_components={k:'d'*64 for k in ('bridge','provider_loader','provider_build')},
                     toolchain=json.loads((panel.ROOT/'spec/toolchain.json').read_text())),
         hardware=dict(platform='fixture platform', machine='fixture machine', cpu='fixture CPU', page_size_bytes=4096),

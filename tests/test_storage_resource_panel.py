@@ -20,7 +20,7 @@ class StorageResourcePanelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             owned = Path(folder); (owned/'summary.md').write_text('old success')
             with patch.object(panel, 'installed', return_value=('compiler', None)), patch.object(panel, 'dependencies'), patch.object(
-                    panel, 'build_native'), patch.object(panel, 'panel_identity', return_value={}), patch.object(
+                    panel, 'build_native'), patch.object(panel, 'panel_identity', return_value={'python_identity': panel.python_identity()}), patch.object(
                     panel.NativeChecks, 'build', return_value=(dict(exit_code=9, command=[], log='native failed'), owned/'binary')):
                 with self.assertRaisesRegex(RuntimeError, 'native failed'):
                     panel.run_panel(owned, Path('source'), (), [], lambda c, p: [], lambda r, c: {}, lambda r: 'summary')
@@ -53,7 +53,7 @@ class StorageResourcePanelTests(unittest.TestCase):
                 """The simulated exporter fails after a previous artifact was already written."""
                 raise OSError('late export refused')
             with patch.object(panel, 'installed', return_value=('compiler', None)), patch.object(panel, 'dependencies'), patch.object(
-                    panel, 'build_native'), patch.object(panel, 'panel_identity', return_value={}), patch.object(panel, 'validate_panel'), patch.object(
+                    panel, 'build_native'), patch.object(panel, 'panel_identity', return_value={'python_identity': panel.python_identity()}), patch.object(panel, 'validate_panel'), patch.object(
                     panel.NativeChecks, 'build', return_value=(dict(exit_code=0, command=[], log='native passed'), binary)):
                 with self.assertRaisesRegex(OSError, 'late export'):
                     panel.run_panel(owned, Path('source'), (), [], lambda c, p: [], lambda r, c: {}, lambda r: 'summary',

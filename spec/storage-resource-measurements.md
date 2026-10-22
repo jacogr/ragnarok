@@ -202,3 +202,13 @@ an observed zero increment. Retained snapshots/selection plans and independently
 remain separate scenarios. Deployment normalization uses only matching16-publication fixtures and
 the same backend/order32768-entry anchor; no absent64-publication anchor is invented. Finite
 occupancy ratios are descriptive, never a complexity proof or throughput estimate.
+
+## Final report admission
+
+Native panel schema3 binds the complete source closure, pinned compiler/provider identities,
+actual Python observer executable/version/hash and the maintained checked build/link flags.
+Boolean aliases, unknown compiler options, incomplete command coverage and substituted raw rows
+refuse. Fresh-reopen and file-cache schema2 reports independently reparse every producer/consumer
+or read-only scan, require exact child counters and preserve unavailable/refused advice explicitly.
+Historical reports retain their original schemas and evidence; newer admission does not silently
+upgrade their claims. Final qualification reruns the affected panels on the frozen current sources.
