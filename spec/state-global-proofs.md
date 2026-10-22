@@ -54,3 +54,14 @@ extents precede key allocation; complete-map preflight remains the established s
 `state_global_proof_generation` covers independently rooted global membership/absence, measured
 zero-hash count/map refusals, invalid plans/selections and a genuine signed selected-block root.
 No storage implementation or partial-to-complete state conversion is introduced.
+
+## Managed global requests
+
+Generic `StateProofPlan` overloads of query capture and Services admission use the established
+single worker, crypto-work preflight, detached plan capture and exclusive canonical/RPC lease.
+Global encoding/view refusals expose guarded `ViewFailure/viewError`; legacy service overloads
+retain `ServiceFailure/serviceError`. Both preserve exact nested proof failures. Stage capture
+remains a separate concrete procedure activation before submission. Both overloads finish that
+activation before entering the shared pause/submission path. Cancellation, Done and joined close rules
+are unchanged. Native generic execution independently receives the resulting RPV1 under the
+selected posterior root; existing service capture/execution/worker/Services suites remain controls.
