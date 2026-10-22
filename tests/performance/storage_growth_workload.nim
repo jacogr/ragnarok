@@ -14,7 +14,7 @@ proc elapsed(start: MonoTime): int64 =
   (getMonoTime()-start).inNanoseconds
 proc main() {.raises.} =
   ## The orchestrator supplies fixed axes and thirteen samples; one-sample runs only check execution.
-  assert paramCount() == 5
+  assert paramCount() == 6
   let engine = paramStr(1)
   assert engine in ["memory", "journal", "managed"]
   assert paramStr(2) in ["1024", "8192"] and paramStr(3) in ["64", "256"]
@@ -23,11 +23,14 @@ proc main() {.raises.} =
   let folder = paramStr(4)
   assert paramStr(5) in ["1", "13"]
   let samples = if paramStr(5) == "1": 1 else: 13
+  let pattern = paramStr(6)
+  assert pattern in ["sweep", "hot"]
+  let hot = pattern == "hot"
   let limits = growthLimits()
   let journal = JournalLimits(repository: limits, bytes: ByteLimit(33554432))
   let managed = ManagedLimits(repository: limits, roots: ElementLimit(9),
     snapshotBytes: ByteLimit(33554432), journalBytes: ByteLimit(33554432), contextBytes: ByteLimit(64))
-  let fixture = prepareGrowth(count, publications)
+  let fixture = prepareGrowth(count, publications, hot)
   let expected = fixture.roots[publications]
   var roots: seq[StateRoot] = @[fixture.roots[0]]
   for revision in publications-7..publications:
@@ -60,7 +63,7 @@ proc main() {.raises.} =
     let held = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
     assert uint64(held.generation) == uint64(publications+1)
     assert array[32, byte](held.commitment.root) == array[32, byte](expected)
-    checkGrowth(held, expected, count, publications)
+    checkGrowth(held, expected, count, publications, hot)
     var reopenNs = -1'i64
     if engine != "memory":
       assert disk.close == FileError.None
@@ -71,7 +74,7 @@ proc main() {.raises.} =
         assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
       reopenNs = elapsed(reopenStart)
       assert uint64(disk.snapshot.value.generation) == uint64(publications+1)
-      checkGrowth(disk.snapshot.value, expected, count, publications)
+      checkGrowth(disk.snapshot.value, expected, count, publications, hot)
     let storedNodes = held.storedNodes
     var snapshotBytes = -1'i64
     var journalBytes = -1'i64
@@ -104,9 +107,9 @@ proc main() {.raises.} =
       retentionNs = elapsed(retentionStart)
       let retained = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
       retainedNodes = retained.storedNodes
-      checkGrowth(retained, roots[0], count, 0)
+      checkGrowth(retained, roots[0], count, 0, hot)
       for revision in publications-7..publications:
-        checkGrowth(retained, fixture.roots[revision], count, revision)
+        checkGrowth(retained, fixture.roots[revision], count, revision, hot)
       let maintenanceStart = getMonoTime()
       if engine == "memory":
         let selected = selectRepositoryRoots(retained, [expected], ElementLimit(1)).value
@@ -122,7 +125,7 @@ proc main() {.raises.} =
       currentNodes = current.storedNodes
       assert currentNodes < retainedNodes and retainedNodes <= storedNodes
       assert uint64(current.generation) == uint64(publications+1)
-      checkGrowth(current, expected, count, publications)
+      checkGrowth(current, expected, count, publications, hot)
       if engine == "managed":
         let usage = disk.managedUsage.value
         assert usage.journalBytes == uint64(ManagedJournalHeaderBytes)
@@ -132,7 +135,7 @@ proc main() {.raises.} =
         assert disk.close == FileError.None
         assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
         assert uint64(disk.snapshot.value.generation) == uint64(publications+1)
-        checkGrowth(disk.snapshot.value, expected, count, publications)
+        checkGrowth(disk.snapshot.value, expected, count, publications, hot)
     if disk.opened:
       assert disk.close == FileError.None
       if engine == "journal":
@@ -141,8 +144,9 @@ proc main() {.raises.} =
       else:
         removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2), ManagedEpoch(3)])
     assert memory.close == RepositoryError.None
-    checkGrowth(held, expected, count, publications) # Retired files and owner close cannot revoke immutable readers.
-    echo "growth\t", count, "\t", publications, "\t", sample, "\t", publicationNs, "\t",
+    checkGrowth(held, expected, count, publications,
+        hot) # Retired files and owner close cannot revoke immutable readers.
+    echo "growth\t", count, "\t", publications, "\t", pattern, "\t", sample, "\t", publicationNs, "\t",
       reopenNs, "\t", retentionNs, "\t", maintenanceNs, "\t", storedNodes, "\t", retainedNodes,
       "\t", currentNodes, "\t", snapshotBytes, "\t", journalBytes, "\t", compactedSnapshotBytes,
       "\t", compactedJournalBytes

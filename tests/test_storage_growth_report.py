@@ -11,7 +11,7 @@ sys.path.insert(0,str(ROOT/'tools'))
 from storage_growth_report import ENGINES,CASES,PHASES,METRICS,parse_growth,aggregate_growth,validate_growth,summarize_growth
 
 
-def output(engine,count,steps):
+def output(engine,count,steps,pattern='sweep'):
     """Authored complete observations include unavailable sentinels, not measurements from the native code."""
     rows=[]
     for sample in range(13):
@@ -20,16 +20,16 @@ def output(engine,count,steps):
         metrics=[count*3+500,-1 if engine=='journal' else count*3+50,-1 if engine=='journal' else count*3,
             -1 if engine=='memory' else (0 if engine=='journal' else 1000),-1 if engine=='memory' else 2000,
             900 if engine=='managed' else -1,72 if engine=='managed' else -1]
-        rows.append('growth\t'+'\t'.join(map(str,[count,steps,sample,*times,*metrics]))+'\n')
+        rows.append('growth\t'+'\t'.join(map(str,[count,steps,pattern,sample,*times,*metrics]))+'\n')
     return ''.join(rows)
 
 
 def fixture():
     """Create complete reverse-order report evidence with independent exact median expectations."""
-    passes=[{f'{e}-{n}-{s}':parse_growth(output(e,n,s),e,n,s) for e in order for n,s in CASES}
+    passes=[{f'{e}-{n}-{s}-{p}':parse_growth(output(e,n,s,p),e,n,s,p) for e in order for n,s,p in CASES}
         for order in (ENGINES,tuple(reversed(ENGINES)))]
-    return dict(status='checks-passed',schema_version=1,native_binary_sha256='a'*64,passes=passes,
-        cases=aggregate_growth(passes),checks=[dict(exit_code=0,elapsed_seconds=0.01,log=f'{i}.log') for i in range(25)])
+    return dict(status='checks-passed',schema_version=2,native_binary_sha256='a'*64,passes=passes,
+        cases=aggregate_growth(passes),checks=[dict(exit_code=0,elapsed_seconds=0.01,log=f'{i}.log') for i in range(49)])
 
 
 class StorageGrowthReportTests(unittest.TestCase):
@@ -37,7 +37,7 @@ class StorageGrowthReportTests(unittest.TestCase):
 
     def test_complete_raw_derived_panel(self):
         report=fixture();cases=validate_growth(report)
-        self.assertEqual(len(cases),16)
+        self.assertEqual(len(cases),32)
         self.assertEqual(cases[0]['engines']['memory']['median_ns'],107.5)
         self.assertIn('Sustained storage workload',summarize_growth(report))
         self.assertIn('Strict disk reopen | — |',summarize_growth(report))
@@ -48,6 +48,18 @@ class StorageGrowthReportTests(unittest.TestCase):
                 '\n'.join(raw.splitlines()[1:])+'\n',raw.replace('\t0\t','\t13\t',1),raw+'diagnostic\n'):
             with self.subTest(bad=bad[:45]),self.assertRaises(ValueError):
                 parse_growth(bad,'memory',1024,64)
+
+    def test_hot_observations_cannot_substitute_for_sweep(self):
+        with self.assertRaises(ValueError):
+            parse_growth(output('memory',1024,64,'hot'),'memory',1024,64,'sweep')
+
+    def test_identical_first64_publications_have_identical_physical_work(self):
+        report=fixture()
+        for observations in report['passes']:
+            for row in observations['managed-1024-64-hot']:
+                row['stored_nodes']+=1
+        with self.assertRaisesRegex(ValueError,'positive-control'):
+            aggregate_growth(report['passes'])
 
     def test_bounded_canonical_values(self):
         raw=output('managed',1024,64)
@@ -61,7 +73,7 @@ class StorageGrowthReportTests(unittest.TestCase):
                 parse_growth(output(engine,1024,64).replace('\t-1\t','\t10\t',1),engine,1024,64)
 
     def test_physical_work_stays_identical(self):
-        report=fixture();report['passes'][1]['managed-1024-64'][0]['stored_nodes']+=1
+        report=fixture();report['passes'][1]['managed-1024-64-sweep'][0]['stored_nodes']+=1
         with self.assertRaises(ValueError):
             aggregate_growth(report['passes'])
 
@@ -71,13 +83,13 @@ class StorageGrowthReportTests(unittest.TestCase):
             if reorder:
                 report['passes'][0]=dict(reversed(list(observations.items())))
             else:
-                observations.pop('managed-1024-64')
+                observations.pop('managed-1024-64-sweep')
             with self.assertRaises(ValueError):
                 validate_growth(report)
 
     def test_structured_boolean_or_extra_field_refuses(self):
         for field,value in (('sample',False),('publication',True),('unexpected',1)):
-            report=fixture();report['passes'][0]['memory-1024-64'][0][field]=value
+            report=fixture();report['passes'][0]['memory-1024-64-sweep'][0][field]=value
             with self.assertRaises(ValueError):
                 validate_growth(report)
 
@@ -95,7 +107,7 @@ class StorageGrowthReportTests(unittest.TestCase):
 
     def test_raw_order_drift_is_visible(self):
         report=fixture()
-        for row in report['passes'][1]['managed-1024-64']:
+        for row in report['passes'][1]['managed-1024-64-sweep']:
             row['publication']*=4
         report['cases']=aggregate_growth(report['passes'])
         self.assertTrue(report['cases'][0]['engines']['managed']['noisy'])

@@ -40,3 +40,14 @@ validate raw output and statistics, publish the panel through the existing job, 
 baseline evidence. Add focused read/growth/I/O attribution only where it resolves measurement gaps.
 Use those results to choose storage-local optimizations, qualify affected recovery consumers and
 record the retained/rejected hypotheses. Native stacked PRs use semantic titles and a maximum of 30.
+
+## Update locality
+
+Each sustained configuration has sweep updates across the map and hot updates revisiting 256 keys.
+The independent closed-form expected revision distinguishes untouched keys and every revisit.
+Raw samples, CSV, aggregation and Markdown require the exact pattern identity; neither locality
+can substitute for the other. Generation256 retains its full revision encoding.
+
+At 64 publications the two patterns issue identical writes; physical counters must match as a
+positive control. At 256 publications hot keys have been revisited four times while sweep keys
+have advanced across 1,024 identities. No locality timing is an OS cache-eviction claim.

@@ -10,7 +10,8 @@ import statistics
 ENGINES=('memory','journal','managed')
 COUNTS=(1024,8192)
 PUBLICATIONS=(64,256)
-CASES=tuple((count,steps) for count in COUNTS for steps in PUBLICATIONS)
+PATTERNS=('sweep','hot')
+CASES=tuple((count,steps,pattern) for count in COUNTS for steps in PUBLICATIONS for pattern in PATTERNS)
 PHASES=('publication','reopen','retention','maintenance')
 METRICS=('stored_nodes','retained_nodes','current_nodes','snapshot_bytes','journal_bytes',
          'compacted_snapshot_bytes','compacted_journal_bytes')
@@ -22,20 +23,20 @@ def unavailable(engine,phase):
     return (engine=='memory' and phase=='reopen') or (engine=='journal' and phase in ('retention','maintenance'))
 
 
-def parse_growth(output,engine,count,steps):
+def parse_growth(output,engine,count,steps,pattern='sweep'):
     """Require exact identities, complete ordered samples and bounded typed timings/physical metrics."""
-    if engine not in ENGINES or type(count) is not int or count not in COUNTS or type(steps) is not int or steps not in PUBLICATIONS:
+    if engine not in ENGINES or type(count) is not int or count not in COUNTS or type(steps) is not int or steps not in PUBLICATIONS or pattern not in PATTERNS:
         raise ValueError('Unknown sustained storage configuration')
     rows=[]
     for line in output.splitlines():
         fields=line.split('\t')
-        if len(fields)!=4+len(PHASES)+len(METRICS) or fields[0]!='growth' or any(
-                re.fullmatch(r'-1|0|[1-9][0-9]{0,18}',value) is None for value in fields[1:]):
+        if len(fields)!=5+len(PHASES)+len(METRICS) or fields[0]!='growth' or fields[3]!=pattern or any(
+                re.fullmatch(r'-1|0|[1-9][0-9]{0,18}',value) is None for value in (*fields[1:3],*fields[4:])):
             raise ValueError('Invalid sustained storage output')
-        size,publications,sample,*values=map(int,fields[1:])
+        size,publications,sample,*values=map(int,(*fields[1:3],*fields[4:]))
         if size!=count or publications!=steps or sample!=len(rows) or sample>=13:
             raise ValueError('Invalid sustained sample identity')
-        row=dict(items=size,publications=publications,sample=sample,**dict(zip((*PHASES,*METRICS),values)))
+        row=dict(items=size,publications=publications,pattern=pattern,sample=sample,**dict(zip((*PHASES,*METRICS),values)))
         for phase in PHASES:
             value=row[phase]
             if (unavailable(engine,phase) and value!=-1) or (not unavailable(engine,phase) and not 0<value<(1<<63)):
@@ -65,19 +66,19 @@ def aggregate_growth(passes):
     if type(passes) is not list or len(passes)!=2:
         raise ValueError('Two sustained passes required')
     for order,observations in zip(orders,passes):
-        expected=[f'{e}-{n}-{s}' for e in order for n,s in CASES]
+        expected=[f'{e}-{n}-{s}-{pattern}' for e in order for n,s,pattern in CASES]
         if type(observations) is not dict or list(observations)!=expected:
             raise ValueError('Incomplete sustained backend order')
     cases=[]
-    for count,steps in CASES:
+    for count,steps,pattern in CASES:
         observations={}
         for engine in ENGINES:
-            groups=[p[f'{engine}-{count}-{steps}'] for p in passes]
+            groups=[p[f'{engine}-{count}-{steps}-{pattern}'] for p in passes]
             for group in groups:
-                if type(group) is not list or any(type(r) is not dict or set(r)!=set(('items','publications','sample',*PHASES,*METRICS)) or any(type(v) is not int for v in r.values()) for r in group):
+                if type(group) is not list or any(type(r) is not dict or set(r)!=set(('items','publications','pattern','sample',*PHASES,*METRICS)) or any(type(v) is not int for k,v in r.items() if k!='pattern') or r.get('pattern')!=pattern for r in group):
                     raise ValueError('Invalid structured sustained sample')
-                encoded=''.join('growth\t'+'\t'.join(str(row[k]) for k in ('items','publications','sample',*PHASES,*METRICS))+'\n' for row in group)
-                if parse_growth(encoded,engine,count,steps)!=group:
+                encoded=''.join('growth\t'+'\t'.join(str(row[k]) for k in ('items','publications','pattern','sample',*PHASES,*METRICS))+'\n' for row in group)
+                if parse_growth(encoded,engine,count,steps,pattern)!=group:
                     raise ValueError('Noncanonical sustained samples')
             if any(any(r[k]!=groups[0][0][k] for k in METRICS) for group in groups for r in group):
                 raise ValueError('Unstable sustained physical work')
@@ -102,18 +103,25 @@ def aggregate_growth(passes):
                     paired=[other['pass_medians_ns'][i]/memory['pass_medians_ns'][i] for i in range(2)]
                     ratios[engine]=dict(pooled=other['median_ns']/memory['median_ns'],pass_ratios=paired,
                         unstable=max(paired)/min(paired)>1.25)
-            cases.append(dict(items=count,publications=steps,phase=phase,engines=engines,ratios=ratios))
+            cases.append(dict(items=count,publications=steps,pattern=pattern,phase=phase,engines=engines,ratios=ratios))
+    for count in COUNTS:
+        # At 64 publications both patterns perform exactly the same writes: physical work is a positive control.
+        for engine in ENGINES:
+            sweep=passes[0][f'{engine}-{count}-64-sweep'][0]
+            hot=passes[0][f'{engine}-{count}-64-hot'][0]
+            if any(sweep[k]!=hot[k] for k in METRICS):
+                raise ValueError('Locality positive-control work differs')
     return cases
 
 
 def validate_growth(report):
     """Native completion, source-bound binary identity and raw-derived statistics all remain mandatory."""
-    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=1:
+    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=2:
         raise ValueError('Invalid sustained report status/schema')
     if re.fullmatch('[0-9a-f]{64}',str(report.get('native_binary_sha256'))) is None:
         raise ValueError('Invalid sustained native identity')
     checks=report.get('checks')
-    if type(checks) is not list or len(checks)!=25:
+    if type(checks) is not list or len(checks)!=49:
         raise ValueError('Incomplete sustained native execution')
     logs=[]
     for check in checks:
@@ -136,8 +144,8 @@ def summarize_growth(report):
     cases=validate_growth(report)
     lines=['### Sustained storage workload','','256-byte values, leading keys, four writes per publication; 20 measured samples in opposite backend orders.',
         'Microseconds per operation batch: median [min–max]. Preparation and complete-map validation are outside timing.','',
-        '| Entries | Publications | Operation | Memory | Journal | Managed | Journal / memory | Managed / memory |',
-        '| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |']
+        '| Entries | Publications | Updates | Operation | Memory | Journal | Managed | Journal / memory | Managed / memory |',
+        '| ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |']
     for case in cases:
         cells=[]
         for engine in ENGINES:
@@ -146,10 +154,10 @@ def summarize_growth(report):
         for engine in ENGINES[1:]:
             ratio=case['ratios'][engine]
             cells.append('—' if ratio is None else f'{ratio["pooled"]:.2f}×'+(' ‡' if ratio['unstable'] else ''))
-        lines.append(f'| {case["items"]} | {case["publications"]} | {LABELS[PHASES.index(case["phase"])]} | '+' | '.join(cells)+' |')
+        lines.append(f'| {case["items"]} | {case["publications"]} | {case["pattern"]} | {LABELS[PHASES.index(case["phase"])]} | '+' | '.join(cells)+' |')
     lines+=['','Selected physical records and files (not total directory usage or reader memory):','',
-        '| Entries | Publications | Backend | Stored / nine-root / current records | Selected bytes before / current-only |',
-        '| ---: | ---: | --- | ---: | ---: |']
+        '| Entries | Publications | Updates | Backend | Stored / nine-root / current records | Selected bytes before / current-only |',
+        '| ---: | ---: | --- | --- | ---: | ---: |']
     for case in cases:
         if case['phase']!='publication':
             continue
@@ -158,8 +166,9 @@ def summarize_growth(report):
             counts=' / '.join('—' if m[k]==-1 else str(m[k]) for k in METRICS[:3])
             before='—' if engine=='memory' else str(m['snapshot_bytes']+m['journal_bytes'])
             after='—' if engine!='managed' else str(m['compacted_snapshot_bytes']+m['compacted_journal_bytes'])
-            lines.append(f'| {case["items"]} | {case["publications"]} | {engine} | {counts} | {before} / {after} |')
+            lines.append(f'| {case["items"]} | {case["publications"]} | {case["pattern"]} | {engine} | {counts} | {before} / {after} |')
     lines+=['','† Absolute timing noise and ‡ paired-ratio order sensitivity use the same thresholds as the short workload.',
+        'Sweep advances across keys; hot revisits 256 keys with distinct complete revision payloads.',
         'Disk publication synchronizes each revision; memory publication is not durable. Reopen uses the live OS cache.',
         'Nine-root reclamation retains the seed plus the final eight revisions, then current-only reclamation runs separately.']
     return '\n'.join(lines)+'\n'
