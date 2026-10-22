@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_SERIALIZATION_REFUSALS",
+  "files": {
+    "serialization-refusals.txt": "129390d0faca8e4aacef5853cedcf5e21ed01676e64631c1cdc2b30a8a7159bc"
+  },
+  "target": "serialization-refusals.txt"
+}

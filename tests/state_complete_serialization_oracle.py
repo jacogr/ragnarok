@@ -56,6 +56,24 @@ def encoded():
     return ''.join(checkpoint(entries(values, [service])).hex()+'\n'
                    for values, service in map(source, range(ROWS))).encode()
 
+def refusal_cases():
+    """Recommit omitted/trailing chapters so typed failure is isolated from root integrity."""
+    values = chapters()
+    baseline = entries(values, [])
+    yield 'V', 0, checkpoint(baseline)
+    for chapter in range(1, 17):
+        yield 'M', chapter, checkpoint(baseline[:chapter-1]+baseline[chapter:])
+        altered = list(baseline)
+        key, value = altered[chapter-1]
+        altered[chapter-1] = (key, value+b'\0')
+        yield 'T', chapter, checkpoint(altered)
+
+def refusals_encoded():
+    """Explicit verdict/chapter labels describe typed semantics outside the checkpoint wire format."""
+    return ''.join(f'{mode} {chapter} {wire.hex()}\n'
+                   for mode, chapter, wire in refusal_cases()).encode()
+
 if __name__ == '__main__':
     # Explicit regeneration changes only the authored fixture; descriptors are reviewed separately.
     (Path(__file__).parent/'fixtures/complete-serialization.txt').write_bytes(encoded())
+    (Path(__file__).parent/'fixtures/serialization-refusals.txt').write_bytes(refusals_encoded())
