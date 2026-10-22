@@ -136,8 +136,8 @@ proc readAll(fd: cint, limit: ByteLimit): ManagedIoResult[seq[byte]] =
     return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   if uint64(metadata.st_size) > maximum:
     return ManagedIoResult[seq[byte]](status: FileError.LimitExceeded)
-  # Metadata only refuses a known excess; the actual read loop still detects post-check growth.
-  var bytes: seq[byte] = @[]
+  # A bounded regular extent seeds capacity only; reads still decide post-stat growth, shrink and EOF.
+  var bytes = newSeqOfCap[byte](int(metadata.st_size))
   var buffer = default(array[4096, byte])
   while true:
     let requested = int(min(maximum-uint64(bytes.len), 4095'u64))+1
