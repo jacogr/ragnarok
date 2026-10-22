@@ -1,0 +1,384 @@
+{
+  "source": "tests/native/accumulation_selected_phase_results.nim",
+  "build_name": "accumulation-selected-phase-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "phase": "account",
+        "reason": "default"
+      },
+      "arguments": [
+        "account",
+        "default"
+      ],
+      "name": "reusable-phase-account-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable account phase extraction: default"
+    },
+    {
+      "identity": {
+        "phase": "account",
+        "reason": "refused"
+      },
+      "arguments": [
+        "account",
+        "refused"
+      ],
+      "name": "reusable-phase-account-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable account phase extraction: refused"
+    },
+    {
+      "identity": {
+        "phase": "account",
+        "reason": "selection"
+      },
+      "arguments": [
+        "account",
+        "selection"
+      ],
+      "name": "reusable-phase-account-selection",
+      "diagnostic": "outcome.status == SelectionFailure",
+      "description": "Reusable account phase extraction: selection"
+    },
+    {
+      "identity": {
+        "phase": "account",
+        "reason": "creation"
+      },
+      "arguments": [
+        "account",
+        "creation"
+      ],
+      "name": "reusable-phase-account-creation",
+      "diagnostic": "outcome.status == CreationFailure",
+      "description": "Reusable account phase extraction: creation"
+    },
+    {
+      "identity": {
+        "phase": "account",
+        "reason": "write"
+      },
+      "arguments": [
+        "account",
+        "write"
+      ],
+      "name": "reusable-phase-account-write",
+      "diagnostic": "outcome.status == WriteFailure",
+      "description": "Reusable account phase extraction: write"
+    },
+    {
+      "identity": {
+        "phase": "account",
+        "reason": "store"
+      },
+      "arguments": [
+        "account",
+        "store"
+      ],
+      "name": "reusable-phase-account-store",
+      "diagnostic": "outcome.status == StoreFailure",
+      "description": "Reusable account phase extraction: store"
+    },
+    {
+      "identity": {
+        "phase": "account",
+        "reason": "info"
+      },
+      "arguments": [
+        "account",
+        "info"
+      ],
+      "name": "reusable-phase-account-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable account phase extraction: info"
+    },
+    {
+      "identity": {
+        "phase": "account",
+        "reason": "coverage"
+      },
+      "arguments": [
+        "account",
+        "coverage"
+      ],
+      "name": "reusable-phase-account-coverage",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable account phase extraction: coverage"
+    },
+    {
+      "identity": {
+        "phase": "account",
+        "reason": "selection-owner"
+      },
+      "arguments": [
+        "account",
+        "selection-owner"
+      ],
+      "name": "reusable-phase-account-selection-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable account phase extraction: selection-owner"
+    },
+    {
+      "identity": {
+        "phase": "account",
+        "reason": "creation-owner"
+      },
+      "arguments": [
+        "account",
+        "creation-owner"
+      ],
+      "name": "reusable-phase-account-creation-owner",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable account phase extraction: creation-owner"
+    },
+    {
+      "identity": {
+        "phase": "account",
+        "reason": "writes"
+      },
+      "arguments": [
+        "account",
+        "writes"
+      ],
+      "name": "reusable-phase-account-writes",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable account phase extraction: writes"
+    },
+    {
+      "identity": {
+        "phase": "account",
+        "reason": "snapshot"
+      },
+      "arguments": [
+        "account",
+        "snapshot"
+      ],
+      "name": "reusable-phase-account-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable account phase extraction: snapshot"
+    },
+    {
+      "identity": {
+        "phase": "provision",
+        "reason": "default"
+      },
+      "arguments": [
+        "provision",
+        "default"
+      ],
+      "name": "reusable-phase-provision-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable provision phase extraction: default"
+    },
+    {
+      "identity": {
+        "phase": "provision",
+        "reason": "refused"
+      },
+      "arguments": [
+        "provision",
+        "refused"
+      ],
+      "name": "reusable-phase-provision-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable provision phase extraction: refused"
+    },
+    {
+      "identity": {
+        "phase": "provision",
+        "reason": "provision"
+      },
+      "arguments": [
+        "provision",
+        "provision"
+      ],
+      "name": "reusable-phase-provision-provision",
+      "diagnostic": "outcome.status == ProvisionFailure",
+      "description": "Reusable provision phase extraction: provision"
+    },
+    {
+      "identity": {
+        "phase": "provision",
+        "reason": "store"
+      },
+      "arguments": [
+        "provision",
+        "store"
+      ],
+      "name": "reusable-phase-provision-store",
+      "diagnostic": "outcome.status == StoreFailure",
+      "description": "Reusable provision phase extraction: store"
+    },
+    {
+      "identity": {
+        "phase": "provision",
+        "reason": "accounts"
+      },
+      "arguments": [
+        "provision",
+        "accounts"
+      ],
+      "name": "reusable-phase-provision-accounts",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable provision phase extraction: accounts"
+    },
+    {
+      "identity": {
+        "phase": "provision",
+        "reason": "plan"
+      },
+      "arguments": [
+        "provision",
+        "plan"
+      ],
+      "name": "reusable-phase-provision-plan",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable provision phase extraction: plan"
+    },
+    {
+      "identity": {
+        "phase": "provision",
+        "reason": "snapshot"
+      },
+      "arguments": [
+        "provision",
+        "snapshot"
+      ],
+      "name": "reusable-phase-provision-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable provision phase extraction: snapshot"
+    },
+    {
+      "identity": {
+        "phase": "global",
+        "reason": "default"
+      },
+      "arguments": [
+        "global",
+        "default"
+      ],
+      "name": "reusable-phase-global-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable global phase extraction: default"
+    },
+    {
+      "identity": {
+        "phase": "global",
+        "reason": "refused"
+      },
+      "arguments": [
+        "global",
+        "refused"
+      ],
+      "name": "reusable-phase-global-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable global phase extraction: refused"
+    },
+    {
+      "identity": {
+        "phase": "global",
+        "reason": "role"
+      },
+      "arguments": [
+        "global",
+        "role"
+      ],
+      "name": "reusable-phase-global-role",
+      "diagnostic": "outcome.status == RoleFailure",
+      "description": "Reusable global phase extraction: role"
+    },
+    {
+      "identity": {
+        "phase": "global",
+        "reason": "queue"
+      },
+      "arguments": [
+        "global",
+        "queue"
+      ],
+      "name": "reusable-phase-global-queue",
+      "diagnostic": "outcome.status == QueueFailure",
+      "description": "Reusable global phase extraction: queue"
+    },
+    {
+      "identity": {
+        "phase": "global",
+        "reason": "staging"
+      },
+      "arguments": [
+        "global",
+        "staging"
+      ],
+      "name": "reusable-phase-global-staging",
+      "diagnostic": "outcome.status == StagingFailure",
+      "description": "Reusable global phase extraction: staging"
+    },
+    {
+      "identity": {
+        "phase": "global",
+        "reason": "store"
+      },
+      "arguments": [
+        "global",
+        "store"
+      ],
+      "name": "reusable-phase-global-store",
+      "diagnostic": "outcome.status == StoreFailure",
+      "description": "Reusable global phase extraction: store"
+    },
+    {
+      "identity": {
+        "phase": "global",
+        "reason": "info"
+      },
+      "arguments": [
+        "global",
+        "info"
+      ],
+      "name": "reusable-phase-global-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable global phase extraction: info"
+    },
+    {
+      "identity": {
+        "phase": "global",
+        "reason": "provisions"
+      },
+      "arguments": [
+        "global",
+        "provisions"
+      ],
+      "name": "reusable-phase-global-provisions",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable global phase extraction: provisions"
+    },
+    {
+      "identity": {
+        "phase": "global",
+        "reason": "roles"
+      },
+      "arguments": [
+        "global",
+        "roles"
+      ],
+      "name": "reusable-phase-global-roles",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable global phase extraction: roles"
+    },
+    {
+      "identity": {
+        "phase": "global",
+        "reason": "snapshot"
+      },
+      "arguments": [
+        "global",
+        "snapshot"
+      ],
+      "name": "reusable-phase-global-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Reusable global phase extraction: snapshot"
+    }
+  ]
+}

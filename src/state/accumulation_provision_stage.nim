@@ -1,21 +1,18 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Fulfill original terminal provisions after complete selected accounts, including requests belonging to new accounts.
-## Annulment never filters original provide contributions; all work and Merkle changes remain on a private complete fork.
-import ./[accumulation_account_stage, accumulation_block_guests, accumulation_coverage,
-  accumulation_annulment, accumulation_outcome, accumulation_effects, accumulation_provisions, store]
+## Preserve authenticated initial-round provision ownership around the reusable explicit-input phase.
+## Pure phase success cannot construct this bound owner or replace its admitted source chain.
+import ./[accumulation_provision_phase, accumulation_account_stage, accumulation_provisions, store]
 
 type
-  AccumulationProvisionStageError* {.pure.} = enum ## Refusals expose no partial union, account map or proposed root.
-    Uninitialized, None, InvalidSource, LimitExceeded, ProvisionFailure, StoreFailure
-  ProvisionStageData = ref object # Retained immutable owners form an acyclic account/guest/provider graph.
-    accounts: PreparedAccumulationAccountStage
-    plan: PreparedAccumulationProvisions
-    snapshot: StateStoreSnapshot
-  PreparedAccumulationProvisionStage* = object ## Only full original union and private fulfillment constructs this successor phase.
+  AccumulationProvisionStageError* = AccumulationProvisionPhaseError ## Preserve the existing public policy/reason shape while sharing the phase implementation.
+  ProvisionStageData = ref object # Immutable acyclic wrapper retains genuine admission separately from its pure projection.
+    source: PreparedAccumulationAccountStage
+    phase: PreparedAccumulationProvisionPhase
+  PreparedAccumulationProvisionStage* = object ## Only the bound adapter constructs this authenticated phase owner.
     data: nil ProvisionStageData
-  AccumulationProvisionStageResult*[T] = object ## Private reason-only failures never grant success extraction.
+  AccumulationProvisionStageResult*[T] = object ## Private wrapper alternatives prevent pure/default payloads from fabricating authenticated success.
     case status: AccumulationProvisionStageError
     of None:
       completed: T
@@ -24,88 +21,93 @@ type
     of StoreFailure:
       storeReason: StateStoreError
     else:
-      discard # Default/source/extent refusals retain no incomplete provider array.
+      discard # Default/preflight refusals carry no complete authenticated owner.
 
 func error*[T](outcome: AccumulationProvisionStageResult[T]): AccumulationProvisionStageError =
-  ## Inspect the selected alternative without granting retagging.
+  ## Read the selected reason without allowing retagging.
   outcome.status
 func value*[T](outcome: AccumulationProvisionStageResult[T]): T {.inline,
     requires: outcome.status == AccumulationProvisionStageError.None.} =
-  ## Extract complete phase ownership only after selected success.
+  ## Extract only a fully bound successful owner or observation.
   outcome.completed
 func provisionFailure*[T](outcome: AccumulationProvisionStageResult[
-    T]): AccumulationProvisionError {.inline,
-
-requires: outcome.status == AccumulationProvisionStageError.ProvisionFailure.} =
-  ## Inspect only the actual union/fulfillment refusal.
+    T]): AccumulationProvisionError {.inline, requires: outcome.status ==
+    AccumulationProvisionStageError.ProvisionFailure.} =
+  ## Inspect only the genuine selected provisionReason refusal.
   outcome.provisionReason
 func storeFailure*[T](outcome: AccumulationProvisionStageResult[T]): StateStoreError {.inline,
     requires: outcome.status == AccumulationProvisionStageError.StoreFailure.} =
-  ## Inspect only the actual private-fork refusal.
+  ## Inspect only the genuine selected storeReason refusal.
   outcome.storeReason
+
 proc prepareAccumulationProvisionStage*(accounts: PreparedAccumulationAccountStage,
     limits: AccumulationProvisionUnionLimits): AccumulationProvisionStageResult[
-        PreparedAccumulationProvisionStage] =
-  ## Union every genuine original selected terminal context, including canceled producers, then fulfill against selected M/n state.
-  template fail(reason: AccumulationProvisionStageError) =
-    return AccumulationProvisionStageResult[PreparedAccumulationProvisionStage](status: reason)
-  let guests = accounts.accountStageGuests
-  if guests.error != AccumulationAccountStageError.None:
-    fail(AccumulationProvisionStageError.InvalidSource) # A default or caller-authored account projection grants no source authority.
-  let coverage = guests.value.guestCoverage.value
-  let original = coverage.coverageAnnulment.value
-  let count = original.annulmentInfo.value.outcomes
-  if uint64(count) > uint64(limits.contexts) or count > high(int) div sizeof(AccumulationEffectContext):
-    fail(AccumulationProvisionStageError.LimitExceeded) # Bound provider traversal and handle capture before allocation.
-  var contexts = newSeq[AccumulationEffectContext](count)
-  for ordinal in 0..<count:
-    contexts[ordinal] = original.annulmentOriginalOutcomeAt(AccumulationAnnulmentIndex(uint64(
-        ordinal))).value.outcomeContext.value # N clears selected effects but retains these original provisions.
-  let prepared = prepareAccumulationProvisions(contexts, limits)
-  if prepared.error != AccumulationProvisionError.None:
+    PreparedAccumulationProvisionStage] =
+  ## Preserve genuine source authority before delegating selected-state semantics exactly once.
+  let projection = accounts.accountStagePhase
+  if projection.error != AccumulationAccountStageError.None:
     return AccumulationProvisionStageResult[PreparedAccumulationProvisionStage](
-      status: AccumulationProvisionStageError.ProvisionFailure, provisionReason: prepared.error)
-  let forked = forkStateStore(accounts.accountStageSnapshot.value)
-  if forked.error != StateStoreError.None:
-    return AccumulationProvisionStageResult[PreparedAccumulationProvisionStage](
-      status: AccumulationProvisionStageError.StoreFailure, storeReason: forked.error)
-  var working = forked.value
-  let fulfilled = integrateAccumulationProvisions(working, prepared.value,
-      coverage.coverageInfo.value.slot)
-  if fulfilled.error != AccumulationProvisionError.None:
-    return AccumulationProvisionStageResult[PreparedAccumulationProvisionStage](
-      status: AccumulationProvisionStageError.ProvisionFailure, provisionReason: fulfilled.error)
-  AccumulationProvisionStageResult[PreparedAccumulationProvisionStage](
-    status: AccumulationProvisionStageError.None,
-    completed: PreparedAccumulationProvisionStage(data: ProvisionStageData(accounts: accounts,
-      plan: prepared.value, snapshot: fulfilled.value)))
-
-proc provisionStageAccounts*(stage: PreparedAccumulationProvisionStage): AccumulationProvisionStageResult[
-    PreparedAccumulationAccountStage] =
-  ## Retain the exact accounts of this completely fulfilled private phase; defaults expose no successor.
-  let data = stage.data
-  if data == nil:
-    return AccumulationProvisionStageResult[PreparedAccumulationAccountStage](
-        status: AccumulationProvisionStageError.Uninitialized)
-  AccumulationProvisionStageResult[PreparedAccumulationAccountStage](
-      status: AccumulationProvisionStageError.None, completed: data.accounts)
+        status: AccumulationProvisionStageError.InvalidSource) # A pure/default account owner cannot bypass the authenticated wrapper.
+  let projected = prepareAccumulationProvisionPhase(projection.value, limits)
+  case projected.error
+  of AccumulationProvisionPhaseError.None:
+    AccumulationProvisionStageResult[PreparedAccumulationProvisionStage](
+        status: AccumulationProvisionStageError.None, completed: PreparedAccumulationProvisionStage(
+        data: ProvisionStageData(source: accounts, phase: projected.value)))
+  of AccumulationProvisionPhaseError.ProvisionFailure:
+    AccumulationProvisionStageResult[PreparedAccumulationProvisionStage](
+        status: AccumulationProvisionStageError.ProvisionFailure,
+        provisionReason: projected.provisionFailure) # Preserve the actual failed phase reason.
+  of AccumulationProvisionPhaseError.StoreFailure:
+    AccumulationProvisionStageResult[PreparedAccumulationProvisionStage](
+        status: AccumulationProvisionStageError.StoreFailure,
+        storeReason: projected.storeFailure) # Preserve the actual failed phase reason.
+  of AccumulationProvisionPhaseError.Uninitialized:
+    AccumulationProvisionStageResult[PreparedAccumulationProvisionStage](
+        status: AccumulationProvisionStageError.Uninitialized) # Reason-only failure never grants a partial phase.
+  of AccumulationProvisionPhaseError.InvalidSource:
+    AccumulationProvisionStageResult[PreparedAccumulationProvisionStage](
+        status: AccumulationProvisionStageError.InvalidSource) # Reason-only failure never grants a partial phase.
+  of AccumulationProvisionPhaseError.LimitExceeded:
+    AccumulationProvisionStageResult[PreparedAccumulationProvisionStage](
+        status: AccumulationProvisionStageError.LimitExceeded) # Reason-only failure never grants a partial phase.
 
 proc provisionStagePlan*(stage: PreparedAccumulationProvisionStage): AccumulationProvisionStageResult[
     PreparedAccumulationProvisions] =
-  ## Retain the exact plan of this completely fulfilled private phase; defaults expose no successor.
+  ## Retain the complete provisionStagePlan projection only from genuine initialized bound ownership.
   let data = stage.data
   if data == nil:
     return AccumulationProvisionStageResult[PreparedAccumulationProvisions](
         status: AccumulationProvisionStageError.Uninitialized)
   AccumulationProvisionStageResult[PreparedAccumulationProvisions](
-      status: AccumulationProvisionStageError.None, completed: data.plan)
+      status: AccumulationProvisionStageError.None, completed: data.phase.provisionPhasePlan.value)
 
 proc provisionStageSnapshot*(stage: PreparedAccumulationProvisionStage): AccumulationProvisionStageResult[
     StateStoreSnapshot] =
-  ## Retain the exact snapshot of this completely fulfilled private phase; defaults expose no successor.
+  ## Retain the complete provisionStageSnapshot projection only from genuine initialized bound ownership.
   let data = stage.data
   if data == nil:
     return AccumulationProvisionStageResult[StateStoreSnapshot](
         status: AccumulationProvisionStageError.Uninitialized)
   AccumulationProvisionStageResult[StateStoreSnapshot](status: AccumulationProvisionStageError.None,
-      completed: data.snapshot)
+      completed: data.phase.provisionPhaseSnapshot.value)
+
+proc provisionStagePhase*(stage: PreparedAccumulationProvisionStage): AccumulationProvisionStageResult[
+    PreparedAccumulationProvisionPhase] =
+  ## Retain the complete provisionStagePhase projection only from genuine initialized bound ownership.
+  let data = stage.data
+  if data == nil:
+    return AccumulationProvisionStageResult[PreparedAccumulationProvisionPhase](
+        status: AccumulationProvisionStageError.Uninitialized)
+  AccumulationProvisionStageResult[PreparedAccumulationProvisionPhase](
+      status: AccumulationProvisionStageError.None, completed: data.phase)
+
+proc provisionStageAccounts*(stage: PreparedAccumulationProvisionStage): AccumulationProvisionStageResult[
+    PreparedAccumulationAccountStage] =
+  ## Retain the complete provisionStageAccounts projection only from genuine initialized bound ownership.
+  let data = stage.data
+  if data == nil:
+    return AccumulationProvisionStageResult[PreparedAccumulationAccountStage](
+        status: AccumulationProvisionStageError.Uninitialized)
+  AccumulationProvisionStageResult[PreparedAccumulationAccountStage](
+      status: AccumulationProvisionStageError.None, completed: data.source)
