@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 import build_info
 
+GRAY_PAPER = dict(version='0.8.0', commit='a' * 40, release_status='unreleased', base_release='v0.8.0')
+
 
 # Temporary roots isolate packaging metadata and never change the developer's repository.
 class BuildInfoTests(unittest.TestCase):
@@ -22,6 +24,7 @@ class BuildInfoTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root/'spec').mkdir()
+            (root/'spec/pins.json').write_text(json.dumps(dict(graypaper=GRAY_PAPER)))
             (root/'src').mkdir()
             (root/'src/version.json').write_text('{"version":"development"}')
             pins = {'version': '0.6.3', 'commit': '5b51edfedb4d0dbd9028d9e57ac61d69dffe9410'}
@@ -33,11 +36,24 @@ class BuildInfoTests(unittest.TestCase):
                 output = root/'build/build_info.nim'
                 initial = output.stat().st_mtime_ns
                 self.assertEqual(values['CompilerRevision'], pins['commit'])
+                # VERSION alone cannot distinguish an unreleased pin from its unchanged base release.
+                self.assertEqual(values['GrayPaperVersion'], GRAY_PAPER['version'])
+                self.assertEqual(values['GrayPaperRevision'], GRAY_PAPER['commit'])
+                self.assertEqual(values['GrayPaperReleaseStatus'], 'unreleased')
+                self.assertEqual(values['GrayPaperBaseRelease'], 'v0.8.0')
                 self.assertEqual(values['BuildTimestamp'], '1970-01-01T00:00:00Z')
                 self.assertEqual(values['AppVersion'], environment['RAGNAROK_VERSION'])
                 self.assertIn('\\x22\\x5c', output.read_text())
                 build_info.build(root, environment)
                 self.assertEqual(initial, output.stat().st_mtime_ns)
+                # Changing only the specification revision invalidates the generated build manifest.
+                changed_pin = dict(GRAY_PAPER, commit='b' * 40)
+                (root/'spec/pins.json').write_text(json.dumps(dict(graypaper=changed_pin)))
+                previous = output.read_bytes()
+                changed = build_info.build(root, environment)
+                self.assertEqual(changed['GrayPaperRevision'], changed_pin['commit'])
+                self.assertEqual(changed['GrayPaperVersion'], values['GrayPaperVersion'])
+                self.assertNotEqual(previous, output.read_bytes())
                 environment['RAGNAROK_VERSION'] = '1.2.3'
                 build_info.build(root, environment)
                 self.assertNotIn('\\x22\\x5c', output.read_text())
@@ -47,6 +63,7 @@ class BuildInfoTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root/'spec').mkdir()
+            (root/'spec/pins.json').write_text(json.dumps(dict(graypaper=GRAY_PAPER)))
             (root/'src').mkdir()
             (root/'src/version.json').write_text('{"version":"development"}')
             (root/'spec/toolchain.json').write_text('{"version":"0.6.3","commit":"abc"}')
@@ -64,6 +81,7 @@ class BuildInfoTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root/'spec').mkdir()
+            (root/'spec/pins.json').write_text(json.dumps(dict(graypaper=GRAY_PAPER)))
             (root/'src').mkdir()
             (root/'spec/toolchain.json').write_text('{"version":"0.6.3","commit":"abc"}')
             version = root/'src/version.json'

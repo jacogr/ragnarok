@@ -1003,3 +1003,34 @@ and the existing response budget. No selected values or snapshot owners enter th
 Completion checks: native RPC tests cover absent views, exact root/count/descriptor binding,
 immutable earlier readers, rolling eviction, and in-window versus separated finality.
 The Services WebSocket test checks actual adopted canonical state and retained count.
+
+
+## Exact specification identity and remaining field gaps
+
+`ragnarok_clientInfo` derives `grayPaperVersion`, `grayPaperRevision`,
+`grayPaperReleaseStatus` and `grayPaperBaseRelease` from the build's recorded
+`spec/pins.json` Gray Paper entry. The approved unreleased revision
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` still declares version `0.8.0`;
+version alone no longer identifies the implemented specification profile. These
+immutable build fields perform no request-time Git/file/network access and do not
+assert full serialization or whole-block STF parity. No dependency pin is changed.
+
+Completion checks: generator tests cover exact pin extraction, unchanged reproducible
+output and cache invalidation when only the Gray Paper revision changes. The RPC suite
+checks all four fields against the embedded constants; process checks compare the
+wire fields against the recorded specification pin.
+
+The field audit now exposes configured genesis identity, selected posterior roots and
+index counts, rolling/finalized retention, and exact specification provenance. Existing
+`parameters()` population, erasure geometry and ticket-attempt derivations already read
+validated retained state. Their documented unavailable zeros still need that state;
+configuration or connected-peer counts cannot substitute for it.
+
+JIP-2 `syncState.num_peers` requires active UP 0 announcement streams, and sync completion
+requires an actual synchronization target/progress source. The bounded CE 128 download
+command does not establish these. Complete `workPackageStatus` needs fork-relative
+reporting/availability provenance and expiry evidence, beyond a retained report alone.
+Submission methods and segment retrieval still need their respective routing and DA
+sources. The separate service-proof stack does not yet assign public RPC methods or
+network envelopes; those APIs are not a dependency of these field fixes.
+M1 framing completion remains distinct from complete JAM state serialization.
