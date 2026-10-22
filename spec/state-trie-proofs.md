@@ -87,3 +87,7 @@ and singleton controls protect oracle behavior. No reference code enters product
 Pinned-map replay verifies every original key/value in all fourteen full published
 mappings against its original independent root, plus authored missing keys. This is
 proof/root compatibility evidence, not execution of the published STF blocks.
+
+Independent snapshot forks now prove present-empty, replacement and deletion under
+their separate roots. Retained witnesses survive source handle retirement; foreign
+revision roots refuse, and detached byte mutation cannot affect proofs or snapshots.

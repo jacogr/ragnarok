@@ -26,5 +26,28 @@ proc main() =
   short.items = ElementLimit(0)
   assert generateStateProof(original, key, short, limits).error == StateProofError.LimitExceeded
   assert sameStateSnapshot(original, original)
+  var first = forkStateStore(original).value
+  var second = forkStateStore(original).value
+  assert first.apply([StateWrite(key: key, kind: StateWriteKind.Put, value: @[byte 9])]).error ==
+      StateStoreError.None
+  assert second.apply([StateWrite(key: key, kind: StateWriteKind.Delete)]).error ==
+      StateStoreError.None
+  let changed = first.snapshot.value
+  let deleted = second.snapshot.value
+  let changedProof = generateStateProof(changed, key, mapLimits, limits).value
+  let deletedProof = generateStateProof(deleted, key, mapLimits, limits).value
+  assert verifyStateProof(proof, original.commitment.root, key, limits).value.present
+  assert verifyStateProof(changedProof, changed.commitment.root, key, limits).value.bytes == @[byte 9]
+  assert not verifyStateProof(deletedProof, deleted.commitment.root, key, limits).value.present
+  assert verifyStateProof(changedProof, original.commitment.root, key, limits).error ==
+      StateProofError.RootMismatch
+  assert verifyStateProof(deletedProof, changed.commitment.root, key, limits).error ==
+      StateProofError.RootMismatch
+  var detached = verifyStateProof(changedProof, changed.commitment.root, key, limits).value.bytes
+  detached[0] = 2
+  assert changed.lookup(key).value.bytes == @[byte 9]
+  first = default(StateStore)
+  second = default(StateStore)
+  assert verifyStateProof(changedProof, changed.commitment.root, key, limits).value.bytes == @[byte 9]
   echo "state-snapshot-proof: ok"
 main()
