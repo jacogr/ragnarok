@@ -34,7 +34,8 @@ def fixture():
     """Create complete reverse-order report evidence with independent exact median expectations."""
     passes=[{f'{e}-{n}-{s}-{p}':parse_growth(output(e,n,s,p),e,n,s,p) for e in order for n,s,p in CASES}
         for order in (ENGINES,tuple(reversed(ENGINES)))]
-    return dict(status='checks-passed',schema_version=9,native_binary_sha256='a'*64,passes=passes,
+    from test_storage_growth_io import fixture as io_fixture
+    return dict(io=io_fixture(),status='checks-passed',schema_version=10,native_binary_sha256='a'*64,passes=passes,
         cases=aggregate_growth(passes),checks=[dict(exit_code=0,elapsed_seconds=0.01,log=f'{i}.log') for i in range(49)])
 
 
@@ -173,6 +174,12 @@ class StorageGrowthReportTests(unittest.TestCase):
             if case['phase']=='snapshots':
                 self.assertTrue(all(case['engines'][engine] is not None for engine in ENGINES))
         self.assertIn('4096 retained snapshots',summarize_growth(report))
+
+    def test_missing_or_failed_sdk_control_refuses_speed_success(self):
+        for bad in (None,dict(status='failed')):
+            report=fixture();report['io']=bad
+            with self.assertRaises(ValueError):
+                summarize_growth(report)
 
     def test_physical_work_stays_identical(self):
         report=fixture();report['passes'][1]['managed-1024-64-sweep'][0]['stored_nodes']+=1

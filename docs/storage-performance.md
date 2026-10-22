@@ -137,3 +137,16 @@ The sustained panel times acquisition of 4,096 immutable public snapshots for ev
 result array is allocated before timing. Exact source-owner matches are checked after acquisition,
 and every handle resolves an independently checked leaf after reclamation, strict reopen and
 native owner close. This measures retained resident ownership, not disk access or reader memory.
+
+## Independent SDK-call attribution
+
+A separate checked test-observer executable runs one validated trajectory per sustained case. It
+emits counts for eight SDK call sites and discards instrumented timings. The ordinary timing
+executable links no observer. The same Perf Storage summary includes publication call counts;
+`growth/io/calls.csv`, JSON and logs retain every operation boundary and observed object/source
+identity. Parent provenance binds the exact observer C source, header and redirect header.
+
+Resident reads, extraction and snapshot acquisition must have zero observed SDK calls. Strict
+reopen must read, acquire a lease and confirm synchronization without data/namespace mutation. Managed reclamation must witness
+synchronization, CURRENT replacement and predecessor retirement. Any failure refuses the entire
+comparison. These are SDK call attempts, not device IO, bytes transferred or power-loss evidence.

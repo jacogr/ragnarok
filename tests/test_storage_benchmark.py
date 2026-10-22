@@ -68,6 +68,16 @@ def native_stub(folder):
         log=folder/(name+'.log')
         log.write_text(output(engine,int(count),topology,int(value_bytes),int(batch_width)))
         return dict(exit_code=0,log=str(log),elapsed_seconds=0.001)
+    import hashlib
+    from storage_growth_io import SOURCE_FIELDS
+    growth=growth_fixture()
+    child=folder/'growth';observed=child/'io';observed.mkdir(parents=True,exist_ok=True)
+    for path,owner,field,value in ((child/'growth-native',growth,'native_binary_sha256',b'fixture sustained executable'),
+            (observed/'growth-io-native',growth['io'],'native_binary_sha256',b'fixture observed executable'),
+            (observed/'storage-io-observer.o',growth['io'],'observer_object_sha256',b'fixture SDK object')):
+        path.write_bytes(value);owner[field]=hashlib.sha256(value).hexdigest()
+    for field,name in SOURCE_FIELDS.items():
+        growth['io'][field]=hashlib.sha256((ROOT/name).read_bytes()).hexdigest()
     with patch.object(storage_benchmark,'BUILD',folder),patch.object(
             storage_benchmark,'installed',return_value=(folder/'compiler',{})),patch.object(
             storage_benchmark,'crypto_sources',return_value={}),patch.object(
@@ -76,7 +86,7 @@ def native_stub(folder):
             storage_benchmark.NativeChecks,'build',return_value=(
                 dict(exit_code=0,log='native-build.log',elapsed_seconds=0.001),folder/'binary')),patch.object(
             storage_benchmark,'command',side_effect=command),patch.object(
-            storage_benchmark,'run_growth',return_value=growth_fixture()):
+            storage_benchmark,'run_growth',return_value=growth):
         yield storage_benchmark
 
 
@@ -126,6 +136,11 @@ class StorageBenchmarkTests(unittest.TestCase):
             self.assertEqual(json.loads((folder/'results.json').read_text())['status'],'failed')
             self.assertFalse((folder/'samples.csv').exists())
             self.assertIn('Status: failed',(folder/'summary.md').read_text())
+
+    def test_sdk_source_identity_must_match_parent_manifest(self):
+        report=report_fixture();report['growth']['io']['observer_header_sha256']='f'*64
+        with self.assertRaisesRegex(ValueError,'SDK observer_header'):
+            summarize_benchmark(report)
 
     def test_missing_duplicate_or_wrong_sample(self):
         raw=output('memory',1024)

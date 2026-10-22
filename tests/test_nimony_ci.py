@@ -239,7 +239,9 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(section.count('run: make bench-storage\n'), 1)
         self.assertIn('summary-storage-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', section)
         self.assertIn('if: always()', section)
-        for name in ('results.json', 'samples.csv', 'summary.md'):
+        for name in ('results.json', 'samples.csv', 'summary.md', 'growth/results.json',
+                     'growth/samples.csv', 'growth/publications.csv', 'growth/io/*.log',
+                     'growth/io/results.json', 'growth/io/calls.csv'):
             self.assertIn('build/tests/storage-benchmark/'+name, section)
         self.assertNotIn('continue-on-error', section)
         self.assertNotIn('needs:', section)

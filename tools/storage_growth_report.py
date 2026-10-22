@@ -160,10 +160,12 @@ def aggregate_growth(passes):
 
 def validate_growth(report):
     """Native completion, source-bound binary identity and raw-derived statistics all remain mandatory."""
-    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=9:
+    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=10:
         raise ValueError('Invalid sustained report status/schema')
     if re.fullmatch('[0-9a-f]{64}',str(report.get('native_binary_sha256'))) is None:
         raise ValueError('Invalid sustained native identity')
+    from storage_growth_io import validate_io
+    validate_io(report.get('io'))
     checks=report.get('checks')
     if type(checks) is not list or len(checks)!=49:
         raise ValueError('Incomplete sustained native execution')
@@ -263,4 +265,6 @@ def summarize_growth(report):
         'Sweep advances across keys; hot revisits 256 keys with distinct complete revision payloads.',
         'Disk publication synchronizes each revision; memory publication is not durable. Reopen uses the live OS cache.',
         'Nine-root reclamation retains the seed plus the final eight revisions, then current-only reclamation runs separately.']
+    from storage_growth_io import summarize_io
+    lines+=['',summarize_io(report['io']).rstrip()]
     return '\n'.join(lines)+'\n'

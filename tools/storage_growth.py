@@ -12,10 +12,12 @@ from native_checks import NativeChecks
 from pvm_reference import command
 from storage_growth_report import ENGINES,CASES,PHASES,METRICS,parse_growth,aggregate_growth,validate_growth
 
+from storage_growth_io import run_io, SOURCES as IO_SOURCES
+
 ROOT=Path(__file__).resolve().parents[1]
 SOURCES=('tests/performance/storage_growth_workload.nim','tests/support/storage_growth_samples.nim',
          'tools/storage_growth.py','tools/storage_growth_report.py',
-         'tests/support/storage_growth_io.nim','tests/support/storage_io.nim')
+         'tests/support/storage_growth_io.nim','tests/support/storage_io.nim',*IO_SOURCES)
 
 
 def growth_csv(report):
@@ -49,9 +51,9 @@ def publication_csv(report):
 def run_growth(compiler,library,folder,publish):
     """Build once, run matching reversed-order cases, and publish success after complete raw artifacts."""
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
-    for name in ('results.json','samples.csv','publications.csv'):
+    for name in ('results.json','samples.csv','publications.csv','io/results.json','io/calls.csv'):
         (folder/name).unlink(missing_ok=True)
-    report=dict(status='running',schema_version=9,checks=[],passes=[],cases=[])
+    report=dict(status='running',schema_version=10,checks=[],passes=[],cases=[])
     def save():
         # Parent source/profile/toolchain provenance covers this panel and all SOURCES explicitly.
         publish(folder/'results.json',json.dumps(report,indent=2)+'\n')
@@ -74,6 +76,7 @@ def run_growth(compiler,library,folder,publish):
                         raise RuntimeError('Sustained storage workload failed: '+evidence['log'])
                     observations[f'{engine}-{count}-{steps}-{pattern}']=parse_growth(Path(evidence['log']).read_text(),engine,count,steps,pattern)
             report['passes'].append(observations);save()
+        report['io']=run_io(compiler,library,folder/'io',publish)
         report['cases']=aggregate_growth(report['passes']);report['status']='checks-passed'
         publish(folder/'samples.csv',growth_csv(report))
         publish(folder/'publications.csv',publication_csv(report))
