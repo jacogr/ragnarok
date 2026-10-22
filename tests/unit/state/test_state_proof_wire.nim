@@ -24,5 +24,29 @@ proc main() =
       StateProofError.Uninitialized
   let empty = captureStateProof([], [], limits).value
   assert encodeStateProof(empty, limits, ByteLimit(10)).value.len == 10
+  let encoded = encodeStateProof(proof, limits, ByteLimit(75)).value
+  let root = StateRoot(array[32, byte](hashStateNode(leaf).value))
+  let decoded = decodeStateProof(encoded, limits, ByteLimit(75)).value
+  assert verifyStateProof(decoded, root, key, limits).value.bytes == @[byte 9]
+  for size in 0..<encoded.len:
+    # Every truncated prefix refuses without a partial owner or index access.
+    var prefix = newSeq[byte](size)
+    for i in 0..<size: prefix[i] = encoded[i]
+    assert decodeStateProof(prefix, limits, ByteLimit(100)).error == StateProofError.Truncated
+  var bad = encoded
+  bad.add(0)
+  assert decodeStateProof(bad, limits, ByteLimit(100)).error == StateProofError.NonCanonical
+  bad = encoded
+  bad[3] = byte('2')
+  assert decodeStateProof(bad, limits, ByteLimit(100)).error == StateProofError.NonCanonical
+  bad = encoded
+  bad[4] = 250
+  assert decodeStateProof(bad, limits, ByteLimit(100)).error == StateProofError.LimitExceeded
+  bad = encoded
+  bad[73] = 1
+  assert decodeStateProof(bad, limits, ByteLimit(100)).error == StateProofError.InvalidProof
+  assert decodeStateProof(encoded, limits, ByteLimit(74)).error == StateProofError.LimitExceeded
+  assert decodeStateProof(encodeStateProof(empty, limits, ByteLimit(10)).value,
+    limits, ByteLimit(10)).value.valid
   echo "state-proof-wire: ok"
 main()

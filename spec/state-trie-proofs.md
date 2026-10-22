@@ -66,3 +66,7 @@ canonical nodes and supplied bytes, with no suffix or padding. Root and query ar
 intentionally absent: transport data cannot supply its own trust authority. Encoding
 checks native and E4 extents plus outer byte ceilings before allocation. This format
 is project-local and claims no JAMNP-S proof interoperability.
+
+Decoding validates magic, count/value extents, exact total length and canonical path
+structure before publishing a copied witness. Every truncated prefix, suffix, unknown
+version, over-limit count and malformed terminal padding refuses. Decode grants no trust.
