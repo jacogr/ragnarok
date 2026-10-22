@@ -53,7 +53,7 @@ let batch = respond("[" & call & "," & cancelCall & "]", enabled, batched)
 assert "\"result\":1" in batch and "\"result\":true" in batch
 assert not batched.takeStateProofRequest.valid
 # A reply-budget refusal rolls back the selector/ID reservation with the rest of the candidate session.
-var tokens: seq[Value] = @[]
+var tokens: seq[JsonToken] = @[]
 assert parseValues(call, tokens)
 var budgetSession = default(RpcSession)
 assert "output budget" in dispatch(tokens, 0, enabled, budgetSession, true, 1)
