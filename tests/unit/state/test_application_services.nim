@@ -179,6 +179,11 @@ proc rpc(context: SeedFixture) {.raises.} =
   # Publication advances best state while the fixed configured genesis identity remains unchanged.
   sendText(peer, """{"jsonrpc":"2.0","method":"ragnarok_clientInfo","id":3}""")
   let diagnostic = readPacket(owner.rpc, peer, pending)
+  assert "\"chainState\":{\"best\":{\"header_hash\":" & quote(base64.encode(array[32, byte](
+      applied.value.blockHash))) in diagnostic
+  assert "\"stateKeys\":" & $owner.chainView.bestBlock.value.keyCount in diagnostic
+  assert "\"knownServices\":" & $owner.chainView.bestBlock.value.serviceCount in diagnostic
+  assert "\"retainedBlocks\":2" in diagnostic
   let seed = configuredGenesis(context.text, configuredParameters(context.text).value)
   assert "\"genesisHash\":" & quote(base64.encode(array[32, byte](seed.value.blockHash))) in diagnostic
   assert "\"genesisStateRoot\":" & quote(base64.encode(array[32, byte](before.commitment.root))) in diagnostic

@@ -980,3 +980,26 @@ Completion checks: the RPC native suite covers exact identity encoding, unavaila
 inputs and a later one-head restart view retaining the original configured identity.
 Real-process RPC checks cover configured and unconfigured Services startup. Sync status,
 work-package lifecycle, submission and DA retrieval still require their own evidence.
+
+
+## Selected-state and retained-history diagnostics
+
+`ragnarok_clientInfo.chainState` exposes the immutable view selected for this request.
+It is null without a selected head, independently of configured `chain` identity. Its
+`best` and optional `finalized` objects include the exact `header_hash`, `slot`, posterior
+`stateRoot`, serialized `stateKeys` count and `knownServices` count. Known services count
+only structurally valid discovered account records; this is not an account-validity proof.
+Absent finality remains null. Roots use the same canonical padded Base64 encoding as
+`stateRoot(hash)`, and counts use capture-time indexes without per-request state decoding.
+
+`history` includes `retainedBlocks`, `maxRetainedBlocks`, `oldestBlock` (a Block Descriptor)
+and `finalizedOutsideHistory`. Retention counts refer to the rolling local window only.
+The Boolean identifies a separately retained finalized anchor older than that window;
+it does not establish availability of intervening evicted blocks or an archive.
+These diagnostics do not claim synchronization, network height, consensus verification
+or complete JAM state serialization. They preserve one-view-per-request/batch behavior
+and the existing response budget. No selected values or snapshot owners enter the session.
+
+Completion checks: native RPC tests cover absent views, exact root/count/descriptor binding,
+immutable earlier readers, rolling eviction, and in-window versus separated finality.
+The Services WebSocket test checks actual adopted canonical state and retained count.
