@@ -21,3 +21,40 @@ cancellation and shutdown tests; it does not establish unbounded correctness or 
 
 Upstream: <https://github.com/Araq/tlanif>, revision
 `59e1e5c99b2e1ba3ba5502010f6a9293cc501e08` (MIT; retained in extracted source).
+
+## Preparation worker lease
+
+`tests/models/application_preparation_worker.nif` models the actual capacity-one
+`src/app/preparation_worker.nim` lifecycle with six variables and one accepted job. The single
+host serializes submit/cancel/collect/close; one worker executes outside the lock. Tickets are
+assumed valid here: native foreign/stale ticket tests remain separate. Start/restart, generation
+exhaustion, payload correctness, scheduling fairness and eventual completion are outside this model.
+
+The atomic action mapping is:
+
+| Model action | Implementation region |
+| --- | --- |
+| Submit | `submit`: lock, Idle/admission checks, borrow, Queued, signal, unlock |
+| Dispatch | `run`: wait predicate/stop check, Running, cancellation snapshot, unlock |
+| Execute | `execute` activation, including retirement of all temporary ARC aliases |
+| Publish | `run`: reacquire lock, publish Done |
+| Cancel | `cancel`: matching ticket, mark only, unlock |
+| Collect | `collect`: matching Done only, transfer/drop outcome, clear borrows, Idle |
+| RequestClose | `close`: set stopping and broadcast under the lock |
+| Exit | `run`: observe stopping at the wait/dispatch boundary and return |
+| JoinedClose | `close`: join returned, clear owners and slot, deinitialize synchronization |
+
+The invariant requires the exclusive graph lease throughout execution/activation retirement and
+for every occupied slot until joined shutdown. Cancellation preserves capacity and the lease;
+collection cannot release either before Done; shutdown cannot release either before joining.
+Spurious wakeups stutter because the predicate is rechecked under the same lock. An executing
+worker can retire and publish after a close request, then observes stop and exits before join.
+
+`make check-models` discovers each model's adjacent case declaration, checks safety, kills all
+three deliberate guard-removal mutants and produces a witness reaching cancelled, still-running
+work with shutdown requested. Each case must agree exactly between sequential and four-worker
+exploration after memo/progress diagnostics are removed. Parser errors, timeout and state caps
+fail the gate. Logs, replayable variants, source/checker hashes and fresh results are retained in
+`build/tests/models/`. `make check-modules` includes this gate, retaining the existing independent
+CI groups. Native `application_preparation_worker` tests cover actual reuse, foreign/stale tickets,
+cancellation and joined shutdown; the model is complementary evidence, not a native test substitute.

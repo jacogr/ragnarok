@@ -102,9 +102,13 @@ toolchain: host-tools
 	$(PYTHON) tools/setup_nimony.py --ensure 2>&1 | tee build/ci/setup.log
 
 # Verification-only tools use separate pins and never replace the application compiler.
-.PHONY: model-tools
+.PHONY: model-tools check-models
 model-tools: toolchain
 	$(PYTHON) tools/setup_tlanif.py 2>&1 | tee build/ci/model-tools.log
+
+# The source/module verification group also checks bounded lifecycle abstractions in CI.
+check-models: model-tools
+	$(PYTHON) tools/test_models.py 2>&1 | tee build/ci/models.log
 
 # Remove all generated artifacts, including the local compiler and downloaded archives.
 clean:
@@ -116,7 +120,7 @@ test: check
 
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.
 modules: check-modules
-check-modules: check-inventory toolchain ui-assets build-info
+check-modules: check-inventory check-models toolchain ui-assets build-info
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" 2>&1 | tee build/ci/modules.log
 runtime: check-unit
 check-unit: setup format-check
@@ -242,6 +246,7 @@ help:
 	  'make bench-pvm      Measure validated PVM workloads against PolkaVM backends' \
 	  'make check-pvm-reference  Run pinned PolkaVM probes and matching native suites' \
 	  'make model-tools   Build the pinned verification-only tlanif' \
+	  'make check-models  Check bounded models, mutants and reachability' \
 	  'make check-python  Run Python reference/tooling/provenance tests' \
 	  'make check-unit    Run native suites and independent corpora' \
 	  'make check-failures Run runtime contract/crash probes and positive controls' \
