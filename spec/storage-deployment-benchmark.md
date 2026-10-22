@@ -1,0 +1,17 @@
+# Bounded larger storage workloads
+
+This dependent measurement work preserves merged base `18764f6252e6599ab6b1ddd1c6eb729c6c11a307`,
+pinned Nimony `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410` and Gray Paper
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. No production policy, physical layout, defaults,
+state/API, checkpoint authority or documented M1 scope changes are planned.
+
+Synthetic fixtures use 32,768/65,536/131,072 entries with independently distinguishable 256-byte
+values and four-byte ordered key identities. Full index/revision fields prevent payload deduplication
+or truncated-key aliases from understating larger-map work. Publications are bounded to 16/64
+four-key sweeps. An explicit 1,024-entry native control exercises fixture semantics cheaply.
+
+Benchmark-only ceilings independently cap items, graph nodes, physical records, aggregate values
+and encoded bytes. They do not widen application defaults. Complete-map equality, exact local
+head/generation, strict disk reopen and immutable-reader ownership remain prerequisites for accepting
+any resource observation. These bounded synthetic sizes alone do not establish production-scale
+throughput, out-of-core behavior, cold caches or hardware power-loss durability.
