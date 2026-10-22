@@ -1,0 +1,117 @@
+{
+  "source": "tests/native/accumulation_global_roles_results.nim",
+  "build_name": "accumulation-global-roles-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "global-roles-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Global role default extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "global-roles-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Global role refused extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "global-roles-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Global role info extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "global-roles-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Global role source extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "privileges"
+      },
+      "arguments": [
+        "privileges"
+      ],
+      "name": "global-roles-privileges",
+      "diagnostic": "outcome.status == None",
+      "description": "Global role privileges extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "entry"
+      },
+      "arguments": [
+        "entry"
+      ],
+      "name": "global-roles-entry",
+      "diagnostic": "outcome.status == None",
+      "description": "Global role entry extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "manager"
+      },
+      "arguments": [
+        "manager"
+      ],
+      "name": "global-roles-manager",
+      "diagnostic": "outcome.status == None",
+      "description": "Global role manager extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "delegator"
+      },
+      "arguments": [
+        "delegator"
+      ],
+      "name": "global-roles-delegator",
+      "diagnostic": "outcome.status == None",
+      "description": "Global role delegator extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "registrar"
+      },
+      "arguments": [
+        "registrar"
+      ],
+      "name": "global-roles-registrar",
+      "diagnostic": "outcome.status == None",
+      "description": "Global role registrar extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "assigner"
+      },
+      "arguments": [
+        "assigner"
+      ],
+      "name": "global-roles-assigner",
+      "diagnostic": "outcome.status == None",
+      "description": "Global role assigner extraction guard"
+    }
+  ]
+}
