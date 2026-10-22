@@ -231,3 +231,52 @@ filesystem power-loss qualification remain future work, as does complete protoco
 During this tranche PVM stack775 merged as13e94fd; the storage measurement stack was natively
 restacked onto that tree. Final qualification records actual current source/build coverage rather
 than promoting earlier dirty-source or pre-merge results into fresh combined-head/Linux CI claims.
+
+## Final merged-source qualification
+
+Local macOS ARM64 qualification froze clean source `862cddb2869f46a7a478e1b7b37c636977800c39` on merged PVM trunk
+`13e94fd88d81c35fd99a52ce57676160a78c9c9f`. The final layer records evidence only; it does not change the qualified runtime,
+fixtures, tooling, dependencies or build profiles. Production version metadata remains that of the
+actual qualified build. Exact-head Linux Actions success is not claimed and no CI label was added.
+
+Passed 112 storage Python tests, 35 CI safeguards and
+17 selected native suites, including all new allocator/lifetime/deployment controls,
+repository/image/managed regression, managed disk restore/recovery and indexed writer-crash checks.
+All six resource panels passed their 80 complete
+observations, with strict raw admission, command/source/interpreter provenance and opposite-order
+physical controls. Four ordinary 13-sample native trajectories verified the unobserved speed path;
+the separate SDK observer passed its 32 checks and
+30 trajectories. The unchanged full speed matrix was not repeated locally.
+
+Production build, actual help/version/selftest, source formatting, inventory, workflow YAML syntax,
+resource summaries, all three resource self-comparisons, diagnostics and whitespace passed.
+Native foreign-root and malformed-width tokens refused with unchanged selected bytes; a subsequent
+correct strict reopen passed. These are fixture identity/restart controls, not checkpoint-import
+or hardware power-loss authority.
+
+At 32,768 entries, the isolated owner occupied 19732880 Nim allocator bytes and
+ordinary close returned to its 192-byte baseline. Retaining 4,096 snapshots
+added 36864 allocator bytes while sharing the graph; views and selection plans intentionally
+kept source data alive after close. Independently copied entries/records preserved their payloads
+without keeping the whole source graph alive, and all scopes returned to baseline on final release.
+
+For the 131,072-entry 64-publication trajectory in the first backend order:
+
+| Backend | Owner Nim bytes after fixture retirement | Whole-process peak RSS bytes |
+| --- | ---: | ---: |
+| memory | 78144320 | 296042496 |
+| journal | 78144320 | 516358144 |
+| managed | 78144352 | 638779392 |
+
+These process peaks include preparation, validation and retained views; their differences are not
+isolated component costs. Per-file advice remained a requested hint, and fresh native consumers
+excluded producer construction while preserving the kernel/page cache. No physical-layout or
+production runtime optimization was selected. Controlled paging and filesystem/device/hardware
+power-loss work remain separately scoped; no new M1 completion claim is introduced.
+
+Exact commands, exits, source/build identities, raw observations and final diagnostics remain in
+`build/storage-db3-final-qualification.json`, `build/storage-db3-final-logs/`,
+`build/storage-db3-final-sdk/`, `build/storage-db3-final-reopen-refusals/` and the six
+`build/tests/storage-*` panel directories. Earlier schema reports/logs/binaries remain under
+`build/evidence-storage-db3-pre-guards/`; previous storage evidence and parked artifacts remain intact.
+Native stack publication preserves all branches and is capped at 30 ready PRs in stack #920.
