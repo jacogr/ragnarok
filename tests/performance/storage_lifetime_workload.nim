@@ -8,7 +8,7 @@ import ../support/storage_lifetime_samples
 proc main() =
   ## Accept a fixed bounded plan; no argument can widen production storage policy.
   assert paramCount() == 2
-  assert paramStr(1) in ["fixture", "owner", "reader"]
+  assert paramStr(1) in ["fixture", "owner", "reader", "readers"]
   assert paramStr(2) in ["1024", "8192", "32768"]
   let count = if paramStr(2) == "1024": 1024 elif paramStr(2) == "8192": 8192 else: 32768
   let scenario = paramStr(1)
@@ -22,6 +22,9 @@ proc main() =
   elif scenario == "reader":
     # This branch owns only the named resource lifetime.
     observed = memoryReaderLifetime(count)
+  elif scenario == "readers":
+    # This branch owns only the named resource lifetime.
+    observed = memoryReadersLifetime(count)
   echo "lifetime\t", scenario, "\t", count, "\t64\t", observed.checks, "\t", observed.baseline,
     "\t", observed.fixture, "\t", observed.owner, "\t", observed.held, "\t", observed.closed,
     "\t", observed.released
