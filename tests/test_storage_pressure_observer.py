@@ -40,7 +40,11 @@ class PressureObserverTests(unittest.TestCase):
         """A stalled child remains a distinct observation and cannot leave the caller's timer armed."""
         self.run_observer_case(True)
 
-    def run_observer_case(self, timeout):
+    def test_native_exit_can_win_deadline_signal_race(self):
+        """A completed child is not relabeled a killed timeout when SIGALRM arrives just after exit."""
+        self.run_observer_case(True, exit_early=True)
+
+    def run_observer_case(self, timeout, exit_early=False):
         """Drive real receipt parsing around a fake wait4 child, with timer ownership checked explicitly."""
         member = '0::/system.slice/'+UNIT+'\n'
         mounts = '29 23 0:26 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n'
@@ -55,7 +59,7 @@ class PressureObserverTests(unittest.TestCase):
             events.append('wait')
             if timeout:
                 handlers[0](14, None)
-            return (17, 9 if timeout else 0, usage)
+            return (17, 9 if timeout and not exit_early else 0, usage)
         def reading(group):
             events.append('read')
             return snapshot()
@@ -74,7 +78,7 @@ class PressureObserverTests(unittest.TestCase):
                 row = child.observe(Path('/sys/fs/cgroup/system.slice')/UNIT, ['/tmp/native'], log, mounts)
             self.assertEqual(events, ['read', 'wait', 'read'])
             self.assertEqual(row['resources']['peak_rss_bytes'], 4096)
-            self.assertEqual(row['outcome'], 'observer-timeout' if timeout else 'completed')
+            self.assertEqual(row['outcome'], 'observer-timeout' if timeout and not exit_early else 'completed')
             self.assertEqual([call.args[0] for call in alarm.call_args_list], [35, 0])
             self.assertEqual(handlers[-1], 0)
             self.assertEqual(kill.call_count, int(timeout))

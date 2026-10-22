@@ -66,6 +66,9 @@ def observe(group, arguments, log, mounts):
             process.returncode = os.waitstatus_to_exitcode(status)
     after_raw = read_raw(group)
     evidence = derive(before, parse(after_raw))
+    actual_outcome = outcome(process.returncode, evidence)
+    deadline_fired = timed_out
+    timed_out = timed_out and process.returncode == -9 and actual_outcome != 'local-cgroup-oom-kill'
     identity_raw = membership_log.read_text()
     child_identity = json.loads(identity_raw)
     membership = child_identity['membership_raw']
@@ -73,8 +76,8 @@ def observe(group, arguments, log, mounts):
             resolve(membership, mounts) != str(group)):
         raise ValueError('Invalid native child OOM/cgroup identity receipt')
     return dict(arguments=arguments, before_raw=before_raw, after_raw=after_raw,
-                evidence=evidence, timed_out=timed_out,
-                outcome='observer-timeout' if timed_out else outcome(process.returncode, evidence),
+                evidence=evidence, timed_out=timed_out, deadline_fired=deadline_fired,
+                outcome='observer-timeout' if timed_out else actual_outcome,
                 exit_code=process.returncode, child_membership_raw=membership,
                 child_pid=process.pid, child_identity_raw=identity_raw,
                 elapsed_seconds=time.monotonic()-started,
