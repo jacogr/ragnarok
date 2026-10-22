@@ -34,3 +34,14 @@ exact posterior identity, exact/short work, count/map/wire policies and defaults
 M1 framing/request namespace adoption is complete; full serialization/STF parity
 remains open. Local model checking is unavailable: tlanif is not on provisioned
 PATH; deterministic native lifecycle tests will retain explicit scope limits.
+
+## Detached execution response
+
+`executeProofQuery` is synchronous bounded worker work, never a dispatcher callback.
+It generates from the retained complete selection, verifies exact planned facts
+under its posterior root and encodes existing RPV1. Only detached wire plus fixed
+block/root identities survive in `ProofResponse`; canonical aliases retire first.
+Consumers must supply independent trust and copy policy. Nested generation/proof
+and semantic/encoding failures remain typed and expose no prefix.
+`application_proof_query_execution` independently receives the response, checks
+identity, exact/short output policies, detached copies and generation refusal.
