@@ -4,8 +4,9 @@
 ## Real post-stat truncation must return only observed bytes from a preallocated native read buffer.
 import std/[assertions, syncio]
 import std/posix/posix
-import ../../support/storage_io
-import ../../../src/storage/[managed_io, managed_manifest, file_errors]
+import ../../support/[storage_io, storage_samples]
+import ../../../src/storage/[managed_io, managed_manifest, file_errors, file_repository,
+  full_state_trie, node_repository, node_records, database_identity]
 import ../../../src/codec/bounded
 
 proc scenario(mode, extent: int) {.raises.} =
@@ -63,10 +64,51 @@ proc scenario(mode, extent: int) {.raises.} =
   var lock = path & "/LOCK"
   assert posix.unlink(lock.toCString()) == 0 and posix.rmdir(path.toCString()) == 0
 
+proc journalScenario(mode: int) {.raises.} =
+  ## Strict journal admission sees the real shrunken prefix, without padding or implicit tail repair.
+  resetIo()
+  var path = "storage-journal-shrink-" & $mode & "-" & $int(storageProcessId())
+  let limits = JournalLimits(repository: storageLimits(), bytes: ByteLimit(65536))
+  var repository = default(FileRepository)
+  assert initializeFileRepository(repository, path, default(StorageChainId), limits) == FileError.None
+  let trie = storageTrie(7)
+  discard repository.publish(repository.snapshot.value,
+    exportFullTrie(trie, limits.repository.codec.records).value).value
+  assert repository.close == FileError.None
+  let original = readFile(path)
+  assert original.len < 65536 and original.len > StorageIdentityBytes
+  let extent = case mode
+    of 0: 0
+    of 1: StorageIdentityBytes-1
+    of 2: StorageIdentityBytes
+    else: original.len-1
+  let readonly = posix.open(path.toCString(), O_RDONLY)
+  assert readonly >= 0 and shrinkOnRead(readonly, extent) == -1
+  assert posix.close(readonly) == 0 and shrinkPending() == 0
+  let owned = posix.open(path.toCString(), O_RDWR)
+  assert owned >= 0 and shrinkOnRead(owned, extent) == 0
+  limitReads(7)
+  let opened = openFileRepository(repository, path, default(StorageChainId), limits)
+  assert shrinkPending() == 0
+  if mode == 2:
+    # A complete identity followed by actual EOF is exactly the empty generation, not a padded frame.
+    assert opened == FileError.None and uint64(repository.snapshot.value.generation) == 0
+    assert repository.snapshot.value.commitment.entries == 0
+    assert repository.close == FileError.None
+  else:
+    # Partial identity and partial frame remain strict refusals, with no selected owner adopted.
+    assert opened == (if mode < 2: FileError.WrongIdentity else: FileError.InvalidJournal)
+    assert not repository.opened
+  resetIo()
+  assert readFile(path) == original[0..<extent]
+  assert posix.close(owned) == 0 and posix.unlink(path.toCString()) == 0
+
 try:
   for mode in 0..3:
     for extent in [0, 1, 4095, 4096]:
       scenario(mode, extent) # Empty and chunk-boundary tails must never expose preallocated zero padding.
+  for mode in 0..3:
+    journalScenario(mode) # Complete and torn physical prefixes exercise the separate append layout.
 except:
   quit(2)
 echo "PASS storage read shrink: real truncation, exact prefixes and interrupted short progress"
