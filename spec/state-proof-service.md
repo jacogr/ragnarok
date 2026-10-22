@@ -133,3 +133,12 @@ A plan grants no root authority and can be sent for another root; the eventual
 code reader rederives identity from that response's account. A stale discovery
 therefore fails on missing actual evidence rather than substituting stale code.
 Suite `state_proof_plan_code` checks exact identities and refusal paths.
+
+## Plan union
+
+`mergeProofPlans` unions sorted immutable requested keys. Exact unique output
+count and native extent are checked before allocation; shared account
+dependencies coalesce. No hashing, root comparison or value conflict resolution
+is involved because plans request facts without granting them.
+Suite `state_proof_plan_union` checks shared dependencies, default inputs,
+exact/short output quotas and preservation of both inputs.
