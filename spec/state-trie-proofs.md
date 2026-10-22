@@ -56,3 +56,7 @@ unchanged. Snapshot-root trust still belongs to the caller; no storage API chang
 Batch verification preserves query order and duplicates under one explicit trusted root.
 All owners and per-proof/aggregate quotas preflight before hashing; later cryptographic
 refusal publishes no successful prefix. Extraction stays bound to the retained batch.
+
+Generation batches share sorted fixed-key scratch and preflight all paths and aggregate
+ceilings before any hash. Query order/duplicates remain explicit. Each query commits
+the bounded complete topology independently; no multiproof compression or speedup is claimed.

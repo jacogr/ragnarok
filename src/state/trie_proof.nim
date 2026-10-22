@@ -260,19 +260,20 @@ proc buildProof(entries: openArray[StateEntry], keys: seq[ProofKey], first, stop
   if hashed.error != StateLayoutError.None:
     return StateProofResult[StateNodeHash](status: StateProofError.BackendFailure)
   StateProofResult[StateNodeHash](status: StateProofError.None, completed: hashed.value)
-proc generateStateProof*(entries: openArray[StateEntry], query: StateKey,
-    mapLimits: StateTrieLimits, limits: StateProofLimits): StateProofResult[StateProof] =
-  ## Generate from one complete borrowed map; all quotas and duplicate keys refuse before hashing.
+proc prepareProofKeys(entries: openArray[StateEntry], mapLimits: StateTrieLimits): StateProofResult[
+    seq[ProofKey]] =
+  ## Share complete-map preflight without copying values or performing cryptographic work.
+
   if uint64(entries.len) > uint64(mapLimits.items):
-    return StateProofResult[StateProof](status: StateProofError.LimitExceeded)
+    return StateProofResult[seq[ProofKey]](status: StateProofError.LimitExceeded)
   if entries.len > high(int) div sizeof(ProofKey):
-    return StateProofResult[StateProof](status: StateProofError.LengthOverflow)
+    return StateProofResult[seq[ProofKey]](status: StateProofError.LengthOverflow)
   var total = 0'u64
   for entry in entries:
     # Aggregate subtraction is safe because each preceding successful addition stayed within policy.
     let size = uint64(entry.value.len)
     if size > uint64(mapLimits.perValue) or size > uint64(mapLimits.totalValueBytes)-total:
-      return StateProofResult[StateProof](status: StateProofError.LimitExceeded)
+      return StateProofResult[seq[ProofKey]](status: StateProofError.LimitExceeded)
     total += size
   var keys = newSeq[ProofKey](entries.len)
   for i, entry in entries:
@@ -281,7 +282,15 @@ proc generateStateProof*(entries: openArray[StateEntry], query: StateKey,
   for i in 1..<keys.len:
     # Equal and unequal duplicate values are equally invalid mapping inputs.
     if compare(keys[i-1], keys[i]) == 0:
-      return StateProofResult[StateProof](status: StateProofError.DuplicateKey)
+      return StateProofResult[seq[ProofKey]](status: StateProofError.DuplicateKey)
+  StateProofResult[seq[ProofKey]](status: StateProofError.None, completed: keys)
+proc generateStateProof*(entries: openArray[StateEntry], query: StateKey,
+    mapLimits: StateTrieLimits, limits: StateProofLimits): StateProofResult[StateProof] =
+  ## Generate from one complete borrowed map; quotas and duplicate keys refuse before hashing.
+  let prepared = prepareProofKeys(entries, mapLimits)
+  if prepared.error != StateProofError.None:
+    return StateProofResult[StateProof](status: prepared.error)
+  let keys = prepared.value
   var used = 0'u64
   var pathNodes = 0
   var valueIndex = -1
@@ -361,3 +370,65 @@ proc verifyStateProofs*(queries: openArray[StateProofQuery], expectedRoot: State
     completed[i] = checked.value
   StateProofResult[VerifiedStateProofBatch](status: StateProofError.None,
     completed: VerifiedStateProofBatch(data: VerifiedBatchData(lookups: completed)))
+
+type
+  ProofSetData = ref object ## Immutable ordered unverified witnesses, distinct from a verified batch.
+    queries: seq[StateProofQuery]
+  StateProofSet* = object ## Generated paths preserve repeated keys and independent proof ownership.
+    data: nil ProofSetData
+func valid*(proofs: StateProofSet): bool =
+  ## An explicit empty set differs from a default owner.
+  proofs.data != nil
+func len*(proofs: StateProofSet): int =
+  ## Defaults expose no entries.
+  let data = proofs.data
+  if data == nil: 0 else: data.queries.len
+proc queryAt*(proofs: StateProofSet, index: int): StateProofResult[StateProofQuery] =
+  ## Return one copied query bound to the selected generated set ordinal.
+  let data = proofs.data
+  if data == nil: return proofFailure[StateProofQuery](StateProofError.Uninitialized)
+  if index < 0 or index >= data.queries.len:
+    return proofFailure[StateProofQuery](StateProofError.InvalidIndex)
+  StateProofResult[StateProofQuery](status: StateProofError.None, completed: data.queries[index])
+proc generateStateProofs*(entries: openArray[StateEntry], queries: openArray[StateKey],
+    mapLimits: StateTrieLimits, limits: StateProofLimits,
+    aggregate: StateProofBatchLimits): StateProofResult[StateProofSet] =
+  ## Plan every selected path and aggregate ceiling before committing any map node.
+  if uint64(queries.len) > uint64(aggregate.items):
+    return proofFailure[StateProofSet](StateProofError.LimitExceeded)
+  if queries.len > high(int) div sizeof(StateProofQuery):
+    return proofFailure[StateProofSet](StateProofError.LengthOverflow)
+  let prepared = prepareProofKeys(entries, mapLimits)
+  if prepared.error != StateProofError.None:
+    return proofFailure[StateProofSet](prepared.error)
+  let keys = prepared.value
+  var indices = newSeq[int](queries.len)
+  var nodes = 0'u64
+  var bytes = 0'u64
+  for i, query in queries:
+    # Full topology is bounded for each query; no query can borrow another query's individual ceiling.
+    var used = 0'u64
+    var count = 0
+    var valueIndex = -1
+    let planned = planProof(keys, 0, keys.len, 0, true, query,
+      mapLimits, limits, used, count, valueIndex)
+    if planned != StateProofError.None: return proofFailure[StateProofSet](planned)
+    let size = if valueIndex < 0: 0'u64 else: uint64(entries[valueIndex].value.len)
+    if size > uint64(limits.valueBytes) or uint64(count) > uint64(aggregate.nodes)-nodes or
+        size > uint64(aggregate.valueBytes)-bytes:
+      return proofFailure[StateProofSet](StateProofError.LimitExceeded)
+    nodes += uint64(count)
+    bytes += size
+    indices[i] = valueIndex
+  var completed = newSeq[StateProofQuery](queries.len)
+  for i, query in queries:
+    # Each query commits the bounded map independently; sorted key scratch is reused, not rehashed prefixes.
+    var path: seq[EncodedStateNode] = @[]
+    let built = buildProof(entries, keys, 0, keys.len, 0, true, query, mapLimits.perValue, path)
+    if built.error != StateProofError.None: return proofFailure[StateProofSet](built.error)
+    let captured = if indices[i] < 0: captureStateProof(path, [], limits)
+      else: captureStateProof(path, entries[indices[i]].value, limits)
+    if captured.error != StateProofError.None: return proofFailure[StateProofSet](captured.error)
+    completed[i] = StateProofQuery(key: query, proof: captured.value)
+  StateProofResult[StateProofSet](status: StateProofError.None,
+    completed: StateProofSet(data: ProofSetData(queries: completed)))
