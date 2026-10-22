@@ -196,12 +196,13 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
     limits.snapshotBytes)
   if loadedSnapshot.error != FileError.None: return loadedSnapshot.error
   let bytes = loadedSnapshot.takeValue # One detached buffer owns the complete synchronous decoder input.
-  let restored = decodeRepositorySnapshot(bytes, chain, schema, snapshotLimits(limits))
+  var restored = decodeRepositorySnapshot(bytes, chain, schema, snapshotLimits(limits))
   if restored.error != SnapshotError.None: return snapshotFailure(restored.error)
-  var memory = restored.value.repository
+  var admittedSnapshot = restored.takeValue # The repository and detached context now have one transport owner.
+  var memory = move(admittedSnapshot.repository)
   let base = memory.snapshot.value
   let checksumMatches = array[32, byte](manifest.snapshotChecksum) == array[32, byte](
-      restored.value.checksum)
+      admittedSnapshot.checksum)
   if not checksumMatches or uint64(base.generation) != uint64(manifest.generation) or
       array[32, byte](base.commitment.root) != array[32, byte](manifest.root):
     return FileError.InvalidJournal
@@ -213,7 +214,7 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
   if validateManagedJournalHeader(frames.toOpenArray(0, ManagedJournalHeaderBytes-1),
       manifest.checksum) != ManifestError.None: return FileError.InvalidJournal
   var offset = ManagedJournalHeaderBytes
-  var context = restored.value.context
+  var context = move(admittedSnapshot.context)
   var partial = false
   while offset < frames.len:
     let extent = journalFrameExtent(frames.toOpenArray(offset, frames.high), limits.journalBytes)
