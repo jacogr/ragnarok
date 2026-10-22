@@ -72,3 +72,10 @@ proc checkGrowth*(view: RepositoryView, root: StateRoot, count, publications: in
   for index, entry in entries:
     assert array[31, byte](entry.key) == array[31, byte](growthKey(index))
     assert entry.value == growthValue(index, growthRevision(index, count, publications, hot))
+
+proc checkGrowthHead*(view: RepositoryView, root: StateRoot, count, publications: int,
+    hot = false) =
+  ## Complete historical reachability alone cannot substitute for the selected head and generation.
+  assert array[32, byte](view.commitment.root) == array[32, byte](root)
+  assert uint64(view.generation) == uint64(publications+1)
+  checkGrowth(view, root, count, publications, hot)
