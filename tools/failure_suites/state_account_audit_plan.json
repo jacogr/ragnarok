@@ -1,0 +1,40 @@
+{
+  "build_name": "state-account-audit-plan-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard account audit plan default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-account-audit-plan-default"
+    },
+    {
+      "arguments": [
+        "phase"
+      ],
+      "description": "Guard account audit plan phase",
+      "diagnostic": "outcome.status == LimitExceeded",
+      "identity": {
+        "reason": "phase"
+      },
+      "name": "state-account-audit-plan-phase"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard account audit plan invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-account-audit-plan-invalid"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_account_audit_plan_results.nim"
+}
