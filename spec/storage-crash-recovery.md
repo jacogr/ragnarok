@@ -89,3 +89,11 @@ extents with opaque FullStateV1 context. Old and new context bytes must stay bou
 selected generation/root. Independent repair retains the old prefix context before a complete
 resumed successor; a complete successor rejects rollback. Detached parent context remains valid.
 No storage interpretation of application context or checkpoint-import authority is introduced.
+
+## Managed contextual publication crashes
+
+`storage_managed_context_crash` exercises complete writes, every publication barrier and genuine torn/final
+extents with opaque FullStateV1 context. Old and new context bytes must stay bound to the exact
+selected generation/root. Independent repair retains the old prefix context before a complete
+resumed successor; a complete successor rejects rollback. Detached parent context remains valid.
+No storage interpretation of application context or checkpoint-import authority is introduced.
