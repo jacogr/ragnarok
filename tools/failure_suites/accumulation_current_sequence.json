@@ -1,0 +1,216 @@
+{
+  "source": "tests/native/accumulation_current_sequence_results.nim",
+  "build_name": "accumulation-current-sequence-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-sequence-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence default extraction"
+    },
+    {
+      "identity": {
+        "reason": "refused-sequence"
+      },
+      "arguments": [
+        "refused-sequence"
+      ],
+      "name": "current-sequence-refused-sequence",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: refused-sequence"
+    },
+    {
+      "identity": {
+        "reason": "refused-plan"
+      },
+      "arguments": [
+        "refused-plan"
+      ],
+      "name": "current-sequence-refused-plan",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: refused-plan"
+    },
+    {
+      "identity": {
+        "reason": "operand"
+      },
+      "arguments": [
+        "operand"
+      ],
+      "name": "current-sequence-operand",
+      "diagnostic": "outcome.status == OperandFailure",
+      "description": "Current sequence/plan extraction: operand"
+    },
+    {
+      "identity": {
+        "reason": "input"
+      },
+      "arguments": [
+        "input"
+      ],
+      "name": "current-sequence-input",
+      "diagnostic": "outcome.status == InputFailure",
+      "description": "Current sequence/plan extraction: input"
+    },
+    {
+      "identity": {
+        "reason": "partition"
+      },
+      "arguments": [
+        "partition"
+      ],
+      "name": "current-sequence-partition",
+      "diagnostic": "outcome.status == PartitionFailure",
+      "description": "Current sequence/plan extraction: partition"
+    },
+    {
+      "identity": {
+        "reason": "sequence-info"
+      },
+      "arguments": [
+        "sequence-info"
+      ],
+      "name": "current-sequence-sequence-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: sequence-info"
+    },
+    {
+      "identity": {
+        "reason": "sequence-initial"
+      },
+      "arguments": [
+        "sequence-initial"
+      ],
+      "name": "current-sequence-sequence-initial",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: sequence-initial"
+    },
+    {
+      "identity": {
+        "reason": "sequence-latest"
+      },
+      "arguments": [
+        "sequence-latest"
+      ],
+      "name": "current-sequence-sequence-latest",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: sequence-latest"
+    },
+    {
+      "identity": {
+        "reason": "sequence-pending"
+      },
+      "arguments": [
+        "sequence-pending"
+      ],
+      "name": "current-sequence-sequence-pending",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: sequence-pending"
+    },
+    {
+      "identity": {
+        "reason": "sequence-coverage"
+      },
+      "arguments": [
+        "sequence-coverage"
+      ],
+      "name": "current-sequence-sequence-coverage",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: sequence-coverage"
+    },
+    {
+      "identity": {
+        "reason": "sequence-outputs"
+      },
+      "arguments": [
+        "sequence-outputs"
+      ],
+      "name": "current-sequence-sequence-outputs",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: sequence-outputs"
+    },
+    {
+      "identity": {
+        "reason": "sequence-state"
+      },
+      "arguments": [
+        "sequence-state"
+      ],
+      "name": "current-sequence-sequence-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: sequence-state"
+    },
+    {
+      "identity": {
+        "reason": "plan-info"
+      },
+      "arguments": [
+        "plan-info"
+      ],
+      "name": "current-sequence-plan-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: plan-info"
+    },
+    {
+      "identity": {
+        "reason": "plan-source"
+      },
+      "arguments": [
+        "plan-source"
+      ],
+      "name": "current-sequence-plan-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: plan-source"
+    },
+    {
+      "identity": {
+        "reason": "plan-inputs"
+      },
+      "arguments": [
+        "plan-inputs"
+      ],
+      "name": "current-sequence-plan-inputs",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: plan-inputs"
+    },
+    {
+      "identity": {
+        "reason": "plan-partition"
+      },
+      "arguments": [
+        "plan-partition"
+      ],
+      "name": "current-sequence-plan-partition",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: plan-partition"
+    },
+    {
+      "identity": {
+        "reason": "plan-state"
+      },
+      "arguments": [
+        "plan-state"
+      ],
+      "name": "current-sequence-plan-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: plan-state"
+    },
+    {
+      "identity": {
+        "reason": "plan-report"
+      },
+      "arguments": [
+        "plan-report"
+      ],
+      "name": "current-sequence-plan-report",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence/plan extraction: plan-report"
+    }
+  ]
+}
