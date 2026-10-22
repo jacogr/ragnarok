@@ -1,0 +1,66 @@
+{
+  "build_name": "state-current-globals-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard current globals default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-current-globals-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard current globals invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-current-globals-invalid"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard current globals reason",
+      "diagnostic": "outcome.status == GlobalFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-current-globals-reason"
+    },
+    {
+      "arguments": [
+        "globals"
+      ],
+      "description": "Guard current globals globals",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "globals"
+      },
+      "name": "state-current-globals-globals"
+    },
+    {
+      "arguments": [
+        "profile"
+      ],
+      "description": "Guard current globals profile",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "profile"
+      },
+      "name": "state-current-globals-profile"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_globals_results.nim"
+}
