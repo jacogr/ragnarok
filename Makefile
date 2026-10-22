@@ -107,7 +107,7 @@ model-tools: toolchain
 	$(PYTHON) tools/setup_tlanif.py 2>&1 | tee build/ci/model-tools.log
 
 # Lifecycle model verification owns an independent local/CI gate.
-check-models: model-tools
+check-models: check-inventory model-tools
 	$(PYTHON) tools/test_models.py 2>&1 | tee build/ci/models.log
 
 # Remove all generated artifacts, including the local compiler and downloaded archives.
