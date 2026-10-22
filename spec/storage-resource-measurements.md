@@ -103,3 +103,11 @@ sweep publications in both backend orders. Its JSON retains raw native witnesses
 resource counters; Markdown reports current managed-heap bytes per boundary. Opposite-order
 physical work must match. Differences between boundaries describe the complete live object set,
 not isolated repository sizes, and independent process peak values must not be subtracted.
+
+## Fixture-only retirement control
+
+A separate lifetime workload returns only scalar observations from an isolated prepared-fixture
+scope. It checks all 64 prepared successor roots and final read-address cardinality, then requires
+actual allocator equality after every graph owner retires. Unperformed owner/reader stages carry
+`-1`, not fabricated zero usage. This supplies a fixture control without subtracting unrelated RSS
+peaks or allowing fixture graphs to remain alive in subsequent storage-owner measurements.
