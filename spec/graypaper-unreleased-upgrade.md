@@ -60,8 +60,10 @@ remain outside this interpreted-engine work.
 Self-funded liquid `new`, self `upgrade`, and liquid deferred `transfer` use current
 argument layouts. Supervised upgrade now executes against retained invocation state;
 its parallel batch publication still requires modified-account conflict selection.
-Other foreign supervised mutations, alternative funding modes, direct transfers,
-and supervisor reassignment are explicit `UnsupportedHostCall` gates while
+Supervisor29 now authenticates current effective authority and atomically reassigns
+self/foreign metadata, with self publication and the same foreign batch gate.
+Other foreign supervised mutations, alternative funding modes and direct transfers
+are explicit `UnsupportedHostCall` gates while
 their account mutation/publication proofs are migrated. The previous argument layout
 is never accepted as a production fallback. These gates are incomplete implementation,
 not discrepancies in the normative paper.

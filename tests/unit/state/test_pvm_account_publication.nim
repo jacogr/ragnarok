@@ -194,6 +194,44 @@ block supervised_upgrade_requires_conflict_selection:
   assert array[32, byte](fixture.state.snapshot.value.commitment.root) == priorRoot,
       "failed publication leaves the complete source map unchanged"
 
+# Supervisor self changes use the metadata proof; foreign changes retain the same explicit batch gate.
+block supervisor_publication:
+  for foreign in [false, true]:
+    let target = if foreign: 77'u64 else: high(uint64)
+    let instructions = @[registerImmediate(7, target), registerImmediate(8, 99), @[10'u8, 29], @[
+        50'u8, 0]]
+    let child = serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(supervisor: ServiceIndex(42),
+        supervisorCreated: AccountSlot(0)), ByteLimit(ServiceMetadataBytes)).value
+    var fixture = batchFixture(incoming = false, firstEnvelope = guestEnvelope(instructions, input),
+        secondEnvelope = guestEnvelope(@[@[50'u8, 0]], input), extra = @[child])
+    let prior = fixture.state.snapshot.value
+    let first = batchExecution(fixture, 0)
+    let second = batchExecution(fixture, 1)
+    if foreign:
+      # A real foreign supervisor execution cannot opt itself into the self-record projection.
+      assert prepare(fixture, first, second).error ==
+          AccumulationBatchError.UnsupportedAccountEffects,
+          "foreign supervisor reassignment needs parallel conflict selection"
+      assert array[32, byte](fixture.state.snapshot.value.commitment.root) == array[32, byte](
+          prior.commitment.root),
+          "foreign supervisor publication refusal retains the complete prior root"
+    else:
+      # The existing metadata projection publishes exactly the selected self identity pair.
+      let plan = prepare(fixture, first, second).value
+      discard applyAccumulationBatch(fixture.state, plan).value
+      let published = fixture.state.snapshot.value
+      let own = metadata(published, 42)
+      assert uint32(own.supervisor) == 99 and uint32(own.supervisorCreated) == uint32(metadata(
+          prior, 99).created),
+          "self supervisor identity publishes with the nominee's exact current creation slot"
+      let ownKey = chapterServiceKey(StateChapter(255), ServiceIndex(42))
+      for entry in fixture.entries:
+        if array[31, byte](entry.key) != array[31, byte](ownKey):
+          assert published.lookup(entry.key).value.bytes == entry.value,
+              "self reassignment publishes no unrelated account or namespace changes"
+      assert uint32(metadata(prior, 42).supervisor) == 0,
+          "retained prior metadata does not change on publication"
+
 # Provide/yield versions preserve scope, and a refusal after preparation never publishes the earlier metadata candidate.
 let fixture = batchFixture(firstEnvelope = envelope(7, provide = true), secondEnvelope = envelope(19))
 let first = batchExecution(fixture, 0)

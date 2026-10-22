@@ -734,6 +734,42 @@ proc upgradeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return hostFailure(AccumulationDispatchError.InvalidContext) # Other invariant failures publish no effects.
   hostSuccess[AccumulationDispatchError](response)
 
+# Supervisor reassignment has no memory input; gas, account existence and effective authority determine the result.
+proc supervisorResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
+    HostResult[AccumulationDispatchError] {.raises: [].} =
+  let charged = chargedResponse(cpu, memory, 1000, 0)
+  if charged.kind != HostResultKind.Response:
+    return charged # Preserve shared unsigned gas validation.
+  var response = charged.value
+  if response.action == HostAction.OutOfGas:
+    return charged # No selectors or state work precede affordability.
+  let self = uint64(uint32(context.effects.effectContext(
+      AccumulationDimension.Regular).value.effectInfo.value.service))
+  let target = if uint64(cpu.registers[7]) == high(uint64): self else: uint64(cpu.registers[7])
+  let supervisor = if uint64(cpu.registers[8]) == high(uint64): self else: uint64(cpu.registers[8])
+  if target > uint64(high(uint32)) or supervisor > uint64(high(uint32)):
+    response.registers[7] = RegisterValue(high(uint64)-3)
+    return hostSuccess[AccumulationDispatchError](response) # Full-width IDs never alias their low E4 bits.
+  let changed = recordAccumulationSupervisor(context.effects, ServiceIndex(uint32(target)),
+      ServiceIndex(uint32(supervisor)))
+  case changed.error
+  of AccumulationEffectError.None:
+    context.effects = changed.value # Retain the atomic metadata successor with its exact publication ancestry.
+    response.registers[7] = RegisterValue(0)
+  of AccumulationEffectError.UnknownService:
+    response.registers[7] = RegisterValue(high(uint64)-3) # WHO precedes current authority.
+  of AccumulationEffectError.NotRequested:
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH changes neither account nor checkpoint.
+  of AccumulationEffectError.LimitExceeded:
+    return hostFailure(AccumulationDispatchError.LimitExceeded)
+  of AccumulationEffectError.BackendFailure:
+    return hostFailure(AccumulationDispatchError.BackendFailure)
+  of AccumulationEffectError.MalformedState:
+    return hostFailure(AccumulationDispatchError.MalformedState)
+  else:
+    return hostFailure(AccumulationDispatchError.InvalidContext) # Other invariant failures publish no partial state.
+  hostSuccess[AccumulationDispatchError](response)
+
 # Transfer quotes the conditional fee from pure row validation before charging or publishing any debit.
 proc invalidTransferModeResponse(context: DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
@@ -1120,7 +1156,7 @@ proc dispatch(context: var DispatchContext, stopped: StepOutcome): HostResult[
   of 28:
     provideResponse(context, cpu, memory) # Requested provisions belong only to accumulation.
   of 29:
-    hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Supervisor reassignment has no legacy fallback.
+    supervisorResponse(context, cpu, memory) # Effective authority includes designated creation-slot provenance.
   of 1:
     heapResponse(context, cpu, memory) # Bounded heap query/growth under the explicitly adopted merged fixes.
   else:
