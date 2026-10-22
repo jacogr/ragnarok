@@ -41,3 +41,7 @@ is complete; full state serialization and whole-block JAM/STF parity remain open
 Borrowed source maps and wire buffers must stay stable during synchronous calls.
 The decoder checks remaining aggregate node/value allowances from each inner header
 before copying that witness, while the outer byte/count ceilings bound parser scratch.
+
+Typed account/storage/preimage/history queries and exact semantic response plans
+are described in [proof-backed service reads](state-service-proofs.md). They
+preserve this view's partial-state and independently selected root boundaries.

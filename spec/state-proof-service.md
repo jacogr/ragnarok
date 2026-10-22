@@ -269,3 +269,24 @@ transport/typed-read cycles. Each cycle includes detached-copy mutation, short
 union/encoding quotas, a real backend failure after completed prefix work and
 recovery using the retained original evidence. Fresh source-owned ARC evidence
 is emitted by the maintained native runner.
+
+## Bounded completion and remaining scope
+
+The implemented library slice provides current account/storage/preimage/request/
+historical/code reads, immutable semantic query plans and union, complete-snapshot
+and selected-block generation, exact atomic response verification and existing
+local-envelope transport. Verification covers frozen independent namespaces and
+full roots, actual primitive failure prefixes, complete-store revision retention,
+genuine signed three-child posterior heads, runtime/privacy/nominal guards and
+fresh1,000-cycle ARC success/rollback evidence. See the [operator/API guide](../docs/state-service-proofs.md).
+
+No storage format/API, PVM host, Services lease, public RPC, network protocol,
+light database, startup mode, fork-choice or consensus trust-discovery changes
+are included. Raw generation remains bounded per-path work, not a compressed
+multiproof or production-scale performance claim. Published release vectors
+remain historical and no pin changes are made. M1 framing and current request
+namespace adoption are implemented; full serialization/STF parity remain open.
+
+Next bounded integration is an actual Services/RPC consumer coordinated with its
+owner; mode-specific persistent partial-state storage still requires separate
+storage coordination and authorization.
