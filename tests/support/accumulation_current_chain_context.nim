@@ -36,12 +36,13 @@ proc currentChainParent*(source: PreparedCurrentAccumulationConsensus): StateSto
   ## Cached original-parent preimage admission retains exact identity even for an empty extrinsic.
   source.currentConsensusSource.value.currentAuthorizationSource.value.currentPreimagesSource.value.currentActivityPreimages.value.preimagePrior.value
 proc currentChainFixture*(base: OwnedReport, uses = 0, available = false, blobs = false,
-    disputed = false, ticket = false, rotated = false, writes = 1000'u64): CurrentChainFixture =
+    disputed = false, ticket = false, rotated = false, writes = 1000'u64,
+        completeState = false): CurrentChainFixture =
   ## Every signature, current guest/phase, statistic and private map comes from real production constructors.
   let authored = currentActivityFixture(base, guarantees = uses, available = available,
     blobs = blobs,
     provided = blobs, withDispute = disputed, withTicket = ticket, shiftPending = rotated,
-    slot = (if rotated: 12'u32 else: 2'u32), storeWrites = writes)
+    slot = (if rotated: 12'u32 else: 2'u32), storeWrites = writes, completeState = completeState)
   let activity = prepareCurrentAccumulationActivity(authored.source, AccumulationActivityConfig(
     componentBytes: ByteLimit(1024), preimages: PreimageLimits(items: ElementLimit(3),
       perBlob: ByteLimit(3), totalBlobBytes: ByteLimit(4)), incoming: ElementLimit(2),
