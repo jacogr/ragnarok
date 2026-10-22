@@ -1,0 +1,40 @@
+{
+  "source": "tests/native/application_current_install_results.nim",
+  "build_name": "application-current-install-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "canonical"
+      },
+      "arguments": [
+        "canonical"
+      ],
+      "name": "current-app-install-canonical",
+      "diagnostic": "canInstallPrepared",
+      "description": "Current application/RPC install: canonical"
+    },
+    {
+      "identity": {
+        "reason": "rpc"
+      },
+      "arguments": [
+        "rpc"
+      ],
+      "name": "current-app-install-rpc",
+      "diagnostic": "canInstallPrepared",
+      "description": "Current application/RPC install: rpc"
+    },
+    {
+      "identity": {
+        "reason": "acknowledge"
+      },
+      "arguments": [
+        "acknowledge"
+      ],
+      "name": "current-app-install-acknowledge",
+      "diagnostic": "ready(prepared)",
+      "description": "Current application/RPC install: acknowledge"
+    }
+  ]
+}

@@ -11,7 +11,7 @@ import std/posix/posix
 import ./[wire, protocol]
 import ../chain/[parameters, genesis, provider]
 import ../state/[store, accumulation_chain, accumulation_completion, accumulation_finalization,
-  accumulation_publication]
+  accumulation_publication, accumulation_current_update]
 
 const MaxConnections* = 8
 
@@ -275,6 +275,20 @@ proc installPreparedAccumulation*(server: var Server, state: var StateStore, vie
   installChainUpdate(state, view, prepared)
   server.chain = view
   server.queueBestUpdates(server.chain.bestBlock) # Subscriber refusal/overflow cannot roll back the installed head.
+
+proc canInstallPreparedAccumulation*(server: Server, state: StateStore, view: ChainView,
+    prepared: PreparedCurrentChainUpdate, lease: nil RpcChainLease = nil): bool =
+  ## Current opaque updates require the identical canonical/RPC history and exact optional exclusive lease before durability.
+  server.opened and server.lease == lease and canInstallCurrentChainUpdate(state, view,
+      prepared) and
+    sameChainView(server.chain, view)
+proc installPreparedAccumulation*(server: var Server, state: var StateStore, view: var ChainView,
+    prepared: PreparedCurrentChainUpdate, lease: nil RpcChainLease = nil) {.requires:
+      canInstallPreparedAccumulation(server, state, view, prepared, lease).} =
+  ## Install all current immutable owners before bounded subscriber work; retain any exclusive lease until explicit resume.
+  installCurrentChainUpdate(state, view, prepared)
+  server.chain = view
+  server.queueBestUpdates(server.chain.bestBlock) # Subscriber refusal cannot roll back the already installed current head.
 
 proc publishFinalized*(server: var Server, hash: BlockHash): ViewFinalizeError =
   ## Record caller-certified finality between ticks on the same dispatcher thread, without inferring it.

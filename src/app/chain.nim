@@ -6,7 +6,8 @@
 
 import ../chain/[genesis, provider, parameters]
 import ../state/[store, accumulation_chain, accumulation_finalization, accumulation_completion,
-  accumulation_publication]
+  accumulation_publication, accumulation_current_consensus, accumulation_current_update]
+import ../codec/bounded
 import ../rpc/server as rpc_server
 from ../rpc/protocol import configuredParameters, configuredGenesis
 
@@ -138,6 +139,34 @@ proc installPrepared*(chain: var ApplicationChain, rpc: var rpc_server.Server,
       canInstallPrepared(chain, rpc, prepared, lease).} =
   ## Join canonical and RPC owners before subscriber work; no execution/capture/hash is repeated.
   rpc.installPreparedAccumulation(chain.state, chain.view, prepared, lease)
+
+proc prepareAccumulation*(chain: ApplicationChain, source: PreparedCurrentAccumulationConsensus,
+    headerBytes: ByteLimit): CurrentChainPreparationResult =
+  ## Stage the genuine current composed child privately, preserving the exact canonical parent/view and complete parameter tuple.
+  prepareCurrentChainUpdate(chain.state, chain.view, source, headerBytes)
+proc canInstallPrepared*(chain: ApplicationChain, prepared: PreparedCurrentChainUpdate): bool =
+  ## Current candidates retain exact original state and complete history/finality before durability begins.
+  canInstallCurrentChainUpdate(chain.state, chain.view, prepared)
+proc installPrepared*(chain: var ApplicationChain, prepared: PreparedCurrentChainUpdate) {.requires:
+    canInstallPrepared(chain, prepared).} =
+  ## Assignment-only current installation follows confirmed durability under stable single-threaded ownership.
+  installCurrentChainUpdate(chain.state, chain.view, prepared)
+proc canInstallPrepared*(chain: ApplicationChain, rpc: rpc_server.Server,
+    prepared: PreparedCurrentChainUpdate, lease: nil rpc_server.RpcChainLease = nil): bool =
+  ## Enabled RPC joins only exact current canonical history and the caller's matching optional exclusive lease.
+  rpc.canInstallPreparedAccumulation(chain.state, chain.view, prepared, lease)
+proc installPrepared*(chain: var ApplicationChain, rpc: var rpc_server.Server,
+    prepared: PreparedCurrentChainUpdate, lease: nil rpc_server.RpcChainLease = nil) {.requires:
+      canInstallPrepared(chain, rpc, prepared, lease).} =
+  ## Replace current canonical/RPC handles before subscriber work without execution, capture or hashing.
+  rpc.installPreparedAccumulation(chain.state, chain.view, prepared, lease)
+proc installedPrepared*(chain: ApplicationChain, prepared: PreparedCurrentChainUpdate): ApplicationChainResult[
+    BlockSnapshot] {.requires:
+    prepared.ready and sameStateSnapshot(chain.stateSnapshot.value, prepared.currentUpdateState) and
+    sameChainView(chain.chainView, prepared.currentUpdateView).} =
+  ## Acknowledge only the exact already installed current child; this performs no mutation or capture.
+  ApplicationChainResult[BlockSnapshot](status: ApplicationChainError.None,
+    completed: prepared.currentUpdateChild)
 
 proc durabilityRequired*(): ApplicationChainResult[BlockSnapshot] =
   ## Disk consumers use the asynchronous handoff; synchronous application calls cannot bypass persistence.
