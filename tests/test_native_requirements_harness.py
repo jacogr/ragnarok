@@ -48,6 +48,17 @@ class NativeRequirementsHarness(unittest.TestCase):
             with self.subTest(field=field, value=value), self.assertRaises(ValueError):
                 validate_requirements(records)
 
+    def test_fixed_heap_cap_retains_strict_define_allowlist(self):
+        """Only the explicit one-MiB native test cap is admitted; arbitrary values remain rejected."""
+        records = deepcopy(NATIVE_REQUIREMENTS)
+        records['state_layout']['defines'] = ['nimMaxHeap=1']
+        validate_requirements(records)
+        for value in ('nimMaxHeap=0', 'nimMaxHeap=128', 'nimHardenOutOfMem', 'danger'):
+            # None of these switches belongs to the selected hard-cap regression profile.
+            records['state_layout']['defines'] = [value]
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_requirements(records)
+
     # OS redirection needs both its own object and header and cannot reuse a crypto/Rust observer profile.
     def test_storage_io_observer_requires_provider(self):
         for libraries, includes in [(['crypto'], ['crypto']), (['crypto', 'storage_io'], ['crypto'])]:
