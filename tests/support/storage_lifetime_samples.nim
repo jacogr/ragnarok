@@ -63,3 +63,20 @@ proc memoryOwnerLifetime*(count: int): LifetimeObservation =
   assert result.closed == result.baseline, "owner close baseline=" & $result.baseline & " closed=" &
       $result.closed & " released=" & $result.released
   assert result.released == result.baseline
+
+proc memoryReaderLifetime*(count: int): LifetimeObservation =
+  ## One immutable view keeps the exact complete map alive after its mutable owner closes.
+  result = emptyLifetime()
+  block:
+    var owner = isolatedMemoryOwner(count)
+    result.owner = occupiedStorageBytes()
+    let held = owner.snapshot.value
+    result.held = occupiedStorageBytes()
+    checkGrowthHead(held, held.commitment.root, count, 64)
+    assert owner.close == RepositoryError.None
+    result.closed = occupiedStorageBytes()
+    checkGrowthHead(held, held.commitment.root, count, 64)
+    result.checks = count*2
+    assert result.held >= result.owner and result.closed == result.held
+  result.released = occupiedStorageBytes()
+  assert result.closed > result.baseline and result.released == result.baseline
