@@ -63,13 +63,14 @@ proc source(destination = 99'u64, amount = 5'u64, gas = 9'u64, address = 196608'
         minimumTransferGas: Gas(6)),
     target = 99'u32, targetGas = 7'u64, includeTarget = true, role = 42'u32,
     data: seq[byte] = payload(), extra: seq[StateEntry] = @[], writes = 3'u64,
-    suffix: seq[seq[byte]] = @[@[50'u8, 0]], mode = 0'u64, funder = high(
-        uint64)): PreparedAccumulationMachine =
+    suffix: seq[seq[byte]] = @[@[50'u8, 0]], mode = 0'u64, funder = high(uint64),
+    targetAccount = ServiceMetadata(balance: AccountBalance(77))): PreparedAccumulationMachine =
   var entries = extra
   if includeTarget:
-    entries.add(serviceMetadataEntry(ServiceIndex(target), ServiceMetadata(balance: AccountBalance(77),
-      minimumTransferGas: Gas(targetGas)), ByteLimit(
-          ServiceMetadataBytes)).value) # Destination is a real current account, not a caller-selected lookup substitute.
+    var recipient = targetAccount
+    recipient.minimumTransferGas = Gas(targetGas)
+    entries.add(serviceMetadataEntry(ServiceIndex(target), recipient,
+        ByteLimit(ServiceMetadataBytes)).value) # Optional metadata permits explicit destination-supervision witnesses.
   var instructions = transferCall(destination, amount, gas, address, mode = mode, funder = funder)
   for instruction in suffix:
     instructions.add(instruction) # Later calls execute through the same decoded production stream.
@@ -167,7 +168,9 @@ assert run(source(includeTarget = false, extra = @[malformed])).error ==
 let low = run(source(gas = 6, amount = high(uint64)), capacity = 0)
 assert uint64(machineInfo(low.value.machine).value.registers[7]) == high(uint64)-7, "LOW precedes CASH and capacity"
 assert uint64(machineInfo(low.value.machine).value.gas) == 100000-price(valid)-575, "LOW pays only base"
-assert run(source(address = 0)).error == AccumulationDispatchError.UnsupportedHostCall, "zero memo pointer selects the explicit direct-transfer gate"
+let unsupervisedDirect = run(source(address = 0), limit = 0, capacity = 0)
+assert uint64(machineInfo(unsupervisedDirect.value.machine).value.registers[7]) == high(uint64)-8,
+    "direct credit requires destination authority even when deferred credit is permitted"
 for address in [65536'u64+4096-64, 196608'u64+8192-64, 0x100000000'u64, high(uint64)]:
   let failed = run(source(address = address, destination = high(uint64), gas = high(uint64),
       amount = high(uint64)))
@@ -485,6 +488,139 @@ let poor = run(poorGas, capacity = 0)
 assert poor.value.exit == StepExit.OutOfGas and hashCalls() == 0,
     "unaffordable protected foreign transfer neither hashes nor appends"
 failHash(0)
+# Zero memo selects immediate credit with base-only gas and no outgoing capacity or copying.
+proc supervisedTarget(supervisor = 42'u32, incarnation = 43'u32,
+    liquid = 77'u64, protected = 55'u64): ServiceMetadata =
+  ServiceMetadata(balance: AccountBalance(liquid), supervisorBalance: AccountBalance(protected),
+      supervisor: ServiceIndex(supervisor), supervisorCreated: AccountSlot(incarnation),
+          created: AccountSlot(7))
+for foreignSource in [false, true]:
+  for foreignTarget in [false, true]:
+    for mode in 0'u64..3:
+      let guest = source(address = 0, mode = mode, gas = high(uint64), targetGas = high(uint64),
+          funder = (if foreignSource: 77'u64 else: high(uint64)),
+          destination = (if foreignTarget: 99'u64 else: high(uint64)),
+          account = fundedActor(), targetAccount = supervisedTarget(),
+          extra = (if foreignSource: @[payer()] else: @[]))
+      let completed = run(guest, limit = 0, capacity = 0)
+      assert completed.error == AccumulationDispatchError.None and completed.value.exit ==
+          StepExit.Halt,
+          "direct forms complete without memo/deferred gas or append capacity"
+      let same = not foreignSource and not foreignTarget
+      let forbidden = same and mode in [0'u64, 3]
+      let cpu = machineInfo(completed.value.machine).value
+      assert uint64(cpu.registers[7]) == (if forbidden: high(uint64)-8 else: 0'u64),
+          "same-account direct transfer permits exactly cross-pool modes"
+      assert uint64(cpu.gas) == 100000-price(guest)-575, "direct calls charge only base despite full-width deferred gas"
+      let owner = context(completed)
+      assert owner.effectInfo.value.transfers == 0, "direct success never appends a deferred record"
+      if not forbidden:
+        let sourceId = if foreignSource: 77'u32 else: 42'u32
+        let targetId = if foreignTarget: 99'u32 else: 42'u32
+        let paid = metadata(owner, sourceId)
+        let credited = metadata(owner, targetId)
+        let sourceLiquid = 100'u64 - (if mode in [0'u64, 2]: 5'u64 else: 0'u64) +
+            (if same and mode < 2: 5'u64 else: 0'u64)
+        let sourceProtected = 100'u64 - (if mode in [1'u64, 3]: 5'u64 else: 0'u64) +
+            (if same and mode >= 2: 5'u64 else: 0'u64)
+        assert uint64(paid.balance) == sourceLiquid and uint64(paid.supervisorBalance) ==
+            sourceProtected,
+            "direct selected debit and same-account credit combine into one source record"
+        if not same:
+          let targetLiquid = (if foreignTarget: 77'u64 else: 100'u64) + (if mode <
+              2: 5'u64 else: 0'u64)
+          let targetProtected = (if foreignTarget: 55'u64 else: 100'u64) + (if mode >=
+              2: 5'u64 else: 0'u64)
+          assert uint64(credited.balance) == targetLiquid and uint64(credited.supervisorBalance) ==
+              targetProtected,
+              "a distinct immediate destination receives exactly its selected pool credit"
+        assert (owner.effectAccountScope.value == AccumulationAccountScope.Unsupported) == (
+            foreignSource or foreignTarget),
+            "only genuine self metadata changes retain the bounded publication proof"
+# Cross-pool self moves check aggregate funding after the credit, not after a temporary debit.
+for mode in [1'u64, 2]:
+  let exact = ServiceMetadata(balance: AccountBalance(6), supervisorBalance: AccountBalance(4))
+  let completed = run(source(address = 0, destination = high(uint64), mode = mode,
+      account = exact, amount = (if mode == 1: 4'u64 else: 6'u64), gas = high(uint64)), limit = 0, capacity = 0)
+  assert uint64(machineInfo(completed.value.machine).value.registers[7]) == 0,
+      "an exact-minimum self account can move its complete selected pool"
+for mode in 0'u64..3:
+  let denied = source(address = 0, mode = mode, gas = 0, amount = high(uint64),
+      account = fundedActor(), targetAccount = supervisedTarget(incarnation = 42))
+  failHash(1)
+  let refused = run(denied, limit = 0, capacity = 0)
+  assert uint64(machineInfo(refused.value.machine).value.registers[7]) == high(uint64)-8 and
+      hashCalls() == 0,
+      "stale destination authority HUH precedes CASH and performs no hashing"
+  failHash(0)
+  let missing = run(source(address = 0, mode = mode, includeTarget = false, account = fundedActor(
+      )), limit = 0, capacity = 0)
+  assert uint64(machineInfo(missing.value.machine).value.registers[7]) == high(uint64)-3,
+      "missing destination WHO precedes valid-mode authority"
+# Distinct destination credit cannot restore source funding or hide selected-pool underflow.
+for mode in 0'u64..3:
+  let short = ServiceMetadata(balance: AccountBalance(if mode in [0'u64, 2]: 4'u64 else: 100'u64),
+      supervisorBalance: AccountBalance(if mode in [1'u64, 3]: 4'u64 else: 100'u64),
+          created: AccountSlot(43))
+  let refused = run(source(address = 0, mode = mode, account = short,
+      targetAccount = supervisedTarget()), limit = 0, capacity = 0)
+  assert uint64(machineInfo(refused.value.machine).value.registers[7]) == high(uint64)-6,
+      "direct selected-pool underflow remains CASH with a rich other pool"
+for balance in [14'u64, 15]:
+  let actor = ServiceMetadata(balance: AccountBalance(balance), created: AccountSlot(43))
+  let completed = run(source(address = 0, account = actor, targetAccount = supervisedTarget()),
+      limit = 0, capacity = 0)
+  assert (uint64(machineInfo(completed.value.machine).value.registers[7]) == high(uint64)-6) == (
+      balance == 14),
+      "distinct direct debit retains the source's exact minimum balance"
+# Destination overflow is a local invariant refusal and cannot wrap either pool.
+for mode in 0'u64..3:
+  let full = supervisedTarget(liquid = (if mode < 2: high(uint64) else: 77'u64),
+      protected = (if mode >= 2: high(uint64) else: 55'u64))
+  let refused = run(source(address = 0, mode = mode, account = fundedActor(), targetAccount = full),
+      limit = 0, capacity = 0)
+  assert refused.error == AccumulationDispatchError.InvalidContext, "unrepresentable direct credit publishes no guest verdict or partial debit"
+let directSource = source(address = 0, mode = 3, funder = 77, account = fundedActor(),
+    targetAccount = supervisedTarget(), extra = @[payer()])
+for checkpoint in [false, true]:
+  let suffix = if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]]
+  let failed = run(source(address = 0, mode = 3, funder = 77, account = fundedActor(),
+      targetAccount = supervisedTarget(), extra = @[payer()], suffix = suffix), limit = 0, capacity = 0)
+  let selected = normalizeAccumulationOutcome(failed).value.outcomeContext.value
+  assert (uint64(metadata(selected, 77).supervisorBalance) == 95) == checkpoint and
+      (uint64(metadata(selected, 99).supervisorBalance) == 60) == checkpoint,
+      "panic selects both direct endpoints from the same retained checkpoint"
+let directPair = prepareAccumulationEffects(prepareAccumulationContexts(
+    directSource.machineBootstrap.value, pvmContextConfig()).value).value
+for successful in [0, 2]:
+  failAfter(cint(successful))
+  let refused = recordAccumulationDirectTransfer(directPair, ServiceIndex(77),
+      AccumulationTransferDestination(99), TransferBalance(5), AccumulationFundingMode(3),
+          parameters())
+  assert refused.error == AccumulationEffectError.BackendFailure, "early and late direct hash failures publish neither endpoint"
+  failHash(0)
+  let prior = directPair.effectContext(AccumulationDimension.Regular).value
+  assert uint64(metadata(prior, 77).supervisorBalance) == 100 and uint64(metadata(prior,
+      99).supervisorBalance) == 55,
+      "prior endpoint owners survive atomic direct backend refusal"
+let narrowDirect = run(source(address = 0, mode = 3, funder = 77, account = fundedActor(),
+    targetAccount = supervisedTarget(), extra = @[payer()], writes = 1), limit = 0, capacity = 0)
+assert narrowDirect.error == AccumulationDispatchError.LimitExceeded, "distinct direct endpoints need one atomic two-write budget"
+let oneWriteDirect = run(source(address = 0, mode = 2, destination = high(uint64),
+    account = fundedActor(), writes = 1), limit = 0, capacity = 0)
+assert oneWriteDirect.error == AccumulationDispatchError.None,
+    "same-account debit and credit need exactly one atomic metadata write"
+for credit in [574'u64, 575]:
+  let guest = source(address = 0, mode = 2, destination = high(uint64), account = fundedActor(),
+      credit = price(source(address = 0, mode = 2, destination = high(uint64),
+          account = fundedActor()))+credit)
+  failHash(1)
+  let completed = run(guest, limit = 0, capacity = 0)
+  if credit == 574:
+    assert completed.value.exit == StepExit.OutOfGas and hashCalls() == 0, "direct base OOG precedes any atomic write"
+  else:
+    assert completed.error == AccumulationDispatchError.BackendFailure, "exact direct base affordability reaches the actual hash operation"
+  failHash(0)
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let completed = run(valid)
@@ -492,6 +628,9 @@ for iteration in 0..<1000:
   let funded = run(foreignSource)
   assert context(funded).effectTransferAt(AccumulationTransferIndex(0)).value.destinationSupervisor,
       "release protected foreign plans and their fixed outgoing values"
+  let immediate = run(directSource, limit = 0, capacity = 0)
+  assert uint64(metadata(context(immediate), 99).supervisorBalance) == 60,
+      "release direct source and destination snapshots without outgoing ownership"
 let after = getOccupiedMem()
 assert before == after, "transfer releases all ARC-owned versions"
 recordArcRelease("pvm_accumulation_transfer", 1000, before, after)

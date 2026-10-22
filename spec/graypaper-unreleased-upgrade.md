@@ -72,7 +72,9 @@ using actual invocation time and the same explicit foreign publication boundary.
 Deferred transfers authenticate self/supervised sources, debit the selected pool
 and preserve the destination-protected flag through next-invocation credit. Foreign
 transfer publication retains the parallel conflict-selection gate. Direct transfers
-remain an explicit `UnsupportedHostCall` gate while their atomic credit path is migrated.
+now enforce both-endpoint authority and atomically debit/credit the selected pools
+for575 gas, with no memo or deferred output. Self cross-pool effects publish through
+the existing self metadata proof; foreign endpoints retain the same parallel gate.
 The previous argument layout
 is never accepted as a production fallback. These gates are incomplete implementation,
 not discrepancies in the normative paper.

@@ -12,8 +12,8 @@ self/effective-supervisor authority; modes1/3 debit protected funds with effecti
 supervisor authority. Modes2/3 set the destination-supervisor flag. Keep pure
 memory, both-service WHO, authority HUH, LOW, CASH validation before conditional
 575+gas charging and atomic commit. Preserve self publication proofs and keep
-foreign publication behind parallel conflict selection. Direct transfers remain
-an explicit implementation gate. Undefined modes return HUH after memo readability
+foreign publication behind parallel conflict selection. Direct transfers execute
+through the atomic immediate-credit path described below. Undefined modes return HUH after memo readability
 and account existence; refusals charge575 only and cannot debit or append.
 Completion witnesses cover all modes/sources, protected authority/incarnations,
 WHO/HUH/LOW/CASH ordering, selected-pool and aggregate funding, destination flag,
@@ -34,6 +34,33 @@ These are local macOS checks, separate from Linux CI, full JAM parity and PolkaV
 host parity.
 
 The release-era details and evidence below describe the historical layout.
+
+## Direct-transfer scope
+
+Current Omega_T at `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` selects direct
+transfer when the memo address is zero. This layer implements both-endpoint
+authority, atomic source debit/destination credit and the four pool combinations.
+The destination must be self or effectively supervised; a same-account move is
+permitted only for modes1/2 (between pools). Source authority follows the deferred
+rules. Check both-service WHO, HUH, then source CASH. Direct calls ignore deferred
+gas and destination minimum-transfer gas, cost575 and append no outgoing record.
+No memo or local outgoing capacity is required. Final source funding includes
+both pools after same-account credit; destination addition must fit its canonical
+balance domain or return a local invalid-state refusal without a guest verdict.
+Self cross-pool changes retain self metadata publication; foreign changes remain
+behind parallel modified-account conflict selection. Completion tests cover every
+pool/endpoint form, authority incarnations, funding and overflow edges, base OOG,
+checkpoint rollback, atomic backend/write refusals and guarded nominal/result APIs.
+
+Local verification (2026-10-22): both transfer suites and seven affected consumers
+pass with fresh 1,000-cycle ARC evidence. The direct matrix covers self/foreign
+sources and destinations in every mode, same-account one-write publication,
+selected-pool underflow, exact aggregate funding, local destination overflow,
+575-only gas, no memo/outgoing budget, checkpoint and early/late backend refusal.
+All264 modules,46 strict effect-result guards, compiler domain/result rejections,
+focused harnesses and inventory pass. Evidence: `build/direct-transfer-*` and
+`build/tests/direct-transfer-guards/results.json`. This is local macOS validation;
+Linux CI, complete JAM and PolkaVM host parity remain separate.
 
 ## Scope and authority
 

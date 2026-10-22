@@ -410,6 +410,17 @@
     },
     {
       "arguments": [
+        "transfer-direct"
+      ],
+      "description": "Accumulation direct transfer selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "transfer-direct"
+      },
+      "name": "accumulation-effect-transfer-direct"
+    },
+    {
+      "arguments": [
         "transfer-commit"
       ],
       "description": "Accumulation transfer selected-success guard",
