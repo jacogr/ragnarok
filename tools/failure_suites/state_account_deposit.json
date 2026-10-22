@@ -1,0 +1,29 @@
+{
+  "build_name": "state-account-deposit-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard account deposit default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-account-deposit-default"
+    },
+    {
+      "arguments": [
+        "overflow"
+      ],
+      "description": "Guard account deposit overflow",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "overflow"
+      },
+      "name": "state-account-deposit-overflow"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_account_deposit_results.nim"
+}
