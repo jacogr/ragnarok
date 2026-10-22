@@ -220,3 +220,14 @@ panels sequentially through their Make targets. Setup-free resource summaries in
 every report, append after the speed summary, explicitly fail missing/refused evidence and retain
 all raw JSON/CSV/logs in the same job artifact. No new trigger, label, separate job or unsolicited
 CI request is introduced. Local qualification does not assert Linux Actions success.
+
+## Operator interpretation and remaining scope
+
+The operator guide lists each Make target, raw artifact, ownership boundary and comparison rule.
+Fixture graphs, validation temporaries, immutable snapshots/selection plans and independently owned
+payloads are intentionally distinct. No source-local optimization or physical format change was
+selected from these measurements. Controlled paging/memory-pressure experiments and hardware or
+filesystem power-loss qualification remain future work, as does complete protocol serialization.
+During this tranche PVM stack775 merged as13e94fd; the storage measurement stack was natively
+restacked onto that tree. Final qualification records actual current source/build coverage rather
+than promoting earlier dirty-source or pre-merge results into fresh combined-head/Linux CI claims.
