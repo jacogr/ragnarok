@@ -58,3 +58,9 @@ fail the gate. Logs, replayable variants, source/checker hashes and fresh result
 `build/tests/models/`. `make check-modules` includes this gate, retaining the existing independent
 CI groups. Native `application_preparation_worker` tests cover actual reuse, foreign/stale tickets,
 cancellation and joined shutdown; the model is complementary evidence, not a native test substitute.
+
+The new `src/app/proof_worker.nim` uses the same lock/condition/phase/stop transitions. Its
+`submit` moves an admitted immutable query into the slot instead of borrowing input pointers;
+`collect` and joined `close` retire that owner. The same six-variable model checks its lease
+retention and join ordering. Query move semantics, exact proof outcomes and ticket identity
+remain covered by the native `application_proof_worker` suite and compiler ownership probe.
