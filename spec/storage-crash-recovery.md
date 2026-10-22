@@ -74,3 +74,10 @@ complete frame refuses the old repair token and cannot be rolled back. Held read
 Pre-append barriers retain the exact prior frame; the final completed sync leaves the exact complete
 successor visible. Strict restart admits only the independently checked generation/root and complete
 authored leaves, while retained parent readers remain unchanged.
+
+## Managed publication barrier crashes
+
+`storage_managed_barrier_crash` independently counts 3 successful observed boundaries and kills after each.
+Pre-append barriers retain the exact prior frame; the final completed sync leaves the exact complete
+successor visible. Strict restart admits only the independently checked generation/root and complete
+authored leaves, while retained parent readers remain unchanged.
