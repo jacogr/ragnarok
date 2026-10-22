@@ -1,0 +1,106 @@
+{
+  "source": "tests/native/accumulation_current_ready_results.nim",
+  "build_name": "accumulation-current-ready-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-ready-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current ready extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-ready-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current ready extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "current-ready-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Current ready extraction: source"
+    },
+    {
+      "identity": {
+        "reason": "ring"
+      },
+      "arguments": [
+        "ring"
+      ],
+      "name": "current-ready-ring",
+      "diagnostic": "outcome.status == None",
+      "description": "Current ready extraction: ring"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "current-ready-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Current ready extraction: state"
+    },
+    {
+      "identity": {
+        "reason": "entry"
+      },
+      "arguments": [
+        "entry"
+      ],
+      "name": "current-ready-entry",
+      "diagnostic": "outcome.status == None",
+      "description": "Current ready extraction: entry"
+    },
+    {
+      "identity": {
+        "reason": "codec"
+      },
+      "arguments": [
+        "codec"
+      ],
+      "name": "current-ready-codec",
+      "diagnostic": "outcome.status == CodecFailure",
+      "description": "Current ready extraction: codec"
+    },
+    {
+      "identity": {
+        "reason": "projection"
+      },
+      "arguments": [
+        "projection"
+      ],
+      "name": "current-ready-projection",
+      "diagnostic": "outcome.status == ProjectionFailure",
+      "description": "Current ready extraction: projection"
+    },
+    {
+      "identity": {
+        "reason": "backend"
+      },
+      "arguments": [
+        "backend"
+      ],
+      "name": "current-ready-backend",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Current ready extraction: backend"
+    }
+  ]
+}

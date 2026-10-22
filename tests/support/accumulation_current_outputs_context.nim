@@ -11,10 +11,11 @@ proc currentOutputLimits*(): CurrentAccumulationOutputLimits =
   ## Bound three original provider visits independently of the retained unique pair capacity.
   CurrentAccumulationOutputLimits(entries: ElementLimit(3), outcomes: ElementLimit(4),
     log: OutputLogConfig(items: ElementLimit(4), maxBytes: ByteLimit(145)))
-proc currentOutputCompletion*(base: OwnedReport, varied: bool): CompletedCurrentAccumulationSequence =
+proc currentOutputCompletion*(base: OwnedReport, varied: bool,
+    reportGas = 10000'u64): CompletedCurrentAccumulationSequence =
   ## Original free reservations exclude the ready report; remaining actual gas admits it in a later entry.
   var options = executionFixtureConfig()
-  options.signed.ready = @[ReadyItem(report: reportFor(base, 0, [10000'u64]), dependencies: @[])]
+  options.signed.ready = @[ReadyItem(report: reportFor(base, 0, [reportGas]), dependencies: @[])]
   let fixed = currentRoundServiceCode(@[registerImmediate(7, 65536), @[10'u8, 27], @[50'u8, 0]])
   options.firstProgram = if varied:
     currentRoundServiceCode(@[registerImmediate(7, 196608), registerImmediate(8, 0),
@@ -29,5 +30,6 @@ proc currentOutputCompletion*(base: OwnedReport, varied: bool): CompletedCurrent
   let finished = runCurrentBlockAccumulationSequence(round, currentRoundParameters(),
       currentSequenceDriverLimits())
   assert finished.error == CurrentSequenceDriverError.None, $finished.error
-  assert finished.value.completedSequenceInfo.value.entries == 2, "ready report executes in a genuine later entry"
+  let expectedEntries = if reportGas == high(uint64): 1 else: 2
+  assert finished.value.completedSequenceInfo.value.entries == expectedEntries, "ready report executes later only when its original allowance fits"
   finished.value
