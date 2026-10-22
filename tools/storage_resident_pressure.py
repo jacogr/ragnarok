@@ -163,7 +163,10 @@ def table_row(row):
         return values
     observed = row['execution']['observed']['runs'][0]
     after = parse(observed['after_raw'])
-    values.update(rss_bytes=observed['resources']['peak_rss_bytes'],
+    values.update(opened_nim_bytes=row['native']['opened_bytes'] if row['outcome'] == 'completed' else None,
+                  closed_nim_bytes=row['native']['closed_bytes'] if row['outcome'] == 'completed' else None,
+                  released_nim_bytes=row['native']['released'] if row['outcome'] == 'completed' else None,
+                  rss_bytes=observed['resources']['peak_rss_bytes'],
                   cgroup_peak_bytes=after['memory.peak'],
                   sampled_anon_bytes=observed['sampled_peaks']['anon'],
                   sampled_file_bytes=observed['sampled_peaks']['file'],
@@ -196,14 +199,15 @@ def publish(report, folder):
              'Swap permission alone is not paging evidence. Sampled maxima may miss brief peaks.',
              'All successful rows require exact roots/maps/lifetimes; all selected bytes remain unchanged.',
              'Two passes reverse case/treatment order. Seconds are observations, not a speedup claim.', '',
-             '| Pass | Backend | Entries | Treatment | Outcome | Child RSS MiB | Unit peak MiB | Swap sampled MiB | High events | OOM kills | Full stall ms | Input blocks |',
-             '| ---: | --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
+             '| Pass | Backend | Entries | Treatment | Outcome | Open Nim MiB | Child RSS MiB | Unit peak MiB | Swap sampled MiB | High events | OOM kills | Full stall ms | Input blocks |',
+             '| ---: | --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
     for row in rows:
         # Explicit unavailability must never render as measured zero-resource success.
         if row['outcome'] == 'unavailable':
-            cells = ['—']*7
+            cells = ['—']*8
         else:
-            cells = [f"{row['rss_bytes']/MIB:.1f}", f"{row['cgroup_peak_bytes']/MIB:.1f}",
+            cells = [f"{row['opened_nim_bytes']/MIB:.1f}" if row['opened_nim_bytes'] is not None else '—',
+                     f"{row['rss_bytes']/MIB:.1f}", f"{row['cgroup_peak_bytes']/MIB:.1f}",
                      f"{row['sampled_swap_bytes']/MIB:.1f}", str(row['high_events']),
                      str(row['oom_kills']), f"{row['full_stall_us']/1000:.1f}", str(row['input_blocks'])]
         lines.append('| '+' | '.join(map(str, [row['pass_index'], row['backend'], row['entries'],
