@@ -1,0 +1,37 @@
+{
+  "cases": [
+    {
+      "name": "base",
+      "assignments": {},
+      "expected": "pass"
+    },
+    {
+      "name": "cancel-releases",
+      "assignments": {
+        "Mut": "1"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "early-collect",
+      "assignments": {
+        "Mut": "2"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "close-before-join",
+      "assignments": {
+        "Mut": "3"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "reachable-cancelled-shutdown",
+      "assignments": {
+        "Witness": "(true)"
+      },
+      "expected": "violated"
+    }
+  ]
+}
