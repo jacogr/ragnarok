@@ -112,4 +112,22 @@ for command in ["server", "client", "mesh"]:
 assert parseOptions(@["server"], state)
 assert not state.stateEnabled # A later legacy parse cannot inherit an earlier canonical policy.
 
+# Management is independently explicit: neither endpoint configuration nor WS/UI/state activates it.
+var management = default(Options)
+assert management.managementSocket == ""
+for arguments in [@["server"], @["server", "--with-ui"], @["server", "--with-rpc"],
+    @["server", "--management-socket", "/private/admin.sock"]]:
+  assert parseOptions(arguments, management) and management.managementSocket == ""
+assert parseOptions(@["server", "--with-management", "--management-socket", "/private/admin.sock"], management)
+assert management.managementSocket == "/private/admin.sock" and management.rpcPort == 0 and
+    management.uiPort == 0
+for arguments in [@["server", "--with-management"],
+    @["server", "--with-management", "--management-socket", "relative.sock"],
+    @["server", "--with-management", "--management-socket", "/private/"],
+    @["server", "--with-management", "--management-socket", "/private/a\0b"],
+    @["server", "--with-management", "--with-management", "--management-socket",
+        "/private/admin.sock"],
+    @["--version", "--with-management", "--management-socket", "/private/admin.sock"]]:
+  assert not parseOptions(arguments, management) and management.managementSocket == ""
+
 echo "Application options tests passed"

@@ -30,6 +30,7 @@ import ../quic/transport
 import ../rpc/[server, protocol, proof_requests]
 import ../chain/[parameters, genesis]
 import ../ui/server
+import ../management/[server, protocol]
 
 type
   StateProofAdmissionError* {.pure.} = enum ## Admission grants a ticket only after capture and native submission succeed.
@@ -44,6 +45,7 @@ type
 type Services* = object             ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
   rpc*: Server
   ui*: UiServer
+  management*: ManagementServer
   telemetry*: Client
   chainText: string
   canonical: ApplicationChain
@@ -110,6 +112,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.checkpointExport)
   `=wasMoved`(services.worker)
   `=wasMoved`(services.rpcLease)
+  `=wasMoved`(services.management)
   `=wasMoved`(services.ui)
   `=wasMoved`(services.rpc)
   `=wasMoved`(services.telemetry)
@@ -139,6 +142,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.checkpointExport) # Explicit close joins the detached I/O child before aggregate destruction.
   `=destroy`(services.worker) # Explicit close must join before any shared chain alias retires.
   `=destroy`(services.rpcLease)
+  `=destroy`(services.management)
   `=destroy`(services.ui)
   `=destroy`(services.rpc)
   `=destroy`(services.telemetry)
@@ -236,6 +240,7 @@ proc close*(services: var Services) =
   services.stopCheckpointExport() # Repeated close preserves the fixed joined-outcome journal.
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical or listener alias.
+  services.management.close()
   services.ui.close()
   services.rpc.close()
   services.telemetry.close()
@@ -476,6 +481,13 @@ proc startServices(services: var Services, options: Options, role: string,
   services.chainRpc = withState and options.rpcPort() != 0
   if services.chainRpc and options.argument(1) in ["server", "client", "mesh"]:
     discard services.rpc.enableStateProofs() # These dispatcher shapes retain no external canonical aliases across turns.
+  let database = if options.diskStorage: options.stateDatabase else: ""
+  let managementInfo = ManagementInfo(role: role, chainPath: options.chainPath,
+    databasePath: database, stateEnabled: withState)
+  if not services.management.start(options.managementSocket, managementInfo):
+    stderr.writeLine("Invalid management socket; select an absent path in an owned private directory")
+    services.close() # A refused management listener rolls back every previously started service.
+    return false
   services.started = true
   true
 
@@ -903,7 +915,8 @@ proc finishRpcProof(services: var Services, completion: ProofWorkerCompletion) =
   services.rpcProofTicket = default(ProofWorkerTicket)
 
 proc tick*(services: var Services, peers: uint32) =
-  ## Attempt one pending adoption between native callbacks; exclusive preparation leaves independent UI work available.
+  ## Attempt one pending adoption between native callbacks; independent management remains available during leases.
+  services.management.tick() # Startup metadata and OS observations never borrow the canonical/database graph.
   if services.rpcProof.valid and services.proofing:
     if services.stateProofPhase != ProofWorkerPhase.Done:
       services.ui.tick()

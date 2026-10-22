@@ -92,3 +92,38 @@ sizes during it. A later sample refreshes the result.
 `make unit SUITE=management_resources` checks current RSS/free-space observations, sparse-file
 logical versus allocated size, multi-turn complete scans, memory mode, missing/non-flat/oversized
 layouts, overflow refusal and 1000 abandoned scans with unchanged live ARC allocation.
+
+## Application activation
+
+Add `--with-management --management-socket /absolute/private-directory/admin.sock` to a
+server/client/mesh/download command. Both controls are needed; there is no default pathname.
+A path configured without `--with-management` is inactive. Missing paths, relative paths,
+control-bearing paths, duplicate controls and activation on non-service commands are rejected.
+Startup never creates/chmods an operator directory or overwrites an existing endpoint.
+Management startup failure rolls back already-started listeners and state through joined Services
+cleanup. Normal close/destruction removes its own socket; a fresh start may reuse the path.
+
+Example local request after creating an owned mode-0700 directory and enabling the service:
+
+```sh
+curl --unix-socket /absolute/private-directory/admin.sock \
+  -H 'Content-Type: application/json' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"ragnarok_unsafe_clientInfo"}' \
+  http://localhost/
+```
+
+The URL is HTTP framing for curl's Unix-socket transport, not a bound TCP address.
+
+Services polls management once per dispatcher turn before any early return for proof,
+preparation, disk-publication or maintenance leases. This registry reads only copied startup
+metadata, allocator counters and bounded OS observations; it never reads or retains the worker's
+canonical graph or database owner. Future management mutations must design their own safe host
+scheduling and cannot infer permission to access a leased owner from this read-only method.
+
+`make unit SUITE=app_options` verifies independent explicit activation and atomic refusal.
+`make unit SUITE=management_services` verifies disabled/management-only startup, actual admin
+responses, close/restart and rollback preserving an existing conflicting endpoint.
+`make unit SUITE=rpc_state_proofs` sends a real management HTTP request while the proof worker
+still owns its canonical lease, then verifies the exact original RPC pause remains active and
+normal proof completion/1000-cycle ownership checks still pass. Native lowering rejection fixtures
+cover both ManagementServer and ResourceSampler aggregate copies.
