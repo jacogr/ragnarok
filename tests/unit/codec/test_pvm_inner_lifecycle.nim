@@ -98,6 +98,27 @@ for handle in 0..<128:
   assert uint64(appended.response.registers[7]) == uint64(handle)
   catalogue = appended.machines
 assert uint64(compile(catalogue, pointer = 0).value.response.registers[7]) == high(uint64)-4
+# Trusted historical capture uses requested-length pricing, actual-byte budgets and the same handle limit.
+var databaseArgs = innerRegisters()
+databaseArgs[7] = RegisterValue(1)
+databaseArgs[9] = RegisterValue(1000)
+let databaseCode = @[0'u8, 0, 2, 50, 0, 1]
+let databaseFull = compileHistoricalInnerModule(catalogue, MachineGas(10000), databaseArgs,
+    fixtureMemory, false, []).value
+assert uint64(databaseFull.response.registers[7]) == high(uint64)-4
+var databaseLimits = innerLimits()
+databaseLimits.program = ProgramByteLimit(6)
+databaseLimits.total = InnerProgramLimit(6)
+let historical = compileHistoricalInnerModule(captureInnerMachines(databaseLimits), MachineGas(
+    10000), databaseArgs, fixtureMemory, true, databaseCode).value
+assert uint64(historical.response.gas) == 7780
+assert uint64(create(historical.machines).value.response.registers[7]) == 0
+assert compileHistoricalInnerModule(empty, MachineGas(10000), innerRegisters(), fixtureMemory,
+    true, databaseCode).error == InnerMachineError.InvalidContext
+assert compileHistoricalInnerModule(empty, MachineGas(10000), databaseArgs, fixtureMemory,
+    false, databaseCode).error == InnerMachineError.InvalidContext
+assert compileHistoricalInnerModule(default(InnerMachines), MachineGas(10000), databaseArgs,
+    fixtureMemory, true, databaseCode).error == InnerMachineError.InvalidContext
 let hole = remove(catalogue, 12, mode = 1).value.machines
 assert uint64(compile(hole).value.response.registers[7]) == 12
 

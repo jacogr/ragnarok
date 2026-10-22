@@ -52,8 +52,9 @@ Complete the coordinated migration and required checks before publishing it.
 ## Explicit incomplete capabilities during migration
 
 The module catalogue and memory compilation path use the current refinement IDs9–15.
-Database-backed compilation remains `UnsupportedHostCall` until its authenticated
-historical source adapter is implemented. Native compilation and compiled benchmarks
+Database-backed compilation now uses the retained historical source adapter,
+with anchor-time lookup and clipped interpreted module capture; see
+[inner lifecycle](pvm-inner-lifecycle.md). Native compilation and compiled benchmarks
 remain outside this interpreted-engine work.
 
 Self-funded liquid `new`, self `upgrade`, and liquid deferred `transfer` use current

@@ -95,9 +95,10 @@ proc retainedModule(machines: MapData, handle: uint64): bool =
     if uint64(item.info.moduleHandle) == handle: return true # Live instances retain the underlying program.
   false
 
-proc compileInnerModule*(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
-    memory: Memory): InnerMachineResult[InnerMachineTransition] =
-  ## Prepare an interpreted program module from guest memory; database mode is an explicit adapter gate.
+proc compileModule(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
+    memory: Memory, resolved, present: bool, historical: openArray[byte]):
+    InnerMachineResult[InnerMachineTransition] =
+  ## Share pricing, handle selection and immutable module publication across memory and authenticated historical sources.
   template fail(reason: InnerMachineError) =
     return InnerMachineResult[InnerMachineTransition](status: reason)
   let data = machines.data
@@ -126,28 +127,37 @@ proc compileInnerModule*(machines: InnerMachines, gas: MachineGas, registers: Re
   if handle == 128:
     transition.response.registers[7] = RegisterValue(high(uint64)-4)
     done() # FULL takes precedence over source validation.
-  if mode == 1:
-    fail(InnerMachineError.UnsupportedSource) # Historical database authorization belongs to the outer refinement adapter.
-  if mode != 0:
+  if mode == 1 and not resolved:
+    fail(InnerMachineError.UnsupportedSource) # Only the outer adapter can authenticate and retain historical input.
+  if mode notin [0'u64, 1'u64]:
     transition.response.registers[7] = RegisterValue(high(uint64)-8)
     done() # Unknown source modes are protocol HUH, not missing host functions.
-  if size > uint64(data.limits.program) or data.bytes > uint64(data.limits.total) or
-      size > uint64(data.limits.total)-data.bytes:
-    fail(InnerMachineError.LimitExceeded) # Prove all retained/copy allocation extents before source reads.
-  let copied = readBytes(memory, MemoryAddress(uint64(registers[8])), MemoryLength(size),
-    MemoryByteLimit(uint64(data.limits.program)))
-  case copied.error
-  of MachineError.None:
-    discard # The complete original source bytes are stable and independently owned for parsing.
-  of MachineError.Fault, MachineError.InvalidRange:
-    transition.response.action = HostAction.Panic
-    done() # Inaccessible memory publishes neither a module handle nor partial parsing state.
-  of MachineError.LimitExceeded:
-    fail(InnerMachineError.LimitExceeded)
+  if mode == 1 and not present:
+    transition.response.registers[7] = RegisterValue(high(uint64))
+    done() # NONE distinguishes absent historical input from a present malformed or empty program.
+  let retainedSize = if mode == 1: uint64(historical.len) else: size
+  if retainedSize > uint64(data.limits.program) or data.bytes > uint64(data.limits.total) or
+      retainedSize > uint64(data.limits.total)-data.bytes:
+    fail(InnerMachineError.LimitExceeded) # Bound actual retained bytes, independently of requested-length pricing.
+  var copied: seq[byte] = @[]
+  if mode == 0:
+    let captured = readBytes(memory, MemoryAddress(uint64(registers[8])), MemoryLength(size),
+      MemoryByteLimit(uint64(data.limits.program)))
+    case captured.error
+    of MachineError.None:
+      copied = captured.value # Stable owned memory bytes live through deblob capture.
+    of MachineError.Fault, MachineError.InvalidRange:
+      transition.response.action = HostAction.Panic
+      done() # Memory faults publish no module or parsing state.
+    of MachineError.LimitExceeded:
+      fail(InnerMachineError.LimitExceeded)
+    else:
+      fail(InnerMachineError.InvalidMemory)
+  # The trusted adapter's historical slice is borrowed only until decode captures its own immutable program.
+  let parsed = if mode == 1:
+    decodeJamProgram(historical, CodeAddress(0), data.limits.program, data.limits.jumps)
   else:
-    fail(InnerMachineError.InvalidMemory)
-  let parsed = decodeJamProgram(copied.value, CodeAddress(0), data.limits.program,
-      data.limits.jumps)
+    decodeJamProgram(copied, CodeAddress(0), data.limits.program, data.limits.jumps)
   if parsed.error == ProgramError.LimitExceeded: fail(InnerMachineError.LimitExceeded)
   if parsed.error != ProgramError.None:
     transition.response.registers[7] = RegisterValue(high(uint64)-8)
@@ -155,11 +165,26 @@ proc compileInnerModule*(machines: InnerMachines, gas: MachineGas, registers: Re
   var modules = newSeqOfCap[ModuleData](data.modules.len+1)
   for item in data.modules:
     modules.add(item) # Copy the catalogue descriptor; immutable program owners stay shared.
-  modules.add(ModuleData(handle: handle, program: parsed.value, size: size))
+  modules.add(ModuleData(handle: handle, program: parsed.value, size: retainedSize))
   transition.machines = InnerMachines(data: MapData(slots: data.slots, modules: modules,
-    bytes: data.bytes+size, limits: data.limits))
+    bytes: data.bytes+retainedSize, limits: data.limits))
   transition.response.registers[7] = RegisterValue(handle)
   done()
+
+proc compileInnerModule*(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
+    memory: Memory): InnerMachineResult[InnerMachineTransition] =
+  ## Compile memory input or preflight database pricing/capacity before the outer adapter resolves authenticated bytes.
+  compileModule(machines, gas, registers, memory, false, false, [])
+
+proc compileHistoricalInnerModule*(machines: InnerMachines, gas: MachineGas,
+    registers: RegisterFile, memory: Memory, present: bool, source: openArray[byte]):
+    InnerMachineResult[InnerMachineTransition] =
+  ## Compile a trusted adapter's already clipped historical bytes; this routine grants no state authentication itself.
+  ## Borrow source only during capture; retain the original guest memory and immutable catalogue ancestry.
+  if uint64(registers[7]) != 1 or (not present and source.len != 0):
+    return InnerMachineResult[InnerMachineTransition](
+        status: InnerMachineError.InvalidContext) # Refuse inconsistent adapter input.
+  compileModule(machines, gas, registers, memory, true, present, source)
 
 proc createInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: RegisterFile,
     memory: Memory): InnerMachineResult[InnerMachineTransition] =
