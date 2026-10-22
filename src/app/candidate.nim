@@ -6,10 +6,10 @@
 
 import ./[chain, handoff]
 import ../chain/[genesis, provider, parameters]
-import ../codec/[block_codec, header]
+import ../codec/[block_codec, header, bounded]
 import ../state/[store, block_transition, report_transition, report_admission, accumulation_queue,
   accumulation_round, accumulation_runner, accumulation_driver, accumulation_finalization,
-  accumulation_outputs, accumulation_completion, report_anchors]
+  accumulation_outputs, accumulation_completion, report_anchors, accumulation_current_completion, accumulation_current_update]
 
 type
   ApplicationCandidateLimits* = object ## Caller-owned bounded stage policies, including explicit trusted round gas configuration.
@@ -244,3 +244,128 @@ proc enqueueCandidate*(handoff: var AccumulationHandoff, chain: ApplicationChain
     return ApplicationCandidateResult(status: ApplicationCandidateError.EnqueueFailure,
         enqueueReason: admitted)
   prepared
+
+type
+  CurrentCandidateLimits* = object ## Freeze admission, queue/round, current completion and header capture ceilings at report preparation.
+    reporting*: BlockReportConfig   ## Existing authenticated block/report prefix policy.
+    queue*: AccumulationQueueConfig ## Existing original queue planning policy.
+    round*: AccumulationRoundConfig ## Trusted initial gas configuration and local input ceilings.
+    completion*: CurrentAccumulationCompletionLimits ## Current execution and complete state policies.
+    headerBytes*: ByteLimit         ## Exact sealed child capture ceiling.
+  CurrentCandidateError* {.pure.} = enum ## Every refusal preserves only the selected actual stage cause.
+    Uninitialized, None, StateChanged, PrefixFailure, ReportFailure, QueueFailure, RoundFailure,
+    CompletionFailure, PreparationFailure
+  CurrentCandidateResult* = object ## Only complete execution/state/capture success returns a prepared current update.
+    case status: CurrentCandidateError
+    of None: completed: PreparedCurrentChainUpdate
+    of PrefixFailure: prefixReason: ApplicationCandidateResult
+    of ReportFailure: reportReason: ReportAdmissionResult[AdmittedReports]
+    of QueueFailure: queueReason: AccumulationQueueError
+    of RoundFailure: roundReason: AccumulationRoundError
+    of CompletionFailure: completionReason: CurrentAccumulationCompletionResult
+    of PreparationFailure: preparationReason: CurrentChainPreparationResult
+    else: discard # Defaults and stale ownership expose no successful report or state prefix.
+  PreparedCurrentCandidateReports* = object ## Current policy and genuine shared report prefix are private immutable owned copies.
+    prefix: PreparedCandidateReports
+    limits: CurrentCandidateLimits
+  CurrentCandidatePreparation* = object ## Preparation alone grants report lookup, never execution or adoption authority.
+    case successful: bool
+    of true: prepared: PreparedCurrentCandidateReports
+    else: refusal: CurrentCandidateResult
+func error*(outcome: CurrentCandidateResult): CurrentCandidateError =
+  ## Inspect the selected complete-candidate stage without mutable discriminator access.
+  outcome.status
+func value*(outcome: CurrentCandidateResult): PreparedCurrentChainUpdate {.inline,
+    requires: outcome.status == CurrentCandidateError.None.} =
+  ## Extract only the exact captured current update after every state phase succeeds.
+  outcome.completed
+func prefixFailure*(outcome: CurrentCandidateResult): ApplicationCandidateResult {.inline,
+    requires: outcome.status == CurrentCandidateError.PrefixFailure.} =
+  ## Preserve only the actual common admission failure; legacy execution is never invoked.
+  outcome.prefixReason
+func reportFailure*(outcome: CurrentCandidateResult): ReportAdmissionResult[
+    AdmittedReports] {.inline, requires: outcome.status == CurrentCandidateError.ReportFailure.} =
+  ## Inspect only an actual report/ancestor completion refusal.
+  outcome.reportReason
+func queueError*(outcome: CurrentCandidateResult): AccumulationQueueError {.inline,
+    requires: outcome.status == CurrentCandidateError.QueueFailure.} =
+  ## Inspect only an actual original queue planning refusal.
+  outcome.queueReason
+func roundError*(outcome: CurrentCandidateResult): AccumulationRoundError {.inline,
+    requires: outcome.status == CurrentCandidateError.RoundFailure.} =
+  ## Inspect only an actual initial round planning refusal.
+  outcome.roundReason
+func completionFailure*(outcome: CurrentCandidateResult): CurrentAccumulationCompletionResult {.inline,
+    requires: outcome.status == CurrentCandidateError.CompletionFailure.} =
+  ## Preserve the actual failed current sequence/state builder, without any successful prefix.
+  outcome.completionReason
+func preparationFailure*(outcome: CurrentCandidateResult): CurrentChainPreparationResult {.inline,
+    requires: outcome.status == CurrentCandidateError.PreparationFailure.} =
+  ## Preserve the actual current state/header capture refusal.
+  outcome.preparationReason
+func ready*(prepared: PreparedCurrentCandidateReports): bool =
+  ## Default current report prefixes grant no report or execution authority.
+  prepared.prefix.valid
+func error*(outcome: CurrentCandidatePreparation): CurrentCandidateError =
+  ## Success grants a prefix only; default preparation remains an uninitialized refusal.
+  if outcome.successful: CurrentCandidateError.None
+  else: outcome.refusal.error # A failed preparation retains its original selected stage.
+func value*(outcome: CurrentCandidatePreparation): PreparedCurrentCandidateReports {.inline,
+    requires: outcome.successful.} =
+  ## Extract only a genuinely prepared current report prefix and its frozen local policies.
+  outcome.prepared
+func failure*(outcome: CurrentCandidatePreparation): CurrentCandidateResult {.inline,
+    requires: not outcome.successful.} =
+  ## Inspect only a genuinely refused prefix preparation.
+  outcome.refusal
+proc prepareCurrentCandidateReports*(chain: ApplicationChain, candidate: OwnedBlock,
+    limits: CurrentCandidateLimits): CurrentCandidatePreparation =
+  ## Reuse authenticated block/report preparation without invoking the legacy execution/composition path.
+  let shared = prepareCandidateReports(chain, candidate, ApplicationCandidateLimits(
+      reporting: limits.reporting))
+  if shared.error != ApplicationCandidateError.None:
+    return CurrentCandidatePreparation(successful: false, refusal: CurrentCandidateResult(
+      status: CurrentCandidateError.PrefixFailure, prefixReason: shared.failure))
+  CurrentCandidatePreparation(successful: true, prepared: PreparedCurrentCandidateReports(
+    prefix: shared.value, limits: limits))
+proc currentCandidateLookupDemand*(prepared: PreparedCurrentCandidateReports,
+    ancestors: openArray[OwnedHeader]): ReportAdmissionResult[ReportLookupDemand] =
+  ## Original authenticated prefix supports bounded ancestor discovery without running current guests.
+  candidateLookupDemand(prepared.prefix, ancestors)
+proc completeCurrentCandidateReports*(chain: ApplicationChain,
+    prepared: PreparedCurrentCandidateReports,
+
+ancestors: openArray[OwnedHeader]): CurrentCandidateResult =
+  ## Recheck exact original history before current sequence execution, full state composition and one private capture.
+  let data = prepared.prefix.data
+  if data == nil: return default(CurrentCandidateResult) # A default prefix has no original map/profile authority.
+  if not sameChainView(data.original, chain.chainView):
+    return CurrentCandidateResult(status: CurrentCandidateError.StateChanged)
+  let limits = prepared.limits
+  let reports = completeBlockReports(data.reports, ancestors)
+  if reports.error != ReportAdmissionError.None:
+    return CurrentCandidateResult(status: CurrentCandidateError.ReportFailure,
+        reportReason: reports)
+  let queue = planBlockAccumulationQueue(reports.value, limits.queue)
+  if queue.error != AccumulationQueueError.None:
+    return CurrentCandidateResult(status: CurrentCandidateError.QueueFailure,
+        queueReason: queue.error)
+  let round = planBlockInitialAccumulation(queue.value, limits.round)
+  if round.error != AccumulationRoundError.None:
+    return CurrentCandidateResult(status: CurrentCandidateError.RoundFailure,
+        roundReason: round.error)
+  let composed = runCurrentAccumulationCompletion(round.value, data.parameters, limits.completion)
+  if composed.error != CurrentAccumulationCompletionError.None:
+    return CurrentCandidateResult(status: CurrentCandidateError.CompletionFailure,
+        completionReason: composed)
+  let update = chain.prepareAccumulation(composed.value, limits.headerBytes)
+  if update.error != CurrentChainPreparationError.None:
+    return CurrentCandidateResult(status: CurrentCandidateError.PreparationFailure,
+        preparationReason: update)
+  CurrentCandidateResult(status: CurrentCandidateError.None, completed: update.value)
+proc prepareCurrentCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
+    ancestors: openArray[OwnedHeader], limits: CurrentCandidateLimits): CurrentCandidateResult =
+  ## One-shot consumers use the same original prefix and current-only completion without publishing any head.
+  let prepared = prepareCurrentCandidateReports(chain, candidate, limits)
+  if prepared.error != CurrentCandidateError.None: return prepared.failure
+  completeCurrentCandidateReports(chain, prepared.value, ancestors)

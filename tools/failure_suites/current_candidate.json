@@ -1,0 +1,84 @@
+{
+  "source": "tests/native/current_candidate_results.nim",
+  "build_name": "current-candidate-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "value"
+      },
+      "arguments": [
+        "value"
+      ],
+      "name": "current-candidate-value",
+      "diagnostic": "outcome.status == None",
+      "description": "Current candidate guarded value"
+    },
+    {
+      "identity": {
+        "reason": "prefix"
+      },
+      "arguments": [
+        "prefix"
+      ],
+      "name": "current-candidate-prefix",
+      "diagnostic": "outcome.status == PrefixFailure",
+      "description": "Current candidate guarded prefix"
+    },
+    {
+      "identity": {
+        "reason": "report"
+      },
+      "arguments": [
+        "report"
+      ],
+      "name": "current-candidate-report",
+      "diagnostic": "outcome.status == ReportFailure",
+      "description": "Current candidate guarded report"
+    },
+    {
+      "identity": {
+        "reason": "queue"
+      },
+      "arguments": [
+        "queue"
+      ],
+      "name": "current-candidate-queue",
+      "diagnostic": "outcome.status == QueueFailure",
+      "description": "Current candidate guarded queue"
+    },
+    {
+      "identity": {
+        "reason": "round"
+      },
+      "arguments": [
+        "round"
+      ],
+      "name": "current-candidate-round",
+      "diagnostic": "outcome.status == RoundFailure",
+      "description": "Current candidate guarded round"
+    },
+    {
+      "identity": {
+        "reason": "completion"
+      },
+      "arguments": [
+        "completion"
+      ],
+      "name": "current-candidate-completion",
+      "diagnostic": "outcome.status == CompletionFailure",
+      "description": "Current candidate guarded completion"
+    },
+    {
+      "identity": {
+        "reason": "preparation"
+      },
+      "arguments": [
+        "preparation"
+      ],
+      "name": "current-candidate-preparation",
+      "diagnostic": "outcome.status == PreparationFailure",
+      "description": "Current candidate guarded preparation"
+    }
+  ]
+}
