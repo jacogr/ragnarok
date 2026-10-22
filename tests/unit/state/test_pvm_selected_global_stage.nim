@@ -13,17 +13,6 @@ import ../../../src/state/[accumulation_global_stage, accumulation_global_roles,
 import ../../support/[accumulation_execution_context, accumulation_current_guests_context,
   pvm_accumulation_program, pvm_accumulation_provision, arc_evidence]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
-proc policy(): AccumulationGlobalStageLimits =
-  ## Fixed two-core queues and six-validator rosters have independent original/output byte and work caps.
-  AccumulationGlobalStageLimits(roles: AccumulationGlobalRoleLimits(
-    privileges: PrivilegeConfig(cores: CoreCount(2), maxAlways: ElementLimit(2),
-        maxBytes: ByteLimit(1000)),
-    outcomes: ElementLimit(2), checks: ElementLimit(256), totalBytes: ByteLimit(2000)),
-    queues: AuthorizationConfig(cores: CoreCount(2), maxHashes: ElementLimit(160),
-        maxBytes: ByteLimit(5120)),
-    staging: ValidatorStateConfig(cores: CoreCount(2), validators: ElementLimit(6),
-        maxBytes: ByteLimit(2017)),
-    totalBytes: ByteLimit(20000))
 proc code(instructions: seq[seq[byte]], payload: seq[byte]): seq[byte] =
   ## Complete service framing preserves actual PVM guest code and independently authored payloads.
   result = @[0'u8]
@@ -80,7 +69,7 @@ proc main() {.raises.} =
   let authored = fixture(base)
   let source = provisions(authored)
   let before = source.provisionStageSnapshot.value
-  let prepared = prepareAccumulationGlobalStage(source, policy())
+  let prepared = prepareAccumulationGlobalStage(source, currentGlobalStageLimits())
   assert prepared.error == AccumulationGlobalStageError.None, $prepared.error
   let stage = prepared.value
   let info = stage.globalStageInfo.value
@@ -91,7 +80,7 @@ proc main() {.raises.} =
   assert uint32(roles.privilegeAssignerAt(PrivilegeCoreIndex(0)).value) == 88, "manager override wins R"
   let snapshot = stage.globalStageSnapshot.value
   let queues = decodeAuthorization(AuthorizationKind.Queues, snapshot.lookup(chapterKey(
-      StateChapter(2))).value.bytes, policy().queues).value.snapshot
+      StateChapter(2))).value.bytes, currentGlobalStageLimits().queues).value.snapshot
   let marker = queues.authorizerAt(AuthorizationCoreIndex(0), AuthorizationIndex(2)).value.bytes
   for index in 0..<32: assert marker[index] == byte(
       index+64) # Original99 supplies payload despite posterior assigner88.
@@ -99,41 +88,42 @@ proc main() {.raises.} =
   assert roster[65] == 64 and roster[96] == 95, "original99 supplies staging despite posterior delegator88"
   let canceledFixture = fixture(base, cancel = true)
   let canceled = provisions(canceledFixture)
-  let canceledStage = prepareAccumulationGlobalStage(canceled, policy()).value
+  let canceledStage = prepareAccumulationGlobalStage(canceled, currentGlobalStageLimits()).value
   for chapter in [2'u8, 7'u8]:
     let key = chapterKey(StateChapter(chapter))
     assert canceledStage.globalStageSnapshot.value.lookup(key).value.bytes ==
         canceledFixture.state.snapshot.value.lookup(key).value.bytes, "annulled original owner leaves prior payload"
   assert uint32(canceledStage.globalStageRoles.value.globalRolesPrivileges.value.privilegeInfo.value.delegator) == 88
-  var limits = policy()
+  var limits = currentGlobalStageLimits()
   limits.totalBytes = ByteLimit(0)
   assert prepareAccumulationGlobalStage(source, limits).error ==
       AccumulationGlobalStageError.LimitExceeded
-  limits = policy()
+  limits = currentGlobalStageLimits()
   limits.queues.cores = CoreCount(3)
   assert prepareAccumulationGlobalStage(source, limits).error ==
       AccumulationGlobalStageError.InvalidConfig
-  limits = policy()
+  limits = currentGlobalStageLimits()
   limits.queues.maxBytes = ByteLimit(5119)
   let queueFailure = prepareAccumulationGlobalStage(source, limits)
   assert queueFailure.error == AccumulationGlobalStageError.QueueFailure
   assert queueFailure.queueFailure == AuthorizationError.LimitExceeded
-  limits = policy()
+  limits = currentGlobalStageLimits()
   limits.staging.maxBytes = ByteLimit(2016)
   let stagingFailure = prepareAccumulationGlobalStage(source, limits)
   assert stagingFailure.error == AccumulationGlobalStageError.StagingFailure
   assert stagingFailure.stagingFailure == StateComponentError.LimitExceeded
   failHash(1)
-  let backend = prepareAccumulationGlobalStage(source, policy())
+  let backend = prepareAccumulationGlobalStage(source, currentGlobalStageLimits())
   assert backend.error == AccumulationGlobalStageError.StoreFailure
   assert backend.storeFailure == StateStoreError.BackendFailure
   failHash(0)
   assert sameStateSnapshot(source.provisionStageSnapshot.value, before), "late global hash refusal never publishes a prefix"
-  let refused = prepareAccumulationGlobalStage(default(PreparedAccumulationProvisionStage), policy())
+  let refused = prepareAccumulationGlobalStage(default(PreparedAccumulationProvisionStage),
+      currentGlobalStageLimits())
   assert refused.error == AccumulationGlobalStageError.InvalidSource
   let occupied = getOccupiedMem()
   for iteration in 0..<1000:
-    let local = prepareAccumulationGlobalStage(source, policy()).value
+    let local = prepareAccumulationGlobalStage(source, currentGlobalStageLimits()).value
     assert local.globalStageInfo.value.cores == 2 # Complete canonical payloads and private Merkle forks release together.
   let after = getOccupiedMem()
   assert occupied == after, "global phase owners release"
