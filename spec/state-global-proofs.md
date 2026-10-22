@@ -106,3 +106,9 @@ cryptographic key validation, ticket verification or epoch transition behavior.
 canonical-set codec. Its native suite rejects authenticated duplicate identities, every truncated
 prefix and trailing bytes, while preserving copied values and separate per-set/aggregate/byte
 ceilings. It validates serialization only, without executing dispute judgments.
+
+`readGlobalAvailability` preserves exact optional-core slots and complete guarantees/reports through
+the established codec. The native suite uses the existing independently encoded report fixture,
+checks distinct guarantee/registration slots and retained children after parent release, and rejects
+invalid presence tags, truncated/suffixed chapters, missing/absent evidence and caller-policy failures.
+No signature, availability-transition or root-authority rule is added.
