@@ -1,0 +1,95 @@
+{
+  "source": "tests/native/accumulation_creation_union_results.nim",
+  "build_name": "accumulation-creation-union-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "creation-union-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Creation union default extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "creation-union-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Creation union refused extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "creation-union-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Creation union info extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "creation-union-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Creation union source extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "entry"
+      },
+      "arguments": [
+        "entry"
+      ],
+      "name": "creation-union-entry",
+      "diagnostic": "outcome.status == None",
+      "description": "Creation union entry extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "metadata"
+      },
+      "arguments": [
+        "metadata"
+      ],
+      "name": "creation-union-metadata",
+      "diagnostic": "outcome.status == None",
+      "description": "Creation union metadata extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "snapshot"
+      },
+      "arguments": [
+        "snapshot"
+      ],
+      "name": "creation-union-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Creation union snapshot extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "outcome"
+      },
+      "arguments": [
+        "outcome"
+      ],
+      "name": "creation-union-outcome",
+      "diagnostic": "outcome.status == None",
+      "description": "Creation union outcome extraction guard"
+    }
+  ]
+}
