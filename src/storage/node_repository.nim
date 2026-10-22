@@ -348,6 +348,13 @@ proc admitPublication[T](repository: var NodeRepository, head: RepositoryData,
 func storedDigest(record: StoredRecord): StateNodeHash =
   ## The private staged-publication path exposes only an immutable cell's fixed physical identity.
   record.digest
+proc preparePublicationRecords(stage: var PublicationStage, info: RecordCollectionInfo) =
+  ## Whole-input preflight bounded this count; new-cell capacity also respects inherited physical headroom.
+  let maximum = uint64(stage.head.limits.records)
+  let retained = uint64(stage.head.table.records.len)
+  let available = if retained < maximum: maximum-retained else: 0'u64
+  stage.added = newSeqOfCap[StoredRecord](int(min(info.records, available)))
+  stage.touched = newSeqOfCap[StoredRecord](int(info.records))
 proc acceptPublicationRecord(stage: var PublicationStage, record: var TrieRecord): bool =
   ## Continue codec hashing after repository refusal; base/generation and quota precedence resolve afterward.
   let limits = stage.head.limits
@@ -423,15 +430,10 @@ proc publishEncoded*(repository: var NodeRepository, expected: RepositoryView,
   if head == nil: return RepositoryResult[RepositoryView](status: RepositoryError.Uninitialized)
   if expected.data == nil or expected.data != head:
     return RepositoryResult[RepositoryView](status: RepositoryError.StaleView)
-  let inspected = inspectTrieExport(input, head.limits.codec)
-  if inspected.error != RecordError.None:
-    return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
-      recordReason: inspected.error)
-  let capacity = int(inspected.value.records)
-  var stage = PublicationStage(head: head, added: newSeqOfCap[StoredRecord](capacity),
-    touched: newSeqOfCap[StoredRecord](capacity), count: head.table.records.len,
-    bytes: head.valueBytes, quotaExceeded: false, conflict: false)
-  let delivered = visitTrieExport(input, head.limits.codec, stage, acceptPublicationRecord)
+  var stage = PublicationStage(head: head, added: @[], touched: @[],
+    count: head.table.records.len, bytes: head.valueBytes, quotaExceeded: false, conflict: false)
+  let delivered = visitTrieExport(input, head.limits.codec, stage,
+    preparePublicationRecords, acceptPublicationRecord)
   if delivered.error != RecordError.None:
     return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
       recordReason: delivered.error)
