@@ -80,3 +80,8 @@ claims one after request contexts retire, uses the existing single-slot proof wo
 exclusive chain lease, then collects before queueing detached output. Public framing and
 resource limits are specified in [RPC state proofs](../../spec/rpc-state-proofs.md).
 Download orchestration keeps this capability disabled while it retains external parent aliases.
+
+An independently optional `src/management/` HTTP listener serves privileged local management
+methods over a permission-controlled Unix domain socket. Its registry has no overlap with WS
+RPC. Only strict JSON/UTF-8 utilities are shared; neither management transport nor its startup
+metadata retains canonical graph owners. See [management RPC](../../spec/management-rpc.md).
