@@ -5,7 +5,8 @@
 from pathlib import Path
 import hashlib
 import unittest
-from state_complete_serialization_oracle import ROWS, MAGIC, source, checkpoint, encoded
+from state_complete_serialization_oracle import (
+    ROWS, MAGIC, source, checkpoint, encoded, refusal_cases, refusals_encoded)
 from state_composition_oracle import entries
 
 class CompleteSerializationOracleTests(unittest.TestCase):
@@ -36,3 +37,20 @@ class CompleteSerializationOracleTests(unittest.TestCase):
         self.assertEqual(authored, (Path(__file__).parent/'fixtures/complete-serialization.txt').read_bytes())
         self.assertEqual(len(authored.splitlines()), ROWS)
         self.assertEqual(len(set(authored.splitlines())), ROWS)
+
+    def test_refusal_fixture(self):
+        """Every omitted or malformed chapter gets a new independent internally consistent root."""
+        from state_composition_oracle import chapters, capture
+        values = chapters()
+        self.assertEqual({(mode, chapter) for mode, chapter, _ in refusal_cases()},
+                         {('V', 0)} | {(mode, n) for mode in ('M', 'T') for n in range(1, 17)})
+        roots = set()
+        for mode, chapter, wire in refusal_cases():
+            roots.add(wire[len(MAGIC)+8:len(MAGIC)+40])
+            count = int.from_bytes(wire[len(MAGIC):len(MAGIC)+8], 'little')
+            self.assertEqual(count, 15 if mode == 'M' else 16)
+            if mode == 'T':
+                self.assertEqual(capture(chapter, values[chapter-1]+b'\0'), 'trailingbytes')
+        self.assertEqual(len(roots), 33)
+        self.assertEqual(refusals_encoded(),
+            (Path(__file__).parent/'fixtures/serialization-refusals.txt').read_bytes())
