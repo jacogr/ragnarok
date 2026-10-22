@@ -22,3 +22,35 @@ completion and uint32 exhaustion. This foundation does not yet advertise RPC met
 Next layers: bounded request/notification framing and reply-budget transactions, listener
 routing, managed Services admission/collection, independent receive verification and shutdown.
 M1 framing completion does not imply complete state serialization or whole-block STF parity.
+
+
+## WebSocket method contract
+
+`ragnarok_requestStateProof(header_hash, keys)` accepts a canonical padded Base64
+32-byte block hash and an array of 1–16 unique canonical padded Base64 31-byte
+serialized state keys. It returns a connection-local integer request ID after bounded
+selector capture. The acknowledgement means queued intent, not successful selection
+or proof generation. One outstanding request per connection returns error 0 on further
+admission. Invalid selectors/params return -32602 without consuming an ID. Notification-
+form requests are ignored because no caller can receive the acknowledgement.
+
+`ragnarok_cancelStateProof(request)` returns true only when it discards that connection's
+queued or dispatched intent. It may be called in notification form. Completion already
+queued is terminal and cancellation returns false; it does not remove that notification.
+Cancellation never preempts native execution or releases its canonical lease.
+
+Exactly one terminal `ragnarok_stateProof` notification carries `params.request` and either
+`params.result` or `params.error`. Success is an object with `header_hash`, `state_root`,
+`format: "RPV1"`, and `proof` (canonical padded Base64 RPV1 planned proof bytes). Error is
+a fixed diagnostic string; no partial proof bytes are returned. Consumers independently
+select the exact expected block/root and keys and use `decodePlannedProofs` with their
+own receive ceilings. The returned root is metadata, never an independent trust anchor.
+RPV1 remains the existing local state envelope inside this explicit Ragnarok extension;
+this does not assign a JAM networking message or a standard JIP-2 proof method.
+
+The raw proof ceiling is 32,768 bytes. Terminal messages share the existing 16-update,
+65,535-byte per-connection FIFO with chain subscriptions. Overflow retires only the
+consumer; no partial queue mutation commits. Batches retain sequential execution and
+reply-budget transactionality. Methods are advertised only on stateful connections whose
+canonical host explicitly enables proof production; stateless/default listeners return
+-32601. Listener/Services binding is supplied by the following layers.
