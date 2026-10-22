@@ -151,3 +151,10 @@ order and duplicates remain supported; no multiproof compression or performance
 claim is made. The single-path overload shares its unchanged complete-map
 preflight. Suites `state_proof_snapshot_batch` and `state_snapshot_proof` cover
 ordered membership/absence, limits, defaults and retained-source behavior.
+
+## Semantic snapshot generation
+
+`generateServiceProofs` reads only a valid plan's exact canonical identities
+through the complete snapshot batch adapter. Count/native bounds precede key
+copying and source traversal. Suite `state_proof_snapshot_plan` verifies exact
+account/storage identities and rejects default plans and short aggregate counts.

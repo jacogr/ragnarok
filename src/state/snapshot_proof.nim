@@ -3,7 +3,7 @@
 
 ## Generate bounded witnesses from the existing complete immutable snapshot interface.
 ## No storage internals, database format or partial-state publication are involved.
-import ./[store, trie_proof]
+import ./[store, trie_proof, proof_service]
 import ../codec/[bounded, state_layout, state_trie]
 
 proc copySnapshotEntries(snapshot: StateStoreSnapshot, mapLimits: StateTrieLimits,
@@ -56,3 +56,17 @@ proc generateStateProofs*(snapshot: StateStoreSnapshot, queries: openArray[State
   if copied != StateProofError.None:
     return proofFailure[StateProofSet](copied)
   generateStateProofs(entries, queries, mapLimits, limits, aggregate)
+
+proc generateServiceProofs*(snapshot: StateStoreSnapshot, plan: ServiceProofPlan,
+    mapLimits: StateTrieLimits, limits: StateProofLimits,
+    aggregate: StateProofBatchLimits): StateProofResult[StateProofSet] =
+  ## Resolve only the immutable plan's exact sorted identities against one retained complete snapshot.
+  if not plan.valid:
+    return proofFailure[StateProofSet](StateProofError.Uninitialized)
+  if uint64(plan.len) > uint64(aggregate.items) or plan.len > high(int) div sizeof(StateKey):
+    return proofFailure[StateProofSet](StateProofError.LimitExceeded)
+  var keys = newSeq[StateKey](plan.len)
+  for i in 0..<plan.len:
+    # The plan owner is immutable for the entire synchronous generation call.
+    keys[i] = plan.keyAt(i).value
+  generateStateProofs(snapshot, keys, mapLimits, limits, aggregate)
