@@ -67,6 +67,21 @@ class StorageGrowthReportTests(unittest.TestCase):
         self.assertEqual(latency['median_ns'],107.5)
         validate_growth(report)
 
+    def test_growth_curve_normalizes_fourfold_work(self):
+        from storage_growth_report import _growth_scaling
+        report=fixture();rows=_growth_scaling(validate_growth(report))
+        self.assertEqual(len(rows),12)
+        self.assertEqual(rows[0]['normalized_ratio'],1)
+        self.assertIsNone(rows[0]['selected_byte_growth'])
+        self.assertEqual(rows[0]['payload_bytes'],196608)
+        self.assertIn('not device write amplification',summarize_growth(report))
+        # Doubling only the longer batch doubles its normalized cost; raw call witnesses remain bounded.
+        for observations in report['passes']:
+            for row in observations['memory-1024-256-sweep']:
+                row['publication']*=2
+        report['cases']=aggregate_growth(report['passes'])
+        self.assertEqual(_growth_scaling(validate_growth(report))[0]['normalized_ratio'],2)
+
     def test_exact_configuration_and_sample_coverage(self):
         raw=output('memory',1024,64)
         for bad in (raw.replace('1024','8192',1),raw.replace('\t64\t','\t256\t',1),raw+raw.splitlines()[0]+'\n',

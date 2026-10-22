@@ -104,3 +104,8 @@ call p50, nearest-rank p95 and maximum. Warmups are excluded. Calls in the same 
 they are not additional independent trials. Opposite-order p95 drift is marked separately, and
 normalized work includes the same loop/clock overhead in every backend. These are synthetic
 four-key transactions, not block throughput, and memory remains non-durable.
+
+The growth table compares 64 and 256 publications after dividing time by the fourfold change in
+authored work. It shows added physical records and selected-file byte growth per authored value
+byte. File growth is not device write amplification or filesystem allocation. Compare the same
+entry count, update locality and backend; opposite-order uncertainty remains visible.
