@@ -122,3 +122,9 @@ then retires all prepared fixture graphs before observing it. Full-map validatio
 key/value and local generation. No immutable reader escapes; ordinary close and scope exit must
 both return the allocator to the exact baseline. Its owner bytes are therefore measured directly,
 not estimated by subtracting separate process peaks.
+
+### Reader lifetime
+
+One immutable snapshot retains its exact complete map after owner close and releases at scope exit. Fixture graphs retire before the owner checkpoint. Native validation covers
+the retained values after owner close, and every scope must return to its exact allocator baseline.
+Current managed-heap observations remain distinct from peak RSS and OS page-cache behavior.
