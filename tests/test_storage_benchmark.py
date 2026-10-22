@@ -13,19 +13,19 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
-from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,CASES,PHASES,parse_output,aggregate,summarize_benchmark
+from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,VALUE_BYTES,CASES,PHASES,parse_output,aggregate,summarize_benchmark
 from summarize_tests import summarize
 
 
 # Authored complete sample grids isolate report correctness from machine-dependent timing values.
-def output(engine,count,topology='leading'):
-    return ''.join(f'sample\t{count}\t{topology}\t{s}\t{100+s}\t{200+s}\t{300+s}\t'+
+def output(engine,count,topology='leading',value_bytes=256):
+    return ''.join(f'sample\t{count}\t{topology}\t{value_bytes}\t{s}\t{100+s}\t{200+s}\t{300+s}\t'+
                    str(-1 if engine=='memory' else 400+s)+'\n' for s in range(13))
 
 
 def passes():
     """Build two complete identical passes whose statistics have independent exact expectations."""
-    one={f'{e}-{n}-{t}':parse_output(output(e,n,t),e,n,t) for e in ENGINES for n,t in CASES}
+    one={f'{e}-{n}-{t}-{v}':parse_output(output(e,n,t,v),e,n,t,v) for e in ENGINES for n,t,v in CASES}
     return [one,copy.deepcopy(one)]
 
 
@@ -41,14 +41,14 @@ class StorageBenchmarkTests(unittest.TestCase):
         self.assertIn('Strict disk reopen | — |',text)
         self.assertIn('memory publication is not durable',text)
         self.assertIn('warm resident',text)
-        self.assertEqual(len(report['cases']),16)
+        self.assertEqual(len(report['cases']),32)
         self.assertEqual(report['cases'][0]['engines']['memory']['median_ns'],107.5)
 
     def test_missing_duplicate_or_wrong_sample(self):
         raw=output('memory',1024)
         invalid=[raw.rsplit('\n',2)[0]+'\n',raw+raw.splitlines()[0]+'\n',
-                 raw.replace('sample\t1024\tleading\t0','sample\t8192\tleading\t0'),
-                 raw.replace('sample\t1024\tleading\t0','sample\t1024\tleading\t13'),raw+'diagnostic\n']
+                 raw.replace('sample\t1024\tleading\t256\t0','sample\t8192\tleading\t256\t0'),
+                 raw.replace('sample\t1024\tleading\t256\t0','sample\t1024\tleading\t256\t13'),raw+'diagnostic\n']
         for bad in invalid:
             with self.subTest(output=bad[:70]),self.assertRaises(ValueError):
                 parse_output(bad,'memory',1024)
@@ -58,11 +58,20 @@ class StorageBenchmarkTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_output(output('memory',1024,'trailing'),'memory',1024,'leading')
         raw=passes()
-        raw[0]['memory-1024-trailing']=raw[0]['memory-1024-leading']
+        raw[0]['memory-1024-trailing-256']=raw[0]['memory-1024-leading-256']
         with self.assertRaises(ValueError):
             aggregate(raw)
         # Aggregation also requires all declared case keys.
-        del raw[0]['memory-1024-leading']
+        del raw[0]['memory-1024-leading-256']
+        with self.assertRaises(ValueError):
+            aggregate(raw)
+
+    def test_value_representation_identity_is_required(self):
+        """Inline-value observations cannot substitute for the out-of-line payload workload."""
+        with self.assertRaises(ValueError):
+            parse_output(output('memory',1024,value_bytes=16),'memory',1024,value_bytes=256)
+        raw=passes()
+        raw[0]['memory-1024-leading-256']=raw[0]['memory-1024-leading-16']
         with self.assertRaises(ValueError):
             aggregate(raw)
 
@@ -78,7 +87,7 @@ class StorageBenchmarkTests(unittest.TestCase):
     def test_missing_backend_pass_or_forged_statistic(self):
         raw=passes()
         with self.assertRaises(ValueError):aggregate(raw[:1])
-        del raw[0]['managed-8192-trailing']
+        del raw[0]['managed-8192-trailing-256']
         with self.assertRaises(ValueError):aggregate(raw)
         report=dict(status='checks-passed',passes=passes())
         report['cases']=aggregate(report['passes'])
