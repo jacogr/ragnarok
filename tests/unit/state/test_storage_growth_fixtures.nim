@@ -13,6 +13,7 @@ for hot in [false, true]:
     # Both map sizes exercise exactly the same bounded four-key updates and independently authored maps.
     for publications in [64, 256]:
       let fixture = prepareGrowth(count, publications, hot)
+      assert fixture.reads.len == count
       assert fixture.changes.len == publications and fixture.roots.len == publications+1
       var owner = newNodeRepository(growthLimits())
       discard owner.publish(owner.snapshot.value, fixture.seed).value

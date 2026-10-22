@@ -11,6 +11,7 @@ type
     seed*: TrieExport
     changes*: seq[TrieExport]
     roots*: seq[StateRoot]
+    reads*: seq[StateNodeHash]
 
 proc growthKey*(index: int): StateKey =
   ## Leading two-byte identities preserve sorted complete-map iteration and bound every fixture key.
@@ -65,6 +66,11 @@ proc prepareGrowth*(count, publications: int, hot = false): StorageGrowthFixture
     result.changes.add(exportTrieChanges(state, next, limits.codec.records).value)
     result.roots.add(next.commitment.root)
     state = next # Every root corresponds to exactly one prepared four-key physical publication.
+  let current = exportFullTrie(state, limits.codec.records).value
+  for record in current.records:
+    if record.kind == TrieRecordKind.Leaf:
+      result.reads.add(record.digest) # Prepare only final complete-map leaf addresses, outside timing.
+  assert result.reads.len == count
 proc checkGrowthEntries*(entries: openArray[StateEntry], count, publications: int, hot = false) =
   ## Independently validate already returned complete maps without hiding a second extraction in timing.
   assert entries.len == count
@@ -83,3 +89,12 @@ proc checkGrowthHead*(view: RepositoryView, root: StateRoot, count, publications
   assert array[32, byte](view.commitment.root) == array[32, byte](root)
   assert uint64(view.generation) == uint64(publications+1)
   checkGrowth(view, root, count, publications, hot)
+
+proc checkGrowthRecord*(record: TrieRecord, count, publications: int, hot = false) =
+  ## Validate an owned resident lookup result by its full key and independently authored revision payload.
+  assert record.kind == TrieRecordKind.Leaf
+  let raw = array[31, byte](record.key)
+  let index = int(raw[0])*256+int(raw[1])
+  assert index < count
+  assert raw == array[31, byte](growthKey(index))
+  assert record.payload == growthValue(index, growthRevision(index, count, publications, hot))
