@@ -1,0 +1,106 @@
+{
+  "build_name": "state-proof-view-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "State proof view default extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-proof-view-default"
+    },
+    {
+      "arguments": [
+        "missing"
+      ],
+      "description": "State proof view missing extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "missing"
+      },
+      "name": "state-proof-view-missing"
+    },
+    {
+      "arguments": [
+        "capture"
+      ],
+      "description": "State proof view capture extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "capture"
+      },
+      "name": "state-proof-view-capture"
+    },
+    {
+      "arguments": [
+        "merge"
+      ],
+      "description": "State proof view merge extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "merge"
+      },
+      "name": "state-proof-view-merge"
+    },
+    {
+      "arguments": [
+        "project"
+      ],
+      "description": "State proof view project extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "project"
+      },
+      "name": "state-proof-view-project"
+    },
+    {
+      "arguments": [
+        "wire"
+      ],
+      "description": "State proof view wire extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "wire"
+      },
+      "name": "state-proof-view-wire"
+    },
+    {
+      "arguments": [
+        "decode"
+      ],
+      "description": "State proof view decode extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "decode"
+      },
+      "name": "state-proof-view-decode"
+    },
+    {
+      "arguments": [
+        "time"
+      ],
+      "description": "State proof view time extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "time"
+      },
+      "name": "state-proof-view-time"
+    },
+    {
+      "arguments": [
+        "absent-bytes"
+      ],
+      "description": "State proof view absent byte extraction guard",
+      "diagnostic": "present(lookup)",
+      "identity": {
+        "reason": "absent-bytes"
+      },
+      "name": "state-proof-view-absent-bytes"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/state_proof_view_results.nim"
+}
