@@ -33,5 +33,48 @@ proc main() =
   assert encodeProofView(empty, budget, limits, ByteLimit(8)).value.len == 8
   assert encodeProofView(default(ProofView), budget, limits, ByteLimit(227)).error ==
       ProofViewError.Uninitialized
+  let encoded = encodeProofView(view, budget, limits, ByteLimit(227)).value
+  let decoded = decodeProofView(encoded, root, budget, limits, aggregate, ByteLimit(227)).value
+  assert decoded.lookup(key).value.bytes == @[byte 7] and not decoded.lookup(other).value.present
+  for size in 0..<encoded.len:
+    # Every original prefix is rejected before any partial view can escape.
+    var prefix = newSeq[byte](size)
+    for i in 0..<size: prefix[i] = encoded[i]
+    assert decodeProofView(prefix, root, budget, limits, aggregate, ByteLimit(300)).error ==
+        ProofViewError.Truncated
+  var bad = encoded
+  bad.add(0)
+  assert decodeProofView(bad, root, budget, limits, aggregate, ByteLimit(300)).error ==
+      ProofViewError.NonCanonical
+  bad = encoded
+  bad[3] = byte('2')
+  assert decodeProofView(bad, root, budget, limits, aggregate, ByteLimit(300)).error ==
+      ProofViewError.NonCanonical
+  bad = encoded
+  bad[118] = 1
+  assert decodeProofView(bad, root, budget, limits, aggregate, ByteLimit(300)).error ==
+      ProofViewError.NonCanonical
+  bad = encoded
+  bad[117] = 8
+  let wrongValue = decodeProofView(bad, root, budget, limits, aggregate, ByteLimit(300))
+  assert wrongValue.error == ProofViewError.ProofFailure and wrongValue.proofError ==
+      StateProofError.MissingValue
+  let wrongRoot = decodeProofView(encoded, default(StateRoot), budget, limits, aggregate, ByteLimit(300))
+  assert wrongRoot.error == ProofViewError.ProofFailure and wrongRoot.proofError ==
+      StateProofError.RootMismatch
+  assert decodeProofView(encoded, root, ProofViewLimits(items: ElementLimit(2)), limits,
+    aggregate, ByteLimit(300)).error == ProofViewError.LimitExceeded
+  assert decodeProofView(encodeProofView(empty, budget, limits, ByteLimit(8)).value,
+    root, budget, limits, aggregate, ByteLimit(8)).value.valid
+  var shortAggregate = aggregate
+  shortAggregate.nodes = ElementLimit(1)
+  let shortNodes = decodeProofView(encoded, root, budget, limits, shortAggregate, ByteLimit(300))
+  assert shortNodes.error == ProofViewError.ProofFailure and shortNodes.proofError ==
+      StateProofError.LimitExceeded
+  shortAggregate = aggregate
+  shortAggregate.valueBytes = ByteLimit(0)
+  let shortBytes = decodeProofView(encoded, root, budget, limits, shortAggregate, ByteLimit(300))
+  assert shortBytes.error == ProofViewError.ProofFailure and shortBytes.proofError ==
+      StateProofError.LimitExceeded
   echo "state-proof-view-wire: ok"
 main()
