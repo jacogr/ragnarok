@@ -245,3 +245,11 @@ posterior maps, encode local responses, independently decode them and compare
 current metadata with the complete selected state. Later responses refuse both
 their header prior-state root and the original seed root. This exercises the
 application chain fixture, not a deployed RPC or consensus trust-discovery path.
+
+## Runtime authority guards
+
+The `state_proof_service` strict failure family compiles its driver successfully,
+then checks11 separate failed/default payload or wrong-alternative extractions.
+The same binary's genuine positive control extracts valid typed reads, plans,
+transport responses and actual nested proof reasons. Compiler failure alone
+cannot pass these runtime checks; checked optimized contracts remain enabled.
