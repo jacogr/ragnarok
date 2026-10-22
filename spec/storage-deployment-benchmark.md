@@ -41,3 +41,13 @@ Reversed order requires identical deterministic physical work, not identical res
 Raw native rows, source/build identities, current owner/reopen/closed checkpoints, child RSS/faults
 and deployment CSV remain separate from the ordinary speed report. Each child is bounded to300
 seconds; a failed build, assertion, parse, export or identity check fails the whole panel.
+
+## Independent fresh-process strict reopen
+
+`make bench-storage-fresh-reopen` separates native producer construction from fresh native consumer
+resource observation at32,768/131,072 entries on journal/managed storage. The successful closed
+producer emits one exact lowercase root token. Strict consumer open checks that root, generation17
+and every complete map entry, then verifies held reads after owner close and exact allocator release.
+Selected namespace bytes must be identical before/after. Producer allocation history does not enter
+consumer RSS/fault counts, but the kernel/page cache remains alive; this is not cold-cache or
+power-loss evidence and grants no checkpoint-import authority.
