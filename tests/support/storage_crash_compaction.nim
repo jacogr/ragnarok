@@ -9,11 +9,14 @@ import ../../src/storage/[full_state_trie, node_repository, node_records, file_r
   managed_repository, managed_manifest, snapshot_codec, database_identity]
 import ../../src/codec/bounded
 proc compactionCrashCase*(label: string, operation, skip: cint,
-    shortWrites = false): uint64 {.raises.} =
+    shortWrites = false, retainedContext = false): uint64 {.raises.} =
   ## Prepare a complete obsolete root, then observe only physical compaction after the child's strict open.
   resetIo()
   let path = label & "-" & $operation & "-" & $skip & "-" & $int(storageProcessId())
   let limits = managedStorageLimits()
+  let schema = if retainedContext: StorageSchema.FullStateV1 else: StorageSchema.FullNodesV1
+  let beforeContext: seq[byte] = if retainedContext: @[1'u8, 2, 3] else: @[]
+  let afterContext: seq[byte] = if retainedContext: @[9'u8, 0, 8, 7] else: @[]
   let a = storageTrie(7)
   let b = storageTrie(8)
   var source = newNodeRepository(limits.repository)
@@ -25,16 +28,19 @@ proc compactionCrashCase*(label: string, operation, skip: cint,
     abortCrash()
     resetIo()
     if file.opened: discard file.close
-  assert initializeManagedFileRepository(file, path, default(StorageChainId), selection, [],
-      limits) == FileError.None
+  assert initializeManagedFileRepository(file, path, default(StorageChainId), selection,
+      beforeContext, limits, schema) == FileError.None
   let held = file.snapshot.value
+  let heldContext = file.snapshotContext.value
+  assert heldContext == beforeContext
   let current = file.publish(held, exportTrieChanges(a, b,
-      limits.repository.codec.records).value).value
-  let plan = selectRepositoryRoots(current, [current.commitment.root], limits.roots).value
-  let encoded = encodeRepositorySnapshot(plan, default(StorageChainId), StorageSchema.FullNodesV1, [
-      ], SnapshotLimits(repository: limits.repository, roots: limits.roots,
+      limits.repository.codec.records).value, afterContext).value
+  let roots = if retainedContext: @[held.commitment.root, current.commitment.root] else: @[
+      current.commitment.root]
+  let plan = selectRepositoryRoots(current, roots, limits.roots).value
+  let encoded = encodeRepositorySnapshot(plan, default(StorageChainId), schema, afterContext, SnapshotLimits(repository: limits.repository, roots: limits.roots,
           context: limits.contextBytes, bytes: limits.snapshotBytes)).value
-  let manifest = encodeManagedManifest(default(StorageChainId), StorageSchema.FullNodesV1,
+  let manifest = encodeManagedManifest(default(StorageChainId), schema,
       ManagedEpoch(2), current.generation, current.commitment.root, encoded.checksum,
       ByteLimit(ManagedManifestBytes)).value
   let header = encodeManagedJournalHeader(manifest.checksum, limits.journalBytes).value
@@ -46,11 +52,11 @@ proc compactionCrashCase*(label: string, operation, skip: cint,
   let child = forkCrash(operation, skip)
   assert child >= 0
   if child == 0:
-    if openManagedFileRepository(file, path, default(StorageChainId), limits) !=
+    if openManagedFileRepository(file, path, default(StorageChainId), limits, schema) !=
         FileError.None: exitCrash(86)
     if shortWrites: limitWrites(8) # Every staged extent remains a genuine kernel write.
     if startCrash() != 0: exitCrash(87)
-    let replaced = file.compact(file.snapshot.value, [current.commitment.root])
+    let replaced = file.compact(file.snapshot.value, roots)
     if replaced.error != FileError.None or replaced.value.cleanup != FileError.None: exitCrash(88)
     exitCrash(0)
   let receipt = finishCrash()
@@ -91,17 +97,18 @@ proc compactionCrashCase*(label: string, operation, skip: cint,
     let exists = sampleExists(path & "/" & name)
     present.add(exists)
     forensic.add(if exists: readFile(path & "/" & name) else: "")
-  assert openManagedFileRepository(file, path, default(StorageChainId), limits) == FileError.None
+  assert openManagedFileRepository(file, path, default(StorageChainId), limits, schema) == FileError.None
   assert uint64(file.snapshot.value.generation) == 2
   assert uint64(file.managedUsage.value.epoch) == (if selectedOld: 1'u64 else: 2'u64)
   checkCrashMap(file.snapshot.value, 8)
+  assert file.snapshotContext.value == afterContext
   assert readFile(path & "/CURRENT") == visibleCurrent
   for index, name in names:
     assert sampleExists(path & "/" & name) == present[index]
     if present[index]: assert readFile(path & "/" & name) == forensic[index]
   if selectedOld:
     assert file.discardManagedStaging == FileError.None
-    let resumed = file.compact(file.snapshot.value, [current.commitment.root]).value
+    let resumed = file.compact(file.snapshot.value, roots).value
     assert resumed.cleanup == FileError.None and uint64(resumed.epoch) == 2
   else:
     assert file.cleanupRetiredEpoch(ManagedEpoch(1)) == FileError.None
@@ -109,9 +116,20 @@ proc compactionCrashCase*(label: string, operation, skip: cint,
   assert file.cleanupRetiredEpoch(ManagedEpoch(2)) == FileError.InvalidRetention
   assert file.cleanupRetiredEpoch(ManagedEpoch(3)) == FileError.InvalidRetention
   assert file.close == FileError.None
-  assert openManagedFileRepository(file, path, default(StorageChainId), limits) == FileError.None
+  assert openManagedFileRepository(file, path, default(StorageChainId), limits, schema) == FileError.None
   assert uint64(file.managedUsage.value.epoch) == 2 and uint64(file.snapshot.value.generation) == 2
   checkCrashMap(file.snapshot.value, 8)
+  assert file.snapshotContext.value == afterContext
+  if retainedContext:
+    for value in [7'u8, 8'u8]:
+      let expected = storageTrie(value)
+      let entries = restoreHistoricalStateEntries(file.snapshot.value, expected.commitment.root,
+          limits.repository.codec.trie).value
+      assert entries.len == 2 and entries[0].value == @[value] and entries[1].value == @[9'u8]
+  else:
+    assert restoreHistoricalStateEntries(file.snapshot.value, held.commitment.root,
+        limits.repository.codec.trie).error != RepositoryError.None
   assert file.close == FileError.None and source.close == RepositoryError.None
   checkCrashMap(held, 7)
+  assert heldContext == beforeContext
   removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2)])

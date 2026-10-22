@@ -1,0 +1,1 @@
+PASS history compaction crash: every replacement phase, retained complete roots and exact opaque context
