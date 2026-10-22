@@ -10,7 +10,7 @@ import ../codec/[bounded, state_accounts, state_layout, state_service_values, st
 type
   ServiceProofError* {.pure.} = enum ## Failed/default reads expose only a reason, never a fabricated value.
     Uninitialized, None, MissingWitness, AbsentValue, InvalidValue, LimitExceeded,
-    BackendFailure, InvalidInput
+    BackendFailure, InvalidInput, InvalidIndex
   ServiceProofResult*[T] = object ## Success alone grants access to a complete typed read.
     case status: ServiceProofError
     of None:
@@ -170,3 +170,56 @@ proc readProofCode*(view: ProofView, service: ServiceIndex, slot: RequestSlot,
     return ServiceProofResult[VerifiedStateLookup](status: account.error)
   let hash = ServicePreimageHash(array[32, byte](account.value.codeHash))
   view.readProofHistoricalPreimage(service, hash, slot, limit)
+
+type
+  PlanData = ref object ## Root-independent query identities share an immutable acyclic owner.
+    keys: seq[StateKey]
+  ServiceProofPlan* = object ## A query plan requests evidence; it never grants verified state or root authority.
+    data: nil PlanData
+
+func valid*(plan: ServiceProofPlan): bool =
+  ## Defaults cannot silently request an empty successful read.
+  plan.data != nil
+func len*(plan: ServiceProofPlan): int =
+  ## Inspect the exact retained query count without allocating key copies.
+  let data = plan.data
+  if data == nil: 0 else: data.keys.len
+proc keyAt*(plan: ServiceProofPlan, index: int): ServiceProofResult[StateKey] =
+  ## Bind ordinal extraction to this immutable owner and reject negative/out-of-range positions.
+  let data = plan.data
+  if data == nil:
+    return ServiceProofResult[StateKey](status: ServiceProofError.Uninitialized)
+  if index < 0 or index >= data.keys.len:
+    return ServiceProofResult[StateKey](status: ServiceProofError.InvalidIndex)
+  ServiceProofResult[StateKey](status: ServiceProofError.None, completed: data.keys[index])
+func comparePlanKey(left, right: StateKey): int =
+  ## Canonical byte order matches partial-view enumeration independently of semantic selectors.
+  let a = array[31, byte](left)
+  let b = array[31, byte](right)
+  for i in 0..<31:
+    # Stop at the first unequal key byte; identical keys coalesce only in explicit plan union.
+    if a[i] < b[i]: return -1
+    if a[i] > b[i]: return 1
+  0
+proc capturePlan(keys: openArray[StateKey], limit: ElementLimit): ServiceProofResult[
+    ServiceProofPlan] =
+  ## Private fixed selector constructors bound all key copies before allocating an immutable plan.
+  if uint64(keys.len) > uint64(limit) or keys.len > high(int) div sizeof(StateKey):
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.LimitExceeded)
+  var copied = newSeq[StateKey](keys.len)
+  for i, key in keys:
+    # Insertion keeps tiny dependency sets deterministic without importing a mutable generic container.
+    var at = i
+    while at > 0 and comparePlanKey(copied[at-1], key) > 0:
+      let previous = copied[at-1]
+      copied[at] = previous
+      dec at
+    if at > 0 and comparePlanKey(copied[at-1], key) == 0:
+      return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.InvalidInput)
+    copied[at] = key
+  ServiceProofResult[ServiceProofPlan](status: ServiceProofError.None,
+    completed: ServiceProofPlan(data: PlanData(keys: copied)))
+proc planProofAccount*(service: ServiceIndex, limit: ElementLimit): ServiceProofResult[
+    ServiceProofPlan] =
+  ## Request only exact account metadata; no nested-map completeness is implied.
+  capturePlan([chapterServiceKey(StateChapter(255), service)], limit)
