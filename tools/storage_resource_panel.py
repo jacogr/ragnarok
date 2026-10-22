@@ -17,11 +17,16 @@ from setup_nimony import installed
 from storage_benchmark import atomic_text, source_hashes, cpu_model
 from storage_resources import ROOT, CHILD, COUNTERS, PROFILE, identity
 from storage_environment import environment, validate_environment
+from storage_resource_validation import python_identity, validate_inputs, validate_build, validate_counters, validate_checks, digest
+
+
+PANEL_VERSION = 3
 
 
 def panel_identity(compiler, library, source):
     """Freeze the complete storage-owned helper closure in addition to existing native/runtime inputs."""
     result = identity(compiler, library)
+    result['python_identity'] = python_identity()
     result['sources'].update(source_hashes([source, *sorted((ROOT/'tools').glob('storage_*.py')),
                                           *sorted((ROOT/'tests/support').glob('storage_*.nim'))]))
     return result
@@ -34,15 +39,20 @@ def validate_panel(report, source, defines, cases, arguments, parser):
         if not condition:
             raise ValueError('Invalid storage resource panel: '+field)
     require(type(report) is dict and report.get('status') == 'checks-passed' and not report.get('error'), 'status')
-    require(type(report.get('schema_version')) is int and report['schema_version'] == 2 and
+    require(type(report.get('schema_version')) is int and report['schema_version'] == PANEL_VERSION and
             report.get('profile') == PROFILE, 'schema/profile')
     require(report.get('source') == str(source) and report.get('defines') == list(defines) and
-            report.get('cases') == [list(c) for c in cases], 'plan')
-    require(type(report.get('native_binary_sha256')) is str and len(report['native_binary_sha256']) == 64, 'binary')
+            json.dumps(report.get('cases')) == json.dumps([list(c) for c in cases]), 'plan')
+    require(digest(report.get('native_binary_sha256')), 'binary')
     require(type(report.get('inputs')) is dict and type(report['inputs'].get('sources')) is dict, 'inputs')
+    validate_inputs(report.get('inputs'), source)
+    if report.get('python_identity') != report['inputs']['python_identity'] or report.get('python_executable') != report['python_identity']['executable']:
+        raise ValueError('Resource observer identity differs')
     validate_environment(report.get('environment_start'))
     validate_environment(report.get('environment_end'))
     checks = report.get('checks'); runs = report.get('runs')
+    validate_checks(checks, 1+len(cases))
+    validate_build(checks[0], source, defines)
     require(type(checks) is list and len(checks) == 1+len(cases) and type(runs) is list and len(runs) == len(cases), 'coverage')
     for check in checks:
         # A timeout, signal, failed build or reused missing evidence cannot be rendered as success.
@@ -61,7 +71,7 @@ def validate_panel(report, source, defines, cases, arguments, parser):
     require(len(outputs) == 1, 'build output')
     for case, run, check in zip(cases, runs, checks[1:]):
         # Recompute observations from retained raw text; derived rows cannot silently diverge from witnesses.
-        require(type(run) is dict and run.get('case') == list(case) and type(run.get('raw')) is str, 'run identity')
+        require(type(run) is dict and json.dumps(run.get('case')) == json.dumps(list(case)) and type(run.get('raw')) is str, 'run identity')
         require(type(run.get('owned')) is str and type(run.get('counters_path')) is str and
                 str(Path(run['owned'])/'resources.json') == run['counters_path'], 'namespace')
         expected = [report.get('python_executable'), str(CHILD), run['counters_path'], outputs[0],
@@ -70,7 +80,8 @@ def validate_panel(report, source, defines, cases, arguments, parser):
         counters = run.get('resources')
         require(type(counters) is dict and set(counters) == set(COUNTERS) and
                 all(type(v) is int and 0 <= v < 1<<63 for v in counters.values()) and counters['peak_rss_bytes'] > 0, 'counters')
-        require(parser(run['raw'], case) == run.get('observed'), 'raw observations')
+        validate_counters(counters)
+        require(json.dumps(parser(run['raw'], case), sort_keys=True) == json.dumps(run.get('observed'), sort_keys=True), 'raw observations')
     return runs
 
 
@@ -84,7 +95,7 @@ def run_panel(folder, source, defines, cases, arguments, parser, render, *, arti
     for name in ('results.json', 'summary.md', *names):
         # Only this panel's public artifacts retire; other evidence directories and logs remain intact.
         (folder/name).unlink(missing_ok=True)
-    report = dict(status='running', schema_version=2, profile=PROFILE, source=str(source),
+    report = dict(status='running', schema_version=PANEL_VERSION, profile=PROFILE, source=str(source),
                   defines=list(defines), cases=[list(c) for c in cases], python_executable=sys.executable, checks=[], runs=[])
     def save():
         """Atomic progress survives failed native assertions and failed final rendering."""
@@ -93,6 +104,7 @@ def run_panel(folder, source, defines, cases, arguments, parser, render, *, arti
     try:
         compiler, _ = installed(); library = build_native(dependencies(False))
         report['inputs'] = panel_identity(compiler, library, source)
+        report['python_identity'] = report['inputs']['python_identity']
         report['environment_start'] = environment(folder)
         report['hardware'] = dict(platform=platform.platform(), machine=platform.machine(), cpu=cpu_model(),
                                   page_size_bytes=os.sysconf('SC_PAGE_SIZE'), load_average_start=os.getloadavg())

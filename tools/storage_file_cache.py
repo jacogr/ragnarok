@@ -13,7 +13,8 @@ import sys
 import tempfile
 from storage_benchmark import atomic_text, source_hashes
 from storage_cache_hint import cache_hint, validate_hint
-from storage_environment import environment
+from storage_environment import environment, validate_environment
+from storage_resource_validation import python_identity, validate_python, validate_counters, validate_checks, digest
 from storage_resource_panel import ROOT, CHILD
 from pvm_reference import command
 
@@ -92,8 +93,43 @@ def inputs():
     """Freeze local observer/scan sources and the actual Python executable, without native speed provenance claims."""
     sources = [Path(__file__), ROOT/'tools/storage_cache_hint.py', ROOT/'tools/storage_environment.py', CHILD,
                ROOT/'tools/pvm_reference.py', ROOT/'tools/storage_benchmark.py', ROOT/'Makefile']
-    return dict(sources=source_hashes(sources), python_version=platform.python_version(),
+    sources += sorted((ROOT/'tools').glob('storage_*.py'))
+    return dict(sources=source_hashes(sources), python_identity=python_identity(), python_version=platform.python_version(),
                 python_sha256=hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest(), platform=platform.platform())
+
+
+def validate_report(report):
+    """Require both policy orders, exact fresh-child commands and raw-derived read-only counters."""
+    if (type(report) is not dict or report.get('status') != 'checks-passed' or type(report.get('schema_version')) is not int or
+            report['schema_version'] != 2 or report.get('error')):
+        raise ValueError('Invalid file-cache report status/schema')
+    validate_environment(report.get('environment'))
+    metadata = report.get('inputs')
+    if type(metadata) is not dict or type(metadata.get('sources')) is not dict or any(not digest(v) for v in metadata['sources'].values()):
+        raise ValueError('Invalid file-cache source identities')
+    validate_python(metadata.get('python_identity'))
+    checks = validate_checks(report.get('checks'),len(CASES)); rows = report.get('rows')
+    if type(rows) is not list or len(rows) != len(CASES):
+        raise ValueError('Incomplete file-cache policy coverage')
+    observed_digests = {}
+    for case,row,check in zip(CASES,rows,checks):
+        index,size,policy = case
+        if type(row) is not dict or json.dumps(row.get('case')) != json.dumps(list(case)) or type(row.get('raw')) is not str:
+            raise ValueError('Invalid file-cache case identity')
+        observed = json.loads(row['raw'])
+        if not digest(observed.get('sha256')):
+            raise ValueError('Invalid file-cache content identity')
+        expected_digest = observed_digests.setdefault(size,observed['sha256'])
+        validate_scan(observed,size,policy,expected_digest)
+        if json.dumps(observed,sort_keys=True) != json.dumps(row.get('observed'),sort_keys=True):
+            raise ValueError('Substituted file-cache counters')
+        argv = check['command']; interpreter = metadata['python_identity']['executable']
+        if (len(argv) != 9 or argv[:2] != [interpreter,str(CHILD)] or argv[3:6] != [interpreter,str(Path(__file__)),'--child'] or
+                argv[7:] != [str(size),policy] or Path(argv[6]).name != str(size) or
+                str(Path(argv[6]).parent/f'{index}-{size}-{policy}.json') != argv[2]):
+            raise ValueError('Invalid file-cache read-only command')
+        validate_counters(row.get('resources'))
+    return rows
 
 
 def run():
@@ -101,7 +137,7 @@ def run():
     folder = ROOT/'build/tests/storage-file-cache'; folder.mkdir(parents=True, exist_ok=True)
     for name in ('results.json', 'summary.md'):
         (folder/name).unlink(missing_ok=True)
-    report = dict(status='running', schema_version=1, rows=[], checks=[], inputs=inputs(), environment=environment(folder))
+    report = dict(status='running', schema_version=2, rows=[], checks=[], inputs=inputs(), environment=environment(folder))
     def save():
         """Failed/interrupted scans retain raw receipts but cannot leave a previous successful table."""
         atomic_text(folder/'results.json', json.dumps(report, indent=2)+'\n')
@@ -131,6 +167,7 @@ def run():
             index, size, policy = row['case']; value = row['observed']; hint = value['hint']
             lines.append(f'| {index} | {size} | {policy} | {hint["status"]} | {hint["interface"]} | {value["read_calls"]} |')
         report['status'] = 'checks-passed'
+        validate_report(report)
         atomic_text(folder/'summary.md', '\n'.join(lines)+'\n'); save()
         print('PASS file-cache observations: '+str(folder/'summary.md'))
     except Exception as error:
