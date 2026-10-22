@@ -1,0 +1,117 @@
+{
+  "source": "tests/native/accumulation_global_stage_results.nim",
+  "build_name": "accumulation-global-stage-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "global-stage-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected global phase extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "global-stage-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected global phase extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "role"
+      },
+      "arguments": [
+        "role"
+      ],
+      "name": "global-stage-role",
+      "diagnostic": "outcome.status == RoleFailure",
+      "description": "Selected global phase extraction: role"
+    },
+    {
+      "identity": {
+        "reason": "queue"
+      },
+      "arguments": [
+        "queue"
+      ],
+      "name": "global-stage-queue",
+      "diagnostic": "outcome.status == QueueFailure",
+      "description": "Selected global phase extraction: queue"
+    },
+    {
+      "identity": {
+        "reason": "staging"
+      },
+      "arguments": [
+        "staging"
+      ],
+      "name": "global-stage-staging",
+      "diagnostic": "outcome.status == StagingFailure",
+      "description": "Selected global phase extraction: staging"
+    },
+    {
+      "identity": {
+        "reason": "store"
+      },
+      "arguments": [
+        "store"
+      ],
+      "name": "global-stage-store",
+      "diagnostic": "outcome.status == StoreFailure",
+      "description": "Selected global phase extraction: store"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "global-stage-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected global phase extraction: info"
+    },
+    {
+      "identity": {
+        "reason": "provisions"
+      },
+      "arguments": [
+        "provisions"
+      ],
+      "name": "global-stage-provisions",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected global phase extraction: provisions"
+    },
+    {
+      "identity": {
+        "reason": "roles"
+      },
+      "arguments": [
+        "roles"
+      ],
+      "name": "global-stage-roles",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected global phase extraction: roles"
+    },
+    {
+      "identity": {
+        "reason": "snapshot"
+      },
+      "arguments": [
+        "snapshot"
+      ],
+      "name": "global-stage-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected global phase extraction: snapshot"
+    }
+  ]
+}
