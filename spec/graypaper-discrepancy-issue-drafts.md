@@ -255,3 +255,33 @@ merged2026-08-26 as `e5375148597a45a99d31c9aa6bce6c7bf3a48998`. Its exact patch
 adds modulo16 before saturation. This resolves the question in later upstream text;
 our frozen pin still contains the original equation. Retain this witness/disposition
 for the pin-upgrade review, and do not post a duplicate issue.
+
+## GP-PVM-011 — Follow up prospective balance domain for CASH
+
+Suggested follow-up to the existing
+[PR539 review](https://github.com/gavofyork/graypaper/pull/539#discussion_r3652798612);
+prepare a standalone issue only if useful to the maintainers. No upstream message
+has been sent by this work.
+
+At Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, balances are
+unsigned64-bit naturals, but the `new` and `transfer` rows first define a
+prospective account dictionary `d'` with a source-pool debit and subsequently
+check its balance fields for negativity to choose CASH.
+
+For an authorized direct mode0 transfer, let the source liquid pool be4,
+protected pool100, and amount5. Assume distinct existing endpoints, adequate
+aggregate funding and sufficient destination headroom. The proposed source
+liquid field is `-1`: integer candidate arithmetic gives CASH and unchanged
+state, but a strict balance-typed candidate is outside its declared domain
+before the guard. This question does not propose wrapping arithmetic.
+
+Could the paper explicitly permit integer-valued candidate balances until the
+CASH branch is evaluated, or state selected-pool debit sufficiency against the
+pre-state before defining the well-typed successor? The existing review proposes
+this same clarification for both host rows.
+
+Ragnarök's current guests already return CASH using pre-subtraction checks in
+all four direct funding modes, including a rich unselected pool, and preserve
+prior account state. This is implementation evidence, not a PolkaVM JAM-host
+fixture result. The [register entry](graypaper-discrepancies.md#gp-pvm-011-prospective-unsigned-balances-in-cash-guards)
+contains pinned source links and source-owned witness references.

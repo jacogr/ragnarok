@@ -37,6 +37,12 @@ advertised length proves that the existing available preimage and its history mu
 survive; current production now preserves them. This is implementation alignment
 with the current row, not a new paper discrepancy or a PolkaVM host-parity claim.
 
+The current `new`/`transfer` candidate-state equations still test prospective
+unsigned balances for negativity. [GP-PVM-011](#gp-pvm-011-prospective-unsigned-balances-in-cash-guards)
+records this formal domain question and its existing upstream review. Checked
+source-pool underflow preflights preserve the intended CASH behavior; this is not
+a demonstrated PolkaVM/JAM-host mismatch.
+
 ## Baseline and reporting policy
 
 Reviewed on2026-10-21 against Gray Paper0.8.0
@@ -65,6 +71,7 @@ chosen compatibility behavior as proof that the paper must change.
 | GP-PVM-008 | Paper/implementation discrepancy | Cross-page store reports a missing higher page before a read-only lower page | Scoped scalar compatibility rule; paper expectation retained in 48 differential witnesses |
 | GP-PVM-009 | Paper/implementation discrepancy | Three-register destination saturates whole byte versus low nibble | Raw/JAM matrix and captures tested; upstream PR554 already merged the exact clarification |
 | GP-PVM-010 | Pinned internal domain mismatch and reference API limit | Unsigned input gas versus signed host-aware result; public PolkaVM Gas is i64 | Common-domain comparison and native upper-half controls; upstream PR533 already resolves paper types, coordinated adoption remains pending |
+| GP-PVM-011 | Current-pin formal domain ambiguity | Prospective unsigned balance fields tested for negativity in new/transfer CASH guards | Source-pool preflight tested; exact question already raised in PR539 review |
 
 ## Upstream discussion review —2026-10-21
 
@@ -622,3 +629,61 @@ in the ordinary native suite. Keep specification discrepancies visible and compa
 through the selected compatibility boundary. CI output must distinguish unsupported
 platforms, local limits and guest exits. Pin changes require explicit review;
 production remains independent of the Rust reference and fuzz harness.
+
+## GP-PVM-011: prospective unsigned balances in CASH guards
+
+**Authority and classification.** Current Gray Paper
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
+[balance domain](https://github.com/gavofyork/graypaper/blob/1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d/text/overview.tex#L105-L108),
+[account fields](https://github.com/gavofyork/graypaper/blob/1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d/text/accounts.tex#L14-L25),
+and the [new](https://github.com/gavofyork/graypaper/blob/1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d/text/pvm_invocations.tex#L881-L903)/
+[transfer](https://github.com/gavofyork/graypaper/blob/1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d/text/pvm_invocations.tex#L982-L1008)
+candidate-state/CASH equations. This entry uses the current pin, separately from
+the release-era witnesses in GP-PVM-001–010. It is a prospective-state typing
+question, not evidence that the paper requires wrapping subtraction.
+
+**Minimal witness.** Use a valid authorized direct mode0 transfer between distinct
+existing accounts. The source has liquid4 and protected100; the amount is5.
+The destination's selected pool has enough addition headroom, source aggregate
+funding remains sufficient, and memory/deferred-gas refusals do not apply.
+The proposed source liquid field in `d'` is then `4-5=-1`, while its declared
+balance domain is `0..2^64-1`. CASH subsequently checks that candidate for
+negativity. The same prospective-debit pattern appears in `new`.
+
+**Competing formal readings.** Temporarily interpreting candidate balances over
+the integers makes the negative predicate true and returns CASH with no state
+change. Requiring `d'` to be a well-typed account dictionary immediately makes
+the prospective update outside its declared domain before that guard is reached.
+A machine-width wrap would hide the negative value, but is neither an accepted
+local interpretation nor a claim about the paper's arithmetic.
+
+**Observed implementation and coverage.** Expected register7 is CASH (`2^64-7`).
+Ragnarök compares the selected amount
+with the selected source pool before subtraction, then checks the exact remaining
+aggregate funding. The existing
+[transfer witnesses](../tests/unit/state/test_pvm_accumulation_transfer.nim)
+cover all four direct funding modes with selected-pool4/amount5 and a rich other
+pool, deferred underflow and maximum-width successful debit. The
+[creation witnesses](../tests/unit/state/test_pvm_accumulation_new.nim)
+cover empty protected funding and selected-pool/threshold refusals. CASH preserves
+accounts, modification facts and outgoing records, and retains the established
+WHO/HUH/LOW-before-CASH ordering. See the
+[transfer](pvm-accumulation-transfer.md) and [creation](pvm-accumulation-new.md)
+contracts for earlier execution evidence.
+Both source-owned native suites were revalidated on2026-10-22 with fresh
+1,000-cycle ARC release evidence. Logs remain under `build/cash-domain-*`;
+these are local checked macOS observations, separate from Linux CI.
+
+The checked-in [PolkaVM host reference](../tests/reference/polkavm_memory/src/bin/hosts.rs)
+exercises metered suspension/resumption; it does not implement these account
+host rows. No PolkaVM CASH result or complete JAM-host fixture parity is claimed.
+
+**Upstream and local disposition.** The exact issue is already raised in
+[PR539's inline review](https://github.com/gavofyork/graypaper/pull/539#discussion_r3652798612),
+re-read through GitHub's API on2026-10-22. The pinned equations still contain
+the prospective negative-field guards; this observation does not assert the
+review thread's resolution state. Prefer following up that discussion over
+filing an unlinked duplicate. The [maintainer draft](graypaper-discrepancy-issue-drafts.md#gp-pvm-011-follow-up-prospective-balance-domain-for-cash)
+asks whether candidates temporarily range over integers or whether debit
+sufficiency should be stated before constructing a balance-typed successor.
+Nothing has been posted upstream by this work.
