@@ -331,3 +331,11 @@ Independent real compaction cases refuse the snapshot, new journal and CURRENT.n
 Each consumes its intended fault, poisons the live owner and leaves CURRENT byte-identical. Strict
 startup admits the original selected epoch and complete map; staged files supply no alternate-head
 authority. Test cleanup names only the fixture's exact old/new epochs and fixed pending manifest.
+
+## Interrupted explicit repair
+
+Real eight-byte torn appends precede repair using the independent exact generation/root token.
+A bounded matrix interrupts each actual file/directory barrier in both repair paths. Every fault
+must be consumed before genuine synchronization succeeds, and repaired bytes must equal the
+original complete prefix exactly. No older token, alternate selected head or implicit truncation
+is introduced. Complete retained readers remain valid after repair and native owner close.
