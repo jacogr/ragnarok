@@ -210,6 +210,19 @@ genesisInput = "{}" # Mutating source JSON cannot alter the retained owner.
 let withGenesis = ClientInfo(chain: genesisView(capturedGenesis))
 let bestRequest = "{\"jsonrpc\":\"2.0\",\"method\":\"bestBlock\",\"id\":1}"
 let genesisHash = "5mOOsjxqUxhky5HYvxomxm/u7dg7VcwqcsnDWQBCjtQ="
+# Configured identity is explicit and independent of the chain view; malformed/default capture stays null.
+let configuredIdentity = chainIdentity(capturedGenesis)
+let identityInfo = ClientInfo(chain: genesisView(capturedGenesis), identity: configuredIdentity)
+let identityAnswer = respond(request, identityInfo)
+assert "\"chain\":{\"genesisHash\":" & quote(genesisHash) in identityAnswer
+assert "\"genesisStateRoot\":\"63T8fX9zxm7i2b5I3Rx0CW41FSpcc9m2rVlS8AK2/Cw=\"" in identityAnswer
+assert "\"chain\":null" in respond(request, withGenesis)
+let invalidIdentity = chainIdentity(invalidGenesis())
+let unavailableIdentity = chainIdentity(unavailableGenesis())
+let invalidIdentityInfo = ClientInfo(identity: invalidIdentity)
+let unavailableIdentityInfo = ClientInfo(identity: unavailableIdentity)
+assert "\"chain\":null" in respond(request, invalidIdentityInfo)
+assert "\"chain\":null" in respond(request, unavailableIdentityInfo)
 let rootRequest = "{\"jsonrpc\":\"2.0\",\"method\":\"stateRoot\",\"params\":[\"" & genesisHash & "\"],\"id\":1}"
 assert respond(bestRequest, withGenesis) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"header_hash\":\"" &
     genesisHash & "\",\"slot\":7}}"
@@ -1125,6 +1138,10 @@ assert twoBlocks.bestBlock.value.slot == 9 # Slot gaps are accepted.
 assert twoBlocks.parentOf(historyChild.value.blockHash).value.slot == 7
 assert twoBlocks.blockAt(selectedHash).value.slot == 7
 let historicalInfo = ClientInfo(parameters: genesisParameters, chain: twoBlocks)
+# A restarted later view must retain configured genesis identity rather than relabel its selected head.
+let restartedIdentityInfo = ClientInfo(chain: genesisView(historyChild),
+    identity: configuredIdentity)
+assert "\"chain\":{\"genesisHash\":" & quote(genesisHash) in respond(request, restartedIdentityInfo)
 let childHashText = base64.encode(array[32, byte](historyChild.value.blockHash))
 let childRootText = base64.encode(array[32, byte](historyChild.value.stateRoot))
 assert respond(bestRequest, historicalInfo) == respond(bestRequest, withGenesis).replace(

@@ -221,7 +221,7 @@ proc setupRpc(rpc: var Server, options: Options, role: string, text: string): bo
     if not parameters.ok: return false # Fail startup rather than advertise a partial/default parameter set.
     genesis = configuredGenesis(text, parameters.value)
     if genesis.error == GenesisError.Invalid: return false # Reject an incomplete or malformed explicit genesis.
-  rpc.start(options.rpcPort(), role, parameters, genesis, options.uiPort())
+  rpc.start(options.rpcPort(), role, parameters, genesis, options.uiPort(), chainIdentity(genesis))
 
 proc setupTelemetry(client: var Client, options: Options, certificate: string, port: uint16,
     ipv6: bool, text: string): bool {.raises.} =
@@ -377,6 +377,7 @@ proc startServices(services: var Services, options: Options, role: string,
   if options.recoveryEnabled and recovered.chainView.retainedCount == 0:
     return false # Parsed import intent cannot silently select ordinary genesis startup.
   services.chainText = boundedFile(options.chainPath(), MaxChainBytes)
+  var identity = default(ChainIdentity)
   if withState:
     if recovered.chainView.retainedCount > 0:
       let configured = configuredParameters(services.chainText)
@@ -385,6 +386,9 @@ proc startServices(services: var Services, options: Options, role: string,
           head.chainParameters.encodeParameters:
         services.close() # A trusted anchor must still match the complete explicitly selected chain profile.
         return false
+      if options.rpcPort() != 0:
+        identity = chainIdentity(configuredGenesis(services.chainText,
+            configured.value)) # Imported head is never genesis identity.
       services.canonical = recovered # Preserve the exact restored map, inherited policy and one-head/unfinalized view.
     else:
       let seeded = initApplicationChain(services.chainText, limits)
@@ -392,6 +396,7 @@ proc startServices(services: var Services, options: Options, role: string,
         services.close() # A missing/refused seed cannot become a partial listener-only startup.
         return false
       services.canonical = seeded.value
+      identity = chainIdentity(seeded.value.chainView.bestBlock) # Reuse capture without repeating map/header hashing.
   if options.diskStorage:
     if not withState or not services.setupDisk(options, limits, recovered.chainView.retainedCount > 0):
       services.close()
@@ -405,7 +410,7 @@ proc startServices(services: var Services, options: Options, role: string,
     let head = services.canonical.chainView.bestBlock
     let parameters = decodeParameters(head.value.chainParameters.encodeParameters)
     rpcReady = services.rpc.start(options.rpcPort(), role, parameters, services.canonical.chainView,
-        options.uiPort())
+        options.uiPort(), identity)
   else:
     rpcReady = services.rpc.setupRpc(options, role,
         services.chainText) # Preserve legacy optional/unavailable genesis behavior.

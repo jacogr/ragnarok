@@ -258,6 +258,10 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 assert result['result']['connectedPeers'] == 0
                 expected_head = None if expected_genesis is None else {k: expected_genesis[k] for k in ('header_hash', 'slot')}
                 assert result['result']['bestBlock'] == expected_head
+                # Identity comes from the captured configured genesis, independently of selected history.
+                expected_identity = None if expected_genesis is None else dict(
+                    genesisHash=expected_genesis['header_hash'], genesisStateRoot=expected_genesis['state_root'])
+                assert result['result']['chain'] == expected_identity
                 assert 'parameters' in result['result']['rpc']['methods']
                 assert result['result']['rpc']['subscriptionState'] == dict(active=0, best=0, finalized=0, pendingUpdates=0, pendingBytes=0)
                 for name, limit in dict(maxReplyBytes=65535, maxBlobReplyBytes=32768, maxSubscriptions=8, maxPendingUpdates=16, maxPendingBytes=65535).items():

@@ -63,6 +63,10 @@ type
     active: array[MaxSubscriptions, Subscription]
     pending: array[MaxSubscriptionUpdates, SubscriptionUpdate]
     pendingCount, pendingBytes: int
+  ChainIdentity* = object ## Fixed copied configured-genesis identity; default means unavailable, never the selected head.
+    known: bool
+    headerHash: BlockHash
+    stateRoot: StateRoot
   ClientInfo* = object ## Caller supplies only observed runtime information, copied synchronously during dispatch.
     uptimeMs*: int64
     peers*: uint32
@@ -70,7 +74,15 @@ type
     port*: uint16
     occupiedBytes*, reservedBytes*: int
     chain*: ChainView # Immutable request view; the initial adapter retains configured genesis.
+    identity*: ChainIdentity # Explicit configured genesis survives history eviction without retaining its state map.
     parameters*: ParameterResult # Optional immutable startup configuration; never read from disk per request.
+
+proc chainIdentity*(genesis: GenesisResult): ChainIdentity =
+  ## Copy only verified snapshot identities; missing/invalid inputs never expose partial identity.
+  if genesis.error != GenesisError.None:
+    return default(ChainIdentity) # No network identity is inferred from a checkpoint or current best head.
+  ChainIdentity(known: true, headerHash: genesis.value.blockHash,
+      stateRoot: genesis.value.stateRoot)
 
 proc quote*(text: string): string =
   ## Compatibility helper for callers needing a quoted JSON string.
@@ -656,6 +668,10 @@ proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): JsonValu
     descriptor(info.chain.bestBlock.value) else: jsonNull()
   let finalized = if info.chain.finalizedBlock.error == GenesisError.None:
     descriptor(info.chain.finalizedBlock.value) else: jsonNull()
+  let identity = if info.identity.known:
+    jsonObject([("genesisHash", json(base64.encode(array[32, byte](info.identity.headerHash)))),
+      ("genesisStateRoot", json(base64.encode(array[32, byte](info.identity.stateRoot))))])
+    else: jsonNull() # A selected view alone does not establish configured genesis identity.
   let usage = if stateful: subscriptionUsage(session) else: jsonNull()
   jsonObject([("name", json("Ragnarok")), ("version", json(AppVersion)),
     ("revision", json(AppRevision)), ("implementation", json("Nimony")),
@@ -665,7 +681,7 @@ proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): JsonValu
     ("uptimeMs", json(info.uptimeMs)), ("connectedPeers", json(info.peers)),
     ("memory", jsonObject([("occupiedBytes", json(info.occupiedBytes)),
       ("reservedBytes", json(info.reservedBytes))])),
-    ("chain", jsonNull()), ("bestBlock", best), ("finalizedBlock", finalized),
+    ("chain", identity), ("bestBlock", best), ("finalizedBlock", finalized),
     ("rpc", jsonObject([("transport", json("websocket")), ("address", json("127.0.0.1")),
       ("port", json(info.port)), ("methods", json(methods)), ("subscriptions", json(stateful)),
       ("maxMessageBytes", json(MaxMessage)), ("maxBatchRequests", json(16)),

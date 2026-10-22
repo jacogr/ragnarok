@@ -35,6 +35,7 @@ type
     port, uiPort: uint16
     role: string
     chain: ChainView            # Retained immutable provider view shared by one dispatcher tick.
+    identity: ChainIdentity     # Fixed configured genesis identity is independent of selected/restarted history.
     parameters: ParameterResult # Fixed-size owned configuration shared by all connections.
 
 type
@@ -159,7 +160,7 @@ proc nonblocking(fd: cint): bool =
 
 proc start*(server: var Server, port: uint16, role: string,
     parameters = unavailableParameters(), genesis = unavailableGenesis(),
-        uiPort: uint16 = 0): bool =
+        uiPort: uint16 = 0, identity = default(ChainIdentity)): bool =
   ## Bind loopback only; port zero disables RPC. Startup failure is reported to the peer CLI.
   if server.opened or server.lease != nil:
     # A second or paused start cannot leak or replace a live listener.
@@ -194,18 +195,20 @@ proc start*(server: var Server, port: uint16, role: string,
   server.uiPort = uiPort
   server.role = role
   server.parameters = parameters
+  server.identity = identity
   server.chain = genesisView(genesis)
   true
 
 # Queue only after a successful publication; overflow retires one consumer without rolling back the head.
 proc start*(server: var Server, port: uint16, role: string,
-    parameters: ParameterResult, view: ChainView, uiPort: uint16 = 0): bool =
+    parameters: ParameterResult, view: ChainView, uiPort: uint16 = 0,
+    identity = default(ChainIdentity)): bool =
   ## Startup binds the whole restored local history/finality before any dispatcher can observe the listener.
   let head = view.bestBlock
   if head.error != GenesisError.None or not parameters.ok or
       parameters.value.encodeParameters != head.value.chainParameters.encodeParameters:
     return false # No live socket may be opened for a mismatched or absent restored view.
-  if not server.start(port, role, parameters, head, uiPort): return false
+  if not server.start(port, role, parameters, head, uiPort, identity): return false
   server.chain = view
   true
 
@@ -408,6 +411,7 @@ proc tick*(server: var Server, peers: uint32) =
       server.connections[free].deadline = now + 5000
   let info = ClientInfo(uptimeMs: now - server.started, peers: peers, role: server.role,
       port: server.port, parameters: server.parameters, chain: server.chain,
+      identity: server.identity,
       occupiedBytes: getOccupiedMem(), reservedBytes: getTotalMem())
   for slot in mitems(server.connections): # Fixed capacity bounds per-turn work and memory.
     if not slot.opened:
