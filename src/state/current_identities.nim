@@ -4,7 +4,7 @@
 ## Bind an original selected complete logical parent to a genuine update with unchanged physical namespace identities.
 ## This observation is not a producer mutation/event certificate, payload validity or installation authority.
 import ./[parent_logical, parent_globals, parent_profile, supplied_logical_inventory, inventory,
-    manifest, store, accumulation_current_update]
+    manifest, store, accumulation_current_update, current_logical, current_state, current_globals, current_profile]
 import ../chain/[provider, genesis, parameters]
 import ../codec/[bounded, state_layout]
 type
@@ -14,14 +14,26 @@ type
   CurrentIdentityInfo* = object ## Fixed copied accounting grants no permission to replace original owners or policies.
     entries*: int
     keyChecks*, viewBytes*: uint64
+  IdentityOrigin {.pure.} = enum ## Private source selection cannot be retagged by callers or inferred from equal roots.
+    Configured, Completed
   PreservedCurrentIdentities* = object ## Only exact original state/view/profile and unchanged complete keys construct this private certificate.
     initialized: bool
     parent: SelectedLogicalParent
+    prior: CurrentLogicalState
+    logical: SuppliedLogicalInventory
+    origin: IdentityOrigin
     update: PreparedCurrentChainUpdate
     info: CurrentIdentityInfo
+  IdentitySource = object ## Fixed private original owners/context/retention facts carry no externally replaceable view or Parameters.
+    origin: IdentityOrigin
+    parent: SelectedLogicalParent
+    prior: CurrentLogicalState
+    logical: SuppliedLogicalInventory
+    context: BlockSnapshotContext
+    viewInfo: ChainViewRetentionInfo
   CurrentIdentityError* {.pure.} = enum ## New/missing identities remain explicit unsupported changes, distinct from bad provenance and resources.
     Uninitialized, None, InvalidParent, InvalidUpdate, LimitExceeded, ParentMismatch, ViewMismatch,
-      ParametersMismatch, MissingIdentity, NewIdentity
+      ParametersMismatch, MissingIdentity, NewIdentity, WrongSource
   CurrentIdentityResult*[T] = object ## Failed identity observations contain only fixed reasons and optional first refused physical key.
     case status: CurrentIdentityError
     of None:
@@ -50,19 +62,21 @@ func compare(left, right: StateKey): int =
     if a[i] < b[i]: return -1 # First differing octet fixes deterministic key order.
     if a[i] > b[i]: return 1
   0
-proc preserveCurrentIdentities*(parent: SelectedLogicalParent, update: PreparedCurrentChainUpdate,
+proc preserveSource(source: IdentitySource, update: PreparedCurrentChainUpdate,
     limits: CurrentIdentityLimits): CurrentIdentityResult[PreservedCurrentIdentities] =
-  ## Check provenance and complete resource admission before view copies or bounded sorted key inspection; no hashes or payload copies.
+  ## Check exact private configured/completed original context and all view/key work before copying or traversal; no payload copy/hash occurs.
   template fail(reason: CurrentIdentityError) =
     return CurrentIdentityResult[PreservedCurrentIdentities](status: reason)
-  let selected = parent.logicalParentGlobals
-  if selected.error != ParentLogicalError.None: fail(CurrentIdentityError.InvalidParent)
+  let captured = source.logical.suppliedInventory
+  if captured.error != SuppliedLogicalError.None: fail(CurrentIdentityError.InvalidParent)
+  let original = source.context
+  if not sameStateSnapshot(captured.value.inventorySource.value.manifestSource.value,
+      original.state):
+    fail(CurrentIdentityError.InvalidParent) # Both original logical and configured/completed producer observations must retain the exact same physical state.
   if not update.ready: fail(CurrentIdentityError.InvalidUpdate)
-  let profile = selected.value.parentGlobalsProfile.value
-  let original = profile.parentContext.value
   if not sameStateSnapshot(original.state, update.currentUpdatePriorState):
     fail(CurrentIdentityError.ParentMismatch) # Equal roots on another immutable owner never qualify an original predecessor.
-  let sourceInfo = profile.parentProfileInfo.value.view
+  let sourceInfo = source.viewInfo
   let prior = update.currentUpdatePriorViewInfo
   let posterior = update.currentUpdateViewInfo
   var available = min(uint64(limits.viewBytes), uint64(high(int)))
@@ -81,7 +95,11 @@ proc preserveCurrentIdentities*(parent: SelectedLogicalParent, update: PreparedC
   keys-=uint64(oldCount)
   if uint64(newCount) > keys: fail(CurrentIdentityError.LimitExceeded)
   keys-=uint64(newCount) # Both immutable array lengths prove native ordinal conversions and aggregate traversal before inspection.
-  let originalView = profile.copyParentView(ByteLimit(sourceInfo.bytes)).value
+  let originalView = if source.origin == IdentityOrigin.Configured:
+    source.parent.logicalParentGlobals.value.parentGlobalsProfile.value.copyParentView(ByteLimit(
+        sourceInfo.bytes)).value
+  else:
+    source.prior.currentLogicalSource.value.currentStateGlobals.value.qualifiedCurrentProfile.value.derivedUpdate.value.currentUpdateView # Cheap prior facts admitted the complete copied ordered history/finality before this getter.
   if not sameChainView(originalView, update.currentUpdatePriorView):
     fail(CurrentIdentityError.ViewMismatch) # Ordered history, complete Parameters and explicit finality/absence all bind the predecessor.
   let child = update.currentUpdateView.bestBlockContext
@@ -109,14 +127,47 @@ proc preserveCurrentIdentities*(parent: SelectedLogicalParent, update: PreparedC
     return CurrentIdentityResult[PreservedCurrentIdentities](
         status: CurrentIdentityError.NewIdentity, identity: successor.keyAt(StateEntryIndex(j)).value)
   CurrentIdentityResult[PreservedCurrentIdentities](status: CurrentIdentityError.None,
-    completed: PreservedCurrentIdentities(initialized: true, parent: parent, update: update,
+    completed: PreservedCurrentIdentities(initialized: true, parent: source.parent,
+      prior: source.prior, logical: source.logical, origin: source.origin, update: update,
       info: CurrentIdentityInfo(entries: oldCount, keyChecks: uint64(limits.keys)-keys,
           viewBytes: budget-available)))
+proc preserveCurrentIdentities*(parent: SelectedLogicalParent, update: PreparedCurrentChainUpdate,
+    limits: CurrentIdentityLimits): CurrentIdentityResult[PreservedCurrentIdentities] =
+  ## Configured startup source remains distinct from completed current provenance, sharing only the private fixed original comparison path.
+  let selected = parent.logicalParentGlobals
+  if selected.error != ParentLogicalError.None:
+    return CurrentIdentityResult[PreservedCurrentIdentities](
+        status: CurrentIdentityError.InvalidParent)
+  let profile = selected.value.parentGlobalsProfile.value
+  preserveSource(IdentitySource(origin: IdentityOrigin.Configured, parent: parent, prior: default(
+      CurrentLogicalState), logical: parent.logicalParentInventory.value,
+      context: profile.parentContext.value, viewInfo: profile.parentProfileInfo.value.view), update, limits)
+proc preserveCurrentIdentities*(prior: CurrentLogicalState, update: PreparedCurrentChainUpdate,
+    limits: CurrentIdentityLimits): CurrentIdentityResult[PreservedCurrentIdentities] =
+  ## Only a genuinely fully matched prior current source supplies its actual successor snapshot/full view/Parameters; no fabricated startup update or detached map enters.
+  template fail() =
+    return CurrentIdentityResult[PreservedCurrentIdentities](
+        status: CurrentIdentityError.InvalidParent)
+  let logical = prior.currentLogicalInventory
+  let current = prior.currentLogicalSource
+  if logical.error != CurrentLogicalError.None or current.error != CurrentLogicalError.None: fail()
+  let globals = current.value.currentStateGlobals
+  if globals.error != CurrentStateError.None: fail()
+  let profile = globals.value.qualifiedCurrentProfile
+  if profile.error != CurrentGlobalsError.None: fail()
+  let producer = profile.value.derivedUpdate
+  if producer.error != CurrentProfileError.None or not producer.value.ready: fail()
+  preserveSource(IdentitySource(origin: IdentityOrigin.Completed, parent: default(
+      SelectedLogicalParent), prior: prior, logical: logical.value,
+      context: producer.value.currentUpdateChildContext,
+      viewInfo: producer.value.currentUpdateViewInfo), update, limits)
 proc identityParent*(source: PreservedCurrentIdentities): CurrentIdentityResult[
     SelectedLogicalParent] =
   ## Retain only the exact original complete selected logical parent.
   if not source.initialized: return CurrentIdentityResult[SelectedLogicalParent](
       status: CurrentIdentityError.Uninitialized)
+  if source.origin != IdentityOrigin.Configured: return CurrentIdentityResult[
+      SelectedLogicalParent](status: CurrentIdentityError.WrongSource)
   CurrentIdentityResult[SelectedLogicalParent](status: CurrentIdentityError.None,
       completed: source.parent)
 proc identityUpdate*(source: PreservedCurrentIdentities): CurrentIdentityResult[
@@ -138,4 +189,13 @@ proc identityLogical*(source: PreservedCurrentIdentities): CurrentIdentityResult
   if not source.initialized: return CurrentIdentityResult[SuppliedLogicalInventory](
       status: CurrentIdentityError.Uninitialized)
   CurrentIdentityResult[SuppliedLogicalInventory](status: CurrentIdentityError.None,
-      completed: source.parent.logicalParentInventory.value)
+      completed: source.logical)
+proc identityPriorCurrent*(source: PreservedCurrentIdentities): CurrentIdentityResult[
+    CurrentLogicalState] =
+  ## Retain only genuine completed-origin parent provenance; configured startup sources refuse distinctly without a fake current owner.
+  if not source.initialized: return CurrentIdentityResult[CurrentLogicalState](
+      status: CurrentIdentityError.Uninitialized)
+  if source.origin != IdentityOrigin.Completed: return CurrentIdentityResult[CurrentLogicalState](
+      status: CurrentIdentityError.WrongSource)
+  CurrentIdentityResult[CurrentLogicalState](status: CurrentIdentityError.None,
+      completed: source.prior)
