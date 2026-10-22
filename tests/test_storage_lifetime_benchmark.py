@@ -35,3 +35,10 @@ class StorageLifetimeBenchmarkTests(unittest.TestCase):
                 benchmark.parse(value, ('fixture', 8192))
         with self.assertRaises(ValueError):
             benchmark.parse(good, ('fixture', 32768))
+
+    def test_isolated_owner_has_no_fixture_or_reader(self):
+        """The owner-only plan requires fixture absence and exact release on close."""
+        value = 'lifetime\towner\t8192\t64\t8192\t100\t-1\t900\t-1\t100\t100\n'
+        self.assertEqual(benchmark.parse(value, ('owner', 8192))['owner'], 900)
+        with self.assertRaises(ValueError):
+            benchmark.parse(value.replace('\t900', '\t-1'), ('owner', 8192))
