@@ -125,3 +125,7 @@ Fixture preparation, independent expected maps, validation and retained readers 
 these counters; they do not isolate repository memory. OS caches remain unchanged. These are
 preliminary observations for choosing larger/paged-storage experiments, with no cold-cache or
 physical-device claim. See the [resource measurement contract](../spec/storage-resource-measurements.md).
+
+The expanded [resource measurement guide](storage-resource-measurements.md) covers live allocator
+phases, isolated ARC lifetimes, distinct-value larger fixtures, fresh-process strict reopen and
+explicit per-file cache advice. These panels remain separate from every speed statistic above.
