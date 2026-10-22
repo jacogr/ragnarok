@@ -255,3 +255,18 @@ proc planProofRequest*(service: ServiceIndex, hash: ServicePreimageHash, length:
   if derived.error != RequestError.None:
     return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.BackendFailure)
   capturePlan([chapterServiceKey(StateChapter(255), service), derived.value], limit)
+
+proc planProofHistorical*(service: ServiceIndex, hash: ServicePreimageHash, length: RequestLength,
+    limit: ElementLimit): ServiceProofResult[ServiceProofPlan] =
+  ## Request account and exact selector dependencies; limits precede hashing and plan allocation.
+  if uint32(length) >= high(uint32)-1:
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.InvalidInput)
+  if uint64(limit) < 3:
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.LimitExceeded)
+  let blob = servicePreimageKey(service, hash, ByteLimit(32))
+  if blob.error != ServiceValueError.None:
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.BackendFailure)
+  let derived = serviceRequestKey(service, hash, length, ByteLimit(32))
+  if derived.error != RequestError.None:
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.BackendFailure)
+  capturePlan([chapterServiceKey(StateChapter(255), service), blob.value, derived.value], limit)
