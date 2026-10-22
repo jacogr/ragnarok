@@ -81,3 +81,11 @@ authored leaves, while retained parent readers remain unchanged.
 Pre-append barriers retain the exact prior frame; the final completed sync leaves the exact complete
 successor visible. Strict restart admits only the independently checked generation/root and complete
 authored leaves, while retained parent readers remain unchanged.
+
+## Legacy contextual publication crashes
+
+`storage_legacy_context_crash` exercises complete writes, every publication barrier and genuine torn/final
+extents with opaque FullStateV1 context. Old and new context bytes must stay bound to the exact
+selected generation/root. Independent repair retains the old prefix context before a complete
+resumed successor; a complete successor rejects rollback. Detached parent context remains valid.
+No storage interpretation of application context or checkpoint-import authority is introduced.
