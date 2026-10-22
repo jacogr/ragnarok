@@ -1,0 +1,40 @@
+{
+  "source": "tests/native/current_handoff_results.nim",
+  "build_name": "current-handoff-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "pending"
+      },
+      "arguments": [
+        "pending"
+      ],
+      "name": "current-handoff-pending",
+      "diagnostic": "handoff.status == Pending",
+      "description": "Current handoff guarded pending"
+    },
+    {
+      "identity": {
+        "reason": "take"
+      },
+      "arguments": [
+        "take"
+      ],
+      "name": "current-handoff-take",
+      "diagnostic": "handoff.status == Finished",
+      "description": "Current handoff guarded take"
+    },
+    {
+      "identity": {
+        "reason": "value"
+      },
+      "arguments": [
+        "value"
+      ],
+      "name": "current-handoff-value",
+      "diagnostic": "outcome.status == None",
+      "description": "Current handoff guarded value"
+    }
+  ]
+}
