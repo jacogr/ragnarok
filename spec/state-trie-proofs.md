@@ -96,3 +96,8 @@ The maintained primitive observer refuses every actual generation and verificati
 hash prefix, including long-value hashing and completed sibling work. Short individual
 and aggregate quotas refuse with zero hash calls; recovery preserves the original
 witness, trusted root and source values. No fault hook enters production.
+
+A fresh 1,000-cycle ARC witness covers complete snapshots, raw/decoded paths, generated
+sets, verified batches, detached bytes and actual late backend refusals. Occupied
+allocator memory must return to the warmed baseline; this is workload-specific release
+evidence, not a general allocation-failure or process-memory claim.
