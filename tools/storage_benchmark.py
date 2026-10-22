@@ -15,7 +15,7 @@ from native_checks import NativeChecks
 from build_crypto import dependencies as crypto_sources, build_native as build_crypto
 from pvm_reference import command
 from setup_nimony import installed
-from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,VALUE_BYTES,BATCH_WIDTHS,CASES,PHASES,METRICS,parse_output,aggregate,summarize_benchmark
+from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,VALUE_BYTES,BATCH_WIDTHS,CASES,PHASES,METRICS,REPORT_VERSION,PROFILE,parse_output,aggregate,summarize_benchmark
 
 ROOT=Path(__file__).resolve().parents[1]
 BUILD=ROOT/'build/tests/storage-benchmark'
@@ -83,7 +83,8 @@ def run():
             ROOT/'tests/support/managed_storage_samples.nim',ROOT/'tests/support/storage_samples.nim',
             ROOT/'tools/storage_benchmark.py',ROOT/'tools/storage_benchmark_report.py',
             ROOT/'tools/native_checks.py',ROOT/'tools/pvm_reference.py',ROOT/'spec/toolchain.json',
-            ROOT/'Makefile',ROOT/'.github/workflows/ci.yml']
+            ROOT/'Makefile',ROOT/'.github/workflows/ci.yml',ROOT/'tools/build_crypto.py',
+            ROOT/'tools/native_source_identity.py',ROOT/'spec/crypto-pins.json']
         # Build the pinned ABI before hashing/linking it; setup provisions sources, not compiled libraries.
         library=build_crypto(crypto_sources(False))
         report.update(head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
@@ -92,16 +93,19 @@ def run():
                           load_average_start=os.getloadavg()),
             toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),
             clang=subprocess.check_output(['clang','--version'],text=True).splitlines()[0],
-            profile='checked native ARC/Clang release opt:speed boundchecks:on LTO',
+            profile=PROFILE,
             sources={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources},
             crypto_sha256=hashlib.sha256(library.read_bytes()).hexdigest(),
-            schema_version=9,batch_widths=list(BATCH_WIDTHS),value_sizes=list(VALUE_BYTES),key_topologies=list(TOPOLOGIES),warmups_per_pass=3,measured_samples_per_pass=10,pass_count=2,
+            compiler_sha256=hashlib.sha256(Path(compiler).read_bytes()).hexdigest(),
+            schema_version=REPORT_VERSION,backends=list(ENGINES),item_counts=list(COUNTS),
+            phase_names=list(PHASES),physical_metrics=list(METRICS),batch_widths=list(BATCH_WIDTHS),value_sizes=list(VALUE_BYTES),key_topologies=list(TOPOLOGIES),warmups_per_pass=3,measured_samples_per_pass=10,pass_count=2,
             pass_orders=[list(ENGINES),list(reversed(ENGINES))])
         save()
         build,binary=NativeChecks(BUILD).build(compiler,source,'storage-native',crypto_library=library)
         build.pop('output',None);report['checks'].append(build);save()
         if build['exit_code']!=0:
             raise RuntimeError('Storage benchmark build failed: '+build['log'])
+        report['native_binary_sha256']=hashlib.sha256(Path(binary).read_bytes()).hexdigest()
         for order in (ENGINES,tuple(reversed(ENGINES))):
             observations={}
             for engine in order:

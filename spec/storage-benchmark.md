@@ -121,3 +121,12 @@ success follows complete CSV and validated Markdown. Late CSV write, CSV replace
 refusal records failure and removes the final CSV. Tests drive complete authored raw passes
 through actual artifact sequencing and independently refuse every late boundary. This concerns
 report visibility, not durable database or filesystem power-loss certification.
+
+## Successful-report provenance
+
+Successful summaries require the declared checked profile, exact workload axes, opposite observed
+backend orders, complete successful build/process evidence, finite host metadata, pinned toolchain
+identity and bounded relative source-hash manifest. Compiler, native executable and crypto ABI
+hashes are retained. Missing or malformed provenance cannot render a successful comparison even
+with plausible timings. Failed/partial runs remain diagnosable without pretending setup completed.
+These recorded identities are reproducibility evidence, not checkpoint or execution authority.

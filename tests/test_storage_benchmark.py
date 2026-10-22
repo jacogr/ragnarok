@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
-from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,VALUE_BYTES,BATCH_WIDTHS,CASES,PHASES,METRICS,parse_output,aggregate,summarize_benchmark
+from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,VALUE_BYTES,BATCH_WIDTHS,CASES,PHASES,METRICS,REPORT_VERSION,PROFILE,REQUIRED_SOURCES,parse_output,aggregate,summarize_benchmark
 from summarize_tests import summarize
 
 
@@ -31,7 +31,24 @@ def output(engine,count,topology='leading',value_bytes=256,batch_width=1):
 def passes():
     """Build two complete identical passes whose statistics have independent exact expectations."""
     one={f'{e}-{n}-{t}-{v}-{w}':parse_output(output(e,n,t,v,w),e,n,t,v,w) for e in ENGINES for n,t,v,w in CASES}
-    return [one,copy.deepcopy(one)]
+    return [one,{f'{e}-{n}-{t}-{v}-{w}':copy.deepcopy(one[f'{e}-{n}-{t}-{v}-{w}'])
+        for e in reversed(ENGINES) for n,t,v,w in CASES}]
+
+
+def report_fixture():
+    """Authored portable provenance makes report validation independent of a real compiler or host."""
+    report=dict(status='checks-passed',passes=passes(),schema_version=REPORT_VERSION,profile=PROFILE,
+        head='a'*40,worktree_dirty=False,crypto_sha256='a'*64,compiler_sha256='b'*64,native_binary_sha256='c'*64,
+        warmups_per_pass=3,measured_samples_per_pass=10,pass_count=2,pass_orders=[list(ENGINES),list(reversed(ENGINES))],
+        backends=list(ENGINES),item_counts=list(COUNTS),key_topologies=list(TOPOLOGIES),value_sizes=list(VALUE_BYTES),
+        batch_widths=list(BATCH_WIDTHS),phase_names=list(PHASES),physical_metrics=list(METRICS),
+        sources={name:'d'*64 for name in REQUIRED_SOURCES},toolchain=dict(schema=1,commit='e'*40,version='0.6.3'),
+        clang='Clang fixture',hardware=dict(platform='fixture',machine='x86_64',cpu='fixture CPU',logical_cpus=1,
+            load_average_start=[0.1,0.2,0.3],load_average_end=[0.1,0.2,0.3]),
+        checks=[dict(exit_code=0,log=f'check-{i}.log',elapsed_seconds=0.001)
+            for i in range(1+2*len(ENGINES)*len(CASES))])
+    report['cases']=aggregate(report['passes'])
+    return report
 
 
 @contextmanager
@@ -41,6 +58,8 @@ def native_stub(folder):
     library=folder/'crypto/library'
     library.parent.mkdir()
     library.write_bytes(b'fixture native ABI')
+    (folder/'compiler').write_bytes(b'fixture compiler')
+    (folder/'binary').write_bytes(b'fixture native executable')
     def command(arguments,name,*args,**kwargs):
         # Each declared identity gets a complete independently authored native output log.
         binary,engine,count,directory,topology,value_bytes,batch_width=arguments
@@ -62,7 +81,7 @@ class StorageBenchmarkTests(unittest.TestCase):
     """Partial or substituted observations must never become published speed comparisons."""
 
     def test_complete_table_and_no_memory_reopen(self):
-        report=dict(status='checks-passed',passes=passes())
+        report=report_fixture()
         report['cases']=aggregate(report['passes'])
         text=summarize(report,'storage-benchmark')
         self.assertIn('Storage speed comparison',text)
@@ -149,10 +168,30 @@ class StorageBenchmarkTests(unittest.TestCase):
         with self.assertRaises(ValueError):aggregate(raw[:1])
         del raw[0]['managed-8192-trailing-256-1']
         with self.assertRaises(ValueError):aggregate(raw)
-        report=dict(status='checks-passed',passes=passes())
+        report=report_fixture()
         report['cases']=aggregate(report['passes'])
         report['cases'][0]['engines']['memory']['median_ns']=1
         with self.assertRaises(ValueError):summarize_benchmark(report)
+
+    def test_success_requires_complete_typed_provenance(self):
+        """Plausible timing grids cannot hide missing identities, unsafe profiles or failed checks."""
+        baseline=report_fixture()
+        mutations=[('schema_version',True),('profile','danger'),('head','invalid'),('worktree_dirty',1),
+            ('compiler_sha256',''),('native_binary_sha256','bad'),('warmups_per_pass',3.0),('batch_widths',[True,4]),
+            ('pass_orders',[list(ENGINES),list(ENGINES)]),('phase_names',[]),('sources',{}),('error','old failure')]
+        for field,value in mutations:
+            bad=copy.deepcopy(baseline);bad[field]=value
+            with self.subTest(field=field),self.assertRaises(ValueError):
+                summarize_benchmark(bad)
+        for boundary in ('load','native','duplicate','path','order'):
+            bad=copy.deepcopy(baseline)
+            if boundary=='load':bad['hardware']['load_average_end'][0]=float('nan')
+            elif boundary=='native':bad['checks'][0]['exit_code']=False
+            elif boundary=='duplicate':bad['checks'][1]['log']=bad['checks'][0]['log']
+            elif boundary=='path':bad['sources']['../outside']='a'*64
+            else:bad['passes'][1]=dict(reversed(list(bad['passes'][1].items())))
+            with self.subTest(boundary=boundary),self.assertRaises(ValueError):
+                summarize_benchmark(bad)
 
     def test_failure_does_not_show_old_table(self):
         text=summarize_benchmark(dict(status='failed',error='native assertion',cases=[dict(old=True)]))
@@ -178,6 +217,7 @@ class StorageBenchmarkTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             folder=Path(temporary)
             library=folder/'crypto/library'
+            (folder/'compiler').write_bytes(b'fixture compiler')
             paths={'fixture':'pinned sources'}
             def build_crypto(selected):
                 # The only provider creates the previously absent ABI, just as a fresh CI build must.

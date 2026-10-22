@@ -2,7 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Validate complete storage samples and render truthful memory/journal/managed speed tables."""
+import math
+from pathlib import PurePosixPath
+import re
 import statistics
+
+REPORT_VERSION=10
+PROFILE='checked native ARC/Clang release opt:speed boundchecks:on LTO'
+REQUIRED_SOURCES=('tests/performance/storage_workload.nim','tests/support/managed_storage_samples.nim',
+    'tests/support/storage_samples.nim','tools/storage_benchmark.py','tools/storage_benchmark_report.py',
+    'tools/native_checks.py','tools/native_source_identity.py','tools/pvm_reference.py',
+    'tools/build_crypto.py','spec/crypto-pins.json','spec/toolchain.json','Makefile','.github/workflows/ci.yml')
 
 ENGINES=('memory','journal','managed')
 COUNTS=(1024,8192)
@@ -13,6 +23,68 @@ CASES=tuple((count,topology,value_bytes,batch_width) for count in COUNTS for top
 PHASES=('publication','reads','extraction','reopen','maintenance','retention','snapshots','misses')
 METRICS=('stored_nodes','selected_nodes','snapshot_bytes','journal_bytes','compacted_snapshot_bytes','compacted_journal_bytes')
 LABELS=('16 publications','4,096 warm-view reads','Complete-map extraction','Strict disk reopen','Current-root reclamation','Nine-root reclamation','4,096 retained snapshots','4,096 missing-address lookups')
+
+
+# Reject malformed provenance before rendering a successful comparison; partial failures stay diagnosable.
+def validate_provenance(report):
+    def require(condition,field):
+        # Every structural refusal names the field without dumping potentially large or untrusted content.
+        if not condition:
+            raise ValueError('Invalid storage benchmark provenance: '+field)
+    def digest(value,length):
+        # Hash syntax records an identity; it does not grant checkpoint or execution authority.
+        return isinstance(value,str) and re.fullmatch('[0-9a-f]{'+str(length)+'}',value) is not None
+    require(type(report.get('schema_version')) is int and report['schema_version']==REPORT_VERSION,'schema')
+    require(report.get('profile')==PROFILE,'checked profile')
+    require(digest(report.get('head'),40) and type(report.get('worktree_dirty')) is bool,'source revision')
+    for field in ('crypto_sha256','compiler_sha256','native_binary_sha256'):
+        require(digest(report.get(field),64),field)
+    for field,expected in (('warmups_per_pass',3),('measured_samples_per_pass',10),('pass_count',2)):
+        require(type(report.get(field)) is int and report[field]==expected,field)
+    for field,expected in (('backends',ENGINES),('item_counts',COUNTS),('key_topologies',TOPOLOGIES),
+            ('value_sizes',VALUE_BYTES),('batch_widths',BATCH_WIDTHS),('phase_names',PHASES),('physical_metrics',METRICS)):
+        value=report.get(field)
+        require(type(value) is list and value==list(expected) and
+                all(type(item) is type(expected[0]) for item in value),field)
+    orders=[list(ENGINES),list(reversed(ENGINES))]
+    require(report.get('pass_orders')==orders,'opposite backend orders')
+    passes=report.get('passes')
+    require(type(passes) is list and len(passes)==2,'complete passes')
+    for order,observations in zip(orders,passes):
+        expected=[f'{e}-{n}-{t}-{v}-{w}' for e in order for n,t,v,w in CASES]
+        require(type(observations) is dict and list(observations)==expected,'observed backend order')
+    sources=report.get('sources')
+    require(type(sources) is dict and len(REQUIRED_SOURCES)<=len(sources)<=16384,'source manifest')
+    require(set(REQUIRED_SOURCES)<=set(sources),'required sources')
+    for name,value in sources.items():
+        require(type(name) is str and 0<len(name)<=1024 and '\x00' not in name and '\\' not in name,'source name')
+        path=PurePosixPath(name)
+        require(not path.is_absolute() and '..' not in path.parts and str(path)==name and digest(value,64),'source identity')
+    toolchain=report.get('toolchain')
+    require(type(toolchain) is dict and type(toolchain.get('schema')) is int and toolchain['schema']==1,'toolchain')
+    require(digest(toolchain.get('commit'),40) and isinstance(toolchain.get('version'),str) and
+            re.fullmatch(r'\d+\.\d+\.\d+',toolchain['version']) is not None,'toolchain identity')
+    require(isinstance(report.get('clang'),str) and 0<len(report['clang'])<=1024,'Clang version')
+    hardware=report.get('hardware')
+    require(type(hardware) is dict,'hardware')
+    for field in ('platform','machine','cpu'):
+        require(isinstance(hardware.get(field),str) and 0<len(hardware[field])<=4096,'hardware '+field)
+    cpus=hardware.get('logical_cpus')
+    require(cpus is None or (type(cpus) is int and 0<cpus<=1048576),'logical CPUs')
+    for field in ('load_average_start','load_average_end'):
+        values=hardware.get(field)
+        require(type(values) in (list,tuple) and len(values)==3 and
+                all(type(v) in (int,float) and math.isfinite(v) and v>=0 for v in values),field)
+    checks=report.get('checks')
+    require(type(checks) is list and len(checks)==1+2*len(ENGINES)*len(CASES),'native checks')
+    logs=[]
+    for check in checks:
+        require(type(check) is dict and type(check.get('exit_code')) is int and check['exit_code']==0,'native exit')
+        require(isinstance(check.get('log'),str) and 0<len(check['log'])<=4096,'native log')
+        elapsed=check.get('elapsed_seconds')
+        require(type(elapsed) in (int,float) and math.isfinite(elapsed) and elapsed>=0,'native elapsed')
+        logs.append(check['log'])
+    require(len(set(logs))==len(logs) and not report.get('error'),'successful evidence')
 
 
 # Native success alone cannot substitute for all warmup/sample identities and positive timings.
@@ -97,6 +169,7 @@ def summarize_benchmark(report):
         raise ValueError('Unknown storage benchmark status')
     lines=['## Storage speed comparison','','**Status: '+status+'**','']
     if status=='checks-passed':
+        validate_provenance(report)
         cases=aggregate(report['passes'])
         if report['cases']!=cases:
             raise ValueError('Storage statistics do not match raw validated samples')
