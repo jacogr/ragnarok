@@ -1,0 +1,40 @@
+{
+  "build_name": "state-supervision-table-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard supervision table default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-supervision-table-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard supervision table invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-supervision-table-invalid"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard supervision table reason",
+      "diagnostic": "outcome.status == ResolutionFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-supervision-table-reason"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_supervision_table_results.nim"
+}
