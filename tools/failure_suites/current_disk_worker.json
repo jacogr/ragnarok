@@ -1,0 +1,40 @@
+{
+  "source": "tests/native/current_disk_worker_results.nim",
+  "build_name": "current-disk-worker-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "admission"
+      },
+      "arguments": [
+        "admission"
+      ],
+      "name": "current-disk-worker-admission",
+      "diagnostic": "admission.status == None",
+      "description": "Current disk worker guarded admission"
+    },
+    {
+      "identity": {
+        "reason": "maintenance"
+      },
+      "arguments": [
+        "maintenance"
+      ],
+      "name": "current-disk-worker-maintenance",
+      "diagnostic": "completion.status == Maintained",
+      "description": "Current disk worker guarded maintenance"
+    },
+    {
+      "identity": {
+        "reason": "value"
+      },
+      "arguments": [
+        "value"
+      ],
+      "name": "current-disk-worker-value",
+      "diagnostic": "completion.status == Completed",
+      "description": "Current disk worker guarded value"
+    }
+  ]
+}
