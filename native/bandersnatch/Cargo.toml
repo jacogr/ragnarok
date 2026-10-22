@@ -17,5 +17,11 @@ crate-type = ["cdylib"]
 [dependencies]
 ark-vrf = { path = "../../vendor/ark-vrf", features = ["bandersnatch", "ring", "secret-split"] }
 
+# Reuse the existing digest/zeroize closure; zebra 4 retains SHA-2 0.10 compatibility.
+blake2 = "=0.10.6"
+ed25519-zebra = { version = "=4.2.0", default-features = false, features = ["std"] }
+sha3 = "=0.10.9"
+zeroize = "=1.9.1"
+
 [profile.release]
 panic = "unwind"

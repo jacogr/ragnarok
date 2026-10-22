@@ -8,11 +8,6 @@
       "repository": "vacp2p/boringssl",
       "commit": "88341070936d28e08f82db1326c73d67962cd043",
       "path": "vendor/boringssl"
-    },
-    "xkcp": {
-      "repository": "XKCP/XKCP",
-      "commit": "4affab454735d54e78156880b3b44e38dcbf765c",
-      "path": "vendor/xkcp"
     }
   },
   "patches": [],
@@ -29,5 +24,14 @@
     "url": "https://www.rfc-editor.org/rfc/rfc8032.txt",
     "section": "7.1",
     "fixture_sha256": "114e556112ad977567acf5e2a6a0ddc2c5a686d259b9126730ec1e4fccc45a6d"
+  },
+  "rust_primitives": {
+    "manifest": "native/bandersnatch/Cargo.toml",
+    "lock": "native/bandersnatch/Cargo.lock",
+    "lock_sha256": "a52edd626c9df025ed40306081132d7adaf4cdbb170d8221c006b41529583806",
+    "blake2": "0.10.6",
+    "sha3": "0.10.9",
+    "ed25519-zebra": "4.2.0",
+    "zeroize": "1.9.1"
   }
 }

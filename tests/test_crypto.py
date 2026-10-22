@@ -13,6 +13,9 @@ import json
 from pathlib import Path
 import platform
 import random
+import os
+import shutil
+import tempfile
 import subprocess
 import sys
 
@@ -163,3 +166,22 @@ def bridge_checks():
     lib.rc_wipe(output, 64)
     assert bytes(output) == bytes(64)
     lib.rc_wipe(None, 0)
+    # Oversized Rust slices fail before touching input/output; fixed buffers remain live and unchanged.
+    for name in ('rc_blake2b256', 'rc_keccak256'):
+        assert getattr(lib, name)(output, ctypes.c_size_t(-1).value, output) == 0
+        assert bytes(output) == bytes(64)
+    # Generic primitives accept inputs beyond the VRF adapter's separate 64 KiB budget.
+    message = bytes(range(256)) * 256 + b'!'
+    digest = (ctypes.c_ubyte * 32)()
+    assert lib.rc_blake2b256(message, len(message), digest) == 1
+    assert bytes(digest) == hashlib.blake2b(message, digest_size=32).digest()
+    assert lib.rc_keccak256(message, len(message), digest) == 1
+    assert bytes(digest).hex() == keccak256(message)
+    # Exercise the new provider through a fresh process with only the colocated library pair.
+    with tempfile.TemporaryDirectory(dir=BUILD, prefix='relocated-') as directory:
+        destination = Path(directory)
+        for source in (path, BUILD / ('libragnarok_bandersnatch.dylib' if platform.system() == 'Darwin' else 'libragnarok_bandersnatch.so')):
+            shutil.copy2(source, destination / source.name)
+        environment = {key: value for key, value in os.environ.items() if key not in ('LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'DYLD_FALLBACK_LIBRARY_PATH')}
+        probe = "import ctypes,sys; x=ctypes.CDLL(sys.argv[1]); o=(ctypes.c_ubyte*32)(); assert x.rc_keccak256(None,0,o)==1; assert bytes(o).hex()=='c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470'"
+        subprocess.run([sys.executable, '-c', probe, str(destination / path.name)], cwd=destination, env=environment, check=True, capture_output=True, text=True)

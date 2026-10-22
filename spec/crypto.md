@@ -30,27 +30,53 @@ accepts A=identity, R=identity, S=0 for empty and `abc` messages. It rejects the
 and all-zero A/R, S=0 encodings. These probes are not an exhaustive exceptional-point corpus.
 
 A complete JAM integration still needs an explicit normative decision and
-focused independent tests for every exceptional point/canonicality policy.
+focused independent tests for every exceptional point/canonicality policy. The explicit ZIP215
+capability below prepares the forthcoming specification upgrade without changing this release selection.
 Do not advertise these backend verdicts as a finalized consensus verifier.
 The pinned official JAM vector tree has no standalone primitive-crypto corpus;
 RFC/Wycheproof tests are supplemental primitive evidence, not JAM state tests.
 
 ## Reproducibility and provenance
 
-internal dependencies. Nim reuses QUIC's pristine BoringSSL source revision;
-this source has Blake2b-256 and Ed25519, but no legacy Keccak API. XKCP, maintained
-by the Keccak team, supplies its portable 64-bit permutation/sponge. The bridge
-selects parameters and marshals pointers only; no project production permutation
-or signature implementation is introduced. The generated XKCP config header
-selects KeccakP1600 outside upstream source storage. No dependency source patch
-is applied. XKCP supplies the maintained Keccak backend.
+The existing `native/bandersnatch` locked Rust closure now supplies Blake2b-256
+(`blake2` 0.10.6), legacy Keccak (`sha3` 0.10.9), ordinary Ed25519 signing/key derivation
+(`ed25519-zebra` 4.2.0), and explicit erasure (`zeroize` 1.9.1). The ark-vrf 0.2.2
+Bandersnatch profile and features are unchanged. Its Ed25519 feature is an ECVRF suite,
+not an ordinary signature verifier, so enabling it would not supply this API.
+Zebra 4.2.0 shares the already locked SHA-2 0.10 closure; Zebra 5 introduces a separate
+SHA-2 0.11/curve25519-dalek 5 closure. All registry identities/checksums are locked;
+both primitive pin records verify the lock SHA-256. No upstream source is patched.
 
-Upstream licensing remains with the source trees (BoringSSL's component notices,
-XKCP's component/SPDX notices). Wycheproof's public
-fixture is read unmodified from its pinned submodule under its Apache-2.0 license; RFC vectors originate
-in RFC 8032 section 7.1 under the RFC's IETF Trust terms. Source identities and
-fixture SHA-256 digests are pinned. The original Wycheproof license remains with its source submodule. Tests establish functionality; they do not establish an
-audit of every selected module or a production suitability certification.
+The C shim retains BoringSSL for release-policy `verify`; QUIC also still needs BoringSSL.
+XKCP is removed from provisioning and linkage. This consolidates primitive providers but
+adds the ordinary-signature Rust dependency; it does not remove all native dependencies.
+Seed and expanded signing-key owners have explicit zeroizing drop guards. This does not
+claim elimination of all compiler/backend-internal secret copies.
+
+### Explicit ZIP215 capability before protocol activation
+
+`verifyZip215` / `rc_ed_verify_zip215` exposes Zebra's maintained
+[ZIP215](https://zips.z.cash/zip-0215) verifier. It accepts noncanonical curve encodings,
+requires S below the group order, and checks the cofactored equation. It is a separate
+explicit operation, never an automatic retry after `verify` fails. The release protocol
+continues to call `verify`. The coordinated unreleased Gray Paper upgrade will change that
+selection together with the null-validator key; this layer does not advance the GP pin.
+
+Focused native witnesses cover A=all-zero (order four), R=identity, S=0 with empty/one-byte
+messages, noncanonical identity A (y=p+1), invalid A=02 followed by zeros, and a failed
+identity equation with S=1. Ordinary RFC/Wycheproof behavior remains checked independently.
+The all-zero-key witness is an implementation compatibility gap for the upcoming GP rule,
+not a Gray Paper discrepancy.
+
+The Rust library has a relocatable platform identity; the crypto shim resolves a colocated
+copy through `@loader_path`/`$ORIGIN`. A fresh-process relocation check clears loader-path
+environment overrides. Rust ABI inputs reject nonrepresentable slice lengths, allow empty
+NULL messages, borrow synchronously, contain unwinds and publish completed outputs only.
+Allocator aborts remain process failures. No VRF-specific 64 KiB cap applies to hashes/signing.
+
+Upstream licensing stays with the pristine sources and Cargo package notices. Wycheproof's
+fixture/license hashes and RFC 8032 section 7.1 fixtures are unchanged. Functional checks do
+not establish an audit or production suitability certification.
 
 ## Compiler-port evidence
 
@@ -71,3 +97,13 @@ checks use independent per-thread seeds and join every successfully started work
 This does not establish concurrent clearing/signing of a shared seed, recoverable ARC allocation
 failure, broader contextual/Bandersnatch parity or Linux behavior. The exceptional-point policy
 above remains an explicit JAM integration gate.
+
+## Crypto consolidation completion checks
+
+The foundation requires `make unit SUITE=crypto_seeds` (ZIP215 policy and observed seed wipes),
+the existing crypto and Bandersnatch corpora, `make unit SUITE=bandersnatch_owners`, the
+production `make` link, and `make check-python` / `make format-check`. ABI checks include
+missing pointers, nonrepresentable slices, hashes beyond 64 KiB and fresh-process colocated
+loading. Local Darwin evidence does not claim exact-head Linux CI or complete JAM parity.
+The next protocol layer will activate ZIP215 and migrate the null-validator representation
+with the authorized unreleased Gray Paper pin.

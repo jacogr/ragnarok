@@ -23,3 +23,10 @@ under `build/bandersnatch/`; upstream sources remain pristine under `vendor/`.
 See the [primitive contract](../../spec/bandersnatch.md), [crypto guide](../../docs/crypto.md) and
 [folder instructions](AGENTS.md) for verification, exact profile constraints and the documented
 challenge-width discrepancy. Unsafe deterministic/non-ZK vector features must remain disabled.
+
+The same locked library also exports the internal `rcr_*` ordinary-crypto ABI consumed by
+`native/crypto/primitive_bridge.c`. It shares SHA-2/SHA3 and zeroization dependencies without
+changing this Bandersnatch suite or enabling ark-vrf's unrelated Ed25519 ECVRF feature.
+See [the primitive contract](../../spec/crypto.md) for provider pins, ZIP215 activation and
+verification coverage. Platform library identities are relocatable; the crypto build colocates
+its provider copy. The `bs_*` opaque-owner ABI and reason codes remain unchanged.
