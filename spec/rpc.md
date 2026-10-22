@@ -6,8 +6,10 @@ The [coordinated Gray Paper upgrade](graypaper-unreleased-upgrade.md) uses105-by
 account metadata. Request lengths are strictly below2^32−2; both reserved E4
 selectors refuse even when their historical colliding keys are absent. The older
 full-E4 ambiguity observations below are retained release-era evidence. Current
-invalid-selector error classification remains a separate API cleanup; no invalid
-request key is hashed or admitted by the current codec. The authored live-RPC fixture
+invalid selectors return JSON-RPC invalid parameters (`-32602`) for reads and
+subscriptions, before block lookup, hashing or subscription allocation. Direct
+application reads return `InvalidLength`, and state queries return `InvalidInput`.
+The largest valid selector is4294967293; service IDs retain the complete E4 range. The authored live-RPC fixture
 uses105-byte account records; its expected complete-map root is recomputed by the
 independent trie oracle, with the supplied header and header hash unchanged.
 
@@ -208,7 +210,8 @@ results and bounded batches with IDs whose escaping expands their encoded size.
 `serviceRequest(header_hash, id, hash, len)` follows the pinned JIP-2 method, using the maintained
 GP 0.8.0 `C(service, E4(length) || hash)` key constructor and request-history decoder. Hashes use
 the same canonical 32-byte Base64 format; service ID and advertised length use unsigned JSON
-integer syntax across the full uint32 range. No allocation depends on the advertised length.
+integer syntax. Service IDs cover the full uint32 range; lengths must be below4294967294.
+No allocation depends on the advertised length.
 
 A missing account or key returns `null`; a present requested-but-unprovided history returns `[]`.
 A provided history returns 1–3 exact unsigned slot numbers: supplied, forgotten, requested again.
@@ -218,15 +221,14 @@ error `1`; invalid arguments return `-32602`. Existing notification and shared b
 These are structural reads of the retained snapshot, not checks of chronology, provision validity
 or cross-map account invariants. No subscription, submission or state update is added.
 
-**Pinned namespace limitation:** lengths `4294967294` and `4294967295` share serialized key
-namespaces with preimages and storage under GP 0.8.0. A missing key still returns `null`, but a
-present key returns error `0` with an explicit ambiguity message, even if its bytes decode as a
-history. The map alone cannot identify their logical origin. This is an RPC information limit,
-not a new invalid-length rule: the full E4 parser/codec domain, specification pins, duplicate-key
-policy and pending [request namespace](request-namespace.md) migration remain unchanged.
+**Historical release namespace limitation:** before the unreleased PR542 upgrade,
+lengths4294967294 and4294967295 shared namespaces with preimages and storage.
+The former present-key ambiguity refusal is retained as historical evidence in
+[request namespaces](request-namespace.md). Current reads reject both selectors
+with invalid parameters, whether the key/account/block exists or not.
 
 Native tests freeze independently computed request keys and cover all four history shapes,
-zero/max slots, full length parsing, malformed histories, every truncated three-slot prefix,
+zero/max slots, bounded length parsing, malformed histories, every truncated three-slot prefix,
 present/absent marker keys, missing accounts, batches, notifications and repeated ARC cleanup.
 The live WebSocket harness checks exact histories and errors after the chainspec file has changed.
 A `rpc_` compiler probe protects the result discriminator. See [request serialization](state-requests.md)
@@ -849,7 +851,8 @@ Finality and live importer integration remain outstanding.
 
 `subscribeServiceRequest(id, hash, len, false)` and `unsubscribeServiceRequest(subscription)`
 implement pinned JIP-2 Methods / subscribeServiceRequest. Required arguments are an exact uint32
-service ID, a canonical padded Base64 32-byte preimage hash, an exact uint32 length and a Boolean.
+service ID, a canonical padded Base64 32-byte preimage hash, an integer length below4294967294
+and a Boolean.
 Invalid shapes or selectors return `-32602` without consuming an ID. Finalized tracking (`true`) without an explicitly published finalized head
 returns error 0; the stateless adapter remains query-only.
 
@@ -859,15 +862,14 @@ Missing accounts or entries yield `null`; requested-but-unprovided entries yield
 forgotten and requested-again histories yield one, two or three full uint32 slot numbers. Query and
 subscription serialization share one validated-history formatter. No state owner is retained.
 
-The existing GP 0.8.0 namespace ambiguity policy applies: marker-length entries can prove absence,
-but present colliding entries fail instead of being interpreted as histories. Malformed, unreadable
-or ambiguous initial state returns error 0. Later failures emit a terminal error for only that
+Both reserved lengths return invalid parameters before a subscription is allocated.
+Malformed or unreadable initial state returns error 0. Later failures emit a terminal error for only that
 subscription. Cancellation, monotonic IDs, eight shared selectors, sixteen queued messages and the
 65,535-byte serialized queue ceiling remain unchanged. Each read copies at most thirteen history
 bytes after checking size; no preimage bytes are copied or hashed for request subscriptions.
 
 Native tests cover all four history states, absent accounts/entries, full-width timestamps,
-independent lengths, invalid selectors, malformed and ambiguous state, batches and cancellation.
+independent lengths, invalid selectors, malformed state, batches and cancellation.
 Connected socket tests publish each history state, deletion and invalid count while preserving the
 connection. Live WebSocket tests cover configured/unavailable chains and cancellation.
 All four service subscription families now support best-chain updates. Finality and live importer

@@ -1,5 +1,24 @@
 # Preimage admission and integration
 
+## Current request-length error boundary
+
+Scope: on Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` (PR542),
+request lengths must be strictly below2^32−2. Reject either reserved E4 selector
+before namespace hashing or state lookup. `preimageRequested` reports `InvalidInput`;
+application service reads report `InvalidLength`. Owned preimage admission checks the
+same protocol bound before payload copying/hashing, separately from local byte ceilings.
+The historical release/vector scope below remains unchanged.
+
+Completion checks: native `accumulation_provisions`, `preimage_transition` and `rpc`.
+Exercise both reserved selectors, the largest valid selector, present/absent/default
+state, injected hashing failure with zero attempts, and RPC subscription rejection
+without consuming subscription identifiers. JSON-RPC reports invalid parameters
+(`-32602`) for reserved lengths; full-width service identifiers remain valid.
+
+Local macOS verification passed all three native suites and264 production semantic
+compiles. Provision/preimage suites retained1000-cycle stable ARC evidence. These
+are local results, not a claim of exact-head Linux CI or full JAM parity.
+
 ## Authorized bounded scope
 
 Implement GP 0.8.0 `accumulation.tex`, `preimagesareordered`, `fnprovidable` and `fnprovide`,

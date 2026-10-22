@@ -99,6 +99,9 @@ proc preimageRequested*(state: StateStoreSnapshot, service: ServiceIndex,
     hash: ServicePreimageHash, length: RequestLength): PreimageTransitionResult[bool] =
   ## Query an exact canonical outstanding request without accepting a caller-selected namespace key.
   ## Missing accounts/requests or nonempty histories are false; malformed maps/backend failure are typed refusals.
+  if uint32(length) >= high(uint32) - 1:
+    # Protocol-invalid selectors must not invoke the backend or inspect an unrelated namespace.
+    return PreimageTransitionResult[bool](status: PreimageTransitionError.InvalidInput)
   let key = serviceRequestKey(service, hash, length, ByteLimit(32))
   if key.error != RequestError.None:
     # Namespace derivation failure cannot fabricate a requested/unrequested verdict.
@@ -136,9 +139,10 @@ proc preparePreimages(prior: StateStoreSnapshot, source: OwnedFrame,
   # Inspect all actual payload extents before copying the first blob or hashing any input.
   for i in 0..<count:
     let size = uint64(source.ownedBlobLength(i).value)
-    if size > uint64(high(uint32)) or size > uint64(limits.perBlob) or size > uint64(
-        limits.totalBlobBytes)-total:
-      fail(PreimageTransitionError.LimitExceeded) # Request lengths are E4; subtract before aggregate addition under wrapping arithmetic.
+    if size >= uint64(high(uint32)) - 1:
+      fail(PreimageTransitionError.InvalidInput) # Exclude reserved namespace selectors before copying or hashing.
+    if size > uint64(limits.perBlob) or size > uint64(limits.totalBlobBytes)-total:
+      fail(PreimageTransitionError.LimitExceeded) # Subtract before aggregate addition under wrapping arithmetic.
     total += size
   let data = PreimageData(prior: prior, source: source, rows: newSeq[PreimageRow](count),
     provisions: @[], bytes: ProvisionBytes(total))
