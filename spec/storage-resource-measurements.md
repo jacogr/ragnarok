@@ -68,3 +68,10 @@ inventory, formatting and whitespace. The initial formatting setup hit a transie
 failure; the same Make check was retried. Exact inputs, commands, logs and source identities remain
 under `build/tests/storage-resources/` and `build/storage-db3-*`. This is local macOS evidence on
 an explicitly dirty source snapshot, not an exact committed-head or Linux CI claim.
+
+## Live allocator checkpoints
+
+Test-owned `occupiedStorageBytes` samples the pinned Nim allocator at explicit lifetime boundaries.
+A repeated 16 KiB positive control observes live bytes then returns to its baseline after ARC
+retirement. These current managed-heap observations exclude stack/native-library memory and OS
+page cache, and are distinct from the fresh-child whole-process peak RSS observations.
