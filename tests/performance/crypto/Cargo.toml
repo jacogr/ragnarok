@@ -1,0 +1,20 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Isolated benchmark candidate; this does not change the production Rust dependency closure.
+[package]
+name = "ragnarok-crypto-benchmark"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+blake2b_simd = "=1.0.3"
+
+[profile.release]
+opt-level = 3
+panic = "unwind"

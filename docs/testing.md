@@ -59,7 +59,7 @@ not claim the deferred groups passed. Master pushes/merges always request full v
 newer master runs supersede older ones.
 
 For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
-choose `unit`, `e2e`, `docker`, `interop`, `perf`, `pvm-reference`, `bench-pvm`, `bench-storage` or `full`
+choose `unit`, `e2e`, `docker`, `interop`, `perf`, `pvm-reference`, `bench-pvm`, `bench-storage`, `bench-crypto` or `full`
 (the default). `interop` runs all Interop jobs; `perf` runs all Perf jobs. The existing
 `pvm-reference` and `bench-pvm` selections remain available for individual PVM jobs.
 **Perf PVM** also runs automatically on master pushes. Its validated interpreted
@@ -123,3 +123,24 @@ In Actions, **Perf Storage** sits beside **Perf PVM**. Master pushes, `perf`/`fu
 `ci:perf`/`ci:full` PR requests run the group; `bench-storage` dispatch runs storage alone. The job
 always renders a summary and retains JSON, CSV, Markdown and logs, including failures. Timing has
 no fixed CI speed threshold. See [the workload contract](../spec/storage-benchmark.md) for scope.
+
+
+### Crypto provider measurements
+
+`make bench-crypto` compares the current production BLAKE2b-256 C/Rust bridge with the separately
+locked `blake2b_simd` 1.0.3 candidate. Production crypto dependencies and behavior stay unchanged.
+**Perf Crypto** runs natively on `ubuntu-latest`, alongside Perf PVM and Perf Storage, with the
+same master-push and `perf`/`full` or `ci:perf`/`ci:full` policy. Dispatch `bench-crypto` to run
+crypto alone. No Docker image or emulated CPU is used.
+
+Both engines must pass independent Python `hashlib` vectors before measuring 0–65536-byte
+messages and a dependent 4096-leaf Merkle kernel. Encoded trie nodes are 64 bytes; the kernel
+measures dependent hash calls, rather than complete trie traversal, sorting or storage.
+Every timed checksum and final digest is independently checked. Equal per-case iteration
+counts, two opposite-order passes and raw observations make partial or forged green reports fail.
+The job records runtime-visible CPU features and an expected SIMD-dispatch label inferred from
+the pinned crate's policy, using generic builds rather than `target-cpu=native`.
+
+`make summary-crypto-benchmark` appends the table to `SUMMARY_OUTPUT` and replaces the downloadable
+summary. The artifact retains JSON, CSV, Markdown and logs on failure as well as success. Shared
+runner timing has no fixed speed gate; noisy cases stay visible and no samples are discarded.

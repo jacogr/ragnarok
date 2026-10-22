@@ -24,12 +24,15 @@ def format_source(path):
 # Cargo selects project-owned Rust modules; the explicit toolchain pin also applies outside Make.
 def format_rust(check):
     toolchain = json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
-    arguments = ['rustup', 'run', toolchain, 'cargo', 'fmt', '--manifest-path',
-                 str(ROOT/'native/bandersnatch/Cargo.toml')]
-    if check:
-        # Rustfmt reports differences without modifying sources during CI or local checks.
-        arguments += ['--', '--check']
-    return subprocess.run(arguments, cwd=ROOT).returncode == 0
+    passed = True
+    for relative in ('native/bandersnatch/Cargo.toml', 'tests/performance/crypto/Cargo.toml'):
+        # The benchmark candidate remains separately locked but follows the same Rust formatting rules.
+        arguments = ['rustup', 'run', toolchain, 'cargo', 'fmt', '--manifest-path', str(ROOT/relative)]
+        if check:
+            arguments += ['--', '--check']
+        if subprocess.run(arguments, cwd=ROOT).returncode != 0:
+            passed = False
+    return passed
 
 
 # Include native tests and intentional compile-failure fixtures in the same canonical style.

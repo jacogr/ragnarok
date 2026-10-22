@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [unit, e2e, docker, interop, perf, pvm-reference, bench-pvm, bench-storage, full]
+        options: [unit, e2e, docker, interop, perf, pvm-reference, bench-pvm, bench-storage, bench-crypto, full]
         default: full
         required: true
 
@@ -433,4 +433,36 @@ jobs:
             build/tests/storage-benchmark/results.json
             build/tests/storage-benchmark/samples.csv
             build/tests/storage-benchmark/summary.md
+            build/ci/*.log
+
+  # Measure runtime SIMD on the native runner CPU; Docker/emulation is intentionally outside this job.
+  bench-crypto:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-crypto' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+    name: Perf Crypto
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Compare validated BLAKE2b providers
+        run: make bench-crypto
+      - name: Show crypto speed comparison
+        if: always()
+        run: make summary-crypto-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      - name: Retain crypto speed evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: bench-crypto-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            build/tests/crypto-benchmark/*.log
+            build/tests/crypto-benchmark/results.json
+            build/tests/crypto-benchmark/samples.csv
+            build/tests/crypto-benchmark/summary.md
+            build/crypto/build.log
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
             build/ci/*.log

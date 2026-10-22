@@ -57,7 +57,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [unit, e2e, docker, interop, perf, pvm-reference, bench-pvm, bench-storage, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [unit, e2e, docker, interop, perf, pvm-reference, bench-pvm, bench-storage, bench-crypto, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         self.assertNotIn('synchronize', triggers)
         self.assertNotIn('opened', triggers)
@@ -170,7 +170,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(definition.strip(),
                          'name: Validate verification inventory\n        run: make check-inventory')
         jobs = ('modules', 'python', 'guards', 'unit', 'failures', 'e2e', 'telemetry-interop', 'docker', 'pvm-reference')
-        for job in (*jobs, 'bench-pvm', 'bench-storage'):
+        for job in (*jobs, 'bench-pvm', 'bench-storage', 'bench-crypto'):
             # Exact job boundaries keep an appended independent workload from entering its neighbor's scope.
             with self.subTest(job=job):
                 section = re.search(r'^  '+job+r':\n(.*?)(?=^  [\w-]+:|\Z)',
@@ -227,7 +227,22 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('name: Perf PVM', text)
         self.assertIn('name: Perf Storage', text)
         index = jobs.index('bench-pvm')
-        self.assertEqual(jobs[index:index+2], ['bench-pvm', 'bench-storage'])
+        self.assertEqual(jobs[index:index+3], ['bench-pvm', 'bench-storage', 'bench-crypto'])
+        self.assertIn('name: Perf Crypto', text)
+
+    def test_crypto_perf_scope_and_summary(self):
+        """Crypto measures native runtime SIMD independently and retains complete raw evidence."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        section = text.split('  bench-crypto:\n', 1)[1]
+        for trigger in ("github.event_name == 'push'", "inputs.suite == 'perf'", "inputs.suite == 'bench-crypto'",
+                        "inputs.suite == 'full'", "github.event.label.name == 'ci:perf'", "github.event.label.name == 'ci:full'"):
+            self.assertIn(trigger, section)
+        self.assertEqual(section.count('run: make bench-crypto\n'), 1)
+        self.assertIn('summary-crypto-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', section)
+        for name in ('results.json', 'samples.csv', 'summary.md'):
+            self.assertIn('build/tests/crypto-benchmark/' + name, section)
+        for forbidden in ('continue-on-error', 'needs:', 'container:', 'docker run'):
+            self.assertNotIn(forbidden, section)
 
     def test_storage_perf_scope_and_summary(self):
         """Storage shares the Perf group while retaining independent validated artifacts and failure status."""
@@ -323,7 +338,7 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertIn('FAIL Python verification', output.getvalue())
             self.assertEqual(runner.return_value.command.call_count, 1)
             self.assertIn('test_*.py', runner.return_value.command.call_args.args[0])
-            self.assertEqual(runner.return_value.command.call_args.kwargs['timeout'], 300)
+            self.assertEqual(runner.return_value.command.call_args.kwargs['timeout'], 900)
             report = json.loads((folder/'results.json').read_text())
             self.assertEqual(report['status'], 'failed')
             self.assertEqual(report['check']['exit_code'], 7)
