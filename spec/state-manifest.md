@@ -50,3 +50,7 @@ Next bounded consumer is typed checkpoint decoding under an independently suppli
 expected root, preserving existing checkpoint bytes and all nested refusal reasons.
 Callers must obey the existing single-threaded store and canonical ARC lease rules;
 these adapters do not authorize access to a graph leased to a proof worker.
+
+The [expected-root checkpoint consumer](state-validated-checkpoint.md) now delegates
+to this exact validator after existing checkpoint integrity and global validation.
+The [usage guide](../docs/state-validation.md) documents all three bounded stages.

@@ -47,3 +47,8 @@ and distinguishes this serialization certificate from full state/STF parity.
 [`manifest.nim`](manifest.nim) checks exact complete-map coverage against explicit
 service serialization inputs; [its contract](../../spec/state-manifest.md) excludes
 opaque captures and preserves the original complete source without root-trust claims.
+
+[`validated_checkpoint.nim`](validated_checkpoint.nim) restores existing checkpoint
+bytes only under an explicit expected root, then validates complete serialization.
+See [the validation guide](../../docs/state-validation.md) for policies, phase
+refusals, retained ownership and remaining state/STF gates.
