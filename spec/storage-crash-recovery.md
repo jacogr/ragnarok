@@ -59,3 +59,11 @@ and final frame extent. Exact visible prefix bytes are independently checked. In
 fail strict startup; wrong generation/root repair tokens preserve every byte and expose no owner.
 The exact independent prefix token permits truncation and a complete resumed successor. A final
 complete frame refuses the old repair token and cannot be rolled back. Held readers remain valid.
+
+## Managed torn append process death
+
+`storage_managed_partial_crash` kills after actual eight-byte writes at the beginning, middle, penultimate
+and final frame extent. Exact visible prefix bytes are independently checked. Incomplete tails
+fail strict startup; wrong generation/root repair tokens preserve every byte and expose no owner.
+The exact independent prefix token permits truncation and a complete resumed successor. A final
+complete frame refuses the old repair token and cannot be rolled back. Held readers remain valid.
