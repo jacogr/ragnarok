@@ -1,0 +1,17 @@
+{
+  "defines": [],
+  "directory": "state",
+  "includes": [
+    "crypto",
+    "storage_io"
+  ],
+  "libraries": [
+    "crypto",
+    "storage_io"
+  ],
+  "observers": [
+    "io_ftruncate",
+    "io_write"
+  ],
+  "prepared": false
+}
