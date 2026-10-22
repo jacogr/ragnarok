@@ -10,7 +10,7 @@ import ../codec/[bounded, composite, state_outputs, state_accounts, state_layout
     state_service_values, state_privileges, state_authorization, work_report, state_safrole, c2_records]
 import ../chain/parameters
 import ../crypto/primitives
-import ./[accumulation_context, accumulation_invocation, store, preimages]
+import ./[accumulation_context, accumulation_invocation, accumulation_service, store, preimages]
 
 const AccumulationAccountInfoBytes* = 112 ## Fixed Omega_I record, excluding serialized metadata's version byte.
 
@@ -19,17 +19,22 @@ type
     Uninitialized, None, InvalidContexts, InvalidDimension, YieldAbsent, UnknownService,
     NotRequested, AlreadyProvided, InvalidLength, InvalidState, MalformedState, LimitExceeded,
       BackendFailure, InvalidIndex,
-      StorageFull,           ## Candidate storage footprint requires more balance than the account has.
-      InvalidParameters,     ## Deposit settings must come from a valid parameter snapshot.
-      NotManager,            ## Only the current privileged manager may replace the privilege state.
-      AmbiguousPrivileges,   ## Conflicting gas values for one service have no pinned dictionary interpretation.
-      InvalidCore,           ## The selected core is outside the current positional queue layout.
-      NotAssigner,           ## Only the current assigner may replace its core queue.
-      InvalidValidatorCount, ## Staging population must be a supported multiple of three.
-      NotDelegator,          ## Only the current delegator may replace the staging roster.
-      InsufficientCash,      ## Account debits must preserve the creator's own minimum balance.
-      ServiceExists,         ## A registrar-selected reserved service ID is already occupied.
-      TransferGasLow         ## Offered deferred gas is below the current destination minimum.
+      StorageFull,             ## Candidate storage footprint requires more balance than the account has.
+      InvalidParameters,       ## Deposit settings must come from a valid parameter snapshot.
+      NotManager,              ## Only the current privileged manager may replace the privilege state.
+      AmbiguousPrivileges,     ## Conflicting gas values for one service have no pinned dictionary interpretation.
+      InvalidCore,             ## The selected core is outside the current positional queue layout.
+      NotAssigner,             ## Only the current assigner may replace its core queue.
+      InvalidValidatorCount,   ## Staging population must be a supported multiple of three.
+      NotDelegator,            ## Only the current delegator may replace the staging roster.
+      InsufficientCash,        ## Account debits must preserve the creator's own minimum balance.
+      ServiceExists,           ## A registrar-selected reserved service ID is already occupied.
+      TransferGasLow,          ## Offered deferred gas is below the current destination minimum.
+      ModifiedAccountsDisabled ## The caller did not enable bounded modified-account tracking.
+  AccumulationModifiedAccountIndex* = distinct uint64 ## Modification ordinal is distinct from a protocol service identity.
+  # Immutable unique membership facts contain only fixed identities and no parent-effect owners.
+  ModifiedAccountsData = ref object
+    values: seq[ServiceIndex]
   AccumulationAccountScope* {.pure.} = enum ## Conservative mutation provenance since the credited initial context; equal bytes never reset it.
     Initial,         ## No account mutation occurred on this retained lineage.
     SelfMetadata,    ## Only supported metadata operations changed the invoking service's record.
@@ -97,6 +102,8 @@ type
     initial: InitialAccumulationContext
     accounts: StateStoreSnapshot
     accountScope: AccumulationAccountScope
+    modified: ModifiedAccountsData
+    modifiedLimit: ElementLimit
     designated: bool # Successful designate provenance follows exact implication/checkpoint ownership.
     blessed: bool  # Successful bless provenance follows the same exact implication/checkpoint owner.
     assigned: bool # Successful assign provenance follows exact implication/checkpoint ownership.
@@ -170,7 +177,8 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
         scope = AccumulationAccountScope.SelfMetadata # Self metadata preserves any existing bounded self-key proof.
     else:
       scope = AccumulationAccountScope.Unsupported # No broader mutation can opt itself back into publication.
-  EffectData(deleted: previous.deleted, deletedLimit: previous.deletedLimit,
+  EffectData(modified: previous.modified, modifiedLimit: previous.modifiedLimit,
+    deleted: previous.deleted, deletedLimit: previous.deletedLimit,
     created: previous.created, createdLimit: previous.createdLimit,
     accountKeys: previous.accountKeys, accountKeyLimit: previous.accountKeyLimit,
     accountScope: scope, designated: previous.designated, blessed: previous.blessed,
@@ -224,6 +232,43 @@ proc prepareSelfAccountKeys(previous: EffectData, writes: openArray[StateWrite])
       inc destination
   AccumulationEffectResult[AccountKeysData](status: AccumulationEffectError.None,
     completed: AccountKeysData(keys: keys))
+
+# Prepare the entire unique membership extension before publishing any associated account write.
+proc prepareModifiedAccounts(previous: EffectData, additions: openArray[ServiceIndex]):
+    AccumulationEffectResult[ModifiedAccountsData] =
+  if uint64(previous.modifiedLimit) == 0:
+    return AccumulationEffectResult[ModifiedAccountsData](status: AccumulationEffectError.None,
+        completed: previous.modified) # Disabled tracking preserves earlier local execution behavior.
+  let retained = previous.modified.values
+  var count = retained.len
+  for index, service in additions:
+    var seen = false
+    for value in retained:
+      if uint32(value) == uint32(service): seen = true # Existing membership needs no additional capacity.
+    for earlier in 0..<index:
+      if uint32(additions[earlier]) == uint32(service): seen = true # Same-account direct transfers add one fact.
+    if not seen:
+      if uint64(count) >= uint64(previous.modifiedLimit) or count >= high(int) div sizeof(ServiceIndex):
+        return AccumulationEffectResult[ModifiedAccountsData](
+            status: AccumulationEffectError.LimitExceeded) # No partial set or candidate accounts escape.
+      inc count
+  if count == retained.len:
+    return AccumulationEffectResult[ModifiedAccountsData](status: AccumulationEffectError.None,
+        completed: previous.modified) # A repeated successful touch preserves exact immutable membership.
+  var values = newSeq[ServiceIndex](count)
+  var cursor = 0
+  for service in retained:
+    values[cursor] = service
+    inc cursor # Retain deterministic first-touch order without parent context links.
+  for service in additions:
+    var seen = false
+    for index in 0..<cursor:
+      if uint32(values[index]) == uint32(service): seen = true # Collapse membership across both immutable inputs.
+    if not seen:
+      values[cursor] = service
+      inc cursor
+  AccumulationEffectResult[ModifiedAccountsData](status: AccumulationEffectError.None,
+      completed: ModifiedAccountsData(values: values))
 
 # Bind the prepared self-key proof only after the same operation's account writes fully succeed.
 proc selfAccountData(previous: EffectData, accounts: StateStoreSnapshot,
@@ -301,6 +346,45 @@ proc effectAccountScope*(context: AccumulationEffectContext): AccumulationEffect
       status: AccumulationEffectError.Uninitialized) # A default is not an untouched initialized context.
   AccumulationEffectResult[AccumulationAccountScope](status: AccumulationEffectError.None,
     completed: context.data.accountScope)
+
+proc effectModifiedAccountCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
+  ## Count exact successful modified-account identities, including no-op/restored writes and incoming transfers.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.Uninitialized) # No default invocation facts.
+  if uint64(data.modifiedLimit) == 0:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.ModifiedAccountsDisabled) # Disabled is distinct from an enabled empty set.
+  AccumulationEffectResult[int](status: AccumulationEffectError.None,
+      completed: data.modified.values.len)
+
+proc effectModifiedAccountAt*(context: AccumulationEffectContext,
+    index: AccumulationModifiedAccountIndex): AccumulationEffectResult[ServiceIndex] =
+  ## Copy one first-touch-ordered member; no mutable membership storage is exported.
+  let count = context.effectModifiedAccountCount
+  if count.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[ServiceIndex](
+        status: count.error) # Defaults/disabled tracking never expose a synthetic identity.
+  if uint64(index) >= uint64(count.value):
+    return AccumulationEffectResult[ServiceIndex](
+        status: AccumulationEffectError.InvalidIndex) # Bound before native narrowing.
+  let data = context.data
+  assert data != nil # Successful count retains this initialized owner.
+  AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None,
+      completed: data.modified.values[int(uint64(index))])
+
+proc effectAccountModified*(context: AccumulationEffectContext,
+    service: ServiceIndex): AccumulationEffectResult[bool] =
+  ## Query successful membership without treating equal final bytes as absence of modification.
+  let count = context.effectModifiedAccountCount
+  if count.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[bool](status: count.error) # No fabricated false result for absent tracking.
+  let data = context.data
+  assert data != nil # Successful count retains this initialized owner.
+  for value in data.modified.values:
+    if uint32(value) == uint32(service):
+      return AccumulationEffectResult[bool](status: AccumulationEffectError.None,
+          completed: true) # Exact nominal identity membership.
+  AccumulationEffectResult[bool](status: AccumulationEffectError.None, completed: false)
 
 proc effectAccountWriteCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
   ## Count immutable traced self keys; unsupported lineages expose no incomplete publication proof.
@@ -463,18 +547,26 @@ proc effectsSource*(effects: AccumulationEffects): AccumulationEffectResult[
 
 proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
     accountWriteKeys = ElementLimit(0), createdAccounts = ElementLimit(0),
-        deletedAccounts = ElementLimit(0)): AccumulationEffectResult[
+        deletedAccounts = ElementLimit(0), modifiedAccounts = ElementLimit(
+            0)): AccumulationEffectResult[
     AccumulationEffects] =
   ## Begin at the actual initial I in both dimensions; no caller-selected replacement state or yield is accepted.
+  ## modifiedAccounts enables exact unique membership; zero disables those queries without changing earlier execution.
   ## accountWriteKeys bounds self keys; createdAccounts/deletedAccounts independently bound membership facts. Zero retains the earlier gates.
   let initial = contexts.initialContext(AccumulationDimension.Regular)
   if initial.error != AccumulationContextError.None:
     # Only successfully prepared immutable contexts can authorize host state effects.
     return AccumulationEffectResult[AccumulationEffects](
         status: AccumulationEffectError.InvalidContexts)
+  var members: seq[ServiceIndex] = @[]
+  if uint64(modifiedAccounts) != 0:
+    let received = initial.value.contextInvocation.value.bootstrapService.value.serviceInfo.value.transfers
+    if received != 0:
+      members.add(initial.value.contextInfo.value.service) # Even a zero-valued incoming transfer marks the recipient.
   let current = AccumulationEffectContext(data: EffectData(initial: initial.value,
     accounts: initial.value.contextAccounts.value, accountScope: AccumulationAccountScope.Initial,
     designated: false, blessed: false, assigned: false,
+    modified: ModifiedAccountsData(values: members), modifiedLimit: modifiedAccounts,
     accountKeys: AccountKeysData(keys: @[]), accountKeyLimit: accountWriteKeys,
     created: CreatedAccountsData(values: @[]), createdLimit: createdAccounts,
     deleted: DeletedAccountsData(values: @[]), deletedLimit: deletedAccounts,
@@ -859,6 +951,9 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
       fail(traced.error) # Self trace capacity refusal precedes candidate map hashing.
     keys = traced.value # Foreign writes cannot impersonate self-key provenance.
 
+  let modified = prepareModifiedAccounts(previous, [service])
+  if modified.error != AccumulationEffectError.None:
+    fail(modified.error) # Complete membership capacity precedes candidate account publication.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -874,6 +969,7 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
     selfAccountData(previous, changed.value, keys)
   else:
     successorData(previous, changed.value) # Foreign execution remains unsupported for parallel publication.
+  candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
   let successor = AccumulationEffects(data: PairData(source: data.source, regular: current,
     exceptional: data.exceptional))
@@ -1196,6 +1292,9 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
   let captured = prepareCreatedAccount(previous, selected, request.value.key)
   if captured.error != AccumulationEffectError.None:
     fail(captured.error) # Creation capacity precedes account-map hashing and cursor publication.
+  let modified = prepareModifiedAccounts(previous, [funder])
+  if modified.error != AccumulationEffectError.None:
+    fail(modified.error) # Complete membership capacity precedes candidate account publication.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply([
     StateWrite(key: parentEntry.key, kind: StateWriteKind.Put, value: parentEntry.value),
@@ -1217,6 +1316,7 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
       AccumulationAccountScope.DeletedAccounts else: AccumulationAccountScope.CreatedAccounts # New preserves earlier ejection facts.
     candidate.created = captured.value
   candidate.nextService = next
+  candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationServiceChange](status: AccumulationEffectError.None,
     completed: AccumulationServiceChange(service: selected, effects: AccumulationEffects(data:
@@ -1275,6 +1375,9 @@ proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash
   metadata.minimumAccumulationGas = accumulationGas
   metadata.minimumTransferGas = transferGas
   let encoded = serviceMetadataEntry(target, metadata, ByteLimit(ServiceMetadataBytes)).value
+  let modified = prepareModifiedAccounts(previous, [target])
+  if modified.error != AccumulationEffectError.None:
+    fail(modified.error) # Complete membership capacity precedes candidate account publication.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply([StateWrite(key: key, kind: StateWriteKind.Put,
       value: encoded.value)])
@@ -1288,6 +1391,7 @@ proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
   let candidate = successorData(previous, changed.value, selfMetadata = uint32(target) == uint32(self))
+  candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
@@ -1332,6 +1436,9 @@ proc recordAccumulationSupervisor*(effects: AccumulationEffects, target, supervi
   metadata.supervisor = supervisor
   metadata.supervisorCreated = nominee.value.created
   let encoded = serviceMetadataEntry(target, metadata, ByteLimit(ServiceMetadataBytes)).value
+  let modified = prepareModifiedAccounts(previous, [target])
+  if modified.error != AccumulationEffectError.None:
+    fail(modified.error) # Complete membership capacity precedes candidate account publication.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply([StateWrite(key: encoded.key, kind: StateWriteKind.Put,
       value: encoded.value)])
@@ -1345,6 +1452,7 @@ proc recordAccumulationSupervisor*(effects: AccumulationEffects, target, supervi
   else:
     fail(AccumulationEffectError.InvalidState) # Preserve every retained owner on other store invariants.
   let candidate = successorData(previous, changed.value, selfMetadata = uint32(target) == uint32(self))
+  candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source,
       regular: AccumulationEffectContext(data: candidate), exceptional: data.exceptional)))
@@ -1456,6 +1564,9 @@ proc commitAccumulationTransfer*(prepared: PreparedAccumulationTransfer, limit: 
   transfers[count] = plan.transfer
   let encoded = serviceMetadataEntry(plan.transfer.source, plan.metadata, ByteLimit(
       ServiceMetadataBytes)).value
+  let modified = prepareModifiedAccounts(previous, [plan.transfer.source])
+  if modified.error != AccumulationEffectError.None:
+    fail(modified.error) # Complete membership capacity precedes candidate account publication.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply([StateWrite(key: encoded.key, kind: StateWriteKind.Put,
       value: encoded.value)])
@@ -1473,6 +1584,7 @@ proc commitAccumulationTransfer*(prepared: PreparedAccumulationTransfer, limit: 
   let candidate = successorData(previous, changed.value, selfMetadata = uint32(
       plan.transfer.source) == uint32(self))
   candidate.transfers = TransferSetData(values: transfers)
+  candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
@@ -1550,6 +1662,9 @@ proc recordAccumulationDirectTransfer*(effects: AccumulationEffects, funder: Ser
     let creditEntry = serviceMetadataEntry(target, credited, ByteLimit(ServiceMetadataBytes)).value
     writes.add(StateWrite(key: creditEntry.key, kind: StateWriteKind.Put,
         value: creditEntry.value)) # Distinct endpoints require one atomic two-write batch.
+  let modified = prepareModifiedAccounts(previous, [funder, target])
+  if modified.error != AccumulationEffectError.None:
+    fail(modified.error) # Complete membership capacity precedes candidate account publication.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -1563,6 +1678,7 @@ proc recordAccumulationDirectTransfer*(effects: AccumulationEffects, funder: Ser
     fail(AccumulationEffectError.InvalidState) # Preserve both prior owners on invariant failure.
   let candidate = successorData(previous, changed.value, selfMetadata = same and uint32(funder) ==
       uint32(self))
+  candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
       completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
@@ -1619,6 +1735,9 @@ proc recordAccumulationEject*(effects: AccumulationEffects, target: Accumulation
   if captured.error != AccumulationEffectError.None:
     fail(captured.error) # Bound immutable membership proof capacity before Merklization or publication.
   let credited = serviceMetadataEntry(self, metadata, ByteLimit(ServiceMetadataBytes)).value
+  let modified = prepareModifiedAccounts(previous, [self, service])
+  if modified.error != AccumulationEffectError.None:
+    fail(modified.error) # Complete membership capacity precedes candidate account publication.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply([
     StateWrite(key: accountKey, kind: StateWriteKind.Delete),
@@ -1637,6 +1756,7 @@ proc recordAccumulationEject*(effects: AccumulationEffects, target: Accumulation
       previous.deletedLimit) != 0:
     candidate.accountScope = AccumulationAccountScope.DeletedAccounts # Successful bounded ejections alone certify foreign removals.
     candidate.deleted = captured.value
+  candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
@@ -1750,6 +1870,9 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
       fail(traced.error) # Self-key capacity precedes candidate hashing.
     keys = traced.value # Foreign request keys never enter the self-key proof.
 
+  let modified = prepareModifiedAccounts(previous, [target])
+  if modified.error != AccumulationEffectError.None:
+    fail(modified.error) # Complete membership capacity precedes candidate account publication.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -1765,6 +1888,7 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
     selfAccountData(previous, changed.value, keys)
   else:
     successorData(previous, changed.value) # Foreign execution awaits parallel modified-account selection.
+  candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
@@ -1865,6 +1989,9 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
       fail(traced.error) # Self-key capacity precedes candidate hashing.
     keys = traced.value # Foreign request keys never enter the self-key proof.
 
+  let modified = prepareModifiedAccounts(previous, [target])
+  if modified.error != AccumulationEffectError.None:
+    fail(modified.error) # Complete membership capacity precedes candidate account publication.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -1880,6 +2007,7 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     selfAccountData(previous, changed.value, keys)
   else:
     successorData(previous, changed.value) # Foreign execution awaits parallel modified-account selection.
+  candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,

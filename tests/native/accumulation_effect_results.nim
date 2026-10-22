@@ -26,6 +26,19 @@ of "refused": discard outcome.value # Invalid initial contexts expose no pair.
 of "dimension": discard pair.effectContext(AccumulationDimension.Regular).value # No default dimension child.
 of "source": discard pair.effectsSource.value # No fabricated initial preparation.
 of "initial": discard context.effectInitialContext.value # No substituted account backing.
+of "modified-count": discard context.effectModifiedAccountCount.value # Default contexts expose no membership count.
+of "modified-at": discard context.effectModifiedAccountAt(AccumulationModifiedAccountIndex(
+    0)).value # No default service payload.
+of "modified-contains": discard context.effectAccountModified(ServiceIndex(
+    42)).value # Default membership is not a fabricated false result.
+of "modified-disabled":
+  let disabled = prepareAccumulationEffects(preparedEffectContexts()).value
+  discard disabled.effectContext(AccumulationDimension.Regular).value.effectModifiedAccountCount.value # Initialized disabled tracking is not an empty set.
+of "modified-index":
+  let enabled = prepareAccumulationEffects(preparedEffectContexts(),
+      modifiedAccounts = ElementLimit(1)).value
+  discard enabled.effectContext(AccumulationDimension.Regular).value.effectModifiedAccountAt(
+      AccumulationModifiedAccountIndex(high(uint64))).value # Initialized empty membership still bounds native indexing.
 of "account-write-count": discard context.effectAccountWriteCount.value # No fabricated empty key proof from a default context.
 of "account-write-key": discard context.effectAccountWriteKeyAt(AccumulationAccountWriteIndex(
     0)).value # A default has no key payload.
