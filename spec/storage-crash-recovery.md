@@ -29,3 +29,10 @@ unchanged. State #6 owns typed proof readers and selected-root integration; no o
 
 `make unit SUITE=storage_crash_supervisor` verifies real one-byte writes, two distinct successful
 stop ordinals, explicit three-write normal completion, and refusal without an owned child.
+
+## Supervisor negative controls
+
+`storage_crash_controls` repeats normal-but-unarmed completion, unmarked SIGSTOP, raw early exit,
+a20ms monotonic timeout and explicit cancellation. Invalid operation/ordinal/deadline and nested
+fork/start requests cannot replace an owned child. Every completed case refuses a second finish;
+normal completion has count0 and cannot be confused with a successful crash witness.
