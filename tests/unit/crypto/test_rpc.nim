@@ -65,6 +65,11 @@ assert "\"revision\":" & quote(AppRevision) in answer
 assert "\"compilerVersion\":" & quote(CompilerVersion) in answer
 assert "\"compilerRevision\":" & quote(CompilerRevision) in answer
 assert "\"buildTimestamp\":" & quote(BuildTimestamp) in answer
+# Specification identity distinguishes unreleased pins whose declared version still matches the base release.
+assert "\"grayPaperVersion\":" & quote(GrayPaperVersion) in answer
+assert "\"grayPaperRevision\":" & quote(GrayPaperRevision) in answer
+assert "\"grayPaperReleaseStatus\":" & quote(GrayPaperReleaseStatus) in answer
+assert "\"grayPaperBaseRelease\":" & quote(GrayPaperBaseRelease) in answer
 assert "\"id\":7" in answer and "\"connectedPeers\":3" in answer and "\"uptimeMs\":12" in answer
 assert "\"transport\":\"websocket\"" in answer and "\"bestBlock\":null" in answer
 assert "\"chainState\":null" in answer

@@ -251,6 +251,11 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                 # The live WebSocket reports exactly the identity embedded in this executable's CLI.
                 identity = subprocess.check_output([str(binary), '--version'], text=True).splitlines()
                 metadata = result['result']
+                # The adopted unreleased paper may retain its base VERSION; compare all recorded pin fields.
+                paper = json.loads((Path(__file__).parents[1]/'spec/pins.json').read_text())['graypaper']
+                for field, pin in dict(grayPaperVersion='version', grayPaperRevision='commit',
+                                      grayPaperReleaseStatus='release_status', grayPaperBaseRelease='base_release').items():
+                    assert metadata[field] == paper[pin]
                 assert identity == [f"{metadata['name']} {metadata['version']} {metadata['revision']}",
                                     f"{metadata['implementation']} {metadata['compilerVersion']} {metadata['compilerRevision']}",
                                     f"Built {metadata['buildTimestamp']}"]

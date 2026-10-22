@@ -3,6 +3,7 @@
 
 ## Immutable build identity shared by the application CLI and RPC client information.
 ## Make generates application labels/revisions and the verified nightly identity before compilation.
-## Exposes AppVersion, AppRevision, CompilerVersion, CompilerRevision and BuildTimestamp constants.
+## Exposes AppVersion/AppRevision, CompilerVersion/CompilerRevision, GrayPaperVersion/GrayPaperRevision,
+## GrayPaperReleaseStatus/GrayPaperBaseRelease and BuildTimestamp constants.
 
 include ../build/build_info
