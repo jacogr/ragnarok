@@ -33,3 +33,11 @@ strictly close/reopen and validate again; the held original view remains complet
 close. Every native owner and synthetic namespace retires, and final allocator usage must match
 the starting baseline. Missing memory-reopen observations carry `-1`. Generation and physical
 inventory remain explicit scalar witnesses, with no timing or power-loss claim.
+
+`make bench-storage-deployment` runs five trajectories per backend in opposite orders:32,768 entries
+with16 publications and65,536/131,072 entries with16/64 publications. All30 native observations
+must validate complete maps, exact generation, bounded physical inventory and allocator retirement.
+Reversed order requires identical deterministic physical work, not identical resource counters.
+Raw native rows, source/build identities, current owner/reopen/closed checkpoints, child RSS/faults
+and deployment CSV remain separate from the ordinary speed report. Each child is bounded to300
+seconds; a failed build, assertion, parse, export or identity check fails the whole panel.
