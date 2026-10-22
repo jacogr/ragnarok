@@ -26,7 +26,9 @@ proc main() =
     243, 44, 255, 216, 216, 150, 132, 7, 84]
   assert wire == @expected
   for stop in 0..<wire.len:
-    assert decodeJournalFrame(wire[0..<stop], limits, ByteLimit(153)).error != FrameError.None
+    # Borrow the same truncated extent without allocating a sequence slice.
+    assert decodeJournalFrame(wire.toOpenArray(0, stop-1), limits, ByteLimit(153)).error !=
+        FrameError.None
   for index in 0..<wire.len:
     var corrupt = wire
     corrupt[index] = corrupt[index] xor 1

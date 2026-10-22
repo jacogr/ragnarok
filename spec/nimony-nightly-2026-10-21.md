@@ -244,3 +244,52 @@ diff checks passed. Additional broad native-suite qualification was deferred aft
 ownership blocker; earlier selected-suite passes belong to the prior compiler and are not claimed
 for this candidate. Local runtime results apply to macOS ARM64; Linux archive verification does
 not establish Linux runtime behavior. Raw evidence is under ignored `build/ci/nimony-2026-10-22-*`.
+
+
+## Storage read/transfer synchronization on the October 22 pin
+
+Merge master `d5064139` normally (merge `928105e0`), retaining the October 22 compiler/browser
+pins and the sequence-element copy-hook hold. This tranche transfers admitted read/record/frame/
+snapshot payloads instead of copying them, fills bounded read buffers directly, handles actual
+post-stat shrinkage and retires detached snapshot input before journal replay. Preserve all
+consuming-result invalidation, causal guards, strict selected-byte admission and immutable owners.
+The earlier indexed traversal adaptations in `node_repository.nim` remain in place; no additional
+production compatibility changes were necessary.
+
+Native codec qualification exposed a separate stdlib sequence-slice failure on this pin:
+
+```nim
+import std/assertions
+let bytes = @[1'u8, 2, 3]
+let prefix = bytes[0..<2]
+assert prefix == @[1'u8, 2]
+```
+
+`nimony check --mm:arc --cc:clang -d:release --boundchecks:on` rejects the stdlib slice body at
+`system.nim(640, 12)` with `cannot mutate rawData(result)[i] through a ref/ptr in a
+.noSideEffect context` (with backticks around `.noSideEffect` in the raw diagnostic). Keep the
+minimal source/output under `build/ci/nimony-storage-transfer-slice.*` for the requested next-nightly
+recheck and possible report draft. In three codec tests, use bounded borrowed prefix views in
+place of allocating slices. Every truncation index, including the empty prefix, retains the
+original decode/refusal assertions. The context-codec assertion names the result explicitly to
+keep formatter line wrapping unambiguous. These adaptations change no decoder or storage policy.
+
+All 25 upstream-changed files outside the reviewed node traversal and two changed codec tests
+remain byte-identical to master. The third adapted codec test predates this incoming tranche.
+All 360 production modules and 246 focused storage/comparison/native-profile/Make/CI Python tests
+passed. All 24 selected storage native suites passed: the documented 19 transfer/read consumers
+plus interrupted reads, file read bounds, journal owner, disk recovery and repair interruptions.
+This includes the four consumed-result misuse children and successful process control. Seven
+Linux x86-64 semantic checks passed for the changed storage modules. The maintained strict
+fresh-reopen panel passed all four cases, including complete maps/roots, retained lifetimes and
+unchanged selected files; its report was independently revalidated. The complete checked
+ARC/Clang/LTO integration/offload peer build passed. Inventory, pinned formatting of all 15
+merged/adapted Nim inputs and diff checks passed.
+
+This is compiler compatibility and strict-reopen qualification, not a new baseline/candidate
+performance comparison or Linux pressure rerun. The published storage measurements retain their
+original compiler/host/workload scopes. Earlier broad compiler guards remain separately labelled
+above; this increment ran the affected native result guards. Local runtime evidence applies to
+macOS ARM64; Linux semantic checks do not establish Linux linking/runtime success. Raw local
+evidence is under ignored `build/ci/nimony-storage-transfer-*`. The PR remains held for the
+published sequence-copy fix, with remaining workaround probes to recheck after the next nightly.

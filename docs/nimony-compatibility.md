@@ -91,6 +91,18 @@ The October 21 nightly fixes the reproduced imported-generic invalidation failur
 source epochs have been removed after the same-cache control passed. Native ABI, compiler,
 configuration and worker/profile cache isolation remain in place.
 
+## Sequence slices on the October 22 candidate
+
+At `8cb7a690ae48363eb3ce65564aafb921ca5d23f3`, instantiating the stdlib sequence
+slice with `let bytes = @[1'u8, 2, 3]; let prefix = bytes[0..<2]` fails in
+`lib/std/system.nim` with `cannot mutate rawData(result)[i] through a ref/ptr in a
+.noSideEffect context` (the diagnostic prints `.noSideEffect` with backticks).
+The four-line standalone probe is preserved in the nightly audit evidence. For the record,
+journal and context-codec truncation tests, borrow `toOpenArray(0, stop-1)` instead: the caller
+retains the source, decoders accept read-only inputs and every prefix including empty remains
+covered. No stdlib patch or weaker assertion is required. Recheck the minimal probe on the next
+nightly before drafting the remaining compiler reports.
+
 ## Deferred Linux RSS return
 
 At pin `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`, the management RSS helper's Linux
