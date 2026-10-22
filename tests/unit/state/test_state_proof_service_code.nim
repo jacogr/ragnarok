@@ -1,0 +1,37 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Code reads derive identity from authenticated metadata instead of accepting a detached replacement hash.
+import std/[assertions, syncio]
+import ../../support/proof_service_helpers
+import ../../../src/state/[proof_service, proof_view, trie_proof]
+import ../../../src/codec/[bounded, state_accounts, state_layout, state_trie, state_service_values, state_requests]
+import ../../../src/crypto/primitives
+proc main() =
+  ## Correct content at an unrelated code hash never substitutes for the selected account's code.
+  let service = ServiceIndex(7)
+  let bytes = @[byte 4, 5, 6]
+  let digest = array[32, byte](blake2b256(bytes).value)
+  let hash = ServicePreimageHash(digest)
+  let account = serviceMetadataEntry(service, ServiceMetadata(codeHash: CodeHash(digest)),
+      ByteLimit(105)).value
+  let blob = servicePreimageEntry(service, hash, bytes, ServiceEntryLimits(keyBytes: ByteLimit(32),
+      valueBytes: ByteLimit(3))).value
+  let history = serviceRequestEntry(service, hash, RequestLength(3), availableHistory(RequestSlot(
+      4)), RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(
+      items: ElementLimit(3), maxBytes: ByteLimit(13)))).value
+  let view = serviceView(@[account, blob, history], [account.key, blob.key, history.key])
+  assert view.readProofCode(service, RequestSlot(4), ByteLimit(3)).value.bytes == bytes
+  assert view.readProofCode(service, RequestSlot(3), ByteLimit(3)).error ==
+      ServiceProofError.AbsentValue
+  assert view.readProofCode(service, RequestSlot(4), ByteLimit(2)).error ==
+      ServiceProofError.LimitExceeded
+  assert serviceView(@[account, blob, history], [account.key, blob.key]).readProofCode(service,
+      RequestSlot(4), ByteLimit(3)).error == ServiceProofError.MissingWitness
+  let changed = serviceMetadataEntry(service, ServiceMetadata(), ByteLimit(105)).value
+  assert serviceView(@[changed, blob, history], [changed.key, blob.key, history.key]).readProofCode(
+      service, RequestSlot(4), ByteLimit(3)).error == ServiceProofError.MissingWitness
+  assert default(ProofView).readProofCode(service, RequestSlot(4), ByteLimit(3)).error ==
+      ServiceProofError.Uninitialized
+  echo "state-proof-service-code: ok"
+main()

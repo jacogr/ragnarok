@@ -161,3 +161,12 @@ proc readProofHistoricalPreimage*(view: ProofView, service: ServiceIndex,
   if not availableAt(history.value, slot):
     return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.AbsentValue)
   preimage
+
+proc readProofCode*(view: ProofView, service: ServiceIndex, slot: RequestSlot,
+    limit: ByteLimit): ServiceProofResult[VerifiedStateLookup] =
+  ## Resolve current account code identity internally, then require its authenticated historical preimage.
+  let account = view.readProofAccount(service)
+  if account.error != ServiceProofError.None:
+    return ServiceProofResult[VerifiedStateLookup](status: account.error)
+  let hash = ServicePreimageHash(array[32, byte](account.value.codeHash))
+  view.readProofHistoricalPreimage(service, hash, slot, limit)
