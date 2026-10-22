@@ -1,0 +1,128 @@
+{
+  "source": "tests/native/accumulation_current_finalization_results.nim",
+  "build_name": "accumulation-current-finalization-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-finalization-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current finalization extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-finalization-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current finalization extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "current-finalization-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Current finalization extraction: info"
+    },
+    {
+      "identity": {
+        "reason": "accounts"
+      },
+      "arguments": [
+        "accounts"
+      ],
+      "name": "current-finalization-accounts",
+      "diagnostic": "outcome.status == None",
+      "description": "Current finalization extraction: accounts"
+    },
+    {
+      "identity": {
+        "reason": "outputs"
+      },
+      "arguments": [
+        "outputs"
+      ],
+      "name": "current-finalization-outputs",
+      "diagnostic": "outcome.status == None",
+      "description": "Current finalization extraction: outputs"
+    },
+    {
+      "identity": {
+        "reason": "history"
+      },
+      "arguments": [
+        "history"
+      ],
+      "name": "current-finalization-history",
+      "diagnostic": "outcome.status == None",
+      "description": "Current finalization extraction: history"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "current-finalization-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Current finalization extraction: state"
+    },
+    {
+      "identity": {
+        "reason": "output-reason"
+      },
+      "arguments": [
+        "output-reason"
+      ],
+      "name": "current-finalization-output-reason",
+      "diagnostic": "outcome.status == OutputFailure",
+      "description": "Current finalization extraction: output-reason"
+    },
+    {
+      "identity": {
+        "reason": "queue-reason"
+      },
+      "arguments": [
+        "queue-reason"
+      ],
+      "name": "current-finalization-queue-reason",
+      "diagnostic": "outcome.status == QueueFailure",
+      "description": "Current finalization extraction: queue-reason"
+    },
+    {
+      "identity": {
+        "reason": "projection-reason"
+      },
+      "arguments": [
+        "projection-reason"
+      ],
+      "name": "current-finalization-projection-reason",
+      "diagnostic": "outcome.status == ProjectionFailure",
+      "description": "Current finalization extraction: projection-reason"
+    },
+    {
+      "identity": {
+        "reason": "state-reason"
+      },
+      "arguments": [
+        "state-reason"
+      ],
+      "name": "current-finalization-state-reason",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Current finalization extraction: state-reason"
+    }
+  ]
+}
