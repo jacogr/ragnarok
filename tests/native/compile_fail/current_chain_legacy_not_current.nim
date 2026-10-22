@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# @@Verification={"group": "nominal", "expected": "expected: PreparedCurrentAccumulationConsensus but got: PreparedAccumulationConsensus"}
+# @@Verification={"group": "nominal", "expected": "expected: PreparedCurrentAccumulationConsensus but got: PreparedAccumulationConsensus", "early": ["applyCurrentAccumulationChain(", "[3] expected: PreparedCurrentAccumulationConsensus but got: PreparedAccumulationConsensus"]}
 
 ## Current composed ownership is required before joint state/view installation.
 import ../../../src/chain/provider

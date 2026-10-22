@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# @@Verification={"group": "nominal", "expected": "expected: RepositoryGeneration but got: Gas"}
+# @@Verification={"group": "nominal", "expected": "expected: RepositoryGeneration but got: Gas", "early": ["disk.(confirmsCurrentDiskPublication,", "[3] expected: RepositoryGeneration but got: Gas"]}
 
 ## Gas allowances cannot substitute a confirmed native disk generation.
 import ../../../src/app/disk_chain

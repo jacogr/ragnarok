@@ -43,7 +43,8 @@ Compiler rejection sources belong under `tests/native/compile_fail/`, with one s
 Groups are `privacy`, `nominal`, `contracts`, `schemas` and `ownership_compile`. Expected diagnostics
 keep the runner's group-specific meaning: private member, nominal mismatch, violated precondition,
 unsupported schema domain, or exact ownership-lowering error. Nominal `early` pairs retain the call
-and positional diagnostic. Ownership declarations require a unique `build_name`; `offload: true`
+and positional diagnostic; `expected: … but got: …` declarations require this pair so they cannot
+select the legacy field-mismatch predicate. Ownership declarations require a unique `build_name`; `offload: true`
 retains the enabled proof-pool ABI/define. New rejection behavior may need an explicit predicate
 in the guard runner; declaring a filename alone never makes an arbitrary compilation error pass.
 Do not add fixture identities to a central registry or a new sidecar file. Discovery rejects missing
