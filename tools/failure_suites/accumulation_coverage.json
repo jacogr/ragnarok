@@ -1,0 +1,95 @@
+{
+  "source": "tests/native/accumulation_coverage_results.nim",
+  "build_name": "accumulation-coverage-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "outcome-coverage-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Outcome coverage default extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "outcome-coverage-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Outcome coverage refused extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "outcome-coverage-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Outcome coverage info extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "outcome-coverage-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Outcome coverage source extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "row"
+      },
+      "arguments": [
+        "row"
+      ],
+      "name": "outcome-coverage-row",
+      "diagnostic": "outcome.status == None",
+      "description": "Outcome coverage row extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "original"
+      },
+      "arguments": [
+        "original"
+      ],
+      "name": "outcome-coverage-original",
+      "diagnostic": "outcome.status == None",
+      "description": "Outcome coverage original extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "skip"
+      },
+      "arguments": [
+        "skip"
+      ],
+      "name": "outcome-coverage-skip",
+      "diagnostic": "outcome.status == None",
+      "description": "Outcome coverage skip extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "absent"
+      },
+      "arguments": [
+        "absent"
+      ],
+      "name": "outcome-coverage-absent",
+      "diagnostic": "outcome.status == None",
+      "description": "Outcome coverage absent extraction guard"
+    }
+  ]
+}
