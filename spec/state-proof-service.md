@@ -61,3 +61,14 @@ Suite `state_proof_service_request` covers all shapes and the current domain edg
 Proven absent accounts/requests are false; missing witnesses and malformed state
 remain errors. An absent account short-circuits without demanding orphan history
 evidence. Suite `state_proof_service_requested` covers all modes and negative facts.
+
+## Historical availability
+
+`readProofHistoricalPreimage` uses actual authenticated blob length to select its
+request history. Account/content/history must come from one root; an unknown
+history is missing evidence, while a proven missing history beside a present blob
+violates the account invariant and is invalid. The pinned four-shape interval
+equation uses an explicit query slot; that slot carries no independent chain-time
+authority. No extra chronological rule is imposed. Unavailable logical values
+return `AbsentValue`. Suite `state_proof_service_historical` checks exact interval
+boundaries and incomplete/malformed dependency sets.
