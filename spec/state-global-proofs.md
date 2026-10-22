@@ -85,3 +85,8 @@ all128 truncated prefixes, trailing bytes, positional bytes, source independence
 caller ceilings. The exact whole chapter must decode; native coverage authenticates each truncated
 prefix and a suffix, preserves absent versus present-zero peaks, and checks block/byte/configuration
 refusals separately from missing or absent chapter evidence.
+
+`readGlobalAuthorization` binds Pools and Queues to separate chapter identities and keeps existing
+variable-pool/fixed80-entry queue validation. The native suite covers both kinds, cross-kind missing
+witnesses, exact row ordering, detached hashes, malformed boundaries/suffixes, configuration and
+byte/aggregate-hash ceilings. Authenticated membership alone does not establish a valid chapter.
