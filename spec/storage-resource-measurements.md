@@ -193,3 +193,12 @@ providers, host geometry, memory limits and cache policy must match; reviewed so
 are explicit. Deterministic physical work must remain identical. Peak ratios are descriptive
 candidate/baseline observations, not speedups or isolated-component estimates. Invalid comparisons
 retire their stale output. Different fixture inventories require a new matching baseline.
+
+## Direct lifetime and occupancy diagnostics
+
+`tools/storage_resource_diagnostics.py` derives live-object increments only against the same native
+process's stable allocator baseline. Missing stages stay unavailable, and a closed owner may have
+an observed zero increment. Retained snapshots/selection plans and independently copied payloads
+remain separate scenarios. Deployment normalization uses only matching16-publication fixtures and
+the same backend/order32768-entry anchor; no absent64-publication anchor is invented. Finite
+occupancy ratios are descriptive, never a complexity proof or throughput estimate.
