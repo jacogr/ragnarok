@@ -10,6 +10,9 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/file.h>
+#include <signal.h>
+#include <time.h>
+#include <sys/wait.h>
 
 /* Bounded scalar configuration performs no allocation or logging at an observed call boundary. */
 static int selected, skipped, remaining, reason;
@@ -17,6 +20,218 @@ static uint64_t calls[STORAGE_IO_LAST+1];
 static size_t write_limit, read_limit;
 static int reuse_close, reused_descriptor = -1;
 static int zero_skip, zero_remaining;
+
+
+
+/* Each process owns one pipe end; only the parent owns and reaps the exact positive child PID. */
+static pid_t crash_child = -1;
+static int crash_reader = -1, crash_writer = -1;
+static int crash_operation, crash_skip, crash_started;
+static uint64_t crash_completed, crash_observed;
+struct crash_event {
+    uint64_t magic, count;
+    int operation, stopped;
+};
+#define CRASH_MAGIC UINT64_C(0x53544f5243524153)
+
+static void crash_close_pipe(void) {
+    /* Retire each test-owned endpoint once; never retry a potentially reused descriptor. */
+    if (crash_reader >= 0) {
+        close(crash_reader);
+        crash_reader = -1;
+    }
+    if (crash_writer >= 0) {
+        close(crash_writer);
+        crash_writer = -1;
+    }
+}
+static int crash_send(int stopped) {
+    /* One local fixed-size receipt fits PIPE_BUF and never grants storage or protocol authority. */
+    struct crash_event event = {CRASH_MAGIC, crash_completed, crash_operation, stopped};
+    ssize_t amount;
+    do {
+        amount = write(crash_writer, &event, sizeof(event));
+    } while (amount < 0 && errno == EINTR);
+    return amount == (ssize_t)sizeof(event);
+}
+static void crash_after(int operation) {
+    /* Only completed real SDK operations can witness a stop; injected refusal never reaches here. */
+    if (crash_started && operation == crash_operation) {
+        crash_completed++;
+        if (crash_completed == (uint64_t)crash_skip + 1) {
+            /* Publish the exact selected boundary before the kernel reports the child stopped. */
+            if (!crash_send(1)) {
+                _exit(120);
+            }
+            raise(SIGSTOP);
+            _exit(121); /* A resumed child must never continue the storage operation or run destructors. */
+        }
+    }
+}
+int storage_io_crash_fork(int operation, int skip) {
+    /* Validate bounded controls before allocating a pipe or replacing any existing child ownership. */
+    if (operation < STORAGE_IO_READ || operation > STORAGE_IO_LAST || skip < 0 || skip > 4096 ||
+        crash_child > 0 || crash_writer >= 0 || crash_reader >= 0) {
+        return -1;
+    }
+    int descriptors[2];
+    if (pipe(descriptors) != 0) {
+        return -1;
+    }
+    int flags = fcntl(descriptors[0], F_GETFL);
+    if (flags < 0 || fcntl(descriptors[0], F_SETFL, flags | O_NONBLOCK) < 0) {
+        close(descriptors[0]);
+        close(descriptors[1]);
+        return -1;
+    }
+    pid_t child = fork();
+    if (child < 0) {
+        close(descriptors[0]);
+        close(descriptors[1]);
+        return -1;
+    }
+    crash_operation = operation;
+    crash_skip = skip;
+    crash_started = 0;
+    crash_completed = crash_observed = 0;
+    if (child == 0) {
+        /* Child setup is intentionally outside the observed window until its explicit start. */
+        close(descriptors[0]);
+        crash_writer = descriptors[1];
+        crash_child = -1;
+    } else {
+        /* The original process retains only its exact child and a nonblocking receipt endpoint. */
+        close(descriptors[1]);
+        crash_reader = descriptors[0];
+        crash_child = child;
+    }
+    return (int)child;
+}
+int storage_io_crash_start(void) {
+    /* A parent or an already armed child cannot silently alter the selected boundary. */
+    if (crash_writer < 0 || crash_started) {
+        return -1;
+    }
+    crash_started = 1;
+    crash_completed = 0;
+    return 0;
+}
+void storage_io_crash_exit(int status) {
+    /* Explicit successful completion is a baseline receipt, never a passing crash receipt. */
+    if (crash_writer >= 0 && status == 0 && !crash_send(0)) {
+        _exit(122);
+    }
+    _exit(status);
+}
+uint64_t storage_io_crash_count(void) {
+    /* The parent exposes only a fully checked receipt's completed-operation count. */
+    return crash_observed;
+}
+static int crash_clock(uint64_t *milliseconds) {
+    /* A monotonic elapsed deadline is independent from wall-clock corrections. */
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        return 0;
+    }
+    *milliseconds = (uint64_t)now.tv_sec * 1000 + (uint64_t)now.tv_nsec / 1000000;
+    return 1;
+}
+static int crash_reap(void) {
+    /* A bounded second wait verifies SIGKILL termination of this exact child, including timeout cleanup. */
+    uint64_t start = 0, now = 0;
+    if (kill(crash_child, SIGKILL) != 0 && errno != ESRCH) {
+        return 0;
+    }
+    if (!crash_clock(&start)) {
+        return 0;
+    }
+    do {
+        int status = 0;
+        pid_t seen = waitpid(crash_child, &status, WNOHANG);
+        if (seen == crash_child) {
+            crash_child = -1;
+            return WIFSIGNALED(status) && WTERMSIG(status) == SIGKILL;
+        }
+        if (seen < 0 && errno != EINTR) {
+            /* ECHILD retires ownership: its old PID must never be signaled again. */
+            if (errno == ECHILD) {
+                crash_child = -1;
+            }
+            return 0;
+        }
+        struct timespec pause = {0, 1000000};
+        nanosleep(&pause, NULL);
+        if (!crash_clock(&now)) {
+            return 0;
+        }
+    } while (now - start < 10000);
+    return 0;
+}
+int storage_io_crash_finish(int timeout_ms) {
+    /* Missing, late or malformed witnesses cannot become a successful crash qualification. */
+    if (crash_child <= 0 || timeout_ms < 1 || timeout_ms > 30000) {
+        return STORAGE_CRASH_INVALID;
+    }
+    uint64_t start = 0, now = 0;
+    int verdict = STORAGE_CRASH_ERROR;
+    if (crash_clock(&start)) {
+        do {
+            int status = 0;
+            pid_t seen = waitpid(crash_child, &status, WNOHANG | WUNTRACED);
+            if (seen == crash_child) {
+                struct crash_event event = {0, 0, 0, 0};
+                ssize_t amount = read(crash_reader, &event, sizeof(event));
+                int valid = amount == (ssize_t)sizeof(event) && event.magic == CRASH_MAGIC &&
+                    event.operation == crash_operation;
+                if (WIFSTOPPED(status)) {
+                    /* An unrelated SIGSTOP without the exact syscall receipt is a failed witness. */
+                    if (WSTOPSIG(status) == SIGSTOP && valid && event.stopped == 1 &&
+                        event.count == (uint64_t)crash_skip + 1) {
+                        crash_observed = event.count;
+                        verdict = STORAGE_CRASH_KILLED;
+                    } else {
+                        verdict = STORAGE_CRASH_INVALID;
+                    }
+                } else {
+                    crash_child = -1; /* waitpid already reaped an exited or independently signaled child. */
+                    if (WIFEXITED(status) && WEXITSTATUS(status) == 0 && valid && event.stopped == 0) {
+                        crash_observed = event.count;
+                        verdict = STORAGE_CRASH_COMPLETED;
+                    }
+                }
+                break;
+            }
+            if (seen < 0 && errno != EINTR) {
+                /* A reaped child no longer grants ownership of its potentially reused PID. */
+                if (errno == ECHILD) {
+                    crash_child = -1;
+                }
+                break;
+            }
+            struct timespec pause = {0, 1000000};
+            nanosleep(&pause, NULL);
+            if (!crash_clock(&now)) {
+                break;
+            }
+            if (now - start >= (uint64_t)timeout_ms) {
+                verdict = STORAGE_CRASH_TIMEOUT;
+                break;
+            }
+        } while (1);
+    }
+    if (crash_child > 0 && !crash_reap()) {
+        verdict = STORAGE_CRASH_ERROR;
+    }
+    crash_close_pipe();
+    return verdict;
+}
+void storage_io_crash_abort(void) {
+    /* Parent failure paths still kill/reap only their owned child; the receipt can never claim success. */
+    if (crash_child > 0) {
+        (void)crash_reap();
+    }
+    crash_close_pipe();
+}
 
 void storage_io_reset(void) {
     /* Reset every configured fault/short-write cap before unrelated fixture or runner IO. */
@@ -108,7 +323,12 @@ ssize_t storage_io_read(int descriptor, void *buffer, size_t count) {
         /* Only actual positive kernel results advance the caller-owned byte extent. */
         count = read_limit;
     }
-    return read(descriptor, buffer, count);
+    ssize_t status = read(descriptor, buffer, count);
+    if (status >= 0) {
+        /* Stop only after a genuine successful OS operation, before the caller receives its result. */
+        crash_after(STORAGE_IO_READ);
+    }
+    return status;
 }
 ssize_t storage_io_write(int descriptor, const void *buffer, size_t count) {
     /* Positive short writes are genuine OS writes, not fabricated progress receipts. */
@@ -129,7 +349,12 @@ ssize_t storage_io_write(int descriptor, const void *buffer, size_t count) {
         /* Only actual native positive results can authorize caller offset advancement. */
         count = write_limit;
     }
-    return write(descriptor, buffer, count);
+    ssize_t status = write(descriptor, buffer, count);
+    if (status > 0) {
+        /* Stop only after a genuine successful OS operation, before the caller receives its result. */
+        crash_after(STORAGE_IO_WRITE);
+    }
+    return status;
 }
 int storage_io_fsync(int descriptor) {
     /* All successful barriers call the SDK; injection models syscall refusal, not physical power loss. */
@@ -137,35 +362,60 @@ int storage_io_fsync(int descriptor) {
         /* An injected refusal must never become a successful durability receipt. */
         return -1;
     }
-    return fsync(descriptor);
+    int status = fsync(descriptor);
+    if (status == 0) {
+        /* Stop only after a genuine successful OS operation, before the caller receives its result. */
+        crash_after(STORAGE_IO_FSYNC);
+    }
+    return status;
 }
 int storage_io_ftruncate(int descriptor, off_t extent) {
     /* Refusal does not select a prefix or mutate bytes; the caller supplies the already trusted extent. */
     if (refuse(STORAGE_IO_FTRUNCATE)) {
         return -1;
     }
-    return ftruncate(descriptor, extent);
+    int status = ftruncate(descriptor, extent);
+    if (status == 0) {
+        /* Stop only after a genuine successful OS operation, before the caller receives its result. */
+        crash_after(STORAGE_IO_FTRUNCATE);
+    }
+    return status;
 }
 int storage_io_flock(int descriptor, int operation) {
     /* Uninjected calls preserve the real cooperative nonblocking lease, including actual competition. */
     if (refuse(STORAGE_IO_FLOCK)) {
         return -1;
     }
-    return flock(descriptor, operation);
+    int status = flock(descriptor, operation);
+    if (status == 0) {
+        /* Stop only after a genuine successful OS operation, before the caller receives its result. */
+        crash_after(STORAGE_IO_FLOCK);
+    }
+    return status;
 }
 int storage_io_renameat(int source_directory, const char *source, int target_directory, const char *target) {
     /* Only selected refusal bypasses the actual descriptor-relative SDK operation. */
     if (refuse(STORAGE_IO_RENAMEAT)) {
         return -1;
     }
-    return renameat(source_directory, source, target_directory, target);
+    int status = renameat(source_directory, source, target_directory, target);
+    if (status == 0) {
+        /* Stop only after a genuine successful OS operation, before the caller receives its result. */
+        crash_after(STORAGE_IO_RENAMEAT);
+    }
+    return status;
 }
 int storage_io_unlinkat(int directory, const char *path, int flags) {
     /* Only selected refusal bypasses the actual descriptor-relative SDK operation. */
     if (refuse(STORAGE_IO_UNLINKAT)) {
         return -1;
     }
-    return unlinkat(directory, path, flags);
+    int status = unlinkat(directory, path, flags);
+    if (status == 0) {
+        /* Stop only after a genuine successful OS operation, before the caller receives its result. */
+        crash_after(STORAGE_IO_UNLINKAT);
+    }
+    return status;
 }
 void storage_io_reuse_close(void) {
     /* Enable one test-owned replacement immediately after an observed real descriptor retirement. */
@@ -196,5 +446,10 @@ int storage_io_close(int descriptor) {
         errno = error;
         return -1;
     }
-    return close(descriptor);
+    int status = close(descriptor);
+    if (status == 0) {
+        /* Stop only after a genuine successful OS operation, before the caller receives its result. */
+        crash_after(STORAGE_IO_CLOSE);
+    }
+    return status;
 }
