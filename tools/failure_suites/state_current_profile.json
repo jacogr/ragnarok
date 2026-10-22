@@ -1,0 +1,77 @@
+{
+  "build_name": "state-current-profile-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard current profile default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-current-profile-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard current profile invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-current-profile-invalid"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard current profile reason",
+      "diagnostic": "outcome.status == PreviousFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-current-profile-reason"
+    },
+    {
+      "arguments": [
+        "profile"
+      ],
+      "description": "Guard current profile profile",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "profile"
+      },
+      "name": "state-current-profile-profile"
+    },
+    {
+      "arguments": [
+        "parameters"
+      ],
+      "description": "Guard current profile parameters",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "parameters"
+      },
+      "name": "state-current-profile-parameters"
+    },
+    {
+      "arguments": [
+        "origin"
+      ],
+      "description": "Guard current profile origin",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "origin"
+      },
+      "name": "state-current-profile-origin"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_profile_results.nim"
+}
