@@ -522,10 +522,11 @@ def check_service_queries(connection, expected):
             break # Complete traversal has an explicit terminal cursor even on an exact final page.
         assert result['keys'] and cursor == result['keys'][-1]
     assert cursor is None and collected == expected['state_keys']
-    for length in (4, 5, 6, 4294967294, 4294967295):
-        # Malformed histories and present colliding namespaces are explicit errors on the live transport too.
+    for length, code in ((4, 0), (5, 0), (6, 0), (4294967294, -32602), (4294967295, -32602)):
+        # Malformed histories remain state errors; reserved lengths fail parameter validation first.
         send(connection, json.dumps(dict(jsonrpc='2.0', method='serviceRequest', params=[header, 42, 'A'*43+'=', length], id=90)))
-        assert json.loads(receive(connection)[1])['error']['code'] == 0
+        response = json.loads(receive(connection)[1])
+        assert response['id'] == 90 and response['error']['code'] == code, (length, response)
     large = dict(jsonrpc='2.0', method='serviceValue', params=[header, 42, 'bGFyZ2U='], id=100)
     send(connection, json.dumps(large))
     assert base64.b64decode(json.loads(receive(connection)[1])['result']) == b'x' * 32768
