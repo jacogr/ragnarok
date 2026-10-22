@@ -45,8 +45,8 @@ proc headers*(response: AncestorResponse): seq[OwnedHeader] =
   let data = response.data
   if data == nil: return @[] # A default cannot invent a successful response or header.
   result = newSeq[OwnedHeader](data.captured.len)
-  for index, owner in data.captured:
-    result[index] = owner # Replacing an observed element cannot mutate the retained response.
+  for index in 0..<data.captured.len:
+    result[index] = data.captured[index] # Replacing an observed element cannot mutate the retained response.
 
 proc initAncestorRequest*(child: OwnedHeader, maximum: ElementLimit): AncestorResponseResult[
     AncestorRequest] =

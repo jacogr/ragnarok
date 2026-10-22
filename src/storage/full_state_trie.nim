@@ -203,7 +203,7 @@ proc bytes*(view: TrieValue): seq[byte] {.requires: view.owner != nil.} =
   let owner = view.owner
   assert owner != nil # Retain the checked leaf once throughout the copy.
   result = newSeq[byte](owner.payload.len)
-  for i, octet in owner.payload: result[i] = octet # Retain the owner throughout copying.
+  for i in 0..<owner.payload.len: result[i] = owner.payload[i] # Retain the owner throughout copying.
 
 proc apply*(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[FullStateTrie] =
   ## Preflight the complete batch, build a private topology, then hash and return one new revision.
@@ -335,7 +335,7 @@ proc exportNodes(node, base: nil TrieNode, depth: int, output: var seq[TrieRecor
     assert node != nil # Preflight and omission establish a complete physical node.
     if node.leaf:
       var copied = newSeq[byte](node.payload.len)
-      for i, octet in node.payload: copied[i] = octet # Published backing never escapes.
+      for i in 0..<node.payload.len: copied[i] = node.payload[i] # Published backing never escapes.
       output.add(TrieRecord(kind: TrieRecordKind.Leaf, digest: node.digest,
         key: node.key, payload: copied))
     else:

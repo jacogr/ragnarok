@@ -447,9 +447,9 @@ proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
     return MachineResult[Memory](status: MachineError.InvalidOwner)
   let data = memory.data
   var pages = newSeqOfCap[PageData](data.pages.len)
-  for page in data.pages:
-    # Share all old page owners initially; each touched page is cloned exactly once below.
-    pages.add(page)
+  for i in 0..<data.pages.len:
+    # Share all old page owners by index; each touched page is cloned exactly once below.
+    pages.add(data.pages[i])
   var copied = 0
   while copied < input.len:
     # Nonwrapping contiguous ranges visit each affected page exactly once.

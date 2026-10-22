@@ -197,7 +197,8 @@ proc exportProofQueries*(view: ProofView, limits: ProofViewLimits): ProofViewRes
       data.entries.len > high(int) div sizeof(StateProofQuery):
     return ProofViewResult[seq[StateProofQuery]](status: ProofViewError.LimitExceeded)
   var bytes = 0'u64
-  for lookup in data.entries:
+  for i in 0..<data.entries.len:
+    let lookup = data.entries[i]
     # Tightened value ceilings refuse before allocating the output request array.
     if lookup.present:
       let size = uint64(lookup.byteLength)
@@ -205,7 +206,8 @@ proc exportProofQueries*(view: ProofView, limits: ProofViewLimits): ProofViewRes
         return ProofViewResult[seq[StateProofQuery]](status: ProofViewError.LimitExceeded)
       bytes += size
   var queries = newSeq[StateProofQuery](data.entries.len)
-  for i, lookup in data.entries:
+  for i in 0..<data.entries.len:
+    let lookup = data.entries[i]
     queries[i] = StateProofQuery(key: lookup.key, proof: lookup.witness) # No verified discriminator crosses transport.
   ProofViewResult[seq[StateProofQuery]](status: ProofViewError.None, completed: queries)
 

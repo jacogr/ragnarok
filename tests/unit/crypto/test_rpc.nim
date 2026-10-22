@@ -119,9 +119,16 @@ assert "-32700" in respond("[" & repeat("0,", 2047) & "0]", info)
 assert "-32700" in respond(repeat("[", 18) & "0" & repeat("]", 18), info)
 assert "-32700" in respond(repeat(" ", MaxMessage + 1), info)
 assert "-32600" in respond("[" & repeat(request & ",", 16) & request & "]", info)
-assert validUtf8("\xf0\x9f\x98\x80")
-for bad in ["\xc0\xaf", "\xed\xa0\x80", "\xf4\x90\x80\x80", "\x80", "\xe2\x82"]:
-  assert not validUtf8(bad) # Reject overlong, surrogate, out-of-range and truncated scalars.
+# Independent byte literals pin Unicode scalar boundaries for the maintained stdlib validator.
+for valid in ["", "ASCII\x00", "\xc2\x80", "\xdf\xbf", "\xe0\xa0\x80", "\xed\x9f\xbf",
+    "\xee\x80\x80", "\xef\xbf\xbf", "\xf0\x90\x80\x80", "\xf4\x8f\xbf\xbf"]:
+  assert validUtf8(valid)
+  assert validUtf8("before" & valid & "after") # ASCII runs must preserve the next scalar boundary.
+for bad in ["\xc0\xaf", "\xc1\xbf", "\xe0\x9f\xbf", "\xed\xa0\x80", "\xed\xbf\xbf",
+    "\xf0\x8f\xbf\xbf", "\xf4\x90\x80\x80", "\xf5\x80\x80\x80", "\xff", "\x80",
+    "\xc2", "\xe2\x82", "\xf0\x9f\x98", "\xc2A", "\xe0\xa0A", "\xf0\x90A\x80"]:
+  assert not validUtf8(bad) # Reject overlong, surrogate, reserved, truncated and bad continuation bytes.
+  assert not validUtf8("before" & bad & "after") # Invalid bytes cannot be hidden between valid runs.
 
 # Literal independent field values exercise all 29 offsets/widths, including an unsigned 64-bit maximum.
 const ParameterHex = "ffffffffffffffff02000000000000000300000000000000040005000000580200000700000000000000080000000000000009000000000000000a000000000000000b000c000d000e000f000000100011001200130014001500160000001700000018000000190000001a0000001b0000001c000000f4010000"

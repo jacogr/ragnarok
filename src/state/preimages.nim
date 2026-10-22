@@ -236,7 +236,8 @@ proc integratePrepared(state: var StateStore, current: StateStoreSnapshot, data:
     return PreimageTransitionResult[StateStoreSnapshot](status: reason)
   var writes: seq[StateWrite] = @[]
   # Use cached owner-bound identities; each target request must still be outstanding after accumulation.
-  for i, row in data.rows:
+  for i in 0..<data.rows.len:
+    let row = data.rows[i]
     let needed = outstanding(current, row.service, row.request)
     if needed.error != PreimageTransitionError.None: fail(
         needed.error) # Malformed post-state refuses the whole batch.

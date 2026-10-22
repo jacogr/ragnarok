@@ -18,7 +18,7 @@ NATIVE_SOURCES=('native/crypto/primitive_bridge.c','native/crypto/primitive_brid
     'spec/bandersnatch-pins.json')
 REQUIRED_SOURCES=('tests/performance/storage_workload.nim','tests/support/managed_storage_samples.nim',
     'tests/support/storage_samples.nim','tools/storage_benchmark.py','tools/storage_benchmark_report.py',
-    'tools/native_checks.py','tools/native_source_identity.py','tools/pvm_reference.py',
+    'tools/native_checks.py','tools/pvm_reference.py',
     'tools/build_crypto.py','spec/crypto-pins.json','spec/toolchain.json','Makefile','.github/workflows/ci.yml',*GROWTH_SOURCES,*NATIVE_SOURCES)
 
 ENGINES=('memory','journal','managed')

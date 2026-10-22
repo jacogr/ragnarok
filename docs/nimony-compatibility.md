@@ -6,8 +6,10 @@ ownership, arithmetic and migration evidence.
 
 These observations came from the structured JSON refactor, CE 128 stream integration and PVM work
 on macOS ARM64 with Nimony 0.6.3, revision `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`.
-Recheck affected entries when changing the pin.
-They describe the exercised APIs and target, rather than compiler-wide support guarantees.
+The current October 21 nightly review and retained-workaround decisions are recorded in
+[the upgrade audit](../spec/nimony-nightly-2026-10-21.md).
+The generic-integer and nullable mutable-callback failures were reproduced on the new pin too.
+These observations describe exercised APIs and targets, rather than compiler-wide support guarantees.
 
 | Area | Observed behavior | Working approach and evidence |
 | --- | --- | --- |
@@ -85,5 +87,6 @@ restriction or justify modifying the compiler.
 
 For the observed stale imported generic-call arity after an incremental source edit,
 see the [source-sensitive native cache record](../spec/pvm-native-cache-identity.md).
-Fresh project-owned source epochs preserve checked builds without a compiler patch;
-this is a bounded observed failure, not a general compiler-cache correctness claim.
+The October 21 nightly fixes the reproduced imported-generic invalidation failure; project-owned
+source epochs have been removed after the same-cache control passed. Native ABI, compiler,
+configuration and worker/profile cache isolation remain in place.
