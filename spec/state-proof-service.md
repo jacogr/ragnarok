@@ -158,3 +158,10 @@ ordered membership/absence, limits, defaults and retained-source behavior.
 through the complete snapshot batch adapter. Count/native bounds precede key
 copying and source traversal. Suite `state_proof_snapshot_plan` verifies exact
 account/storage identities and rejects default plans and short aggregate counts.
+
+## Selected-block batch adapters
+
+`generateBlockStateProofs` and `verifyBlockStateProofs` bind ordered raw batches
+to the explicitly selected block's posterior complete-state root. Failed/default
+selections never fall back to zero-root state. Suite `chain_state_proof_batch`
+uses a genuinely signed fixture and compares selected complete-state values.
