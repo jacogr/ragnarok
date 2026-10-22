@@ -1,0 +1,95 @@
+{
+  "build_name": "state-proof-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "State proof default extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-proof-default"
+    },
+    {
+      "arguments": [
+        "capture"
+      ],
+      "description": "State proof capture extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "capture"
+      },
+      "name": "state-proof-capture"
+    },
+    {
+      "arguments": [
+        "verify"
+      ],
+      "description": "State proof verify extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "verify"
+      },
+      "name": "state-proof-verify"
+    },
+    {
+      "arguments": [
+        "index"
+      ],
+      "description": "State proof index extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "index"
+      },
+      "name": "state-proof-index"
+    },
+    {
+      "arguments": [
+        "batch"
+      ],
+      "description": "State proof batch extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "batch"
+      },
+      "name": "state-proof-batch"
+    },
+    {
+      "arguments": [
+        "lookup"
+      ],
+      "description": "State proof lookup extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "lookup"
+      },
+      "name": "state-proof-lookup"
+    },
+    {
+      "arguments": [
+        "wire"
+      ],
+      "description": "State proof wire extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "wire"
+      },
+      "name": "state-proof-wire"
+    },
+    {
+      "arguments": [
+        "decode"
+      ],
+      "description": "State proof decode extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "decode"
+      },
+      "name": "state-proof-decode"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/state_proof_results.nim"
+}
