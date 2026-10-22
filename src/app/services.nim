@@ -43,6 +43,10 @@ type
     of WorkerFailure: workerReason: ProofWorkerError
     else: discard # Closed/busy/default refusals expose no authority.
 
+type
+  ServiceDiskOperation {.pure.} = enum ## One private tag selects the receipt/cleanup path for the shared native disk slot.
+    Publication, Maintenance
+
 type Services* = object             ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
   rpc*: Server
   ui*: UiServer
@@ -69,7 +73,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   maintenanceCompletion: DiskPublicationCompletion
   startupMaintenance: DiskChainResult[ManagedCompaction]
   maintenanceAdmission: DiskWorkerError
-  maintaining: bool
+  diskOperation: ServiceDiskOperation
   diskPublication: PreparedDiskPublication
   diskTicket: DiskPublicationTicket
   diskStageOutcome: DiskChainResult[PreparedDiskPublication]
@@ -165,7 +169,7 @@ proc finishDiskMaintenance(services: var Services, completion: DiskPublicationCo
       services.diskFaulted = true # Preserve durable selection and expose cleanup refusal without attempting another mutation.
   else:
     assert completion.kind == DiskCompletionKind.NotExecuted
-  services.maintaining = false
+  services.diskOperation = ServiceDiskOperation.Publication
   services.publishing = false
   services.diskMaintenance = default(PreparedDiskMaintenance)
   discard services.rpc.resumeChain(services.rpcLease)
@@ -173,7 +177,7 @@ proc finishDiskMaintenance(services: var Services, completion: DiskPublicationCo
 proc finishDiskPublication(services: var Services, completion: DiskPublicationCompletion) =
   ## Called only after collect/join retires all native temporaries; install before reopening RPC access.
   if not services.publishing: return
-  if services.maintaining:
+  if services.diskOperation == ServiceDiskOperation.Maintenance:
     services.finishDiskMaintenance(completion)
     return
   if completion.kind == DiskCompletionKind.Completed:
@@ -255,7 +259,7 @@ proc close*(services: var Services) =
   services.diskEnabled = false
   services.diskManaged = false
   services.compactBytes = ByteLimit(0)
-  services.maintaining = false
+  services.diskOperation = ServiceDiskOperation.Publication
   services.diskFaulted = false
   services.diskTicket = default(DiskPublicationTicket)
   services.canonical = default(ApplicationChain)
@@ -410,7 +414,7 @@ proc setupDisk(services: var Services, options: Options, limits: StateStoreLimit
   services.maintenanceCompletion = default(DiskPublicationCompletion)
   services.maintenanceAdmission = DiskWorkerError.Uninitialized
   services.startupMaintenance = default(DiskChainResult[ManagedCompaction])
-  services.maintaining = false
+  services.diskOperation = ServiceDiskOperation.Publication
   if services.diskManaged and uint64(services.compactBytes) > 0:
     # Physical and canonical validation precede bounded cleanup; zero preserves staged forensic files.
     if services.disk.cleanupManagedDiskFiles != FileError.None: return false
@@ -607,7 +611,8 @@ proc applyAccumulation*(services: var Services, source: PreparedFinalAccumulatio
 
 func accumulationStage*(services: Services): AccumulationHandoffStage =
   ## Maintenance preserves the completed adoption but delays its graph-bearing acknowledgement until the lease ends.
-  if services.publishing and services.maintaining: return AccumulationHandoffStage.Publishing
+  if services.publishing and services.diskOperation ==
+      ServiceDiskOperation.Maintenance: return AccumulationHandoffStage.Publishing
   services.adoption.stage
 
 proc enqueueAccumulation*(services: var Services, source: PreparedFinalAccumulation,
@@ -913,7 +918,7 @@ proc beginDiskMaintenance*(services: var Services): bool =
     services.diskFaulted = true
     return false
   services.diskTicket = admitted.value
-  services.maintaining = true
+  services.diskOperation = ServiceDiskOperation.Maintenance
   services.publishing = true # Every existing canonical/RPC/checkpoint gate now covers the maintenance lease too.
   true
 proc rpcProofLimits(): ProofQueryLimits =
@@ -995,6 +1000,7 @@ proc tick*(services: var Services, peers: uint32) =
       let admitted = services.diskWorker.submit(services.disk, services.diskPublication)
       assert admitted.error == DiskWorkerError.None, "private idle disk worker admission"
       services.diskTicket = admitted.value
+      services.diskOperation = ServiceDiskOperation.Publication
       services.publishing = true
       services.ui.tick()
       return # No managed canonical/source alias may be touched or retired after successful admission.
