@@ -5,7 +5,7 @@
 import std/assertions
 import ./[storage_growth_samples, storage_allocations]
 import ../../src/storage/[node_records, node_repository]
-import ../../src/codec/state_layout
+import ../../src/codec/[state_layout, state_trie]
 
 type LifetimeObservation* = object
   ## Only scalar counters escape; no graph, fixture or extracted value can survive accidentally.
@@ -102,5 +102,27 @@ proc memoryReadersLifetime*(count: int): LifetimeObservation =
       assert uint64(view.generation) == 65
     result.checks = count+4096
     assert result.held > result.owner and result.closed == result.held
+  result.released = occupiedStorageBytes()
+  assert result.released == result.baseline
+
+proc ownedLifetimeEntries(owner: NodeRepository): seq[StateEntry] =
+  ## Retire temporary validation views before returning independently owned extracted entries.
+  let view = owner.snapshot.value
+  result = restoreStateEntries(view, view.commitment.root, growthLimits().codec.trie).value
+
+proc memoryExtractionLifetime*(count: int): LifetimeObservation =
+  ## Extracted values remain complete after source close without retaining its physical repository graph.
+  result = emptyLifetime()
+  block:
+    var owner = isolatedMemoryOwner(count)
+    result.owner = occupiedStorageBytes()
+    let entries = ownedLifetimeEntries(owner)
+    result.held = occupiedStorageBytes()
+    assert owner.close == RepositoryError.None
+    result.closed = occupiedStorageBytes()
+    checkGrowthEntries(entries, count, 64)
+    result.checks = count
+    assert result.held > result.owner
+    assert result.closed > result.baseline and result.closed < result.held
   result.released = occupiedStorageBytes()
   assert result.released == result.baseline

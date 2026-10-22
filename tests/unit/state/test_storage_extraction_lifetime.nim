@@ -1,0 +1,15 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Complete-map extraction owns independent key/value payloads that remain valid after physical owner retirement.
+import std/[assertions, syncio]
+import ../../support/[storage_lifetime_samples, storage_allocations]
+
+let baseline = occupiedStorageBytes()
+for count in [1024, 8192]:
+  # Independent complete-map/value checks and scope retirement remain native assertions.
+  let observed = memoryExtractionLifetime(count)
+  assert observed.checks == count*1+0
+  assert observed.released == observed.baseline
+assert occupiedStorageBytes() == baseline
+echo "PASS storage extraction lifetime"
