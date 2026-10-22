@@ -109,3 +109,47 @@ proc lookup*(view: ProofView, query: StateKey): ProofViewResult[VerifiedStateLoo
       return ProofViewResult[VerifiedStateLookup](status: ProofViewError.None,
         completed: data.entries[middle])
   ProofViewResult[VerifiedStateLookup](status: ProofViewError.MissingWitness)
+
+proc mergeProofViews*(left, right: ProofView, limits: ProofViewLimits): ProofViewResult[ProofView] =
+  ## Form a bounded immutable union under one root; preserve both inputs on every failure.
+  let a = left.data
+  let b = right.data
+  if a == nil:
+    return ProofViewResult[ProofView](status: ProofViewError.Uninitialized)
+  if b == nil:
+    return ProofViewResult[ProofView](status: ProofViewError.Uninitialized)
+  if array[32, byte](a.root) != array[32, byte](b.root):
+    return ProofViewResult[ProofView](status: ProofViewError.WrongRoot)
+  var first = 0
+  var second = 0
+  var bytes = 0'u64
+  var entries: seq[VerifiedStateLookup] = @[]
+  while first < a.entries.len or second < b.entries.len:
+    # Select one sorted key, coalescing repeated facts only after checking consistency.
+    let order = if first >= a.entries.len: 1
+      elif second >= b.entries.len: -1
+      else: compareKey(a.entries[first].key, b.entries[second].key)
+    let chosen = if order <= 0: a.entries[first] else: b.entries[second]
+    if uint64(entries.len) >= uint64(limits.items) or entries.len >= high(int) div sizeof(VerifiedStateLookup):
+      return ProofViewResult[ProofView](status: ProofViewError.LimitExceeded)
+    if chosen.present:
+      let size = uint64(chosen.byteLength)
+      if size > uint64(limits.valueBytes)-bytes:
+        return ProofViewResult[ProofView](status: ProofViewError.LimitExceeded)
+      bytes += size
+    if order == 0:
+      # Duplicate keys must agree on presence and exact bytes, never last-writer-wins.
+      let other = b.entries[second]
+      if chosen.present != other.present:
+        return ProofViewResult[ProofView](status: ProofViewError.ConflictingEvidence)
+      if chosen.present and (chosen.byteLength != other.byteLength or chosen.bytes != other.bytes):
+        return ProofViewResult[ProofView](status: ProofViewError.ConflictingEvidence)
+      inc first
+      inc second
+    elif order < 0:
+      inc first # Only the left input contributed this unique key.
+    else:
+      inc second # Only the right input contributed this unique key.
+    entries.add(chosen) # Retain an immutable owner after its current output budget passes.
+  ProofViewResult[ProofView](status: ProofViewError.None,
+    completed: ProofView(data: ViewData(root: a.root, entries: entries)))

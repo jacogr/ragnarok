@@ -20,3 +20,8 @@ M1 framing remains complete; full state serialization and whole-block parity rem
 Exact-key binary lookup now returns a verified fact only for a retained key.
 Unknown keys, including all keys in an explicit empty view, return MissingWitness.
 A retained absence fact succeeds with present=false; no missing value is fabricated.
+
+Same-root immutable union coalesces only identical facts. It checks root identity
+before combining, accounts unique output keys/bytes exactly and rejects conflicting
+evidence rather than selecting a winner. Inputs and their retained lookups remain
+unchanged after short-policy or foreign-root refusal. No cryptography is repeated.

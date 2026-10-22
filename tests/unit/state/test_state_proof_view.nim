@@ -42,5 +42,20 @@ proc main() =
   assert default(ProofView).lookup(key).error == ProofViewError.Uninitialized
   let noEvidence = captureProofView(empty, root, ProofViewLimits()).value
   assert noEvidence.lookup(key).error == ProofViewError.MissingWitness
+  let one = captureProofView(verifyStateProofs([StateProofQuery(key: key, proof: present)],
+    root, limits, aggregate).value, root, budget).value
+  let two = captureProofView(verifyStateProofs([StateProofQuery(key: other, proof: absent)],
+    root, limits, aggregate).value, root, budget).value
+  let united = mergeProofViews(one, two, budget).value
+  assert united.len == 2 and united.lookup(key).value.bytes == @[byte 7]
+  assert not united.lookup(other).value.present
+  assert mergeProofViews(view, view, budget).value.len == 2
+  assert mergeProofViews(one, noEvidence, budget).value.len == 1
+  assert mergeProofViews(one, two, ProofViewLimits(items: ElementLimit(1),
+    valueBytes: ByteLimit(1))).error == ProofViewError.LimitExceeded
+  let foreign = captureProofView(verifyStateProofs([], default(StateRoot), limits,
+    aggregate).value, default(StateRoot), budget).value
+  assert mergeProofViews(view, foreign, budget).error == ProofViewError.WrongRoot
+  assert one.len == 1 and two.len == 1 and view.len == 2
   echo "state-proof-view: ok"
 main()
