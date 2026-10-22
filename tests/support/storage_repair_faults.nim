@@ -8,7 +8,8 @@ import ./[storage_samples, managed_storage_samples, storage_io]
 import ../../src/storage/[full_state_trie, node_repository, node_records, file_repository,
   managed_repository, managed_manifest, database_identity]
 import ../../src/codec/bounded
-proc repairCase*(label: string, managed: bool, skip, failures: cint): uint64 {.raises.} =
+proc repairCase*(label: string, managed: bool, skip, failures: cint,
+    permanent = false): uint64 {.raises.} =
   ## Genuine eight-byte partial appends precede independently authorized repair and complete-map checks.
   resetIo()
   var path = label & "-" & $managed & "-" & $skip
@@ -43,7 +44,7 @@ proc repairCase*(label: string, managed: bool, skip, failures: cint): uint64 {.r
   resetIo()
   assert file.close == FileError.None
   assert readFile(journalPath).len == prefix.len+8
-  armIo(syncIo, skip, failures, interruptedIo)
+  armIo(syncIo, skip, failures, if permanent: failedIo else: interruptedIo)
   let repaired = if managed:
     recoverManagedFileRepository(file, path, default(StorageChainId), limits,
       RepositoryGeneration(1), held.commitment.root)
@@ -53,7 +54,31 @@ proc repairCase*(label: string, managed: bool, skip, failures: cint): uint64 {.r
   result = ioCalls(syncIo)
   assert pendingIo() == 0, "repair fault boundary did not execute"
   resetIo()
-  assert repaired == FileError.None
+  if permanent:
+    # Failed confirmation never returns a live owner, even when truncation already changed visible bytes.
+    assert repaired in [FileError.IoFailure, FileError.PublishedUnsynced]
+    assert not file.opened
+    let visible = readFile(journalPath)
+    assert visible.len == prefix.len or visible.len == prefix.len+8
+    let opened = if managed:
+      openManagedFileRepository(file, path, default(StorageChainId), limits)
+    else:
+      openFileRepository(file, path, default(StorageChainId), journal)
+    if visible.len == prefix.len:
+      assert visible == prefix and opened == FileError.None
+      assert file.close == FileError.None
+    else:
+      assert opened == FileError.InvalidJournal and not file.opened
+    # The same independent exact prefix can finish confirmation; no complete successor is discarded.
+    let confirmed = if managed:
+      recoverManagedFileRepository(file, path, default(StorageChainId), limits,
+        RepositoryGeneration(1), held.commitment.root)
+    else:
+      recoverFileRepository(file, path, default(StorageChainId), journal,
+        RepositoryGeneration(1), held.commitment.root)
+    assert confirmed == FileError.None
+  else:
+    assert repaired == FileError.None
   assert readFile(journalPath) == prefix and uint64(file.snapshot.value.generation) == 1
   let entries = restoreStateEntries(file.snapshot.value, held.commitment.root,
       limits.repository.codec.trie).value
