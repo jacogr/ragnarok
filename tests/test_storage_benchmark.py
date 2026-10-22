@@ -13,14 +13,14 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
-from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,VALUE_BYTES,CASES,PHASES,METRICS,parse_output,aggregate,summarize_benchmark
+from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,VALUE_BYTES,BATCH_WIDTHS,CASES,PHASES,METRICS,parse_output,aggregate,summarize_benchmark
 from summarize_tests import summarize
 
 
 # Authored complete sample grids isolate report correctness from machine-dependent timing values.
-def output(engine,count,topology='leading',value_bytes=256):
+def output(engine,count,topology='leading',value_bytes=256,batch_width=1):
     # Unsupported reopen/reclamation operations remain explicit sentinels in otherwise complete samples.
-    return ''.join(f'sample\t{count}\t{topology}\t{value_bytes}\t{s}\t'+
+    return ''.join(f'sample\t{count}\t{topology}\t{value_bytes}\t{batch_width}\t{s}\t'+
         '\t'.join(map(str,[100+s,200+s,300+s,-1 if engine=='memory' else 400+s,
                            -1 if engine=='journal' else 500+s,-1 if engine=='journal' else 600+s,700+s,800+s,count*3+100,count*3,
             -1 if engine=='memory' else (0 if engine=='journal' else 100),
@@ -29,7 +29,7 @@ def output(engine,count,topology='leading',value_bytes=256):
 
 def passes():
     """Build two complete identical passes whose statistics have independent exact expectations."""
-    one={f'{e}-{n}-{t}-{v}':parse_output(output(e,n,t,v),e,n,t,v) for e in ENGINES for n,t,v in CASES}
+    one={f'{e}-{n}-{t}-{v}-{w}':parse_output(output(e,n,t,v,w),e,n,t,v,w) for e in ENGINES for n,t,v,w in CASES}
     return [one,copy.deepcopy(one)]
 
 
@@ -45,14 +45,14 @@ class StorageBenchmarkTests(unittest.TestCase):
         self.assertIn('Strict disk reopen | — |',text)
         self.assertIn('memory publication is not durable',text)
         self.assertIn('warm resident',text)
-        self.assertEqual(len(report['cases']),64)
+        self.assertEqual(len(report['cases']),128)
         self.assertEqual(report['cases'][0]['engines']['memory']['median_ns'],107.5)
 
     def test_missing_duplicate_or_wrong_sample(self):
         raw=output('memory',1024)
         invalid=[raw.rsplit('\n',2)[0]+'\n',raw+raw.splitlines()[0]+'\n',
-                 raw.replace('sample\t1024\tleading\t256\t0','sample\t8192\tleading\t256\t0'),
-                 raw.replace('sample\t1024\tleading\t256\t0','sample\t1024\tleading\t256\t13'),raw+'diagnostic\n']
+                 raw.replace('sample\t1024\tleading\t256\t1\t0','sample\t8192\tleading\t256\t1\t0'),
+                 raw.replace('sample\t1024\tleading\t256\t1\t0','sample\t1024\tleading\t256\t1\t13'),raw+'diagnostic\n']
         for bad in invalid:
             with self.subTest(output=bad[:70]),self.assertRaises(ValueError):
                 parse_output(bad,'memory',1024)
@@ -62,11 +62,11 @@ class StorageBenchmarkTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_output(output('memory',1024,'trailing'),'memory',1024,'leading')
         raw=passes()
-        raw[0]['memory-1024-trailing-256']=raw[0]['memory-1024-leading-256']
+        raw[0]['memory-1024-trailing-256-1']=raw[0]['memory-1024-leading-256-1']
         with self.assertRaises(ValueError):
             aggregate(raw)
         # Aggregation also requires all declared case keys.
-        del raw[0]['memory-1024-leading-256']
+        del raw[0]['memory-1024-leading-256-1']
         with self.assertRaises(ValueError):
             aggregate(raw)
 
@@ -75,7 +75,16 @@ class StorageBenchmarkTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_output(output('memory',1024,value_bytes=16),'memory',1024,value_bytes=256)
         raw=passes()
-        raw[0]['memory-1024-leading-256']=raw[0]['memory-1024-leading-16']
+        raw[0]['memory-1024-leading-256-1']=raw[0]['memory-1024-leading-16-1']
+        with self.assertRaises(ValueError):
+            aggregate(raw)
+
+    def test_publication_batch_identity_is_required(self):
+        """A one-write timing cannot substitute for a four-write publication workload."""
+        with self.assertRaises(ValueError):
+            parse_output(output('memory',1024,batch_width=4),'memory',1024,batch_width=1)
+        raw=passes()
+        raw[0]['memory-1024-leading-256-4']=raw[0]['memory-1024-leading-256-1']
         with self.assertRaises(ValueError):
             aggregate(raw)
 
@@ -93,7 +102,7 @@ class StorageBenchmarkTests(unittest.TestCase):
         for phase in ('maintenance','retention'):
             for engine,invalid in [('journal','500'),('managed','-1')]:
                 lines=[line.split('\t') for line in output(engine,1024).splitlines()]
-                lines[0][5+PHASES.index(phase)]=invalid
+                lines[0][6+PHASES.index(phase)]=invalid
                 with self.subTest(phase=phase,engine=engine),self.assertRaises(ValueError):
                     parse_output('\n'.join('\t'.join(line) for line in lines)+'\n',engine,1024)
 
@@ -102,18 +111,18 @@ class StorageBenchmarkTests(unittest.TestCase):
         lines=[line.split('\t') for line in output('managed',1024).splitlines()]
         for metric,invalid in [('selected_nodes','0'),('snapshot_bytes','-1')]:
             bad=copy.deepcopy(lines)
-            bad[0][5+len(PHASES)+METRICS.index(metric)]=invalid
+            bad[0][6+len(PHASES)+METRICS.index(metric)]=invalid
             with self.subTest(metric=metric),self.assertRaises(ValueError):
                 parse_output('\n'.join('\t'.join(row) for row in bad)+'\n','managed',1024)
         raw=passes()
-        raw[0]['managed-1024-leading-256'][0]['stored_nodes']+=1
+        raw[0]['managed-1024-leading-256-1'][0]['stored_nodes']+=1
         with self.assertRaises(ValueError):
             aggregate(raw)
 
     def test_missing_backend_pass_or_forged_statistic(self):
         raw=passes()
         with self.assertRaises(ValueError):aggregate(raw[:1])
-        del raw[0]['managed-8192-trailing-256']
+        del raw[0]['managed-8192-trailing-256-1']
         with self.assertRaises(ValueError):aggregate(raw)
         report=dict(status='checks-passed',passes=passes())
         report['cases']=aggregate(report['passes'])

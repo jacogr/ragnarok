@@ -24,7 +24,7 @@ proc value(index, applied, valueBytes: int): seq[byte] =
   for position in 0..<valueBytes:
     result[position] = octet # Full payload checks follow every timed operation group.
 proc check(view: RepositoryView, trie: StateTrieLimits, count: int, expected: StateRoot, deep: bool,
-    valueBytes: int) =
+    valueBytes, batchWidth: int) =
   ## Independently authored keys/values and the sealed fixture root must match after publication/reopen.
   assert array[32, byte](view.commitment.root) == array[32, byte](expected)
   assert uint64(view.generation) == 17
@@ -32,14 +32,14 @@ proc check(view: RepositoryView, trie: StateTrieLimits, count: int, expected: St
   assert entries.len == count
   for index, entry in entries:
     assert array[31, byte](entry.key) == array[31, byte](key(index, deep))
-    assert entry.value == value(index, 16, valueBytes)
+    assert entry.value == value(index, 16*batchWidth, valueBytes)
 proc checkHistory(view: RepositoryView, trie: StateTrieLimits, count: int,
-    roots: openArray[StateRoot], deep: bool, valueBytes: int) =
+    roots: openArray[StateRoot], deep: bool, valueBytes, batchWidth: int) =
   ## Nine authored complete historical maps remain distinct from block finality or checkpoint authority.
   assert roots.len == 9
   for revision, root in roots:
     let entries = restoreHistoricalStateEntries(view, root, trie).value
-    let applied = if revision == 0: 0 else: revision+8
+    let applied = (if revision == 0: 0 else: revision+8)*batchWidth
     assert entries.len == count
     for index, entry in entries:
       assert array[31, byte](entry.key) == array[31, byte](key(index, deep))
@@ -49,7 +49,7 @@ proc elapsed(start: MonoTime): int64 =
   (getMonoTime()-start).inNanoseconds
 proc main() {.raises.} =
   ## Python selects only explicit engines/sizes and supplies one isolated owned directory per pass.
-  assert paramCount() == 5
+  assert paramCount() == 6
   let engine = paramStr(1)
   assert engine in ["memory", "journal", "managed"]
   let countText = paramStr(2)
@@ -62,6 +62,9 @@ proc main() {.raises.} =
   let valueText = paramStr(5)
   assert valueText in ["16", "256"]
   let valueBytes = if valueText == "16": 16 else: 256
+  let widthText = paramStr(6)
+  assert widthText in ["1", "4"]
+  let batchWidth = if widthText == "1": 1 else: 4
   let trie = StateTrieLimits(items: ElementLimit(8192), perValue: ByteLimit(256),
     totalValueBytes: ByteLimit(2097152), nodes: TrieNodeLimit(100000))
   let limits = RepositoryLimits(codec: RecordLimits(trie: trie,
@@ -74,7 +77,7 @@ proc main() {.raises.} =
   for index in 0..<count:
     entries.add(StateEntry(key: key(index, deep), value: value(index, 0, valueBytes)))
   var state = newFullStateTrie(entries, FullStateTrieLimits(trie: trie,
-    writes: ElementLimit(1), writeValueBytes: ByteLimit(256))).value
+    writes: ElementLimit(4), writeValueBytes: ByteLimit(1024))).value
   let full = exportFullTrie(state, limits.codec.records).value
   var reads: seq[StateNodeHash] = @[]
   for record in full.records:
@@ -85,9 +88,13 @@ proc main() {.raises.} =
         reads.add(record.digest) # The final 128 leaves remain unchanged by the sixteen updates.
   assert reads.len == 128
   var changes: seq[TrieExport] = @[]
-  for index in 0..<16:
-    let next = state.apply([TrieWrite(key: key(index, deep), kind: TrieWriteKind.Put,
-      value: value(index, index+1, valueBytes))]).value
+  for batch in 0..<16:
+    var writes: seq[TrieWrite] = @[]
+    for offset in 0..<batchWidth:
+      let index = batch*batchWidth+offset # Both selected widths keep every updated identity below64.
+      writes.add(TrieWrite(key: key(index, deep), kind: TrieWriteKind.Put,
+        value: value(index, index+1, valueBytes)))
+    let next = state.apply(writes).value
     changes.add(exportTrieChanges(state, next, limits.codec.records).value)
     state = next # Preparation, Merklization and fixture construction stay outside timed publication.
   var roots: seq[StateRoot] = @[full.root]
@@ -122,7 +129,7 @@ proc main() {.raises.} =
             index]).value # Real disk publication includes its synchronization barrier.
     let publicationNs = elapsed(publicationStart)
     let view = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
-    check(view, trie, count, expected, deep, valueBytes)
+    check(view, trie, count, expected, deep, valueBytes, batchWidth)
     let identity = selectRepositoryRoots(view, [expected], ElementLimit(1)).value
     var snapshots = newSeq[RepositoryView](4096)
     let snapshotStart = getMonoTime()
@@ -142,7 +149,8 @@ proc main() {.raises.} =
       let raw = array[31, byte](record.key)
       let number = int(raw[if deep: 29 else: 0])*256+int(raw[if deep: 30 else: 1])
       assert number >= count-128 and number < count
-      assert record.payload == value(number, 16, valueBytes) # Validate every returned byte outside the measured read interval.
+      assert record.payload == value(number, 16*batchWidth,
+          valueBytes) # Validate every returned byte outside the measured read interval.
     var misses = newSeq[RepositoryError](4096)
     let missStart = getMonoTime()
     for index in 0..<misses.len:
@@ -156,7 +164,7 @@ proc main() {.raises.} =
     assert restored.len == count
     for index, entry in restored:
       assert array[31, byte](entry.key) == array[31, byte](key(index, deep))
-      assert entry.value == value(index, 16, valueBytes)
+      assert entry.value == value(index, 16*batchWidth, valueBytes)
     var reopenNs = -1'i64
     if engine != "memory":
       assert disk.close == FileError.None
@@ -166,7 +174,7 @@ proc main() {.raises.} =
       else:
         assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
       reopenNs = elapsed(reopenStart)
-      check(disk.snapshot.value, trie, count, expected, deep, valueBytes)
+      check(disk.snapshot.value, trie, count, expected, deep, valueBytes, batchWidth)
     let storedNodes = view.storedNodes
     let selectedNodes = selectRepositoryRoots(view, [expected], ElementLimit(1)).value.retainedNodes
     var snapshotBytes = -1'i64
@@ -188,7 +196,7 @@ proc main() {.raises.} =
       let retained = selectRepositoryRoots(view, roots, ElementLimit(9)).value
       var cloned = cloneRepositorySelection(retained, limits).value
       retentionNs = elapsed(retentionStart)
-      checkHistory(cloned.snapshot.value, trie, count, roots, deep, valueBytes)
+      checkHistory(cloned.snapshot.value, trie, count, roots, deep, valueBytes, batchWidth)
       assert memory.close == RepositoryError.None
       memory = cloned # Subsequent current-only reclamation starts from the same nine-root union as managed IO.
       assert cloned.close == RepositoryError.None
@@ -198,10 +206,10 @@ proc main() {.raises.} =
       let receipt = disk.compact(disk.snapshot.value, roots).value
       retentionNs = elapsed(retentionStart)
       assert receipt.cleanup == FileError.None and uint64(receipt.epoch) == 2
-      checkHistory(disk.snapshot.value, trie, count, roots, deep, valueBytes)
+      checkHistory(disk.snapshot.value, trie, count, roots, deep, valueBytes, batchWidth)
       assert disk.close == FileError.None
       assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
-      checkHistory(disk.snapshot.value, trie, count, roots, deep, valueBytes)
+      checkHistory(disk.snapshot.value, trie, count, roots, deep, valueBytes, batchWidth)
     var maintenanceNs = -1'i64
     if engine == "memory":
       # Compare current-root reclamation through an independent private clone, without claiming durability.
@@ -209,7 +217,7 @@ proc main() {.raises.} =
       let retained = selectRepositoryRoots(memory.snapshot.value, [expected], ElementLimit(1)).value
       var cloned = cloneRepositorySelection(retained, limits).value
       maintenanceNs = elapsed(maintenanceStart)
-      check(cloned.snapshot.value, trie, count, expected, deep, valueBytes)
+      check(cloned.snapshot.value, trie, count, expected, deep, valueBytes, batchWidth)
       assert cloned.snapshot.value.storedNodes < view.storedNodes
       assert cloned.close == RepositoryError.None
     elif engine == "managed":
@@ -219,18 +227,19 @@ proc main() {.raises.} =
       maintenanceNs = elapsed(maintenanceStart)
       assert receipt.cleanup == FileError.None and uint64(receipt.epoch) == 3
       assert receipt.reclaimedNodes > 0
-      check(disk.snapshot.value, trie, count, expected, deep, valueBytes)
+      check(disk.snapshot.value, trie, count, expected, deep, valueBytes, batchWidth)
       assert disk.managedUsage.value.journalBytes == uint64(ManagedJournalHeaderBytes)
       assert disk.close == FileError.None
       assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
-      check(disk.snapshot.value, trie, count, expected, deep, valueBytes)
+      check(disk.snapshot.value, trie, count, expected, deep, valueBytes, batchWidth)
     if engine == "managed":
       let usage = disk.managedUsage.value
       assert usage.storedNodes == selectedNodes
       assert usage.snapshotBytes <= uint64(high(int64)) and usage.journalBytes <= uint64(high(int64))
       compactedSnapshotBytes = int64(usage.snapshotBytes)
       compactedJournalBytes = int64(usage.journalBytes)
-    check(view, trie, count, expected, deep, valueBytes) # Held maps survive physical retirement and private clone close.
+    check(view, trie, count, expected, deep, valueBytes,
+        batchWidth) # Held maps survive physical retirement and private clone close.
     if disk.opened:
       assert disk.close == FileError.None
       if engine == "journal":
@@ -244,10 +253,10 @@ proc main() {.raises.} =
       let record = retained.lookupNode(reads[0]).value
       assert record.kind == TrieRecordKind.Leaf
       assert array[32, byte](record.digest) == array[32, byte](reads[0])
-    echo "sample\t", count, "\t", topology, "\t", valueBytes, "\t", sample, "\t", publicationNs,
-        "\t", readNs, "\t", extractNs, "\t", reopenNs, "\t", maintenanceNs, "\t", retentionNs, "\t",
-        snapshotNs, "\t", missNs, "\t", storedNodes, "\t", selectedNodes, "\t", snapshotBytes, "\t",
-        journalBytes, "\t", compactedSnapshotBytes, "\t", compactedJournalBytes
+    echo "sample\t", count, "\t", topology, "\t", valueBytes, "\t", batchWidth, "\t", sample, "\t",
+        publicationNs, "\t", readNs, "\t", extractNs, "\t", reopenNs, "\t", maintenanceNs, "\t",
+        retentionNs, "\t", snapshotNs, "\t", missNs, "\t", storedNodes, "\t", selectedNodes, "\t",
+        snapshotBytes, "\t", journalBytes, "\t", compactedSnapshotBytes, "\t", compactedJournalBytes
   assert seed.close == RepositoryError.None
 try:
   main()
