@@ -9,7 +9,7 @@ This is storage resource qualification, not complete JAM protocol or power-loss 
 ## Ownership and bounded reads
 
 Regular-file metadata seeds one bounded allocation. Native reads fill it directly in windows
-of at most4096 bytes, retry interrupted calls, accept short progress and trim to actual EOF.
+of at most 4096 bytes, retry interrupted calls, accept short progress and trim to actual EOF.
 The existing excess probe detects growth after metadata preflight. Shrinkage supplies only
 actually read bytes; strict snapshot/journal validation still decides admission. Metadata never
 supplies an artificial valid payload or overrides typed limits.
@@ -25,11 +25,11 @@ before journal replay while retaining its actual read extent.
 
 Baseline: `e7df0c60428c7ddd079c4d95f145b168edd85d5d`.
 Candidate implementation: `0b700cf8a3c409cc335d64cbf60f7c4ef05040f0`.
-Host: Apple M1 Max, macOS/Darwin27.0.0, ARM64,16KiB pages. Existing OS cache policy and
+Host: Apple M1 Max, macOS/Darwin 27.0.0, ARM64, 16 KiB pages. Existing OS cache policy and
 inherited limits were unchanged; no active pressure or cold-cache claim. Each of two passes
 used exclusive synthetic namespaces and reversed both case and binary order. Baseline and
 candidate readers consumed the same closed bytes, with producer direction reversed as well.
-All16 opens validated complete roots/maps, generations, read counts and full live-Nim release.
+All 16 opens validated complete roots/maps, generations, read counts and full live-Nim release.
 
 | Backend | Entries | Baseline RSS range MiB | Candidate RSS range MiB | Baseline live Nim MiB | Candidate live Nim MiB |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -39,7 +39,7 @@ All16 opens validated complete roots/maps, generations, read counts and full liv
 | managed | 131072 | 401.0–401.0 | 212.5–240.2 | 74.2–74.2 | 74.2–74.2 |
 
 These are whole-child peak RSS observations and net live Nim allocation after open, measured
-separately. At131,072 entries, journal peak RSS decreased about30%; managed decreased about40–47%
+separately. At 131,072 entries, journal peak RSS decreased about 30%; managed decreased about 40–47%
 in these two observations. Managed candidate variation is retained in the range. Unchanged live
 Nim allocation means the full materialized graph floor remains. Independent peaks do not identify
 exact removed-copy bytes, allocator/cache retention or a general speedup.
@@ -79,19 +79,19 @@ Those are frontend mutability checks, not ARC lowering or compiler-wide safety e
 
 ## Linux resident-pressure qualification
 
-[Run39826289827](https://github.com/jacogr/ragnarok/actions/runs/39826289827),
-[job119990335960](https://github.com/jacogr/ragnarok/actions/runs/39826289827/job/119990335960),
+[Run 39826289827](https://github.com/jacogr/ragnarok/actions/runs/39826289827),
+[job 119990335960](https://github.com/jacogr/ragnarok/actions/runs/39826289827/job/119990335960),
 passed on the exact candidate implementation head above. Artifact `storage-resident-pressure-1`
 contains the raw reports, unit receipts, native binary and counters. Independent local validation
-matched all447 recorded source hashes and the downloaded binary SHA-256,
+matched all 447 recorded source hashes and the downloaded binary SHA-256,
 `00fdc53aaacd4cf0e4026e6f3adddf82f44f1f78156f8baff8c21cbed8dbf8ba`.
-All48 observations revalidated:36 completed,8 observer timeouts and4 local cgroup OOM kills.
-All16 unrestricted controls completed; every selected-file fingerprint remained unchanged and
+All 48 observations revalidated: 36 completed, 8 observer timeouts and 4 local cgroup OOM kills.
+All 16 unrestricted controls completed; every selected-file fingerprint remained unchanged and
 every private service retired. A validated panel includes the explicitly classified failures;
-it does not mean that48 pressured reopens completed.
+it does not mean that 48 pressured reopens completed.
 
-Host: Linux6.17.0-1022-azure x86_64, glibc2.39, AMD EPYC7763, Clang18.1.3 and the same pinned
-Nimony5b51edfedb4d0dbd9028d9e57ac61d69dffe9410. The existing48-observation plan reverses
+Host: Linux 6.17.0-1022-azure x86_64, glibc 2.39, AMD EPYC 7763, Clang 18.1.3 and the same pinned
+Nimony `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`. The existing 48-observation plan reverses
 case/treatment order and brackets each owned namespace with unrestricted controls. Private
 cgroup limits include the observer, kernel and file cache; native child RSS remains separate.
 Existing host swap was available; no global swap/cache or host memory policy was changed.
@@ -100,15 +100,15 @@ Existing host swap was available; no global swap/cache or host memory policy was
 | ---: | --- | --- | --- |
 | 32768 | Every treatment and unrestricted control | Completed | Completed |
 | 131072 | Unrestricted before/after controls | Completed | Completed |
-| 131072 | high128 MiB / max512 MiB / swap0 | Observer timeout | Observer timeout |
-| 131072 | high128 MiB / max128 MiB / swap0 | Local cgroup OOM kill | Local cgroup OOM kill |
-| 131072 | high128 MiB / max256 MiB / swap0 | Observer timeout | Observer timeout |
-| 131072 | high128 MiB / max256 MiB / swap256 MiB | Completed | Completed |
+| 131072 | high 128 MiB / max 512 MiB / swap 0 | Observer timeout | Observer timeout |
+| 131072 | high 128 MiB / max 128 MiB / swap 0 | Local cgroup OOM kill | Local cgroup OOM kill |
+| 131072 | high 128 MiB / max 256 MiB / swap 0 | Observer timeout | Observer timeout |
+| 131072 | high 128 MiB / max 256 MiB / swap 256 MiB | Completed | Completed |
 
-Large unrestricted native RSS was244.2–244.4 MiB; live Nim allocation remained about74.2 MiB.
-The eight large no-swap soft-pressure timeouts hit the35-second observer bound, with32.2–34.3s
-of full memory PSI stall. They are not isolated tests of a256 MiB hard cap: both retain the
-128 MiB soft limit. The four128 MiB hard-limit failures had local kernel OOM evidence.
+Large unrestricted native RSS was 244.2–244.4 MiB; live Nim allocation remained about 74.2 MiB.
+The eight large no-swap soft-pressure timeouts hit the 35-second observer bound, with 32.2–34.3 s
+of full memory PSI stall. They are not isolated tests of a 256 MiB hard cap: both retain the
+128 MiB soft limit. The four 128 MiB hard-limit failures had local kernel OOM evidence.
 
 Actual swap-enabled large reopens:
 
@@ -118,15 +118,15 @@ Actual swap-enabled large reopens:
 | managed | 131.1–131.4 | 129.9–130.0 | 136.4–137.7 | 9.1–9.7 |
 
 Nonzero kernel swap peaks and page-in/page-out deltas establish actual paging, not just permission.
-For journal the two runs recorded71,170–72,335 pages in and93,308–94,643 pages out;
-managed recorded93,332–95,957 pages in and112,639–116,084 pages out. These are complete-root/map
+For journal the two runs recorded 71,170–72,335 pages in and 93,308–94,643 pages out;
+managed recorded 93,332–95,957 pages in and 112,639–116,084 pages out. These are complete-root/map
 reopens with unchanged files. They remain synthetic host-specific observations, not a latency SLA
 or an out-of-core storage contract. Historical Linux qualification used a different runner/kernel;
 its outcomes do not supply a same-host causal speed comparison.
 
 Local copies and the independent validation digest remain under ignored
 `build/storage-db8-linux-39826289827/`. The final documentation layer changes only prose;
-all447 recorded implementation/workload/tooling input hashes remain identical to the passing
+all 447 recorded implementation/workload/tooling input hashes remain identical to the passing
 implementation head. This input-equivalence check does not claim exact-head CI for the prose commit.
 No default Perf Storage or Perf Storage Growth workload, sample count, job or budget changed.
 
