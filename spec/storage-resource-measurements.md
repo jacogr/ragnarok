@@ -111,3 +111,8 @@ scope. It checks all 64 prepared successor roots and final read-address cardinal
 actual allocator equality after every graph owner retires. Unperformed owner/reader stages carry
 `-1`, not fabricated zero usage. This supplies a fixture control without subtracting unrelated RSS
 peaks or allowing fixture graphs to remain alive in subsequent storage-owner measurements.
+
+`make bench-storage-lifetimes` admits fixture-only control rows at 8,192/32,768 entries, requiring
+all prepared-root checks and exact baseline equality after scope exit. Its raw witnesses and
+fresh-child RSS/fault counters remain in a separate artifact directory. Reports do not infer
+repository memory by subtracting peak values from independently running processes.
