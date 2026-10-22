@@ -581,6 +581,39 @@ proc imageMetadata(generation: RepositoryGeneration, commitment: StateTrieCommit
   if not selected: return RepositoryError.RootMismatch
   RepositoryError.None
 
+proc admitImageRecords(records: var seq[StoredRecord], bytes: uint64,
+    generation: RepositoryGeneration, commitment: StateTrieCommitment, roots: openArray[StateRoot],
+    limits: RepositoryLimits): RepositoryResult[NodeRepository] =
+  ## Private sorted/integrity-checked cells still need independent graph, inventory and selected-root admission.
+  ## Root metadata was checked synchronously; no public caller can supply these private immutable cells.
+  let table = newRepositoryTable(records)
+  var retained = newSeq[uint64](graphWords(table.records.len))
+  var count = 0
+  var visit = GraphVisit(seen: newSeq[uint64](graphWords(table.records.len)),
+      collect: GraphCollection.Records)
+  for root in roots:
+    # Serialized roots never inherit prior cycle/route/count authority when scratch storage is reused.
+    resetGraph(visit)
+    var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
+    let checked = graph(table, StateNodeHash(array[32, byte](root)), 0,
+      default(array[31, byte]), limits.codec.trie, visit, counts)
+    if checked != RepositoryError.None: return RepositoryResult[NodeRepository](status: checked)
+    if compareRoot(root, commitment.root) == 0:
+      if counts.entries != uint64(commitment.entries) or counts.nodes !=
+          commitment.nodes:
+        return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph)
+    for index in visit.leaves:
+      if not marked(retained, index):
+        mark(retained, index)
+        inc count # Shared roots need each physical record once, and orphan records never become durable.
+  if count != table.records.len: return RepositoryResult[NodeRepository](
+      status: RepositoryError.InvalidGraph)
+  RepositoryResult[NodeRepository](status: RepositoryError.None,
+    completed: NodeRepository(head: RepositoryData(table: table,
+      commitment: commitment, generation: generation, valueBytes: bytes,
+          limits: limits)))
+
+
 proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
     roots: ElementLimit, encoded: ByteLimit, decoded: bool): RepositoryResult[NodeRepository] =
   ## Private callers either validate raw records here or just decoded them under these exact limits.
@@ -603,32 +636,7 @@ proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
       return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph) # Persisted address order is exact, not silently normalized.
     records.add(storeRecord(record))
     bytes += uint64(record.payload.len) # Collection preflight proved the aggregate physical byte bound.
-  let table = newRepositoryTable(records)
-  var retained = newSeq[uint64](graphWords(table.records.len))
-  var count = 0
-  var visit = GraphVisit(seen: newSeq[uint64](graphWords(table.records.len)),
-      collect: GraphCollection.Records)
-  for root in image.roots:
-    # Serialized roots never inherit prior cycle/route/count authority when scratch storage is reused.
-    resetGraph(visit)
-    var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
-    let checked = graph(table, StateNodeHash(array[32, byte](root)), 0,
-      default(array[31, byte]), limits.codec.trie, visit, counts)
-    if checked != RepositoryError.None: return RepositoryResult[NodeRepository](status: checked)
-    if compareRoot(root, image.commitment.root) == 0:
-      if counts.entries != uint64(image.commitment.entries) or counts.nodes !=
-          image.commitment.nodes:
-        return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph)
-    for index in visit.leaves:
-      if not marked(retained, index):
-        mark(retained, index)
-        inc count # Shared roots need each physical record once, and orphan records never become durable.
-  if count != table.records.len: return RepositoryResult[NodeRepository](
-      status: RepositoryError.InvalidGraph)
-  RepositoryResult[NodeRepository](status: RepositoryError.None,
-    completed: NodeRepository(head: RepositoryData(table: table,
-      commitment: image.commitment, generation: image.generation, valueBytes: bytes,
-          limits: limits)))
+  admitImageRecords(records, bytes, image.generation, image.commitment, image.roots, limits)
 
 proc restoreRepositoryImage*(image: RepositoryImage, limits: RepositoryLimits,
     roots: ElementLimit, encoded: ByteLimit): RepositoryResult[NodeRepository] =
