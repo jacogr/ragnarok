@@ -21,3 +21,13 @@ Next: adapt service selectors without changing their public errors, generalize a
 transport/generation, then add bounded typed global readers with missing/absent/malformed
 separation and independent selected-root tests. M1 framing/current request namespace are
 implemented; full state serialization/STF parity remains open.
+
+## Service compatibility
+
+Existing semantic `ServiceProofPlan` selectors now wrap the generic immutable owner. Their
+constructors, guarded result/error spellings, ordinal bounds, count limits and coalescing union
+remain unchanged. `toStateProofPlan` explicitly exposes only root-free requested identities,
+allowing bounded union with global requests; default service plans convert to invalid generic
+plans. There is no implicit converter or public route to forge a semantic service selector.
+`state_service_proof_plan_adapter` checks conversion, exact global/service union, source
+independence and service error compatibility; existing selector/union consumers remain controls.
