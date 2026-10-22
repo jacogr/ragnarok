@@ -5,6 +5,7 @@
 ## These owners cannot substitute for complete StateStore snapshots or certify a new state root.
 import std/[algorithm, assertions]
 import ./trie_proof
+import ./proof_plan
 import ../codec/[bounded, state_layout, state_trie, state_safrole]
 type
   ProofViewLimits* = object ## Count and retained logical value bytes bound this partial evidence collection.
@@ -262,9 +263,9 @@ proc encodeProofView*(view: ProofView, limits: ProofViewLimits, perProof: StateP
     offset += wire.len
   ProofViewResult[seq[byte]](status: ProofViewError.None, completed: output)
 
-proc decodeProofView*(input: openArray[byte], expectedRoot: StateRoot,
+proc decodeProofViewImpl(input: openArray[byte], expectedRoot: StateRoot,
     limits: ProofViewLimits, perProof: StateProofLimits, aggregate: StateProofBatchLimits,
-    wireBytes: ByteLimit): ProofViewResult[ProofView] =
+    wireBytes: ByteLimit, expected: StateProofPlan): ProofViewResult[ProofView] =
   ## Authenticate an exact local collection under caller trust only after complete structural/budget preflight.
   if uint64(input.len) > uint64(wireBytes):
     return ProofViewResult[ProofView](status: ProofViewError.LimitExceeded)
@@ -274,6 +275,8 @@ proc decodeProofView*(input: openArray[byte], expectedRoot: StateRoot,
   var count = 0'u64
   for i in 0..<4:
     count = count or (uint64(input[4+i]) shl (8*i)) # Widen before shifts in the untrusted E4 domain.
+  if expected.valid and count != uint64(expected.len):
+    return ProofViewResult[ProofView](status: ProofViewError.NonCanonical)
   if count > uint64(limits.items) or count > uint64(aggregate.items):
     return ProofViewResult[ProofView](status: ProofViewError.LimitExceeded)
   if count > uint64((input.len-8) div 45):
@@ -298,6 +301,8 @@ proc decodeProofView*(input: openArray[byte], expectedRoot: StateRoot,
     if size < 10:
       return ProofViewResult[ProofView](status: ProofViewError.NonCanonical)
     let query = StateKey(key)
+    if expected.valid and array[31, byte](query) != array[31, byte](expected.keyAt(i).value):
+      return ProofViewResult[ProofView](status: ProofViewError.NonCanonical) # Scope precedes witness copying and all crypto.
     if i > 0 and compareKey(queries[i-1].key, query) >= 0:
       return ProofViewResult[ProofView](status: ProofViewError.NonCanonical)
     # Preflight remaining aggregate allowances from the fixed inner header before copying this witness.
@@ -329,6 +334,20 @@ proc decodeProofView*(input: openArray[byte], expectedRoot: StateRoot,
     return ProofViewResult[ProofView](status: ProofViewError.ProofFailure,
         proofReason: verified.error)
   captureProofView(verified.value, expectedRoot, limits) # No policy can widen after the shared atomic verifier.
+
+proc decodeProofView*(input: openArray[byte], expectedRoot: StateRoot,
+    limits: ProofViewLimits, perProof: StateProofLimits, aggregate: StateProofBatchLimits,
+    wireBytes: ByteLimit): ProofViewResult[ProofView] =
+  ## Preserve the existing unplanned decoder through the same canonical framing and verifier.
+  decodeProofViewImpl(input, expectedRoot, limits, perProof, aggregate, wireBytes, default(StateProofPlan))
+
+proc decodeProofView*(input: openArray[byte], expectedRoot: StateRoot,
+    limits: ProofViewLimits, perProof: StateProofLimits, aggregate: StateProofBatchLimits,
+    wireBytes: ByteLimit, expected: StateProofPlan): ProofViewResult[ProofView] =
+  ## Match every declared identity before any witness hashing; invalid expected plans grant no scope.
+  if not expected.valid:
+    return ProofViewResult[ProofView](status: ProofViewError.Uninitialized)
+  decodeProofViewImpl(input, expectedRoot, limits, perProof, aggregate, wireBytes, expected)
 
 proc readProofTime*(view: ProofView): ProofViewResult[StateTime] =
   ## Decode only authenticated C(11) bytes, distinguishing unknown, absent and malformed evidence.
