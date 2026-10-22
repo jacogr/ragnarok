@@ -167,6 +167,17 @@
       "name": "current-round-snapshot",
       "diagnostic": "outcome.status == None",
       "description": "Current round extraction: snapshot"
+    },
+    {
+      "identity": {
+        "reason": "parameters"
+      },
+      "arguments": [
+        "parameters"
+      ],
+      "name": "current-round-parameters",
+      "diagnostic": "outcome.status == None",
+      "description": "Current round immutable parameter extraction"
     }
   ]
 }

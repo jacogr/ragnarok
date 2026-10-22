@@ -3,11 +3,14 @@
 
 ## Authenticated current accumulation sequence ownership and bounded continuation input planning.
 ## Flat per-entry facts avoid recursive certificate ownership; selected successor state governs pending partitioning.
-import ../codec/[bounded, composite, work_digest, report_owned, c2_records]
+import ../chain/parameters
+import ../codec/[bounded, composite, work_digest, report_owned, c2_records, header, state_safrole, state_layout]
 import ./[accumulation_current_round, accumulation_block_guests, accumulation_round,
   accumulation_queue, accumulation_coverage, accumulation_global_stage, accumulation_global_phase,
   accumulation_annulled_outputs, accumulation_pending_transfers, accumulation_transfer_partition,
-  accumulation_operands, accumulation_inputs, store]
+  accumulation_operands, accumulation_inputs, accumulation_guest_runner, accumulation_account_phase,
+  accumulation_provision_phase, accumulation_provisions, accumulation_transfers, report_admission,
+  block_transition, block_admission, store]
 
 type
   CurrentSequenceEntryIndex* = distinct uint64 ## A historical sequence entry cannot substitute an input service or report ordinal.
@@ -17,6 +20,9 @@ type
     operands*: AccumulationOperandConfig
     inputs*: AccumulationInputConfig
     partition*: TransferPartitionLimits
+  CurrentContinuationExecutionLimits* = object ## Bound retained flat history independently of the existing per-entry guest/selected-state policies.
+    entries*: ElementLimit
+    round*: CurrentAccumulationRoundLimits
   CurrentSequenceInfo* = object ## Latest budget/progress observations are separate from terminal whole-block publication.
     entries*, pending*: int
     processedReports*: AccumulationReportPrefix
@@ -29,7 +35,8 @@ type
     dispatch*: bool
   CurrentSequenceError* {.pure.} = enum ## No refusal exposes a selected report prefix or partial invocation inputs.
     Uninitialized, None, InvalidSource, InvalidIndex, LimitExceeded,
-    OperandFailure, InputFailure, PartitionFailure
+    OperandFailure, InputFailure, PartitionFailure, NoDispatch, InvalidParameters,
+    GuestFailure, AccountFailure, ProvisionFailure, GlobalFailure, OutputFailure, TransferFailure, PendingFailure
   SequenceFact = object # Every fixed row retains genuine entry proofs without retaining a predecessor sequence owner.
     coverage: PreparedAccumulationCoverage
     globals: PreparedAccumulationGlobalPhase
@@ -59,6 +66,20 @@ type
       inputReason: AccumulationInputError
     of PartitionFailure:
       partitionReason: TransferPartitionError
+    of GuestFailure:
+      guestReason: AccumulationGuestResult
+    of AccountFailure:
+      accountReason: AccumulationAccountPhaseResult[PreparedAccumulationAccountPhase]
+    of ProvisionFailure:
+      provisionReason: AccumulationProvisionPhaseResult[PreparedAccumulationProvisionPhase]
+    of GlobalFailure:
+      globalReason: AccumulationGlobalPhaseResult[PreparedAccumulationGlobalPhase]
+    of OutputFailure:
+      outputReason: AnnulmentOutputsError
+    of TransferFailure:
+      transferReason: AccumulationTransferCollectionError
+    of PendingFailure:
+      pendingReason: PendingTransferError
     else:
       discard # Defaults and extent/source/index refusals grant no initialized plan or sequence.
 
@@ -324,3 +345,131 @@ proc currentContinuationReportAt*(plan: PreparedCurrentContinuation,
   let absolute = uint64(data.info.start)+uint64(index) # Factory bounds the complete selected range by the genuine native queue count.
   CurrentSequenceResult[OwnedReport](status: CurrentSequenceError.None,
       completed: data.queue.accumulationAt(AccumulationIndex(absolute)).value)
+
+func guestFailure*[T](outcome: CurrentSequenceResult[T]): AccumulationGuestResult {.inline,
+    requires: outcome.status == CurrentSequenceError.GuestFailure.} =
+  ## Inspect only the actual failed guestReason; successful earlier providers/phases never escape refusal.
+  outcome.guestReason
+
+func accountFailure*[T](outcome: CurrentSequenceResult[T]): AccumulationAccountPhaseResult[
+    PreparedAccumulationAccountPhase] {.inline, requires: outcome.status ==
+    CurrentSequenceError.AccountFailure.} =
+  ## Inspect only the actual failed accountReason; successful earlier providers/phases never escape refusal.
+  outcome.accountReason
+
+func provisionFailure*[T](outcome: CurrentSequenceResult[T]): AccumulationProvisionPhaseResult[
+    PreparedAccumulationProvisionPhase] {.inline, requires: outcome.status ==
+    CurrentSequenceError.ProvisionFailure.} =
+  ## Inspect only the actual failed provisionReason; successful earlier providers/phases never escape refusal.
+  outcome.provisionReason
+
+func globalFailure*[T](outcome: CurrentSequenceResult[T]): AccumulationGlobalPhaseResult[
+    PreparedAccumulationGlobalPhase] {.inline, requires: outcome.status ==
+    CurrentSequenceError.GlobalFailure.} =
+  ## Inspect only the actual failed globalReason; successful earlier providers/phases never escape refusal.
+  outcome.globalReason
+
+func outputFailure*[T](outcome: CurrentSequenceResult[T]): AnnulmentOutputsError {.inline,
+    requires: outcome.status == CurrentSequenceError.OutputFailure.} =
+  ## Inspect only the actual failed outputReason; successful earlier providers/phases never escape refusal.
+  outcome.outputReason
+
+func transferFailure*[T](outcome: CurrentSequenceResult[
+    T]): AccumulationTransferCollectionError {.inline, requires: outcome.status ==
+    CurrentSequenceError.TransferFailure.} =
+  ## Inspect only the actual failed transferReason; successful earlier providers/phases never escape refusal.
+  outcome.transferReason
+
+func pendingFailure*[T](outcome: CurrentSequenceResult[T]): PendingTransferError {.inline,
+    requires: outcome.status == CurrentSequenceError.PendingFailure.} =
+  ## Inspect only the actual failed pendingReason; successful earlier providers/phases never escape refusal.
+  outcome.pendingReason
+
+proc runCurrentAccumulationContinuation*(plan: PreparedCurrentContinuation,
+    limits: CurrentContinuationExecutionLimits): CurrentSequenceResult[
+        CurrentAccumulationSequence] =
+  ## Execute this genuine selected entry once using frozen initial Parameters and admitted frame, then append genuine flat facts privately.
+  template fail(reason: CurrentSequenceError) =
+    return CurrentSequenceResult[CurrentAccumulationSequence](status: reason)
+  let data = plan.data
+  if data == nil:
+    fail(CurrentSequenceError.InvalidSource) # Default/pure input owners cannot supply continuation authority.
+  if not data.info.dispatch:
+    fail(CurrentSequenceError.NoDispatch) # Terminal planning is not a fabricated successful zero-guest entry.
+  let source = data.source.data
+  if source == nil:
+    fail(CurrentSequenceError.InvalidSource) # No detached/default source can authorize execution even inside a retained plan.
+  let count = source.facts.len
+  if uint64(count) >= uint64(limits.entries) or count >= high(int) div sizeof(SequenceFact):
+    fail(CurrentSequenceError.LimitExceeded) # Bound count+1 and the entire new flat vector before any execution/allocation.
+  let parameters = source.initial.currentRoundParameters.value
+  if not parameters.valid:
+    fail(CurrentSequenceError.InvalidSource) # A genuine initial completion always retains valid immutable configuration.
+  let anchor = source.initial.currentRoundGuests.value.guestRound.value.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value
+  let profile = anchor.blockTransitionProfile
+  let contexts = limits.round.guests.contexts
+  if parameters.get(coreCount) != uint64(profile.cores) or
+      parameters.get(epochPeriod) != uint64(profile.epochSlots) or parameters.get(authQueueLen) != 80:
+    fail(CurrentSequenceError.InvalidSource) # Frozen chain configuration must retain the original admitted shape.
+  if uint64(contexts.validators) != uint64(profile.validators) or
+      uint64(contexts.queues.cores) != uint64(profile.cores) or
+      uint64(contexts.staging.cores) != uint64(profile.cores) or
+      uint64(contexts.privileges.cores) != uint64(profile.cores) or
+      uint64(limits.round.globals.roles.privileges.cores) != uint64(profile.cores) or
+      uint64(limits.round.globals.queues.cores) != uint64(profile.cores) or
+      uint64(limits.round.globals.staging.cores) != uint64(profile.cores):
+    fail(CurrentSequenceError.InvalidParameters) # Local shape choices cannot replace authenticated population/core authority.
+  let stage = anchor.value
+  let slot = headerInfo(stage.admitted.admittedHeader).value.unsigned.slot
+  let rawEntropy = stage.snapshot.lookup(chapterKey(StateChapter(6)))
+  if rawEntropy.error != StateStoreError.None:
+    fail(CurrentSequenceError.InvalidSource) # Never fall back to entropy in the selected common-prior map.
+  if rawEntropy.value.byteLength != 128:
+    fail(CurrentSequenceError.InvalidSource) # Bound the fixed posterior chapter before capturing/decoding bytes.
+  let entropy = decodeStateEntropy(rawEntropy.value.bytes)
+  if entropy.error != StateComponentError.None:
+    fail(CurrentSequenceError.InvalidSource) # Genuine admitted stage ownership must retain exact posterior entropy.
+  let prior = source.facts[count-1].globals.globalPhaseSnapshot.value
+  var guestLimits = limits.round.guests
+  if uint64(guestLimits.coverage.gas) > uint64(data.info.budget):
+    guestLimits.coverage.gas = data.info.budget # A generous caller cap cannot relax this entry's source-derived gas budget.
+  let guests = runAccumulationGuests(data.inputs, prior, slot, entropy.value.value[0], parameters, guestLimits)
+  if guests.error != AccumulationGuestError.None:
+    return CurrentSequenceResult[CurrentAccumulationSequence](
+        status: CurrentSequenceError.GuestFailure, guestReason: guests)
+  let accounts = prepareAccumulationAccountPhase(guests.value, limits.round.accounts)
+  if accounts.error != AccumulationAccountPhaseError.None:
+    return CurrentSequenceResult[CurrentAccumulationSequence](
+        status: CurrentSequenceError.AccountFailure, accountReason: accounts)
+  let provisions = prepareAccumulationProvisionPhase(accounts.value, limits.round.provisions)
+  if provisions.error != AccumulationProvisionPhaseError.None:
+    return CurrentSequenceResult[CurrentAccumulationSequence](
+        status: CurrentSequenceError.ProvisionFailure, provisionReason: provisions)
+  let globals = prepareAccumulationGlobalPhase(provisions.value, limits.round.globals)
+  if globals.error != AccumulationGlobalPhaseError.None:
+    return CurrentSequenceResult[CurrentAccumulationSequence](
+        status: CurrentSequenceError.GlobalFailure, globalReason: globals)
+  let selection = guests.value.coverageAnnulment.value
+  let outputs = prepareAnnulmentOutputs(selection, limits.round.outputs)
+  if outputs.error != AnnulmentOutputsError.None:
+    return CurrentSequenceResult[CurrentAccumulationSequence](
+        status: CurrentSequenceError.OutputFailure, outputReason: outputs.error)
+  let transfers = prepareAnnulmentTransfers(selection, limits.round.transfers)
+  if transfers.error != AccumulationTransferCollectionError.None:
+    return CurrentSequenceResult[CurrentAccumulationSequence](
+        status: CurrentSequenceError.TransferFailure, transferReason: transfers.error)
+  let pending = prepareCarriedPendingTransfers(data.partition, transfers.value, data.info.budget,
+      limits.round.pending)
+  if pending.error != PendingTransferError.None:
+    return CurrentSequenceResult[CurrentAccumulationSequence](
+        status: CurrentSequenceError.PendingFailure, pendingReason: pending.error)
+  var facts = newSeq[SequenceFact](count+1)
+  for ordinal in 0..<count:
+    facts[ordinal] = source.facts[ordinal] # Copy retained immutable facts without a predecessor sequence/plan reference.
+  let processed = uint64(data.info.start)+uint64(data.info.prefix) # The genuine original-queue range proves this sum fits.
+  facts[count] = SequenceFact(coverage: guests.value, globals: globals.value,
+    outputs: outputs.value,
+    pending: pending.value, processed: AccumulationReportPrefix(processed))
+  CurrentSequenceResult[CurrentAccumulationSequence](status: CurrentSequenceError.None,
+    completed: CurrentAccumulationSequence(data: SequenceData(initial: source.initial,
+        facts: facts)))

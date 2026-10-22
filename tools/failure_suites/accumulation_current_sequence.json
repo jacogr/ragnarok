@@ -211,6 +211,94 @@
       "name": "current-sequence-plan-report",
       "diagnostic": "outcome.status == None",
       "description": "Current sequence/plan extraction: plan-report"
+    },
+    {
+      "identity": {
+        "reason": "entry-guest"
+      },
+      "arguments": [
+        "entry-guest"
+      ],
+      "name": "current-sequence-entry-guest",
+      "diagnostic": "outcome.status == GuestFailure",
+      "description": "Current later-entry extraction: guest"
+    },
+    {
+      "identity": {
+        "reason": "entry-account"
+      },
+      "arguments": [
+        "entry-account"
+      ],
+      "name": "current-sequence-entry-account",
+      "diagnostic": "outcome.status == AccountFailure",
+      "description": "Current later-entry extraction: account"
+    },
+    {
+      "identity": {
+        "reason": "entry-provision"
+      },
+      "arguments": [
+        "entry-provision"
+      ],
+      "name": "current-sequence-entry-provision",
+      "diagnostic": "outcome.status == ProvisionFailure",
+      "description": "Current later-entry extraction: provision"
+    },
+    {
+      "identity": {
+        "reason": "entry-global"
+      },
+      "arguments": [
+        "entry-global"
+      ],
+      "name": "current-sequence-entry-global",
+      "diagnostic": "outcome.status == GlobalFailure",
+      "description": "Current later-entry extraction: global"
+    },
+    {
+      "identity": {
+        "reason": "entry-output"
+      },
+      "arguments": [
+        "entry-output"
+      ],
+      "name": "current-sequence-entry-output",
+      "diagnostic": "outcome.status == OutputFailure",
+      "description": "Current later-entry extraction: output"
+    },
+    {
+      "identity": {
+        "reason": "entry-transfer"
+      },
+      "arguments": [
+        "entry-transfer"
+      ],
+      "name": "current-sequence-entry-transfer",
+      "diagnostic": "outcome.status == TransferFailure",
+      "description": "Current later-entry extraction: transfer"
+    },
+    {
+      "identity": {
+        "reason": "entry-pending"
+      },
+      "arguments": [
+        "entry-pending"
+      ],
+      "name": "current-sequence-entry-pending",
+      "diagnostic": "outcome.status == PendingFailure",
+      "description": "Current later-entry extraction: pending"
+    },
+    {
+      "identity": {
+        "reason": "entry-refused"
+      },
+      "arguments": [
+        "entry-refused"
+      ],
+      "name": "current-sequence-entry-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current later-entry extraction: refused"
     }
   ]
 }

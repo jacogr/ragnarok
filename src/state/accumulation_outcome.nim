@@ -79,7 +79,7 @@ proc normalizeAccumulationOutcome*(execution: AccumulationDispatchResult):
     dimension = AccumulationDimension.Regular # Normal halt commits current supported implications.
     termination = AccumulationTermination.Halt
   of StepExit.OutOfGas:
-    termination = AccumulationTermination.OutOfGas # Negative final gas still selects the exceptional context.
+    termination = AccumulationTermination.OutOfGas # Unpaid blocks and exhausted host gas both select the exceptional context.
   of StepExit.Panic, StepExit.Fault:
     discard # Psi_M maps all other completed terminal exits to panic before C selects Y.
   else:

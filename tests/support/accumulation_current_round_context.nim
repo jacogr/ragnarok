@@ -39,9 +39,9 @@ proc currentRoundServiceCode*(instructions: seq[seq[byte]]): seq[byte] =
   ## Real deferred transfer and yield instructions share one canonical service preimage/envelope.
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable = newSeq[byte](128)): result.add(octet)
-proc currentTransferProgram*(destination: uint64): seq[byte] =
+proc currentTransferProgram*(destination: uint64, gas = 3'u64): seq[byte] =
   ## A genuine nonzero memo pointer selects deferred transfer even with zero token value.
   currentRoundServiceCode(@[registerImmediate(7, high(uint64)), registerImmediate(8, destination),
       registerImmediate(9, 0),
-    registerImmediate(10, 0), registerImmediate(11, 3), registerImmediate(12, 196608), @[10'u8, 22],
+    registerImmediate(10, 0), registerImmediate(11, gas), registerImmediate(12, 196608), @[10'u8, 22],
     registerImmediate(7, 65536), @[10'u8, 27], @[50'u8, 0]])

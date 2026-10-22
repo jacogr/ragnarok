@@ -22,6 +22,7 @@ type
     Uninitialized, None, GuestFailure, AccountFailure, ProvisionFailure, GlobalFailure,
     OutputFailure, TransferFailure, PendingFailure
   CurrentRoundData = ref object # Immutable acyclic phase owners retain their exact admitted round and all original providers.
+    parameters: Parameters # Retain the exact immutable chain configuration for authenticated later entries.
     globals: PreparedAccumulationGlobalStage
     outputs: PreparedAnnulmentOutputs
     transfers: PreparedAccumulationTransfers
@@ -92,7 +93,8 @@ proc runCurrentBlockAccumulationRound*(round: BlockAccumulationRound, parameters
       status: CurrentAccumulationRoundError.PendingFailure, pendingReason: pending.error)
   CurrentAccumulationRoundResult[PreparedCurrentAccumulationRound](
     status: CurrentAccumulationRoundError.None,
-    completed: PreparedCurrentAccumulationRound(data: CurrentRoundData(globals: globals.value,
+    completed: PreparedCurrentAccumulationRound(data: CurrentRoundData(parameters: parameters,
+      globals: globals.value,
       outputs: outputs.value, transfers: transfers.value, pending: pending.value)))
 
 func guestFailure*[T](outcome: CurrentAccumulationRoundResult[T]): BlockGuestResult[
@@ -194,3 +196,12 @@ proc currentRoundSnapshot*(round: PreparedCurrentAccumulationRound): CurrentAccu
         status: CurrentAccumulationRoundError.Uninitialized)
   CurrentAccumulationRoundResult[StateStoreSnapshot](status: CurrentAccumulationRoundError.None,
       completed: data.globals.globalStageSnapshot.value)
+
+proc currentRoundParameters*(round: PreparedCurrentAccumulationRound): CurrentAccumulationRoundResult[Parameters] =
+  ## Retain the actual initial immutable chain configuration; later execution cannot substitute different prices or eligibility fields.
+  let data = round.data
+  if data == nil:
+    return CurrentAccumulationRoundResult[Parameters](
+        status: CurrentAccumulationRoundError.Uninitialized)
+  CurrentAccumulationRoundResult[Parameters](status: CurrentAccumulationRoundError.None,
+      completed: data.parameters)
