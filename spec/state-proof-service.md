@@ -218,3 +218,12 @@ direct partitioning computes roots without production sorting/codecs. Native
 `state_proof_service_reference` checks typed reads, exact query-plan unions and
 literal roots; two Python safeguards protect frozen bytes and an explicit key
 equation. The fixture descriptor pins exact corpus bytes.
+
+## Actual primitive refusal evidence
+
+`state_proof_service_backend` measures and refuses every Blake2b prefix in raw
+storage, content, historical and code reads and atomic response verification.
+No failed prefix exposes a typed result or earlier verified subset. Account reads,
+account planning, plan union/matching and encoding work with hashing refused.
+Short key/count/aggregate quotas and reserved request lengths attempt zero hashes.
+Recovery after each refused operation retains the original usable immutable view.
