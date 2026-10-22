@@ -124,3 +124,12 @@ hashing. No plan grants state authority. Suite `state_proof_plan_historical` che
 exact namespace identities and short policies. Historical lengths are hints for
 requested evidence; readers independently choose the actual authenticated length
 and return missing witness if the hint omitted that identity.
+
+## Code dependency discovery
+
+`planProofCode` discovers current code identity from authenticated account
+metadata, then requests its account/blob/length-hint history dependencies.
+A plan grants no root authority and can be sent for another root; the eventual
+code reader rederives identity from that response's account. A stale discovery
+therefore fails on missing actual evidence rather than substituting stale code.
+Suite `state_proof_plan_code` checks exact identities and refusal paths.

@@ -270,3 +270,15 @@ proc planProofHistorical*(service: ServiceIndex, hash: ServicePreimageHash, leng
   if derived.error != RequestError.None:
     return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.BackendFailure)
   capturePlan([chapterServiceKey(StateChapter(255), service), blob.value, derived.value], limit)
+
+proc planProofCode*(view: ProofView, service: ServiceIndex, length: RequestLength,
+    limit: ElementLimit): ServiceProofResult[ServiceProofPlan] =
+  ## Learn code identity from authenticated metadata; the resulting root-free query plan grants no authority.
+  if uint32(length) >= high(uint32)-1:
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.InvalidInput)
+  if uint64(limit) < 3:
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.LimitExceeded)
+  let account = view.readProofAccount(service)
+  if account.error != ServiceProofError.None:
+    return ServiceProofResult[ServiceProofPlan](status: account.error)
+  planProofHistorical(service, ServicePreimageHash(array[32, byte](account.value.codeHash)), length, limit)
