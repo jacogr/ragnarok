@@ -27,7 +27,7 @@ DOCKER ?= docker
 DOCKER_IMAGE ?= ragnarok:local
 DOCKER_PLATFORM ?= linux/amd64
 
-.PHONY: diagnose-storage-aborts summary-storage-memory-ceilings bench-storage-memory-ceilings summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: probe-storage-resident-pressure bench-storage-resident-pressure diagnose-storage-aborts summary-storage-memory-ceilings bench-storage-memory-ceilings summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
@@ -94,8 +94,15 @@ host-tools:
 	  if [ "$$missing" = 1 ]; then \
 	    mkdir -p build/ci; \
 	    apt_options='-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=60'; \
-	    sudo timeout --kill-after=10s 300s apt-get $$apt_options -o APT::Update::Error-Mode=any update 2>&1 | tee build/ci/host-tools-update.log; \
-	    sudo apt-get $$apt_options install --no-install-recommends -y $$packages 2>&1 | tee build/ci/host-tools-install.log; \
+	    apt_source_args=(); \
+	    if [ "$(STORAGE_PRESSURE_HTTPS)" = 1 ]; then \
+	      $(PYTHON) tools/storage_pressure_apt.py; \
+	      if [ -f build/ci/storage-pressure-https.list ]; then \
+	        apt_source_args=(-o "Dir::Etc::sourcelist=$(CURDIR)/build/ci/storage-pressure-https.list" -o Dir::Etc::sourceparts=-); \
+	      fi; \
+	    fi; \
+	    sudo timeout --kill-after=10s 300s apt-get $$apt_options $${apt_source_args[@]+"$${apt_source_args[@]}"} -o APT::Update::Error-Mode=any update 2>&1 | tee build/ci/host-tools-update.log; \
+	    sudo apt-get $$apt_options $${apt_source_args[@]+"$${apt_source_args[@]}"} install --no-install-recommends -y $$packages 2>&1 | tee build/ci/host-tools-install.log; \
 	  fi; \
 	fi
 
@@ -190,6 +197,13 @@ format: toolchain rust-tools
 	. ./build/toolchain/env.sh; $(PYTHON) tools/format.py
 # Storage measures matching public operations; Make provisions the checked native crypto toolchain first.
 # Separate whole-process resource observations never contribute speed samples to Perf Storage.
+probe-storage-resident-pressure:
+	$(PYTHON) tools/storage_resident_pressure.py --probe
+
+bench-storage-resident-pressure: STORAGE_PRESSURE_HTTPS = 1
+bench-storage-resident-pressure: setup
+	$(PYTHON) tools/storage_resident_pressure.py
+
 diagnose-storage-aborts: STORAGE_ABORT_DIAGNOSTICS = 1
 diagnose-storage-aborts: setup
 	$(PYTHON) tools/storage_abort_diagnostics.py
