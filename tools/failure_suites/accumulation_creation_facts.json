@@ -1,0 +1,29 @@
+{
+  "source": "tests/native/accumulation_creation_facts_results.nim",
+  "build_name": "accumulation-creation-facts-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "count"
+      },
+      "arguments": [
+        "count"
+      ],
+      "name": "creation-facts-count",
+      "diagnostic": "outcome.status == None",
+      "description": "Independent creation count extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "fact"
+      },
+      "arguments": [
+        "fact"
+      ],
+      "name": "creation-facts-fact",
+      "diagnostic": "outcome.status == None",
+      "description": "Independent creation fact extraction guard"
+    }
+  ]
+}

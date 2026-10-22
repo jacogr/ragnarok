@@ -31,6 +31,7 @@ type
       ServiceExists,            ## A registrar-selected reserved service ID is already occupied.
       TransferGasLow,           ## Offered deferred gas is below the current destination minimum.
       ModifiedAccountsDisabled, ## The caller did not enable bounded modified-account tracking.
+      CreatedAccountsDisabled,  ## Explicit creation facts require enabled bounded tracing.
       AccountWriteFactsDisabled ## The caller did not enable bounded physical account-write facts.
   AccumulationModifiedAccountIndex* = distinct uint64 ## Modification ordinal is distinct from a protocol service identity.
   # Immutable unique membership facts contain only fixed identities and no parent-effect owners.
@@ -354,10 +355,9 @@ proc selfAccountData(previous: EffectData, accounts: StateStoreSnapshot,
 # Bound fixed creation provenance before any candidate account map is hashed or published.
 proc prepareCreatedAccount(previous: EffectData, service: ServiceIndex, requestKey: StateKey):
     AccumulationEffectResult[CreatedAccountsData] =
-  if previous.accountScope == AccumulationAccountScope.Unsupported or uint64(
-      previous.createdLimit) == 0:
+  if uint64(previous.createdLimit) == 0:
     return AccumulationEffectResult[CreatedAccountsData](status: AccumulationEffectError.None,
-      completed: previous.created) # Disabled tracing never changes an earlier local new-call success.
+      completed: previous.created) # Disabled tracing never changes local new-call success; enabled facts survive unrelated scope gates.
   let count = previous.created.values.len
   if uint64(count) >= uint64(previous.createdLimit) or count >= high(int) div sizeof(AccumulationCreatedAccount):
     return AccumulationEffectResult[CreatedAccountsData](
@@ -505,6 +505,32 @@ proc effectAccountWriteKeyAt*(context: AccumulationEffectContext,
   assert data != nil # Successful count proves this retained immutable owner is initialized.
   AccumulationEffectResult[StateKey](status: AccumulationEffectError.None,
     completed: data.accountKeys.keys[int(uint64(index))])
+
+proc effectCreatedAccountFactCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
+  ## Read complete enabled creation membership independently of legacy account publication scope.
+  ## Every successful new call captures its fact before hashing, even after an unrelated unsupported mutation.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.Uninitialized) # Default is not enabled empty tracing.
+  if uint64(data.createdLimit) == 0:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.CreatedAccountsDisabled) # Explicitly distinguish disabled history from zero creations.
+  AccumulationEffectResult[int](status: AccumulationEffectError.None,
+      completed: data.created.values.len)
+
+proc effectCreatedAccountFactAt*(context: AccumulationEffectContext,
+    index: AccumulationCreatedAccountIndex): AccumulationEffectResult[AccumulationCreatedAccount] =
+  ## Copy genuine fixed creation provenance through the same enabled owner; account values remain in effectAccounts.
+  let count = context.effectCreatedAccountFactCount
+  if count.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[AccumulationCreatedAccount](
+        status: count.error) # No partial or disabled proof extraction.
+  if uint64(index) >= uint64(count.value):
+    return AccumulationEffectResult[AccumulationCreatedAccount](
+        status: AccumulationEffectError.InvalidIndex) # Check upper bits before native narrowing.
+  let data = context.data
+  assert data != nil # The successful count validated this exact immutable owner.
+  AccumulationEffectResult[AccumulationCreatedAccount](status: AccumulationEffectError.None,
+    completed: data.created.values[int(uint64(index))])
 
 proc effectCreatedAccountCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
   ## Count this selected context's genuine creations; unsupported lineages expose no partial membership proof.
@@ -1428,7 +1454,7 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
       AccumulationAccountScope.Unsupported and uint64(previous.createdLimit) != 0:
     candidate.accountScope = if previous.accountScope == AccumulationAccountScope.DeletedAccounts:
       AccumulationAccountScope.DeletedAccounts else: AccumulationAccountScope.CreatedAccounts # New preserves earlier ejection facts.
-    candidate.created = captured.value
+  candidate.created = captured.value # Enabled creation membership survives independently of legacy account-scope publication.
   candidate.nextService = next
   candidate.writeFacts = facts.value # Bind physical keys to the same immutable account successor.
   candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.

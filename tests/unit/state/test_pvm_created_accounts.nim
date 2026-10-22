@@ -164,6 +164,10 @@ for checkpoint in [false, true]:
     let count = if panic: (if checkpoint: 1 else: 0) else: 2
     let selected = normalizeAccumulationOutcome(first).value.outcomeContext.value
     assert selected.effectCreatedAccountCount.value == count, "terminal checkpoint selects creation facts and debits together"
+    assert selected.effectCreatedAccountFactCount.value == count, "enabled creation proof follows terminal checkpoint"
+    if count > 0:
+      let fact = selected.effectCreatedAccountFactAt(AccumulationCreatedAccountIndex(0)).value
+      assert uint32(fact.service) == uint32(childId(42)), "independent facts retain actual child identity"
     var expected = rows(fixture, uint64(count), 1)
     if count != 0:
       addChild(expected, childId(42), 42)
@@ -223,6 +227,8 @@ for checkpoint in [false, true]:
     "actual eligible eject removed the prior target before terminal selection"
   assert regular.effectCreatedAccountCount.error == AccumulationEffectError.InvalidState,
     "broader deletion exposes no partial creation certificate"
+  assert regular.effectCreatedAccountFactCount.value == 1,
+    "new before a broader deletion also retains independent enabled membership"
   let planned = prepare(fixture, first, second, slot = HeaderSlot(50000))
   if checkpoint:
     var expected = rows(fixture, 1, 0)
@@ -265,12 +271,42 @@ block limits_and_default:
   assert disabled.error == AccumulationDispatchError.None and prepare(fixture, disabled,
       second).error == AccumulationBatchError.UnsupportedAccountEffects,
     "zero child proof capacity retains successful local creation and the original publication gate"
+  let disabledContext = normalizeAccumulationOutcome(disabled).value.outcomeContext.value
+  assert disabledContext.effectCreatedAccountFactCount.error ==
+      AccumulationEffectError.CreatedAccountsDisabled,
+    "disabled creation history never certifies an empty set"
+  assert disabledContext.effectCreatedAccountFactAt(AccumulationCreatedAccountIndex(0)).error ==
+    AccumulationEffectError.CreatedAccountsDisabled, "disabled extraction keeps its typed refusal"
+  let boundedBroader = batchFixture(firstEnvelope = envelope(beforeStorage = true, repeat = true),
+    secondEnvelope = envelope())
+  assert execute(boundedBroader, children = 1, keys = 0).error ==
+      AccumulationDispatchError.LimitExceeded,
+    "unsupported legacy ancestry cannot bypass enabled creation capacity"
   let broader = batchFixture(firstEnvelope = envelope(beforeStorage = true),
       secondEnvelope = envelope())
   let unsupported = execute(broader, keys = 0)
   assert unsupported.error == AccumulationDispatchError.None and prepare(broader, unsupported,
       execute(broader, 1)).error == AccumulationBatchError.UnsupportedAccountEffects,
     "new cannot relabel an earlier unsupported mutation as safe creation"
+  let broaderContext = normalizeAccumulationOutcome(unsupported).value.outcomeContext.value
+  assert broaderContext.effectAccountScope.value == AccumulationAccountScope.Unsupported
+  assert broaderContext.effectCreatedAccountCount.error == AccumulationEffectError.InvalidState,
+    "legacy scope-gated creation access remains refused"
+  assert broaderContext.effectCreatedAccountFactCount.value == 1,
+    "a successful new after an unsupported write retains enabled independent proof"
+  var fact = broaderContext.effectCreatedAccountFactAt(AccumulationCreatedAccountIndex(0)).value
+  assert uint32(fact.service) == uint32(childId(42)), "actual selected child survives unrelated lineage gate"
+  fact.service = ServiceIndex(0)
+  let retained = broaderContext.effectCreatedAccountFactAt(AccumulationCreatedAccountIndex(0)).value
+  assert uint32(retained.service) == uint32(childId(42)), "copied facts cannot mutate retained identity"
+  assert broaderContext.effectCreatedAccountFactAt(AccumulationCreatedAccountIndex(high(
+      uint64))).error ==
+    AccumulationEffectError.InvalidIndex, "full-width proof index refuses before narrowing"
+  assert default(AccumulationEffectContext).effectCreatedAccountFactCount.error ==
+    AccumulationEffectError.Uninitialized, "default independent proof is not enabled empty"
+  assert default(AccumulationEffectContext).effectCreatedAccountFactAt(
+      AccumulationCreatedAccountIndex(0)).error ==
+    AccumulationEffectError.Uninitialized, "default independent fact has no payload"
   assert default(AccumulationEffectContext).effectCreatedAccountCount.error ==
       AccumulationEffectError.Uninitialized,
     "default effects do not certify an empty creation set"
