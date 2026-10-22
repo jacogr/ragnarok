@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "tlanif": {
+    "commit": "59e1e5c99b2e1ba3ba5502010f6a9293cc501e08",
+    "download": {
+      "url": "https://codeload.github.com/Araq/tlanif/tar.gz/59e1e5c99b2e1ba3ba5502010f6a9293cc501e08",
+      "sha256": "365a61cfac4b573e3cce163ace36a83018ccbf34c631dccac3ea68b9ddba237c"
+    }
+  }
+}

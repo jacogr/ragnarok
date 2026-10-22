@@ -32,8 +32,8 @@ Selected state still shares canonical ARC owners and requires the managed lease.
 Completion: `application_proof_query_capture` covers genuine signed selection,
 exact posterior identity, exact/short work, count/map/wire policies and defaults.
 M1 framing/request namespace adoption is complete; full serialization/STF parity
-remains open. Local model checking is unavailable: tlanif is not on provisioned
-PATH; deterministic native lifecycle tests will retain explicit scope limits.
+remains open. Local model checking uses the separately pinned tool in `spec/model-checking.md`.
+Deterministic native lifecycle tests retain explicit scope limits.
 
 ## Detached execution response
 
