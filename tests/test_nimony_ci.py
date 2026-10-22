@@ -57,7 +57,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, storage-diagnostics, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, storage-diagnostics, storage-pressure, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         self.assertNotIn('synchronize', triggers)
         self.assertNotIn('opened', triggers)
