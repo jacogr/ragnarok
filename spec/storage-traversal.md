@@ -290,3 +290,12 @@ A separate EIO after actual8-byte progress is not retried. Strict reopen refuses
 an older prefix token refuses, and only the independently exact generation/root token truncates
 the incomplete tail. Subsequent append resumes correctly and every prior complete view survives.
 Both physical layouts exercise the same contract; no implicit repair or authority change occurs.
+
+## Interrupted durability barriers
+
+Both physical layouts retry EINTR on the same live file or directory descriptor until an actual
+barrier completes or a permanent failure occurs. Publication cannot report durability from an
+interruption. Initialization, strict reopen, post-append confirmation and directory synchronization
+consume two injected interruptions before genuine success; maps and bytes remain exact. Existing
+EIO poisoning and PublishedUnsynced boundaries remain independently covered. Descriptor close is
+never retried, since an interrupted close can already have retired its descriptor.

@@ -67,8 +67,15 @@ proc makeDirectory(path: cstring, mode: cint): cint {.importc: "mkdir", cdecl,
   ## Exclusively create one private managed namespace.
 proc lockFile(fd, operation: cint): cint {.importc: "flock", cdecl, header: "<sys/file.h>".}
   ## Cooperating processes arbitrate through one persistent inode, without waiting.
-proc syncFile(fd: cint): cint {.importc: "fsync", cdecl, header: "<unistd.h>".}
+proc syncNative(fd: cint): cint {.importc: "fsync", cdecl, header: "<unistd.h>".}
   ## Report both data and namespace durability barriers explicitly.
+proc syncFile(fd: cint): cint =
+  ## Retry an interrupted barrier on the same live descriptor; permanent refusal remains uncertain IO.
+  while true:
+    let status = syncNative(fd)
+    if status == 0 or posix.errno() != interrupted: return status
+    # EINTR confirms no durability receipt; another real barrier must complete before success.
+
 proc unlinkAt(directory: cint, path: cstring, flags: cint): cint {.importc: "unlinkat", cdecl,
     header: "<unistd.h>".}
   ## Remove only a proved owned child name without following symlinks.
