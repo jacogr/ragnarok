@@ -130,6 +130,9 @@ proc storeDecodedRecord(source: var TrieRecord): StoredRecord =
   ## Only the synchronous local decoder supplies this owned temporary; mutable raw callers still copy.
   StoredRecord(kind: source.kind, digest: source.digest, key: source.key,
     payload: move(source.payload), left: source.left, right: source.right)
+proc prepareImageRecords(stage: var ImageRecordStage, info: RecordCollectionInfo) =
+  ## The codec has bounded this exact count; reserve private cell references without repeating input inspection.
+  stage.records = newSeqOfCap[StoredRecord](int(info.records))
 proc acceptImageRecord(stage: var ImageRecordStage, record: var TrieRecord): bool =
   ## Accumulate private immutable owners while leaving all later codec integrity checks observable.
   if stage.failure != RepositoryError.None: return true
@@ -728,13 +731,9 @@ proc decodeRepositoryImage*(input: openArray[byte], generation: RepositoryGenera
   let metadata = imageMetadata(generation, commitment, roots, limits, rootLimit)
   if metadata != RepositoryError.None: return RepositoryResult[NodeRepository](status: metadata)
   let policy = imageRecordLimits(limits, encoded)
-  let inspected = inspectOrderedRecordCollection(input, policy)
-  if inspected.error != RecordError.None:
-    return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
-      recordReason: inspected.error)
-  var stage = ImageRecordStage(records: newSeqOfCap[StoredRecord](int(inspected.value.records)),
-    limits: limits, bytes: 0, failure: RepositoryError.None)
-  let delivered = visitOrderedRecordCollection(input, policy, stage, acceptImageRecord)
+  var stage = ImageRecordStage(records: @[], limits: limits, bytes: 0,
+      failure: RepositoryError.None)
+  let delivered = visitOrderedRecordCollection(input, policy, stage, prepareImageRecords, acceptImageRecord)
   if delivered.error != RecordError.None:
     return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
       recordReason: delivered.error)
