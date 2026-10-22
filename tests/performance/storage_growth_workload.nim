@@ -5,7 +5,8 @@
 import std/[assertions, syncio, cmdline, monotimes, times]
 import std/posix/posix
 import ../support/[storage_growth_samples, managed_storage_samples]
-import ../../src/storage/[full_state_trie, node_repository, file_repository, managed_repository,
+import ../../src/storage/[full_state_trie, node_records, node_repository, file_repository,
+  managed_repository,
   database_identity, managed_manifest]
 import ../../src/codec/[bounded, state_layout, state_trie]
 
@@ -70,6 +71,15 @@ proc main() {.raises.} =
     let extracted = restoreStateEntries(held, expected, limits.codec.trie).value
     let extractionBeforeNs = elapsed(extractionStart)
     checkGrowthEntries(extracted, count, publications, hot)
+    var observed = newSeq[TrieRecord](4096)
+    let readsStart = getMonoTime()
+    for index in 0..<observed.len:
+      observed[index] = held.lookupNode(fixture.reads[(index*2053) mod count]).value
+    let readsBeforeNs = elapsed(readsStart)
+    for index, record in observed:
+      assert array[32, byte](record.digest) == array[32, byte](fixture.reads[(
+          index*2053) mod count])
+      checkGrowthRecord(record, count, publications, hot)
     var reopenNs = -1'i64
     if engine != "memory":
       assert disk.close == FileError.None
@@ -92,6 +102,7 @@ proc main() {.raises.} =
       assert usage.snapshotBytes <= uint64(high(int64)) and usage.journalBytes <= uint64(high(int64))
       snapshotBytes = int64(usage.snapshotBytes)
       journalBytes = int64(usage.journalBytes)
+    var readsAfterNs = -1'i64
     var extractionAfterNs = -1'i64
     var retainedReopenNs = -1'i64
     var compactedReopenNs = -1'i64
@@ -156,6 +167,15 @@ proc main() {.raises.} =
       let extractedAfter = restoreStateEntries(current, expected, limits.codec.trie).value
       extractionAfterNs = elapsed(extractionAfterStart)
       checkGrowthEntries(extractedAfter, count, publications, hot)
+      var observedAfter = newSeq[TrieRecord](4096)
+      let readsAfterStart = getMonoTime()
+      for index in 0..<observedAfter.len:
+        observedAfter[index] = current.lookupNode(fixture.reads[(index*2053) mod count]).value
+      readsAfterNs = elapsed(readsAfterStart)
+      for index, record in observedAfter:
+        assert array[32, byte](record.digest) == array[32, byte](fixture.reads[(
+            index*2053) mod count])
+        checkGrowthRecord(record, count, publications, hot)
       if engine == "managed":
         let usage = disk.managedUsage.value
         assert usage.journalBytes == uint64(ManagedJournalHeaderBytes)
@@ -184,8 +204,8 @@ proc main() {.raises.} =
         "\t", index+1, "\t", duration
     echo "growth\t", count, "\t", publications, "\t", pattern, "\t", sample, "\t", publicationNs, "\t",
       reopenNs, "\t", retentionNs, "\t", maintenanceNs, "\t", retainedReopenNs, "\t",
-          compactedReopenNs, "\t", extractionBeforeNs, "\t", extractionAfterNs, "\t", storedNodes,
-              "\t", retainedNodes,
+          compactedReopenNs, "\t", extractionBeforeNs, "\t", extractionAfterNs, "\t", readsBeforeNs,
+              "\t", readsAfterNs, "\t", storedNodes, "\t", retainedNodes,
       "\t", currentNodes, "\t", snapshotBytes, "\t", journalBytes, "\t", retainedSnapshotBytes,
           "\t", retainedJournalBytes, "\t", compactedSnapshotBytes,
       "\t", compactedJournalBytes

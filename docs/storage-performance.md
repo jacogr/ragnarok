@@ -126,3 +126,9 @@ or managed epoch. Every returned key and full payload is checked outside timing 
 independent expected-revision formula. These are resident graph traversals and owned output maps,
 not disk reads. The journal has an ordinary extraction measurement and no fabricated post-
 reclamation measurement.
+
+Each sustained configuration also measures 4,096 successful resident leaf lookups spread by a
+deterministic multiplicative permutation across the current complete map. Addresses and result
+arrays are prepared before timing; full keys, digests and every returned payload are checked after
+timing. The same reads run again after current-only reclamation in memory/managed storage. This
+compares resident physical table search and owned result extraction, not cold/random disk IO.
