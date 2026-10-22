@@ -166,3 +166,11 @@ Strict restart never selects by a staging filename or recreates an existing targ
 forensic name/byte remains unchanged by refused recreation and strict admission. A legacy empty
 identity grants only generation0 repository metadata, not an authenticated complete JAM state;
 subsequent explicit publication is independently checked against the authored complete mapping.
+
+## storage_managed_bootstrap_write_crash
+
+Real creator process death verifies three real staged writes, no implicit CURRENT selection and exact forensic files.
+Strict restart never selects by a staging filename or recreates an existing target. Every known
+forensic name/byte remains unchanged by refused recreation and strict admission. A legacy empty
+identity grants only generation0 repository metadata, not an authenticated complete JAM state;
+subsequent explicit publication is independently checked against the authored complete mapping.
