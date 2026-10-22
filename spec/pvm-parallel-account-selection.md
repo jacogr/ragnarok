@@ -47,3 +47,12 @@ Next: bind outgoing transfers/yields and physical account writes to the same
 annulment certificate before enabling the current accpar batch publication path.
 Creation union `n` remains independently selected; callers must prove complete
 candidate coverage rather than treating this bounded subset as the whole domain.
+
+## Certified non-executing participants
+
+The [skipped-credit adapter](pvm-skipped-credit-selection.md) accepts explicitly
+bounded genuine skips. Incoming records select their exact post-credit skip map,
+including zero-amount and protected credits, with separate skipped origin/proof
+observations. Unsafe active-supervisor credit schedules refuse. Skipped producer
+extraction never fabricates an executed outcome; complete coverage and foreign
+publication remain separate obligations.

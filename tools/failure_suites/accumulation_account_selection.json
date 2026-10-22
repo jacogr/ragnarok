@@ -10,6 +10,7 @@
     {"identity": {"reason": "account"}, "arguments": ["account"], "name": "account-selection-account", "diagnostic": "outcome.status == None", "description": "Account selection account extraction guard"},
     {"identity": {"reason": "snapshot"}, "arguments": ["snapshot"], "name": "account-selection-snapshot", "diagnostic": "outcome.status == None", "description": "Account selection snapshot extraction guard"},
     {"identity": {"reason": "metadata"}, "arguments": ["metadata"], "name": "account-selection-metadata", "diagnostic": "outcome.status == None", "description": "Account selection metadata extraction guard"},
-    {"identity": {"reason": "outcome"}, "arguments": ["outcome"], "name": "account-selection-outcome", "diagnostic": "outcome.status == None", "description": "Account selection outcome extraction guard"}
+    {"identity": {"reason": "outcome"}, "arguments": ["outcome"], "name": "account-selection-outcome", "diagnostic": "outcome.status == None", "description": "Account selection outcome extraction guard"},
+    {"identity": {"reason": "skip"}, "arguments": ["skip"], "name": "accumulation-account-selection-skip", "diagnostic": "outcome.status == None", "description": "Skipped-source skip extraction guard"}
   ]
 }
