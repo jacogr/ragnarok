@@ -34,6 +34,11 @@ type
     key: StateKey
     payload: seq[byte]
     left, right: StateNodeHash
+  ImageRecordStage = object ## Private provisional cells never escape failed encoded-image admission.
+    records: seq[StoredRecord]
+    limits: RepositoryLimits
+    bytes: uint64
+    failure: RepositoryError
   RepositoryTable = ref object ## Immutable sorted cell inventories remain independent for changed revisions.
     records: seq[StoredRecord]
     prefixBits: int  ## One private constructor chooses 4/8/12 bits from the bounded inventory size.
@@ -115,6 +120,20 @@ proc storeRecord(source: TrieRecord): StoredRecord =
     bytes[index] = octet # Borrowed transport must not become a mutable alias of an admitted record.
   StoredRecord(kind: source.kind, digest: source.digest, key: source.key, payload: bytes,
     left: source.left, right: source.right)
+proc storeDecodedRecord(source: var TrieRecord): StoredRecord =
+  ## Only the synchronous local decoder supplies this owned temporary; mutable raw callers still copy.
+  StoredRecord(kind: source.kind, digest: source.digest, key: source.key,
+    payload: move(source.payload), left: source.left, right: source.right)
+proc acceptImageRecord(stage: var ImageRecordStage, record: var TrieRecord): bool =
+  ## Accumulate private immutable owners while leaving all later codec integrity checks observable.
+  if stage.failure != RepositoryError.None: return true
+  if uint64(stage.records.len) >= uint64(stage.limits.records) or
+      uint64(record.payload.len) > uint64(stage.limits.valueBytes)-stage.bytes:
+    stage.failure = RepositoryError.LimitExceeded
+    return true # Complete integrity validation still precedes any staged repository refusal.
+  stage.bytes += uint64(record.payload.len)
+  stage.records.add(storeDecodedRecord(record))
+  true
 proc copyRecord(source: StoredRecord): TrieRecord =
   ## Deep-copy only mutable byte storage; fixed addresses and keys copy by value.
   var bytes = newSeq[byte](source.payload.len)
@@ -615,20 +634,17 @@ proc admitImageRecords(records: var seq[StoredRecord], bytes: uint64,
 
 
 proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
-    roots: ElementLimit, encoded: ByteLimit, decoded: bool): RepositoryResult[NodeRepository] =
-  ## Private callers either validate raw records here or just decoded them under these exact limits.
-  ## No public entry point accepts the decoded flag; all graph/ordering/reachability checks are shared.
+    roots: ElementLimit, encoded: ByteLimit): RepositoryResult[NodeRepository] =
+  ## Mutable raw images always require independent local integrity and complete graph admission.
   let metadata = imageMetadata(image.generation, image.commitment, image.roots, limits, roots)
   if metadata != RepositoryError.None: return RepositoryResult[NodeRepository](status: metadata)
   let recordCount = image.collection.records.len
   if uint64(recordCount) > uint64(limits.records) or recordCount > high(int) div sizeof(TrieRecord):
     return RepositoryResult[NodeRepository](status: RepositoryError.LimitExceeded)
-  if not decoded:
-    # Mutable raw images have no integrity authority, even if a caller previously decoded them.
-    let validated = validateRecordCollection(image.collection, imageRecordLimits(limits, encoded))
-    if validated != RecordError.None:
-      return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
-        recordReason: validated)
+  let validated = validateRecordCollection(image.collection, imageRecordLimits(limits, encoded))
+  if validated != RecordError.None:
+    return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
+      recordReason: validated)
   var records = newSeqOfCap[StoredRecord](recordCount)
   var bytes = 0'u64
   for index, record in image.collection.records:
@@ -641,7 +657,7 @@ proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
 proc restoreRepositoryImage*(image: RepositoryImage, limits: RepositoryLimits,
     roots: ElementLimit, encoded: ByteLimit): RepositoryResult[NodeRepository] =
   ## Independently verify every mutable raw record and complete graph before creating an owned repository.
-  restoreImage(image, limits, roots, encoded, false)
+  restoreImage(image, limits, roots, encoded)
 
 proc decodeRepositoryImage*(input: openArray[byte], generation: RepositoryGeneration,
     commitment: StateTrieCommitment, roots: openArray[StateRoot], limits: RepositoryLimits,
@@ -651,16 +667,20 @@ proc decodeRepositoryImage*(input: openArray[byte], generation: RepositoryGenera
   ## Integrity failures retain RecordError, while topology/metadata/budget refusals use RepositoryError.
   let metadata = imageMetadata(generation, commitment, roots, limits, rootLimit)
   if metadata != RepositoryError.None: return RepositoryResult[NodeRepository](status: metadata)
-  var decoded = decodeOrderedRecordCollection(input, imageRecordLimits(limits, encoded))
-  if decoded.error != RecordError.None:
+  let policy = imageRecordLimits(limits, encoded)
+  let inspected = inspectOrderedRecordCollection(input, policy)
+  if inspected.error != RecordError.None:
     return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
-      recordReason: decoded.error)
-  var ownedRoots = newSeq[StateRoot](roots.len)
-  for index, root in roots:
-    ownedRoots[index] = root # Bounded scalar copies cannot retain mutable caller metadata.
-  let image = RepositoryImage(generation: generation, commitment: commitment,
-    roots: ownedRoots, collection: decoded.takeValue)
-  restoreImage(image, limits, rootLimit, encoded, true)
+      recordReason: inspected.error)
+  var stage = ImageRecordStage(records: newSeqOfCap[StoredRecord](int(inspected.value.records)),
+    limits: limits, bytes: 0, failure: RepositoryError.None)
+  let delivered = visitOrderedRecordCollection(input, policy, stage, acceptImageRecord)
+  if delivered.error != RecordError.None:
+    return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
+      recordReason: delivered.error)
+  if stage.failure != RepositoryError.None:
+    return RepositoryResult[NodeRepository](status: stage.failure)
+  admitImageRecords(stage.records, stage.bytes, generation, commitment, roots, limits)
 
 proc repositoryLimits*(selection: RepositorySelection): RepositoryLimits {.requires: selection.initialized.} =
   ## Copy inherited scalar policy without exposing physical records or an updateable source handle.
