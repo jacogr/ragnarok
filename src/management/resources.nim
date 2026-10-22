@@ -27,12 +27,6 @@ type
 proc volumeStatus(path: cstring, info: var VolumeInfo): cint {.importc: "statvfs",
     header: "<sys/statvfs.h>".}
   ## Query one explicitly selected local filesystem; no directory traversal occurs.
-proc descriptor(directory: pointer): cint {.importc: "dirfd", header: "<dirent.h>".}
-  ## Read-only metadata resolves against the currently opened directory identity.
-proc childStatus(fd: cint, path: cstring, status: var FileStatus,
-    flags: cint): cint {.importc: "fstatat", header: "<sys/stat.h>".}
-  ## Refuse symlink traversal while observing flat database files.
-let NoFollow {.importc: "AT_SYMLINK_NOFOLLOW", header: "<fcntl.h>".}: cint
 when defined(macosx):
   type TaskMemory {.importc: "struct mach_task_basic_info", header: "<mach/mach.h>",
       bycopy.} = object
@@ -195,8 +189,8 @@ proc tick*(sampler: var ResourceSampler) =
           name.add(c)
         if name notin [".", ".."]:
           var status = default(FileStatus)
-          if childStatus(descriptor(cast[pointer](sampler.directory)), name.toCString(), status,
-              NoFollow) != 0:
+          var child = sampler.databasePath & "/" & name
+          if readStatus(child.toCString(), status) != 0:
             sampler.failScan("unavailable")
           elif not S_ISREG(Mode(status.st_mode)):
             sampler.failScan("unsupported-layout") # Managed layout is flat; recursive partial totals are not invented.
