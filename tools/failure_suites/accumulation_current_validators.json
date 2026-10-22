@@ -1,0 +1,106 @@
+{
+  "source": "tests/native/accumulation_current_validators_results.nim",
+  "build_name": "accumulation-current-validators-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-validators-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current validator extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-validators-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current validator extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "current-validators-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Current validator extraction: source"
+    },
+    {
+      "identity": {
+        "reason": "observations"
+      },
+      "arguments": [
+        "observations"
+      ],
+      "name": "current-validators-observations",
+      "diagnostic": "outcome.status == None",
+      "description": "Current validator extraction: observations"
+    },
+    {
+      "identity": {
+        "reason": "projection"
+      },
+      "arguments": [
+        "projection"
+      ],
+      "name": "current-validators-projection",
+      "diagnostic": "outcome.status == None",
+      "description": "Current validator extraction: projection"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "current-validators-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Current validator extraction: state"
+    },
+    {
+      "identity": {
+        "reason": "roster-reason"
+      },
+      "arguments": [
+        "roster-reason"
+      ],
+      "name": "current-validators-roster-reason",
+      "diagnostic": "outcome.status == RosterFailure",
+      "description": "Current validator extraction: roster-reason"
+    },
+    {
+      "identity": {
+        "reason": "activity-reason"
+      },
+      "arguments": [
+        "activity-reason"
+      ],
+      "name": "current-validators-activity-reason",
+      "diagnostic": "outcome.status == ActivityFailure",
+      "description": "Current validator extraction: activity-reason"
+    },
+    {
+      "identity": {
+        "reason": "projection-reason"
+      },
+      "arguments": [
+        "projection-reason"
+      ],
+      "name": "current-validators-projection-reason",
+      "diagnostic": "outcome.status == ProjectionFailure",
+      "description": "Current validator extraction: projection-reason"
+    }
+  ]
+}
