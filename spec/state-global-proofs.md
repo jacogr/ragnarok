@@ -157,3 +157,8 @@ success/nested-failure assertion for default, missing, limited and duplicate out
 control performs actual successful extraction. `state_global_read_lifecycle` repeatedly invokes
 every typed global family, all sixteen chapter captures, exact projection and refusal paths across
 1000 ARC cycles after warmup, requiring identical live allocation before/after.
+
+The [global read guide](../docs/state-global-proofs.md) documents plan capture/union, managed generic
+admission, exact receive verification/projection, all chapter readers and explicit error handling.
+It includes a checked time/entropy receive example and links the existing worker lease guide.
+The completed interface tranche retains storage, RPC-schema, protocol-pin and full/light boundaries.
