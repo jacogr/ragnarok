@@ -15,8 +15,9 @@ import storage_abort_diagnostics as diagnostic
 TRACE = '''Process 17 stopped
 * thread #1, stop reason = signal SIGABRT
 (lldb) thread backtrace --count 64
-  * frame #0: 0x123 libc.so.6`abort + 1
-    frame #1: 0x456 symbols-native`raiseOutOfMem + 2
+  * frame #0: 0x123 libc.so.6`pthread_kill + 1
+    frame #1: 0x456 libc.so.6`abort + 2
+    frame #2: 0x789 symbols-native`raiseOutOfMem + 3
 (lldb) continue
 Process 17 exited with status = 6 (0x00000006)
 '''
@@ -27,10 +28,10 @@ class AbortDiagnosticTests(unittest.TestCase):
 
     def test_trace_requires_actual_stop_frames_and_signal(self):
         """Each missing native event invalidates an otherwise plausible debugger transcript."""
-        self.assertEqual(len(diagnostic.validate_trace(TRACE)), 2)
+        self.assertEqual(len(diagnostic.validate_trace(TRACE)), 3)
         for old, new in (
                 ('stop reason = signal SIGABRT', 'stop reason = signal SIGSEGV'),
-                ('`abort + 1', '`unrelated + 1'),
+                ('`abort + 2', '`unrelated + 2'),
                 ('    frame #1:', '    other #1:'),
                 ('exited with status = 6 (0x00000006)', 'exited with status = 0 (0x00000000)')):
             with self.subTest(event=old), self.assertRaises(ValueError):
@@ -39,7 +40,7 @@ class AbortDiagnosticTests(unittest.TestCase):
     def test_trace_does_not_infer_oom(self):
         """Another abort caller is still capturable; source inspection must classify the cause."""
         frames = diagnostic.validate_trace(TRACE.replace('raiseOutOfMem', 'assertionFailure'))
-        self.assertIn('assertionFailure', frames[1])
+        self.assertIn('assertionFailure', frames[2])
 
     def test_debugger_wraps_existing_child_only_launcher(self):
         """Only the inferior receives the finite ceiling, with explicit root and fixed workload."""

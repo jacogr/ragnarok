@@ -120,11 +120,11 @@ def run(folder=BUILD):
                 root = parse_prepared(raw, backend, COUNT)
                 before = fingerprint(Path(owned)/'store', backend)
                 row = dict(backend=backend, count=COUNT, owned=owned, root=root,
-                           prepared_raw=raw, selected_before=before, controls=[])
+                           prepared_raw=raw, selected_before=before, controls=[], traces=[])
                 report['rows'].append(row)
-                for phase in ('before', 'abort', 'after'):
+                for phase in ('before', 'ordinary-abort', 'symbolized-abort', 'after'):
                     # Strict unrestricted controls bracket the debugger attempt on its same namespace.
-                    if phase != 'abort':
+                    if phase in ('before', 'after'):
                         args = [str(binary), 'open', backend, str(COUNT), owned, root]
                         control = execute(args, None, owned, folder, backend+'-'+phase)
                         if control['outcome'] != 'completed':
@@ -132,18 +132,20 @@ def run(folder=BUILD):
                         control['native'] = parse_reopened(control['raw'], backend, COUNT, root)
                         row['controls'].append(control)
                     else:
-                        receipt = Path(owned)/'debugger-limit.json'
-                        argv = debugger_command(debugger, binary, receipt, backend, owned, root)
-                        traced = command(argv, backend+'-abort', folder, timeout=300)
+                        receipt = Path(owned)/(phase+'-limit.json')
+                        target = Path(folder/'ordinary/limits-native') if phase == 'ordinary-abort' else binary
+                        argv = debugger_command(debugger, target, receipt, backend, owned, root)
+                        traced = command(argv, backend+'-'+phase, folder, timeout=300)
                         report['checks'].append(traced)
-                        row['trace_raw'] = Path(traced['log']).read_text()
+                        trace = dict(kind=phase, binary=str(target), raw=Path(traced['log']).read_text())
+                        row['traces'].append(trace)
                         # LLDB's exit is distinct from the inferior's actual SIGABRT continuation.
                         if traced['exit_code'] != 0:
                             raise RuntimeError('Debugger failed: '+traced['log'])
-                        row['frames'] = validate_trace(row['trace_raw'])
-                        row['limit_raw'] = receipt.read_text()
-                        row['limit'] = validate_limit(json.loads(row['limit_raw']), CAP)
-                        if row['limit']['status'] != 'applied':
+                        trace['frames'] = validate_trace(trace['raw'])
+                        trace['limit_raw'] = receipt.read_text()
+                        trace['limit'] = validate_limit(json.loads(trace['limit_raw']), CAP)
+                        if trace['limit']['status'] != 'applied':
                             raise RuntimeError('Debugger descendant did not apply the requested cap')
                     after = fingerprint(Path(owned)/'store', backend)
                     if before != after:
@@ -162,7 +164,9 @@ def run(folder=BUILD):
                  'Call chains require source inspection; SIGABRT alone is not an OOM diagnosis.', '']
         for row in report['rows']:
             # Raw logs remain authoritative; bounded frames make the allocating caller reviewable.
-            lines += ['## '+row['backend'], '', '```text', *row['frames'], '```', '']
+            for trace in row['traces']:
+                lines += ['## '+row['backend']+' '+trace['kind'], '',
+                          '```text', *trace['frames'], '```', '']
         atomic_text(folder/'summary.md', '\n'.join(lines)+'\n')
         print('PASS Linux abort traces and preserved-byte controls: '+str(folder/'results.json'))
         return report

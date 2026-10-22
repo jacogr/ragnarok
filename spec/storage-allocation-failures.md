@@ -129,7 +129,9 @@ The maintainer requested Linux diagnosis before merging the current stack. The a
 memory-ceiling panel. Every Linux cap probe must establish enforcement. It then builds the
 same fresh-reopen source with C debug information (`-g`) as a separate comparison binary.
 LLDB remains uncapped and follows the existing disposable limit launcher's exec into each
-131,072-entry native consumer under128 MiB. The launcher must read back the applied soft
+131,072-entry native consumer under128 MiB, capturing both the ordinary binary and the
+symbolized comparison. Ordinary executable symbols establish the actual optimized call chain;
+comparison DWARF supplies additional source context. The launcher must read back the applied soft
 limit with the original hard bound. An actual SIGABRT stop, bounded native backtrace containing `abort`
 and fatal signal continuation are all required; debugger exit zero is insufficient.
 
