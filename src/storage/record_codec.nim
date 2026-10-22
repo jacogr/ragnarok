@@ -410,3 +410,27 @@ proc visitTrieExport*[T](input: openArray[byte], limits: RecordLimits,
   RecordResult[RecordBatchInfo](status: RecordError.None, completed: RecordBatchInfo(
     base: shape.batch.base, root: shape.batch.root, entries: shape.batch.entries,
     nodes: shape.batch.nodes, records: uint64(shape.count), valueBytes: shape.valueBytes))
+
+proc inspectOrderedRecordCollection*(input: openArray[byte], limits: RecordLimits): RecordResult[
+    RecordCollectionInfo] =
+  ## Inspect all canonical extents/order and budgets without crypto, descriptors, payloads or graph authority.
+  ## The scalar summary can size private staging; actual delivery must independently validate the stable input.
+  let scanned = scanRecords(input, limits, true, true)
+  if scanned.error != RecordError.None:
+    return RecordResult[RecordCollectionInfo](status: scanned.error)
+  let shape = scanned.value
+  RecordResult[RecordCollectionInfo](status: RecordError.None,
+    completed: RecordCollectionInfo(records: uint64(shape.count), valueBytes: shape.valueBytes))
+
+proc inspectTrieExport*(input: openArray[byte], limits: RecordLimits): RecordResult[
+    RecordBatchInfo] =
+  ## Inspect target metadata and exact extents/duplicates using only bounded address scratch, without crypto.
+  ## This summary conveys no integrity or graph authority and never permits a delivery/admission bypass.
+  let scanned = scanRecords(input, limits, false, false)
+  if scanned.error != RecordError.None: return RecordResult[RecordBatchInfo](status: scanned.error)
+  let shape = scanned.value
+  let unique = uniqueInputRecords(input, shape)
+  if unique != RecordError.None: return RecordResult[RecordBatchInfo](status: unique)
+  RecordResult[RecordBatchInfo](status: RecordError.None, completed: RecordBatchInfo(
+    base: shape.batch.base, root: shape.batch.root, entries: shape.batch.entries,
+    nodes: shape.batch.nodes, records: uint64(shape.count), valueBytes: shape.valueBytes))
