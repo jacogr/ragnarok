@@ -15,8 +15,8 @@ import storage_abort_diagnostics as diagnostic
 TRACE = '''Process 17 stopped
 * thread #1, stop reason = signal SIGABRT
 (lldb) thread backtrace --count 64
-  * frame #0: 0x123 libc.so.6`pthread_kill + 1
-    frame #1: 0x456 libc.so.6`abort + 2
+  * frame #0: 0x123 libc.so.6`kill + 1
+    frame #1: 0x456 symbols-native`cAbort + 2
     frame #2: 0x789 symbols-native`raiseOutOfMem + 3
 (lldb) continue
 Process 17 exited with status = 6 (0x00000006)
@@ -31,8 +31,8 @@ class AbortDiagnosticTests(unittest.TestCase):
         self.assertEqual(len(diagnostic.validate_trace(TRACE)), 3)
         for old, new in (
                 ('stop reason = signal SIGABRT', 'stop reason = signal SIGSEGV'),
-                ('`abort + 2', '`unrelated + 2'),
-                ('    frame #1:', '    other #1:'),
+                ('symbols-native`', 'python3`'),
+                ('frame #', 'other #'),
                 ('exited with status = 6 (0x00000006)', 'exited with status = 0 (0x00000000)')):
             with self.subTest(event=old), self.assertRaises(ValueError):
                 diagnostic.validate_trace(TRACE.replace(old, new))
@@ -53,8 +53,9 @@ class AbortDiagnosticTests(unittest.TestCase):
         self.assertIn('settings set target.disable-aslr false', argv)
         self.assertIn('settings set target.process.stop-on-exec false', argv)
         self.assertIn('process handle SIGABRT --stop true --notify true --pass true', argv)
-        self.assertIn('thread backtrace --count 64', argv)
-        self.assertEqual(argv[separator-2:separator], ['-o', 'continue'])
+        trace_index = argv.index('thread backtrace --count 64')
+        self.assertEqual(argv[trace_index-1], '-k')
+        self.assertEqual(argv[separator-2:separator], ['-k', 'continue'])
 
     def test_unsupported_host_retires_old_success(self):
         """Darwin must fail explicitly before any setup or debugger work and retain a failure receipt."""

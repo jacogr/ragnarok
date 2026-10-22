@@ -132,7 +132,7 @@ LLDB remains uncapped and follows the existing disposable limit launcher's exec 
 131,072-entry native consumer under128 MiB, capturing both the ordinary binary and the
 symbolized comparison. Ordinary executable symbols establish the actual optimized call chain;
 comparison DWARF supplies additional source context. The launcher must read back the applied soft
-limit with the original hard bound. An actual SIGABRT stop, bounded native backtrace containing `abort`
+limit with the original hard bound. An actual SIGABRT stop, bounded native backtrace containing the measured executable
 and fatal signal continuation are all required; debugger exit zero is insufficient.
 
 Separate strict unrestricted symbolized consumers bracket each backend's abort attempt,
@@ -149,3 +149,12 @@ installs LLDB only for the diagnostic target. Raw logs, binary identities, compa
 and failed/partial JSON remain in `build/tests/storage-abort-diagnostics/` and CI artifacts.
 Darwin and missing debugger support fail explicitly, rather than becoming skipped successes.
 Actual exact-source Linux results and allocating callers will be recorded after that run.
+
+
+The first Linux diagnostic attempts established the reader regressions and ordinary panel,
+but correctly failed trace admission. Inspection of pinned `std/system/exits.nim` showed that
+Linux `cAbort` flushes and sends itself SIGABRT with `kill(getpid(), SIGABRT)`; Darwin instead
+calls libc `abort`. A libc breakpoint cannot identify Linux allocator termination. LLDB batch
+mode also skips normal post-run commands on a fatal signal: the runner must use explicit
+`--one-line-on-crash` (`-k`) commands for backtrace capture and fatal continuation. A captured
+signal-stop frame alone remains insufficient; native frames and actual exit6 are required.
