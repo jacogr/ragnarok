@@ -1,0 +1,95 @@
+{
+  "source": "tests/native/accumulation_absent_results.nim",
+  "build_name": "accumulation-absent-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "absent-account-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Absent account default extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "absent-account-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Absent account refused extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "absent-account-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Absent account info extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "absent-account-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Absent account state extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "inputs"
+      },
+      "arguments": [
+        "inputs"
+      ],
+      "name": "absent-account-inputs",
+      "diagnostic": "outcome.status == None",
+      "description": "Absent account inputs extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "index"
+      },
+      "arguments": [
+        "index"
+      ],
+      "name": "absent-account-index",
+      "diagnostic": "outcome.status == None",
+      "description": "Absent account index extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "round"
+      },
+      "arguments": [
+        "round"
+      ],
+      "name": "absent-account-round",
+      "diagnostic": "outcome.status == None",
+      "description": "Absent account round extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "projection"
+      },
+      "arguments": [
+        "projection"
+      ],
+      "name": "absent-account-projection",
+      "diagnostic": "outcome.status == None",
+      "description": "Absent account projection extraction guard"
+    }
+  ]
+}
