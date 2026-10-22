@@ -1,0 +1,139 @@
+{
+  "source": "tests/native/accumulation_current_activity_results.nim",
+  "build_name": "accumulation-current-activity-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-activity-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current activity extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-activity-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current activity extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "current-activity-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Current activity extraction: source"
+    },
+    {
+      "identity": {
+        "reason": "preimages"
+      },
+      "arguments": [
+        "preimages"
+      ],
+      "name": "current-activity-preimages",
+      "diagnostic": "outcome.status == None",
+      "description": "Current activity extraction: preimages"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "current-activity-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Current activity extraction: info"
+    },
+    {
+      "identity": {
+        "reason": "snapshot"
+      },
+      "arguments": [
+        "snapshot"
+      ],
+      "name": "current-activity-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Current activity extraction: snapshot"
+    },
+    {
+      "identity": {
+        "reason": "entry"
+      },
+      "arguments": [
+        "entry"
+      ],
+      "name": "current-activity-entry",
+      "diagnostic": "outcome.status == None",
+      "description": "Current activity extraction: entry"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "current-activity-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Current activity extraction: state"
+    },
+    {
+      "identity": {
+        "reason": "preimage-reason"
+      },
+      "arguments": [
+        "preimage-reason"
+      ],
+      "name": "current-activity-preimage-reason",
+      "diagnostic": "outcome.status == PreimageFailure",
+      "description": "Current activity extraction: preimage-reason"
+    },
+    {
+      "identity": {
+        "reason": "core-reason"
+      },
+      "arguments": [
+        "core-reason"
+      ],
+      "name": "current-activity-core-reason",
+      "diagnostic": "outcome.status == CoreFailure",
+      "description": "Current activity extraction: core-reason"
+    },
+    {
+      "identity": {
+        "reason": "codec-reason"
+      },
+      "arguments": [
+        "codec-reason"
+      ],
+      "name": "current-activity-codec-reason",
+      "diagnostic": "outcome.status == CodecFailure",
+      "description": "Current activity extraction: codec-reason"
+    },
+    {
+      "identity": {
+        "reason": "state-reason"
+      },
+      "arguments": [
+        "state-reason"
+      ],
+      "name": "current-activity-state-reason",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Current activity extraction: state-reason"
+    }
+  ]
+}

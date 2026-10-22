@@ -51,12 +51,12 @@ proc queuePolicy(): AccumulationReadyConfig =
   AccumulationReadyConfig(items: ElementLimit(32), dependencies: ElementLimit(256),
     queues: executionQueueConfig().queues)
 
-proc activityFixture*(base: OwnedReport, available = false, guarantees = 0, blobs = false,
+proc activityOptions*(available = false, guarantees = 0, blobs = false,
     requested = true, missingLast = false, disordered = false, slot = 2'u32,
     hugeRefinement = false, executed = false, provided = false, parentPools: seq[AuthorizerRow] = @[],
     authorizationQueue: seq[byte] = @[], omitAuthorizationQueue = false,
     withDispute = false, withTicket = false, shiftPending = false,
-    storeWrites = 1000'u64): ActivityFixture =
+    storeWrites = 1000'u64): ExecutionFixtureConfig =
   ## Actual parent commitments, signatures, availability, skipped executions and C(3/14/15/16)/timestamps precede activity.
   var entries = @[activityParentEntry()]
   var body: seq[byte] = @[]
@@ -99,7 +99,21 @@ proc activityFixture*(base: OwnedReport, available = false, guarantees = 0, blob
   executionOptions0.signed.withTicket = withTicket
   executionOptions0.signed.shiftPending = shiftPending
   executionOptions0.signed.storeWrites = storeWrites
-  let fixture = executionFixture(base, executionOptions0)
+  executionOptions0
+
+proc activityFixture*(base: OwnedReport, available = false, guarantees = 0, blobs = false,
+    requested = true, missingLast = false, disordered = false, slot = 2'u32,
+    hugeRefinement = false, executed = false, provided = false, parentPools: seq[AuthorizerRow] = @[],
+    authorizationQueue: seq[byte] = @[], omitAuthorizationQueue = false,
+    withDispute = false, withTicket = false, shiftPending = false,
+    storeWrites = 1000'u64): ActivityFixture =
+  ## Reuse identical authored signed inputs while preserving the established legacy completion witnesses.
+  let fixture = executionFixture(base, activityOptions(available = available,
+      guarantees = guarantees, blobs = blobs, requested = requested, missingLast = missingLast,
+      disordered = disordered, slot = slot, hugeRefinement = hugeRefinement, executed = executed,
+      provided = provided, parentPools = parentPools, authorizationQueue = authorizationQueue,
+      omitAuthorizationQueue = omitAuthorizationQueue, withDispute = withDispute,
+      withTicket = withTicket, shiftPending = shiftPending, storeWrites = storeWrites))
   let initial = fixture.round
   var skips: seq[SkippedAccumulation] = @[]
   var runs: seq[AccumulationDispatchResult] = @[]
