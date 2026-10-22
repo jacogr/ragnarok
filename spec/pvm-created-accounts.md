@@ -1,5 +1,13 @@
 # Terminal-selected created-account publication
 
+## Current funding boundary
+
+Current Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` supports
+all four creation funding modes. Bounded creation publication accepts self payer
+metadata changes in either pool and complete child metadata in either pool. Foreign
+payer mutations remain Unsupported even with creation tracing enabled; child facts
+cannot certify a separate foreign debit. The original scope below is historical.
+
 ## Scope and authority
 
 Extend PR #198 using GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,

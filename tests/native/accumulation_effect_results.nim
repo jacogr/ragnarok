@@ -57,6 +57,9 @@ of "assign": discard recordAccumulationAssign(pair, AuthorizationCoreIndex(0), [
 of "staging": discard context.effectStaging.value # Default contexts expose no current roster.
 of "designate": discard recordAccumulationDesignate(pair, [], default(
     ValidatorStateConfig)).value # Failed mutation has no successor.
+of "new-funded": discard recordAccumulationNew(pair, default(AccumulationNewService), default(
+    Parameters), ServiceProbeLimit(1), ServiceIndex(77), AccumulationFundingMode(
+        3)).value # Failed funding carries no successor.
 of "new": discard recordAccumulationNew(pair, default(AccumulationNewService), default(Parameters),
     ServiceProbeLimit(0)).value # Failed creation has no successor or service ID.
 of "forget-target": discard recordAccumulationForget(pair, default(ServicePreimageHash),

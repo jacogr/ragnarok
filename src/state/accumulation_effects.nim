@@ -61,6 +61,7 @@ type
   TransferSetData = ref object
     values: seq[DeferredTransfer]
   AccumulationDesiredService* = distinct uint64 ## Full-width proposal: only registrar values below 65536 select a reserved uint32 ID.
+  AccumulationFundingMode* = distinct uint64 ## Full register mode: bit0 selects protected source, bit1 protected destination; values above3 are HUH.
   AccumulationNewService* = object ## Copied creation proposal; account identity, parent, slot and starting balance are derived by the state operation.
     codeHash*: CodeHash     ## Raw offered hash; creation neither requires nor publishes its preimage.
     length*: RequestLength  ## The encoded E4 length must exclude the two reserved namespace values.
@@ -1095,9 +1096,9 @@ proc recordAccumulationDesignate*(effects: AccumulationEffects, validators: open
       exceptional: data.exceptional)))
 
 proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNewService,
-    parameters: Parameters, probes: ServiceProbeLimit): AccumulationEffectResult[
-        AccumulationServiceChange] =
-  ## Create one service with its empty code request, creator debit and current allocation cursor atomically.
+    parameters: Parameters, probes: ServiceProbeLimit, funder: ServiceIndex,
+        mode: AccumulationFundingMode): AccumulationEffectResult[AccumulationServiceChange] =
+  ## Create one service with its empty code request, selected funding debit and current allocation cursor atomically.
   ## Uses current roles/accounts for authorization/funding, and pinned invocation-start membership for check(i).
   ## Protocol HUH/CASH/FULL refusals are distinct from local malformed state, probe/store limits and backend failure.
   # No partial account, request, cursor or effects owner escapes a refusal.
@@ -1114,17 +1115,28 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
   assert previous != nil # Private pairs retain complete current contexts.
   let self = previous.initial.contextInfo.value.service
   let roles = previous.privileges.privilegeInfo.value
+  let selectedFunder = currentAccountMetadata(previous.accounts, funder)
+  if selectedFunder.error != AccumulationEffectError.None:
+    if selectedFunder.error == AccumulationEffectError.UnknownService and uint32(funder) == uint32(self):
+      fail(AccumulationEffectError.MalformedState) # Never reconstruct a missing invoker.
+    fail(selectedFunder.error) # WHO precedes mode/authority/manager checks.
+  let selection = uint64(mode)
+  if selection > 3:
+    fail(AccumulationEffectError.NotRequested) # Preserve the entire register domain without masked aliases.
+  var payer = selectedFunder.value
+  if selection in [1'u64, 3'u64] or uint32(funder) != uint32(self):
+    let authority = effectiveSupervisor(previous.accounts, funder, payer)
+    if authority.error != AccumulationEffectError.None:
+      fail(authority.error) # Malformed provenance grants neither liquid nor protected authority.
+    if uint32(authority.value) != uint32(self):
+      fail(AccumulationEffectError.NotRequested) # Protected source funds belong only to the effective supervisor.
   if uint64(source.gratis) != 0 and uint32(self) != uint32(roles.manager):
-    fail(AccumulationEffectError.NotManager) # Gratuitous storage authority precedes all funding/collision checks.
-  let creatorKey = chapterServiceKey(StateChapter(255), self)
-  let found = previous.accounts.lookup(creatorKey)
-  if found.error != StateStoreError.None or found.value.byteLength != ServiceMetadataBytes:
-    fail(AccumulationEffectError.MalformedState) # The actual creator must retain canonical complete metadata.
-  let decoded = decodeServiceMetadata(found.value.bytes, ByteLimit(ServiceMetadataBytes))
-  if decoded.error != ServiceMetadataError.None:
-    fail(AccumulationEffectError.MalformedState) # Do not repair corrupt source metadata during creation.
-  var creator = decoded.value.metadata
-  let balance = uint64(creator.balance)
+    fail(AccumulationEffectError.NotManager) # Gratis remains the invoker's current manager privilege.
+  let creator = if uint32(funder) == uint32(self): selectedFunder else: currentAccountMetadata(
+      previous.accounts, self)
+  if creator.error != AccumulationEffectError.None:
+    fail(AccumulationEffectError.MalformedState) # Child incarnation must come from the real current invoker.
+  let balance = if selection in [1'u64, 3'u64]: uint64(payer.supervisorBalance) else: uint64(payer.balance)
   let gratis = uint64(source.gratis)
   let slot = previous.initial.contextInvocation.value.bootstrapInfo.value.slot
   var child = ServiceMetadata(codeHash: source.codeHash, depositOffset: source.gratis,
@@ -1132,8 +1144,8 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
     storageItems: AccountStorageItems(2), storageBytes: AccountStorageBytes(81'u64+uint64(uint32(
         source.length))),
     created: AccountSlot(uint32(slot)), lastAccumulation: AccountSlot(0),
-    supervisor: self, supervisorCreated: creator.created, supervisorBalance: AccountBalance(0),
-        parent: self) # E4 length+81 fits uint64.
+    supervisor: self, supervisorCreated: creator.value.created, supervisorBalance: AccountBalance(
+        0), parent: self) # E4 length+81 fits uint64.
   var low = 0'u64
   var upper = 0'u64
   if gratis > high(uint64)-balance:
@@ -1144,9 +1156,15 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
   if not consumeAccountDeposit(child, parameters, low, upper):
     fail(AccumulationEffectError.InsufficientCash) # Child's mathematical threshold exceeds all available creator balance.
   let minimum = (if upper != 0 or low >= balance: 0'u64 else: balance-low)
-  child.balance = AccountBalance(minimum)
-  creator.balance = AccountBalance(balance-minimum) # Exact consumption proves minimum<=balance.
-  if not funded(creator, parameters):
+  if selection in [0'u64, 1'u64]:
+    child.balance = AccountBalance(minimum) # Destination liquid pool receives exactly the mathematical threshold.
+  else:
+    child.supervisorBalance = AccountBalance(minimum) # Protected destination starts with zero liquid funds.
+  if selection in [1'u64, 3'u64]:
+    payer.supervisorBalance = AccountBalance(balance-minimum) # Selected-pool consumption proves no underflow.
+  else:
+    payer.balance = AccountBalance(balance-minimum) # Never borrow liquidity from the other pool.
+  if not funded(payer, parameters):
     fail(AccumulationEffectError.InsufficientCash) # The debit must also preserve the creator's own threshold.
   var selected = previous.nextService
   var next = previous.nextService
@@ -1173,7 +1191,7 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
       history: RequestHistoryConfig(items: ElementLimit(0), maxBytes: ByteLimit(1))))
   if request.error != RequestError.None:
     fail(AccumulationEffectError.BackendFailure) # Fixed canonical request policy is sufficient; failed derivation never changes namespace.
-  let parentEntry = serviceMetadataEntry(self, creator, ByteLimit(ServiceMetadataBytes)).value
+  let parentEntry = serviceMetadataEntry(funder, payer, ByteLimit(ServiceMetadataBytes)).value
   let childEntry = serviceMetadataEntry(selected, child, ByteLimit(ServiceMetadataBytes)).value
   let captured = prepareCreatedAccount(previous, selected, request.value.key)
   if captured.error != AccumulationEffectError.None:
@@ -1193,8 +1211,8 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
   else:
     fail(AccumulationEffectError.InvalidState) # No partial candidate escapes other invariant failures.
   let candidate = successorData(previous, changed.value)
-  if previous.accountScope != AccumulationAccountScope.Unsupported and uint64(
-      previous.createdLimit) != 0:
+  if uint32(funder) == uint32(self) and previous.accountScope !=
+      AccumulationAccountScope.Unsupported and uint64(previous.createdLimit) != 0:
     candidate.accountScope = if previous.accountScope == AccumulationAccountScope.DeletedAccounts:
       AccumulationAccountScope.DeletedAccounts else: AccumulationAccountScope.CreatedAccounts # New preserves earlier ejection facts.
     candidate.created = captured.value
@@ -1203,6 +1221,19 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
   AccumulationEffectResult[AccumulationServiceChange](status: AccumulationEffectError.None,
     completed: AccumulationServiceChange(service: selected, effects: AccumulationEffects(data:
     PairData(source: data.source, regular: current, exceptional: data.exceptional))))
+
+proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNewService,
+    parameters: Parameters, probes: ServiceProbeLimit): AccumulationEffectResult[
+        AccumulationServiceChange] =
+  ## Preserve self/liquid creation callers through the complete checked funding operation.
+  let data = effects.data
+  if data == nil:
+    return AccumulationEffectResult[AccumulationServiceChange](
+        status: AccumulationEffectError.Uninitialized) # Defaults own no funding source.
+  let current = data.regular.data
+  assert current != nil # Private pairs retain both initialized dimensions.
+  recordAccumulationNew(effects, source, parameters, probes,
+      current.initial.contextInfo.value.service, AccumulationFundingMode(0))
 
 proc recordAccumulationUpgrade*(effects: AccumulationEffects, codeHash: CodeHash,
     accumulationGas, transferGas: Gas, target: ServiceIndex): AccumulationEffectResult[

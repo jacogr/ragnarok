@@ -636,8 +636,6 @@ proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory)
     return charged # No input capture or state work before affordability.
   let current = context.effects.effectContext(AccumulationDimension.Regular).value
   let self = uint64(uint32(current.effectInfo.value.service))
-  if uint64(cpu.registers[7]) != high(uint64) and uint64(cpu.registers[7]) != self:
-    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Foreign funding needs supervised account mutation tracking.
   let captured = readBytes(memory, MemoryAddress(uint64(cpu.registers[10])), MemoryLength(60),
       context.copyLimit)
   case captured.error
@@ -655,12 +653,12 @@ proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory)
     response.registers[7] = RegisterValue(high(uint64)-8)
     return hostSuccess[AccumulationDispatchError](
         response) # Current preimagelen excludes both reserved namespace prefixes.
-  if uint64(cpu.registers[9]) > 3:
-    response.registers[7] = RegisterValue(high(uint64)-8)
+  let raw = uint64(cpu.registers[7])
+  let funder = if raw == high(uint64): self else: raw
+  if funder > uint64(high(uint32)):
+    response.registers[7] = RegisterValue(high(uint64)-3)
     return hostSuccess[AccumulationDispatchError](
-        response) # Undefined modes are HUH after complete memory/length validation.
-  if uint64(cpu.registers[9]) != 0:
-    return hostFailure(AccumulationDispatchError.UnsupportedHostCall) # Valid alternative funding modes need their balance/provenance path.
+        response) # Complete request and valid length precede full-width WHO.
   var hash = default(array[32, byte])
   for i in 0..<32: hash[i] = captured.value[i] # Complete fixed capture proves all hash coordinates.
   let proposal = AccumulationNewService(codeHash: CodeHash(hash),
@@ -669,11 +667,16 @@ proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory)
         privilegeNumber(captured.value, 52, 8)),
     desired: AccumulationDesiredService(uint64(cpu.registers[8])))
   let changed = recordAccumulationNew(context.effects, proposal, context.parameters,
-      context.serviceProbes)
+      context.serviceProbes, ServiceIndex(uint32(funder)), AccumulationFundingMode(uint64(
+          cpu.registers[9])))
   case changed.error
   of AccumulationEffectError.None:
     context.effects = changed.value.effects # Account batch and next-ID cursor advance as one version.
     response.registers[7] = RegisterValue(uint32(changed.value.service)) # Actual reserved or automatic ID.
+  of AccumulationEffectError.UnknownService:
+    response.registers[7] = RegisterValue(high(uint64)-3) # WHO precedes undefined-mode and authority HUH.
+  of AccumulationEffectError.NotRequested:
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH covers invalid modes and missing effective authority.
   of AccumulationEffectError.NotManager:
     response.registers[7] = RegisterValue(high(uint64)-8) # HUH precedes funding and reserved collisions.
   of AccumulationEffectError.InsufficientCash:

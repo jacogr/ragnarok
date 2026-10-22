@@ -7,9 +7,31 @@ The [coordinated upgrade](graypaper-unreleased-upgrade.md) targets
 r7 selects the funding account (all ones means self), r8 selects the desired ID,
 r9 selects the funding mode and r10 points to the complete60-byte request
 (hash32, length E4, minimum accumulation gas E8, minimum transfer gas E8, gratis E8).
-The implemented self/liquid mode0 creates supervisor metadata bound to the
-creator's actual incarnation. Modes1–3 and foreign funding remain typed gates;
-undefined modes return HUH after input validation. Underfunding drains gas to zero.
+All four funding modes and authorized foreign sources are implemented in retained
+invocation state. Modes0/1 fund the child's liquid balance; modes2/3 its protected
+balance. Modes0/2 debit source liquid funds and permit self or effective supervisor;
+modes1/3 debit protected funds and require the effective supervisor even for self.
+The child's parent/supervisor remain the invoker, bound to its current incarnation.
+
+Scope/completion: use nominal full-width funding mode and source inputs, preserving
+the self/liquid API wrapper. Memory and length precede source WHO; undefined mode,
+authority and manager HUH precede CASH, then reserved-ID FULL. Debit only the selected
+pool while preserving source aggregate funding, and commit payer/child/request/cursor
+atomically. Check all modes, current/stale authority, underflow/threshold edges,
+child incarnation and allocation ownership, checkpoints, guarded APIs and ARC.
+Self creation retains bounded creation publication proof; foreign funding remains
+Unsupported until parallel modified-account conflict selection is implemented.
+Underfunding drains gas to zero.
+
+Local verification (2026-10-22): the creation and complete-child-publication suites
+pass, alongside eight affected native consumers (upgrade, transfer publication,
+account publication, self writes, effects, dispatch, batch and integration).
+Each retains fresh 1,000-cycle ARC release evidence. All264 production modules,
+44 strict effect-result runtime guards, focused failure/verification harnesses and
+inventory checks pass. Compiler rejection checks cover the distinct source and
+funding-mode domains. Evidence: `build/creation-funding-*` and
+`build/tests/creation-funding-guards/results.json`. These are checked local macOS
+results, separate from Linux CI, full JAM parity and PolkaVM host parity.
 The release-era details and verification below describe the historical layout.
 
 ## Scope and authority
