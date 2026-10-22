@@ -4,7 +4,7 @@
 ## Typed service reads consume authenticated partial evidence without claiming a complete account map.
 ## Missing witnesses, proven absence and malformed present bytes remain separate outcomes.
 import ./[proof_view, trie_proof]
-import ../codec/[bounded, state_accounts, state_layout]
+import ../codec/[bounded, state_accounts, state_layout, state_service_values]
 
 type
   ServiceProofError* {.pure.} = enum ## Failed/default reads expose only a reason, never a fabricated value.
@@ -47,3 +47,28 @@ proc readProofAccount*(view: ProofView, service: ServiceIndex): ServiceProofResu
     return ServiceProofResult[ServiceMetadata](status: ServiceProofError.InvalidValue)
   ServiceProofResult[ServiceMetadata](status: ServiceProofError.None,
       completed: decoded.value.metadata)
+
+proc presentRead(view: ProofView, key: StateKey, limit: ByteLimit): ServiceProofResult[
+    VerifiedStateLookup] =
+  ## Inspect immutable authenticated extents before any caller-controlled value copy.
+  let found = view.lookup(key)
+  if found.error != ProofViewError.None:
+    return ServiceProofResult[VerifiedStateLookup](status: viewReason(found.error))
+  if not found.value.present:
+    return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.AbsentValue)
+  if uint64(found.value.byteLength) > uint64(limit):
+    return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.LimitExceeded)
+  ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.None, completed: found.value)
+
+proc readProofStorage*(view: ProofView, service: ServiceIndex, key: openArray[byte],
+    limits: ServiceEntryLimits): ServiceProofResult[VerifiedStateLookup] =
+  ## Require the same view's canonical account before resolving its bounded raw storage namespace.
+  if uint64(key.len) > uint64(limits.keyBytes):
+    return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.LimitExceeded)
+  let account = view.readProofAccount(service)
+  if account.error != ServiceProofError.None:
+    return ServiceProofResult[VerifiedStateLookup](status: account.error)
+  let derived = serviceStorageKey(service, key, limits.keyBytes)
+  if derived.error != ServiceValueError.None:
+    return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.BackendFailure)
+  presentRead(view, derived.value, limits.valueBytes)

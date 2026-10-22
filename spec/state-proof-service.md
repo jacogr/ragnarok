@@ -28,3 +28,12 @@ unknown and wrong-service witnesses; default view; proven absence; empty, trunca
 suffixed and unsupported-version values. Selected native suite:
 `state_proof_service_account`. Full JAM serialization and STF parity remain open;
 M1 framing is implemented, including the adopted bounded request-length domain.
+
+## Storage reader
+
+`readProofStorage` requires the exact account and storage facts in one view.
+Orphan storage cannot establish an account; unknown account or storage evidence
+remains `MissingWitness`. Raw keys use the shared reserved storage namespace, with
+key limits before hashing and value limits before exposing the immutable lookup.
+Present empty keys and values are supported. Suite `state_proof_service_storage`
+covers those boundaries, account absence and one-short response policy.
