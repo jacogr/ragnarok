@@ -126,3 +126,31 @@ proc memoryExtractionLifetime*(count: int): LifetimeObservation =
     assert result.closed > result.baseline and result.closed < result.held
   result.released = occupiedStorageBytes()
   assert result.released == result.baseline
+
+proc ownedLifetimeRecords(owner: NodeRepository, count: int): seq[TrieRecord] =
+  ## Prepared lookup addresses retire in this scope; only independent public record copies escape.
+  let fixture = prepareGrowth(count, 64)
+  result = newSeq[TrieRecord](4096)
+  for index in 0..<result.len:
+    # The odd stride spreads reads over the complete fixed map without changing the chosen payloads.
+    result[index] = owner.snapshot.value.lookupNode(fixture.reads[(index*2053) mod count]).value
+
+proc memoryLookupsLifetime*(count: int): LifetimeObservation =
+  ## Owned lookup payloads outlive source close and do not keep the physical graph owner alive.
+  result = emptyLifetime()
+  block:
+    var owner = isolatedMemoryOwner(count)
+    result.owner = occupiedStorageBytes()
+    result.checks = checkLifetimeOwner(owner, count)
+    let records = ownedLifetimeRecords(owner, count)
+    result.held = occupiedStorageBytes()
+    assert owner.close == RepositoryError.None
+    result.closed = occupiedStorageBytes()
+    for record in records:
+      # Independent full-key and full-revision payload checks occur after actual owner retirement.
+      checkGrowthRecord(record, count, 64)
+    result.checks = result.checks+4096
+    assert result.held > result.owner
+    assert result.closed > result.baseline and result.closed < result.held
+  result.released = occupiedStorageBytes()
+  assert result.released == result.baseline
