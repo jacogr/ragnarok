@@ -12,11 +12,14 @@
 
 import std/[strutils, parsejson, streams, base64]
 import ./wire
+import ./proof_requests
 import ../lib/json_writer
 import ../version
 import ../chain/[parameters, genesis, services, statistics, beefy, reports, provider]
 import ../codec/[state_trie, state_layout, header]
 import ../state/store
+
+const MaxRpcProofBytes* = 32768 ## Independent raw RPV1 response ceiling before Base64 expansion.
 
 const MaxSubscriptions* = 8 # Per WebSocket connection; IDs are never reused within a session.
 const MaxSubscriptionUpdates* = 16 # Bounded FIFO of serialized updates, not retained state snapshots.
@@ -59,6 +62,7 @@ type
     identity: SubscriptionId
     text: string
   RpcSession* = object ## Private bounded subscription table and FIFO; no callbacks, pointers or state-map owners escape.
+    proofRequests: RpcProofState # Only detached selectors survive dispatcher turns.
     lastId: uint32
     active: array[MaxSubscriptions, Subscription]
     pending: array[MaxSubscriptionUpdates, SubscriptionUpdate]
@@ -68,6 +72,7 @@ type
     headerHash: BlockHash
     stateRoot: StateRoot
   ClientInfo* = object ## Caller supplies only observed runtime information, copied synchronously during dispatch.
+    proofs*: bool     # Only a canonical Services binding may advertise managed proof production.
     uptimeMs*: int64
     peers*: uint32
     role*: string
@@ -384,6 +389,83 @@ proc unavailable(id: string, code: int, message, hash: string): string =
     ("error", jsonObject([("code", json(code)), ("message", json(message)),
       ("data", json(hash))]))])
 
+## Append an already sized notification; callers reserve both a FIFO slot and its serialized bytes.
+proc enqueueUpdate(session: var RpcSession, identity: SubscriptionId, text: string) =
+  session.pending[session.pendingCount] = SubscriptionUpdate(identity: identity, text: text)
+  inc session.pendingCount
+  session.pendingBytes += text.len
+
+proc takeStateProofRequest*(session: var RpcSession): RpcProofRequest =
+  ## Claim one detached selector after the dispatcher's canonical request contexts have retired.
+  session.proofRequests.take()
+
+proc completeStateProof*(session: var RpcSession, request: RpcProofRequest, root: StateRoot,
+    wire: openArray[byte], failure = ""): bool =
+  ## Queue one terminal notification atomically; stale/cancelled completions are harmless no-ops.
+  if not session.proofRequests.matches(request): return true
+  var problem = failure
+  if wire.len > MaxRpcProofBytes:
+    problem = "State proof exceeds RPC output budget" # Never encode or expose an oversized prefix.
+  var fields = JsonObject()
+  fields.add("request", json(request.id))
+  if problem.len > 0:
+    fields.add("error", json(problem)) # Host failure messages are fixed diagnostics, never remote content.
+  else:
+    fields.add("result", jsonObject([
+      ("header_hash", json(base64.encode(array[32, byte](request.blockHash)))),
+      ("state_root", json(base64.encode(array[32, byte](root)))),
+      ("format", json("RPV1")), ("proof", json(base64.encode(wire)))]))
+  let message = $jsonObject([("jsonrpc", json("2.0")), ("method", json("ragnarok_stateProof")),
+    ("params", json(fields))])
+  if session.pendingCount == MaxSubscriptionUpdates or
+      message.len > MaxSubscriptionQueueBytes - session.pendingBytes:
+    return false # Listener disconnects only the slow originating consumer.
+  session.enqueueUpdate(SubscriptionId(0), message) # Zero is reserved outside the chain-subscription ID space.
+  discard session.proofRequests.finish(request)
+  true
+
+proc proofControl(values: seq[Value], parameters: int, methodName, id: string,
+    session: var RpcSession): string =
+  ## Validate complete selectors and cancellation before changing the tentative session.
+  if parameters < 0 or values[parameters].kind != arrayValue:
+    return error(id, -32602, "Expected positional proof params")
+  let argument = parameters + 1
+  if methodName == "ragnarok_cancelStateProof":
+    var number = 0'u32
+    if values[parameters].next != argument + 1 or not serviceNumber(values[argument], number):
+      return error(id, -32602, "Expected proof request ID")
+    return success(id, json(session.proofRequests.cancel(number)))
+  if values[parameters].next <= argument + 1 or values[argument].kind != stringValue or
+      values[argument + 1].kind != arrayValue or
+      values[parameters].next != values[argument + 1].next:
+    return error(id, -32602, "Expected block hash and state-key array")
+  var hashBytes: seq[byte] = @[]
+  if not decodeBlob(values[argument].text, 32, hashBytes) or hashBytes.len != 32:
+    return error(id, -32602, "Expected padded Base64 block hash")
+  var hash = default(array[32, byte])
+  for index in 0..<32: hash[index] = hashBytes[index] # Width was proved before copying.
+  var keys = default(array[MaxRpcProofKeys, StateKey])
+  var count = 0
+  var index = argument + 2
+  while index < values[argument + 1].next:
+    if count == MaxRpcProofKeys or values[index].kind != stringValue:
+      return error(id, -32602, "Expected 1-16 unique Base64 state keys")
+    var decoded: seq[byte] = @[]
+    if not decodeBlob(values[index].text, 31, decoded) or decoded.len != 31:
+      return error(id, -32602, "Expected padded Base64 31-byte state key")
+    var key = default(array[31, byte])
+    for octet in 0..<31: key[octet] = decoded[octet] # Fixed exact decoded extent is independent of user counts.
+    keys[count] = StateKey(key)
+    inc count
+    index = values[index].next
+  if count == 0: return error(id, -32602, "Expected 1-16 unique Base64 state keys")
+  let admitted = session.proofRequests.enqueue(BlockHash(hash), keys.toOpenArray(0, count - 1))
+  if admitted.error == RpcProofError.InvalidSelectors:
+    return error(id, -32602, "Expected 1-16 unique Base64 state keys")
+  if admitted.error != RpcProofError.None:
+    return error(id, 0, "State proof request capacity unavailable")
+  success(id, json(admitted.value.id))
+
 ## Build a JIP-2 notification with either a complete result or a terminal human-readable error.
 proc updateText(identity: SubscriptionId, kind: SubscriptionKind, value, failure: string): string =
   let methodName = if kind == SubscriptionKind.BestBlock: "subscribeBestBlock"
@@ -452,12 +534,6 @@ proc requestUpdate(head: BlockSnapshot, service: ServiceIndex, hash: ServicePrei
   elif found.error != ServiceReadError.Missing:
     return "" # Namespace ambiguity and malformed histories cannot become absence.
   $descriptorValue(head, value)
-
-## Append an already sized notification; callers reserve both a FIFO slot and its serialized bytes.
-proc enqueueUpdate(session: var RpcSession, identity: SubscriptionId, text: string) =
-  session.pending[session.pendingCount] = SubscriptionUpdate(identity: identity, text: text)
-  inc session.pendingCount
-  session.pendingBytes += text.len
 
 proc queueChainUpdates*(session: var RpcSession, head: BlockSnapshotResult,
     finalized = false): bool =
@@ -687,6 +763,9 @@ proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): JsonValu
         "unsubscribeServiceValue", "subscribeServicePreimage", "unsubscribeServicePreimage",
         "subscribeServiceRequest", "unsubscribeServiceRequest"]:
       methods.add(json(name)) # Subscriptions require connection-local state.
+  if stateful and info.proofs:
+    methods.add(json("ragnarok_requestStateProof"))
+    methods.add(json("ragnarok_cancelStateProof"))
   let best = if info.chain.bestBlock.error == GenesisError.None:
     descriptor(info.chain.bestBlock.value) else: jsonNull()
   let finalized = if info.chain.finalizedBlock.error == GenesisError.None:
@@ -709,7 +788,9 @@ proc clientInfo(info: ClientInfo, stateful: bool, session: RpcSession): JsonValu
     ("chain", identity), ("chainState", chainStateInfo(info.chain)), ("bestBlock", best), (
         "finalizedBlock", finalized),
     ("rpc", jsonObject([("transport", json("websocket")), ("address", json("127.0.0.1")),
-      ("port", json(info.port)), ("methods", json(methods)), ("subscriptions", json(stateful)),
+      ("port", json(info.port)), ("stateProofs", json(stateful and info.proofs)),
+      ("maxProofKeys", json(MaxRpcProofKeys)), ("maxProofBytes", json(MaxRpcProofBytes)),
+      ("methods", json(methods)), ("subscriptions", json(stateful)),
       ("maxMessageBytes", json(MaxMessage)), ("maxBatchRequests", json(16)),
       ("maxReplyBytes", json(MaxReplyBytes)), ("maxBlobReplyBytes", json(MaxBlobReplyBytes)),
       ("maxSubscriptions", json(MaxSubscriptions)), ("maxPendingUpdates", json(
@@ -745,6 +826,13 @@ proc dispatchImpl(values: seq[Value], start: int, info: ClientInfo, allowance: i
     else: discard # JSON-RPC permits additional envelope members.
     i = token.next
   if invalid or not version or not methodFound: return error("null", -32600, "Invalid Request")
+  if methodName in ["ragnarok_requestStateProof", "ragnarok_cancelStateProof"]:
+    if not stateful or not info.proofs:
+      return if hasId: error(id, -32601, "Method not found") else: ""
+    if not hasId and methodName == "ragnarok_requestStateProof":
+      return "" # A notification cannot acquire an invisible asynchronous request ID.
+    let response = proofControl(values, parameters, methodName, id, session)
+    return if hasId: response else: "" # Cancellation notifications still discard logical intent.
   if stateful and methodName in ["subscribeBestBlock", "unsubscribeBestBlock",
       "subscribeFinalizedBlock", "unsubscribeFinalizedBlock",
       "subscribeStatistics", "unsubscribeStatistics", "subscribeServiceData",
