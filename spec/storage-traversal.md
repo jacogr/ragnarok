@@ -385,3 +385,10 @@ legacy and managed descriptor, immediately reuse its exact number with an indepe
 and return EINTR. The replacement remains live after close and repeated owner retirement,
 while strict reopen preserves complete bytes/maps. This models retirement before an error receipt;
 it makes no claim that every operating system retires descriptors on every close error.
+
+## Bootstrap barrier matrix
+
+Each actual legacy/managed initialization sync is tested independently after two interruptions and
+a permanent refusal. Failed initialization exposes no live owner and retains exact forensic bytes.
+Absent-only creation refuses an existing target; strict reopen can admit only the visible complete
+identity or CURRENT-selected epoch. A partial directory without CURRENT grants no state authority.
