@@ -54,3 +54,10 @@ uses the shared request namespace and four canonical history shapes. Exact EOF
 is required; malformed counts, suffixes and short slots are invalid committed
 values. The maximum admitted scalar length does not size any allocation.
 Suite `state_proof_service_request` covers all shapes and the current domain edges.
+
+## Solicitation query
+
+`proofPreimageRequested` reports true only for a canonical Requested history.
+Proven absent accounts/requests are false; missing witnesses and malformed state
+remain errors. An absent account short-circuits without demanding orphan history
+evidence. Suite `state_proof_service_requested` covers all modes and negative facts.
