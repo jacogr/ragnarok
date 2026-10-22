@@ -148,3 +148,31 @@ are not a full E2E-plan run or Linux native linking/runtime qualification.
 Inventory, pinned formatting of all 69 new/changed Nim inputs and diff checks passed. Local
 results apply to macOS ARM64; raw evidence and preserved input identities are under ignored
 `build/ci/nimony-pvm-sync-*`. The candidate remains held pending the next published nightly.
+
+
+## Qualification after the final state tranche
+
+Merge master `e7df0c60` normally (merge `f1ed6651`) and retain both held compiler pins. The
+tranche adds complete-state qualification corpora, frozen account review preparation, current-bound
+profiles/globals/checkpoints/reviews, retained supplied logical keys and bounded detached service
+reconstruction. Preserve the recorded consumer/producer handoff gates; this sync adds no producer
+delta API, adoption policy or full current-pin STF/parity claim.
+
+The held compiler rejected the raw-key copy's iterator through `data.rows[row].keys[item]` in
+`supplied_logical_inventory.nim`. Replace only that iterator with bounded indexed byte reads into
+the same newly allocated detached output. Keep all existing source/index/byte-limit validation,
+empty-key behavior, retained-owner lifetimes and bounds checks; use no unchecked borrow or new
+allocation. All other 220 upstream-changed files remain byte-identical to master.
+
+After the fix, all 360 production modules, 2,219 compiler guards and 214 focused state-oracle/
+Make/CI/native-profile/verification-harness Python tests passed. All 19 merged state native suites
+passed, including raw-key/output isolation, complete supplied reconstruction, independent complete
+serialization/audit/review corpora, current provenance and checkpoints, substitutions and refusal
+boundaries. All 63 declared runtime-refusal probes across ten new families passed their exact
+assertion diagnostics. The full checked ARC/Clang/LTO integration/offload peer build passed.
+
+Linux x86-64 semantic checks passed for current logical qualification and supplied-service
+reconstruction. These are not Linux linking/runtime results. Inventory, pinned formatting of all
+132 new/changed Nim inputs and diff checks passed. Local native evidence applies to macOS ARM64;
+raw logs and preservation identities are under ignored `build/ci/nimony-state-sync-*`. The candidate
+remains held pending the next published nightly.
