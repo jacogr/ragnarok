@@ -17,3 +17,12 @@ work now advances only the Services turn while its disk lease is active, before 
 handoff state or polling callbacks. Collection and an additional ordinary turn precede acknowledgment.
 The witness seeds stale control files deliberately and uses fresh database paths so failed earlier
 attempts cannot supply state or stop a new responder.
+
+## Selected state after signed validator rotation
+
+The same real integration assertions also run with the existing signed slot12 rotation and
+genuine following children at slots13/14. Expected identities and complete physical maps come
+from `currentRotatedSequenceFixture`; original first-epoch cases remain in the suite. The same
+resource, refusal, ownership and durability checks apply after active/previous roster rotation.
+This extends authored integration evidence without claiming independent full STF goldens,
+current Thin VRF or supplied-logical qualification. No runtime/default/pin changes are made.
