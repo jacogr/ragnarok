@@ -121,3 +121,29 @@ paths above. Initial fixture/compiler corrections are not counted as runtime con
 The bounded storage fix is complete; the exact original Linux allocating call site, general
 OS-OOM recovery, controlled resident-memory/paging and hardware/filesystem power-loss work
 remain outside this qualification. No complete-serialization or M1 completion claim is added.
+
+## Linux call-site qualification follow-up
+
+The maintainer requested Linux diagnosis before merging the current stack. The added
+`make diagnose-storage-aborts` target first runs the unchanged checked ARC/Clang LTO
+memory-ceiling panel. Every Linux cap probe must establish enforcement. It then builds the
+same fresh-reopen source with C debug information (`-g`) as a separate comparison binary.
+LLDB remains uncapped and follows the existing disposable limit launcher's exec into each
+131,072-entry native consumer under128 MiB. The launcher must read back the applied soft
+limit with the original hard bound. An actual `abort` breakpoint, bounded native backtrace
+and fatal SIGABRT continuation are all required; debugger exit zero is insufficient.
+
+Separate strict unrestricted symbolized consumers bracket each backend's abort attempt,
+checking complete maps, exact producer root/generation, retained views and final ARC release.
+Selected bytes must remain identical after every attempt. The ordinary panel retains its own
+binary identity, limit receipts and observed exits. Debug information can affect layout;
+these symbolized comparisons do not retroactively identify an old binary's exact instruction.
+A backtrace still requires source inspection before calling a particular abort allocator OOM.
+No compiler/stdlib patch, allocator hook or production build change is introduced.
+
+The explicit `storage-diagnostics` workflow-dispatch scope runs the three current reader
+regression suites on Linux, then this diagnostic. Make's existing bounded `host-tools` path
+installs LLDB only for the diagnostic target. Raw logs, binary identities, comparison binaries
+and failed/partial JSON remain in `build/tests/storage-abort-diagnostics/` and CI artifacts.
+Darwin and missing debugger support fail explicitly, rather than becoming skipped successes.
+Actual exact-source Linux results and allocating callers will be recorded after that run.

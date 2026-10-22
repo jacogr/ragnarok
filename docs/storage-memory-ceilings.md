@@ -97,3 +97,12 @@ page-mapping failure aborts outside ordinary exception recovery; this change doe
 failures catchable or cure the original large128 MiB constrained opens. See the
 [allocation-failure evidence](../spec/storage-allocation-failures.md) for the exact observed
 fail-stop path, bounded fix and remaining Linux qualification scope.
+
+To diagnose the original constrained Linux aborts separately from performance measurements,
+run `make diagnose-storage-aborts` on Linux. Make provisions LLDB through the normal bounded
+host-tools setup. The ordinary panel runs first; a separate checked release/LTO build with
+debug symbols supplies bounded abort backtraces under the same child-only128 MiB limit.
+Unrestricted controls and selected-byte checks bracket each diagnostic attempt. Results live
+under `build/tests/storage-abort-diagnostics/`; its summary reports captured traces, requiring
+source inspection to identify the allocating caller. The explicit `storage-diagnostics` CI
+scope also runs the new preflight and post-stat growth regressions on Linux.

@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, full]
+        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, storage-diagnostics, full]
         default: full
         required: true
 
@@ -509,4 +509,43 @@ jobs:
             build/tests/storage-memory-ceilings/summary.md
             build/tests/storage-memory-ceilings/status.md
             build/tests/storage-resource-summary.md
+            build/ci/*.log
+
+  # Explicit Linux diagnosis keeps ptrace and symbolized comparisons outside speed measurements.
+  storage-diagnostics:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'storage-diagnostics' }}
+    name: Storage Linux allocation diagnosis
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Qualify current reader guards on Linux
+        run: |
+          make unit SUITE=storage_managed_read_preflight
+          make unit SUITE=storage_journal_read_preflight
+          make unit SUITE=storage_read_growth
+      - name: Capture capped native abort call chains and strict controls
+        run: make diagnose-storage-aborts
+      - name: Show native allocating callers
+        if: always()
+        run: |
+          if test -f build/tests/storage-abort-diagnostics/summary.md; then
+            cat build/tests/storage-abort-diagnostics/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain Linux allocation evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: storage-abort-diagnostics-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            build/tests/storage-abort-diagnostics/**/*.log
+            build/tests/storage-abort-diagnostics/**/*.json
+            build/tests/storage-abort-diagnostics/**/*.md
+            build/tests/storage-abort-diagnostics/symbols-native
+            build/tests/storage-abort-diagnostics/ordinary/limits-native
+            build/tests/unit/**/*.log
             build/ci/*.log
