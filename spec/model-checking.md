@@ -55,8 +55,10 @@ three deliberate guard-removal mutants and produces a witness reaching cancelled
 work with shutdown requested. Each case must agree exactly between sequential and four-worker
 exploration after memo/progress diagnostics are removed. Parser errors, timeout and state caps
 fail the gate. Logs, replayable variants, source/checker hashes and fresh results are retained in
-`build/tests/models/`. `make check-modules` includes this gate, retaining the existing independent
-CI groups. Native `application_preparation_worker` tests cover actual reuse, foreign/stale tickets,
+`build/tests/models/`. `make check` includes this gate. CI runs it in the separate **Model verification** job on
+master pushes and existing unit/full requests, independently of source compilation. Its own job
+summary lists base, mutant and witness verdicts; artifacts retain logs, replayable model variants
+and results for seven days. `make summary-models` renders the same report locally. Native `application_preparation_worker` tests cover actual reuse, foreign/stale tickets,
 cancellation and joined shutdown; the model is complementary evidence, not a native test substitute.
 
 The new `src/app/proof_worker.nim` uses the same lock/condition/phase/stop transitions. Its

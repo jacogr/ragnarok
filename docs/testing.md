@@ -8,12 +8,17 @@ Python-only registration and provenance preflight used before every CI workload.
 
 | Make target | Scope | Evidence directory |
 | --- | --- | --- |
+| `check-models` | Bounded lifecycle safety, guard mutants and reachability with pinned tlanif | `build/tests/models/` |
 | `check-modules` | Every-source semantic compilation | `build/tests/modules/` |
 | `check-python` | One Python reference, tooling and provenance discovery | `build/tests/python/` |
 | `check-unit` | Discovered native suites and independent corpora | `build/tests/runtime/` |
 | `check-failures` | Every declared runtime behavior/contract family and store positive controls | `build/tests/failures/` |
 | `check-guards` | Compiler contract, privacy, nominal, schema and ownership rejection probes | `build/tests/guards/` |
 | `check-e2e` | Peer-entry selftests and live networking/resource scenarios | `build/tests/e2e/` |
+
+**Model verification** is a separate visible CI job on master pushes and unit/full requests.
+Its summary separates expected mutant/witness violations from base-model failures, and its
+artifacts retain replayable models and full diagnostics.
 
 CI runs these groups independently on separate VMs, without a `needs` chain or duplicate Python
 discovery. `make unit` is the quick native-only subset, `make runtime` aliases `check-unit`,
@@ -26,7 +31,7 @@ on unit/full requests, retaining logs without publishing an image.
 
 Each group writes `results.json` and diagnostic logs in its evidence directory. Use
 `make summary-unit`, `make summary-failures`, `make summary-guards`, `make summary-python`,
-`make summary-modules` or `make summary-e2e` to summarize completed reports. A missing report
+`make summary-models`, `make summary-modules` or `make summary-e2e` to summarize completed reports. A missing report
 is a failure, not evidence of coverage.
 
 ## Requesting CI
