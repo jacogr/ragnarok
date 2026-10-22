@@ -1,0 +1,1 @@
+PASS storage_compaction_barrier_crash: every real replacement barrier, one strict selected epoch and retained readers

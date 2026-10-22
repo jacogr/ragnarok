@@ -121,3 +121,10 @@ write. CURRENT remains byte-identical and strict restart selects the original co
 epoch. Old selected files and every remaining forensic staging byte stay unchanged by restart.
 Only explicit bounded staging cleanup permits replacement retry; selected/future epochs cannot be
 retired through the earlier-epoch API. Held generation1 maps outlive final native retirement.
+
+## Managed barriers process crashes
+
+`storage_compaction_barrier_crash` verifies every real replacement barrier, one strict selected epoch and retained readers.
+Strict restart validates the selected manifest and complete authored map, preserves every remaining
+forensic byte, and never chooses staging by filename. Explicit bounded cleanup/replacement retry
+finishes independently of the killed caller; selected/future epoch retirement remains forbidden.
