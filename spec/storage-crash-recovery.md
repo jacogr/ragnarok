@@ -97,3 +97,11 @@ extents with opaque FullStateV1 context. Old and new context bytes must stay bou
 selected generation/root. Independent repair retains the old prefix context before a complete
 resumed successor; a complete successor rejects rollback. Detached parent context remains valid.
 No storage interpretation of application context or checkpoint-import authority is introduced.
+
+## Legacy multi-publication crash prefixes
+
+`storage_legacy_sequence_crash` kills a writer at every write and durability barrier across four successive
+publications. Exact concatenated frame bytes, selected generation/root and every earlier authored
+historical map are checked after strict restart. Earlier complete frames never disappear, and
+parent-held readers stay valid. Visible-but-unreturned bytes are admitted only by independent
+strict restart; no killed child is retroactively counted as a confirmed application adoption.
