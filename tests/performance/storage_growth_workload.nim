@@ -66,7 +66,10 @@ proc main() {.raises.} =
     let held = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
     assert uint64(held.generation) == uint64(publications+1)
     assert array[32, byte](held.commitment.root) == array[32, byte](expected)
-    checkGrowthHead(held, expected, count, publications, hot)
+    let extractionStart = getMonoTime()
+    let extracted = restoreStateEntries(held, expected, limits.codec.trie).value
+    let extractionBeforeNs = elapsed(extractionStart)
+    checkGrowthEntries(extracted, count, publications, hot)
     var reopenNs = -1'i64
     if engine != "memory":
       assert disk.close == FileError.None
@@ -89,6 +92,7 @@ proc main() {.raises.} =
       assert usage.snapshotBytes <= uint64(high(int64)) and usage.journalBytes <= uint64(high(int64))
       snapshotBytes = int64(usage.snapshotBytes)
       journalBytes = int64(usage.journalBytes)
+    var extractionAfterNs = -1'i64
     var retainedReopenNs = -1'i64
     var compactedReopenNs = -1'i64
     var retentionNs = -1'i64
@@ -148,7 +152,10 @@ proc main() {.raises.} =
       currentNodes = current.storedNodes
       assert currentNodes < retainedNodes and retainedNodes <= storedNodes
       assert uint64(current.generation) == uint64(publications+1)
-      checkGrowthHead(current, expected, count, publications, hot)
+      let extractionAfterStart = getMonoTime()
+      let extractedAfter = restoreStateEntries(current, expected, limits.codec.trie).value
+      extractionAfterNs = elapsed(extractionAfterStart)
+      checkGrowthEntries(extractedAfter, count, publications, hot)
       if engine == "managed":
         let usage = disk.managedUsage.value
         assert usage.journalBytes == uint64(ManagedJournalHeaderBytes)
@@ -177,7 +184,8 @@ proc main() {.raises.} =
         "\t", index+1, "\t", duration
     echo "growth\t", count, "\t", publications, "\t", pattern, "\t", sample, "\t", publicationNs, "\t",
       reopenNs, "\t", retentionNs, "\t", maintenanceNs, "\t", retainedReopenNs, "\t",
-          compactedReopenNs, "\t", storedNodes, "\t", retainedNodes,
+          compactedReopenNs, "\t", extractionBeforeNs, "\t", extractionAfterNs, "\t", storedNodes,
+              "\t", retainedNodes,
       "\t", currentNodes, "\t", snapshotBytes, "\t", journalBytes, "\t", retainedSnapshotBytes,
           "\t", retainedJournalBytes, "\t", compactedSnapshotBytes,
       "\t", compactedJournalBytes

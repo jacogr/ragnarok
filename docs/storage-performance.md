@@ -120,3 +120,9 @@ Selected-file extents are retained for the original files, nine-root epoch and c
 The nine-root journal must be header-only and its physical node inventory must match the admitted
 view. File extents remain unavailable for memory and for unsupported journal reclamation. Every
 physical counter is identical across repetitions of the same fixture, including warmups.
+
+Complete-map extraction is timed before reclamation and again from the current-only memory clone
+or managed epoch. Every returned key and full payload is checked outside timing through an
+independent expected-revision formula. These are resident graph traversals and owned output maps,
+not disk reads. The journal has an ordinary extraction measurement and no fabricated post-
+reclamation measurement.
