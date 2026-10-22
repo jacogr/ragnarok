@@ -4,7 +4,7 @@
 ## Bounded global chapter selectors and authenticated reads of partial evidence.
 ## Typed chapter captures retain existing codec/profile rules without granting complete-map authority.
 import std/assertions
-import ../codec/[bounded, state_layout, state_safrole, state_composition, state_history]
+import ../codec/[bounded, state_layout, state_safrole, state_composition, state_history, state_authorization]
 import ./[proof_plan, proof_view, trie_proof]
 
 type
@@ -123,4 +123,26 @@ proc readGlobalHistory*(view: ProofView, config: HistoryConfig): GlobalProofResu
   if decoded.value.consumed != bytes.value.len:
     return GlobalProofResult[HistorySnapshot](status: GlobalProofError.InvalidValue)
   GlobalProofResult[HistorySnapshot](status: GlobalProofError.None,
+      completed: decoded.value.snapshot)
+
+proc readGlobalAuthorization*(view: ProofView, kind: AuthorizationKind,
+    config: AuthorizationConfig): GlobalProofResult[AuthorizationSnapshot] =
+  ## Bind the caller's semantic pool/queue choice to its distinct chapter before bounded decoding.
+  if ord(kind) < ord(AuthorizationKind.Pools) or ord(kind) > ord(AuthorizationKind.Queues):
+    return GlobalProofResult[AuthorizationSnapshot](status: GlobalProofError.InvalidConfig)
+  let chapter = if kind == AuthorizationKind.Pools: StateChapterId.Pools else: StateChapterId.Queues
+  let bytes = chapterBytes(view, chapter, config.maxBytes)
+  if bytes.error != GlobalProofError.None:
+    return GlobalProofResult[AuthorizationSnapshot](status: bytes.error)
+  let decoded = decodeAuthorization(kind, bytes.value, config)
+  if decoded.error != AuthorizationError.None:
+    # Pool and fixed-queue cardinalities remain the codec's separate protocol contracts.
+    let reason = case decoded.error
+      of AuthorizationError.InvalidConfig: GlobalProofError.InvalidConfig
+      of AuthorizationError.LimitExceeded, AuthorizationError.LengthOverflow: GlobalProofError.LimitExceeded
+      else: GlobalProofError.InvalidValue
+    return GlobalProofResult[AuthorizationSnapshot](status: reason)
+  if decoded.value.consumed != bytes.value.len:
+    return GlobalProofResult[AuthorizationSnapshot](status: GlobalProofError.InvalidValue)
+  GlobalProofResult[AuthorizationSnapshot](status: GlobalProofError.None,
       completed: decoded.value.snapshot)
