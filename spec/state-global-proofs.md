@@ -122,3 +122,8 @@ missing/absent evidence. No privilege update or execution authority is inferred 
 owner-bound dependency sets. Native coverage uses the independent report fixture, preserves slot/
 item/dependency positions and retained children, rejects malformed nested/outer extents, and checks
 report/item/dependency/byte/epoch ceilings independently. Accumulated rings remain a separate type.
+
+`readGlobalAccumulated` preserves its separate immutable accumulated-ring owner and canonical
+per-slot package sets. Native coverage checks slot/hash order, refuses ready-ring fallback and
+authenticated duplicates, rejects every truncated prefix/suffix, and exercises per-slot/aggregate/
+byte/epoch policies independently. Decoding does not execute accumulation or update statistics.
