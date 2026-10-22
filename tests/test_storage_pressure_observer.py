@@ -94,7 +94,8 @@ class PressureObserverTests(unittest.TestCase):
         self.assertEqual(argv[:3], ['sudo', '-n', 'systemd-run'])
         for flag in ('--unit='+UNIT, '--property=MemoryHigh=67108864',
                      '--property=MemoryMax=134217728', '--property=MemorySwapMax=0',
-                     '--property=OOMPolicy=continue', '--property=RuntimeMaxSec=45',
+                     '--property=OOMPolicy=continue', '--property=OOMScoreAdjust=-1000',
+                     '--property=RuntimeMaxSec=45',
                      '--property=KillMode=control-group', '--collect'):
             self.assertIn(flag, argv)
         self.assertNotIn('set-property', argv)
@@ -120,11 +121,13 @@ class PressureObserverTests(unittest.TestCase):
         member = '0::/system.slice/'+UNIT+'\n'
         mounts = '29 23 0:26 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n'
         report = dict(status='observed', unit=UNIT, initial_raw=raw,
+                      observer_oom_score_adj_raw='-1000\n',
                       group='/sys/fs/cgroup/system.slice/'+UNIT, membership_raw=member,
                       mountinfo_raw=mounts, runs=[dict(before_raw=raw, after_raw=raw,
                       evidence=evidence, exit_code=0, outcome='completed', samples=1, timed_out=False,
                       sampled_peaks=dict(rss=4096, swap=0, anon=4096, file=0, cgroup_swap=0),
-                      child_membership_raw=member, resources=dict(peak_rss_bytes=4096,
+                      child_membership_raw=member, child_pid=17, child_identity_raw=json.dumps(dict(
+                      membership_raw=member, oom_score_adj_raw='1000\n', pid=17)), resources=dict(peak_rss_bytes=4096,
                       minor_faults=1, major_faults=0, input_blocks=0, output_blocks=0))])
         scope.validate_receipt(report, UNIT, (67108864, 67108864, 0))
         altered = deepcopy(report)

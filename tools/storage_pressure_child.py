@@ -19,7 +19,12 @@ def child_setup(membership_log):
     Path('/proc/self/oom_score_adj').write_text('1000\n')
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     # This same PID inherits its membership across exec even if it exits before parent sampling.
-    Path(membership_log).write_text(Path('/proc/self/cgroup').read_text())
+    adjustment = Path('/proc/self/oom_score_adj').read_text()
+    if adjustment != '1000\n':
+        raise ValueError('Native child must remain eligible for OOM selection')
+    Path(membership_log).write_text(json.dumps(dict(
+        membership_raw=Path('/proc/self/cgroup').read_text(),
+        oom_score_adj_raw=adjustment, pid=os.getpid()))+'\n')
 
 
 def sample_status(raw):
@@ -46,7 +51,11 @@ def observe(group, arguments, log):
         process = subprocess.Popen(arguments, stdout=output, stderr=subprocess.STDOUT,
                                    preexec_fn=lambda: child_setup(membership_log))
         try:
-            membership = membership_log.read_text()
+            identity_raw = membership_log.read_text()
+            child_identity = json.loads(identity_raw)
+            membership = child_identity['membership_raw']
+            if child_identity['pid'] != process.pid or child_identity['oom_score_adj_raw'] != '1000\n':
+                raise ValueError('Invalid native child OOM/identity receipt')
             if resolve(membership, Path('/proc/self/mountinfo').read_text()) != str(group):
                 raise ValueError('Pre-exec child escaped its private cgroup')
             while True:
@@ -100,7 +109,8 @@ def observe(group, arguments, log):
                 evidence=evidence, timed_out=timed_out,
                 outcome='observer-timeout' if timed_out else outcome(process.returncode, evidence),
                 exit_code=process.returncode, sampled_peaks=peaks if samples else None, samples=samples,
-                child_membership_raw=membership, elapsed_seconds=time.monotonic()-started,
+                child_membership_raw=child_identity['membership_raw'], child_pid=process.pid,
+                child_identity_raw=identity_raw, elapsed_seconds=time.monotonic()-started,
                 resources=dict(peak_rss_bytes=usage.ru_maxrss*1024,
                                minor_faults=usage.ru_minflt, major_faults=usage.ru_majflt,
                                input_blocks=usage.ru_inblock, output_blocks=usage.ru_oublock),
@@ -114,6 +124,9 @@ def run(unit, target, high, maximum, swap, arguments):
     group = Path(resolve(membership, mounts))
     if group.name != unit or not unit.startswith('ragnarok-storage-pressure-'):
         raise ValueError('Expected an exclusively owned transient service')
+    observer_adjustment = Path('/proc/self/oom_score_adj').read_text()
+    if observer_adjustment != '-1000\n':
+        raise ValueError('Observer must be immune to OOM selection before running a constrained child')
     initial_raw = read_raw(group)
     initial = parse(initial_raw)
     if (initial['memory.high'], initial['memory.max'], initial['memory.swap.max']) != (high, maximum, swap):
@@ -129,6 +142,7 @@ def run(unit, target, high, maximum, swap, arguments):
         parent = parent.parent
     report = dict(status='running', unit=unit, group=str(group), membership_raw=membership,
                   mountinfo_raw=mounts, initial_raw=initial_raw, ancestors=ancestors,
+                  observer_oom_score_adj_raw=observer_adjustment,
                   address_space_limit=list(resource.getrlimit(resource.RLIMIT_AS)), runs=[])
     path = Path(target)
     path.write_text(json.dumps(report, indent=2)+'\n')

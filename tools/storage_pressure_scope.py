@@ -45,6 +45,7 @@ def launch_arguments(unit, target, high, maximum, swap, arguments):
             '--property=MemoryAccounting=yes', '--property=IOAccounting=yes',
             '--property=MemoryHigh='+value(high), '--property=MemoryMax='+value(maximum),
             '--property=MemorySwapMax='+value(swap), '--property=OOMPolicy=continue',
+            '--property=OOMScoreAdjust=-1000',
             '--property=RuntimeMaxSec=45', '--property=TimeoutStopSec=5',
             '--property=KillMode=control-group', '--property=LimitCORE=0',
             sys.executable, str(CHILD), unit, str(target), child_value(high),
@@ -68,6 +69,8 @@ def validate_receipt(report, unit, bounds):
     validate_unit(unit)
     if report.get('status') != 'observed' or report.get('unit') != unit or not report.get('runs'):
         raise ValueError('Incomplete pressure receipt')
+    if report.get('observer_oom_score_adj_raw') != '-1000\n':
+        raise ValueError('Observer OOM immunity was not established')
     group = report['group']
     if Path(group).name != unit or resolve(report['membership_raw'], report['mountinfo_raw']) != group:
         raise ValueError('Substituted observer cgroup identity')
@@ -80,6 +83,11 @@ def validate_receipt(report, unit, bounds):
         if any(tuple(raw[k] for k in ('memory.high', 'memory.max', 'memory.swap.max')) != bounds
                for raw in (before, after)):
             raise ValueError('Cgroup controls changed during observation')
+        child = json.loads(row['child_identity_raw'])
+        if (child.get('oom_score_adj_raw') != '1000\n' or
+                child.get('pid') != row['child_pid'] or
+                child.get('membership_raw') != row['child_membership_raw']):
+            raise ValueError('Workload OOM eligibility or identity was not established')
         if resolve(row['child_membership_raw'], report['mountinfo_raw']) != group:
             raise ValueError('Substituted native cgroup identity')
         if type(row['samples']) is not int or not 0 <= row['samples'] <= 10000:
@@ -120,8 +128,9 @@ def execute(arguments, bounds, folder, name):
     finally:
         # systemd services are not descendants of the outer timeout process group; explicit stop is mandatory.
         retired = cleanup(unit)
+    (folder/(name+'.service.json')).write_text(json.dumps(dict(check=check, cleanup=retired), indent=2)+'\n')
     if check['exit_code'] != 0:
-        raise RuntimeError('Resident-pressure service failed: '+check['log'])
+        raise RuntimeError('Resident-pressure service failed ('+str(check['exit_code'])+'): '+check['log'])
     raw = target.read_text()
     report = validate_receipt(json.loads(raw), unit, bounds)
     return dict(check=check, receipt_path=str(target), receipt_raw=raw,
