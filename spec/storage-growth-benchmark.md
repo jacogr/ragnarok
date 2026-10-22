@@ -113,3 +113,13 @@ an already validated physical position. Cycle, repeated-subtree and orphan check
 Large marker payloads are about 8× smaller, excluding sequence headers/padding. Matched A/B timings
 were broadly neutral, with a small larger-case publication gain; no consistent speedup is claimed.
 Repository/image/history ARC controls pass. Evidence: `build/storage-growth-ab-graph-bitmaps/`.
+
+## Rejected comparison shortcut
+
+An experiment skipped the already-known first byte inside 8/12-bit search intervals while retaining
+full equality for the remaining bytes. Pooled timings suggested a larger-case benefit, but the
+32,768-entry publication passes measured 1.123× and 0.922× in opposite program orders; resident
+reads likewise reversed direction. This does not establish a stable improvement. The shortcut was
+reverted and its exact patch, source identities and raw A/B evidence were preserved under
+`build/storage-growth-rejected-prefix-comparisons.patch` and
+`build/storage-growth-ab-prefix-comparisons/`. Full-address comparison remains the accepted code.
