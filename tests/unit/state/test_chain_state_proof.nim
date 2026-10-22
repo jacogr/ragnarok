@@ -5,7 +5,9 @@
 import std/[assertions, syncio, envvars]
 import ../../../src/chain/[genesis, provider, state_proof]
 import ../../../src/app/chain
-import ../../../src/codec/report_owned
+import ../../../src/codec/[report_owned, header]
+import ../../support/application_download_chain
+import ../../../src/state/store
 import ../../support/application_candidate_context
 import ../../../src/state/[trie_proof, store]
 import ../../../src/codec/[bounded, state_layout, state_trie]
@@ -38,6 +40,26 @@ proc main() {.raises.} =
   let checked = verifyBlockStateProof(selected, proof, query,
     StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(1000000))).value
   assert checked.present and checked.bytes == source.lookup(query).value.bytes
+  let sequence = chainFixture(base, 3)
+  for index, head in sequence.heads:
+    # Recapture the exact original sealed header and posterior map, without fabricating a result tag.
+    var headerBytes = newSeq[byte](head.header.headerInfo.value.consumed)
+    assert encodeOwnedHeader(head.header, headerBytes).error == HeaderError.None
+    let selectedHead = captureBlockSnapshot(headerBytes, head.stateSnapshot, head.chainParameters)
+    assert selectedHead.error == GenesisError.None
+    let proof = generateBlockStateProof(selectedHead, query, policy().trie,
+      StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(1000000))).value
+    let verified = verifyBlockStateProof(selectedHead, proof, query,
+      StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(1000000))).value
+    assert verified.bytes == head.stateSnapshot.lookup(query).value.bytes
+    if index > 0:
+      # A child's header commits its parent's state; that root must not authenticate the child's posterior proof.
+      assert verifyStateProof(proof, head.priorStateRoot, query,
+        StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(1000000))).error ==
+            StateProofError.RootMismatch
+      assert verifyBlockStateProof(selected, proof, query,
+        StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(1000000))).error ==
+            StateProofError.RootMismatch
   echo "chain-state-proof: ok"
 try:
   main()
