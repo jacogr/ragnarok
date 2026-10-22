@@ -1,0 +1,84 @@
+{
+  "source": "tests/native/accumulation_current_update_results.nim",
+  "build_name": "accumulation-current-update-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-update-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current update extraction/install: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-update-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current update extraction/install: refused"
+    },
+    {
+      "identity": {
+        "reason": "reason"
+      },
+      "arguments": [
+        "reason"
+      ],
+      "name": "current-update-reason",
+      "diagnostic": "outcome.status == ChainFailure",
+      "description": "Current update extraction/install: reason"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "current-update-state",
+      "diagnostic": "not prepared.data == nil",
+      "description": "Current update extraction/install: state"
+    },
+    {
+      "identity": {
+        "reason": "view"
+      },
+      "arguments": [
+        "view"
+      ],
+      "name": "current-update-view",
+      "diagnostic": "not prepared.data == nil",
+      "description": "Current update extraction/install: view"
+    },
+    {
+      "identity": {
+        "reason": "child"
+      },
+      "arguments": [
+        "child"
+      ],
+      "name": "current-update-child",
+      "diagnostic": "not prepared.data == nil",
+      "description": "Current update extraction/install: child"
+    },
+    {
+      "identity": {
+        "reason": "install"
+      },
+      "arguments": [
+        "install"
+      ],
+      "name": "current-update-install",
+      "diagnostic": "canInstallCurrentChainUpdate",
+      "description": "Current update extraction/install: install"
+    }
+  ]
+}
