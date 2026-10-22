@@ -226,7 +226,7 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
         break # The verified prefix still needs independent exact authorization before truncation.
       return FileError.InvalidJournal
     let selected = memory.snapshot.value
-    let frame = if schema == StorageSchema.FullStateV1:
+    var frame = if schema == StorageSchema.FullStateV1:
       memory.replayContextJournalFrame(selected, frames.toOpenArray(offset, offset+extent.value-1),
         limits.contextBytes, limits.journalBytes)
     else:
@@ -234,7 +234,8 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
         limits.journalBytes) # Independent schema selection precedes checksum and complete graph admission.
     if frame.error == FrameError.BackendFailure: return FileError.BackendFailure
     if frame.error != FrameError.None: return FileError.InvalidJournal
-    context = frame.value.context # Only a completely admitted contiguous frame selects context.
+    var replay = frame.takeValue # Only a completely admitted contiguous frame supplies selected context.
+    context = move(replay.context)
     offset += extent.value
   if repair:
     let selected = memory.snapshot.value

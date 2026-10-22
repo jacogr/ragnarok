@@ -263,7 +263,7 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
           break # Only explicit recovery can stop at a verified prefix preceding an incomplete final frame.
         return FileError.InvalidJournal
       let current = memory.snapshot.value
-      let frame = if schema == StorageSchema.FullStateV1:
+      var frame = if schema == StorageSchema.FullStateV1:
         memory.replayContextJournalFrame(current, bytes.toOpenArray(offset, offset+extent.value-1),
           limits.contextBytes, limits.bytes)
       else:
@@ -271,7 +271,8 @@ proc acquire(repository: var FileRepository, path: string, chain: StorageChainId
           limits.bytes) # Schema is independently selected before checksum and atomic graph admission.
       if frame.error == FrameError.BackendFailure: return FileError.BackendFailure
       if frame.error != FrameError.None: return FileError.InvalidJournal
-      context = frame.value.context # Only a fully admitted frame can select its context.
+      var replay = frame.takeValue # Only a fully admitted frame can select its independently owned context.
+      context = move(replay.context)
       offset += extent.value # Extent validation proved exact bounded forward progress.
     if repair:
       let selected = memory.snapshot.value
