@@ -143,8 +143,79 @@ proc batchCycle() =
   wire[0] = 0
   assert sameRecords(delivered.records, physical.records) # Success owns records independently of retired bytes.
 
+type PreparedDelivery = object ## Preparation summary has no integrity authority over later record delivery.
+  delivery: Delivery
+  starts: int
+  declaredRecords, declaredBytes: uint64
+proc prepared(stopAfter = -1): PreparedDelivery =
+  ## Explicitly initialize every observed counter and the consumer's optional refusal point.
+  PreparedDelivery(delivery: Delivery(records: @[], calls: 0, stopAfter: stopAfter),
+    starts: 0, declaredRecords: 0, declaredBytes: 0)
+proc prepare(state: var PreparedDelivery, info: RecordCollectionInfo) =
+  ## Preparation occurs once, after whole-input shape/duplicate checks and before the first hash.
+  assert state.starts == 0 and int(calls()) == 0
+  state.starts = 1
+  state.declaredRecords = info.records
+  state.declaredBytes = info.valueBytes
+proc acceptPrepared(state: var PreparedDelivery, record: var TrieRecord): bool =
+  ## Every real local record follows its provisional preparation phase.
+  assert state.starts == 1
+  accept(state.delivery, record)
+proc preparedCycle() =
+  ## Check both overloads, zero-work malformed/duplicate refusal, empty preparation and provisional late failures.
+  let policy = storageLimits().codec
+  let batch = exportFullTrie(storageTrie(7), policy.records).value
+  var records = batch.records
+  records.sort(compareRecord)
+  let collection = encodeRecordCollection(RecordCollection(records: records), policy).value
+  let wire = encodeTrieExport(batch, policy).value
+  var ordered = prepared()
+  reset(0)
+  assert visitOrderedRecordCollection(collection, policy, ordered, prepare, acceptPrepared).error ==
+      RecordError.None
+  assert ordered.starts == 1 and ordered.declaredRecords == uint64(records.len)
+  assert ordered.declaredBytes == 2 and sameRecords(ordered.delivery.records, records)
+  var target = prepared()
+  reset(0)
+  assert visitTrieExport(wire, policy, target, prepare, acceptPrepared).error == RecordError.None
+  assert target.starts == 1 and target.declaredRecords == uint64(batch.records.len)
+  assert target.declaredBytes == 2 and sameRecords(target.delivery.records, batch.records)
+  var invalid = collection
+  invalid.add(0)
+  var none = prepared()
+  reset(0)
+  assert visitOrderedRecordCollection(invalid, policy, none, prepare, acceptPrepared).error ==
+      RecordError.InvalidFormat
+  assert none.starts == 0 and none.delivery.calls == 0 and int(calls()) == 0
+  let header = "RAGNAROK-TRIE-V1\n".len+88
+  var duplicate = wire
+  for index in header..<header+73:
+    duplicate.add(wire[index]) # A complete authored leaf is duplicated after exact original records.
+  duplicate[header-8] = byte(batch.records.len+1)
+  assert visitTrieExport(duplicate, policy, none, prepare, acceptPrepared).error ==
+      RecordError.DuplicateNode
+  assert none.starts == 0 and none.delivery.calls == 0 and int(calls()) == 0
+  let empty = encodeRecordCollection(RecordCollection(), policy).value
+  var zero = prepared()
+  reset(0)
+  assert visitOrderedRecordCollection(empty, policy, zero, prepare, acceptPrepared).value.records == 0
+  assert zero.starts == 1 and zero.declaredRecords == 0 and zero.delivery.calls == 0
+  var corrupt = wire
+  corrupt[corrupt.len-1] = corrupt[corrupt.len-1] xor 1
+  var provisional = prepared()
+  reset(0)
+  assert visitTrieExport(corrupt, policy, provisional, prepare, acceptPrepared).error ==
+      RecordError.HashMismatch
+  assert provisional.starts == 1 and provisional.delivery.records.len == batch.records.len-1
+  var stopped = prepared(1)
+  reset(0)
+  assert visitTrieExport(wire, policy, stopped, prepare, acceptPrepared).error ==
+      RecordError.ConsumerRefused
+  assert stopped.starts == 1 and stopped.delivery.records.len == 1 and stopped.delivery.calls == 2
+
 let before = getOccupiedMem()
 cycle()
 batchCycle()
+preparedCycle()
 assert getOccupiedMem() == before
 echo "PASS storage record delivery: exact ownership, preflight, late integrity and consumer refusal"
