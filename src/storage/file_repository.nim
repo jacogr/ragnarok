@@ -355,7 +355,7 @@ proc publish*(repository: var FileRepository, expected: RepositoryView,
     return FileResult[RepositoryView](status: FileError.InvalidBatch, batchReason: prepared)
   let maximum = min(uint64(repository.limits.bytes), uint64(high(int)))
   let remaining = maximum-repository.size
-  let frame = if repository.schema == StorageSchema.FullStateV1:
+  var frame = if repository.schema == StorageSchema.FullStateV1:
     encodeContextJournalFrame(prepared.value.generation, batch, selectedContext,
       repository.limits.contextBytes, repository.limits.repository.codec, ByteLimit(remaining))
   else:
@@ -365,13 +365,14 @@ proc publish*(repository: var FileRepository, expected: RepositoryView,
       status: FileError.LimitExceeded)
   if frame.error != FrameError.None:
     return FileResult[RepositoryView](status: FileError.InvalidFrame, frameReason: frame.error)
+  let bytes = frame.takeValue # One owned checked frame supplies both the append and its exact extent.
   if synchronize(repository.descriptor) != 0 or synchronize(repository.directory) != 0:
     repository.poisoned = true
     return FileResult[RepositoryView](status: FileError.IoFailure) # Reuse never follows an unconfirmed old durable boundary.
-  if not writeAll(repository.descriptor, frame.value):
+  if not writeAll(repository.descriptor, bytes):
     repository.poisoned = true
     return FileResult[RepositoryView](status: FileError.IoFailure) # A partial tail has no selected candidate.
-  repository.size += uint64(frame.value.len) # Remaining-capacity preflight proved this exact addition.
+  repository.size += uint64(bytes.len) # Remaining-capacity preflight proved this exact addition.
   if synchronize(repository.descriptor) != 0:
     repository.poisoned = true
     return FileResult[RepositoryView](status: FileError.PublishedUnsynced) # Complete bytes may be visible, but no successor is authorized.
