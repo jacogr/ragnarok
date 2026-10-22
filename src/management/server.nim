@@ -7,7 +7,7 @@
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
-import ./[protocol, file_status]
+import ./[protocol, file_status, resources]
 import ../lib/utf8
 
 const
@@ -36,6 +36,7 @@ type
     path: string
     identity: FileStatus
     info: ManagementInfo
+    resources: ResourceSampler
     connections: array[MaxConnections, Connection]
 
 proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
@@ -91,6 +92,7 @@ proc `=destroy`*(server: ManagementServer) =
   if server.opened: discard posix.close(server.fd)
   server.removeSocket()
   `=destroy`(server.connections)
+  `=destroy`(server.resources)
   `=destroy`(server.info)
   `=destroy`(server.path)
 
@@ -107,6 +109,7 @@ proc close*(server: var ManagementServer) =
   server.opened = false
   server.bound = false
   server.path = ""
+  server.resources.close()
   server.info = default(ManagementInfo)
 
 proc nonblocking(fd: cint): bool =
@@ -160,6 +163,7 @@ proc start*(server: var ManagementServer, path: string, info: ManagementInfo): b
   server.info.socketPath = path
   server.info.processId = uint32(processId())
   server.info.effectiveUser = effectiveUid()
+  server.resources.configure(info.databasePath, directory)
   true
 
 proc response(status, body = ""): string =
@@ -226,6 +230,8 @@ proc process(slot: var Connection, info: ManagementInfo) =
 proc tick*(server: var ManagementServer) =
   ## One accept/read/write per slot and a five-second absolute deadline bound each turn.
   if not server.opened: return
+  server.resources.tick() # Scalar/path observations remain independent of every canonical lease.
+  server.info.resources = server.resources.snapshot()
   let now = getMonoTime().ticks div 1_000_000
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0:

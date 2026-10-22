@@ -100,7 +100,28 @@ block lifecycle:
   assert "HTTP/1.1 200 OK" in output and "Cache-Control: no-store" in output
   assert "\"pid\":" & $processId() in output and "\"result\"" in output
   discard posix.close(peer)
+  # Capacity and absolute timeout retirement use real idle consumers, independently of JSON parsing.
+  var idle = default(array[5, cint])
+  for index in 0..<idle.len:
+    idle[index] = socket(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)), 0)
+    assert idle[index] >= 0
+    assert connectSocket(idle[index], addr destination, SockLen(sizeof(destination))) == 0
+    listener.tick() # The fifth admission is closed while four existing idle slots remain owned.
+  var active = 0
+  for slot in mitems(listener.connections):
+    if slot.opened:
+      inc active
+      slot.deadline = 0 # Force the same absolute-deadline branch without a wall-clock sleep.
+  assert active == 4
+  listener.tick()
+  for slot in listener.connections: assert not slot.opened # Expired requests release every bounded slot.
+  for peer in idle: discard posix.close(peer)
+  assert unlink(path.toCString()) == 0
+  let replacement = posix.open(path.toCString(), O_CREAT or O_EXCL or O_WRONLY, Mode(0o600))
+  assert replacement >= 0 and posix.close(replacement) == 0
   listener.close()
+  assert lstat(path.toCString(), mode) == 0 and S_ISREG(mode.st_mode) # Replacement inodes are never removed.
+  assert unlink(path.toCString()) == 0
   listener.close() # Explicit close is idempotent and permits a new lifetime.
   assert lstat(path.toCString(), mode) != 0
   assert listener.start(path, admin)

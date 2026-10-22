@@ -13,6 +13,7 @@ type ManagementInfo* = object ## Startup-only admin metadata; contains no live c
   role*, socketPath*, chainPath*, databasePath*: string
   processId*, effectiveUser*: uint32
   stateEnabled*: bool
+  resources*: JsonValue # Detached bounded observations, never a live storage/worker owner.
 
 proc failure(id: string, code: int32, message: string): string =
   ## Only validated request IDs or the fixed null literal reach trustedJson.
@@ -25,7 +26,7 @@ proc clientInfo(info: ManagementInfo): JsonValue =
     ("pid", json(info.processId)), ("effectiveUid", json(info.effectiveUser)),
     ("role", json(info.role)), ("managementSocket", json(info.socketPath)),
     ("chainPath", json(info.chainPath)), ("databasePath", json(info.databasePath)),
-    ("stateEnabled", json(info.stateEnabled))])
+    ("stateEnabled", json(info.stateEnabled)), ("resources", info.resources)])
 
 proc call(values: seq[JsonToken], root: int, info: ManagementInfo): string =
   ## Validate one envelope before lookup; valid notifications never emit replies.
