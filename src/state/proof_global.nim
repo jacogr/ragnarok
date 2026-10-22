@@ -93,3 +93,15 @@ proc readGlobalTime*(view: ProofView): GlobalProofResult[StateTime] =
       else: GlobalProofError.InvalidValue
     return GlobalProofResult[StateTime](status: reason)
   GlobalProofResult[StateTime](status: GlobalProofError.None, completed: found.value)
+
+proc readGlobalEntropy*(view: ProofView, limit: ByteLimit): GlobalProofResult[StateEntropy] =
+  ## Extract all four ordered fixed words, bounding authenticated bytes before detaching them.
+  let bytes = chapterBytes(view, StateChapterId.Entropy, limit)
+  if bytes.error != GlobalProofError.None:
+    return GlobalProofResult[StateEntropy](status: bytes.error)
+  let decoded = decodeStateEntropy(bytes.value)
+  if decoded.error != StateComponentError.None:
+    return GlobalProofResult[StateEntropy](status: GlobalProofError.InvalidValue)
+  if decoded.value.consumed != bytes.value.len:
+    return GlobalProofResult[StateEntropy](status: GlobalProofError.InvalidValue)
+  GlobalProofResult[StateEntropy](status: GlobalProofError.None, completed: decoded.value.value)

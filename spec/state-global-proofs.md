@@ -76,3 +76,7 @@ profile/policy. It returns an immutable single-chapter owner, never a complete s
 Missing witnesses, proven absence, malformed present values and resource/configuration refusals
 remain distinct. The native `state_global_chapter_reads` suite authenticates independent maps,
 checks exact/suffixed/truncated values and measures zero extra hashes during typed reads.
+
+`readGlobalEntropy` returns four copied ordered words under an explicit byte ceiling. Exact128-byte
+extent is required; no absent or malformed value becomes default entropy. Native coverage checks
+all128 truncated prefixes, trailing bytes, positional bytes, source independence and byte limits.
