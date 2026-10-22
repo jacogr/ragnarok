@@ -158,3 +158,11 @@ roots and opaque FullStateV1 head context through every write, sync, rename and 
 Strict restart and explicit cleanup/retry preserve both complete authored maps and exact context.
 Detached old context/readers remain valid. The current-only control instead excludes the obsolete
 physical root after replacement; retained parent readers do not imply physical retention authority.
+
+## storage_legacy_bootstrap_crash
+
+Real creator process death verifies complete visible identity, absent-only retry and independent strict ownership.
+Strict restart never selects by a staging filename or recreates an existing target. Every known
+forensic name/byte remains unchanged by refused recreation and strict admission. A legacy empty
+identity grants only generation0 repository metadata, not an authenticated complete JAM state;
+subsequent explicit publication is independently checked against the authored complete mapping.
