@@ -83,3 +83,7 @@ Independent unsorted-list/hashlib reference evidence freezes 45 complete inputs,
 paths and roots under an exact SHA-256 fixture descriptor. Native verification and
 generation each compare the frozen commitments and every path node; literal empty
 and singleton controls protect oracle behavior. No reference code enters production.
+
+Pinned-map replay verifies every original key/value in all fourteen full published
+mappings against its original independent root, plus authored missing keys. This is
+proof/root compatibility evidence, not execution of the published STF blocks.
