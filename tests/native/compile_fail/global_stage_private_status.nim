@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# @@Verification={"group": "privacy", "expected": "status"}
+
+## No writable tag or inactive global phase payload is public.
+import ../../../src/state/[accumulation_global_stage, accumulation_provision_stage]
+let refused = prepareAccumulationGlobalStage(default(PreparedAccumulationProvisionStage), default(
+    AccumulationGlobalStageLimits))
+discard refused.status
