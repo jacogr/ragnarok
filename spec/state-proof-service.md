@@ -236,3 +236,12 @@ releases original complete owners. Old typed reads keep their original facts;
 new reads prove deletion under the new root. Old transport refuses that new
 root, detached value copies cannot mutate retained evidence, and the original
 response remains independently verifiable under its own root.
+
+## Successive authenticated block transport
+
+`chain_state_service_successive` uses the maintained genuinely signed/executed
+three-child chain. All four retained heads generate account plans from selected
+posterior maps, encode local responses, independently decode them and compare
+current metadata with the complete selected state. Later responses refuse both
+their header prior-state root and the original seed root. This exercises the
+application chain fixture, not a deployed RPC or consensus trust-discovery path.
