@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current tiny-chain guest proof ceilings reuse maintained signed-runner engine configuration.
+import ../../src/chain/parameters
 import ../../src/codec/[bounded, work_digest]
-import ../../src/state/[accumulation_guest_runner, accumulation_annulment, accumulation_coverage]
+import ../../src/state/[accumulation_guest_runner, accumulation_annulment, accumulation_coverage,
+    accumulation_account_stage, accumulation_account_selection, accumulation_creation_union, accumulation_selected_writes]
 import ./accumulation_runner_context
 proc currentGuestLimits*(): AccumulationGuestLimits =
   ## Reuse maintained tiny-chain engine ceilings while explicitly enabling current proof capture.
@@ -17,3 +19,18 @@ proc currentGuestLimits*(): AccumulationGuestLimits =
       checks: ElementLimit(128)),
     coverage: AccumulationCoverageLimits(services: ElementLimit(2), executed: ElementLimit(2),
       skipped: ElementLimit(2), absent: ElementLimit(2), checks: ElementLimit(128), gas: Gas(high(uint64))))
+
+proc currentAccountStageLimits*(): AccumulationAccountStageLimits =
+  ## Charge complete inventory/providers separately from logical selection, creation facts and physical write copies.
+  AccumulationAccountStageLimits(entries: ElementLimit(100), providers: ElementLimit(2),
+    selection: AccumulationAccountSelectionLimits(accounts: ElementLimit(8), outcomes: ElementLimit(2),
+      skipped: ElementLimit(2), checks: ElementLimit(512)),
+    creation: AccumulationCreationLimits(outcomes: ElementLimit(2), creations: ElementLimit(4),
+      accounts: ElementLimit(2), checks: ElementLimit(256)),
+    writes: SelectedAccountWriteLimits(accounts: ElementLimit(10), facts: ElementLimit(64),
+      writes: ElementLimit(8), checks: ElementLimit(512), valueBytes: ByteLimit(2048)))
+proc currentGuestParameters*(): Parameters =
+  ## Zero-deposit chain configuration isolates actual creation while keeping the genuine admitted profile.
+  var wire = encodeParameters(runnerParameters())
+  for index in 0..<24: wire[index] = 0 # Complete independent deposit words, not host return hooks.
+  decodeParameters(wire).value

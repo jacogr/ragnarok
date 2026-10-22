@@ -1,0 +1,84 @@
+{
+  "source": "tests/native/accumulation_provision_stage_results.nim",
+  "build_name": "accumulation-provision-stage-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "provision-stage-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected provision phase extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "provision-stage-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected provision phase extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "provision"
+      },
+      "arguments": [
+        "provision"
+      ],
+      "name": "provision-stage-provision",
+      "diagnostic": "outcome.status == ProvisionFailure",
+      "description": "Selected provision phase extraction: provision"
+    },
+    {
+      "identity": {
+        "reason": "store"
+      },
+      "arguments": [
+        "store"
+      ],
+      "name": "provision-stage-store",
+      "diagnostic": "outcome.status == StoreFailure",
+      "description": "Selected provision phase extraction: store"
+    },
+    {
+      "identity": {
+        "reason": "accounts"
+      },
+      "arguments": [
+        "accounts"
+      ],
+      "name": "provision-stage-accounts",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected provision phase extraction: accounts"
+    },
+    {
+      "identity": {
+        "reason": "plan"
+      },
+      "arguments": [
+        "plan"
+      ],
+      "name": "provision-stage-plan",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected provision phase extraction: plan"
+    },
+    {
+      "identity": {
+        "reason": "snapshot"
+      },
+      "arguments": [
+        "snapshot"
+      ],
+      "name": "provision-stage-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected provision phase extraction: snapshot"
+    }
+  ]
+}
