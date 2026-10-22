@@ -40,6 +40,11 @@ func value*[T](outcome: SnapshotResult[T]): T {.inline, requires: outcome.status
     SnapshotError.None.} =
   ## Extract bytes or restored owners only after complete admission.
   outcome.completed
+proc takeValue*[T](outcome: var SnapshotResult[T]): T {.inline,
+    requires: outcome.status == SnapshotError.None.} =
+  ## Transfer admitted bytes/owners once; the consumed result retains no success payload or authority.
+  result = move(outcome.completed)
+  outcome = SnapshotResult[T](status: SnapshotError.Uninitialized)
 func recordError*[T](outcome: SnapshotResult[T]): RecordError {.requires: outcome.status ==
     SnapshotError.RecordFailure.} =
   ## Preserve a selected physical record refusal without returning decoded prefixes.
