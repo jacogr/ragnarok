@@ -35,8 +35,9 @@ per-device cgroup IO counters and reclaim/swap evidence.
 
 Each unique transient service runs its observer and one native child as the repository user.
 The parent/compiler/producers remain outside. Unit memory includes observer, charged file
-cache and kernel memory, so it differs from native wait4 peak RSS. Sampled anonymous/file
-and swap maxima are approximate, and null if exec/exit left no usable proc sample; kernel memory.peak is exact for the unit's lifetime.
+cache and kernel memory, so it differs from native wait4 peak RSS. Kernel memory.peak and memory.swap.peak are exact unit lifetime high-water marks. The observer
+waits without polling procfs under pressure, avoiding the observed ENOMEM during live reads.
+Optional pswpin/pswpout counters retain exact unit swap page totals, or null when unavailable.
 Raw local events, memory.stat, PSI and per-device IO remain alongside derived observations.
 Device counters are kept separately because stacked block devices can double-count bytes.
 Buffered IO can occur with zero major page faults. Shared host counters remain context.

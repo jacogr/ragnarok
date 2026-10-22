@@ -70,11 +70,12 @@ class ResidentPressureTests(unittest.TestCase):
         self.assertNotIn('rss_bytes', values)
         self.assertEqual(values['outcome'], 'unavailable')
 
-    def test_missing_process_sample_keeps_exact_kernel_and_wait4_peaks(self):
-        """An exec/exit sampling gap leaves null gauges rather than hiding available exact peak evidence."""
+    def test_kernel_swap_and_wait4_peaks_need_no_process_samples(self):
+        """The exact peaks remain available without pressure-time proc reads or approximate sample maxima."""
         from test_storage_pressure_observer import snapshot
         raw = snapshot()
         raw['memory.peak'] = '8192\n'
+        raw['memory.swap.peak'] = '4096\n'
         observed = dict(after_raw=raw, sampled_peaks=None, elapsed_seconds=1.0,
                         resources=dict(peak_rss_bytes=4096, major_faults=0, input_blocks=1),
                         evidence=dict(events=dict(high=0, oom_kill=0),
@@ -84,7 +85,7 @@ class ResidentPressureTests(unittest.TestCase):
                    execution=dict(observed=dict(runs=[observed])))
         row['pass'] = 0
         result = panel.table_row(row)
-        self.assertIsNone(result['sampled_swap_bytes'])
+        self.assertEqual(result['swap_peak_bytes'], 4096)
         self.assertEqual(result['rss_bytes'], 4096)
         self.assertEqual(result['cgroup_peak_bytes'], 8192)
 

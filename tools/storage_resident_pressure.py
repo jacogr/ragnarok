@@ -163,16 +163,14 @@ def table_row(row):
         return values
     observed = row['execution']['observed']['runs'][0]
     after = parse(observed['after_raw'])
-    peaks = observed['sampled_peaks'] or dict(anon=None, file=None, cgroup_swap=None, swap=None)
     values.update(opened_nim_bytes=row['native']['opened_bytes'] if row['outcome'] == 'completed' else None,
                   closed_nim_bytes=row['native']['closed_bytes'] if row['outcome'] == 'completed' else None,
                   released_nim_bytes=row['native']['released'] if row['outcome'] == 'completed' else None,
                   rss_bytes=observed['resources']['peak_rss_bytes'],
                   cgroup_peak_bytes=after['memory.peak'],
-                  sampled_anon_bytes=peaks['anon'],
-                  sampled_file_bytes=peaks['file'],
-                  sampled_swap_bytes=peaks['cgroup_swap'],
-                  sampled_process_swap_bytes=peaks['swap'],
+                  swap_peak_bytes=after['memory.swap.peak'],
+                  swap_in_pages=(observed['evidence'].get('swap_pages') or {}).get('pswpin'),
+                  swap_out_pages=(observed['evidence'].get('swap_pages') or {}).get('pswpout'),
                   high_events=observed['evidence']['events']['high'],
                   oom_kills=observed['evidence']['events']['oom_kill'],
                   pgscan=observed['evidence']['reclaim']['pgscan'],
@@ -197,10 +195,10 @@ def publish(report, folder):
     lines = ['# Controlled resident-memory pressure', '',
              'Private cgroup limits include observer, kernel and file-cache charges; child RSS is separate.',
              'Eviction is per-file advice. Block counters cover native loader/storage activity, not latency.',
-             'Swap permission alone is not paging evidence. Sampled maxima may miss brief peaks.',
+             'Swap permission alone is not paging evidence. Kernel swap peaks/page counters report actual use.',
              'All successful rows require exact roots/maps/lifetimes; all selected bytes remain unchanged.',
              'Two passes reverse case/treatment order. Seconds are observations, not a speedup claim.', '',
-             '| Pass | Backend | Entries | Treatment | Outcome | Open Nim MiB | Child RSS MiB | Unit peak MiB | Swap sampled MiB | High events | OOM kills | Full stall ms | Input blocks |',
+             '| Pass | Backend | Entries | Treatment | Outcome | Open Nim MiB | Child RSS MiB | Unit peak MiB | Swap peak MiB | High events | OOM kills | Full stall ms | Input blocks |',
              '| ---: | --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
     for row in rows:
         # Explicit unavailability must never render as measured zero-resource success.
@@ -209,7 +207,7 @@ def publish(report, folder):
         else:
             cells = [f"{row['opened_nim_bytes']/MIB:.1f}" if row['opened_nim_bytes'] is not None else '—',
                      f"{row['rss_bytes']/MIB:.1f}", f"{row['cgroup_peak_bytes']/MIB:.1f}",
-                     f"{row['sampled_swap_bytes']/MIB:.1f}" if row['sampled_swap_bytes'] is not None else '—',
+                     f"{row['swap_peak_bytes']/MIB:.1f}",
                      str(row['high_events']),
                      str(row['oom_kills']), f"{row['full_stall_us']/1000:.1f}", str(row['input_blocks'])]
         lines.append('| '+' | '.join(map(str, [row['pass_index'], row['backend'], row['entries'],
