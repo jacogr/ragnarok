@@ -106,3 +106,10 @@ accepted fixed directory, matched memory publication sweeps improved by 1.386×/
 `build/storage-growth-ab-adaptive-prefix/`. Native image, history, ownership and complete-map
 controls pass at the changed widths. The extra directory bytes are private resident metadata,
 never serialized records or a claimed memory usage total.
+
+Private traversal and root-union membership now use packed 64-bit marker words instead of one
+byte per record. Extent calculation avoids overflow-prone round-up addition; each mark/reset uses
+an already validated physical position. Cycle, repeated-subtree and orphan checks are unchanged.
+Large marker payloads are about 8× smaller, excluding sequence headers/padding. Matched A/B timings
+were broadly neutral, with a small larger-case publication gain; no consistent speedup is claimed.
+Repository/image/history ARC controls pass. Evidence: `build/storage-growth-ab-graph-bitmaps/`.
