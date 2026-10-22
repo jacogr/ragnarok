@@ -183,6 +183,25 @@ def validate_growth(report):
     return cases
 
 
+def _growth_scaling(cases):
+    """Compare equal case/backend work at 64 and 256 revisions, retaining paired-order uncertainty."""
+    rows=[]
+    for count in COUNTS:
+        for pattern in PATTERNS:
+            pair=[next(c for c in cases if c['items']==count and c['publications']==steps and
+                c['pattern']==pattern and c['phase']=='publication') for steps in PUBLICATIONS]
+            for engine in ENGINES:
+                short=pair[0]['engines'][engine];long=pair[1]['engines'][engine]
+                ratio=long['median_ns']/short['median_ns']/4
+                paired=[long['pass_medians_ns'][i]/short['pass_medians_ns'][i]/4 for i in range(2)]
+                before=short['metrics'];after=long['metrics']
+                byte_growth=None if engine=='memory' else after['snapshot_bytes']+after['journal_bytes']-before['snapshot_bytes']-before['journal_bytes']
+                rows.append(dict(items=count,pattern=pattern,backend=engine,normalized_ratio=ratio,
+                    unstable=max(paired)/min(paired)>1.25,record_growth=after['stored_nodes']-before['stored_nodes'],
+                    selected_byte_growth=byte_growth,payload_bytes=(256-64)*4*256))
+    return rows
+
+
 def summarize_growth(report):
     """Render only validated matching work; parent provenance supplies source/compiler/profile authority."""
     cases=validate_growth(report)
@@ -215,6 +234,18 @@ def summarize_growth(report):
     lines+=['','Call p95 uses nearest rank over measured calls; calls within a run are correlated, not independent trials.',
         'Batch means and writes/s derive from matching batch medians, including loop/clock overhead; each call writes four keys.',
         '‡ on a call tail marks >25% opposite-order p95 drift. No fixed throughput or latency threshold is imposed.']
+    lines+=['','Growth from 64 to 256 publications (four times the authored work):','',
+        '| Entries | Updates | Backend | Per-call batch cost ratio | Added stored records | Selected-file growth bytes | File growth / authored value bytes |',
+        '| ---: | --- | --- | ---: | ---: | ---: | ---: |']
+    for row in _growth_scaling(cases):
+        selected='—' if row['selected_byte_growth'] is None else str(row['selected_byte_growth'])
+        amplification='—' if row['selected_byte_growth'] is None else f'{row["selected_byte_growth"]/row["payload_bytes"]:.2f}×'
+        ratio=f'{row["normalized_ratio"]:.2f}×'+(' ‡' if row['unstable'] else '')
+        lines.append(f'| {row["items"]} | {row["pattern"]} | {row["backend"]} | {ratio} | '+
+            f'{row["record_growth"]} | {selected} | {amplification} |')
+    lines+=['','The time ratio divides the 256/64 batch-median ratio by 4; 1× means equal average cost per publication.',
+        'File growth includes selected snapshot/journal framing; it is not device write amplification, allocated blocks or total directory usage.',
+        'The comparison associates elapsed work with a longer trajectory; it does not isolate OS cache or host effects.']
     lines+=['','Selected physical records and files (not total directory usage or reader memory):','',
         '| Entries | Publications | Updates | Backend | Stored / nine-root / current records | Selected bytes before / current-only |',
         '| ---: | ---: | --- | --- | ---: | ---: |']
