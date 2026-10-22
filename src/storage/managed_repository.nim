@@ -191,10 +191,11 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
   if decoded.error == ManifestError.BackendFailure: return FileError.BackendFailure
   if decoded.error != ManifestError.None: return FileError.InvalidJournal
   let manifest = decoded.value
-  let bytes = readManagedFile(repository.directory, ManagedFileKind.Snapshot, manifest.epoch,
+  var loadedSnapshot = readManagedFile(repository.directory, ManagedFileKind.Snapshot, manifest.epoch,
     limits.snapshotBytes)
-  if bytes.error != FileError.None: return bytes.error
-  let restored = decodeRepositorySnapshot(bytes.value, chain, schema, snapshotLimits(limits))
+  if loadedSnapshot.error != FileError.None: return loadedSnapshot.error
+  let bytes = loadedSnapshot.takeValue # One detached buffer owns the complete synchronous decoder input.
+  let restored = decodeRepositorySnapshot(bytes, chain, schema, snapshotLimits(limits))
   if restored.error != SnapshotError.None: return snapshotFailure(restored.error)
   var memory = restored.value.repository
   let base = memory.snapshot.value
@@ -245,7 +246,7 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
   repository.chain = chain
   repository.schema = schema
   repository.epoch = manifest.epoch
-  repository.snapshotBytes = uint64(bytes.value.len)
+  repository.snapshotBytes = uint64(bytes.len)
   repository.limits = limits
   repository.poisoned = false
   repository.active = true
