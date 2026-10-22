@@ -399,6 +399,17 @@
     },
     {
       "arguments": [
+        "transfer-funded"
+      ],
+      "description": "Accumulation funded transfer selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "transfer-funded"
+      },
+      "name": "accumulation-effect-transfer-funded"
+    },
+    {
+      "arguments": [
         "transfer-commit"
       ],
       "description": "Accumulation transfer selected-success guard",

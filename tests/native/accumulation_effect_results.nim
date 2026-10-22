@@ -78,6 +78,9 @@ of "eject": discard recordAccumulationEject(pair, AccumulationEjectTarget(99),
   default(Parameters)).value # Failed eject cannot expose a credited successor.
 of "transfer": discard context.effectTransferAt(AccumulationTransferIndex(
     0)).value # Default contexts have no outgoing element.
+of "transfer-funded": discard prepareAccumulationTransfer(pair, AccumulationTransferDestination(99),
+    TransferBalance(5), Gas(9), default(TransferMemo), default(Parameters), ServiceIndex(77),
+    AccumulationFundingMode(3)).value # Failed funding retains no source-bound plan.
 of "transfer-prepare": discard prepareAccumulationTransfer(pair, AccumulationTransferDestination(99),
   TransferBalance(0), Gas(0), default(TransferMemo), default(Parameters)).value # Failed validation has no plan.
 of "transfer-commit": discard commitAccumulationTransfer(default(PreparedAccumulationTransfer),

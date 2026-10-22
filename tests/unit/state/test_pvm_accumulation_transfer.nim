@@ -49,9 +49,9 @@ proc immediate(index: byte, value: uint64): seq[byte] =
   registerImmediate(index, value)
 
 proc transferCall(destination = 99'u64, amount = 5'u64, gas = 9'u64, address = 196608'u64,
-    suffix: seq[seq[byte]] = @[], mode = 0'u64): seq[seq[byte]] =
+    suffix: seq[seq[byte]] = @[], mode = 0'u64, funder = high(uint64)): seq[seq[byte]] =
   ## Current liquid self-funded deferred transfer: source/destination/mode/amount/gas/memo in r7-r12.
-  result = @[immediate(7, high(uint64)), immediate(8, destination), (if mode == 0: @[51'u8, 9,
+  result = @[immediate(7, funder), immediate(8, destination), (if mode == 0: @[51'u8, 9,
       0] else: immediate(9, mode)),
     immediate(10, amount), immediate(11, gas), immediate(12, address), @[10'u8, 22]]
   for instruction in suffix:
@@ -63,13 +63,14 @@ proc source(destination = 99'u64, amount = 5'u64, gas = 9'u64, address = 196608'
         minimumTransferGas: Gas(6)),
     target = 99'u32, targetGas = 7'u64, includeTarget = true, role = 42'u32,
     data: seq[byte] = payload(), extra: seq[StateEntry] = @[], writes = 3'u64,
-    suffix: seq[seq[byte]] = @[@[50'u8, 0]], mode = 0'u64): PreparedAccumulationMachine =
+    suffix: seq[seq[byte]] = @[@[50'u8, 0]], mode = 0'u64, funder = high(
+        uint64)): PreparedAccumulationMachine =
   var entries = extra
   if includeTarget:
     entries.add(serviceMetadataEntry(ServiceIndex(target), ServiceMetadata(balance: AccountBalance(77),
       minimumTransferGas: Gas(targetGas)), ByteLimit(
           ServiceMetadataBytes)).value) # Destination is a real current account, not a caller-selected lookup substitute.
-  var instructions = transferCall(destination, amount, gas, address, mode = mode)
+  var instructions = transferCall(destination, amount, gas, address, mode = mode, funder = funder)
   for instruction in suffix:
     instructions.add(instruction) # Later calls execute through the same decoded production stream.
   guestProgram(instructions, credit, account = account, writable = data, extra = entries,
@@ -192,9 +193,15 @@ for mode in [4'u64, high(uint64)]:
   assert uint64(machineInfo(direct.value.machine).value.registers[7]) == high(uint64)-8, "undefined direct mode skips memo capture and returns HUH"
   assert run(source(mode = mode, address = high(uint64), credit = price(prepared)+574),
       limit = 0).value.exit == StepExit.OutOfGas, "base-fee underfunding precedes invalid-mode memory checks"
-# Defined alternative balance modes remain separate typed gates rather than fabricated guest refusals.
-for mode in [1'u64, 2, 3]:
-  assert run(source(mode = mode)).error == AccumulationDispatchError.UnsupportedHostCall, "valid alternate transfer funding is gated"
+# Valid protected source modes refuse CASH when that selected source pool is empty.
+for mode in [1'u64, 3]:
+  let emptyProtected = run(source(mode = mode))
+  assert uint64(machineInfo(emptyProtected.value.machine).value.registers[7]) == high(uint64)-6,
+      "valid protected funding cannot borrow from liquid balance"
+let protectedDestination = run(source(mode = 2))
+assert context(protectedDestination).effectTransferAt(AccumulationTransferIndex(
+    0)).value.destinationSupervisor,
+    "liquid funding can select a deferred protected destination"
 var ro = newSeq[byte](128)
 ro[0] = 73
 checkTransfer(context(run(source(address = 65536))), memo = ro) # Read-only memo input is valid.
@@ -370,10 +377,121 @@ let unaffordable = source(credit = price(valid)+575)
 failHash(1)
 assert run(unaffordable, capacity = 0).value.exit == StepExit.OutOfGas and hashCalls() == 0, "unaffordable valid transfer performs no hash or append"
 failHash(0)
+# All four modes preserve actual payer identity and select independent source/destination pools.
+proc fundedActor(supervisor = 42'u32, incarnation = 43'u32): ServiceMetadata =
+  ServiceMetadata(balance: AccountBalance(100), supervisorBalance: AccountBalance(100),
+      created: AccountSlot(43), supervisor: ServiceIndex(supervisor),
+          supervisorCreated: AccountSlot(incarnation))
+proc payer(balance = 100'u64, protected = 100'u64, supervisor = 42'u32): StateEntry =
+  serviceMetadataEntry(ServiceIndex(77), ServiceMetadata(balance: AccountBalance(balance),
+      supervisorBalance: AccountBalance(protected), created: AccountSlot(7),
+          supervisor: ServiceIndex(supervisor),
+      supervisorCreated: AccountSlot(43)), ByteLimit(ServiceMetadataBytes)).value
+for foreign in [false, true]:
+  for mode in 0'u64..3:
+    let guest = source(mode = mode, funder = (if foreign: 77'u64 else: high(uint64)),
+        account = fundedActor(), extra = (if foreign: @[payer()] else: @[]))
+    let completed = run(guest)
+    assert completed.error == AccumulationDispatchError.None and completed.value.exit ==
+        StepExit.Halt,
+        "authorized deferred funding modes complete"
+    let owner = context(completed)
+    let transfer = owner.effectTransferAt(AccumulationTransferIndex(0)).value
+    let funder = if foreign: 77'u32 else: 42'u32
+    assert uint32(transfer.source) == funder and uint32(transfer.destination) == 99,
+        "deferred source is the actual payer, not the supervising invoker"
+    assert transfer.destinationSupervisor == (mode >= 2), "mode selects the exact future destination pool"
+    let paid = metadata(owner, funder)
+    assert uint64(paid.balance) == (if mode in [0'u64, 2]: 95'u64 else: 100'u64) and
+        uint64(paid.supervisorBalance) == (if mode in [1'u64, 3]: 95'u64 else: 100'u64),
+        "only the selected payer pool is debited"
+    let destination = metadata(owner, 99)
+    assert uint64(destination.balance) == 77 and uint64(destination.supervisorBalance) == 0,
+        "deferred funding never credits either destination pool during this invocation"
+    assert uint64(machineInfo(completed.value.machine).value.gas) == 100000-price(guest)-584,
+        "every successful mode pays the same base plus deferred fee"
+    assert (owner.effectAccountScope.value == AccumulationAccountScope.Unsupported) == foreign,
+        "self metadata proofs cannot certify a foreign payer"
+    if foreign:
+      assert uint64(metadata(owner).balance) == 100 and uint64(metadata(owner).supervisorBalance) ==
+          100,
+          "foreign funding preserves both invoker balances"
+# Protected source authority is incarnation-bound even for self.
+let delegate = serviceMetadataEntry(ServiceIndex(98), ServiceMetadata(created: AccountSlot(7)),
+    ByteLimit(ServiceMetadataBytes)).value
+for stale in [false, true]:
+  for mode in 0'u64..3:
+    let completed = run(source(mode = mode, account = fundedActor(supervisor = 98,
+        incarnation = (if stale: 6'u32 else: 7'u32)), extra = @[delegate]))
+    let huh = not stale and mode in [1'u64, 3]
+    assert (uint64(machineInfo(completed.value.machine).value.registers[7]) == high(uint64)-8) ==
+        huh,
+        "matching effective supervision controls protected self funds"
+for mode in 0'u64..3:
+  let denied = source(mode = mode, funder = 77, gas = 0, amount = high(uint64),
+      account = fundedActor(), extra = @[payer(supervisor = 77)])
+  failHash(1)
+  let refused = run(denied, capacity = 0)
+  assert uint64(machineInfo(refused.value.machine).value.registers[7]) == high(uint64)-8 and
+      hashCalls() == 0,
+      "authority HUH precedes LOW and CASH without hashing or append capacity"
+  failHash(0)
+  assert uint64(machineInfo(refused.value.machine).value.gas) == 100000-price(denied)-575,
+      "unauthorized funding charges no deferred gas"
+  let short = if mode in [0'u64, 2]: payer(balance = 4) else: payer(protected = 4)
+  let cash = run(source(mode = mode, funder = 77, account = fundedActor(), extra = @[short]))
+  assert uint64(machineInfo(cash.value.machine).value.registers[7]) == high(uint64)-6,
+      "another pool cannot conceal selected source underflow"
+for funder in [100'u64, 0x10000002a'u64]:
+  let absent = run(source(funder = funder, gas = 0, amount = high(uint64)))
+  assert uint64(machineInfo(absent.value.machine).value.registers[7]) == high(uint64)-3,
+      "source WHO precedes LOW and CASH without low-bit aliases"
+  let unreadable = run(source(funder = funder, address = high(uint64)))
+  assert unreadable.value.exit == StepExit.Panic, "memo panic precedes missing source WHO"
+for balance in [14'u64, 15]:
+  let completed = run(source(funder = 77, account = fundedActor(), extra = @[payer(
+      balance = balance, protected = 0)]))
+  assert (uint64(machineInfo(completed.value.machine).value.registers[7]) == high(uint64)-6) == (
+      balance == 14),
+      "deferred funding retains the payer's own exact aggregate threshold"
+let foreignSource = source(mode = 3, funder = 77, account = fundedActor(), extra = @[payer()])
+for checkpoint in [false, true]:
+  let suffix = if checkpoint: @[@[10'u8, 19], @[0'u8]] else: @[@[0'u8]]
+  let failed = run(source(mode = 3, funder = 77, account = fundedActor(), extra = @[payer()],
+      suffix = suffix))
+  let selected = normalizeAccumulationOutcome(failed).value.outcomeContext.value
+  assert (uint64(metadata(selected, 77).supervisorBalance) == 95) == checkpoint and
+      (selected.effectInfo.value.transfers == 1) == checkpoint,
+      "foreign payer and outgoing flag remain paired across checkpoint selection"
+let foreignPair = prepareAccumulationEffects(prepareAccumulationContexts(
+    foreignSource.machineBootstrap.value, pvmContextConfig()).value).value
+let foreignPlan = prepareAccumulationTransfer(foreignPair, AccumulationTransferDestination(99),
+    TransferBalance(5), Gas(9), TransferMemo(memo), parameters(), ServiceIndex(77),
+        AccumulationFundingMode(3))
+assert foreignPlan.error == AccumulationEffectError.None, "pure foreign validation yields a bound plan"
+for successful in [0, 2]:
+  failAfter(cint(successful))
+  let refused = commitAccumulationTransfer(foreignPlan.value, ElementLimit(1))
+  assert refused.error == AccumulationEffectError.BackendFailure, "foreign debit and append refuse atomically on backend failure"
+  failHash(0)
+  let prior = foreignPair.effectContext(AccumulationDimension.Regular).value
+  assert uint64(metadata(prior, 77).supervisorBalance) == 100 and
+      prior.effectInfo.value.transfers == 0,
+      "failed foreign commit retains its source map and outgoing owner"
+let poorGas = source(mode = 3, funder = 77, account = fundedActor(), extra = @[payer()],
+    credit = price(foreignSource)+583)
+failHash(1)
+let poor = run(poorGas, capacity = 0)
+assert poor.value.exit == StepExit.OutOfGas and hashCalls() == 0,
+    "unaffordable protected foreign transfer neither hashes nor appends"
+failHash(0)
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   let completed = run(valid)
   checkTransfer(context(completed)) # Release each plan, outgoing sequence, map and CPU successor.
+  let funded = run(foreignSource)
+  assert context(funded).effectTransferAt(AccumulationTransferIndex(0)).value.destinationSupervisor,
+      "release protected foreign plans and their fixed outgoing values"
 let after = getOccupiedMem()
 assert before == after, "transfer releases all ARC-owned versions"
 recordArcRelease("pvm_accumulation_transfer", 1000, before, after)

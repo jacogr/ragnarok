@@ -5,13 +5,35 @@
 The [coordinated upgrade](graypaper-unreleased-upgrade.md) targets
 `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. Current transfer is selector22:
 r7/r8 select source/destination (all ones means self), r9 is the mode, r10 the
-amount, r11 the deferred gas and r12 the memo address. Self/liquid deferred
-mode0 is implemented. Direct transfers, foreign funding and modes1–3 retain
-explicit implementation gates. Undefined modes return HUH after memo readability
-and account existence; refusals charge575 only and cannot debit or append. A zero
-memo pointer skips capture on this refusal path. Underfunding drains gas to zero.
+amount, r11 the deferred gas and r12 the memo address. This layer completes all four
+deferred funding modes and self/supervised sources
+against current Omega_T at the exact pin above. Modes0/2 debit liquid funds with
+self/effective-supervisor authority; modes1/3 debit protected funds with effective
+supervisor authority. Modes2/3 set the destination-supervisor flag. Keep pure
+memory, both-service WHO, authority HUH, LOW, CASH validation before conditional
+575+gas charging and atomic commit. Preserve self publication proofs and keep
+foreign publication behind parallel conflict selection. Direct transfers remain
+an explicit implementation gate. Undefined modes return HUH after memo readability
+and account existence; refusals charge575 only and cannot debit or append.
+Completion witnesses cover all modes/sources, protected authority/incarnations,
+WHO/HUH/LOW/CASH ordering, selected-pool and aggregate funding, destination flag,
+conditional OOG, checkpoint/ownership, atomic refusals and guarded APIs.
+A zero memo pointer skips capture on the undefined-mode refusal path.
+Underfunding drains gas to zero.
 Current deferred-transfer records are154 bytes, including the supervisor-credit
-flag. The release-era details and evidence below describe the historical layout.
+flag.
+
+Local verification (2026-10-22): transfer, complete publication and seven affected
+native consumer suites pass with fresh 1,000-cycle ARC evidence. Produced records
+are fed into the next service invocation to verify the selected receiver pool.
+All264 production modules and45 strict effect-result probes pass; compiler guards
+cover distinct funding account/mode domains. Focused failure/verification harnesses,
+inventory, pinned formatting and whitespace checks pass. Evidence remains under
+`build/transfer-funding-*` and `build/tests/transfer-funding-guards/results.json`.
+These are local macOS checks, separate from Linux CI, full JAM parity and PolkaVM
+host parity.
+
+The release-era details and evidence below describe the historical layout.
 
 ## Scope and authority
 
