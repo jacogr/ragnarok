@@ -1,0 +1,21 @@
+{
+  "build_name": "current-publication-handoff-results",
+  "cases": [
+    {
+      "arguments": ["mark"],
+      "description": "Current publication pending guard",
+      "diagnostic": "handoff.status == Pending",
+      "identity": {"reason": "mark"},
+      "name": "current-publication-handoff-mark"
+    },
+    {
+      "arguments": ["complete"],
+      "description": "Current publication completion guard",
+      "diagnostic": "handoff.status == Publishing",
+      "identity": {"reason": "complete"},
+      "name": "current-publication-handoff-complete"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/current_publication_handoff_results.nim"
+}
