@@ -138,3 +138,13 @@ populations and the maintainer-accepted compact vector gas representation docume
 [state-statistics](state-statistics.md). No pin, encoding fallback or counter-update behavior changes.
 Native coverage preserves unequal epoch populations, E4 counter/service maxima and full uint64
 compact gas, and rejects malformed extents, missing/absent evidence and service/byte/profile refusals.
+
+## Mixed evidence and exact projection
+
+`projectPlannedProofs` retains exactly a bounded generic plan from an existing verified view without
+hashing, preserving the original root. Missing evidence refuses atomically; proven absence remains
+an authenticated fact; default plans/views refuse and explicit empty projections are valid.
+`state_global_mixed_reads` uses all16 independently encoded composition-fixture chapters plus a
+service account and proven absence, performs typed chapter reads before/after RPV1 transport,
+checks exact scope and count/byte policies, and measures zero backend work during projection.
+Complete-map authority is never inferred from the number of retained global chapters.

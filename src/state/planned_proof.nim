@@ -86,3 +86,15 @@ proc decodePlannedProofs*(input: openArray[byte], plan: StateProofPlan,
     nodes: aggregate.nodes,
     valueBytes: ByteLimit(min(uint64(aggregate.valueBytes), uint64(limits.valueBytes))))
   fromView(decodeProofView(input, expectedRoot, limits, perProof, effective, wireBytes, plan))
+
+proc projectPlannedProofs*(source: ProofView, plan: StateProofPlan,
+    limits: ProofViewLimits): PlannedProofResult[ProofView] =
+  ## Retain exactly the requested existing evidence under the same root; missing facts refuse atomically.
+  if not plan.valid or not source.valid:
+    return PlannedProofResult[ProofView](status: ProofViewError.Uninitialized)
+  if uint64(plan.len) > uint64(limits.items) or plan.len > high(int) div sizeof(StateKey):
+    return PlannedProofResult[ProofView](status: ProofViewError.LimitExceeded)
+  var keys = newSeq[StateKey](plan.len)
+  for i in 0..<plan.len:
+    keys[i] = plan.keyAt(i).value # Detach only bounded fixed identities; root authority stays with the source.
+  fromView(projectProofView(source, keys, limits))
