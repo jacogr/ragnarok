@@ -22,3 +22,9 @@ proc limitWrites*(limit: csize_t) {.importc: "storage_io_write_limit", cdecl, he
 proc armIo*(operation: cint, skip, failures: cint, reason: cint) =
   ## A bounded controller is test infrastructure, never a production failure or policy switch.
   assert configure(operation, skip, failures, reason) == 0
+proc zeroWrites*(skip, count: cint): cint {.importc: "storage_io_zero_writes", cdecl,
+    header: "observer.h".}
+  ## Bounded zero-progress controls never write bytes or invent a successful positive extent.
+proc pendingZeroWrites*(): cint {.importc: "storage_io_zero_remaining", cdecl,
+    header: "observer.h".}
+  ## Require intended zero-progress outcomes to be consumed by the real storage write loop.

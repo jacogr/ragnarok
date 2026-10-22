@@ -316,3 +316,11 @@ by failed predecessor-directory synchronization instead exposes its actual clean
 Strict reopen validates whichever CURRENT is visible, without choosing an older epoch or changing
 root/generation. Complete old readers survive every refusal and owner retirement. These syscall
 witnesses preserve uncertainty and do not certify filesystem power-loss behavior.
+
+## Zero-progress writes
+
+The test-only observer can return zero without touching caller bytes, with a consumed-control
+witness. Both layouts terminate immediately on zero progress before or after a real eight-byte
+write. The owner is poisoned in either case; strict reopen accepts only an unchanged complete
+prefix. A partial tail still requires the independent exact generation/root repair token. After
+repair, a genuine successor append succeeds and every earlier complete reader remains valid.
