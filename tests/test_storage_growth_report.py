@@ -30,13 +30,25 @@ def output(engine,count,steps,pattern='sweep'):
     return ''.join(rows)
 
 
+def build_command(binary='/fixture/growth-native'):
+    """Authored checked argv proves command binding independently of actual compilation."""
+    return ['/fixture/nimony','c','--mm:arc','--cc:clang','-d:release','--opt:speed','--boundchecks:on',
+        '--passC:-flto','--passL:-flto','--out:'+str(binary),'/fixture/tests/performance/storage_growth_workload.nim']
+
+
+def commands(binary='/fixture/growth-native'):
+    """Every expected invocation retains its exact backend, trajectory and sample count."""
+    return [build_command(binary)]+[[str(binary),e,str(n),str(steps),'/fixture/owned','13',p]
+        for order in (ENGINES,tuple(reversed(ENGINES))) for e in order for n,steps,p in CASES]
+
+
 def fixture():
     """Create complete reverse-order report evidence with independent exact median expectations."""
     passes=[{f'{e}-{n}-{s}-{p}':parse_growth(output(e,n,s,p),e,n,s,p) for e in order for n,s,p in CASES}
         for order in (ENGINES,tuple(reversed(ENGINES)))]
     from test_storage_growth_io import fixture as io_fixture
     return dict(io=io_fixture(),status='checks-passed',schema_version=11,native_binary_sha256='a'*64,passes=passes,
-        cases=aggregate_growth(passes),checks=[dict(exit_code=0,elapsed_seconds=0.01,log=f'{i}.log') for i in range(61)])
+        cases=aggregate_growth(passes),checks=[dict(exit_code=0,elapsed_seconds=0.01,log=f'{i}.log',command=command) for i,command in enumerate(commands())])
 
 
 class StorageGrowthReportTests(unittest.TestCase):
@@ -86,6 +98,18 @@ class StorageGrowthReportTests(unittest.TestCase):
                 row['publication']*=2
         report['cases']=aggregate_growth(report['passes'])
         self.assertEqual(_growth_scaling(validate_growth(report))[0]['normalized_ratio'],2)
+
+    def test_command_profile_and_case_binding_refuse_substitution(self):
+        for change in ('backend','samples','binary','profile','override','observed'):
+            report=fixture()
+            if change=='backend': report['checks'][1]['command'][1]='managed'
+            elif change=='samples': report['checks'][1]['command'][5]='1'
+            elif change=='binary': report['checks'][1]['command'][0]='/other/binary'
+            elif change=='profile': report['checks'][0]['command'][2]='--mm:orc'
+            elif change=='override': report['checks'][0]['command'].insert(-1,'--boundchecks:off')
+            else: report['checks'][0]['command'].insert(-1,'-d:storageIoCounts')
+            with self.subTest(change=change),self.assertRaises(ValueError):
+                summarize_growth(report)
 
     def test_exact_configuration_and_sample_coverage(self):
         raw=output('memory',1024,64)

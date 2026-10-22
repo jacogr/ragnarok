@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
-from test_storage_growth_report import output
+from test_storage_growth_report import output,build_command
 import storage_growth
 from storage_benchmark import atomic_text
 
@@ -27,10 +27,10 @@ def native_stub(folder):
         executable,engine,count,steps,owned,samples,pattern=arguments
         assert samples==13
         log=folder/(name+'.log');log.write_text(output(engine,count,steps,pattern))
-        return dict(exit_code=0,elapsed_seconds=0.01,log=str(log))
+        return dict(exit_code=0,elapsed_seconds=0.01,log=str(log),command=list(map(str,arguments)))
     from test_storage_growth_io import fixture as io_fixture
     with patch.object(storage_growth.NativeChecks,'build',return_value=(dict(exit_code=0,
-            elapsed_seconds=0.01,log=str(folder/'build.log')),binary)),patch.object(
+            elapsed_seconds=0.01,log=str(folder/'build.log'),command=build_command(binary)),binary)),patch.object(
             storage_growth,'command',side_effect=command),patch.object(
             storage_growth,'run_io',return_value=io_fixture()):
         yield
