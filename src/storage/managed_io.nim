@@ -92,11 +92,16 @@ proc managedFileName*(kind: ManagedFileKind, epoch: ManagedEpoch): ManagedIoResu
   if kind == ManagedFileKind.Snapshot: name.add(".bin")
   else: name.add(".wal")
   ManagedIoResult[string](status: FileError.None, completed: name)
+proc writeNative(fd: cint, buffer: pointer, count: csize_t): clong {.importc: "write", cdecl,
+    header: "<unistd.h>".}
+  ## SDK-header binding preserves signed-long ssize_t results and nonnegative size_t input extents.
 proc writeAll(fd: cint, bytes: openArray[byte]): bool =
   ## Bound each native write by the actual remaining borrowed extent.
   var offset = 0
   while offset < bytes.len:
-    let count = posix.write(fd, cast[pointer](unsafeAddr bytes[offset]), bytes.len-offset)
+    let count = writeNative(fd, cast[pointer](unsafeAddr bytes[offset]), csize_t(bytes.len-offset))
+    if count < 0 and posix.errno() == interrupted:
+      continue # Negative EINTR transfers no bytes; preserve the exact offset after prior real progress.
     if count <= 0 or count > bytes.len-offset: return false
     offset += count
   true
