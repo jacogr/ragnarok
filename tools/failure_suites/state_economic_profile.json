@@ -1,0 +1,29 @@
+{
+  "build_name": "state-economic-profile-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard economic profile default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-economic-profile-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard economic profile invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-economic-profile-invalid"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_economic_profile_results.nim"
+}
