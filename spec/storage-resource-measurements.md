@@ -184,3 +184,12 @@ complete digest are validated with bounded64 KiB buffers and strict short-read p
 size/content changes and identity changes refuse. Logical read calls and read-interval page faults
 include validation work; child peak RSS excludes parent preparation but includes Python startup.
 Requested advice is never labeled eviction, cold storage, throughput or physical device I/O.
+
+## Validated resource comparison
+
+`tools/compare_storage_resource_panels.py` compares allocation/lifetime/deployment reports only after
+reparsing exact native cases and commands. Clean-source inventories, checked compiler/native
+providers, host geometry, memory limits and cache policy must match; reviewed source differences
+are explicit. Deterministic physical work must remain identical. Peak ratios are descriptive
+candidate/baseline observations, not speedups or isolated-component estimates. Invalid comparisons
+retire their stale output. Different fixture inventories require a new matching baseline.
