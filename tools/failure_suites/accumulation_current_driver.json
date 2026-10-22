@@ -1,0 +1,128 @@
+{
+  "source": "tests/native/accumulation_current_driver_results.nim",
+  "build_name": "accumulation-current-driver-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-driver-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence driver default extraction"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-driver-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence driver extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "initial"
+      },
+      "arguments": [
+        "initial"
+      ],
+      "name": "current-driver-initial",
+      "diagnostic": "outcome.status == InitialFailure",
+      "description": "Current sequence driver extraction: initial"
+    },
+    {
+      "identity": {
+        "reason": "planning"
+      },
+      "arguments": [
+        "planning"
+      ],
+      "name": "current-driver-planning",
+      "diagnostic": "outcome.status == PlanningFailure",
+      "description": "Current sequence driver extraction: planning"
+    },
+    {
+      "identity": {
+        "reason": "execution"
+      },
+      "arguments": [
+        "execution"
+      ],
+      "name": "current-driver-execution",
+      "diagnostic": "outcome.status == ExecutionFailure",
+      "description": "Current sequence driver extraction: execution"
+    },
+    {
+      "identity": {
+        "reason": "plan"
+      },
+      "arguments": [
+        "plan"
+      ],
+      "name": "current-driver-plan",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence driver extraction: plan"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "current-driver-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence driver extraction: source"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "current-driver-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence driver extraction: info"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "current-driver-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence driver extraction: state"
+    },
+    {
+      "identity": {
+        "reason": "run"
+      },
+      "arguments": [
+        "run"
+      ],
+      "name": "current-driver-run",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence driver extraction: run"
+    },
+    {
+      "identity": {
+        "reason": "root"
+      },
+      "arguments": [
+        "root"
+      ],
+      "name": "current-driver-root",
+      "diagnostic": "outcome.status == None",
+      "description": "Current sequence driver extraction: root"
+    }
+  ]
+}
