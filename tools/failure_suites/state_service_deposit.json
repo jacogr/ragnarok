@@ -1,0 +1,40 @@
+{
+  "build_name": "state-service-deposit-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard service deposit default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-service-deposit-default"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard service deposit reason",
+      "diagnostic": "outcome.status == ArithmeticFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-service-deposit-reason"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard service deposit invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-service-deposit-invalid"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_service_deposit_results.nim"
+}
