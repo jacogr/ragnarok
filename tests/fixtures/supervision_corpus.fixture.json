@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_SUPERVISION_CORPUS",
+  "files": {
+    "supervision-corpus.txt": "9c664f4e74f0c7f37a5e8a16ca5a3905e6484d46a2fbe0594de09bdd197b3e30"
+  },
+  "target": "supervision-corpus.txt"
+}
