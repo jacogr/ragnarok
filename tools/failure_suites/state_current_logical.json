@@ -1,0 +1,66 @@
+{
+  "build_name": "state-current-logical-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard current logical default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-current-logical-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard current logical invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-current-logical-invalid"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard current logical reason",
+      "diagnostic": "outcome.status == LogicalFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-current-logical-reason"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Guard current logical source",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source"
+      },
+      "name": "state-current-logical-source"
+    },
+    {
+      "arguments": [
+        "logical"
+      ],
+      "description": "Guard current logical logical",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "logical"
+      },
+      "name": "state-current-logical-logical"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_logical_results.nim"
+}
