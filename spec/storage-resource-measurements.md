@@ -146,3 +146,9 @@ Current managed-heap observations remain distinct from peak RSS and OS page-cach
 4096 spread public record copies retain their full independent payloads after source close and fixture retirement. Fixture graphs retire before the owner checkpoint. Native validation covers
 the retained values after owner close, and every scope must return to its exact allocator baseline.
 Current managed-heap observations remain distinct from peak RSS and OS page-cache behavior.
+
+### Selection lifetime
+
+An opaque selected-root plan retains its exact immutable source and permits a complete independent clone after close. Fixture graphs retire before the owner checkpoint. Native validation covers
+the retained values after owner close, and every scope must return to its exact allocator baseline.
+Current managed-heap observations remain distinct from peak RSS and OS page-cache behavior.
