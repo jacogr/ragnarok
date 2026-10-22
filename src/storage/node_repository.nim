@@ -58,11 +58,24 @@ type
   GraphCollection {.pure.} = enum ## Admission avoids collection; extraction and retention request exact positions.
     None, Leaves, Records
   GraphVisit = object ## Traversal scratch optionally collects reachable leaf or complete-record positions.
-    seen: seq[bool]
+    seen: seq[uint64]
     leaves: seq[int]
     collect: GraphCollection
   GraphCounts = object ## Explicitly initialized running totals bound untrusted graph traversal.
     entries, nodes, bytes: uint64
+
+func graphWords(count: int): int =
+  ## Round a nonnegative inventory length without an overflow-prone count+63 addition.
+  count div 64+(if count mod 64 == 0: 0 else: 1)
+func marked(bits: seq[uint64], index: int): bool {.inline.} =
+  ## Callers supply validated physical positions; unused high bits never authorize another record.
+  (bits[index div 64] and (1'u64 shl (index mod 64))) != 0
+proc mark(bits: var seq[uint64], index: int) {.inline.} =
+  ## Set only an existing validated physical slot in private traversal scratch.
+  bits[index div 64] = bits[index div 64] or (1'u64 shl (index mod 64))
+proc unmark(bits: var seq[uint64], index: int) {.inline.} =
+  ## Per-root reset clears exactly the positions collected by the preceding complete graph traversal.
+  bits[index div 64] = bits[index div 64] and not (1'u64 shl (index mod 64))
 
 func error*[T](outcome: RepositoryResult[T]): RepositoryError =
   ## Observe only the selected reason.
@@ -157,10 +170,10 @@ proc graph(table: RepositoryTable, digest: StateNodeHash, depth: int,
   if array[32, byte](digest) == default(array[32, byte]): return RepositoryError.None
   let index = position(table, digest)
   if index < 0: return RepositoryError.MissingNode # Partial graphs never become complete revisions.
-  if visit.seen[index]: return RepositoryError.InvalidGraph # Cycles and repeated logical subtrees cannot represent a full-key map.
+  if marked(visit.seen, index): return RepositoryError.InvalidGraph # Cycles and repeated logical subtrees cannot represent a full-key map.
   if counts.nodes >= uint64(limits.nodes): return RepositoryError.LimitExceeded
   inc counts.nodes
-  visit.seen[index] = true
+  mark(visit.seen, index)
   if visit.collect == GraphCollection.Records:
     visit.leaves.add(index) # Retention needs branch and leaf addresses, each once per validated root.
   # Borrow scalar fields directly from the immutable table; a local record would deep-copy payload bytes.
@@ -198,7 +211,7 @@ proc graph(table: RepositoryTable, digest: StateNodeHash, depth: int,
 proc resetGraph(visit: var GraphVisit) =
   ## Reuse union traversal scratch while clearing every record seen by the preceding complete root.
   for index in visit.leaves:
-    visit.seen[index] = false # Records collection includes branches and leaves, including empty-root no-ops.
+    unmark(visit.seen, index) # Records collection includes branches and leaves, including empty-root no-ops.
   visit.leaves.setLen(0) # Retain bounded capacity; no previous root can authorize a repeated subtree.
 
 proc newNodeRepository*(limits: RepositoryLimits): NodeRepository =
@@ -313,7 +326,7 @@ proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
       records.add(added[fresh])
       inc fresh
   let table = newRepositoryTable(records)
-  var visit = GraphVisit(seen: newSeq[bool](table.records.len))
+  var visit = GraphVisit(seen: newSeq[uint64](graphWords(table.records.len)))
   var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
   let complete = graph(table, StateNodeHash(array[32, byte](batch.root)), 0,
     default(array[31, byte]), limits.codec.trie, visit, counts)
@@ -321,7 +334,7 @@ proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
   if counts.entries != batch.entries or counts.nodes != batch.nodes:
     return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph)
   for record in batch.records:
-    if not visit.seen[position(table, record.digest)]:
+    if not marked(visit.seen, position(table, record.digest)):
       return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph) # Do not admit unrelated orphan records through a revision batch.
   let data = RepositoryData(table: table,
       commitment: StateTrieCommitment(root: batch.root,
@@ -360,7 +373,7 @@ proc collectStateEntries(view: RepositoryView, expected: StateRoot,
   if selected and (uint64(data.commitment.entries) > uint64(limits.items) or data.commitment.nodes >
       uint64(limits.nodes)):
     return RepositoryResult[seq[StateEntry]](status: RepositoryError.LimitExceeded) # Reject narrower fixed ceilings before traversal scratch.
-  var visit = GraphVisit(seen: newSeq[bool](data.table.records.len),
+  var visit = GraphVisit(seen: newSeq[uint64](graphWords(data.table.records.len)),
       collect: GraphCollection.Leaves)
   var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
   let checked = graph(data.table, StateNodeHash(array[32, byte](expected)), 0,
@@ -466,10 +479,10 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
     if not duplicate: unique.add(root)
   if not selected: return RepositoryResult[RepositorySelection](
       status: RepositoryError.RootMismatch)
-  var retained = newSeq[bool](source.table.records.len)
+  var retained = newSeq[uint64](graphWords(source.table.records.len))
   var indices: seq[int] = @[]
   var bytes = 0'u64
-  var visit = GraphVisit(seen: newSeq[bool](source.table.records.len),
+  var visit = GraphVisit(seen: newSeq[uint64](graphWords(source.table.records.len)),
       collect: GraphCollection.Records)
   for root in unique:
     # Reuse bounded storage, but reset membership and counters for independent per-root graph checks.
@@ -480,8 +493,8 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
     if checked != RepositoryError.None:
       return RepositoryResult[RepositorySelection](status: checked)
     for index in visit.leaves:
-      if not retained[index]:
-        retained[index] = true
+      if not marked(retained, index):
+        mark(retained, index)
         indices.add(index)
         bytes += uint64(source.table.records[index].payload.len) # Unique source records are bounded by source.valueBytes.
   indices.sort() # Canonicalize the immutable union once; repeated exports/clones can borrow this order.
@@ -591,9 +604,10 @@ proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
     records.add(storeRecord(record))
     bytes += uint64(record.payload.len) # Collection preflight proved the aggregate physical byte bound.
   let table = newRepositoryTable(records)
-  var retained = newSeq[bool](table.records.len)
+  var retained = newSeq[uint64](graphWords(table.records.len))
   var count = 0
-  var visit = GraphVisit(seen: newSeq[bool](table.records.len), collect: GraphCollection.Records)
+  var visit = GraphVisit(seen: newSeq[uint64](graphWords(table.records.len)),
+      collect: GraphCollection.Records)
   for root in image.roots:
     # Serialized roots never inherit prior cycle/route/count authority when scratch storage is reused.
     resetGraph(visit)
@@ -606,8 +620,8 @@ proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
           image.commitment.nodes:
         return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph)
     for index in visit.leaves:
-      if not retained[index]:
-        retained[index] = true
+      if not marked(retained, index):
+        mark(retained, index)
         inc count # Shared roots need each physical record once, and orphan records never become durable.
   if count != table.records.len: return RepositoryResult[NodeRepository](
       status: RepositoryError.InvalidGraph)
