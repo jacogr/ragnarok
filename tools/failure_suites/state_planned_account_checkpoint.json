@@ -1,0 +1,62 @@
+{
+  "build_name": "state-planned-account-checkpoint-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard planned account checkpoint default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-planned-account-checkpoint-default"
+    },
+    {
+      "arguments": [
+        "serialization"
+      ],
+      "description": "Guard planned account checkpoint serialization",
+      "diagnostic": "outcome.status == SerializationFailure",
+      "identity": {
+        "reason": "serialization"
+      },
+      "name": "state-planned-account-checkpoint-serialization"
+    },
+    {
+      "arguments": [
+        "inventory"
+      ],
+      "description": "Guard planned account checkpoint inventory",
+      "diagnostic": "outcome.status == InventoryFailure",
+      "identity": {
+        "reason": "inventory"
+      },
+      "name": "state-planned-account-checkpoint-inventory"
+    },
+    {
+      "arguments": [
+        "planning"
+      ],
+      "description": "Guard planned account checkpoint planning",
+      "diagnostic": "outcome.status == PlanningFailure",
+      "identity": {
+        "reason": "planning"
+      },
+      "name": "state-planned-account-checkpoint-planning"
+    },
+    {
+      "arguments": [
+        "audit"
+      ],
+      "description": "Guard planned account checkpoint audit",
+      "diagnostic": "outcome.status == AuditFailure",
+      "identity": {
+        "reason": "audit"
+      },
+      "name": "state-planned-account-checkpoint-audit"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_planned_account_checkpoint_results.nim"
+}
