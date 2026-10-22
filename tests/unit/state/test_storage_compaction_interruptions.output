@@ -1,0 +1,1 @@
+PASS storage compaction interruptions: every real file/namespace barrier, strict reopen and held views
