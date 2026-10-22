@@ -48,6 +48,12 @@ proc reusedDescriptorOpen*(): cint {.importc: "storage_io_reused_open", cdecl,
 proc limitReads*(limit: csize_t) {.importc: "storage_io_read_limit", cdecl, header: "observer.h".}
   ## Cap genuine native read progress; zero restores unrestricted calls and actual EOF.
 
+proc shrinkOnRead*(descriptor: cint, extent: int64): cint {.importc: "storage_io_shrink_on_read",
+    cdecl, header: "observer.h".}
+  ## Borrow one test-owned writable regular inode of at most64 KiB for an exact post-stat truncation.
+proc shrinkPending*(): cint {.importc: "storage_io_shrink_pending", cdecl, header: "observer.h".}
+  ## Require actual consumption of a shrink control; reset never closes its borrowed descriptor.
+
 proc growOnRead*(descriptor: cint, extent: int64): cint {.importc: "storage_io_grow_on_read",
     cdecl, header: "observer.h".}
   ## Borrow this test-owned writable descriptor until reset or one real read grows at most64 KiB.
