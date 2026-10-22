@@ -4,6 +4,7 @@
 ## Bounded global chapter selectors and authenticated reads of partial evidence.
 ## Typed chapter captures retain existing codec/profile rules without granting complete-map authority.
 import std/assertions
+import ../codec/state_privileges
 import ../codec/state_availability
 import ../codec/state_disputes
 import ../codec/state_consensus
@@ -225,4 +226,23 @@ proc readGlobalAvailability*(view: ProofView, config: AvailabilityConfig): Globa
   if decoded.value.consumed != bytes.value.len:
     return GlobalProofResult[AvailabilitySnapshot](status: GlobalProofError.InvalidValue)
   GlobalProofResult[AvailabilitySnapshot](status: GlobalProofError.None,
+      completed: decoded.value.snapshot)
+
+proc readGlobalPrivileges*(view: ProofView, config: PrivilegeConfig): GlobalProofResult[
+    PrivilegeSnapshot] =
+  ## Authenticate exact chapter scope and bound retained bytes before the existing typed decoder runs.
+  let bytes = chapterBytes(view, StateChapterId.Privileges, config.maxBytes)
+  if bytes.error != GlobalProofError.None:
+    return GlobalProofResult[PrivilegeSnapshot](status: bytes.error)
+  let decoded = decodePrivilegeState(bytes.value, config)
+  if decoded.error != PrivilegeError.None:
+    # Caller policy failures remain distinct from malformed protocol values; no partial owner escapes.
+    let reason = case decoded.error
+      of PrivilegeError.InvalidConfig: GlobalProofError.InvalidConfig
+      of PrivilegeError.LimitExceeded, PrivilegeError.LengthOverflow: GlobalProofError.LimitExceeded
+      else: GlobalProofError.InvalidValue
+    return GlobalProofResult[PrivilegeSnapshot](status: reason)
+  if decoded.value.consumed != bytes.value.len:
+    return GlobalProofResult[PrivilegeSnapshot](status: GlobalProofError.InvalidValue)
+  GlobalProofResult[PrivilegeSnapshot](status: GlobalProofError.None,
       completed: decoded.value.snapshot)
