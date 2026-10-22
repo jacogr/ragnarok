@@ -152,14 +152,16 @@ proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
     let requested = min(bytes.len-filled, 4096)
     let count = readNative(fd, addr bytes[filled], csize_t(requested))
     if count < 0:
-      if posix.errno() == interrupted: continue # Interrupted reads preserve the exact filled prefix.
-      return FileResult[seq[byte]](status: FileError.IoFailure)
-    if count == 0:
-      # Shrinkage contributes only observed bytes; framing decides whether that prefix is valid.
+      # EINTR retains the same filled prefix; only a permanent error terminates this read.
+      if posix.errno() != interrupted: return FileResult[seq[byte]](status: FileError.IoFailure)
+    elif count == 0:
+      # Actual early EOF trims preallocated storage to the exact observed prefix, without zero padding.
       bytes.setLen(filled)
       return FileResult[seq[byte]](status: FileError.None, completed: bytes)
-    if count > requested: return FileResult[seq[byte]](status: FileError.IoFailure)
-    filled += int(count) # requested <= bytes.len-filled proves the cursor remains inside this allocation.
+    else:
+      # Positive progress is bounded by the real writable window before advancing its cursor.
+      if count > requested: return FileResult[seq[byte]](status: FileError.IoFailure)
+      filled += int(count)
   var buffer = default(array[4096, byte])
   while true:
     let remaining = maximum-uint64(bytes.len)
