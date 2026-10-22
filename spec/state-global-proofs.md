@@ -132,3 +132,9 @@ byte/epoch policies independently. Decoding does not execute accumulation or upd
 this is not a canonical dictionary. Native coverage preserves maximum E4 IDs and commitment bytes,
 checks repeats/order and source independence, and rejects every truncated prefix, suffix, missing/
 absent evidence and item/byte-policy exhaustion. It adds no accumulation execution semantics.
+
+`readGlobalStatistics` reuses chapter13 activity decoding with independent current/previous
+populations and the maintainer-accepted compact vector gas representation documented in
+[state-statistics](state-statistics.md). No pin, encoding fallback or counter-update behavior changes.
+Native coverage preserves unequal epoch populations, E4 counter/service maxima and full uint64
+compact gas, and rejects malformed extents, missing/absent evidence and service/byte/profile refusals.
