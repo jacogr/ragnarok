@@ -14,7 +14,7 @@
 /* Bounded scalar configuration performs no allocation or logging at an observed call boundary. */
 static int selected, skipped, remaining, reason;
 static uint64_t calls[STORAGE_IO_LAST+1];
-static size_t write_limit;
+static size_t write_limit, read_limit;
 static int reuse_close, reused_descriptor = -1;
 static int zero_skip, zero_remaining;
 
@@ -27,7 +27,7 @@ void storage_io_reset(void) {
     }
     reuse_close = 0;
     selected = skipped = remaining = reason = 0;
-    write_limit = 0;
+    write_limit = read_limit = 0;
     zero_skip = zero_remaining = 0;
     for (int index = 0; index <= STORAGE_IO_LAST; index++) {
         /* Each known operation begins with an independently observable zero count. */
@@ -57,6 +57,10 @@ uint64_t storage_io_calls(int operation) {
 int storage_io_remaining(void) {
     /* A consumed-fault assertion prevents an unexecuted injected branch from passing a test. */
     return remaining;
+}
+void storage_io_read_limit(size_t limit) {
+    /* Genuine reads may stop short; zero disables the cap without changing EOF semantics. */
+    read_limit = limit;
 }
 void storage_io_write_limit(size_t limit) {
     /* Optional real short writes exercise progress followed by interruption; zero removes the cap. */
@@ -99,6 +103,10 @@ ssize_t storage_io_read(int descriptor, void *buffer, size_t count) {
     if (refuse(STORAGE_IO_READ)) {
         /* A rejected read must not modify caller bytes or fabricate progress. */
         return -1;
+    }
+    if (read_limit != 0 && count > read_limit) {
+        /* Only actual positive kernel results advance the caller-owned byte extent. */
+        count = read_limit;
     }
     return read(descriptor, buffer, count);
 }
