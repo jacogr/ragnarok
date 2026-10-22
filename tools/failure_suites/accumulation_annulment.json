@@ -1,0 +1,16 @@
+{
+  "source": "tests/native/accumulation_annulment_results.nim",
+  "build_name": "accumulation-annulment-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "accumulation-annulment-default", "diagnostic": "outcome.status == None", "description": "Parallel annulment default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "accumulation-annulment-refused", "diagnostic": "outcome.status == None", "description": "Parallel annulment refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "accumulation-annulment-info", "diagnostic": "outcome.status == None", "description": "Parallel annulment info extraction guard"},
+    {"identity": {"reason": "prior"}, "arguments": ["prior"], "name": "accumulation-annulment-prior", "diagnostic": "outcome.status == None", "description": "Parallel annulment prior extraction guard"},
+    {"identity": {"reason": "decision"}, "arguments": ["decision"], "name": "accumulation-annulment-decision", "diagnostic": "outcome.status == None", "description": "Parallel annulment decision extraction guard"},
+    {"identity": {"reason": "original"}, "arguments": ["original"], "name": "accumulation-annulment-original", "diagnostic": "outcome.status == None", "description": "Parallel annulment original extraction guard"},
+    {"identity": {"reason": "selected-info"}, "arguments": ["selected-info"], "name": "accumulation-annulment-selected-info", "diagnostic": "outcome.status == None", "description": "Parallel annulment selected-info extraction guard"},
+    {"identity": {"reason": "selected-state"}, "arguments": ["selected-state"], "name": "accumulation-annulment-selected-state", "diagnostic": "outcome.status == None", "description": "Parallel annulment selected-state extraction guard"},
+    {"identity": {"reason": "modified"}, "arguments": ["modified"], "name": "accumulation-annulment-modified", "diagnostic": "outcome.status == None", "description": "Parallel annulment modified extraction guard"}
+  ]
+}
