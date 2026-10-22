@@ -46,3 +46,11 @@ Malformed committed state cannot supply a different blob at a valid preimage key
 Empty present preimages remain valid; content/backend errors never become absence.
 Suite `state_proof_service_preimage` covers content mismatch, missing evidence,
 orphan entries, proven absence and exact/short output limits.
+
+## Request reader
+
+`readProofRequest` rejects both reserved lengths before any state/key work and
+uses the shared request namespace and four canonical history shapes. Exact EOF
+is required; malformed counts, suffixes and short slots are invalid committed
+values. The maximum admitted scalar length does not size any allocation.
+Suite `state_proof_service_request` covers all shapes and the current domain edges.

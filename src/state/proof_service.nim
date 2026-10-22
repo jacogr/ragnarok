@@ -5,7 +5,7 @@
 ## Missing witnesses, proven absence and malformed present bytes remain separate outcomes.
 import ./[proof_view, trie_proof]
 import ../crypto/primitives
-import ../codec/[bounded, state_accounts, state_layout, state_service_values]
+import ../codec/[bounded, state_accounts, state_layout, state_service_values, state_requests]
 
 type
   ServiceProofError* {.pure.} = enum ## Failed/default reads expose only a reason, never a fabricated value.
@@ -92,3 +92,28 @@ proc readProofPreimage*(view: ProofView, service: ServiceIndex, hash: ServicePre
   if array[32, byte](digest.value) != array[32, byte](hash):
     return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.InvalidValue)
   found
+
+proc readProofRequest*(view: ProofView, service: ServiceIndex, hash: ServicePreimageHash,
+    length: RequestLength): ServiceProofResult[RequestHistory] =
+  ## Refuse reserved lengths before account access or hashing, then decode an exact canonical history.
+  if uint32(length) >= high(uint32)-1:
+    return ServiceProofResult[RequestHistory](status: ServiceProofError.InvalidInput)
+  let account = view.readProofAccount(service)
+  if account.error != ServiceProofError.None:
+    return ServiceProofResult[RequestHistory](status: account.error)
+  let derived = serviceRequestKey(service, hash, length, ByteLimit(32))
+  if derived.error != RequestError.None:
+    return ServiceProofResult[RequestHistory](status: ServiceProofError.BackendFailure)
+  let found = presentRead(view, derived.value, ByteLimit(13))
+  if found.error == ServiceProofError.LimitExceeded:
+    return ServiceProofResult[RequestHistory](status: ServiceProofError.InvalidValue)
+  if found.error != ServiceProofError.None:
+    return ServiceProofResult[RequestHistory](status: found.error)
+  let decoded = decodeRequestHistory(found.value.bytes,
+    RequestHistoryConfig(items: ElementLimit(3), maxBytes: ByteLimit(13)))
+  if decoded.error != RequestError.None:
+    return ServiceProofResult[RequestHistory](status: ServiceProofError.InvalidValue)
+  if decoded.value.consumed != found.value.byteLength:
+    return ServiceProofResult[RequestHistory](status: ServiceProofError.InvalidValue)
+  ServiceProofResult[RequestHistory](status: ServiceProofError.None,
+      completed: decoded.value.history)
