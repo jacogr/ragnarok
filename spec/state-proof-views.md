@@ -33,3 +33,8 @@ source. A zero-key projection is a valid empty evidence view, not an empty state
 Witness export returns detached query records holding immutable unverified paths.
 A receiving consumer must verify them under its own explicit root. Tightened output
 quotas precede record allocation; mutating exported records never changes the view.
+
+Local RPV1 transport is magic `RPV1`, E4 record count, then sorted unique 31-byte
+query keys and E4-length-prefixed RSP1 witnesses. No root is serialized as authority.
+Encoding preflights per-proof and aggregate output extents before allocation and
+preserves the precise nested proof refusal. No network protocol is introduced.

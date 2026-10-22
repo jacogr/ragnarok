@@ -12,7 +12,7 @@ type
     valueBytes*: ByteLimit
   ProofViewError* {.pure.} = enum ## Missing witnesses are distinct from a successfully verified absent lookup.
     Uninitialized, None, WrongRoot, DuplicateKey, LimitExceeded, MissingWitness,
-    InvalidIndex, ConflictingEvidence, InvalidValue
+    InvalidIndex, ConflictingEvidence, InvalidValue, ProofFailure, NonCanonical, Truncated, LengthOverflow
   ViewData = ref object ## Sorted immutable verified lookups share only already immutable witness owners.
     root: StateRoot
     entries: seq[VerifiedStateLookup]
@@ -22,6 +22,8 @@ type
     case status: ProofViewError
     of None:
       completed: T
+    of ProofFailure:
+      proofReason: StateProofError
     else:
       discard                  # Default and failed results retain only their reason.
 func error*[T](outcome: ProofViewResult[T]): ProofViewError =
@@ -204,3 +206,57 @@ proc exportProofQueries*(view: ProofView, limits: ProofViewLimits): ProofViewRes
   for i, lookup in data.entries:
     queries[i] = StateProofQuery(key: lookup.key, proof: lookup.witness) # No verified discriminator crosses transport.
   ProofViewResult[seq[StateProofQuery]](status: ProofViewError.None, completed: queries)
+
+func proofError*[T](outcome: ProofViewResult[T]): StateProofError {.requires:
+    outcome.status == ProofViewError.ProofFailure.} =
+  ## Preserve only an actual underlying proof refusal, never a default nested cause.
+  outcome.proofReason
+proc encodeProofView*(view: ProofView, limits: ProofViewLimits, perProof: StateProofLimits,
+    wireBytes: ByteLimit): ProofViewResult[seq[byte]] =
+  ## Encode sorted partial evidence in local RPV1 framing; root trust remains outside the envelope.
+  let exported = exportProofQueries(view, limits)
+  if exported.error != ProofViewError.None:
+    return ProofViewResult[seq[byte]](status: exported.error)
+  let queries = exported.value
+  if uint64(queries.len) > uint64(high(uint32)):
+    return ProofViewResult[seq[byte]](status: ProofViewError.LengthOverflow)
+  var total = 8'u64
+  if total > uint64(wireBytes):
+    return ProofViewResult[seq[byte]](status: ProofViewError.LimitExceeded)
+  for query in queries:
+    # Preflight individual path/value policies and every outer record addition before output allocation.
+    let size = uint64(query.proof.suppliedByteLength.value)
+    if uint64(query.proof.len) > uint64(perProof.nodes) or size > uint64(perProof.valueBytes):
+      return ProofViewResult[seq[byte]](status: ProofViewError.ProofFailure,
+        proofReason: StateProofError.LimitExceeded)
+    let encodedSize = 10'u64 + uint64(query.proof.len)*64'u64 + size
+    if encodedSize > uint64(high(uint32)):
+      return ProofViewResult[seq[byte]](status: ProofViewError.LengthOverflow)
+    let record = 35'u64+encodedSize
+    if record > uint64(wireBytes)-total:
+      return ProofViewResult[seq[byte]](status: ProofViewError.LimitExceeded)
+    total += record
+  if total > uint64(high(int)):
+    return ProofViewResult[seq[byte]](status: ProofViewError.LengthOverflow)
+  var output = newSeq[byte](int(total))
+  output[0] = byte('R')
+  output[1] = byte('P')
+  output[2] = byte('V')
+  output[3] = byte('1')
+  for i in 0..<4:
+    output[4+i] = byte((uint64(queries.len) shr (8*i)) and 255) # Fixed E4 record count.
+  var offset = 8
+  for query in queries:
+    # Canonical sorted unique keys come from the immutable view, not mutable exported records.
+    let key = array[31, byte](query.key)
+    let encoded = encodeStateProof(query.proof, perProof, wireBytes)
+    if encoded.error != StateProofError.None:
+      return ProofViewResult[seq[byte]](status: ProofViewError.ProofFailure,
+        proofReason: encoded.error)
+    let wire = encoded.value
+    for i in 0..<31: output[offset+i] = key[i]
+    for i in 0..<4: output[offset+31+i] = byte((uint64(wire.len) shr (8*i)) and 255)
+    offset += 35
+    for i, octet in wire: output[offset+i] = octet
+    offset += wire.len
+  ProofViewResult[seq[byte]](status: ProofViewError.None, completed: output)
