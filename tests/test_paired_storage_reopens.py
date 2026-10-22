@@ -128,5 +128,57 @@ class PairedAdmissionTests(unittest.TestCase):
         self.assertFalse(any(p.is_dir() for p in output.iterdir()))
 
 
+    def completed_pair(self):
+        """Collect fully authored receipts using the real source-owned scheduler and inert process boundary."""
+        self.commands = []
+        def selected(path):
+            """Return the authored closed-byte inventory for this backend."""
+            engine = 'managed' if 'managed' in str(path) else 'journal'
+            return next(r['selected_before'] for r in self.report['rows'] if r['case'][0] == engine)
+        with patch.object(paired, 'command', side_effect=self.fake_command), \
+             patch.object(paired, 'selected_hashes', side_effect=selected), \
+             patch.object(paired, 'environment', return_value=self.report['environment']):
+            return paired.collect(self.config, self.folder/'validated-pair', execute_local_builds=True)
+
+    def test_readonly_validation_rejects_substituted_receipts(self):
+        report = self.completed_pair()
+        self.assertEqual(len(paired.validate_pair(report)), 16)
+        self.assertIn('Whole-child', paired.render_pair(report))
+        for kind in ('schema','status','missing','order','producer','consumer','root','bytes',
+                     'counter','release','physical','namespace','binary','driver','host','environment'):
+            # Every mutation attacks a distinct evidence boundary; validation cannot dispatch even one command.
+            bad = copy.deepcopy(report)
+            if kind == 'schema': bad['schema_version'] = True
+            elif kind == 'status': bad['status'] = 'running'
+            elif kind == 'missing': bad['rows'].pop()
+            elif kind == 'order': bad['rows'][0],bad['rows'][1] = bad['rows'][1],bad['rows'][0]
+            elif kind == 'producer': bad['checks'][0]['command'][0] = '/bin/sh'
+            elif kind == 'consumer': bad['checks'][1]['command'][-1] = 'f'*64
+            elif kind == 'root': bad['rows'][0]['root'] = 'f'*64
+            elif kind == 'bytes': bad['rows'][0]['selected_after']['store'] = 'f'*64
+            elif kind == 'counter': bad['rows'][0]['resources']['peak_rss_bytes'] = True
+            elif kind == 'release': bad['rows'][0]['raw'] = bad['rows'][0]['raw'].replace('\t100\t65536','\t101\t65536')
+            elif kind == 'physical': bad['rows'][0]['observed']['stored_nodes'] += 1
+            elif kind == 'namespace': bad['rows'][2]['owned'] = bad['rows'][0]['owned']
+            elif kind == 'binary': bad['binary_sha256']['candidate'] = 'f'*64
+            elif kind == 'driver': bad['driver_sha256']['paired_storage_reopens.py'] = True
+            elif kind == 'host': bad['host_end']['page_size'] *= 2
+            else: bad['environment_end']['device_id'] += 1
+            with self.subTest(kind=kind), patch.object(paired, 'command', side_effect=AssertionError('executed')):
+                with self.assertRaises(ValueError): paired.validate_pair(bad)
+
+    def test_readonly_cli_clears_stale_summary_and_preserves_input(self):
+        import subprocess
+        report = self.completed_pair(); path = self.folder/'pair.json'
+        report['rows'].pop(); path.write_text(json.dumps(report))
+        summary = self.folder/'summary.md'; summary.write_text('old success')
+        command = [sys.executable,str(ROOT/'tools/paired_storage_reopens.py'),'--validate',str(path),'--summary']
+        result = subprocess.run([*command,str(summary)],capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0); self.assertFalse(summary.exists())
+        original = path.read_bytes()
+        result = subprocess.run([*command,str(path)],capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0); self.assertEqual(path.read_bytes(),original)
+
+
 if __name__ == '__main__':
     unittest.main()
