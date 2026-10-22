@@ -96,3 +96,28 @@ snapshot/CURRENT/journal reads, managed append open and ordinary journal owner o
 below its read ceiling and then exceeds it by one byte; pending-cue consumption and actual read
 calls must prove the path executed. Refusal preserves the test-authored grown extent/prefix.
 The tests alone remove their deliberate tails before positive strict reopens.
+
+## Final local qualification
+
+Frozen implementation `2fb095c06c7a645334fc5721a153e1699d5b7f5e` passed all 12 selected native
+suites through Make: both one-MiB preflight regressions, real post-stat growth, original chunk
+bounds, short reads, interrupted reads, file admission, journal owner semantics, managed owner
+semantics, managed publication IO, managed disk recovery and repair interruptions.
+The native/profile Python guards passed 88 and 6 tests respectively. Inventory and pinned format
+checks passed. The SDK observer compiled with its normal strict C warnings; no compiler/stdlib
+source or pin changed. Native unit profiles retain their established checked ARC/Clang release
+configuration; the separate tiny allocator probe also used the checked LTO profile.
+
+A fresh Make memory-ceiling panel passed all eight ordinary large-state native reopens with
+exact complete maps, producer roots/generation, retained lifetimes, allocator release and selected
+byte preservation. Its three probes and twelve constrained rows remain unavailable on this
+Darwin host; the earlier successful Linux run is evidence for its original merged source, not
+exact-head Linux evidence for this change. No new remote CI label was requested.
+
+The final qualification edit changes only feature/operator prose. Full logs and exact input
+identities remain in `build/storage-db5-final-qualification.json`,
+`build/storage-db5-final-logs/`, `build/storage-db5-final-memory-ceilings/` and the pre-fix fixture
+paths above. Initial fixture/compiler corrections are not counted as runtime controls.
+The bounded storage fix is complete; the exact original Linux allocating call site, general
+OS-OOM recovery, controlled resident-memory/paging and hardware/filesystem power-loss work
+remain outside this qualification. No complete-serialization or M1 completion claim is added.

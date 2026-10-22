@@ -83,3 +83,17 @@ page packing and hardware/filesystem/device power-loss qualification remain sepa
 Complete protocol serialization remains owned by the state workstream; no new M1 completion is
 claimed. See the [feature contract](../spec/storage-memory-ceilings.md) and
 [resource interpretation guide](storage-resource-measurements.md).
+
+## Configured file limits versus allocator exhaustion
+
+Known regular files larger than a caller's physical byte ceiling now return `LimitExceeded`
+before the reader grows its detached buffer. The reader still enforces actual byte counts and
+one excess byte if the file grows after stat. Native one-MiB-heap regressions cover both layouts,
+and real post-stat growth witnesses preserve that final read-loop check.
+
+A file byte ceiling is not a heap/RSS budget. A file that fits its declared ceiling may still
+exhaust memory during buffering or complete-graph reconstruction. The pinned allocator's OS
+page-mapping failure aborts outside ordinary exception recovery; this change does not make those
+failures catchable or cure the original large128 MiB constrained opens. See the
+[allocation-failure evidence](../spec/storage-allocation-failures.md) for the exact observed
+fail-stop path, bounded fix and remaining Linux qualification scope.
