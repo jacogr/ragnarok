@@ -1,0 +1,62 @@
+{
+  "build_name": "state-economics-table-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard economics table default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-economics-table-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard economics table invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-economics-table-invalid"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard economics table reason",
+      "diagnostic": "outcome.status == ObservationFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-economics-table-reason"
+    },
+    {
+      "arguments": [
+        "service"
+      ],
+      "description": "Guard economics table service",
+      "diagnostic": "outcome.status == ObservationFailure",
+      "identity": {
+        "reason": "service"
+      },
+      "name": "state-economics-table-service"
+    },
+    {
+      "arguments": [
+        "ordinal"
+      ],
+      "description": "Guard economics table ordinal",
+      "diagnostic": "outcome.status == ObservationFailure",
+      "identity": {
+        "reason": "ordinal"
+      },
+      "name": "state-economics-table-ordinal"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_economics_table_results.nim"
+}
