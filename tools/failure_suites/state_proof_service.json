@@ -1,0 +1,128 @@
+{
+  "build_name": "state-proof-service-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Service proof default extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-proof-service-default"
+    },
+    {
+      "arguments": [
+        "missing"
+      ],
+      "description": "Service proof missing extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "missing"
+      },
+      "name": "state-proof-service-missing"
+    },
+    {
+      "arguments": [
+        "absent"
+      ],
+      "description": "Service proof absent extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "absent"
+      },
+      "name": "state-proof-service-absent"
+    },
+    {
+      "arguments": [
+        "malformed"
+      ],
+      "description": "Service proof malformed extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "malformed"
+      },
+      "name": "state-proof-service-malformed"
+    },
+    {
+      "arguments": [
+        "length"
+      ],
+      "description": "Service proof length extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "length"
+      },
+      "name": "state-proof-service-length"
+    },
+    {
+      "arguments": [
+        "plan"
+      ],
+      "description": "Service proof plan extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "plan"
+      },
+      "name": "state-proof-service-plan"
+    },
+    {
+      "arguments": [
+        "index"
+      ],
+      "description": "Service proof index extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "index"
+      },
+      "name": "state-proof-service-index"
+    },
+    {
+      "arguments": [
+        "verify"
+      ],
+      "description": "Service proof verify extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "verify"
+      },
+      "name": "state-proof-service-verify"
+    },
+    {
+      "arguments": [
+        "encode"
+      ],
+      "description": "Service proof encode extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "encode"
+      },
+      "name": "state-proof-service-encode"
+    },
+    {
+      "arguments": [
+        "decode"
+      ],
+      "description": "Service proof decode extraction guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "decode"
+      },
+      "name": "state-proof-service-decode"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Service proof reason extraction guard",
+      "diagnostic": "outcome.status == ProofFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-proof-service-reason"
+    }
+  ],
+  "crypto_library": "crypto",
+  "source": "tests/native/state_proof_service_results.nim"
+}
