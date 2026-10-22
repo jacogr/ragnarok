@@ -1,0 +1,98 @@
+{
+  "source": "tests/native/current_block_input_results.nim",
+  "build_name": "current-block-input-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "cases": [
+    {
+      "identity": {
+        "reason": "admission-default"
+      },
+      "arguments": [
+        "admission-default"
+      ],
+      "name": "current-block-input-admission-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current block input selected extraction guard admission-default"
+    },
+    {
+      "identity": {
+        "reason": "admission-refused"
+      },
+      "arguments": [
+        "admission-refused"
+      ],
+      "name": "current-block-input-admission-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current block input selected extraction guard admission-refused"
+    },
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-block-input-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current block input selected extraction guard default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-block-input-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current block input selected extraction guard refused"
+    },
+    {
+      "identity": {
+        "reason": "codec"
+      },
+      "arguments": [
+        "codec"
+      ],
+      "name": "current-block-input-codec",
+      "diagnostic": "outcome.status == DecodeFailure",
+      "description": "Current block input selected extraction guard codec"
+    },
+    {
+      "identity": {
+        "reason": "preparation"
+      },
+      "arguments": [
+        "preparation"
+      ],
+      "name": "current-block-input-preparation",
+      "diagnostic": "outcome.status == PreparationFailure",
+      "description": "Current block input selected extraction guard preparation"
+    },
+    {
+      "identity": {
+        "reason": "enqueue"
+      },
+      "arguments": [
+        "enqueue"
+      ],
+      "name": "current-block-input-enqueue",
+      "diagnostic": "outcome.status == EnqueueFailure",
+      "description": "Current block input selected extraction guard enqueue"
+    },
+    {
+      "arguments": [
+        "ancestors"
+      ],
+      "description": "Current block input discovery extraction guard",
+      "diagnostic": "outcome.status == NeedsAncestors",
+      "identity": {
+        "reason": "ancestors"
+      },
+      "name": "current-block-input-ancestors"
+    }
+  ]
+}
