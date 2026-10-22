@@ -253,3 +253,10 @@ then checks11 separate failed/default payload or wrong-alternative extractions.
 The same binary's genuine positive control extracts valid typed reads, plans,
 transport responses and actual nested proof reasons. Compiler failure alone
 cannot pass these runtime checks; checked optimized contracts remain enabled.
+
+## Private authority and nominal separation
+
+Five independent compiler privacy rejections protect result status/payload,
+nested proof reasons, plan ownership and retained key storage. A nominal guard
+rejects passing a query plan to complete-state forking. A plan can request facts
+but cannot construct a verified view, successful read or full execution map.
