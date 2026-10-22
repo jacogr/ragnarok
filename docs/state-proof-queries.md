@@ -7,7 +7,8 @@ Public RPC proof methods, remote root discovery and partial light-state generati
 ## Admission and ownership
 
 Start a stable `Services` owner with complete canonical state. Build a semantic plan with the
-constructors in `state/proof_service` and choose an explicit `BlockHash`. Supply every
+constructors in `state/proof_service`, or a generic global/mixed `StateProofPlan`, and choose an
+explicit `BlockHash`. See [global reads](state-global-proofs.md) for chapter selectors and typed readers. Supply every
 `ProofQueryLimits` policy: full-map entries/nodes, individual proof nodes/value bytes, aggregate
 proof counts/nodes/value bytes, retained-view counts/value bytes, encoded bytes and hash work.
 These are resource ceilings; the hash-work estimate is not a wall-clock deadline.
@@ -63,7 +64,7 @@ release capacity or reopen RPC. Collect only with the matching ticket after `Don
   it leaves the lease untouched.
 - `Cancelled` retires the request without a response.
 - `Completed` exposes a guarded `ProofQueryResult[ProofResponse]`. Inspect its error before
-  reading the response or nested proof/service failure reason. Execution failures expose no prefix.
+  reading the response or nested proof/service/view failure reason. Execution failures expose no prefix.
 
 Only successful collection reopens canonical/RPC access. `stopStateProofs` joins before discarding
 uncollected work and resumes only its own lease. Stopping preparation cannot release a proof lease.
@@ -78,7 +79,8 @@ It retains no selected snapshot or raw proof graph. `response.bytes(limit)` chec
 budget before returning an independent sequence. The response remains usable after Services closes.
 
 Response identities describe what was generated; consumers still supply their own expected root,
-plan and receive budgets to `decodeServiceProofs`. Never infer root authority from response bytes.
+plan and receive budgets to `decodeServiceProofs` for service-only plans or `decodePlannedProofs`
+for generic plans. Never infer root authority from response bytes.
 Generation, local authentication and encoding are all-or-neither under the admitted limits.
 
 ## Verification and remaining scope
