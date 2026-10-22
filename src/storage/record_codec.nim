@@ -114,6 +114,21 @@ proc extent(batch: TrieExport, records: openArray[TrieRecord], limits: RecordLim
         return RecordResult[int](status: RecordError.NonCanonical) # Empty branches and spare fields have no canonical meaning.
   RecordResult[int](status: RecordError.None, completed: int(size))
 
+proc recordIntegrity(record: TrieRecord, limits: RecordLimits): RecordError =
+  ## Hash exactly one structurally admitted record; raw callers still require independent shape/budget preflight.
+  var encoded = default(EncodedStateNode)
+  if record.kind == TrieRecordKind.Leaf:
+    let leaf = encodeStateLeaf(record.key, record.payload, limits.trie.perValue)
+    if leaf.error != StateLayoutError.None: return RecordError.BackendFailure
+    encoded = leaf.value
+  else:
+    encoded = encodeStateBranch(record.left, record.right) # Use full physical children to produce exact JAM B bytes.
+  let hashed = hashStateNode(encoded)
+  if hashed.error != StateLayoutError.None: return RecordError.BackendFailure
+  if array[32, byte](hashed.value) != array[32, byte](
+      record.digest): return RecordError.HashMismatch
+  RecordError.None
+
 proc validateRecords(batch: TrieExport, records: openArray[TrieRecord], limits: RecordLimits,
     collection: bool, ordered = false): RecordError =
   ## Verify each physical node commitment; only the private decoder's strict first pass can supply order.
@@ -127,17 +142,8 @@ proc validateRecords(batch: TrieExport, records: openArray[TrieRecord], limits: 
     for i in 1..<identities.len:
       if compareHash(identities[i-1], identities[i]) == 0: return RecordError.DuplicateNode
   for record in records:
-    var encoded = default(EncodedStateNode)
-    if record.kind == TrieRecordKind.Leaf:
-      let leaf = encodeStateLeaf(record.key, record.payload, limits.trie.perValue)
-      if leaf.error != StateLayoutError.None: return RecordError.BackendFailure
-      encoded = leaf.value
-    else:
-      encoded = encodeStateBranch(record.left, record.right) # Use full physical children to produce exact JAM B bytes.
-    let hashed = hashStateNode(encoded)
-    if hashed.error != StateLayoutError.None: return RecordError.BackendFailure
-    if array[32, byte](hashed.value) != array[32, byte](
-        record.digest): return RecordError.HashMismatch
+    let checked = recordIntegrity(record, limits)
+    if checked != RecordError.None: return checked # Preserve the first exact local integrity refusal.
   RecordError.None
 
 proc putNumber(output: var seq[byte], offset: int, number: uint64) =
