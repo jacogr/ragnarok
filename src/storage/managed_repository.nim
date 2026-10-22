@@ -205,10 +205,10 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
   if not checksumMatches or uint64(base.generation) != uint64(manifest.generation) or
       array[32, byte](base.commitment.root) != array[32, byte](manifest.root):
     return FileError.InvalidJournal
-  let journal = openManagedJournal(repository.journal, repository.directory, manifest.epoch,
+  var journal = openManagedJournal(repository.journal, repository.directory, manifest.epoch,
     limits.journalBytes)
   if journal.error != FileError.None: return journal.error
-  let frames = journal.value
+  let frames = journal.takeValue # Replay borrows this sole detached owner until all selected frames are admitted.
   if frames.len < ManagedJournalHeaderBytes: return FileError.InvalidJournal
   if validateManagedJournalHeader(frames.toOpenArray(0, ManagedJournalHeaderBytes-1),
       manifest.checksum) != ManifestError.None: return FileError.InvalidJournal
