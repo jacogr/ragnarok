@@ -106,7 +106,7 @@ class StorageBenchmarkTests(unittest.TestCase):
         """A failed short workload must not leave an old successful child report in current artifacts."""
         with tempfile.TemporaryDirectory() as temporary:
             folder=Path(temporary);(folder/'growth').mkdir()
-            for name in ('results.json','samples.csv'):
+            for name in ('results.json','samples.csv','publications.csv'):
                 (folder/'growth'/name).write_text('old success')
             with native_stub(folder) as runner,patch.object(runner.NativeChecks,'build',return_value=(
                     dict(exit_code=1,log='failed-build.log'),folder/'binary')):
@@ -114,6 +114,7 @@ class StorageBenchmarkTests(unittest.TestCase):
                     runner.run()
             self.assertFalse((folder/'growth/results.json').exists())
             self.assertFalse((folder/'growth/samples.csv').exists())
+            self.assertFalse((folder/'growth/publications.csv').exists())
 
     def test_growth_failure_fails_parent_and_removes_stale_csv(self):
         """A successful short matrix cannot hide a later sustained execution failure."""

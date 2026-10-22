@@ -31,10 +31,24 @@ def growth_csv(report):
     return output.getvalue()
 
 
+def publication_csv(report):
+    """Retain every ordered call duration with its case/sample/warmup identity for independent analysis."""
+    validate_growth(report)
+    output=io.StringIO(newline='');writer=csv.writer(output)
+    writer.writerow(('pass','backend','items','publications','pattern','sample','warmup','revision','latency_ns'))
+    for index,observations in enumerate(report['passes']):
+        for name,rows in observations.items():
+            for row in rows:
+                for revision,duration in enumerate(row['publication_samples'],1):
+                    writer.writerow((index,name.split('-')[0],row['items'],row['publications'],row['pattern'],
+                        row['sample'],row['sample']<3,revision,duration))
+    return output.getvalue()
+
+
 def run_growth(compiler,library,folder,publish):
     """Build once, run matching reversed-order cases, and publish success after complete raw artifacts."""
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
-    for name in ('results.json','samples.csv'):
+    for name in ('results.json','samples.csv','publications.csv'):
         (folder/name).unlink(missing_ok=True)
     report=dict(status='running',schema_version=3,checks=[],passes=[],cases=[])
     def save():
@@ -61,10 +75,12 @@ def run_growth(compiler,library,folder,publish):
             report['passes'].append(observations);save()
         report['cases']=aggregate_growth(report['passes']);report['status']='checks-passed'
         publish(folder/'samples.csv',growth_csv(report))
+        publish(folder/'publications.csv',publication_csv(report))
         save() # A successful child report follows a complete raw CSV; the parent still owns overall success.
         return report
     except Exception as error:
         report.update(status='failed',error=str(error))
-        (folder/'samples.csv').unlink(missing_ok=True)
+        for name in ('samples.csv','publications.csv'):
+            (folder/name).unlink(missing_ok=True)
         save()
         raise

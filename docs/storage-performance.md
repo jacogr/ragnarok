@@ -94,3 +94,7 @@ profile provenance explicitly covers both workloads. A failed or incomplete sust
 the entire job, even when the original short matrix passed. Selected bytes and physical nodes
 exclude unknown files, filesystem allocation and memory held by readers. See the
 [sustained workload contract](../spec/storage-growth-benchmark.md).
+
+Per-call sustained timings are downloadable in `growth/publications.csv`, including exact revision,
+sample, locality and warmup identity. Warmups remain raw evidence and never enter measured
+statistics. A late failure publishing this file removes both child CSVs and refuses success.

@@ -70,7 +70,7 @@ def cpu_model():
 # Persist progress and failures before rendering any comparison; older success cannot survive a failed rerun.
 def run():
     BUILD.mkdir(parents=True,exist_ok=True)
-    for name in ('summary.md','samples.csv','results.json','growth/results.json','growth/samples.csv'):
+    for name in ('summary.md','samples.csv','results.json','growth/results.json','growth/samples.csv','growth/publications.csv'):
         (BUILD/name).unlink(missing_ok=True)
     report=dict(status='running',checks=[],passes=[],cases=[])
     def save():
