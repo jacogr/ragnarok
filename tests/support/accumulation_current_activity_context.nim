@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current activity fixtures share exact signed inputs with legacy witnesses and retain real current completion.
-import ../../src/codec/[bounded, composite, report_owned, state_authorization, state_trie]
+import ../../src/codec/[bounded, header, composite, report_owned, state_authorization, state_trie]
 import ../../src/state/[accumulation_current_activity, accumulation_current_validators,
   accumulation_current_recent, accumulation_current_ready, accumulation_current_finalization,
   accumulation_current_driver, accumulation_provisions]
@@ -13,6 +13,7 @@ import ./[accumulation_activity_context, accumulation_current_finalization_conte
 type CurrentActivityFixture* = object ## Full authored parent keys support independent selected-state reconstruction.
   source*: PreparedCurrentAccumulationValidators
   entries*: seq[StateEntry]
+  older*: seq[OwnedHeader] ## Original genuine lookup headers support full candidate consumers.
 proc currentActivityFixture*(base: OwnedReport, available = false, guarantees = 0, blobs = false,
     requested = true, missingLast = false, disordered = false, slot = 2'u32,
     hugeRefinement = false, executed = false, provided = false, parentPools: seq[AuthorizerRow] = @[],
@@ -40,4 +41,4 @@ proc currentActivityFixture*(base: OwnedReport, available = false, guarantees = 
   let recent = prepareCurrentAccumulationRecent(ready, recentPolicy()).value
   CurrentActivityFixture(source: prepareCurrentAccumulationValidators(recent,
       activityValidatorConfig()).value,
-    entries: fixture.entries)
+    entries: fixture.entries, older: fixture.older)

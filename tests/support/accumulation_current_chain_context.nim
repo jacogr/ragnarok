@@ -18,6 +18,7 @@ type CurrentChainFixture* = object ## Actual current authority retains its struc
   source*: PreparedCurrentAccumulationConsensus
   parent*: BlockSnapshotResult
   entries*: seq[StateEntry]
+  older*: seq[OwnedHeader] ## Exact original report lookup inputs, never synthesized ancestry certificates.
 proc currentChainSettings*(epoch = 12'u8, alteredPrice = false): Parameters =
   ## Use the exact frozen execution tuple; mismatch probes alter only one explicit epoch or deposit field.
   var wire = currentRoundParameters().encodeParameters
@@ -58,7 +59,8 @@ proc currentChainFixture*(base: OwnedReport, uses = 0, available = false, blobs 
   let captured = captureBlockSnapshot(currentChainBytes(binding.admittedParent),
     source.currentChainParent, currentChainSettings())
   assert captured.error == GenesisError.None, "exact source parameter tuple captures genuine parent"
-  CurrentChainFixture(source: source, parent: captured, entries: authored.entries)
+  CurrentChainFixture(source: source, parent: captured, entries: authored.entries,
+      older: authored.older)
 proc currentChainSeeded*(context: CurrentChainFixture): ChainView =
   ## Explicit finality stays on the retained parent while its child becomes the selected head.
   genesisView(context.parent).finalizeView(context.parent.value.blockHash).value
