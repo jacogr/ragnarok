@@ -8,6 +8,7 @@ from storage_benchmark import atomic_text
 from storage_limit_collect import collect
 from storage_limit_report import validate
 from storage_limit_provenance import ROOT
+from storage_limit_render import render
 
 BUILD=ROOT/'build/tests/storage-memory-ceilings'
 
@@ -20,6 +21,7 @@ def run(folder=BUILD):
     report=None
     try:
         report=collect(folder);report['status']='checks-passed';validate(report)
+        atomic_text(folder/'summary.md',render(report))
         atomic_text(folder/'results.json',json.dumps(report,indent=2)+'\n')
         print('PASS native controls and memory ceiling evidence: '+str(folder/'results.json'))
         return report
