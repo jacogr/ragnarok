@@ -1,0 +1,84 @@
+{
+  "source": "tests/native/accumulation_current_chain_results.nim",
+  "build_name": "accumulation-current-chain-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-chain-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current chain extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-chain-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current chain extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "current-chain-state",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Current chain extraction: state"
+    },
+    {
+      "identity": {
+        "reason": "publication"
+      },
+      "arguments": [
+        "publication"
+      ],
+      "name": "current-chain-publication",
+      "diagnostic": "outcome.status == PublicationFailure",
+      "description": "Current chain extraction: publication"
+    },
+    {
+      "identity": {
+        "reason": "header"
+      },
+      "arguments": [
+        "header"
+      ],
+      "name": "current-chain-header",
+      "diagnostic": "outcome.status == HeaderFailure",
+      "description": "Current chain extraction: header"
+    },
+    {
+      "identity": {
+        "reason": "capture"
+      },
+      "arguments": [
+        "capture"
+      ],
+      "name": "current-chain-capture",
+      "diagnostic": "outcome.status == CaptureFailure",
+      "description": "Current chain extraction: capture"
+    },
+    {
+      "identity": {
+        "reason": "view"
+      },
+      "arguments": [
+        "view"
+      ],
+      "name": "current-chain-view",
+      "diagnostic": "outcome.status == ViewFailure",
+      "description": "Current chain extraction: view"
+    }
+  ]
+}
