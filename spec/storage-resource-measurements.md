@@ -97,3 +97,9 @@ checks all covered source/compiler/provider/binary identities at both ends, and 
 success only after complete coverage. Build, timeout, native assertion, parsing or rendering failure
 removes stale public summaries while preserving diagnostic receipts. Each future panel owns its
 case plan and parser; orchestration never infers semantic success from exit status alone.
+
+`make bench-storage-allocations` runs the separate allocator build at 8,192/32,768 entries and 64
+sweep publications in both backend orders. Its JSON retains raw native witnesses and whole-child
+resource counters; Markdown reports current managed-heap bytes per boundary. Opposite-order
+physical work must match. Differences between boundaries describe the complete live object set,
+not isolated repository sizes, and independent process peak values must not be subtracted.
