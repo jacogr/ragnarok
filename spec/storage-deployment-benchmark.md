@@ -15,3 +15,11 @@ and encoded bytes. They do not widen application defaults. Complete-map equality
 head/generation, strict disk reopen and immutable-reader ownership remain prerequisites for accepting
 any resource observation. These bounded synthetic sizes alone do not establish production-scale
 throughput, out-of-core behavior, cold caches or hardware power-loss durability.
+
+## Independent complete-map fixture checks
+
+Each prepared publication has its exact Merklized successor root. Native fixture qualification
+publishes every physical delta, independently compares all seed/current keys and full values,
+checks exact generation/root, closes the owner and repeats the retained-map checks. Revision
+expectations are closed form rather than derived from the mutation loop. Separate1,024/32,768-entry
+controls cover16/64 publications before larger native panels consume the same fixture.
