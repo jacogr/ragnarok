@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# @@Verification={"group": "privacy", "expected": "profileReason"}
+
+## Current review owners and result alternatives remain private.
+import ../../../src/state/current_review
+var source = default(CurrentReviewResult[ReviewedCurrentState])
+discard source.profileReason
