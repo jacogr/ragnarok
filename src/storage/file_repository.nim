@@ -144,8 +144,8 @@ proc readAll(fd: cint, limit: ByteLimit): FileResult[seq[byte]] =
     return FileResult[seq[byte]](status: FileError.IoFailure)
   if uint64(metadata.st_size) > maximum:
     return FileResult[seq[byte]](status: FileError.LimitExceeded)
-  # A stat snapshot only refuses known excess; bounded reads still decide actual extent and EOF.
-  var bytes: seq[byte] = @[]
+  # A bounded stat extent seeds capacity only; actual reads still decide post-stat growth and EOF.
+  var bytes = newSeqOfCap[byte](int(metadata.st_size))
   var buffer = default(array[4096, byte])
   while true:
     let remaining = maximum-uint64(bytes.len)
