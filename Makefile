@@ -94,8 +94,15 @@ host-tools:
 	  if [ "$$missing" = 1 ]; then \
 	    mkdir -p build/ci; \
 	    apt_options='-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=60'; \
-	    sudo timeout --kill-after=10s 300s apt-get $$apt_options -o APT::Update::Error-Mode=any update 2>&1 | tee build/ci/host-tools-update.log; \
-	    sudo apt-get $$apt_options install --no-install-recommends -y $$packages 2>&1 | tee build/ci/host-tools-install.log; \
+	    apt_source_args=(); \
+	    if [ "$(STORAGE_PRESSURE_HTTPS)" = 1 ]; then \
+	      $(PYTHON) tools/storage_pressure_apt.py; \
+	      if [ -f build/ci/storage-pressure-https.list ]; then \
+	        apt_source_args=(-o "Dir::Etc::sourcelist=$(CURDIR)/build/ci/storage-pressure-https.list" -o Dir::Etc::sourceparts=-); \
+	      fi; \
+	    fi; \
+	    sudo timeout --kill-after=10s 300s apt-get $$apt_options $${apt_source_args[@]+"$${apt_source_args[@]}"} -o APT::Update::Error-Mode=any update 2>&1 | tee build/ci/host-tools-update.log; \
+	    sudo apt-get $$apt_options $${apt_source_args[@]+"$${apt_source_args[@]}"} install --no-install-recommends -y $$packages 2>&1 | tee build/ci/host-tools-install.log; \
 	  fi; \
 	fi
 
@@ -193,6 +200,7 @@ format: toolchain rust-tools
 probe-storage-resident-pressure:
 	$(PYTHON) tools/storage_resident_pressure.py --probe
 
+bench-storage-resident-pressure: STORAGE_PRESSURE_HTTPS = 1
 bench-storage-resident-pressure: setup
 	$(PYTHON) tools/storage_resident_pressure.py
 

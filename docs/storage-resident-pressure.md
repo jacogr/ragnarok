@@ -12,6 +12,10 @@ start; every completed reopen checks the producer's exact root/generation, compl
 retained views and final ARC release. Exclusive selected files are fingerprinted after
 all attempts, including OOM and bounded stalls.
 
+On amd64 Ubuntu, this target supplies a build-owned signed HTTPS source list to the normal
+bounded Make host-tools APT calls. Host source files remain unchanged; other targets/hosts
+retain their source policy. This avoids the observed Azure HTTP mirror stall.
+
 The panel runs journal and managed layouts at32,768 and131,072 entries, with16 publications.
 Two passes reverse case and treatment order. Each case has unrestricted controls before
 and after four treatments:
@@ -32,7 +36,7 @@ per-device cgroup IO counters and reclaim/swap evidence.
 Each unique transient service runs its observer and one native child as the repository user.
 The parent/compiler/producers remain outside. Unit memory includes observer, charged file
 cache and kernel memory, so it differs from native wait4 peak RSS. Sampled anonymous/file
-and swap maxima are approximate; kernel memory.peak is exact for the unit's lifetime.
+and swap maxima are approximate, and null if exec/exit left no usable proc sample; kernel memory.peak is exact for the unit's lifetime.
 Raw local events, memory.stat, PSI and per-device IO remain alongside derived observations.
 Device counters are kept separately because stacked block devices can double-count bytes.
 Buffered IO can occur with zero major page faults. Shared host counters remain context.

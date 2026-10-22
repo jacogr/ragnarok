@@ -163,15 +163,16 @@ def table_row(row):
         return values
     observed = row['execution']['observed']['runs'][0]
     after = parse(observed['after_raw'])
+    peaks = observed['sampled_peaks'] or dict(anon=None, file=None, cgroup_swap=None, swap=None)
     values.update(opened_nim_bytes=row['native']['opened_bytes'] if row['outcome'] == 'completed' else None,
                   closed_nim_bytes=row['native']['closed_bytes'] if row['outcome'] == 'completed' else None,
                   released_nim_bytes=row['native']['released'] if row['outcome'] == 'completed' else None,
                   rss_bytes=observed['resources']['peak_rss_bytes'],
                   cgroup_peak_bytes=after['memory.peak'],
-                  sampled_anon_bytes=observed['sampled_peaks']['anon'],
-                  sampled_file_bytes=observed['sampled_peaks']['file'],
-                  sampled_swap_bytes=observed['sampled_peaks']['cgroup_swap'],
-                  sampled_process_swap_bytes=observed['sampled_peaks']['swap'],
+                  sampled_anon_bytes=peaks['anon'],
+                  sampled_file_bytes=peaks['file'],
+                  sampled_swap_bytes=peaks['cgroup_swap'],
+                  sampled_process_swap_bytes=peaks['swap'],
                   high_events=observed['evidence']['events']['high'],
                   oom_kills=observed['evidence']['events']['oom_kill'],
                   pgscan=observed['evidence']['reclaim']['pgscan'],
@@ -208,7 +209,8 @@ def publish(report, folder):
         else:
             cells = [f"{row['opened_nim_bytes']/MIB:.1f}" if row['opened_nim_bytes'] is not None else '—',
                      f"{row['rss_bytes']/MIB:.1f}", f"{row['cgroup_peak_bytes']/MIB:.1f}",
-                     f"{row['sampled_swap_bytes']/MIB:.1f}", str(row['high_events']),
+                     f"{row['sampled_swap_bytes']/MIB:.1f}" if row['sampled_swap_bytes'] is not None else '—',
+                     str(row['high_events']),
                      str(row['oom_kills']), f"{row['full_stall_us']/1000:.1f}", str(row['input_blocks'])]
         lines.append('| '+' | '.join(map(str, [row['pass_index'], row['backend'], row['entries'],
                                                row['treatment'], row['outcome'], *cells]))+' |')
