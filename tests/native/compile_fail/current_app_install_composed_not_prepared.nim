@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# @@Verification={"group": "nominal", "expected": "expected: PreparedCurrentChainUpdate but got: PreparedCurrentAccumulationConsensus"}
+# @@Verification={"group": "nominal", "expected": "expected: PreparedChainUpdate but got: PreparedCurrentAccumulationConsensus", "early": ["owner.(installPrepared,", "[2] expected: PreparedChainUpdate but got: PreparedCurrentAccumulationConsensus"]}
 
 ## Canonical installation requires current opaque preparation, not just state composition.
 import ../../../src/app/chain

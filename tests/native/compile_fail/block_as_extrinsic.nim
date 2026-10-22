@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-# @@Verification={"group": "nominal", "expected": "expected: OwnedExtrinsic but got: OwnedBlock"}
+# @@Verification={"group": "nominal", "expected": "expected: OwnedExtrinsic but got: OwnedBlock", "early": ["extrinsicInfo(", "[1] expected: OwnedExtrinsic but got: OwnedBlock"]}
 
 import ../../../src/codec/block_codec
 

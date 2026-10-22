@@ -36,6 +36,9 @@ def load_compiler_fixtures(folder):
         if (set(record) - allowed or not {'group', 'expected'} <= set(record)
                 or not isinstance(record['expected'], str) or not record['expected'].strip()):
             raise ValueError('Invalid compiler fixture expectations: '+str(source))
+        if group == 'nominal' and record['expected'].startswith('expected: ') and 'early' not in record:
+            # Positional expected/got output cannot use the legacy field-mismatch predicate.
+            raise ValueError('Positional nominal diagnostic requires early call/position: '+str(source))
         if 'early' in record:
             # Positional diagnostics are ordered records, never arbitrary compiler arguments.
             early = record['early']

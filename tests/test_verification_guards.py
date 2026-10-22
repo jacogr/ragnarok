@@ -126,6 +126,7 @@ class CompilerFixtureDiscovery(unittest.TestCase):
         records = (None, {}, {**valid, 'group': 'unknown'}, {**valid, 'group': []},
                    {'group': 'privacy'}, {**valid, 'expected': ''}, {**valid, 'expected': 1},
                    {**valid, 'ignored': True}, {**valid, 'early': ['call(', 'diagnostic']},
+                   {'group': 'nominal', 'expected': 'expected: Slot but got: Index'},
                    {'group': 'nominal', 'expected': 'Index', 'early': ['one']},
                    {'group': 'nominal', 'expected': 'Index', 'early': ['call(', '']},
                    {'group': 'nominal', 'expected': 'Index', 'early': 'call'},
