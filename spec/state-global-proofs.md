@@ -112,3 +112,8 @@ the established codec. The native suite uses the existing independently encoded 
 checks distinct guarantee/registration slots and retained children after parent release, and rejects
 invalid presence tags, truncated/suffixed chapters, missing/absent evidence and caller-policy failures.
 No signature, availability-transition or root-authority rule is added.
+
+`readGlobalPrivileges` retains the current role/assigner/always-accumulate codec and full E4-service,
+E8-gas domains. Its native suite preserves maximum service/gas values and copied role/row fields,
+rejects every truncated prefix and suffix, and separates dictionary/byte/profile failures from
+missing/absent evidence. No privilege update or execution authority is inferred from decoding.
