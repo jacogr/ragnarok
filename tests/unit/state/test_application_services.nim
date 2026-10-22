@@ -176,6 +176,12 @@ proc rpc(context: SeedFixture) {.raises.} =
   assert "\"slot\":2" in readPacket(owner.rpc, peer, pending)
   sendText(peer, """{"jsonrpc":"2.0","method":"bestBlock","id":1}""")
   assert "\"slot\":2" in readPacket(owner.rpc, peer, pending)
+  # Publication advances best state while the fixed configured genesis identity remains unchanged.
+  sendText(peer, """{"jsonrpc":"2.0","method":"ragnarok_clientInfo","id":3}""")
+  let diagnostic = readPacket(owner.rpc, peer, pending)
+  let seed = configuredGenesis(context.text, configuredParameters(context.text).value)
+  assert "\"genesisHash\":" & quote(base64.encode(array[32, byte](seed.value.blockHash))) in diagnostic
+  assert "\"genesisStateRoot\":" & quote(base64.encode(array[32, byte](before.commitment.root))) in diagnostic
   let head = owner.stateSnapshot.value
   owner.rpc.close()
   failHash(1)
@@ -345,6 +351,12 @@ proc diskLifecycle(context: SeedFixture, withRpc: bool) {.raises.} =
     let prior = base64.encode(array[32, byte](parentHash))
     sendText(peer, "{\"jsonrpc\":\"2.0\",\"method\":\"stateRoot\",\"params\":[\"" & prior & "\"],\"id\":5}")
     assert base64.encode(array[32, byte](parent.commitment.root)) in readPacket(owner.rpc, peer, pending)
+    # Durable restart restores a later head while retaining the original configured genesis identity.
+    sendText(peer, """{"jsonrpc":"2.0","method":"ragnarok_clientInfo","id":6}""")
+    let diagnostic = readPacket(owner.rpc, peer, pending)
+    assert "\"genesisHash\":" & quote(prior) in diagnostic
+    assert "\"genesisStateRoot\":" & quote(base64.encode(array[32, byte](
+        parent.commitment.root))) in diagnostic
   owner.close()
 
 proc main() {.raises.} =

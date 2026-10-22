@@ -40,7 +40,7 @@ Send a WebSocket text message:
 - Milliseconds since RPC startup, observed connected peer count, and occupied/reserved ARC
   allocator bytes (not process RSS). Mesh counts its logical remote once across two role engines.
 - `bestBlock`: the selected head descriptor when available, initially configured genesis; otherwise null.
-- `chain`: null; no network identity is published. `finalizedBlock` is null until explicitly published
+- `chain`: configured genesis identity when available, as described below. `finalizedBlock` is null until explicitly published
   by a trusted finality source, then contains its block descriptor.
 - RPC transport, loopback address, port, available method names, subscription availability,
   maximum message bytes and batch size.
@@ -959,3 +959,24 @@ FIFO bytes in a subscribe-plus-clientInfo batch before transport drains the init
 Remaining JIP-2 work requires real synchronization progress, work-package lifecycle evidence,
 submission routing or DA retrieval. These diagnostics describe available RPC state without claiming
 those capabilities. Consensus finality and importer integration also remain outstanding.
+
+
+## Configured chain identity diagnostics
+
+`ragnarok_clientInfo.chain` is an object containing `genesisHash` and `genesisStateRoot`
+when Services has a complete validated configured genesis pair. Both are canonical padded
+Base64 32-byte identities: the sealed genesis header hash and complete genesis posterior
+state root, respectively. This Ragnarok extension does not assign a network name or assert
+consensus validation. Scope: expose existing configured evidence without changing pinned
+JIP-2 methods or GP 0.8.0 state interpretation.
+
+The listener retains only fixed copied identities, independently of its selected history.
+Canonical checkpoint import and disk restart still derive identity from the configured
+genesis, never from the imported/restored head. Parameters-only, unconfigured and failed
+genesis inputs leave `chain: null`; low-level listener callers must explicitly supply the
+identity. Query handling does no file reads, genesis decoding or hashing.
+
+Completion checks: the RPC native suite covers exact identity encoding, unavailable/invalid
+inputs and a later one-head restart view retaining the original configured identity.
+Real-process RPC checks cover configured and unconfigured Services startup. Sync status,
+work-package lifecycle, submission and DA retrieval still require their own evidence.
