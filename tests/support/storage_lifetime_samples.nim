@@ -5,7 +5,7 @@
 import std/assertions
 import ./[storage_growth_samples, storage_allocations]
 import ../../src/storage/[node_records, node_repository]
-import ../../src/codec/[state_layout, state_trie]
+import ../../src/codec/[state_layout, state_trie, bounded]
 
 type LifetimeObservation* = object
   ## Only scalar counters escape; no graph, fixture or extracted value can survive accidentally.
@@ -152,5 +152,31 @@ proc memoryLookupsLifetime*(count: int): LifetimeObservation =
     result.checks = result.checks+4096
     assert result.held > result.owner
     assert result.closed > result.baseline and result.closed < result.held
+  result.released = occupiedStorageBytes()
+  assert result.released == result.baseline
+
+proc lifetimeSelection(owner: NodeRepository): RepositorySelection =
+  ## A one-root opaque plan retains its exact source view without exporting serialized authority.
+  let view = owner.snapshot.value
+  result = selectRepositoryRoots(view, [view.commitment.root], ElementLimit(1)).value
+
+proc checkLifetimeSelection(selected: RepositorySelection, count: int): int =
+  ## An independent selected clone verifies all current values after the original mutable owner closes.
+  var clone = cloneRepositorySelection(selected, growthLimits()).value
+  result = checkLifetimeOwner(clone, count)
+  assert clone.close == RepositoryError.None
+
+proc memorySelectionLifetime*(count: int): LifetimeObservation =
+  ## Selection scratch and its retained source remain live until the explicit selection scope retires.
+  result = emptyLifetime()
+  block:
+    var owner = isolatedMemoryOwner(count)
+    result.owner = occupiedStorageBytes()
+    let selected = lifetimeSelection(owner)
+    result.held = occupiedStorageBytes()
+    assert owner.close == RepositoryError.None
+    result.closed = occupiedStorageBytes()
+    result.checks = checkLifetimeSelection(selected, count)
+    assert result.held > result.owner and result.closed == result.held
   result.released = occupiedStorageBytes()
   assert result.released == result.baseline

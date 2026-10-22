@@ -8,8 +8,8 @@ from storage_resource_panel import ROOT, run_panel, validate_panel
 
 SOURCE = ROOT/'tests/performance/storage_lifetime_workload.nim'
 DEFINES = ()
-SCENARIOS = ('fixture', 'owner', 'reader', 'readers', 'extraction', 'lookups')
-CHECKS = {'fixture': (1, 64), 'owner': (1, 0), 'reader': (2, 0), 'readers': (1, 4096), 'extraction': (1, 0), 'lookups': (1, 4096)}
+SCENARIOS = ('fixture', 'owner', 'reader', 'readers', 'extraction', 'lookups', 'selection')
+CHECKS = {'fixture': (1, 64), 'owner': (1, 0), 'reader': (2, 0), 'readers': (1, 4096), 'extraction': (1, 0), 'lookups': (1, 4096), 'selection': (1, 0)}
 CASES = tuple((scenario, count) for scenario in SCENARIOS for count in (8192, 32768))
 FIELDS = ('checks', 'baseline', 'fixture', 'owner', 'held', 'closed', 'released')
 
@@ -45,6 +45,8 @@ def parse(output, case):
         raise ValueError('Invalid extraction lifetime stages')
     elif scenario == 'lookups' and (row['fixture'] != -1 or row['owner'] <= row['baseline'] or row['held'] <= row['owner'] or not row['baseline'] < row['closed'] < row['held']):
         raise ValueError('Invalid lookups lifetime stages')
+    elif scenario == 'selection' and (row['fixture'] != -1 or row['owner'] <= row['baseline'] or row['held'] <= row['owner'] or row['closed'] != row['held']):
+        raise ValueError('Invalid selection lifetime stages')
     return row
 
 
