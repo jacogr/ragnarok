@@ -143,6 +143,13 @@ proc main() {.raises.} =
       let number = int(raw[if deep: 29 else: 0])*256+int(raw[if deep: 30 else: 1])
       assert number >= count-128 and number < count
       assert record.payload == value(number, 16, valueBytes) # Validate every returned byte outside the measured read interval.
+    var misses = newSeq[RepositoryError](4096)
+    let missStart = getMonoTime()
+    for index in 0..<misses.len:
+      misses[index] = view.lookupNode(default(StateNodeHash)).error
+    let missNs = elapsed(missStart)
+    for reason in misses:
+      assert reason == RepositoryError.MissingNode # Reserved zero identities cannot occur in an admitted physical table.
     let extractStart = getMonoTime()
     let restored = restoreStateEntries(view, expected, trie).value
     let extractNs = elapsed(extractStart)
@@ -239,8 +246,8 @@ proc main() {.raises.} =
       assert array[32, byte](record.digest) == array[32, byte](reads[0])
     echo "sample\t", count, "\t", topology, "\t", valueBytes, "\t", sample, "\t", publicationNs,
         "\t", readNs, "\t", extractNs, "\t", reopenNs, "\t", maintenanceNs, "\t", retentionNs, "\t",
-        snapshotNs, "\t", storedNodes, "\t", selectedNodes, "\t", snapshotBytes, "\t", journalBytes,
-        "\t", compactedSnapshotBytes, "\t", compactedJournalBytes
+        snapshotNs, "\t", missNs, "\t", storedNodes, "\t", selectedNodes, "\t", snapshotBytes, "\t",
+        journalBytes, "\t", compactedSnapshotBytes, "\t", compactedJournalBytes
   assert seed.close == RepositoryError.None
 try:
   main()

@@ -97,3 +97,11 @@ array allocated before timing. Every handle must match the exact admitted head. 
 alive across history/current reclamation, strict restart and native owner close, then independently
 resolve a known physical leaf. This measures resident snapshot ownership, not disk reads; payload
 lookup remains a separate phase and all lifetime validation stays outside timing.
+
+## Missing-address lookup
+
+A separate resident-view phase performs 4,096 lookups of the reserved zero physical identity.
+Admitted physical tables never contain that identity; every result must be the typed MissingNode
+refusal. This distinguishes successful payload extraction from negative address search without
+inventing disk IO, protocol-key absence proofs or partial-state completeness. The allocated result
+array and all refusal validation remain outside timing.
