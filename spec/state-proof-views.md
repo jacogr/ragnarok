@@ -25,3 +25,7 @@ Same-root immutable union coalesces only identical facts. It checks root identit
 before combining, accounts unique output keys/bytes exactly and rejects conflicting
 evidence rather than selecting a winner. Inputs and their retained lookups remain
 unchanged after short-policy or foreign-root refusal. No cryptography is repeated.
+
+Projection retains an explicitly requested subset under the original root. Missing
+witnesses, duplicate requests and short output budgets refuse without changing the
+source. A zero-key projection is a valid empty evidence view, not an empty state map.
