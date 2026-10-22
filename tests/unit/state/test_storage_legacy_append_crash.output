@@ -1,0 +1,1 @@
+PASS legacy append crash: actual successful write, SIGKILL, exact complete frame and strict restart

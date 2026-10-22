@@ -36,3 +36,11 @@ stop ordinals, explicit three-write normal completion, and refusal without an ow
 a20ms monotonic timeout and explicit cancellation. Invalid operation/ordinal/deadline and nested
 fork/start requests cannot replace an owned child. Every completed case refuses a second finish;
 normal completion has count0 and cannot be confused with a successful crash witness.
+
+## Complete legacy append before return
+
+`storage_legacy_append_crash` counts the actual append write in a normally completing control,
+then stops and kills the writer after the real complete write but before its caller receives
+success. The parent checks the exact independently encoded frame, strict generation2 reopen,
+complete authored leaves and its original retained generation1 view. No failed child receipt is
+counted as a confirmed publication; the surviving parent must independently reopen visible bytes.
