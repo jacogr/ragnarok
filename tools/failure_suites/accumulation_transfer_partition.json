@@ -1,0 +1,85 @@
+{
+  "build_name": "accumulation-transfer-partition-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Transfer partition default selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "default"
+      },
+      "name": "transfer-partition-default"
+    },
+    {
+      "arguments": [
+        "refused"
+      ],
+      "description": "Transfer partition refused selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "refused"
+      },
+      "name": "transfer-partition-refused"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Transfer partition info selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "info"
+      },
+      "name": "transfer-partition-info"
+    },
+    {
+      "arguments": [
+        "prior"
+      ],
+      "description": "Transfer partition prior selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "prior"
+      },
+      "name": "transfer-partition-prior"
+    },
+    {
+      "arguments": [
+        "count"
+      ],
+      "description": "Transfer partition count selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "count"
+      },
+      "name": "transfer-partition-count"
+    },
+    {
+      "arguments": [
+        "transfer"
+      ],
+      "description": "Transfer partition transfer selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "transfer"
+      },
+      "name": "transfer-partition-transfer"
+    },
+    {
+      "arguments": [
+        "index"
+      ],
+      "description": "Transfer partition index selected-success guard",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "origin": "index"
+      },
+      "name": "transfer-partition-index"
+    }
+  ],
+  "crypto_library": "crypto",
+  "native_libraries": [],
+  "source": "tests/native/accumulation_transfer_partition_results.nim"
+}
