@@ -44,4 +44,13 @@ int storage_io_unlinkat(int directory, const char *path, int flags);
 int storage_io_close(int descriptor);
 void storage_io_reuse_close(void);
 int storage_io_reused_open(void);
+/* Supervise one real process and distinguish witnessed SIGKILL from normal completion or failure. */
+enum { STORAGE_CRASH_KILLED = 1, STORAGE_CRASH_COMPLETED = 2, STORAGE_CRASH_INVALID = 3,
+       STORAGE_CRASH_TIMEOUT = 4, STORAGE_CRASH_ERROR = 5 };
+int storage_io_crash_fork(int operation, int skip);
+int storage_io_crash_start(void);
+void storage_io_crash_exit(int status);
+int storage_io_crash_finish(int timeout_ms);
+void storage_io_crash_abort(void);
+uint64_t storage_io_crash_count(void);
 #endif
