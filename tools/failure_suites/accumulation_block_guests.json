@@ -1,0 +1,62 @@
+{
+  "source": "tests/native/accumulation_block_guests_results.nim",
+  "build_name": "accumulation-block-guests-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "block-guests-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Authenticated guest extraction guard: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "block-guests-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Authenticated guest extraction guard: refused"
+    },
+    {
+      "identity": {
+        "reason": "reason"
+      },
+      "arguments": [
+        "reason"
+      ],
+      "name": "block-guests-reason",
+      "diagnostic": "outcome.status == GuestFailure",
+      "description": "Authenticated guest extraction guard: reason"
+    },
+    {
+      "identity": {
+        "reason": "round"
+      },
+      "arguments": [
+        "round"
+      ],
+      "name": "block-guests-round",
+      "diagnostic": "outcome.status == None",
+      "description": "Authenticated guest extraction guard: round"
+    },
+    {
+      "identity": {
+        "reason": "coverage"
+      },
+      "arguments": [
+        "coverage"
+      ],
+      "name": "block-guests-coverage",
+      "diagnostic": "outcome.status == None",
+      "description": "Authenticated guest extraction guard: coverage"
+    }
+  ]
+}
