@@ -432,3 +432,35 @@ proc generateStateProofs*(entries: openArray[StateEntry], queries: openArray[Sta
     completed[i] = StateProofQuery(key: query, proof: captured.value)
   StateProofResult[StateProofSet](status: StateProofError.None,
     completed: StateProofSet(data: ProofSetData(queries: completed)))
+
+proc encodeStateProof*(proof: StateProof, limits: StateProofLimits,
+    wireBytes: ByteLimit): StateProofResult[seq[byte]] =
+  ## Emit local RSP1 framing; this is not a JAMNP-S message and contains no trusted root or query.
+  let data = proof.data
+  if data == nil: return proofFailure[seq[byte]](StateProofError.Uninitialized)
+  if uint64(data.nodes.len) > uint64(limits.nodes) or
+      uint64(data.value.len) > uint64(limits.valueBytes):
+    return proofFailure[seq[byte]](StateProofError.LimitExceeded)
+  if uint64(data.value.len) > uint64(high(uint32)):
+    return proofFailure[seq[byte]](StateProofError.LengthOverflow)
+  let overhead = 10'u64 + uint64(data.nodes.len)*64'u64
+  if overhead > uint64(wireBytes) or uint64(data.value.len) > uint64(wireBytes)-overhead:
+    return proofFailure[seq[byte]](StateProofError.LimitExceeded)
+  if uint64(data.value.len) > uint64(high(int))-overhead:
+    return proofFailure[seq[byte]](StateProofError.LengthOverflow)
+  var output = newSeq[byte](int(overhead)+data.value.len)
+  output[0] = byte('R')
+  output[1] = byte('S')
+  output[2] = byte('P')
+  output[3] = byte('1')
+  for i in 0..<2:
+    output[4+i] = byte((uint64(data.nodes.len) shr (8*i)) and 255) # Canonical fixed E2 node count.
+  for i in 0..<4:
+    output[6+i] = byte((uint64(data.value.len) shr (8*i)) and 255) # Canonical fixed E4 value length.
+  for i, node in data.nodes:
+    # Nodes keep exact pinned 64-byte encodings; local framing never rewrites left commitments.
+    let bytes = array[64, byte](node)
+    for j in 0..<64: output[10+i*64+j] = bytes[j]
+  for i, octet in data.value:
+    output[int(overhead)+i] = octet # Return new caller-owned storage, not a mutable owner view.
+  StateProofResult[seq[byte]](status: StateProofError.None, completed: output)

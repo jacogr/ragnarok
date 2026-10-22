@@ -60,3 +60,9 @@ refusal publishes no successful prefix. Extraction stays bound to the retained b
 Generation batches share sorted fixed-key scratch and preflight all paths and aggregate
 ceilings before any hash. Query order/duplicates remain explicit. Each query commits
 the bounded complete topology independently; no multiproof compression or speedup is claimed.
+
+The local RSP1 envelope is magic `RSP1`, E2 node count, E4 supplied-value byte length,
+canonical nodes and supplied bytes, with no suffix or padding. Root and query are
+intentionally absent: transport data cannot supply its own trust authority. Encoding
+checks native and E4 extents plus outer byte ceilings before allocation. This format
+is project-local and claims no JAMNP-S proof interoperability.
