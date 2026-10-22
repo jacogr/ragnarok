@@ -51,3 +51,11 @@ counted as a confirmed publication; the surviving parent must independently reop
 After a successful journal append but before its caller receives success, strict restart selects
 the complete successor. Exact encoded bytes, authored leaves and the retained old reader are checked;
 managed snapshot/epoch selection remains unchanged and no implicit fallback layout is introduced.
+
+## Legacy torn append process death
+
+`storage_legacy_partial_crash` kills after actual eight-byte writes at the beginning, middle, penultimate
+and final frame extent. Exact visible prefix bytes are independently checked. Incomplete tails
+fail strict startup; wrong generation/root repair tokens preserve every byte and expose no owner.
+The exact independent prefix token permits truncation and a complete resumed successor. A final
+complete frame refuses the old repair token and cannot be rolled back. Held readers remain valid.
