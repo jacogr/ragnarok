@@ -182,3 +182,11 @@ No prefix view escapes a later authentication failure. Precise proof reasons
 remain guarded by `ProofFailure`; missing/extra/reordered selectors are invalid
 input. `matchesProofPlan` compares exact identities without cryptography.
 Suite `state_proof_service_verification` checks selection, root and scope refusal.
+
+## Exact local response encoding
+
+`encodeServiceProofs` accepts exactly the requested key set and reuses RPV1
+without any root trust field or new network protocol. Extra/missing selectors
+refuse before encoding. Existing per-proof/view/wire ceilings still apply.
+Suite `state_proof_service_encoding` checks byte identity with the shared codec,
+exact/short framing budgets, wrong plans, extra keys and source preservation.
