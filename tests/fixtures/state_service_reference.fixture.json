@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_STATE_SERVICE_REFERENCE",
+  "files": {
+    "state-service-proofs.txt": "54221724ca7c3f34e6997e2729ca94e28e6f5d5a89303ddec3c5abc7384f7621"
+  },
+  "target": "state-service-proofs.txt"
+}

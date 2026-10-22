@@ -1,0 +1,15 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "state_service_reference"
+  ],
+  "includes": [
+    "crypto"
+  ],
+  "libraries": [
+    "observer"
+  ],
+  "observers": [],
+  "prepared": false
+}
