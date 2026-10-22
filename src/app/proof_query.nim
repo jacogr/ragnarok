@@ -4,7 +4,7 @@
 ## A bounded proof request retains one explicitly selected posterior state and detached semantic plan.
 ## Capturing is host-side admission only; generation and authentication belong outside callbacks.
 import std/assertions
-import ../chain/genesis
+import ../chain/[genesis, state_proof]
 import ../state/[proof_service, proof_view, trie_proof, store]
 import ../codec/[bounded, state_layout, state_trie]
 
@@ -102,3 +102,72 @@ proc captureProofQuery*(selected: BlockSnapshotResult, plan: ServiceProofPlan,
   ProofQueryResult[ProofQuery](status: ProofQueryError.None,
     completed: ProofQuery(data: QueryData(selected: selected, plan: detached.value,
       limits: limits, hashes: ProofHashLimit(count*perQuery))))
+
+type
+  ResponseData = ref object ## Detached output shares no canonical snapshot, plan or raw proof graph.
+    identity: BlockHash
+    root: StateRoot
+    wire: seq[byte]
+  ProofResponse* = object ## Explicit identities describe the response; callers still select trust independently.
+    data: nil ResponseData
+func valid*(response: ProofResponse): bool =
+  ## A default response never impersonates a successful empty envelope.
+  response.data != nil
+proc blockHash*(response: ProofResponse): BlockHash {.requires: response.data != nil.} =
+  ## Return fixed selected identity after successful response selection.
+  let data = response.data
+  assert data != nil
+  data.identity
+proc stateRoot*(response: ProofResponse): StateRoot {.requires: response.data != nil.} =
+  ## Preserve the posterior root used for generation and local verification.
+  let data = response.data
+  assert data != nil
+  data.root
+func byteLength*(response: ProofResponse): int =
+  ## Fixed metadata inspection allocates no wire copy; defaults have no bytes.
+  let data = response.data
+  if data == nil: 0 else: data.wire.len
+proc bytes*(response: ProofResponse, limit: ByteLimit): ProofQueryResult[seq[byte]] =
+  ## Apply the consumer's own copy budget before returning detached mutable bytes.
+  let data = response.data
+  if data == nil:
+    return ProofQueryResult[seq[byte]](status: ProofQueryError.Uninitialized)
+  if uint64(data.wire.len) > uint64(limit):
+    return ProofQueryResult[seq[byte]](status: ProofQueryError.LimitExceeded)
+  var copied = newSeq[byte](data.wire.len)
+  for i in 0..<copied.len: copied[i] = data.wire[i]
+  ProofQueryResult[seq[byte]](status: ProofQueryError.None, completed: copied)
+proc executeProofQuery*(query: ProofQuery): ProofQueryResult[ProofResponse] =
+  ## Run bounded complete-map generation, exact-root authentication and encoding outside dispatcher callbacks.
+  let data = query.data
+  if data == nil:
+    return ProofQueryResult[ProofResponse](status: ProofQueryError.Uninitialized)
+  let limits = data.limits
+  let generated = generateBlockServiceProofs(data.selected, data.plan, limits.map,
+    limits.proof, limits.aggregate)
+  if generated.error != StateProofError.None:
+    return ProofQueryResult[ProofResponse](status: ProofQueryError.ProofFailure,
+        proofReason: generated.error)
+  var queries = newSeq[StateProofQuery](generated.value.len)
+  for i in 0..<queries.len:
+    # Raw paths are copied as immutable handles only within this exclusively leased worker activation.
+    queries[i] = generated.value.queryAt(i).value
+  let root = data.selected.value.stateRoot
+  let checked = verifyServiceProofs(data.plan, queries, root, limits.proof, limits.aggregate, limits.view)
+  if checked.error == ServiceProofError.ProofFailure:
+    return ProofQueryResult[ProofResponse](status: ProofQueryError.ProofFailure,
+        proofReason: checked.proofError)
+  if checked.error != ServiceProofError.None:
+    return ProofQueryResult[ProofResponse](status: ProofQueryError.ServiceFailure,
+        serviceReason: checked.error)
+  let encoded = encodeServiceProofs(checked.value, data.plan, limits.view, limits.proof,
+      limits.wireBytes)
+  if encoded.error == ServiceProofError.ProofFailure:
+    return ProofQueryResult[ProofResponse](status: ProofQueryError.ProofFailure,
+        proofReason: encoded.proofError)
+  if encoded.error != ServiceProofError.None:
+    return ProofQueryResult[ProofResponse](status: ProofQueryError.ServiceFailure,
+        serviceReason: encoded.error)
+  ProofQueryResult[ProofResponse](status: ProofQueryError.None,
+    completed: ProofResponse(data: ResponseData(identity: data.selected.value.blockHash,
+      root: root, wire: encoded.value)))
