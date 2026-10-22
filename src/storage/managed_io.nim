@@ -94,6 +94,11 @@ func value*[T](outcome: ManagedIoResult[T]): T {.inline, requires: outcome.statu
     FileError.None.} =
   ## Extract only complete successful IO bytes or canonical names.
   outcome.completed
+proc takeValue*[T](outcome: var ManagedIoResult[T]): T {.inline, requires: outcome.status ==
+    FileError.None.} =
+  ## Transfer a successful payload without copying; the consumed source becomes explicitly uninitialized.
+  result = move(outcome.completed)
+  outcome = ManagedIoResult[T](status: FileError.Uninitialized)
 proc managedFileName*(kind: ManagedFileKind, epoch: ManagedEpoch): ManagedIoResult[string] =
   ## Derive canonical lowercase hexadecimal epoch names; CURRENT has no variable path component.
   if kind == ManagedFileKind.Current:

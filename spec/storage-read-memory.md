@@ -17,3 +17,8 @@ three short-read sizes, exact-limit EOF, over-limit refusal before payload reads
 copy access. Existing short/EINTR, post-stat growth, lifetime and malformed snapshot/journal
 checks remain required for reader changes. Metadata may guide bounded capacity; actual reads
 and final EOF must remain authoritative. No allocation-failure recovery or out-of-core claim.
+
+`ManagedIoResult.takeValue` transfers the owned success payload from a mutable result and
+sets that result to `Uninitialized`. Copying `value` is unchanged. The pinned generic lowering
+probe preserved the exact payload address; the real-file suite checks unchanged occupied Nim
+bytes across extraction, source invalidation and detached mutable payloads, including empty reads.

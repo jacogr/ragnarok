@@ -23,7 +23,7 @@ proc scenario(size: int) {.raises.} =
   for chunk in [1, 7, 4096]:
     resetIo()
     limitReads(csize_t(chunk))
-    let loaded = readManagedFile(directory, ManagedFileKind.Snapshot, epoch, ByteLimit(uint64(size)))
+    var loaded = readManagedFile(directory, ManagedFileKind.Snapshot, epoch, ByteLimit(uint64(size)))
     assert loaded.error == FileError.None
     let bytes = loaded.value
     assert bytes == source
@@ -31,6 +31,13 @@ proc scenario(size: int) {.raises.} =
       var copied = loaded.value
       copied[0] = copied[0] xor 255'u8
       assert loaded.value == source # Public copy access remains detached and leaves its owner intact.
+    let occupied = getOccupiedMem()
+    var owned = loaded.takeValue
+    assert loaded.error == FileError.Uninitialized
+    assert getOccupiedMem() == occupied and owned == source
+    if owned.len > 0:
+      owned[0] = owned[0] xor 255'u8 # Transferred bytes remain private from the authored source buffer.
+      assert source[0] == 0
   resetIo()
   if size > 0:
     let refused = readManagedFile(directory, ManagedFileKind.Snapshot, epoch,
