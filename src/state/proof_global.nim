@@ -4,6 +4,7 @@
 ## Bounded global chapter selectors and authenticated reads of partial evidence.
 ## Typed chapter captures retain existing codec/profile rules without granting complete-map authority.
 import std/assertions
+import ../codec/state_disputes
 import ../codec/state_consensus
 import ../codec/[bounded, state_layout, state_safrole, state_composition, state_history, state_authorization]
 import ./[proof_plan, proof_view, trie_proof]
@@ -186,4 +187,22 @@ proc readGlobalSafrole*(view: ProofView, config: SafroleStateConfig): GlobalProo
   if decoded.value.consumed != bytes.value.len:
     return GlobalProofResult[SafroleStateSnapshot](status: GlobalProofError.InvalidValue)
   GlobalProofResult[SafroleStateSnapshot](status: GlobalProofError.None,
+      completed: decoded.value.snapshot)
+
+proc readGlobalDisputes*(view: ProofView, config: DisputeStateConfig): GlobalProofResult[
+    DisputeStateSnapshot] =
+  ## Authenticate exact chapter scope and bound retained bytes before the existing typed decoder runs.
+  let bytes = chapterBytes(view, StateChapterId.Disputes, config.maxBytes)
+  if bytes.error != GlobalProofError.None:
+    return GlobalProofResult[DisputeStateSnapshot](status: bytes.error)
+  let decoded = decodeDisputeState(bytes.value, config)
+  if decoded.error != DisputeStateError.None:
+    # Caller policy failures remain distinct from malformed protocol values; no partial owner escapes.
+    let reason = case decoded.error
+      of DisputeStateError.LimitExceeded, DisputeStateError.LengthOverflow: GlobalProofError.LimitExceeded
+      else: GlobalProofError.InvalidValue
+    return GlobalProofResult[DisputeStateSnapshot](status: reason)
+  if decoded.value.consumed != bytes.value.len:
+    return GlobalProofResult[DisputeStateSnapshot](status: GlobalProofError.InvalidValue)
+  GlobalProofResult[DisputeStateSnapshot](status: GlobalProofError.None,
       completed: decoded.value.snapshot)
