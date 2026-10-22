@@ -19,3 +19,12 @@ STF/Thin VRF parity. M1 framing remains separate from complete state serializati
 Local macOS checked ARC/Clang results: genuine two-child command adoption and explicit second-child
 C3 resource refusal passed, with exact independent request counts, semantic/inventory/format checks.
 The original policy also adopted both blocks; it was not treated as an expected refusal.
+
+## Selected state after signed validator rotation
+
+The same real integration assertions also run with the existing signed slot12 rotation and
+genuine following children at slot13. Expected identities and complete physical maps come
+from `currentRotatedSequenceFixture`; original first-epoch cases remain in the suite. The same
+resource, refusal, ownership and durability checks apply after active/previous roster rotation.
+This extends authored integration evidence without claiming independent full STF goldens,
+current Thin VRF or supplied-logical qualification. No runtime/default/pin changes are made.

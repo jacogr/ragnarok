@@ -8,7 +8,8 @@ import ../../../src/app/[current_download_command, services]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[report_owned, bounded]
 import ../../../src/storage/managed_manifest
-import ../../support/[current_consecutive_context, current_consecutive_download_context,
+import ../../support/[current_consecutive_context, current_rotated_sequence_context,
+  current_consecutive_download_context,
   current_download_command_context, current_services_disk_samples, managed_storage_samples,
   block_download_transport, rpc_socket]
 const
@@ -69,11 +70,13 @@ proc main() {.raises.} =
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var bytes = newSeq[byte](raw.len)
   for index, octet in raw: bytes[index] = byte(octet)
-  let fixture = currentConsecutiveFixture(decodeOwnedReport(bytes, 2).value, 2)
-  for managed in [false, true]:
-    for rpc in [false, true]:
-      check(fixture, managed, rpc, false)
-      check(fixture, managed, rpc, true)
+  # Exercise the same real transport/lifecycle assertions before and after the signed slot12 rotation.
+  for fixture in [currentConsecutiveFixture(decodeOwnedReport(bytes, 2).value, 2),
+      currentRotatedSequenceFixture(decodeOwnedReport(bytes, 2).value, 2)]:
+    for managed in [false, true]:
+      for rpc in [false, true]:
+        check(fixture, managed, rpc, false)
+        check(fixture, managed, rpc, true)
 try:
   main()
 except:

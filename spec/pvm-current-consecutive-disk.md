@@ -17,3 +17,12 @@ remains complete and separate from those gates.
 
 All eight native cases, focused semantic checking, inventory and pinned formatting passed locally
 on macOS under checked ARC/Clang. Every restored historical map matched its genuine fixture head.
+
+## Selected state after signed validator rotation
+
+The same real integration assertions also run with the existing signed slot12 rotation and
+genuine following children at slot13. Expected identities and complete physical maps come
+from `currentRotatedSequenceFixture`; original first-epoch cases remain in the suite. The same
+resource, refusal, ownership and durability checks apply after active/previous roster rotation.
+This extends authored integration evidence without claiming independent full STF goldens,
+current Thin VRF or supplied-logical qualification. No runtime/default/pin changes are made.
