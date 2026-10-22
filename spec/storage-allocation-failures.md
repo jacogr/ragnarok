@@ -38,7 +38,7 @@ byte, so post-check growth remains a refusal. Full identity/frame/root validatio
 successful reopen, and all refused opens retire descriptors and leases.
 
 This does not predict total heap/RSS/virtual headroom, prevent allocation failure for files that
-fit their declared byte limit, or fix the original128 MiB in-limit graph reconstruction aborts.
+fit their declared byte limit, or fix the original128 MiB in-limit reopen aborts.
 The safe remedy is earlier refusal for a caller-selected smaller file ceiling, not a promise of
 recovering from arbitrary memory exhaustion. Backend defaults, bytes, roots, trust policy and
 state/PVM/consumer ownership remain unchanged.
@@ -121,3 +121,87 @@ paths above. Initial fixture/compiler corrections are not counted as runtime con
 The bounded storage fix is complete; the exact original Linux allocating call site, general
 OS-OOM recovery, controlled resident-memory/paging and hardware/filesystem power-loss work
 remain outside this qualification. No complete-serialization or M1 completion claim is added.
+
+## Linux call-site qualification follow-up
+
+The maintainer requested Linux diagnosis before merging the current stack. The added
+`make diagnose-storage-aborts` target first runs the unchanged checked ARC/Clang LTO
+memory-ceiling panel. Every Linux cap probe must establish enforcement. It then builds the
+same fresh-reopen source with C debug information (`-g`) as a separate comparison binary.
+LLDB remains uncapped and follows the existing disposable limit launcher's exec into each
+131,072-entry native consumer under128 MiB, capturing both the ordinary binary and the
+symbolized comparison. Ordinary executable symbols establish the actual optimized call chain;
+comparison DWARF supplies additional source context. The launcher must read back the applied soft
+limit with the original hard bound. An actual SIGABRT stop, bounded native backtrace containing the measured executable
+and fatal signal continuation are all required; debugger exit zero is insufficient.
+
+Separate strict unrestricted symbolized consumers bracket each backend's abort attempt,
+checking complete maps, exact producer root/generation, retained views and final ARC release.
+Selected bytes must remain identical after every attempt. The ordinary panel retains its own
+binary identity, limit receipts and observed exits. Debug information can affect layout;
+these symbolized comparisons do not retroactively identify an old binary's exact instruction.
+A backtrace still requires source inspection before calling a particular abort allocator OOM.
+No compiler/stdlib patch, allocator hook or production build change is introduced.
+
+The explicit `storage-diagnostics` workflow-dispatch scope runs the three current reader
+regression suites on Linux, then this diagnostic. Make's existing bounded `host-tools` path
+installs LLDB only for the diagnostic target. Raw logs, binary identities, comparison binaries
+and failed/partial JSON remain in `build/tests/storage-abort-diagnostics/` and CI artifacts.
+Darwin and missing debugger support fail explicitly, rather than becoming skipped successes.
+The completed Linux results and allocating callers are recorded below.
+
+
+The first Linux diagnostic attempts established the reader regressions and ordinary panel,
+but correctly failed trace admission. Inspection of pinned `std/system/exits.nim` showed that
+Linux `cAbort` flushes and sends itself SIGABRT with `kill(getpid(), SIGABRT)`; Darwin instead
+calls libc `abort`. A libc breakpoint cannot identify Linux allocator termination. LLDB batch
+mode also skips normal post-run commands on a fatal signal: the runner must use explicit
+`--one-line-on-crash` (`-k`) commands for backtrace capture and fatal continuation. A captured
+signal-stop frame alone remains insufficient; native frames and actual exit6 are required.
+
+
+## Completed Linux allocating-call diagnosis
+
+[Linux run39792192816](https://github.com/jacogr/ragnarok/actions/runs/39792192816)
+completed successfully at clean implementation head
+`ea39215cbf85340b7335cdcae01a975f707e0a0a` with the unchanged pinned compiler.
+All three current preflight/growth regression suites passed on Linux. The ordinary checked
+ARC/Clang release/LTO panel enforced all three caps, passed all eight unrestricted controls
+and ten capped reopens, and reproduced the two131,072-entry SIGABRT exits under128 MiB.
+Every selected-file hash remained unchanged. Two additional unrestricted symbolized controls
+per backend passed complete-map/root/generation/retained-view/final-ARC checks around the
+ordinary and symbolized debugger attempts. All four debugger descendants read back exactly
+134,217,728 soft-limit bytes, preserved the hard bound and continued to actual signal6 exit.
+
+The ordinary binary supplies the allocating callers:
+
+| Backend | Actual optimized allocation path |
+| --- | --- |
+| Journal | `file_repository.readAll` grows its detached byte sequence; `rawAlloc` → `getBigChunk` → `requestOsChunks` → `raiseOutOfMem` → Linux `kill`. The symbolized comparison adds the inlined byte `add`/`realloc` frames at the same reader. |
+| Managed | The generated byte-sequence duplication helper `eQdup_1_Ihyf5o5_datnzj9j61` calls `rawAlloc`, with the same fatal allocator chain. Offline disassembly of the **ordinary** Linux executable shows the caller immediately after `readManagedFile` and immediately before `decodeRepositorySnapshot`: the successful snapshot result's `bytes.value` extraction duplicates its owned byte sequence for the decoder's open-array argument. This precedes graph decoding. |
+
+The managed symbolized comparison exhausts memory earlier, in `managed_io.readAll` byte
+`add`/`realloc` while reading the snapshot. It must not be substituted for the ordinary
+call site. Adding debug information changed executable layout, so both binaries' actual
+backtraces were captured separately. The ordinary return PC is `main_0_stoalctiv1 +4150`
+(ELF address0x6de6): its call at0x6de1 targets the duplication helper; the following decoder
+call is at0x6e85. The pinned generated helper allocates a detached `seq[byte]` copy.
+
+These reproduced failures occur while buffering/copying in-limit physical bytes, not necessarily
+while constructing the complete graph. The earlier graph-reconstruction wording was an
+unconfirmed inference and is corrected here. The traced fatal path, together with pinned
+`osAllocPages`, identifies OS page-mapping allocation refusal; it does not attribute an OOM-killer
+kill, establish resident-memory pressure, or expose the optimized-out exact allocation size.
+Historical run39778196839 was not retroactively symbolized; these are direct current-source
+reproductions with ordinary executable call chains.
+
+Raw JSON/logs and both exact Linux binaries are retained in the run's
+`storage-abort-diagnostics-1` artifact and locally under
+`build/storage-db6-linux-39792192816/tests/storage-abort-diagnostics/`.
+Offline ordinary caller evidence is `build/storage-db6-managed-callsite-disassembly.log`.
+The final record changes prose only; all tested source/build inputs remain identical to the
+qualified implementation head. General OS allocation exhaustion remains deliberately fail-stop.
+The next bounded optimization is to measure and remove avoidable snapshot-result copying and
+reader growth overhead while preserving ownership, byte limits and the existing failure policy.
+Controlled resident-memory/paging and device power-loss qualification remain separate.
+No new M1 or complete protocol-serialization completion is claimed.

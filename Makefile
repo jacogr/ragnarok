@@ -27,7 +27,7 @@ DOCKER ?= docker
 DOCKER_IMAGE ?= ragnarok:local
 DOCKER_PLATFORM ?= linux/amd64
 
-.PHONY: summary-storage-memory-ceilings bench-storage-memory-ceilings summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: diagnose-storage-aborts summary-storage-memory-ceilings bench-storage-memory-ceilings summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
@@ -87,6 +87,7 @@ sources:
 host-tools:
 	@if [ "$$(uname -s)" = Linux ] && command -v apt-get >/dev/null; then \
 	  packages='build-essential clang lld cmake zlib1g-dev openssl'; missing=0; \
+	  if [ "$(STORAGE_ABORT_DIAGNOSTICS)" = 1 ]; then packages="$$packages lldb"; fi; \
 	  for package in $$packages; do \
 	    if [ "$$(dpkg-query -W -f='$${Status}' "$$package" 2>/dev/null || true)" != 'install ok installed' ]; then missing=1; fi; \
 	  done; \
@@ -189,6 +190,10 @@ format: toolchain rust-tools
 	. ./build/toolchain/env.sh; $(PYTHON) tools/format.py
 # Storage measures matching public operations; Make provisions the checked native crypto toolchain first.
 # Separate whole-process resource observations never contribute speed samples to Perf Storage.
+diagnose-storage-aborts: STORAGE_ABORT_DIAGNOSTICS = 1
+diagnose-storage-aborts: setup
+	$(PYTHON) tools/storage_abort_diagnostics.py
+
 bench-storage-memory-ceilings: setup
 	$(PYTHON) tools/storage_memory_ceilings.py
 
