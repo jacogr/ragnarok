@@ -15,7 +15,8 @@ import ../../support/proof_query_context
 import ../../../src/storage/managed_manifest
 import ../../../src/rpc/server
 import ../../support/[current_application_context, current_services_disk_samples,
-  block_download_transport, current_consecutive_context, current_consecutive_download_context,
+  block_download_transport, current_consecutive_context, current_rotated_sequence_context,
+  current_consecutive_download_context,
   current_download_command_context, managed_storage_samples]
 proc key(second: bool): CurrentDownloadPeerKey {.raises.} =
   ## Authenticated host identities come from the two independent local fixture certificates.
@@ -129,11 +130,13 @@ proc main() {.raises.} =
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var bytes = newSeq[byte](raw.len)
   for index, octet in raw: bytes[index] = byte(octet)
-  let fixture = currentConsecutiveFixture(decodeOwnedReport(bytes, 2).value, 2)
-  for join in [false, true]:
-    transfer(fixture, join, false, false)
-    transfer(fixture, join, true, false)
-    transfer(fixture, join, true, true)
+  # Exercise the same real transport/lifecycle assertions before and after the signed slot12 rotation.
+  for fixture in [currentConsecutiveFixture(decodeOwnedReport(bytes, 2).value, 2),
+      currentRotatedSequenceFixture(decodeOwnedReport(bytes, 2).value, 2)]:
+    for join in [false, true]:
+      transfer(fixture, join, false, false)
+      transfer(fixture, join, true, false)
+      transfer(fixture, join, true, true)
 try:
   main()
 except:

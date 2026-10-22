@@ -12,7 +12,8 @@ import ../../../src/state/store
 import ../../../src/storage/managed_manifest
 import ../../../src/rpc/server
 import ../../support/[current_application_context, current_services_disk_samples,
-  block_download_transport, current_consecutive_context, current_consecutive_download_context,
+  block_download_transport, current_consecutive_context, current_rotated_sequence_context,
+  current_consecutive_download_context,
   current_download_command_context, managed_storage_samples]
 type LoopWitness {.pure.} = enum ## Explicit stages distinguish actual adoption from unwanted/lost execution or handoff.
   CancelDone, Joined, LostHandoff
@@ -126,11 +127,13 @@ proc main() {.raises.} =
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var bytes = newSeq[byte](raw.len)
   for index, octet in raw: bytes[index] = byte(octet)
-  let fixture = currentConsecutiveFixture(decodeOwnedReport(bytes, 2).value, 2)
-  for witness in [LoopWitness.CancelDone, LoopWitness.Joined, LoopWitness.LostHandoff]:
-    transfer(fixture, witness, false, false)
-    transfer(fixture, witness, true, false)
-    transfer(fixture, witness, true, true)
+  # Exercise the same real transport/lifecycle assertions before and after the signed slot12 rotation.
+  for fixture in [currentConsecutiveFixture(decodeOwnedReport(bytes, 2).value, 2),
+      currentRotatedSequenceFixture(decodeOwnedReport(bytes, 2).value, 2)]:
+    for witness in [LoopWitness.CancelDone, LoopWitness.Joined, LoopWitness.LostHandoff]:
+      transfer(fixture, witness, false, false)
+      transfer(fixture, witness, true, false)
+      transfer(fixture, witness, true, true)
 try:
   main()
 except:
