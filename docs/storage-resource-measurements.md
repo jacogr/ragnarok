@@ -62,8 +62,9 @@ drop, production fault hook, file mutation or hardware power-loss simulation.
 Environment records include filesystem geometry/capacity, numeric device identity, physical RAM
 where observable, inherited memory limits and explicit cache policy. A recorded limit does not
 assert enforcement. These bounded fixtures do not establish out-of-core behavior merely because
-they are larger than earlier tests. Controlled memory pressure, page packing and physical-device
-or filesystem power-loss qualification remain separately scoped work.
+they are larger than earlier tests. [Child-local address-space ceilings](storage-memory-ceilings.md) now provide bounded allocation
+experiments with fresh native controls. Controlled resident-memory pressure, page packing and
+physical-device or filesystem power-loss qualification remain separately scoped work.
 
 ## Compare matching evidence
 
