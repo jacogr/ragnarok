@@ -15,23 +15,11 @@ import ../../../src/state/[accumulation_block_guests, accumulation_guest_runner,
   accumulation_operands, accumulation_service, accumulation_skip, accumulation_absent,
   report_admission, block_transition, block_admission, store]
 import ../../support/[accumulation_runner_context, accumulation_execution_context,
-  report_admission_context, arc_evidence]
-proc policy(): AccumulationGuestLimits =
-  ## Reuse maintained tiny-chain engine ceilings while explicitly enabling current proof capture.
-  let old = runnerLimits()
-  AccumulationGuestLimits(services: ElementLimit(2), preimageBytes: old.preimageBytes,
-    probes: old.probes, initialization: old.initialization, contexts: old.contexts,
-    fetch: old.fetch, copyBytes: old.copyBytes, steps: old.steps, calls: old.calls,
-    cycles: old.cycles, provisions: old.provisions, modifiedAccounts: ElementLimit(4),
-    accountWriteFacts: ElementLimit(4), createdAccounts: ElementLimit(2),
-    annulment: AccumulationAnnulmentLimits(outcomes: ElementLimit(2), modified: ElementLimit(8),
-      checks: ElementLimit(128)),
-    coverage: AccumulationCoverageLimits(services: ElementLimit(2), executed: ElementLimit(2),
-      skipped: ElementLimit(2), absent: ElementLimit(2), checks: ElementLimit(128), gas: Gas(high(uint64))))
+  report_admission_context, accumulation_current_guests_context, arc_evidence]
 proc parity(fixture: ExecutionFixture): BlockAccumulationGuests =
   ## A separately composed explicit run is an oracle for provider rows; only the block adapter supplies authority.
   let before = fixture.state.snapshot.value
-  let executed = runBlockAccumulationGuests(fixture.round, runnerParameters(), policy())
+  let executed = runBlockAccumulationGuests(fixture.round, runnerParameters(), currentGuestLimits())
   assert executed.error == BlockGuestError.None, $executed.error
   let coverage = executed.value.guestCoverage.value
   let stage = fixture.round.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value.value
@@ -40,7 +28,7 @@ proc parity(fixture: ExecutionFixture): BlockAccumulationGuests =
   let slot = headerInfo(stage.admitted.admittedHeader).value.unsigned.slot
   let inputs = fixture.round.roundProjection.value.roundInputs.value
   let manual = runAccumulationGuests(inputs, stage.admitted.admittedState, slot, entropy,
-    runnerParameters(), policy()).value
+    runnerParameters(), currentGuestLimits()).value
   let info = coverage.coverageInfo.value
   assert info.services == manual.coverageInfo.value.services and uint32(info.slot) == uint32(slot)
   assert uint64(info.gasUsed) == uint64(manual.coverageInfo.value.gasUsed)
@@ -71,7 +59,7 @@ proc absentCase(base: OwnedReport): BlockAccumulationGuests =
   let admitted = planBlockReports(context.staged, context.older, config()).value
   let queue = planBlockAccumulationQueue(admitted, executionQueueConfig()).value
   let round = planBlockInitialAccumulation(queue, executionRoundConfig()).value
-  let executed = runBlockAccumulationGuests(round, runnerParameters(), policy())
+  let executed = runBlockAccumulationGuests(round, runnerParameters(), currentGuestLimits())
   assert executed.error == BlockGuestError.None, $executed.error
   let coverage = executed.value.guestCoverage.value
   let info = coverage.coverageInfo.value
@@ -100,24 +88,24 @@ proc main() {.raises.} =
   let empty = executionFixture(base, options)
   discard parity(empty)
   let refused = runBlockAccumulationGuests(default(BlockAccumulationRound), runnerParameters(),
-      policy())
+      currentGuestLimits())
   assert refused.error == BlockGuestError.InvalidRound
   for parameters in [default(Parameters), runnerParameters(cores = 3), runnerParameters(epoch = 13),
       runnerParameters(queue = 79)]:
     for round in [fixture.round, empty.round]:
-      assert runBlockAccumulationGuests(round, parameters, policy()).error ==
+      assert runBlockAccumulationGuests(round, parameters, currentGuestLimits()).error ==
           BlockGuestError.InvalidParameters
-  var limits = policy()
+  var limits = currentGuestLimits()
   limits.contexts.validators = ValidatorCount(9)
   assert runBlockAccumulationGuests(empty.round, runnerParameters(), limits).error ==
       BlockGuestError.InvalidParameters
-  limits = policy()
+  limits = currentGuestLimits()
   limits.coverage.gas = Gas(0)
   let gasFailure = runBlockAccumulationGuests(fixture.round, runnerParameters(), limits)
   assert gasFailure.error == BlockGuestError.GuestFailure
   assert gasFailure.guestFailure.error == AccumulationGuestError.CoverageFailure
   assert gasFailure.guestFailure.coverageFailure == AccumulationCoverageError.GasExceeded
-  limits = policy()
+  limits = currentGuestLimits()
   limits.services = ElementLimit(1)
   let bounded = runBlockAccumulationGuests(fixture.round, runnerParameters(), limits)
   assert bounded.error == BlockGuestError.GuestFailure
@@ -126,9 +114,11 @@ proc main() {.raises.} =
   assert default(BlockAccumulationGuests).guestCoverage.error == BlockGuestError.Uninitialized
   let before = getOccupiedMem()
   for iteration in 0..<1000:
-    let local = runBlockAccumulationGuests(retained.guestRound.value, runnerParameters(), policy()).value
+    let local = runBlockAccumulationGuests(retained.guestRound.value, runnerParameters(),
+        currentGuestLimits()).value
     assert local.guestCoverage.value.coverageInfo.value.services == 2
-    let missing = runBlockAccumulationGuests(absent.guestRound.value, runnerParameters(), policy()).value
+    let missing = runBlockAccumulationGuests(absent.guestRound.value, runnerParameters(),
+        currentGuestLimits()).value
     assert missing.guestCoverage.value.coverageInfo.value.absent ==
         1 # Genuine source owners release across both execution branches.
   let after = getOccupiedMem()

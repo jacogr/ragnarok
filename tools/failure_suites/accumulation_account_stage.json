@@ -1,0 +1,139 @@
+{
+  "source": "tests/native/accumulation_account_stage_results.nim",
+  "build_name": "accumulation-account-stage-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "account-stage-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected account phase extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "account-stage-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected account phase extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "selection"
+      },
+      "arguments": [
+        "selection"
+      ],
+      "name": "account-stage-selection",
+      "diagnostic": "outcome.status == SelectionFailure",
+      "description": "Selected account phase extraction: selection"
+    },
+    {
+      "identity": {
+        "reason": "creation"
+      },
+      "arguments": [
+        "creation"
+      ],
+      "name": "account-stage-creation",
+      "diagnostic": "outcome.status == CreationFailure",
+      "description": "Selected account phase extraction: creation"
+    },
+    {
+      "identity": {
+        "reason": "write"
+      },
+      "arguments": [
+        "write"
+      ],
+      "name": "account-stage-write",
+      "diagnostic": "outcome.status == WriteFailure",
+      "description": "Selected account phase extraction: write"
+    },
+    {
+      "identity": {
+        "reason": "store"
+      },
+      "arguments": [
+        "store"
+      ],
+      "name": "account-stage-store",
+      "diagnostic": "outcome.status == StoreFailure",
+      "description": "Selected account phase extraction: store"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "account-stage-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected account phase extraction: info"
+    },
+    {
+      "identity": {
+        "reason": "guests"
+      },
+      "arguments": [
+        "guests"
+      ],
+      "name": "account-stage-guests",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected account phase extraction: guests"
+    },
+    {
+      "identity": {
+        "reason": "selected"
+      },
+      "arguments": [
+        "selected"
+      ],
+      "name": "account-stage-selected",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected account phase extraction: selected"
+    },
+    {
+      "identity": {
+        "reason": "created"
+      },
+      "arguments": [
+        "created"
+      ],
+      "name": "account-stage-created",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected account phase extraction: created"
+    },
+    {
+      "identity": {
+        "reason": "writes"
+      },
+      "arguments": [
+        "writes"
+      ],
+      "name": "account-stage-writes",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected account phase extraction: writes"
+    },
+    {
+      "identity": {
+        "reason": "snapshot"
+      },
+      "arguments": [
+        "snapshot"
+      ],
+      "name": "account-stage-snapshot",
+      "diagnostic": "outcome.status == None",
+      "description": "Selected account phase extraction: snapshot"
+    }
+  ]
+}
