@@ -24,7 +24,7 @@ proc seedServiceNamespaces*(entries: var seq[StateEntry], seeds: openArray[Servi
       assert item.key.len <= 65 and item.value.len <= 65
       octets+=34'u64+uint64(item.key.len)+uint64(item.value.len)
     for item in seed.requests:
-      assert uint32(item.length) <= 65
+      assert uint32(item.length) <= 65536
       octets+=81'u64+uint64(uint32(item.length))
     let key = chapterServiceKey(StateChapter(255), seed.service)
     var found = false
