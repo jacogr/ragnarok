@@ -6,9 +6,10 @@ import std/[assertions, syncio]
 import ./[storage_samples, managed_storage_samples, storage_io, storage_crash,
   storage_crash_appends, storage_bootstrap_faults]
 import ../../src/storage/[full_state_trie, node_repository, node_records, file_repository,
-  managed_repository, managed_manifest, database_identity]
+  managed_repository, managed_manifest, snapshot_codec, database_identity]
 import ../../src/codec/bounded
-proc compactionCrashCase*(label: string, operation, skip: cint): uint64 {.raises.} =
+proc compactionCrashCase*(label: string, operation, skip: cint,
+    shortWrites = false): uint64 {.raises.} =
   ## Prepare a complete obsolete root, then observe only physical compaction after the child's strict open.
   resetIo()
   let path = label & "-" & $operation & "-" & $skip & "-" & $int(storageProcessId())
@@ -29,6 +30,14 @@ proc compactionCrashCase*(label: string, operation, skip: cint): uint64 {.raises
   let held = file.snapshot.value
   let current = file.publish(held, exportTrieChanges(a, b,
       limits.repository.codec.records).value).value
+  let plan = selectRepositoryRoots(current, [current.commitment.root], limits.roots).value
+  let encoded = encodeRepositorySnapshot(plan, default(StorageChainId), StorageSchema.FullNodesV1, [
+      ], SnapshotLimits(repository: limits.repository, roots: limits.roots,
+          context: limits.contextBytes, bytes: limits.snapshotBytes)).value
+  let manifest = encodeManagedManifest(default(StorageChainId), StorageSchema.FullNodesV1,
+      ManagedEpoch(2), current.generation, current.commitment.root, encoded.checksum,
+      ByteLimit(ManagedManifestBytes)).value
+  let header = encodeManagedJournalHeader(manifest.checksum, limits.journalBytes).value
   let originalCurrent = readFile(path & "/CURRENT")
   let originalSnapshot = readFile(path & "/snapshot-0000000000000001.bin")
   let originalJournal = readFile(path & "/journal-0000000000000001.wal")
@@ -39,6 +48,7 @@ proc compactionCrashCase*(label: string, operation, skip: cint): uint64 {.raises
   if child == 0:
     if openManagedFileRepository(file, path, default(StorageChainId), limits) !=
         FileError.None: exitCrash(86)
+    if shortWrites: limitWrites(8) # Every staged extent remains a genuine kernel write.
     if startCrash() != 0: exitCrash(87)
     let replaced = file.compact(file.snapshot.value, [current.commitment.root])
     if replaced.error != FileError.None or replaced.value.cleanup != FileError.None: exitCrash(88)
@@ -46,9 +56,26 @@ proc compactionCrashCase*(label: string, operation, skip: cint): uint64 {.raises
   let receipt = finishCrash()
   result = crashCount()
   if skip == 4096:
-    assert receipt == crashCompleted and result > 0 and result < 32
+    assert receipt == crashCompleted and result > 0 and result < 4096
   else:
     assert receipt == crashKilled and result == uint64(skip)+1
+  if shortWrites:
+    assert operation == writeIo and result < 4096
+    let stagedNames = ["snapshot-0000000000000002.bin", "journal-0000000000000002.wal", "CURRENT.next"]
+    var prior = 0
+    for index, bytes in [encoded.bytes, header, manifest.bytes]:
+      let chunks = (bytes.len+7) div 8
+      let progressed = min(max(int(result)-prior, 0), chunks)
+      let extent = min(bytes.len, progressed*8)
+      var exact = ""
+      for offset in 0..<extent: exact.add(char(bytes[offset]))
+      let name = if skip == 4096 and index == 2: "CURRENT" else: stagedNames[index]
+      if extent == 0:
+        assert not sampleExists(path & "/" & name)
+      else:
+        assert readFile(path & "/" & name) == exact
+      prior += chunks
+    if skip == 4096: assert result == uint64(prior)
   let visibleCurrent = readFile(path & "/CURRENT")
   let selectedOld = visibleCurrent == originalCurrent
   if operation == writeIo and skip != 4096: assert selectedOld

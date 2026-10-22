@@ -142,3 +142,11 @@ finishes independently of the killed caller; selected/future epoch retirement re
 Strict restart validates the selected manifest and complete authored map, preserves every remaining
 forensic byte, and never chooses staging by filename. Explicit bounded cleanup/replacement retry
 finishes independently of the killed caller; selected/future epoch retirement remains forbidden.
+
+## Every partial staged replacement write
+
+`storage_staged_partial_crash` independently encodes expected snapshot, journal header and manifest,
+then kills after every actual eight-byte write across all three files. Each existing file must be
+the exact expected byte prefix; later names must remain absent until their first real progress.
+CURRENT remains old, strict startup preserves staging, and explicit bounded cleanup permits a
+complete retry. The bounded completed control checks the full independently encoded selected files.
