@@ -4,7 +4,7 @@
 ## Bind proof generation and verification to one selected immutable block's posterior complete state.
 ## Header prior-state roots and transport-supplied identities never substitute for this explicit selection.
 import ./genesis
-import ../state/[trie_proof, snapshot_proof, proof_service]
+import ../state/[trie_proof, snapshot_proof, proof_service, proof_plan]
 import ../codec/[state_layout, state_trie]
 proc generateBlockStateProof*(selected: BlockSnapshotResult, query: StateKey,
     mapLimits: StateTrieLimits, limits: StateProofLimits): StateProofResult[StateProof] =
@@ -35,10 +35,16 @@ proc verifyBlockStateProofs*(selected: BlockSnapshotResult, queries: openArray[S
     return proofFailure[VerifiedStateProofBatch](StateProofError.Uninitialized)
   verifyStateProofs(queries, selected.value.stateRoot, limits, aggregate)
 
-proc generateBlockServiceProofs*(selected: BlockSnapshotResult, plan: ServiceProofPlan,
+proc generateBlockPlannedProofs*(selected: BlockSnapshotResult, plan: StateProofPlan,
     mapLimits: StateTrieLimits, limits: StateProofLimits,
     aggregate: StateProofBatchLimits): StateProofResult[StateProofSet] =
   ## Select posterior complete state once, then generate exactly the semantic plan's requested facts.
   if selected.error != GenesisError.None:
     return proofFailure[StateProofSet](StateProofError.Uninitialized)
-  generateServiceProofs(selected.value.stateSnapshot, plan, mapLimits, limits, aggregate)
+  generatePlannedProofs(selected.value.stateSnapshot, plan, mapLimits, limits, aggregate)
+
+proc generateBlockServiceProofs*(selected: BlockSnapshotResult, plan: ServiceProofPlan,
+    mapLimits: StateTrieLimits, limits: StateProofLimits,
+    aggregate: StateProofBatchLimits): StateProofResult[StateProofSet] =
+  ## Existing service selection keeps identical posterior-root authority and failure semantics.
+  generateBlockPlannedProofs(selected, plan.toStateProofPlan, mapLimits, limits, aggregate)

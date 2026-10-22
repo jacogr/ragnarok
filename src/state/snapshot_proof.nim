@@ -3,7 +3,7 @@
 
 ## Generate bounded witnesses from the existing complete immutable snapshot interface.
 ## No storage internals, database format or partial-state publication are involved.
-import ./[store, trie_proof, proof_service]
+import ./[store, trie_proof, proof_service, proof_plan]
 import ../codec/[bounded, state_layout, state_trie]
 
 proc copySnapshotEntries(snapshot: StateStoreSnapshot, mapLimits: StateTrieLimits,
@@ -57,7 +57,7 @@ proc generateStateProofs*(snapshot: StateStoreSnapshot, queries: openArray[State
     return proofFailure[StateProofSet](copied)
   generateStateProofs(entries, queries, mapLimits, limits, aggregate)
 
-proc generateServiceProofs*(snapshot: StateStoreSnapshot, plan: ServiceProofPlan,
+proc generatePlannedProofs*(snapshot: StateStoreSnapshot, plan: StateProofPlan,
     mapLimits: StateTrieLimits, limits: StateProofLimits,
     aggregate: StateProofBatchLimits): StateProofResult[StateProofSet] =
   ## Resolve only the immutable plan's exact sorted identities against one retained complete snapshot.
@@ -70,3 +70,9 @@ proc generateServiceProofs*(snapshot: StateStoreSnapshot, plan: ServiceProofPlan
     # The plan owner is immutable for the entire synchronous generation call.
     keys[i] = plan.keyAt(i).value
   generateStateProofs(snapshot, keys, mapLimits, limits, aggregate)
+
+proc generateServiceProofs*(snapshot: StateStoreSnapshot, plan: ServiceProofPlan,
+    mapLimits: StateTrieLimits, limits: StateProofLimits,
+    aggregate: StateProofBatchLimits): StateProofResult[StateProofSet] =
+  ## Preserve the service API through the same exact generic complete-snapshot generation path.
+  generatePlannedProofs(snapshot, plan.toStateProofPlan, mapLimits, limits, aggregate)

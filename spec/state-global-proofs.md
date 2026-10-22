@@ -44,3 +44,13 @@ before atomic proof verification; no failure exposes a verified prefix.
 `state_global_proof_transport` uses independently rooted mixed state, every truncated wire prefix,
 measured zero-hash scope/budget refusals, every backend-failure prefix, wrong-root authentication
 and byte-for-byte compatibility with the existing service encoder.
+
+## Complete-source generation
+
+Generic plans drive `generatePlannedProofs` for complete immutable StateStore snapshots and
+`generateBlockPlannedProofs` for one exact retained block's posterior state. Existing service
+generation delegates to these paths with unchanged errors and authority. Plan count/native
+extents precede key allocation; complete-map preflight remains the established store adapter.
+`state_global_proof_generation` covers independently rooted global membership/absence, measured
+zero-hash count/map refusals, invalid plans/selections and a genuine signed selected-block root.
+No storage implementation or partial-to-complete state conversion is introduced.
