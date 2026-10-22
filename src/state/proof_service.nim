@@ -5,16 +5,18 @@
 ## Missing witnesses, proven absence and malformed present bytes remain separate outcomes.
 import ./[proof_view, trie_proof]
 import ../crypto/primitives
-import ../codec/[bounded, state_accounts, state_layout, state_service_values, state_requests]
+import ../codec/[bounded, state_accounts, state_layout, state_service_values, state_requests, state_trie]
 
 type
   ServiceProofError* {.pure.} = enum ## Failed/default reads expose only a reason, never a fabricated value.
     Uninitialized, None, MissingWitness, AbsentValue, InvalidValue, LimitExceeded,
-    BackendFailure, InvalidInput, InvalidIndex
+    BackendFailure, InvalidInput, InvalidIndex, ProofFailure
   ServiceProofResult*[T] = object ## Success alone grants access to a complete typed read.
     case status: ServiceProofError
     of None:
       completed: T
+    of ProofFailure:
+      proofReason: StateProofError
     else:
       discard                     # Refused reads retain no successful prefix or default account.
 
@@ -318,3 +320,47 @@ proc mergeProofPlans*(left, right: ServiceProofPlan,
     if order >= 0: inc j
   ServiceProofResult[ServiceProofPlan](status: ServiceProofError.None,
     completed: ServiceProofPlan(data: PlanData(keys: keys)))
+
+func proofError*[T](outcome: ServiceProofResult[T]): StateProofError {.inline,
+    requires: outcome.status == ServiceProofError.ProofFailure.} =
+  ## Preserve precise authentication/backend failure reasons without granting a typed read payload.
+  outcome.proofReason
+
+proc matchesProofPlan*(view: ProofView, plan: ServiceProofPlan): ServiceProofResult[bool] =
+  ## Compare exact sorted key sets; a superset or missing requested fact cannot substitute for this response.
+  if not plan.valid or not view.valid:
+    return ServiceProofResult[bool](status: ServiceProofError.Uninitialized)
+  if plan.len != view.len:
+    return ServiceProofResult[bool](status: ServiceProofError.None, completed: false)
+  for i in 0..<plan.len:
+    # Immutable view enumeration is canonical and retains both positive and negative facts.
+    if comparePlanKey(plan.keyAt(i).value, view.lookupAt(i).value.key) != 0:
+      return ServiceProofResult[bool](status: ServiceProofError.None, completed: false)
+  ServiceProofResult[bool](status: ServiceProofError.None, completed: true)
+
+proc verifyServiceProofs*(plan: ServiceProofPlan, queries: openArray[StateProofQuery],
+    expectedRoot: StateRoot, limits: StateProofLimits, aggregate: StateProofBatchLimits,
+    viewLimits: ProofViewLimits): ServiceProofResult[ProofView] =
+  ## Authenticate exactly this semantic plan under caller-selected root authority, all or neither.
+  if not plan.valid:
+    return ServiceProofResult[ProofView](status: ServiceProofError.Uninitialized)
+  if queries.len != plan.len:
+    return ServiceProofResult[ProofView](status: ServiceProofError.InvalidInput)
+  for i in 0..<plan.len:
+    # Refuse omitted, substituted, duplicated or reordered selectors before any crypto work.
+    if comparePlanKey(plan.keyAt(i).value, queries[i].key) != 0:
+      return ServiceProofResult[ProofView](status: ServiceProofError.InvalidInput)
+  let effective = StateProofBatchLimits(
+    items: ElementLimit(min(uint64(aggregate.items), uint64(viewLimits.items))),
+    nodes: aggregate.nodes,
+    valueBytes: ByteLimit(min(uint64(aggregate.valueBytes), uint64(viewLimits.valueBytes))))
+  let verified = verifyStateProofs(queries, expectedRoot, limits, effective)
+  if verified.error != StateProofError.None:
+    return ServiceProofResult[ProofView](status: ServiceProofError.ProofFailure,
+      proofReason: verified.error)
+  let captured = captureProofView(verified.value, expectedRoot, viewLimits)
+  if captured.error == ProofViewError.LimitExceeded:
+    return ServiceProofResult[ProofView](status: ServiceProofError.LimitExceeded)
+  if captured.error != ProofViewError.None:
+    return ServiceProofResult[ProofView](status: ServiceProofError.InvalidValue)
+  ServiceProofResult[ProofView](status: ServiceProofError.None, completed: captured.value)

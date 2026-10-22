@@ -172,3 +172,13 @@ uses a genuinely signed fixture and compares selected complete-state values.
 explicitly selected posterior map. Service identities are selectors rather than
 root authority; default selection and invalid plans cannot generate a response.
 Suite `chain_state_proof_plan` verifies the selected fixture's actual account.
+
+## Exact response verification
+
+`verifyServiceProofs` requires the plan's exact sorted selector set before any
+hashing, then verifies every witness under an independently supplied root.
+The stricter aggregate/view count and value quotas apply before crypto work.
+No prefix view escapes a later authentication failure. Precise proof reasons
+remain guarded by `ProofFailure`; missing/extra/reordered selectors are invalid
+input. `matchesProofPlan` compares exact identities without cryptography.
+Suite `state_proof_service_verification` checks selection, root and scope refusal.
