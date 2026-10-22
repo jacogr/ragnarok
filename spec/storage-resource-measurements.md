@@ -75,3 +75,10 @@ Test-owned `occupiedStorageBytes` samples the pinned Nim allocator at explicit l
 A repeated 16 KiB positive control observes live bytes then returns to its baseline after ARC
 retirement. These current managed-heap observations exclude stack/native-library memory and OS
 page cache, and are distinct from the fresh-child whole-process peak RSS observations.
+
+The `storageAllocationPhases` build emits live allocator checkpoints after fixture preparation,
+seed capture, backend initialization, publication, reader acquisition, extraction, reads, available
+strict reopen/reclamation and final owner close. It requires one sample and excludes SDK observation.
+Ordinary speed builds compile these checkpoints away. Closed checkpoints deliberately retain the
+held views and fixture, making the observed ownership boundary explicit rather than claiming a
+fully released process.

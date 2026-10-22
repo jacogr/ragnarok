@@ -4,7 +4,7 @@
 ## Sustained public repository operations retain exact complete maps across restart and reclamation.
 import std/[assertions, syncio, cmdline, monotimes, times]
 import std/posix/posix
-import ../support/[storage_growth_samples, managed_storage_samples, storage_growth_io]
+import ../support/[storage_growth_samples, managed_storage_samples, storage_growth_io, storage_allocations]
 import ../../src/storage/[full_state_trie, node_records, node_repository, file_repository,
   managed_repository,
   database_identity, managed_manifest]
@@ -26,6 +26,10 @@ proc main() {.raises.} =
   let samples = if paramStr(5) == "1": 1 else: 13
   when defined(storageIoCounts):
     assert samples == 1 # Counter witnesses are separate single runs, never speed samples.
+  when defined(storageAllocationPhases):
+    assert samples == 1 # Allocator observations are independent controls, never speed samples.
+    when defined(storageIoCounts):
+      assert false # SDK and allocator observation profiles cannot be combined.
   let pattern = paramStr(6)
   assert pattern in ["sweep", "hot"]
   assert count != 32768 or pattern == "sweep" # Bound the largest matrix to two representative sweep trajectories.
@@ -35,6 +39,8 @@ proc main() {.raises.} =
   let managed = ManagedLimits(repository: limits, roots: ElementLimit(9),
     snapshotBytes: ByteLimit(33554432), journalBytes: ByteLimit(33554432), contextBytes: ByteLimit(64))
   let fixture = prepareGrowth(count, publications, hot)
+  when defined(storageAllocationPhases):
+    emitStorageAllocation("fixture")
   let expected = fixture.roots[publications]
   var roots: seq[StateRoot] = @[fixture.roots[0]]
   for revision in publications-7..publications:
@@ -42,6 +48,8 @@ proc main() {.raises.} =
   var seed = newNodeRepository(limits)
   let seedView = seed.publish(seed.snapshot.value, fixture.seed).value
   let selection = selectRepositoryRoots(seedView, [seedView.commitment.root], ElementLimit(1)).value
+  when defined(storageAllocationPhases):
+    emitStorageAllocation("seed")
   for sample in 0..<samples:
     # Namespace creation, fixture preparation and complete-map checks stay outside all timed intervals.
     let path = folder & "/sample-" & $sample
@@ -57,6 +65,8 @@ proc main() {.raises.} =
     else:
       assert initializeManagedFileRepository(disk, path, default(StorageChainId), selection, [],
           managed) == FileError.None
+    when defined(storageAllocationPhases):
+      emitStorageAllocation("owner")
     var latencies = newSeq[int64](publications)
     beginGrowthIo()
     let publicationStart = getMonoTime()
@@ -69,6 +79,8 @@ proc main() {.raises.} =
       latencies[index] = elapsed(revisionStart) # Retain each complete public call without formatting in timing.
     let publicationNs = elapsed(publicationStart)
     endGrowthIo(engine, count, publications, pattern, sample, "publication")
+    when defined(storageAllocationPhases):
+      emitStorageAllocation("publication")
     let held = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
     assert uint64(held.generation) == uint64(publications+1)
     assert array[32, byte](held.commitment.root) == array[32, byte](expected)
@@ -80,6 +92,8 @@ proc main() {.raises.} =
       snapshots[index] = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
     let snapshotsNs = elapsed(snapshotStart)
     endGrowthIo(engine, count, publications, pattern, sample, "snapshots")
+    when defined(storageAllocationPhases):
+      emitStorageAllocation("snapshots")
     for retained in snapshots:
       assert identity.matches(retained) # Exact admitted ownership is stronger than matching root metadata.
     beginGrowthIo()
@@ -87,6 +101,8 @@ proc main() {.raises.} =
     let extracted = restoreStateEntries(held, expected, limits.codec.trie).value
     let extractionBeforeNs = elapsed(extractionStart)
     endGrowthIo(engine, count, publications, pattern, sample, "extraction_before")
+    when defined(storageAllocationPhases):
+      emitStorageAllocation("extraction")
     checkGrowthEntries(extracted, count, publications, hot)
     var observed = newSeq[TrieRecord](4096)
     beginGrowthIo()
@@ -99,6 +115,8 @@ proc main() {.raises.} =
       assert array[32, byte](record.digest) == array[32, byte](fixture.reads[(
           index*2053) mod count])
       checkGrowthRecord(record, count, publications, hot)
+    when defined(storageAllocationPhases):
+      emitStorageAllocation("reads")
     var reopenNs = -1'i64
     if engine != "memory":
       assert disk.close == FileError.None
@@ -112,6 +130,9 @@ proc main() {.raises.} =
       endGrowthIo(engine, count, publications, pattern, sample, "reopen")
       assert uint64(disk.snapshot.value.generation) == uint64(publications+1)
       checkGrowthHead(disk.snapshot.value, expected, count, publications, hot)
+    when defined(storageAllocationPhases):
+      if engine != "memory":
+        emitStorageAllocation("reopen")
     let storedNodes = held.storedNodes
     var snapshotBytes = -1'i64
     var journalBytes = -1'i64
@@ -150,6 +171,8 @@ proc main() {.raises.} =
         assert receipt.cleanup == FileError.None and uint64(receipt.epoch) == 2
       retentionNs = elapsed(retentionStart)
       endGrowthIo(engine, count, publications, pattern, sample, "retention")
+      when defined(storageAllocationPhases):
+        emitStorageAllocation("retention")
       let retained = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
       retainedNodes = retained.storedNodes
       checkGrowth(retained, roots[0], count, 0, hot)
@@ -186,6 +209,8 @@ proc main() {.raises.} =
         assert receipt.cleanup == FileError.None and uint64(receipt.epoch) == 3
       maintenanceNs = elapsed(maintenanceStart)
       endGrowthIo(engine, count, publications, pattern, sample, "maintenance")
+      when defined(storageAllocationPhases):
+        emitStorageAllocation("maintenance")
       let current = if engine == "memory": memory.snapshot.value else: disk.snapshot.value
       currentNodes = current.storedNodes
       assert currentNodes < retainedNodes and retainedNodes <= storedNodes
@@ -238,6 +263,8 @@ proc main() {.raises.} =
       let record = retained.lookupNode(digest).value
       assert array[32, byte](record.digest) == array[32, byte](digest)
       checkGrowthRecord(record, count, publications, hot)
+    when defined(storageAllocationPhases):
+      emitStorageAllocation("closed")
     when not defined(storageIoCounts):
       # Observed builds emit only SDK counters; their instrumented timings never become speed samples.
       for index, duration in latencies:

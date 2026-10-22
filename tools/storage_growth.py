@@ -16,7 +16,7 @@ from storage_growth_io import run_io, SOURCES as IO_SOURCES
 
 ROOT=Path(__file__).resolve().parents[1]
 SOURCES=('tests/performance/storage_growth_workload.nim','tests/support/storage_growth_samples.nim',
-         'tools/storage_growth.py','tools/storage_growth_report.py',
+         'tools/storage_growth.py','tools/storage_growth_report.py','tests/support/storage_allocations.nim',
          'tests/support/storage_growth_io.nim','tests/support/storage_io.nim',*IO_SOURCES)
 
 
