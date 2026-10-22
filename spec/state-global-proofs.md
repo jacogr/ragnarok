@@ -31,3 +31,16 @@ allowing bounded union with global requests; default service plans convert to in
 plans. There is no implicit converter or public route to forge a semantic service selector.
 `state_service_proof_plan_adapter` checks conversion, exact global/service union, source
 independence and service error compatibility; existing selector/union consumers remain controls.
+
+## Planned verification and transport
+
+`state/planned_proof` authenticates the exact sorted global/service query set under independent
+caller root authority and reuses RPV1 encoding. The shared proof-view decoder has an explicit
+expected-plan overload: count and each fixed key must match before witness copying/hashing.
+The original unplanned overload retains its existing behavior through the same implementation.
+No parallel decoder or alternate representation is introduced. Aggregate/view policies intersect
+before atomic proof verification; no failure exposes a verified prefix.
+
+`state_global_proof_transport` uses independently rooted mixed state, every truncated wire prefix,
+measured zero-hash scope/budget refusals, every backend-failure prefix, wrong-root authentication
+and byte-for-byte compatibility with the existing service encoder.
