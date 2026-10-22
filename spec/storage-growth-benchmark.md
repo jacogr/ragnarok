@@ -79,7 +79,7 @@ benchmark-only budgets, not a production policy or state-interface change.
 ## Measured immutable search directory
 
 A three-second sample of the archived checked baseline showed complete graph admission dominating
-publication. The private repository table now derives 257 first-byte offsets from its already
+publication. The initial private repository table derived 257 first-byte offsets from its already
 sorted immutable cells. Graph lookup narrows only the binary-search interval; full 32-byte equality,
 all routing/cycle/count/byte checks and orphan rejection remain mandatory. Every table constructor
 (initial owner, sorted publication merge, image admission and selection clone) derives its own
@@ -97,3 +97,12 @@ It still compares the entire address and returns an independently owned record p
 A/B runs against the graph-directory implementation measured 1.13–1.27× faster spread resident
 reads across the 8,192/32,768-entry trajectories, with essentially unchanged publication cost.
 Exact inputs and opposite-order observations: `build/storage-growth-ab-prefix-lookups/`.
+
+The directory now selects 4/8/12 prefix bits from its immutable inventory length. Tiny tables
+retain 17 offsets; large tables retain at most 4,097. No untrusted value chooses an arbitrary
+directory extent, and colliding prefixes still use full-address logarithmic search. Against the
+accepted fixed directory, matched memory publication sweeps improved by 1.386×/1.325× at
+8,192/32,768 entries respectively; read and reclamation paths also improved. Evidence:
+`build/storage-growth-ab-adaptive-prefix/`. Native image, history, ownership and complete-map
+controls pass at the changed widths. The extra directory bytes are private resident metadata,
+never serialized records or a claimed memory usage total.
