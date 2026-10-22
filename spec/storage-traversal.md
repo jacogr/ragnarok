@@ -357,3 +357,11 @@ Native observation proves strict startup makes no truncation call, two interrupt
 genuine truncation, and EIO grants no live owner or implicit repair. Complete readers and exact
 subsequent prefix confirmation remain covered. Process-specific fixture names preserve failed
 forensics across reruns without changing serialized database bytes.
+
+## Interrupted nonblocking leases
+
+Both layouts retry flock EINTR on the same descriptor and unchanged flags. Actual contention
+still returns Busy immediately after two consumed interruptions; permanent acquisition refusal
+never opens an owner. Interrupted unlock completes, while permanent unlock refusal still retires
+the descriptor and returns its actual IO error. Strict restart proves the kernel lease is released
+and complete bytes/maps survive. No blocking lock mode or wait/backoff policy is introduced.

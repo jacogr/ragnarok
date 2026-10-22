@@ -32,3 +32,5 @@ let truncateIo* {.importc: "STORAGE_IO_FTRUNCATE", header: "observer.h".}: cint
   ## Observe only explicit physical truncation, never granting a recovery prefix or rollback point.
 proc storageProcessId*(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Supported SDK pid_t is int; fixture names stay process-specific without changing the pinned runtime.
+let lockIo* {.importc: "STORAGE_IO_FLOCK", header: "observer.h".}: cint
+  ## Observe the actual native lease boundary independently from read/write and durability calls.

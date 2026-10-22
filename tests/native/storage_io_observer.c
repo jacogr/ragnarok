@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <unistd.h>
+#include <sys/file.h>
 
 /* Bounded scalar configuration performs no allocation or logging at an observed call boundary. */
 static int selected, skipped, remaining, reason;
@@ -127,4 +128,11 @@ int storage_io_ftruncate(int descriptor, off_t extent) {
         return -1;
     }
     return ftruncate(descriptor, extent);
+}
+int storage_io_flock(int descriptor, int operation) {
+    /* Uninjected calls preserve the real cooperative nonblocking lease, including actual competition. */
+    if (refuse(STORAGE_IO_FLOCK)) {
+        return -1;
+    }
+    return flock(descriptor, operation);
 }

@@ -60,8 +60,14 @@ let exists {.importc: "EEXIST", header: "<errno.h>".}: cint
 proc openFile(path: cstring, flags, mode: cint): cint {.importc: "open", cdecl,
     header: "<fcntl.h>".}
   ## The real variadic SDK declaration supplies the platform-correct mode ABI.
-proc lock(fd, operation: cint): cint {.importc: "flock", cdecl, header: "<sys/file.h>".}
+proc lockNative(fd, operation: cint): cint {.importc: "flock", cdecl, header: "<sys/file.h>".}
   ## Standard advisory inode locking arbitrates cooperating processes without waiting.
+proc lock(fd, operation: cint): cint =
+  ## Retry only interrupted operations on the same descriptor; the existing nonblocking flags are unchanged.
+  while true:
+    let status = lockNative(fd, operation)
+    if status == 0 or posix.errno() != interrupted: return status
+    # Busy and permanent refusal return immediately; an interrupted unlock still owns this live descriptor.
 proc syncNative(fd: cint): cint {.importc: "fsync", cdecl, header: "<unistd.h>".}
   ## Synchronize explicit file/directory descriptors without changing their namespace.
 

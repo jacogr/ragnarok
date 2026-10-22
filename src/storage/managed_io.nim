@@ -65,8 +65,14 @@ proc openAt(directory: cint, path: cstring, flags, mode: cint): cint {.importc: 
 proc makeDirectory(path: cstring, mode: cint): cint {.importc: "mkdir", cdecl,
     header: "<sys/stat.h>".}
   ## Exclusively create one private managed namespace.
-proc lockFile(fd, operation: cint): cint {.importc: "flock", cdecl, header: "<sys/file.h>".}
+proc lockNative(fd, operation: cint): cint {.importc: "flock", cdecl, header: "<sys/file.h>".}
   ## Cooperating processes arbitrate through one persistent inode, without waiting.
+proc lockFile(fd, operation: cint): cint =
+  ## Retry only interrupted operations on the same descriptor; the existing nonblocking flags are unchanged.
+  while true:
+    let status = lockNative(fd, operation)
+    if status == 0 or posix.errno() != interrupted: return status
+    # Busy and permanent refusal return immediately; an interrupted unlock still owns this live descriptor.
 proc syncNative(fd: cint): cint {.importc: "fsync", cdecl, header: "<unistd.h>".}
   ## Report both data and namespace durability barriers explicitly.
 proc syncFile(fd: cint): cint =
