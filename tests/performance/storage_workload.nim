@@ -33,6 +33,17 @@ proc check(view: RepositoryView, trie: StateTrieLimits, count: int, expected: St
   for index, entry in entries:
     assert array[31, byte](entry.key) == array[31, byte](key(index, deep))
     assert entry.value == value(index, 16, valueBytes)
+proc checkHistory(view: RepositoryView, trie: StateTrieLimits, count: int,
+    roots: openArray[StateRoot], deep: bool, valueBytes: int) =
+  ## Nine authored complete historical maps remain distinct from block finality or checkpoint authority.
+  assert roots.len == 9
+  for revision, root in roots:
+    let entries = restoreHistoricalStateEntries(view, root, trie).value
+    let applied = if revision == 0: 0 else: revision+8
+    assert entries.len == count
+    for index, entry in entries:
+      assert array[31, byte](entry.key) == array[31, byte](key(index, deep))
+      assert entry.value == value(index, applied, valueBytes)
 proc elapsed(start: MonoTime): int64 =
   ## Monotonic positive nanoseconds describe one fixed public API operation batch.
   (getMonoTime()-start).inNanoseconds
@@ -79,6 +90,9 @@ proc main() {.raises.} =
       value: value(index, index+1, valueBytes))]).value
     changes.add(exportTrieChanges(state, next, limits.codec.records).value)
     state = next # Preparation, Merklization and fixture construction stay outside timed publication.
+  var roots: seq[StateRoot] = @[full.root]
+  for index in 8..<16:
+    roots.add(changes[index].root) # Root preparation and all historical expectations remain outside timing.
   let expected = state.commitment.root
   var seed = newNodeRepository(limits)
   let seedView = seed.publish(seed.snapshot.value, full).value
@@ -138,6 +152,27 @@ proc main() {.raises.} =
         assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
       reopenNs = elapsed(reopenStart)
       check(disk.snapshot.value, trie, count, expected, deep, valueBytes)
+    var retentionNs = -1'i64
+    if engine == "memory":
+      # Clone the same nine complete roots into an independent owner without durability claims.
+      let retentionStart = getMonoTime()
+      let retained = selectRepositoryRoots(view, roots, ElementLimit(9)).value
+      var cloned = cloneRepositorySelection(retained, limits).value
+      retentionNs = elapsed(retentionStart)
+      checkHistory(cloned.snapshot.value, trie, count, roots, deep, valueBytes)
+      assert memory.close == RepositoryError.None
+      memory = cloned # Subsequent current-only reclamation starts from the same nine-root union as managed IO.
+      assert cloned.close == RepositoryError.None
+    elif engine == "managed":
+      # Keep eight recent roots plus the seed before measuring current-only reclamation separately.
+      let retentionStart = getMonoTime()
+      let receipt = disk.compact(disk.snapshot.value, roots).value
+      retentionNs = elapsed(retentionStart)
+      assert receipt.cleanup == FileError.None and uint64(receipt.epoch) == 2
+      checkHistory(disk.snapshot.value, trie, count, roots, deep, valueBytes)
+      assert disk.close == FileError.None
+      assert openManagedFileRepository(disk, path, default(StorageChainId), managed) == FileError.None
+      checkHistory(disk.snapshot.value, trie, count, roots, deep, valueBytes)
     var maintenanceNs = -1'i64
     if engine == "memory":
       # Compare current-root reclamation through an independent private clone, without claiming durability.
@@ -153,7 +188,7 @@ proc main() {.raises.} =
       let maintenanceStart = getMonoTime()
       let receipt = disk.compact(disk.snapshot.value, [expected]).value
       maintenanceNs = elapsed(maintenanceStart)
-      assert receipt.cleanup == FileError.None and uint64(receipt.epoch) == 2
+      assert receipt.cleanup == FileError.None and uint64(receipt.epoch) == 3
       assert receipt.reclaimedNodes > 0
       check(disk.snapshot.value, trie, count, expected, deep, valueBytes)
       assert disk.managedUsage.value.journalBytes == uint64(ManagedJournalHeaderBytes)
@@ -167,10 +202,10 @@ proc main() {.raises.} =
         var nativePath = path
         assert posix.unlink(nativePath.toCString()) == 0
       else:
-        removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2)])
+        removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2), ManagedEpoch(3)])
     assert memory.close == RepositoryError.None
     echo "sample\t", count, "\t", topology, "\t", valueBytes, "\t", sample, "\t", publicationNs,
-        "\t", readNs, "\t", extractNs, "\t", reopenNs, "\t", maintenanceNs
+        "\t", readNs, "\t", extractNs, "\t", reopenNs, "\t", maintenanceNs, "\t", retentionNs
   assert seed.close == RepositoryError.None
 try:
   main()

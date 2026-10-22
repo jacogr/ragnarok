@@ -71,3 +71,12 @@ journal layout has no equivalent operation and displays an explicit unavailable 
 no fabricated ratio. Root/generation, reclaimed records, header-only selected journal, strict
 post-compaction restart and held pre-compaction maps are validated outside timing. The original
 reopen phase remains before compaction so it still measures full journal admission.
+
+## Bounded retained-history reclamation
+
+A separate nine-root phase retains the seed and last eight prepared revisions, comparing memory
+selection/clone with actual managed compaction. Every complete historical key/value map survives
+strict managed restart. Current-only managed reclamation then runs against that selected epoch;
+the selected root and generation never advance. Both phases preserve pre-compaction readers.
+The journal layout remains explicitly unavailable. Synthetic revision retention supplies neither
+block finality nor checkpoint trust, and fixture expectations are prepared outside timing.

@@ -22,7 +22,7 @@ def output(engine,count,topology='leading',value_bytes=256):
     # Unsupported reopen/reclamation operations remain explicit sentinels in otherwise complete samples.
     return ''.join(f'sample\t{count}\t{topology}\t{value_bytes}\t{s}\t'+
         '\t'.join(map(str,[100+s,200+s,300+s,-1 if engine=='memory' else 400+s,
-                           -1 if engine=='journal' else 500+s]))+'\n' for s in range(13))
+                           -1 if engine=='journal' else 500+s,-1 if engine=='journal' else 600+s]))+'\n' for s in range(13))
 
 
 def passes():
@@ -43,7 +43,7 @@ class StorageBenchmarkTests(unittest.TestCase):
         self.assertIn('Strict disk reopen | — |',text)
         self.assertIn('memory publication is not durable',text)
         self.assertIn('warm resident',text)
-        self.assertEqual(len(report['cases']),40)
+        self.assertEqual(len(report['cases']),48)
         self.assertEqual(report['cases'][0]['engines']['memory']['median_ns'],107.5)
 
     def test_missing_duplicate_or_wrong_sample(self):
@@ -86,12 +86,14 @@ class StorageBenchmarkTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_output(output('journal',1024).replace('\t400\t','\t-1\t'),'journal',1024)
 
-    def test_no_fabricated_maintenance_for_journal(self):
-        """A layout without online replacement cannot acquire a positive reclamation timing."""
-        with self.assertRaises(ValueError):
-            parse_output(output('journal',1024).replace('\t-1\n','\t500\n'),'journal',1024)
-        with self.assertRaises(ValueError):
-            parse_output(output('managed',1024).replace('\t500\n','\t-1\n'),'managed',1024)
+    def test_no_fabricated_reclamation_for_journal(self):
+        """Neither reclamation mode can acquire a fabricated positive journal timing."""
+        for phase in ('maintenance','retention'):
+            for engine,invalid in [('journal','500'),('managed','-1')]:
+                lines=[line.split('\t') for line in output(engine,1024).splitlines()]
+                lines[0][5+PHASES.index(phase)]=invalid
+                with self.subTest(phase=phase,engine=engine),self.assertRaises(ValueError):
+                    parse_output('\n'.join('\t'.join(line) for line in lines)+'\n',engine,1024)
 
     def test_missing_backend_pass_or_forged_statistic(self):
         raw=passes()
