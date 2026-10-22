@@ -4,7 +4,7 @@
 ## Structural proof capture protects canonical framing, independent ceilings and immutable ownership.
 import std/[assertions, syncio]
 import ../../../src/state/trie_proof
-import ../../../src/codec/[bounded, state_layout]
+import ../../../src/codec/[bounded, state_layout, state_trie]
 
 proc main() =
   ## Captures are unverified witnesses, including a valid explicit empty path.
@@ -37,5 +37,30 @@ proc main() =
   assert captureStateProof([], supplied, StateProofLimits()).error == StateProofError.LimitExceeded
   assert captureStateProof(newSeq[EncodedStateNode](250), [], limits).error ==
       StateProofError.LimitExceeded
+  let root = StateRoot(array[32, byte](hashStateNode(leaf).value))
+  let verified = verifyStateProof(proof, root, key, limits)
+  assert verified.error == StateProofError.None and verified.value.present
+  assert verified.value.bytes == @[byte 7]
+  assert array[32, byte](verified.value.root) == array[32, byte](root)
+  assert array[31, byte](verified.value.key) == array[31, byte](key)
+  assert not default(VerifiedStateLookup).valid
+  assert verifyStateProof(proof, default(StateRoot), key, limits).error ==
+      StateProofError.RootMismatch
+  assert verifyStateProof(proof, root, chapterKey(StateChapter(2)), limits).error ==
+      StateProofError.KeyMismatch
+  assert verifyStateProof(captureStateProof([leaf], [byte 8], limits).value, root, key,
+      limits).error == StateProofError.MissingValue
+  for size in [0, 32, 33, 100]:
+    # Inline and hashed leaves authenticate exact supplied bytes, including present-empty.
+    let payload = newSeq[byte](size)
+    let terminal = encodeStateLeaf(key, payload, ByteLimit(100)).value
+    let witness = captureStateProof([terminal], payload, limits).value
+    let identity = StateRoot(array[32, byte](hashStateNode(terminal).value))
+    assert verifyStateProof(witness, identity, key, limits).value.bytes == payload
+  let sibling = StateNodeHash(default(array[32, byte]))
+  let branch = encodeStateBranch(hashStateNode(leaf).value, sibling)
+  let branched = captureStateProof([branch, leaf], [byte 7], limits).value
+  let branchRoot = StateRoot(array[32, byte](hashStateNode(branch).value))
+  assert verifyStateProof(branched, branchRoot, key, limits).error == StateProofError.None
   echo "state-proof: ok"
 main()
