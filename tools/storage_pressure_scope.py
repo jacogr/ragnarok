@@ -32,11 +32,16 @@ def launch_arguments(unit, target, high, maximum, swap, arguments):
     if any(v is not None and (type(v) is not int or not 0 <= v <= 512*1024*1024)
            for v in (high, maximum, swap)) or swap is None:
         raise ValueError('Invalid bounded pressure controls')
+    if (any(v is not None and v < 64*1024*1024 for v in (high, maximum)) or
+            (maximum is not None and (high is None or high > maximum))):
+        raise ValueError('Unsafe or inconsistent private memory bounds')
     value = lambda n: 'infinity' if n is None else str(n)
     child_value = lambda n: 'max' if n is None else str(n)
     return ['sudo', '-n', 'systemd-run', '--quiet', '--wait', '--pipe', '--collect',
             '--unit='+unit, '--uid='+str(os.getuid()), '--gid='+str(os.getgid()),
             '--working-directory='+str(ROOT), '--property=Type=exec',
+            '--setenv=LD_LIBRARY_PATH='+str(Path(sys.base_prefix)/'lib'),
+            '--setenv=PYTHONDONTWRITEBYTECODE=1',
             '--property=MemoryAccounting=yes', '--property=IOAccounting=yes',
             '--property=MemoryHigh='+value(high), '--property=MemoryMax='+value(maximum),
             '--property=MemorySwapMax='+value(swap), '--property=OOMPolicy=continue',
@@ -79,6 +84,10 @@ def validate_receipt(report, unit, bounds):
             raise ValueError('Substituted native cgroup identity')
         if type(row['samples']) is not int or not 0 < row['samples'] <= 10000:
             raise ValueError('Missing bounded native sampling evidence')
+        peaks = row['sampled_peaks']
+        if (type(peaks) is not dict or set(peaks) != {'rss', 'swap', 'anon', 'file', 'cgroup_swap'} or
+                any(type(v) is not int or not 0 <= v < 1 << 63 for v in peaks.values())):
+            raise ValueError('Invalid sampled pressure gauges')
         resources = row['resources']
         expected = {'peak_rss_bytes', 'minor_faults', 'major_faults', 'input_blocks', 'output_blocks'}
         if (type(resources) is not dict or set(resources) != expected or

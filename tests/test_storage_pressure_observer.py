@@ -91,6 +91,7 @@ class PressureObserverTests(unittest.TestCase):
                      '--property=KillMode=control-group', '--collect'):
             self.assertIn(flag, argv)
         self.assertNotIn('set-property', argv)
+        self.assertTrue(any(v.startswith('--setenv=LD_LIBRARY_PATH=') for v in argv))
         with self.assertRaises(ValueError):
             scope.launch_arguments(UNIT, '/tmp/result', 0, 1024**3, 0, ['probe'])
 
@@ -115,6 +116,7 @@ class PressureObserverTests(unittest.TestCase):
                       group='/sys/fs/cgroup/system.slice/'+UNIT, membership_raw=member,
                       mountinfo_raw=mounts, runs=[dict(before_raw=raw, after_raw=raw,
                       evidence=evidence, exit_code=0, outcome='completed', samples=1, timed_out=False,
+                      sampled_peaks=dict(rss=4096, swap=0, anon=4096, file=0, cgroup_swap=0),
                       child_membership_raw=member, resources=dict(peak_rss_bytes=4096,
                       minor_faults=1, major_faults=0, input_blocks=0, output_blocks=0))])
         scope.validate_receipt(report, UNIT, (67108864, 67108864, 0))
