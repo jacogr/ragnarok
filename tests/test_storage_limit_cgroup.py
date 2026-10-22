@@ -17,6 +17,10 @@ class LimitCgroupTests(unittest.TestCase):
         for member in ('0::/tenant/../host\n','0::/other\n','0::/tenant\n0::/tenant/job\n'):
             with self.assertRaises(ValueError):
                 resolve(member,mount)
+    def test_missing_mount_filesystem(self):
+        """Malformed mount metadata fails explicitly rather than indexing an empty field list."""
+        with self.assertRaises(ValueError):
+            resolve('0::/tenant/job\n','10 1 0:1 /tenant /sys/fs/cgroup rw - ')
     def test_limits_and_events(self):
         """Unlimited differs from zero; event aliases and omissions fail."""
         self.assertIsNone(scalar('max\n',True)); self.assertEqual(scalar('0\n'),0)

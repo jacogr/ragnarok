@@ -44,7 +44,10 @@ def resolve(membership,mountinfo):
     candidates=[]
     for line in mountinfo.splitlines():
         left,sep,right=line.partition(' - ')
-        if sep and right.split()[0]=='cgroup2':
+        kind=right.split()
+        if sep and not kind:
+            raise ValueError('Missing cgroup mount filesystem')
+        if sep and kind[0]=='cgroup2':
             fields=left.split()
             if len(fields)<6:
                 raise ValueError('Invalid cgroup mount fields')
