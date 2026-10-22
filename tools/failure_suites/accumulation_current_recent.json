@@ -1,0 +1,139 @@
+{
+  "source": "tests/native/accumulation_current_recent_results.nim",
+  "build_name": "accumulation-current-recent-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-recent-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current recent extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-recent-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current recent extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "current-recent-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Current recent extraction: source"
+    },
+    {
+      "identity": {
+        "reason": "history"
+      },
+      "arguments": [
+        "history"
+      ],
+      "name": "current-recent-history",
+      "diagnostic": "outcome.status == None",
+      "description": "Current recent extraction: history"
+    },
+    {
+      "identity": {
+        "reason": "root"
+      },
+      "arguments": [
+        "root"
+      ],
+      "name": "current-recent-root",
+      "diagnostic": "outcome.status == None",
+      "description": "Current recent extraction: root"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "current-recent-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Current recent extraction: state"
+    },
+    {
+      "identity": {
+        "reason": "entry"
+      },
+      "arguments": [
+        "entry"
+      ],
+      "name": "current-recent-entry",
+      "diagnostic": "outcome.status == None",
+      "description": "Current recent extraction: entry"
+    },
+    {
+      "identity": {
+        "reason": "header-reason"
+      },
+      "arguments": [
+        "header-reason"
+      ],
+      "name": "current-recent-header-reason",
+      "diagnostic": "outcome.status == HeaderFailure",
+      "description": "Current recent extraction: header-reason"
+    },
+    {
+      "identity": {
+        "reason": "codec-reason"
+      },
+      "arguments": [
+        "codec-reason"
+      ],
+      "name": "current-recent-codec-reason",
+      "diagnostic": "outcome.status == CodecFailure",
+      "description": "Current recent extraction: codec-reason"
+    },
+    {
+      "identity": {
+        "reason": "output-reason"
+      },
+      "arguments": [
+        "output-reason"
+      ],
+      "name": "current-recent-output-reason",
+      "diagnostic": "outcome.status == OutputFailure",
+      "description": "Current recent extraction: output-reason"
+    },
+    {
+      "identity": {
+        "reason": "history-reason"
+      },
+      "arguments": [
+        "history-reason"
+      ],
+      "name": "current-recent-history-reason",
+      "diagnostic": "outcome.status == HistoryFailure",
+      "description": "Current recent extraction: history-reason"
+    },
+    {
+      "identity": {
+        "reason": "state-reason"
+      },
+      "arguments": [
+        "state-reason"
+      ],
+      "name": "current-recent-state-reason",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Current recent extraction: state-reason"
+    }
+  ]
+}
