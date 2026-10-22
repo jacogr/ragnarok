@@ -123,3 +123,19 @@ reads likewise reversed direction. This does not establish a stable improvement.
 reverted and its exact patch, source identities and raw A/B evidence were preserved under
 `build/storage-growth-rejected-prefix-comparisons.patch` and
 `build/storage-growth-ab-prefix-comparisons/`. Full-address comparison remains the accepted code.
+
+## Indexed restart qualification
+
+A dedicated 8,192-entry native process-crash control exercises the large private-directory path
+through legacy replay and managed image admission. A supervised child dies only after a genuine
+complete append or eight-byte write. Complete frames strictly reopen at the successor; torn tails
+remain unchanged on strict refusal and mismatched recovery authority. Only the independent exact
+generation/root token repairs the prefix, after which publication resumes and held maps remain
+valid. This extends existing process-crash controls without claiming hardware power-loss evidence.
+
+Final qualification freezes the committed stack tip and records actual exits for affected native
+repository/image/history and crash suites, real TLS/storage consumers, production build/selftest,
+complete Perf Storage, Python/CI safeguards, formatting, inventory and whitespace. Stronger report
+validation is also applied to the archived pre-index baseline. Exact head, upstream reconciliation,
+source/build identities, raw results, timings and preserved parked-file manifests remain under
+ignored `build/`. No new M1 or complete protocol state-serialization claim is introduced.
