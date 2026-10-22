@@ -236,3 +236,12 @@ Every actual bounded unlink/directory-sync boundary is killed independently. The
 prefix and remaining forensic bytes are checked before and after strict restart. CURRENT, selected
 files, complete authored maps and farther epoch files stay byte-identical. Explicit idempotent
 cleanup finishes only its requested staging/retired names; selected/future retirement is refused.
+
+## Real cross-process lease exclusion and release
+
+`storage_process_lease_crash` parks a child immediately after actual nonblocking flock acquisition,
+while the parent owns no inherited file descriptor. A fresh competing owner must return Busy while
+the exact witnessed child is stopped. Only explicit finish verifies SIGKILL/reap and permits strict
+reopen; a stopped receipt is distinct from a killed receipt. Duplicate wait/invalid deadline/nested
+fork controls preserve ownership. Both layouts also have normally completing lease controls, exact
+journal bytes, complete authored maps and retained parent readers after native retirement.

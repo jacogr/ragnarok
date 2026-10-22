@@ -26,7 +26,7 @@ static int zero_skip, zero_remaining;
 /* Each process owns one pipe end; only the parent owns and reaps the exact positive child PID. */
 static pid_t crash_child = -1;
 static int crash_reader = -1, crash_writer = -1;
-static int crash_operation, crash_skip, crash_started;
+static int crash_operation, crash_skip, crash_started, crash_ready;
 static uint64_t crash_completed, crash_observed;
 struct crash_event {
     uint64_t magic, count;
@@ -92,7 +92,7 @@ int storage_io_crash_fork(int operation, int skip) {
     }
     crash_operation = operation;
     crash_skip = skip;
-    crash_started = 0;
+    crash_started = crash_ready = 0;
     crash_completed = crash_observed = 0;
     if (child == 0) {
         /* Child setup is intentionally outside the observed window until its explicit start. */
@@ -167,10 +167,14 @@ static int crash_reap(void) {
     } while (now - start < 10000);
     return 0;
 }
-int storage_io_crash_finish(int timeout_ms) {
+static int crash_wait(int timeout_ms) {
     /* Missing, late or malformed witnesses cannot become a successful crash qualification. */
     if (crash_child <= 0 || timeout_ms < 1 || timeout_ms > 30000) {
         return STORAGE_CRASH_INVALID;
+    }
+    if (crash_ready) {
+        /* A verified stop is retained only until explicit finish/abort; receipt bytes are consumed once. */
+        return STORAGE_CRASH_KILLED;
     }
     uint64_t start = 0, now = 0;
     int verdict = STORAGE_CRASH_ERROR;
@@ -219,14 +223,36 @@ int storage_io_crash_finish(int timeout_ms) {
             }
         } while (1);
     }
+    if (verdict == STORAGE_CRASH_KILLED && crash_child > 0) {
+        /* Keep the exact stopped child and its lease alive for the parent's contention witness. */
+        crash_ready = 1;
+        return verdict;
+    }
     if (crash_child > 0 && !crash_reap()) {
         verdict = STORAGE_CRASH_ERROR;
     }
     crash_close_pipe();
     return verdict;
 }
+int storage_io_crash_wait(int timeout_ms) {
+    /* A stopped witness is not a killed witness; callers must explicitly finish or abort ownership. */
+    int verdict = crash_wait(timeout_ms);
+    return verdict == STORAGE_CRASH_KILLED ? STORAGE_CRASH_STOPPED : verdict;
+}
+int storage_io_crash_finish(int timeout_ms) {
+    /* Preserve the original finish contract: success still requires exact SIGKILL termination and reap. */
+    int verdict = crash_wait(timeout_ms);
+    if (verdict == STORAGE_CRASH_KILLED) {
+        int killed = crash_reap();
+        crash_ready = 0;
+        crash_close_pipe();
+        return killed ? STORAGE_CRASH_KILLED : STORAGE_CRASH_ERROR;
+    }
+    return verdict;
+}
 void storage_io_crash_abort(void) {
     /* Parent failure paths still kill/reap only their owned child; the receipt can never claim success. */
+    crash_ready = 0;
     if (crash_child > 0) {
         (void)crash_reap();
     }
