@@ -150,3 +150,6 @@ models remain in `make check-models`. Strict runtime/compiler guards preserve
 genuine success controls and exact diagnostics. Local macOS results remain
 separate from exact-head Linux CI. M1 framing/current request namespace completion
 does not establish global semantic validity, whole-block STF or full JAM parity.
+
+For the authenticated current producer path, original full-Parameters selection, retained supplied
+raw keys and remaining producer/parity gates, see [current qualification](state-current-qualification.md).
