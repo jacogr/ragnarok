@@ -55,3 +55,40 @@ permission checks, conflicting binds, explicit close/restart and ARC destructor 
 
 This increment does not change the documented M1 framing milestone or establish complete
 JAM serialization, STF or validator-operation parity.
+
+## Resource observations
+
+`resources.memory` reports `residentBytes` for the entire process (current Mach task resident size
+on macOS, `/proc/self/statm` resident pages on Linux), and `dispatcherHeapOccupiedBytes` /
+`dispatcherHeapReservedBytes` for the calling Nimony thread's allocator. Heap counters exclude
+worker heaps and foreign-library allocations; process RSS includes resident memory across threads.
+These are different scopes, not additive components of a total. RSS failures yield null.
+
+`resources.filesystem` names the database filesystem (or the management directory for a memory
+backend). `totalBytes`, `freeBytes` and `availableBytes` come from statvfs: free includes blocks
+reserved for privileged use; available is what an unprivileged process can normally allocate.
+Failed metadata queries yield null, never an apparent zero-capacity volume. These are local OS
+observations, not a promise that a subsequent database write will succeed.
+
+`resources.database` exposes `enabled`, `status`, `logicalBytes`, `allocatedBytes`, `files`,
+and `sampleAgeMs`. Memory backends use zero database disk bytes and status `memory`.
+Legacy journal layout counts its selected database file. Managed layout counts all regular files
+in its flat directory, including manifests, locks, staged/retired files; it does not count unrelated
+files elsewhere. Logical bytes sum file lengths; allocated bytes sum OS st_blocks times 512.
+Sparse files can therefore have smaller allocation than length. Shared/cloned/compressed filesystem
+storage can make these observations differ from uniquely attributable physical-device consumption.
+Directory metadata and filesystem overhead are outside file allocation totals; hard-linked directory
+entries are counted individually.
+
+RSS/heap/filesystem values refresh at most once per second outside request dispatch. Database scans
+start at most every ten seconds, inspect at most sixteen directory entries per dispatcher turn, and
+stop after 4096 entries including dot entries. A completed sample remains available with its age
+while a refresh runs (`sampling`). Before the first complete scan, sizes are null. IO errors,
+overflow, symlinks, nested directories or entry-limit refusal invalidate the sample and produce
+null sizes with a diagnostic status. No recursion or database-owner access occurs. A scan is an
+observation across turns, not a transactional snapshot; concurrent appends/compaction can change
+sizes during it. A later sample refreshes the result.
+
+`make unit SUITE=management_resources` checks current RSS/free-space observations, sparse-file
+logical versus allocated size, multi-turn complete scans, memory mode, missing/non-flat/oversized
+layouts, overflow refusal and 1000 abandoned scans with unchanged live ARC allocation.
