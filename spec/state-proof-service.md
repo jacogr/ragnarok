@@ -208,3 +208,13 @@ last witness under a foreign root. No earlier verified prefix escapes a later
 failure. Source evidence and an unchanged complete response remain readable
 after all refusals. These are bounded authored transport tests, not fuzzing or
 a public network-protocol claim.
+
+## Independent namespace and full-map witnesses
+
+Four frozen Python/hashlib maps independently encode current supervisor metadata,
+account/storage/preimage/request keys and full trie roots. Cases span service0,
+7, a multibyte index and uint32-max; preimages span0/1/32/33 bytes. Independent
+direct partitioning computes roots without production sorting/codecs. Native
+`state_proof_service_reference` checks typed reads, exact query-plan unions and
+literal roots; two Python safeguards protect frozen bytes and an explicit key
+equation. The fixture descriptor pins exact corpus bytes.
