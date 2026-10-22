@@ -113,3 +113,11 @@ publications. Exact concatenated frame bytes, selected generation/root and every
 historical map are checked after strict restart. Earlier complete frames never disappear, and
 parent-held readers stay valid. Visible-but-unreturned bytes are admitted only by independent
 strict restart; no killed child is retroactively counted as a confirmed application adoption.
+
+## Managed replacement staged-write crashes
+
+`storage_compaction_write_crash` kills after each actual snapshot, empty journal and CURRENT.next
+write. CURRENT remains byte-identical and strict restart selects the original complete generation2
+epoch. Old selected files and every remaining forensic staging byte stay unchanged by restart.
+Only explicit bounded staging cleanup permits replacement retry; selected/future epochs cannot be
+retired through the earlier-epoch API. Held generation1 maps outlive final native retirement.
