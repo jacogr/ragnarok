@@ -4,7 +4,7 @@
 ## Bounded global chapter selectors and authenticated reads of partial evidence.
 ## Typed chapter captures retain existing codec/profile rules without granting complete-map authority.
 import std/assertions
-import ../codec/[bounded, state_layout, state_safrole, state_composition]
+import ../codec/[bounded, state_layout, state_safrole, state_composition, state_history]
 import ./[proof_plan, proof_view, trie_proof]
 
 type
@@ -105,3 +105,22 @@ proc readGlobalEntropy*(view: ProofView, limit: ByteLimit): GlobalProofResult[St
   if decoded.value.consumed != bytes.value.len:
     return GlobalProofResult[StateEntropy](status: GlobalProofError.InvalidValue)
   GlobalProofResult[StateEntropy](status: GlobalProofError.None, completed: decoded.value.value)
+
+proc readGlobalHistory*(view: ProofView, config: HistoryConfig): GlobalProofResult[
+    HistorySnapshot] =
+  ## Decode exact recent history and belt peaks with independent caller cardinality/byte policies.
+  let bytes = chapterBytes(view, StateChapterId.History, config.maxBytes)
+  if bytes.error != GlobalProofError.None:
+    return GlobalProofResult[HistorySnapshot](status: bytes.error)
+  let decoded = decodeHistoryState(bytes.value, config)
+  if decoded.error != HistoryError.None:
+    # Malformed protocol values do not become empty histories or partially decoded owners.
+    let reason = case decoded.error
+      of HistoryError.InvalidConfig: GlobalProofError.InvalidConfig
+      of HistoryError.LimitExceeded, HistoryError.LengthOverflow: GlobalProofError.LimitExceeded
+      else: GlobalProofError.InvalidValue
+    return GlobalProofResult[HistorySnapshot](status: reason)
+  if decoded.value.consumed != bytes.value.len:
+    return GlobalProofResult[HistorySnapshot](status: GlobalProofError.InvalidValue)
+  GlobalProofResult[HistorySnapshot](status: GlobalProofError.None,
+      completed: decoded.value.snapshot)
