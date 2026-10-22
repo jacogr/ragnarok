@@ -150,3 +150,12 @@ Resident reads, extraction and snapshot acquisition must have zero observed SDK 
 reopen must read, acquire a lease and confirm synchronization without data/namespace mutation. Managed reclamation must witness
 synchronization, CURRENT replacement and predecessor retirement. Any failure refuses the entire
 comparison. These are SDK call attempts, not device IO, bytes transferred or power-loss evidence.
+
+## Frozen-input publication
+
+Before successful publication the runner rediscovers source/configuration inputs and compares
+head/dirty state, Clang identity, compiler bytes, both ordinary executables, observed executable
+and observer object against their starting identities. The primitive bridge and both loader
+locations of the locked Rust provider are included; provider copies must be byte-identical.
+A changed or missing input fails the run and removes successful CSV/summary output. Source
+addition/removal is detected, while timestamp-only changes do not invalidate identical content.

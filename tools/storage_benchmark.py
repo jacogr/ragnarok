@@ -16,7 +16,7 @@ from storage_growth import run_growth, SOURCES as GROWTH_SOURCES
 from build_crypto import dependencies as crypto_sources, build_native as build_crypto
 from pvm_reference import command
 from setup_nimony import installed
-from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,VALUE_BYTES,BATCH_WIDTHS,CASES,PHASES,METRICS,REPORT_VERSION,PROFILE,parse_output,aggregate,summarize_benchmark
+from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,VALUE_BYTES,BATCH_WIDTHS,CASES,PHASES,METRICS,REPORT_VERSION,PROFILE,NATIVE_SOURCES,parse_output,aggregate,summarize_benchmark
 
 ROOT=Path(__file__).resolve().parents[1]
 BUILD=ROOT/'build/tests/storage-benchmark'
@@ -67,6 +67,56 @@ def cpu_model():
     return platform.machine()
 
 
+def benchmark_sources():
+    """Rediscover owned runtime/native inputs at both ends so additions and removals cannot hide drift."""
+    source=ROOT/'tests/performance/storage_workload.nim'
+    return [*[ROOT/name for name in GROWTH_SOURCES],*sorted((ROOT/'src').rglob('*.nim')),source,
+        ROOT/'tests/support/managed_storage_samples.nim',ROOT/'tests/support/storage_samples.nim',
+        ROOT/'tools/storage_benchmark.py',ROOT/'tools/storage_benchmark_report.py',
+        ROOT/'tools/native_checks.py',ROOT/'tools/pvm_reference.py',ROOT/'spec/toolchain.json',
+        ROOT/'Makefile',ROOT/'.github/workflows/ci.yml',ROOT/'tools/build_crypto.py',
+        ROOT/'tools/native_source_identity.py',ROOT/'spec/crypto-pins.json',*[ROOT/name for name in NATIVE_SOURCES],
+        *sorted((ROOT/'native/bandersnatch/src').rglob('*.rs'))]
+
+def source_hashes(paths):
+    """Content identity ignores harmless timestamp changes while retaining every declared relative input."""
+    return {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+
+
+def crypto_components(library):
+    """Cover both loader locations of the colocated locked Rust provider, as well as the primitive bridge."""
+    name='libragnarok_bandersnatch'+('.dylib' if platform.system()=='Darwin' else '.so')
+    return dict(bridge=Path(library),provider_loader=Path(library).parent/name,
+        provider_build=ROOT/'build/bandersnatch/target/release'/name)
+
+
+def component_hashes(paths):
+    """A loader-dependent mixed Rust provider cannot supply a reproducible comparison."""
+    values={name:hashlib.sha256(path.read_bytes()).hexdigest() for name,path in paths.items()}
+    if values['provider_loader']!=values['provider_build']:
+        raise RuntimeError('Storage benchmark native provider copies differ')
+    return values
+
+
+def verify_inputs(report,compiler,library,binary):
+    """Reject source, history, compiler, primitive closure or executable drift before successful artifacts."""
+    def require(condition,label):
+        if not condition:
+            raise RuntimeError('Storage benchmark input changed: '+label)
+    require(source_hashes(benchmark_sources())==report['sources'],'sources')
+    require(subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()==report['head'],'HEAD')
+    require(bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT))==report['worktree_dirty'],'dirty state')
+    require(subprocess.check_output(['clang','--version'],text=True).splitlines()[0]==report['clang'],'Clang version')
+    require(hashlib.sha256(Path(compiler).read_bytes()).hexdigest()==report['compiler_sha256'],'compiler')
+    require(component_hashes(crypto_components(library))==report['native_components'],'native components')
+    expected=[(Path(binary),report['native_binary_sha256']),
+        (BUILD/'growth/growth-native',report['growth']['native_binary_sha256']),
+        (BUILD/'growth/io/growth-io-native',report['growth']['io']['native_binary_sha256']),
+        (BUILD/'growth/io/storage-io-observer.o',report['growth']['io']['observer_object_sha256'])]
+    for path,digest in expected:
+        require(hashlib.sha256(path.read_bytes()).hexdigest()==digest,'executable/object '+path.name)
+
+
 # Persist progress and failures before rendering any comparison; older success cannot survive a failed rerun.
 def run():
     BUILD.mkdir(parents=True,exist_ok=True)
@@ -80,12 +130,7 @@ def run():
     try:
         compiler,_=installed()
         source=ROOT/'tests/performance/storage_workload.nim'
-        sources=[*[ROOT/name for name in GROWTH_SOURCES],*sorted((ROOT/'src').rglob('*.nim')),source,
-            ROOT/'tests/support/managed_storage_samples.nim',ROOT/'tests/support/storage_samples.nim',
-            ROOT/'tools/storage_benchmark.py',ROOT/'tools/storage_benchmark_report.py',
-            ROOT/'tools/native_checks.py',ROOT/'tools/pvm_reference.py',ROOT/'spec/toolchain.json',
-            ROOT/'Makefile',ROOT/'.github/workflows/ci.yml',ROOT/'tools/build_crypto.py',
-            ROOT/'tools/native_source_identity.py',ROOT/'spec/crypto-pins.json']
+        sources=benchmark_sources()
         # Build the pinned ABI before hashing/linking it; setup provisions sources, not compiled libraries.
         library=build_crypto(crypto_sources(False))
         report.update(head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
@@ -95,7 +140,8 @@ def run():
             toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),
             clang=subprocess.check_output(['clang','--version'],text=True).splitlines()[0],
             profile=PROFILE,
-            sources={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources},
+            sources=source_hashes(sources),
+            native_components=component_hashes(crypto_components(library)),
             crypto_sha256=hashlib.sha256(library.read_bytes()).hexdigest(),
             compiler_sha256=hashlib.sha256(Path(compiler).read_bytes()).hexdigest(),
             schema_version=REPORT_VERSION,backends=list(ENGINES),item_counts=list(COUNTS),
@@ -119,6 +165,7 @@ def run():
                     observations[f'{engine}-{count}-{topology}-{value_bytes}-{batch_width}']=parse_output(Path(evidence['log']).read_text(),engine,count,topology,value_bytes,batch_width)
             report['passes'].append(observations);save()
         report['growth']=run_growth(compiler,library,BUILD/'growth',atomic_text)
+        verify_inputs(report,compiler,library,binary)
         report['cases']=aggregate(report['passes']);report['status']='checks-passed'
         report['hardware']['load_average_end']=os.getloadavg()
         write_samples(report)
