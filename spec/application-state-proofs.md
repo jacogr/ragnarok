@@ -58,3 +58,32 @@ logical discard, never preemption of crypto/FFI. Close joins before dropping
 query/result owners; live relocation/copy and unjoined destruction are forbidden.
 `application_proof_worker` covers native generation, capacity, exact collection,
 foreign/stale tokens, Done cancellation, reuse, restart and active joined close.
+
+## Managed Services lease
+
+`beginStateProof` selects an exact retained block before native submission, detaches the caller's
+plan and finishes every temporary canonical ARC activation before the worker can execute.
+Admission is private/guarded and preserves capture or worker failure reasons. An existing
+preparation/publication/maintenance job, pending adoption or foreign RPC pause refuses admission.
+
+Successful admission pauses RPC chain work and closes canonical reception, mutation and export
+preparation gates. Scalar polling, logical cancellation and independent UI ticks remain available.
+Cancelled/Done work retains the gate until matching collection or joined stop. Stopping preparation
+cannot release a proof lease. Services close joins proofs before canonical/RPC aliases retire.
+All external canonical aliases must remain alive and untouched for this exclusive ARC lease.
+This is internal host integration; public RPC proof methods remain outside this increment.
+
+`application_proof_services` covers genuine selected-state execution, fixed block/posterior root,
+unknown selection, foreign RPC suspension, Busy retention, stale/default tickets, cancellation,
+reuse, cross-worker stop isolation, detached output and active joined Services shutdown.
+
+The six-variable `application_proof_services` model maps admission to the scalar exclusion
+checks/pause/submission in `beginStateProof`, Running/Done to the native worker's synchronized
+phase, collection to `collectStateProof`, joined release to `stopStateProofs`, and canonical
+read to the checked `chainView` predicate. `other` abstracts an already admitted preparation
+or disk job. `StopOther` maps `stopPreparation`'s proofing guard; cancelled work retains the
+RPC token. The capture helper activation has already retired before the atomic admission;
+its ARC implementation is checked by native execution and source review, not proven by this model.
+The bounded model omits ticket identity, repeated generations, UI/transport bytes and proof
+correctness. It must kill canonical-gate removal, foreign-stop resume and cancel-resume mutants,
+and reach cancelled Done work that still owns its RPC lease.
