@@ -101,3 +101,8 @@ rosters, opaque ring roots, tagged ticket/key schedules and accumulated tickets.
 uses both schedule variants, nested boundary truncations and suffixes, exact child extraction,
 missing/absent evidence and independent accumulator/byte/epoch-policy refusals. This adds no
 cryptographic key validation, ticket verification or epoch transition behavior.
+
+`readGlobalDisputes` preserves distinct judgment sets and offender identities through the existing
+canonical-set codec. Its native suite rejects authenticated duplicate identities, every truncated
+prefix and trailing bytes, while preserving copied values and separate per-set/aggregate/byte
+ceilings. It validates serialization only, without executing dispute judgments.
