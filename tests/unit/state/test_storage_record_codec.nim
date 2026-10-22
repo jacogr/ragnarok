@@ -19,7 +19,19 @@ proc main() =
   let trie = newFullStateTrie([StateEntry(key: default(StateKey), value: @[7'u8])],
     FullStateTrieLimits(trie: policy.trie)).value
   let batch = exportFullTrie(trie, policy.records).value
-  let encoded = encodeTrieExport(batch, policy).value
+  var encoding = encodeTrieExport(batch, policy)
+  assert encoding.error == RecordError.None
+  let occupied = getOccupiedMem()
+  let encoded = encoding.takeValue
+  assert encoding.error == RecordError.Uninitialized and getOccupiedMem() == occupied
+  var decoding = decodeTrieExport(encoded, policy)
+  assert decoding.error == RecordError.None
+  let independent = decoding.value
+  let beforeTransfer = getOccupiedMem()
+  var decoded = decoding.takeValue
+  assert decoding.error == RecordError.Uninitialized and getOccupiedMem() == beforeTransfer
+  decoded.records[0].payload[0] = 8
+  assert independent.records[0].payload == @[7'u8] # Existing copy access retains independent transport bytes.
   assert encoded.len == 178 # 105-byte header, 72-byte leaf prefix and one value byte.
   assert encoded[105] == 0 and encoded[169] == 1 and encoded[177] == 7
   # Frozen independent Python struct/hashlib witness includes every physical header and leaf byte.
