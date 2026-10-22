@@ -245,3 +245,13 @@ the exact witnessed child is stopped. Only explicit finish verifies SIGKILL/reap
 reopen; a stopped receipt is distinct from a killed receipt. Duplicate wait/invalid deadline/nested
 fork controls preserve ownership. Both layouts also have normally completing lease controls, exact
 journal bytes, complete authored maps and retained parent readers after native retirement.
+
+## Qualification handoff
+
+The [operator guide](../docs/storage-process-crashes.md) distinguishes process-death evidence from
+hardware power-loss certification. Final qualification freezes all sources and reruns every new
+native crash matrix, representative ordinary IO controls, authenticated TLS/startup consumers,
+checked production build/selftests and Perf Storage source/raw/Markdown verification. Per-layer
+local logs and final exact-head/parent evidence remain under ignored build/. No new M1 or complete
+protocol state-serialization claim is made. Future light/proof integration stays coordinated with
+state #6; there are no production storage format or state-interface changes in this tranche.
