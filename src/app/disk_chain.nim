@@ -6,7 +6,7 @@
 import std/assertions
 import ./[chain, disk_history]
 import ../chain/[genesis, provider, parameters]
-import ../state/[store, disk_store, accumulation_publication]
+import ../state/[store, disk_store, accumulation_publication, accumulation_current_update]
 import ../storage/[file_repository, node_repository, database_identity, managed_repository, managed_manifest]
 import ../codec/[bounded, state_trie]
 import ../rpc/server as rpc_server
@@ -17,6 +17,16 @@ type
     parent: StateStoreSnapshot
     update: PreparedChainUpdate
     context, previous: seq[byte]
+    next: RepositoryGeneration
+  CurrentDiskPublicationData = ref object # One immutable current update and its validated disk context are retained together.
+    parent: StateStoreSnapshot
+    update: PreparedCurrentChainUpdate
+    context, previous: seq[byte]
+    next: RepositoryGeneration
+  PreparedCurrentDiskPublication* = object ## Defaults grant no current-PVM publication or update extraction authority.
+    data: nil CurrentDiskPublicationData
+  DiskPublicationContext = object # Preflight captures each validated generation/context once for either update family.
+    bytes, previous: seq[byte]
     next: RepositoryGeneration
   PreparedDiskMaintenance* = object ## Exact canonical context, state revision and physical epoch authorize one excluded maintenance attempt.
     initialized: bool
@@ -178,35 +188,38 @@ proc openManagedDiskChain*(disk: var DiskStateStore, path: string, chain: Storag
   let journal = JournalLimits(repository: limits.repository, bytes: limits.journalBytes,
       contextBytes: limits.contextBytes)
   acquireDiskChain(disk, path, chain, configuration, policy, journal, true, limits)
-proc prepareContext(disk: DiskStateStore, owner: ApplicationChain, prepared: PreparedChainUpdate,
-    chain: StorageChainId, limit: ByteLimit): DiskChainResult[seq[byte]] =
+proc prepareContextView(disk: DiskStateStore, owner: ApplicationChain, view: ChainView,
+    chain: StorageChainId, limit: ByteLimit): DiskChainResult[DiskPublicationContext] =
   ## Preflight exact canonical/disk authority and all fallible context encoding before IO begins.
   let current = disk.snapshot
-  if not owner.canInstallPrepared(prepared) or current.error != DiskStoreError.None or
-      not sameStateSnapshot(current.value, owner.stateSnapshot.value):
-    return DiskChainResult[seq[byte]](status: DiskChainError.CanonicalMismatch)
+  let canonical = owner.stateSnapshot
+  if current.error != DiskStoreError.None or canonical.error != StateStoreError.None or
+      not sameStateSnapshot(current.value, canonical.value):
+    return DiskChainResult[DiskPublicationContext](status: DiskChainError.CanonicalMismatch)
   let generation = disk.generation
   if generation.error != DiskStoreError.None or uint64(generation.value) == high(uint64):
-    return DiskChainResult[seq[byte]](status: DiskChainError.GenerationOverflow)
+    return DiskChainResult[DiskPublicationContext](status: DiskChainError.GenerationOverflow)
   let selected = disk.snapshotContext
   if selected.error != FileError.None:
-    return DiskChainResult[seq[byte]](status: DiskChainError.FileFailure,
+    return DiskChainResult[DiskPublicationContext](status: DiskChainError.FileFailure,
         fileReason: selected.error)
   let previous = encodeDiskHistory(owner, chain, generation.value, limit)
   if previous.error != DiskHistoryError.None:
-    return DiskChainResult[seq[byte]](status: DiskChainError.ContextFailure,
+    return DiskChainResult[DiskPublicationContext](status: DiskChainError.ContextFailure,
         contextReason: previous.error)
   if previous.value != selected.value:
-    return DiskChainResult[seq[byte]](status: DiskChainError.CanonicalMismatch)
-  let target = initApplicationChain(prepared.chainView)
+    return DiskChainResult[DiskPublicationContext](status: DiskChainError.CanonicalMismatch)
+  let target = initApplicationChain(view)
   if target.error != ApplicationChainError.None:
-    return DiskChainResult[seq[byte]](status: DiskChainError.CanonicalMismatch)
+    return DiskChainResult[DiskPublicationContext](status: DiskChainError.CanonicalMismatch)
   let context = encodeDiskHistory(target.value, chain,
     RepositoryGeneration(uint64(generation.value)+1), limit)
   if context.error != DiskHistoryError.None:
-    return DiskChainResult[seq[byte]](status: DiskChainError.ContextFailure,
+    return DiskChainResult[DiskPublicationContext](status: DiskChainError.ContextFailure,
         contextReason: context.error)
-  DiskChainResult[seq[byte]](status: DiskChainError.None, completed: context.value)
+  let next = RepositoryGeneration(uint64(generation.value)+1)
+  let captured = DiskPublicationContext(bytes: context.value, previous: selected.value, next: next)
+  DiskChainResult[DiskPublicationContext](status: DiskChainError.None, completed: captured)
 func ready*(publication: PreparedDiskPublication): bool =
   ## Defaults never authorize worker publication or canonical update access.
   publication.initialized
@@ -218,7 +231,9 @@ proc prepareDiskPublication*(disk: DiskStateStore, owner: ApplicationChain,
     prepared: PreparedChainUpdate, chain: StorageChainId,
     limit: ByteLimit): DiskChainResult[PreparedDiskPublication] =
   ## Stage bounded context without journal mutation; caller must also preflight enabled RPC and hold exclusion.
-  let context = prepareContext(disk, owner, prepared, chain, limit)
+  if not owner.canInstallPrepared(prepared):
+    return DiskChainResult[PreparedDiskPublication](status: DiskChainError.CanonicalMismatch)
+  let context = prepareContextView(disk, owner, prepared.chainView, chain, limit)
   if context.error != DiskChainError.None:
     case context.error
     of DiskChainError.ContextFailure:
@@ -233,8 +248,8 @@ proc prepareDiskPublication*(disk: DiskStateStore, owner: ApplicationChain,
       return DiskChainResult[PreparedDiskPublication](status: DiskChainError.CanonicalMismatch)
   DiskChainResult[PreparedDiskPublication](status: DiskChainError.None,
     completed: PreparedDiskPublication(initialized: true, parent: owner.stateSnapshot.value,
-      update: prepared, context: context.value, previous: disk.snapshotContext.value,
-      next: RepositoryGeneration(uint64(disk.generation.value)+1)))
+      update: prepared, context: context.value.bytes, previous: context.value.previous,
+      next: context.value.next))
 proc commitDiskPublication*(disk: var DiskStateStore,
     publication: PreparedDiskPublication): DiskChainResult[RepositoryGeneration] =
   ## Perform synchronous IO only under exclusive ownership; this never touches application or RPC objects.
@@ -257,7 +272,7 @@ proc commitDiskPublication*(disk: var DiskStateStore,
     return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
         storeReason: committed)
   DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: publication.next)
-proc stageFailure(failed: DiskChainResult[PreparedDiskPublication]): DiskChainResult[
+proc stageFailure[T](failed: DiskChainResult[T]): DiskChainResult[
     RepositoryGeneration] =
   ## Propagate only actual guarded preparation refusals without synthesizing missing variant payloads.
   case failed.error
@@ -294,6 +309,89 @@ proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
   if committed.error != DiskChainError.None: return committed
   owner.installPrepared(rpc, prepared, lease) # Canonical/RPC visibility follows confirmed durability under exclusion.
   committed
+
+func ready*(publication: PreparedCurrentDiskPublication): bool =
+  ## A default current publication never carries disk authority.
+  publication.data != nil
+proc chainUpdate*(publication: PreparedCurrentDiskPublication): PreparedCurrentChainUpdate {.requires: publication.data != nil.} =
+  ## The guarded retained update is installed only after a confirmed durable receipt.
+  let data = publication.data
+  assert data != nil # Retain one stable owner before nullable projection.
+  data.update
+proc prepareDiskPublication*(disk: DiskStateStore, owner: ApplicationChain,
+    prepared: PreparedCurrentChainUpdate, chain: StorageChainId,
+    limit: ByteLimit): DiskChainResult[PreparedCurrentDiskPublication] =
+  ## Stage bounded context without journal mutation; caller must also preflight enabled RPC and hold exclusion.
+  if not owner.canInstallPrepared(prepared):
+    return DiskChainResult[PreparedCurrentDiskPublication](status: DiskChainError.CanonicalMismatch)
+  let context = prepareContextView(disk, owner, prepared.currentUpdateView, chain, limit)
+  if context.error != DiskChainError.None:
+    case context.error
+    of DiskChainError.ContextFailure:
+      return DiskChainResult[PreparedCurrentDiskPublication](status: DiskChainError.ContextFailure,
+        contextReason: context.contextError)
+    of DiskChainError.FileFailure:
+      return DiskChainResult[PreparedCurrentDiskPublication](status: DiskChainError.FileFailure,
+        fileReason: context.fileError)
+    of DiskChainError.GenerationOverflow:
+      return DiskChainResult[PreparedCurrentDiskPublication](
+          status: DiskChainError.GenerationOverflow)
+    else:
+      return DiskChainResult[PreparedCurrentDiskPublication](
+          status: DiskChainError.CanonicalMismatch)
+  DiskChainResult[PreparedCurrentDiskPublication](status: DiskChainError.None,
+    completed: PreparedCurrentDiskPublication(data: CurrentDiskPublicationData(
+      parent: owner.stateSnapshot.value,
+      update: prepared, context: context.value.bytes, previous: context.value.previous,
+      next: context.value.next)))
+proc commitDiskPublication*(disk: var DiskStateStore,
+    publication: PreparedCurrentDiskPublication): DiskChainResult[RepositoryGeneration] =
+  ## Perform synchronous IO only under exclusive ownership; this never touches application or RPC objects.
+  ## A reused context-only parent still requires the exact expected journal generation.
+  let data = publication.data
+  if data == nil:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let selected = disk.snapshotContext
+  if selected.error != FileError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.FileFailure,
+        fileReason: selected.error)
+  if selected.value != data.previous:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let generation = disk.generation
+  if generation.error != DiskStoreError.None or uint64(generation.value) != uint64(
+      data.next)-1:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let committed = disk.commit(data.parent, data.update.currentUpdateState,
+      data.context)
+  if committed.error != DiskStoreError.None:
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.StoreFailure,
+        storeReason: committed)
+  DiskChainResult[RepositoryGeneration](status: DiskChainError.None, completed: data.next)
+
+proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
+    prepared: PreparedCurrentChainUpdate, chain: StorageChainId,
+    limit: ByteLimit): DiskChainResult[RepositoryGeneration] =
+  ## Stable exclusive owners span preflight/fsync/install; failure never advances the application.
+  let staged = prepareDiskPublication(disk, owner, prepared, chain, limit)
+  if staged.error != DiskChainError.None: return stageFailure(staged)
+  let committed = commitDiskPublication(disk, staged.value)
+  if committed.error != DiskChainError.None: return committed
+  owner.installPrepared(prepared) # No execution, capture or typed fallible composition remains after fsync.
+  committed
+proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
+    rpc: var rpc_server.Server, prepared: PreparedCurrentChainUpdate, chain: StorageChainId,
+    limit: ByteLimit, lease: nil rpc_server.RpcChainLease = nil): DiskChainResult[
+        RepositoryGeneration] =
+  ## Enabled RPC participates in the exact same durable publication; refusal never falls back silently.
+  if not owner.canInstallPrepared(rpc, prepared, lease):
+    return DiskChainResult[RepositoryGeneration](status: DiskChainError.CanonicalMismatch)
+  let staged = prepareDiskPublication(disk, owner, prepared, chain, limit)
+  if staged.error != DiskChainError.None: return stageFailure(staged)
+  let committed = commitDiskPublication(disk, staged.value)
+  if committed.error != DiskChainError.None: return committed
+  owner.installPrepared(rpc, prepared, lease) # Canonical/RPC visibility follows confirmed durability under exclusion.
+  committed
+
 
 func ready*(maintenance: PreparedDiskMaintenance): bool =
   ## Default/refused maintenance objects grant neither graph borrowing nor file mutation authority.

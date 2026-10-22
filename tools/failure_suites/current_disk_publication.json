@@ -1,0 +1,18 @@
+{
+  "source": "tests/native/current_disk_publication_results.nim",
+  "build_name": "current-disk-publication-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "update"
+      },
+      "arguments": [
+        "update"
+      ],
+      "name": "current-disk-publication-update",
+      "diagnostic": "not publication.data == nil",
+      "description": "Absent current disk publication refuses update access"
+    }
+  ]
+}
