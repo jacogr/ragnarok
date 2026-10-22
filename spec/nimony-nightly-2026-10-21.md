@@ -1,10 +1,15 @@
-# Nimony October 21 nightly upgrade
+# Nimony October 21/22 nightly upgrade audit
 
-## Scope and pins
+Current candidate: October 22 `8cb7a690ae48363eb3ce65564aafb921ca5d23f3`. **Held** pending a
+published nightly containing the sequence-element copy-hook propagation fix `d53097d392`
+([#2737](https://github.com/nim-lang/nimony/issues/2737)). The chronological qualification below
+preserves the evidence and scope of the original candidate and master synchronizations.
+
+## Initial October 21 scope and pins
 
 Upgrade the official compiler from `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`
 (October 15) to `29b96c31be1647665e5c57f2788e1c8cfeeddc9c` (October 21), both 0.6.3.
-This is the newest published nightly found on October 22; it is not upstream master.
+This was the newest published nightly found during the initial audit; it was not upstream master.
 Review the [44 included commits](https://github.com/nim-lang/nimony/compare/5b51edfedb4d0dbd9028d9e57ac61d69dffe9410...29b96c31be1647665e5c57f2788e1c8cfeeddc9c)
 and the [official release](https://github.com/nim-lang/nimony-website/releases/tag/nightly-0.6.3-29b96c31b).
 
@@ -31,8 +36,8 @@ Neither supported nightly contains `bin/jorogumo`, so its existing pristine-sour
 | Streams, buffered parsing/deadlines, HTTP headers, terminal/colors, string layout and native math | Newly available APIs reviewed; no matching production workaround requires replacing maintained QUIC, JSON-number policy or bounded network scheduling. |
 
 The scalar-only copy-hook fix `1112e45997` ([#2729](https://github.com/nim-lang/nimony/issues/2729))
-is after this release. Explicit destructor/copy/dup protections stay until a published nightly includes
-that fix and actual lowering/runtime controls confirm the owner's behavior.
+was after the initial October 21 release. The October 22 qualification below verifies its direct-copy
+behavior; explicit ownership contracts and destructors enforcing real resource invariants remain.
 
 ## Verification
 
@@ -176,3 +181,66 @@ reconstruction. These are not Linux linking/runtime results. Inventory, pinned f
 132 new/changed Nim inputs and diff checks passed. Local native evidence applies to macOS ARM64;
 raw logs and preservation identities are under ignored `build/ci/nimony-state-sync-*`. The candidate
 remains held pending the next published nightly.
+
+
+## October 22 candidate and remaining hold
+
+Advance the native and matching browser compiler pins to the official `8cb7a690ae48363eb3ce65564aafb921ca5d23f3`
+release, keeping the formatter at Nim 2.2.12 and the existing nativenif source pin unchanged.
+Download and SHA-256-check both supported archives, verify their exact commit/date/platform
+metadata, and verify the matching browser source archive. Neither release archive contains
+jorogumo; the existing pristine-source bootstrap succeeds and remains necessary. No compiler,
+stdlib, native dependency or protocol source is patched.
+
+The [eight commits since the held candidate](https://github.com/nim-lang/nimony/compare/29b96c31be1647665e5c57f2788e1c8cfeeddc9c...8cb7a690ae48363eb3ce65564aafb921ca5d23f3)
+include generic base-argument checking, direct copy-hook enforcement without a destructor, sink-array
+element typing, checked array-to-sequence moves, nonzero-domain global initialization checks,
+ref/ptr type-attached routine lookup and Android directory binding/documentation updates.
+No matching production workaround for the inheritance, initialization or lookup changes needs
+removal. Keep indexed ref-reached traversal, moved-from resource disarming and real destructors.
+
+Two new source-owned compiler guards freeze the ownership improvements. A scalar-only owner with
+error copy/dup hooks compiles on the old pin and is rejected by the new binary at the exact unavailable
+dup hook. Array conversion of the actual BlockDownloadStream owner also compiles on the old pin
+with the complete native header/library profile, but is rejected at the intended hook by the new
+pin. A preliminary old comparison lacking transport headers was only a build-setup failure and is
+not ownership evidence. The controller destructor enforces actual callback retirement and is kept.
+
+The actual SomeInteger-to-dollar generic and inferred nullable callback bindings still fail their
+previous probes, so concrete integer overloads and explicit non-null bindings remain. Related
+upstream work exists ([refined concept overloads #2743](https://github.com/nim-lang/nimony/pull/2743),
+[nil-path/mutation analysis #2110](https://github.com/nim-lang/nimony/pull/2110)); neither establishes
+that these exact cases are tracked or fixed on master. No duplicate upstream report was filed.
+
+**The candidate remains held.** The new release still accepts sequence copies whose element
+forbids copying, even with both copy and dup hooks declared as errors. Both independent local
+variants compile and print `70` (original value 7, copied value 0). Minimal copy/dup variant:
+
+```nim
+import std/syncio
+type Foo = object
+  value: int
+proc `=copy`(target: var Foo, source: Foo) {.error.}
+proc `=dup`(source: Foo): Foo {.error.}
+var original: seq[Foo] = @[]
+original.add Foo(value: 7)
+var duplicate = original
+echo original[0].value, duplicate[0].value
+```
+
+Upstream already fixed this after the release in
+[`d53097d392`](https://github.com/nim-lang/nimony/commit/d53097d39240a33c8c63db6423b62a1c27b8adc8)
+for [#2737](https://github.com/nim-lang/nimony/issues/2737), propagating unavailable hooks through
+generic instances and derived hooks. Wait for a published archive containing that fix, then turn
+this reproducer into a required rejection guard and validate the actual binary. Do not infer full
+container ownership safety from the two direct/array rejection checks.
+
+This candidate passed all 360 production module checks, all 2,221 compiler guards and the full
+Python suite (856 tests, three skipped). The complete checked ARC/Clang/LTO integration/offload
+peer build and real-browser UI/production RPC check passed, using the rebuilt matching browser
+compiler. Both actual NativeChecks private/shared cache controls produced `7 -> 12 -> 12` in an
+unchanged directory after the helper-arity edit. Inventory, pinned formatting of the new guards and
+diff checks passed. Additional broad native-suite qualification was deferred after the confirmed
+ownership blocker; earlier selected-suite passes belong to the prior compiler and are not claimed
+for this candidate. Local runtime results apply to macOS ARM64; Linux archive verification does
+not establish Linux runtime behavior. Raw evidence is under ignored `build/ci/nimony-2026-10-22-*`.

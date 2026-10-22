@@ -6,7 +6,7 @@ ownership, arithmetic and migration evidence.
 
 These observations came from the structured JSON refactor, CE 128 stream integration and PVM work
 on macOS ARM64 with Nimony 0.6.3, revision `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`.
-The current October 21 nightly review and retained-workaround decisions are recorded in
+The October 21/22 nightly review and retained-workaround decisions are recorded in
 [the upgrade audit](../spec/nimony-nightly-2026-10-21.md).
 The generic-integer and nullable mutable-callback failures were reproduced on the new pin too.
 These observations describe exercised APIs and targets, rather than compiler-wide support guarantees.
@@ -19,7 +19,7 @@ These observations describe exercised APIs and targets, rather than compiler-wid
 | Tuple arguments | An array literal of unnamed `(string, JsonValue)` tuples did not match the attempted `openArray[tuple[key: string, value: JsonValue]]` parameter. | `openArray[(string, JsonValue)]` with indexed tuple access compiled in `jsonObject`. Probe named conversions before relying on them elsewhere. |
 | JSON output | Inspection of the pinned `std/json` typed writer found signed integer output and no full-width unsigned or raw-number overload. Its API differs from Nim 2's `%*` examples. | [`src/lib/json_writer.nim`](../src/lib/json_writer.nim) preserves unsigned decimal values and validated numeric lexemes. `spec/rpc.md` documents the trust boundary; RPC tests cover `uint64` maximum and exact ID spelling. |
 | Nullable mutable borrows | In the CE 128 callback, checking a `nil ptr BlockDownload` local once did not preserve the non-null proof across successive calls taking its pointee by `var`. | After checking the nullable local, bind an explicitly typed `ptr BlockDownload` local. The [verified callback](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/tests/support/block_download_transport.nim) passes the native transfer suite without casting away receiver nilability. |
-| Scalar-only exclusive owners | Error copy/dup declarations alone did not reject the exercised scalar-only controller copy during full compilation. | The final [stream controller](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/src/quic/block_download_stream.nim) combines explicit copy/dup prohibitions with a destructor checking actual callback retirement. Its [lowering probe](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/tests/native/compile_fail/application_download_stream_copy.nim) rejects `'=dup' is not available for type <BlockDownloadStream>`. Verify each exclusive owner; do not add artificial cleanup to ordinary scalar views. |
+| Scalar-only exclusive owners | The October 22 pin honors direct copy hooks without a destructor; older pins ignored the exercised scalar-only ban. Sequence copying still bypasses element copy bans on this release ([#2737](https://github.com/nim-lang/nimony/issues/2737)); its fix is newer than the archive. | Keep explicit ownership exclusions and real callback-retirement destructors. The scalar-only and stream-array lowering probes require the exact unavailable-dup diagnostic. Do not add artificial cleanup to scalar views or treat direct-copy rejection as proof of container-copy exclusion. |
 
 ## PVM integration observations
 
