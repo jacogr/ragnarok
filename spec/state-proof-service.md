@@ -260,3 +260,12 @@ Five independent compiler privacy rejections protect result status/payload,
 nested proof reasons, plan ownership and retained key storage. A nominal guard
 rejects passing a query plan to complete-state forking. A plan can request facts
 but cannot construct a verified view, successful read or full execution map.
+
+## ARC success and rollback lifecycle
+
+`state_proof_service_lifecycle` warms25 cycles, then requires identical live
+allocator occupancy around1,000 complete source/plan/generation/verification/
+transport/typed-read cycles. Each cycle includes detached-copy mutation, short
+union/encoding quotas, a real backend failure after completed prefix work and
+recovery using the retained original evidence. Fresh source-owned ARC evidence
+is emitted by the maintained native runner.
