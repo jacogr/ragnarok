@@ -196,9 +196,11 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
     manifest.epoch,
     limits.snapshotBytes)
   if loadedSnapshot.error != FileError.None: return loadedSnapshot.error
-  let bytes = loadedSnapshot.takeValue # One detached buffer owns the complete synchronous decoder input.
+  var bytes = loadedSnapshot.takeValue # One detached buffer owns the complete synchronous decoder input.
+  let snapshotExtent = uint64(bytes.len) # Preserve the actually read extent, independently of later buffer retirement.
   var restored = decodeRepositorySnapshot(bytes, chain, schema, snapshotLimits(limits))
   if restored.error != SnapshotError.None: return snapshotFailure(restored.error)
+  bytes = @[] # Decode owns detached records/context; retire serialized input before opening the journal.
   var admittedSnapshot = restored.takeValue # The repository and detached context now have one transport owner.
   var memory = move(admittedSnapshot.repository)
   let base = memory.snapshot.value
@@ -250,7 +252,7 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
   repository.chain = chain
   repository.schema = schema
   repository.epoch = manifest.epoch
-  repository.snapshotBytes = uint64(bytes.len)
+  repository.snapshotBytes = snapshotExtent
   repository.limits = limits
   repository.poisoned = false
   repository.active = true
