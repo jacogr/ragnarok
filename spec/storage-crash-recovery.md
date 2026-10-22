@@ -222,3 +222,10 @@ retains its original legacy lease across fork; child death releases only the chi
 reference, not the parent's lease. Source bytes, both complete authored roots and opaque context
 remain exact and readable. Existing targets reject recreation; strict admission follows only a
 complete visible CURRENT and preserves all forensic names/bytes. No import trust is inferred.
+
+## storage_staging_cleanup_crash
+
+Every actual bounded unlink/directory-sync boundary is killed independently. The exact removed
+prefix and remaining forensic bytes are checked before and after strict restart. CURRENT, selected
+files, complete authored maps and farther epoch files stay byte-identical. Explicit idempotent
+cleanup finishes only its requested staging/retired names; selected/future retirement is refused.
