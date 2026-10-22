@@ -223,7 +223,7 @@ class NimonyCISafeguards(unittest.TestCase):
         index = jobs.index('pvm-reference')
         self.assertEqual(jobs[index:index+2], ['pvm-reference', 'telemetry-interop'])
         self.assertIn('name: Interop PVM', text)
-        self.assertIn('name: Interop JAM Tart', text)
+        self.assertIn('name: Interop Telemetry', text)
         self.assertIn('name: Perf PVM', text)
         self.assertIn('name: Perf Storage', text)
         index = jobs.index('bench-pvm')

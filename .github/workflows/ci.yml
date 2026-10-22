@@ -355,7 +355,7 @@ jobs:
 
   telemetry-interop:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
-    name: Interop JAM Tart
+    name: Interop Telemetry
     timeout-minutes: 60
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
