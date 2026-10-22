@@ -50,6 +50,7 @@ class AbortDiagnosticTests(unittest.TestCase):
                          '/tmp/receipt', str(128*1024*1024), '--', '/tmp/native with space',
                          'open', 'journal', '131072', '/tmp/owned', 'a'*64])
         self.assertIn('settings set target.disable-aslr false', argv)
+        self.assertIn('settings set target.process.stop-on-exec false', argv)
         self.assertIn('thread backtrace --count 64', argv)
         self.assertEqual(argv[separator-2:separator], ['-o', 'continue'])
 

@@ -39,6 +39,7 @@ def debugger_command(debugger, binary, receipt, backend, owned, root):
     """Keep debugger memory outside the cap; the existing launcher caps only its exec descendant."""
     return [debugger, '--batch',
             '-o', 'settings set target.disable-aslr false',
+            '-o', 'settings set target.process.stop-on-exec false',
             '-o', 'breakpoint set --name abort',
             '-o', 'process handle SIGABRT --stop false --notify true --pass true',
             '-o', 'run', '-o', 'thread backtrace --count 64', '-o', 'continue',
