@@ -127,3 +127,8 @@ report/item/dependency/byte/epoch ceilings independently. Accumulated rings rema
 per-slot package sets. Native coverage checks slot/hash order, refuses ready-ring fallback and
 authenticated duplicates, rejects every truncated prefix/suffix, and exercises per-slot/aggregate/
 byte/epoch policies independently. Decoding does not execute accumulation or update statistics.
+
+`readGlobalOutputs` retains the exact ordered output sequence, including repeated service IDs;
+this is not a canonical dictionary. Native coverage preserves maximum E4 IDs and commitment bytes,
+checks repeats/order and source independence, and rejects every truncated prefix, suffix, missing/
+absent evidence and item/byte-policy exhaustion. It adds no accumulation execution semantics.
