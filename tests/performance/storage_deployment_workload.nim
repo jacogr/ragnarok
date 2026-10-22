@@ -40,8 +40,9 @@ proc observeDeployment(engine, path: string, count, steps: int): DeploymentObser
         assert openFileRepository(disk, path, default(StorageChainId), deploymentJournal()) ==
             FileError.None, "deployment strict journal reopen failed"
       else:
-        assert openManagedFileRepository(disk, path, default(StorageChainId), deploymentManaged()) ==
-            FileError.None, "deployment strict managed reopen failed"
+        let reopened = openManagedFileRepository(disk, path, default(StorageChainId),
+            deploymentManaged())
+        assert reopened == FileError.None, "deployment strict managed reopen failed"
       reopenBytes = occupiedStorageBytes()
       checkDeploymentDisk(disk, root, count, steps)
       assert disk.close == FileError.None, "deployment close failed"
