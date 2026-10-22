@@ -7,7 +7,8 @@ import ./[storage_samples, managed_storage_samples, storage_io]
 import ../../src/storage/[full_state_trie, node_repository, node_records, file_repository,
   managed_repository, managed_manifest, database_identity]
 import ../../src/codec/bounded
-proc compactionCase*(label: string, skip, failures: cint, permanent = false): uint64 {.raises.} =
+proc compactionCase*(label: string, skip, failures: cint, permanent = false,
+    writeFault = false): uint64 {.raises.} =
   ## Prepare an obsolete seed, then compact only the selected complete successor under a real directory lease.
   resetIo()
   let path = label & "-" & $skip
@@ -27,10 +28,12 @@ proc compactionCase*(label: string, skip, failures: cint, permanent = false): ui
   let held = file.snapshot.value
   let next = file.publish(held, exportTrieChanges(a, b,
       limits.repository.codec.records).value).value
+  let current = readFile(path & "/CURRENT")
   resetIo()
-  armIo(syncIo, skip, failures, if permanent: failedIo else: interruptedIo)
+  let operation = if writeFault: writeIo else: syncIo
+  armIo(operation, skip, failures, if permanent: failedIo else: interruptedIo)
   let outcome = file.compact(next, [next.commitment.root])
-  result = ioCalls(syncIo)
+  result = ioCalls(operation)
   assert pendingIo() == 0, "compaction fault boundary did not execute"
   resetIo()
   if permanent:
@@ -49,6 +52,8 @@ proc compactionCase*(label: string, skip, failures: cint, permanent = false): ui
     let after = file.managedUsage.value
     assert uint64(after.epoch) == 2 and after.journalBytes == uint64(ManagedJournalHeaderBytes)
   assert file.close == FileError.None
+  if writeFault and permanent:
+    assert readFile(path & "/CURRENT") == current # Staged bytes cannot select a manifest before its complete write.
   assert openManagedFileRepository(file, path, default(StorageChainId), limits) == FileError.None
   assert uint64(file.snapshot.value.generation) == 2
   let entries = restoreStateEntries(file.snapshot.value, next.commitment.root,
