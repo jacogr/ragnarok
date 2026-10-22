@@ -1031,6 +1031,7 @@ requires an actual synchronization target/progress source. The bounded CE 128 do
 command does not establish these. Complete `workPackageStatus` needs fork-relative
 reporting/availability provenance and expiry evidence, beyond a retained report alone.
 Submission methods and segment retrieval still need their respective routing and DA
-sources. The separate service-proof stack does not yet assign public RPC methods or
-network envelopes; those APIs are not a dependency of these field fixes.
+sources. The [bounded asynchronous state-proof extension](rpc-state-proofs.md) now binds
+selected complete-state proofs through the managed Services worker. Its request/cancel methods
+and terminal notification do not change JIP-2 or establish independent root trust.
 M1 framing completion remains distinct from complete JAM state serialization.

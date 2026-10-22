@@ -52,11 +52,15 @@ proc client*(port: uint16): cint =
   fd
 
 proc sendText*(peer: cint, text: string, masked = true) =
-  ## Send one small independently masked client request, or the complete literal upgrade header.
+  ## Send one bounded independently masked short/medium client frame, or a literal upgrade header.
   var packet = text
   if masked:
-    assert text.len < 126
-    packet = "\x81" & $char(128 or text.len) & "abcd"
+    assert text.len <= 65535
+    if text.len < 126:
+      packet = "\x81" & $char(128 or text.len) # Canonical short frames retain their existing encoding.
+    else:
+      packet = "\x81\xfe" & $char(text.len shr 8) & $char(text.len and 255) # Network-order medium extent.
+    packet.add("abcd")
     for index, octet in text: packet.add(char(ord(octet) xor ord("abcd"[index mod 4])))
   assert sendBytes(peer, packet.toCString(), csize_t(packet.len), 0) == packet.len
 

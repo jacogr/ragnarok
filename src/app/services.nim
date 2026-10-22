@@ -14,7 +14,7 @@ import ./candidate
 import ./block_input
 import ./preparation_worker
 import ./[proof_query, proof_worker]
-import ../state/[proof_service, proof_plan]
+import ../state/[proof_service, proof_plan, proof_view, trie_proof]
 import ./[disk_chain, disk_worker]
 import ./[checkpoint_identity, checkpoint_transfer, checkpoint_session, checkpoint_worker, checkpoint_file]
 import ../codec/bounded
@@ -27,7 +27,7 @@ import ../storage/[file_repository, node_repository, node_records, record_codec,
 import ../chain/provider
 import ../telemetry/[wire, client, chain]
 import ../quic/transport
-import ../rpc/[server, protocol]
+import ../rpc/[server, protocol, proof_requests]
 import ../chain/[parameters, genesis]
 import ../ui/server
 
@@ -41,7 +41,7 @@ type
     of WorkerFailure: workerReason: ProofWorkerError
     else: discard # Closed/busy/default refusals expose no authority.
 
-type Services* = object ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
+type Services* = object             ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
   rpc*: Server
   ui*: UiServer
   telemetry*: Client
@@ -51,6 +51,8 @@ type Services* = object ## Owns listeners/exporter; fields are borrowed by synch
   worker: PreparationWorker
   proofWorker: StateProofWorker
   proofInput: ProofQuery
+  rpcProof: RpcProofDispatch        # Detached connection intent never retains canonical state.
+  rpcProofTicket: ProofWorkerTicket # Host-only exact collection authority for an RPC-origin job.
   proofing: bool
   checkpointExport: ApplicationCheckpointSession
   rpcLease: nil RpcChainLease
@@ -93,6 +95,8 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   ## Only closed aggregates may relocate; native workers and callback borrows require the original stable parent address.
   `=wasMoved`(services.proofWorker)
   `=wasMoved`(services.proofInput)
+  `=wasMoved`(services.rpcProof)
+  `=wasMoved`(services.rpcProofTicket)
   `=wasMoved`(services.diskWorker)
   `=wasMoved`(services.disk)
   `=wasMoved`(services.diskMaintenance)
@@ -120,6 +124,8 @@ proc `=destroy`*(services: Services) =
   ## Retire partially configured owners and the shared snapshot even without explicit shutdown.
   `=destroy`(services.proofWorker) # Explicit joined close precedes every selected-state alias retirement.
   `=destroy`(services.proofInput)
+  `=destroy`(services.rpcProof)
+  `=destroy`(services.rpcProofTicket)
   `=destroy`(services.diskWorker) # Join must precede every disk/canonical/publication alias retirement.
   `=destroy`(services.disk)
   `=destroy`(services.diskMaintenance)
@@ -202,11 +208,15 @@ func diskPreparationOutcome*(services: Services): DiskChainResult[
 proc stopStateProofs*(services: var Services) =
   ## Join before dropping the captured selection or releasing this proof job's exact RPC token.
   services.proofWorker.close()
-  if not services.proofing: return # An idle proof worker cannot release another worker's lease.
-  services.proofInput = default(ProofQuery)
-  services.proofing = false
-  discard services.rpc.resumeChain(services.rpcLease)
-  services.rpcLease = nil
+  if services.proofing:
+    services.proofInput = default(ProofQuery)
+    services.proofing = false
+    discard services.rpc.resumeChain(services.rpcLease)
+    services.rpcLease = nil # Only this worker's joined lease can reopen canonical access.
+  if services.rpcProof.valid:
+    discard services.rpc.finishStateProof(services.rpcProof, default(StateRoot), [], "State proof stopped")
+    services.rpcProof = default(RpcProofDispatch)
+    services.rpcProofTicket = default(ProofWorkerTicket)
 
 proc stopPreparation*(services: var Services) =
   ## Join and discard private execution before reopening canonical/RPC access; listeners and canonical state remain owned.
@@ -464,6 +474,8 @@ proc startServices(services: var Services, options: Options, role: string,
     services.close() # RPC failures retire both the UI listener and the canonical owner.
     return false
   services.chainRpc = withState and options.rpcPort() != 0
+  if services.chainRpc and options.argument(1) in ["server", "client", "mesh"]:
+    discard services.rpc.enableStateProofs() # These dispatcher shapes retain no external canonical aliases across turns.
   services.started = true
   true
 
@@ -834,8 +846,70 @@ proc beginDiskMaintenance*(services: var Services): bool =
   services.maintaining = true
   services.publishing = true # Every existing canonical/RPC/checkpoint gate now covers the maintenance lease too.
   true
+proc rpcProofLimits(): ProofQueryLimits =
+  ## Explicit local resource ceilings bound complete-map generation, proof verification and detached wire copies.
+  ProofQueryLimits(map: StateTrieLimits(items: ElementLimit(65536), nodes: TrieNodeLimit(131071),
+      perValue: ByteLimit(1048576), totalValueBytes: ByteLimit(8388608)),
+    proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(MaxRpcProofBytes)),
+    aggregate: StateProofBatchLimits(items: ElementLimit(MaxRpcProofKeys), nodes: ElementLimit(
+        3984), valueBytes: ByteLimit(MaxRpcProofBytes)),
+    view: ProofViewLimits(items: ElementLimit(MaxRpcProofKeys), valueBytes: ByteLimit(
+        MaxRpcProofBytes)),
+    wireBytes: ByteLimit(MaxRpcProofBytes), hashes: ProofHashLimit(4000000))
+
+proc beginRpcProof(services: var Services) =
+  ## Run only after RPC/UI tick activations retire; no selected-state alias can escape onto this stack.
+  let dispatch = services.rpc.takeStateProofRequest()
+  if not dispatch.valid: return
+  services.rpcProof = dispatch
+  try:
+    let admitted = services.beginStateProof(dispatch.proofRequest.blockHash,
+      dispatch.proofRequest.plan, rpcProofLimits())
+    if admitted.error == StateProofAdmissionError.None:
+      services.rpcProofTicket = admitted.value # After native submission, touch only detached/host-only selectors.
+    else:
+      var reason = $admitted.error
+      if admitted.error == StateProofAdmissionError.QueryFailure:
+        reason.add(": " & $admitted.queryError) # Preserve selection/budget refusals without exposing payloads.
+      elif admitted.error == StateProofAdmissionError.WorkerFailure:
+        reason.add(": " & $admitted.workerError) # Native refusal remains distinct from unavailable selection.
+      discard services.rpc.finishStateProof(dispatch, default(StateRoot), [],
+        "State proof admission unavailable: " & reason)
+      services.rpcProof = default(RpcProofDispatch)
+  except:
+    services.stopStateProofs() # Startup failure or unexpected raised refusal cannot abandon a borrower.
+    discard services.rpc.finishStateProof(dispatch, default(StateRoot), [], "State proof worker unavailable")
+    services.rpcProof = default(RpcProofDispatch)
+
+proc finishRpcProof(services: var Services, completion: ProofWorkerCompletion) =
+  ## Only detached collected output is read after the exact worker lease has reopened RPC.
+  var failure = "State proof cancelled"
+  if completion.kind == ProofWorkerCompletionKind.Completed:
+    let outcome = completion.value
+    failure = "State proof unavailable: " & $outcome.error
+    if outcome.error == ProofQueryError.None:
+      let response = outcome.value
+      let wire = response.bytes(ByteLimit(MaxRpcProofBytes))
+      let expected = services.rpcProof.proofRequest.blockHash
+      let matching = array[32, byte](response.blockHash) == array[32, byte](expected)
+      if matching and wire.error == ProofQueryError.None:
+        discard services.rpc.finishStateProof(services.rpcProof, response.stateRoot, wire.value)
+        failure = "" # Full detached success has already queued exactly one terminal result.
+      else:
+        failure = "State proof identity or output budget mismatch"
+  if failure.len > 0:
+    discard services.rpc.finishStateProof(services.rpcProof, default(StateRoot), [], failure)
+  services.rpcProof = default(RpcProofDispatch)
+  services.rpcProofTicket = default(ProofWorkerTicket)
+
 proc tick*(services: var Services, peers: uint32) =
   ## Attempt one pending adoption between native callbacks; exclusive preparation leaves independent UI work available.
+  if services.rpcProof.valid and services.proofing:
+    if services.stateProofPhase != ProofWorkerPhase.Done:
+      services.ui.tick()
+      return # Poll synchronized scalars only while native generation owns the canonical graph.
+    let completion = services.collectStateProof(services.rpcProofTicket)
+    services.finishRpcProof(completion) # Exact collection releases the lease before response serialization.
   if services.proofing or services.preparing:
     services.ui.tick()
     return # Never create RPC contexts or canonical ARC aliases while the worker owns its lease.
@@ -863,6 +937,7 @@ proc tick*(services: var Services, peers: uint32) =
     services.adoption.process(services.canonical) # No listener is needed for explicit independent adoption.
   services.rpc.tick(peers)
   services.ui.tick()
+  services.beginRpcProof() # Native generation starts outside transport callbacks and after all host tick aliases retire.
 
 proc configureTelemetry*(services: var Services, options: Options, certificate: string,
     port: uint16, ipv6: bool): bool {.raises.} =
