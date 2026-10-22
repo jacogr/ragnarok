@@ -27,6 +27,7 @@ def observe(group, arguments, log):
     peaks = dict(rss=0, swap=0, anon=0, file=0, cgroup_swap=0)
     samples = 0
     membership = None
+    timed_out = False
     started = time.monotonic()
     with Path(log).open('w') as output:
         process = subprocess.Popen(arguments, stdout=output, stderr=subprocess.STDOUT,
@@ -61,7 +62,12 @@ def observe(group, arguments, log):
                 peaks['cgroup_swap'] = max(peaks['cgroup_swap'], current['memory.swap.current'])
                 samples += 1
                 if time.monotonic()-started > 35:
-                    raise TimeoutError('Pressure child exceeded bounded observation time')
+                    # A bounded stalled treatment is an observation, never a completed native reopen.
+                    timed_out = True
+                    process.kill()
+                    _, status, usage = os.wait4(process.pid, 0)
+                    process.returncode = os.waitstatus_to_exitcode(status)
+                    break
                 time.sleep(0.02)
         finally:
             if process.returncode is None:
@@ -74,7 +80,8 @@ def observe(group, arguments, log):
     if membership is None:
         raise ValueError('No live native cgroup membership witness')
     return dict(arguments=arguments, before_raw=before_raw, after_raw=after_raw,
-                evidence=evidence, outcome=outcome(process.returncode, evidence),
+                evidence=evidence, timed_out=timed_out,
+                outcome='observer-timeout' if timed_out else outcome(process.returncode, evidence),
                 exit_code=process.returncode, sampled_peaks=peaks, samples=samples,
                 child_membership_raw=membership, elapsed_seconds=time.monotonic()-started,
                 resources=dict(peak_rss_bytes=usage.ru_maxrss*1024,

@@ -54,7 +54,8 @@ unavailable, not zero measurements or successful constrained reopens.
 
 Success requires strict before/after native controls, exact input/binary provenance, raw-receipt
 reparsing, selected-byte preservation, scoped cleanup and complete planned coverage. Expected
-constrained OOM is an observation, not a successful reopen. Failed/partial logs survive without
+constrained OOM and observer-enforced35-second treatment deadlines are observations, not
+successful reopens. Timed-out unrestricted controls fail the panel. Failed/partial logs survive without
 stale successful summaries. Conclusions must distinguish completed pressure/reclaim runs,
 local-OOM bounds and actual swap/IO evidence before recommending item3's next optimization.
 

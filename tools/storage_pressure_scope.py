@@ -86,7 +86,10 @@ def validate_receipt(report, unit, bounds):
                 resources['peak_rss_bytes'] == 0):
             raise ValueError('Invalid exact wait4 resources')
         evidence = derive(before, after)
-        if evidence != row['evidence'] or outcome(row['exit_code'], evidence) != row['outcome']:
+        if type(row['timed_out']) is not bool or (row['timed_out'] and row['exit_code'] != -9):
+            raise ValueError('Invalid observer timeout receipt')
+        expected_outcome = 'observer-timeout' if row['timed_out'] else outcome(row['exit_code'], evidence)
+        if evidence != row['evidence'] or expected_outcome != row['outcome']:
             raise ValueError('Substituted pressure observations')
     return report
 

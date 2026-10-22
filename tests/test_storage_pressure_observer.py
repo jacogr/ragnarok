@@ -114,7 +114,7 @@ class PressureObserverTests(unittest.TestCase):
         report = dict(status='observed', unit=UNIT, initial_raw=raw,
                       group='/sys/fs/cgroup/system.slice/'+UNIT, membership_raw=member,
                       mountinfo_raw=mounts, runs=[dict(before_raw=raw, after_raw=raw,
-                      evidence=evidence, exit_code=0, outcome='completed', samples=1,
+                      evidence=evidence, exit_code=0, outcome='completed', samples=1, timed_out=False,
                       child_membership_raw=member, resources=dict(peak_rss_bytes=4096,
                       minor_faults=1, major_faults=0, input_blocks=0, output_blocks=0))])
         scope.validate_receipt(report, UNIT, (67108864, 67108864, 0))
