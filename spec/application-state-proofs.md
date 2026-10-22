@@ -98,3 +98,6 @@ privacy probes reject direct admission discriminators, worker tickets/query owne
 response backing storage. The earlier preparation lease's strict diagnostics now match the
 combined exclusion expression; all thirteen existing cases still require their original hard
 failure status. No unexpected compiler/startup/fixture failure can satisfy these verdicts.
+
+The [host integration guide](../docs/state-proof-queries.md) gives the guarded call sequence,
+resource policies, ARC activation boundary, cancellation/close rules and independent root trust.
