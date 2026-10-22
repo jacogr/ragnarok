@@ -1,10 +1,10 @@
 # Service-account metadata: C(255, service)
 
-Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Current target: Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 `text/merklization.tex` T's C(255, service) mapping, `text/accounts.tex` `eq:serviceaccount`,
 storage-footprint domains and C.1 natural discriminator/E4/E8/fixed-hash framing. Exact source
-and fixture hashes are recorded in [pins.json](pins.json). Dependency/toolchain revisions and
-existing parity gates do not change.
+and fixture hashes are recorded in [pins.json](pins.json). This contract now describes
+the implemented current schema; historical release evidence below remains separately qualified.
 
 ## Exact version-zero schema
 
@@ -17,17 +17,20 @@ key octets zero. The source service ID is **not** encoded again in the metadata 
 | ---: | --- | ---: |
 | 0 | Canonical version zero | 1 |
 | 1 | Opaque code hash | 32 |
-| 33 | Balance | E8 |
-| 41 | Minimum accumulation gas per work item | E8 |
-| 49 | Minimum deferred-transfer gas | E8 |
-| 57 | Storage footprint octets | E8 |
-| 65 | Gratis storage/deposit offset | E8 |
-| 73 | Storage footprint items | E4 |
-| 77 | Creation timeslot | E4 |
-| 81 | Last accumulation timeslot | E4 |
-| 85 | Parent service ID | E4 |
+| 33 | Supervisor service ID | E4 |
+| 37 | Supervisor incarnation/creation timeslot | E4 |
+| 41 | Liquid balance | E8 |
+| 49 | Protected supervisor balance | E8 |
+| 57 | Minimum accumulation gas per work item | E8 |
+| 65 | Minimum deferred-transfer gas | E8 |
+| 73 | Storage footprint octets | E8 |
+| 81 | Gratis storage/deposit offset | E8 |
+| 89 | Storage footprint items | E4 |
+| 93 | Creation timeslot | E4 |
+| 97 | Last accumulation timeslot | E4 |
+| 101 | Parent service ID | E4 |
 
-The payload is exactly **89 bytes**. There is no outer count or code-hash length. Unlike generic
+The current payload is exactly **105 bytes**. There is no outer count or code-hash length. Unlike generic
 natural fields, every metadata numeric payload field uses the explicit width in T. The first
 zero is a canonical natural discriminator. Complete unknown version values return UnsupportedVersion;
 missing and overlong discriminator encodings retain Truncated and NonCanonical respectively.
@@ -41,14 +44,14 @@ and maximum values; opaque code hashes are not checked for associated code/preim
 
 ## Preflight, results and copies
 
-Caller `maxBytes` must accommodate the complete current 89-byte schema before input access or
+Caller `maxBytes` must accommodate the complete current 105-byte schema before input access or
 output allocation. Decoder precedence is byte policy, canonical version framing, supported version,
 complete payload presence, then fixed field copies. Fixed offsets need no untrusted arithmetic or
 input-derived allocation. A missing final parent-service byte cannot publish earlier account fields.
 The encoder checks the fixed budget, then creates a fresh independent key/value entry.
 
 `ServiceMetadataResult` defaults/failures expose only a reason. Complete prefix success returns
-`ServiceMetadataRead` with fixed copied metadata and consumed=89; unrelated suffixes belong to the
+`ServiceMetadataRead` with fixed copied metadata and consumed=105; unrelated suffixes belong to the
 caller. Whole-entry callers must additionally require consumed == supplied value length. These
 fixed records contain no mutable sequences, refs, pointers or borrowed spans, so decoding requires
 **no heap-backed snapshot or lifetime association**. Input/source destruction, scope exit and
@@ -63,7 +66,22 @@ availability. Those require whole-service context and state-transition/import ru
 preimage and request dictionaries are separate keyed entries, absent from this payload. A decoded
 record is not a validated service account or executed accumulation result.
 
-## Evidence and reproduction
+## Current versus historical evidence
+
+The strict current decoder accepts only the implemented 105-byte schema. The
+selected pinned release traces contain 89-byte metadata, and refuse as truncated
+without a release fallback. Existing test-only expansion inserts zero supervisor
+identity/incarnation and protected balance; it changes complete-map roots and
+does not define a network migration or supply current-pin upstream parity.
+See the [exact source audit](state-current-source-audit.md) for both roots and
+source qualification, and the [authored complete corpus](state-complete-serialization-corpus.md)
+for independent current-schema expected bytes and wide-field tests.
+
+## Historical release evidence and reproduction
+
+The numerical observations and published-byte claims in this section record the
+original 89-byte release qualification. Current reference replay explicitly derives
+the additional fields; those derived bytes/roots are not unchanged published answers.
 
 Run the complete checks; Make prepares native dependencies:
 
