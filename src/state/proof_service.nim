@@ -128,3 +128,36 @@ proc proofPreimageRequested*(view: ProofView, service: ServiceIndex, hash: Servi
     return ServiceProofResult[bool](status: history.error)
   ServiceProofResult[bool](status: ServiceProofError.None,
     completed: history.value.state == RequestState.Requested)
+
+func availableAt(history: RequestHistory, slot: RequestSlot): bool =
+  ## Apply the pinned four-shape availability equation without adding chronological constraints.
+  let time = uint32(slot)
+  case history.state
+  of RequestState.Requested:
+    false # No supply interval exists for an outstanding request.
+  of RequestState.Available:
+    uint32(history.since) <= time
+  of RequestState.Unavailable:
+    uint32(history.availableFrom) <= time and time < uint32(history.unavailableFrom)
+  of RequestState.Reavailable:
+    (uint32(history.originalFrom) <= time and time < uint32(history.removedAt)) or
+      uint32(history.restoredAt) <= time
+
+proc readProofHistoricalPreimage*(view: ProofView, service: ServiceIndex,
+    hash: ServicePreimageHash, slot: RequestSlot, limit: ByteLimit): ServiceProofResult[
+        VerifiedStateLookup] =
+  ## Compose account, content and actual-length history facts from one immutable root at an explicit time.
+  let preimage = view.readProofPreimage(service, hash, limit)
+  if preimage.error != ServiceProofError.None:
+    return preimage
+  let size = uint64(preimage.value.byteLength)
+  if size >= uint64(high(uint32))-1:
+    return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.InvalidValue)
+  let history = view.readProofRequest(service, hash, RequestLength(uint32(size)))
+  if history.error == ServiceProofError.AbsentValue:
+    return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.InvalidValue)
+  if history.error != ServiceProofError.None:
+    return ServiceProofResult[VerifiedStateLookup](status: history.error)
+  if not availableAt(history.value, slot):
+    return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.AbsentValue)
+  preimage
