@@ -17,3 +17,12 @@ state serialization. No runtime, protocol interpretation or storage format chang
 
 All four native scenarios (eight distinct command lifetimes), focused semantic checking, inventory
 and pinned formatting passed locally on macOS. Every reopened retained map matched exactly.
+
+## Selected state after signed validator rotation
+
+The same real integration assertions also run with the existing signed slot12 rotation and
+genuine following children at slots13/14. Expected identities and complete physical maps come
+from `currentRotatedSequenceFixture`; original first-epoch cases remain in the suite. The same
+resource, refusal, ownership and durability checks apply after active/previous roster rotation.
+This extends authored integration evidence without claiming independent full STF goldens,
+current Thin VRF or supplied-logical qualification. No runtime/default/pin changes are made.
