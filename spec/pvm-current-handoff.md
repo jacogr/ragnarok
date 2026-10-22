@@ -23,3 +23,7 @@ Local macOS validation passed: 306 source modules; the genuine current handoff s
 transitions and exact RPC lease behavior; zero hash calls during processing; 1,000 ARC cycles;
 three exact runtime guards and two privacy/nominal rejections; inventory and formatting.
 Linked checks were serial. Exact-head Linux CI is separate.
+
+The separate [external publication contract](pvm-current-publication-handoff.md) extends this
+same bounded slot with Publishing and exact installed-child acknowledgment. Memory processing
+keeps the original contract above; publication bookkeeping grants no successful IO receipt.
