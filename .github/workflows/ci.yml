@@ -449,12 +449,17 @@ jobs:
         run: make bench-storage
       - name: Measure checked storage resource panels
         run: make bench-storage-resources bench-storage-allocations bench-storage-lifetimes bench-storage-deployment bench-storage-fresh-reopen bench-storage-file-cache
+      - name: Measure child-local storage memory ceilings
+        run: make bench-storage-memory-ceilings
       - name: Show storage speed comparison
         if: always()
         run: make summary-storage-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       - name: Show storage resource evidence
         if: always()
         run: make summary-storage-resources SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      - name: Show child-local storage memory ceilings
+        if: always()
+        run: make summary-storage-memory-ceilings SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       - name: Retain storage speed evidence
         if: always()
         uses: *upload-artifact
@@ -498,5 +503,10 @@ jobs:
             build/tests/storage-file-cache/results.json
             build/tests/storage-file-cache/*.csv
             build/tests/storage-file-cache/summary.md
+            build/tests/storage-memory-ceilings/*.log
+            build/tests/storage-memory-ceilings/results.json
+            build/tests/storage-memory-ceilings/observations.csv
+            build/tests/storage-memory-ceilings/summary.md
+            build/tests/storage-memory-ceilings/status.md
             build/tests/storage-resource-summary.md
             build/ci/*.log
