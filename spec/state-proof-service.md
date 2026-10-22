@@ -88,3 +88,12 @@ ownership and guarded ordinal access. It requests evidence without certifying
 state or trusting a root. `planProofAccount` requests only C(255, service).
 Default plans are invalid; short count limits and invalid ordinals fail explicitly.
 Suite `state_proof_plan_account` covers the owner and count contract.
+
+## Storage query planning
+
+`planProofStorage` derives the current namespace and includes the canonical
+account dependency in a sorted immutable plan. Count/key policy precedes key
+hashing. No plan grants state authority. Suite `state_proof_plan_storage` checks
+exact namespace identities and short policies. Historical lengths are hints for
+requested evidence; readers independently choose the actual authenticated length
+and return missing witness if the hint omitted that identity.
