@@ -227,3 +227,12 @@ No failed prefix exposes a typed result or earlier verified subset. Account read
 account planning, plan union/matching and encoding work with hashing refused.
 Short key/count/aggregate quotas and reserved request lengths attempt zero hashes.
 Recovery after each refused operation retains the original usable immutable view.
+
+## Complete revision retention
+
+`state_proof_service_retention` generates an account/storage response, publishes
+a real complete-map successor with changed metadata and deleted storage, then
+releases original complete owners. Old typed reads keep their original facts;
+new reads prove deletion under the new root. Old transport refuses that new
+root, detached value copies cannot mutate retained evidence, and the original
+response remains independently verifiable under its own root.
