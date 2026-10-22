@@ -169,3 +169,11 @@ filesystem device identity, physical RAM when observable, and inherited address-
 Unavailable capacity stays explicit. Recorded limits are not changed and do not claim enforcement.
 Cache policy explicitly remains unchanged; neither filesystem metadata nor low page-fault counts
 establish eviction, disk-device activity or an out-of-core workload.
+
+## Per-file cache advice
+
+A test-owned regular read-only descriptor may request Linux `POSIX_FADV_DONTNEED` or Darwin
+`F_NOCACHE` through their actual exported host interfaces. The result records requested,
+unsupported or refused distinctly; none asserts eviction or cold storage. No global cache drop,
+namespace change, write operation or production storage hook is introduced. The unchanged policy
+makes no request. Descriptor admission and file-byte preservation have real-file positive controls.
