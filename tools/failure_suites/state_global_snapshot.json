@@ -1,0 +1,51 @@
+{
+  "build_name": "state-global-snapshot-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "Guard inactive global snapshot value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "state-global-snapshot-value"
+    },
+    {
+      "arguments": [
+        "chapter"
+      ],
+      "description": "Guard inactive global snapshot chapter",
+      "diagnostic": "contains({MissingChapter, ChapterFailure}, outcome.status)",
+      "identity": {
+        "reason": "chapter"
+      },
+      "name": "state-global-snapshot-chapter"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard inactive global snapshot reason",
+      "diagnostic": "outcome.status == ChapterFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-global-snapshot-reason"
+    },
+    {
+      "arguments": [
+        "missing"
+      ],
+      "description": "Guard actual missing global chapter result",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "missing"
+      },
+      "name": "state-global-snapshot-missing"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_global_snapshot_results.nim"
+}

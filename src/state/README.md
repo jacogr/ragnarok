@@ -38,3 +38,8 @@ Bounded immutable state trie membership/absence interfaces are documented in the
 
 [Verified partial read views](../../docs/state-proof-views.md) retain exact-key evidence
 under one root, with explicit unknown/absent/present outcomes and no complete-map conversion.
+
+[`global_snapshot.nim`](global_snapshot.nim) validates all sixteen global chapters
+from one complete map under explicit codec/copy policies. Its
+[contract](../../spec/state-global-snapshot.md) preserves the exact source owner
+and distinguishes this serialization certificate from full state/STF parity.
