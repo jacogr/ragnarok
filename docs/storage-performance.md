@@ -98,3 +98,9 @@ exclude unknown files, filesystem allocation and memory held by readers. See the
 Per-call sustained timings are downloadable in `growth/publications.csv`, including exact revision,
 sample, locality and warmup identity. Warmups remain raw evidence and never enter measured
 statistics. A late failure publishing this file removes both child CSVs and refuses success.
+
+The sustained latency table reports batch-derived mean call cost and writes/s beside individual
+call p50, nearest-rank p95 and maximum. Warmups are excluded. Calls in the same run are correlated;
+they are not additional independent trials. Opposite-order p95 drift is marked separately, and
+normalized work includes the same loop/clock overhead in every backend. These are synthetic
+four-key transactions, not block throughput, and memory remains non-durable.

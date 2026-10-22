@@ -126,6 +126,18 @@ def aggregate_growth(passes):
                 engines[engine]=dict(median_ns=statistics.median(values),min_ns=min(values),max_ns=max(values),
                     pass_medians_ns=medians,noisy=max(medians)/min(medians)>1.25 or values[18]/values[1]>2,
                     metrics={k:groups[0][0][k] for k in METRICS})
+                if phase=='publication':
+                    # Nearest-rank p95 describes correlated calls; each measured run still contributes one batch.
+                    calls=sorted(t for group in groups for row in group[3:] for t in row['publication_samples'])
+                    pass_p95=[]
+                    for group in groups:
+                        ordered=sorted(t for row in group[3:] for t in row['publication_samples'])
+                        pass_p95.append(ordered[(95*len(ordered)+99)//100-1])
+                    engines[engine]['latency']=dict(calls=len(calls),median_ns=statistics.median(calls),
+                        p95_ns=calls[(95*len(calls)+99)//100-1],max_ns=max(calls),pass_p95_ns=pass_p95,
+                        p95_unstable=max(pass_p95)/min(pass_p95)>1.25,
+                        mean_call_ns=engines[engine]['median_ns']/steps,
+                        writes_per_second=4*steps*1e9/engines[engine]['median_ns'])
             ratios={}
             for engine in ENGINES[1:]:
                 memory=engines['memory'];other=engines[engine]
@@ -148,7 +160,7 @@ def aggregate_growth(passes):
 
 def validate_growth(report):
     """Native completion, source-bound binary identity and raw-derived statistics all remain mandatory."""
-    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=3:
+    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=4:
         raise ValueError('Invalid sustained report status/schema')
     if re.fullmatch('[0-9a-f]{64}',str(report.get('native_binary_sha256'))) is None:
         raise ValueError('Invalid sustained native identity')
@@ -187,6 +199,22 @@ def summarize_growth(report):
             ratio=case['ratios'][engine]
             cells.append('—' if ratio is None else f'{ratio["pooled"]:.2f}×'+(' ‡' if ratio['unstable'] else ''))
         lines.append(f'| {case["items"]} | {case["publications"]} | {case["pattern"]} | {LABELS[PHASES.index(case["phase"])]} | '+' | '.join(cells)+' |')
+    lines+=['','Per-publication latency and normalized work (warmups excluded):','',
+        '| Entries | Publications | Updates | Backend | Batch mean µs/call | Call p50 / p95 / max µs | Writes/s |',
+        '| ---: | ---: | --- | --- | ---: | ---: | ---: |']
+    for case in cases:
+        if case['phase']!='publication':
+            continue
+        for engine in ENGINES:
+            latency=case['engines'][engine]['latency']
+            tail=' / '.join(f'{latency[k]/1000:.2f}' for k in ('median_ns','p95_ns','max_ns'))
+            if latency['p95_unstable']:
+                tail+=' ‡'
+            lines.append(f'| {case["items"]} | {case["publications"]} | {case["pattern"]} | {engine} | '+
+                f'{latency["mean_call_ns"]/1000:.2f} | {tail} | {latency["writes_per_second"]:.1f} |')
+    lines+=['','Call p95 uses nearest rank over measured calls; calls within a run are correlated, not independent trials.',
+        'Batch means and writes/s derive from matching batch medians, including loop/clock overhead; each call writes four keys.',
+        '‡ on a call tail marks >25% opposite-order p95 drift. No fixed throughput or latency threshold is imposed.']
     lines+=['','Selected physical records and files (not total directory usage or reader memory):','',
         '| Entries | Publications | Updates | Backend | Stored / nine-root / current records | Selected bytes before / current-only |',
         '| ---: | ---: | --- | --- | ---: | ---: |']
