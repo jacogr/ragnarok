@@ -1,0 +1,73 @@
+{
+  "source": "tests/native/accumulation_current_preimages_results.nim",
+  "build_name": "accumulation-current-preimages-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-preimages-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current preimage extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-preimages-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current preimage extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "current-preimages-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Current preimage extraction: source"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "current-preimages-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Current preimage extraction: info"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "current-preimages-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Current preimage extraction: state"
+    },
+    {
+      "identity": {
+        "reason": "preimage-reason"
+      },
+      "arguments": [
+        "preimage-reason"
+      ],
+      "name": "current-preimages-preimage-reason",
+      "diagnostic": "outcome.status == PreimageFailure",
+      "description": "Current preimage extraction: preimage-reason"
+    }
+  ]
+}
