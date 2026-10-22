@@ -191,7 +191,8 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
   if decoded.error == ManifestError.BackendFailure: return FileError.BackendFailure
   if decoded.error != ManifestError.None: return FileError.InvalidJournal
   let manifest = decoded.value
-  var loadedSnapshot = readManagedFile(repository.directory, ManagedFileKind.Snapshot, manifest.epoch,
+  var loadedSnapshot = readManagedFile(repository.directory, ManagedFileKind.Snapshot,
+    manifest.epoch,
     limits.snapshotBytes)
   if loadedSnapshot.error != FileError.None: return loadedSnapshot.error
   let bytes = loadedSnapshot.takeValue # One detached buffer owns the complete synchronous decoder input.
