@@ -44,3 +44,10 @@ then stops and kills the writer after the real complete write but before its cal
 success. The parent checks the exact independently encoded frame, strict generation2 reopen,
 complete authored leaves and its original retained generation1 view. No failed child receipt is
 counted as a confirmed publication; the surviving parent must independently reopen visible bytes.
+
+## Managed publication append crashes
+
+`storage_managed_append_crash` independently counts 1 successful observed boundaries and kills after each.
+After a successful journal append but before its caller receives success, strict restart selects
+the complete successor. Exact encoded bytes, authored leaves and the retained old reader are checked;
+managed snapshot/epoch selection remains unchanged and no implicit fallback layout is introduced.
