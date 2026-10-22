@@ -447,9 +447,14 @@ jobs:
       - *inventory
       - name: Compare validated memory and durable storage workloads
         run: make bench-storage
+      - name: Measure checked storage resource panels
+        run: make bench-storage-resources bench-storage-allocations bench-storage-lifetimes bench-storage-deployment bench-storage-fresh-reopen bench-storage-file-cache
       - name: Show storage speed comparison
         if: always()
         run: make summary-storage-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      - name: Show storage resource evidence
+        if: always()
+        run: make summary-storage-resources SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       - name: Retain storage speed evidence
         if: always()
         uses: *upload-artifact
@@ -469,4 +474,29 @@ jobs:
             build/tests/storage-benchmark/growth/io/*.log
             build/tests/storage-benchmark/growth/io/results.json
             build/tests/storage-benchmark/growth/io/calls.csv
+            build/tests/storage-resources/*.log
+            build/tests/storage-resources/results.json
+            build/tests/storage-resources/*.csv
+            build/tests/storage-resources/summary.md
+            build/tests/storage-allocations/*.log
+            build/tests/storage-allocations/results.json
+            build/tests/storage-allocations/*.csv
+            build/tests/storage-allocations/summary.md
+            build/tests/storage-lifetimes/*.log
+            build/tests/storage-lifetimes/results.json
+            build/tests/storage-lifetimes/*.csv
+            build/tests/storage-lifetimes/summary.md
+            build/tests/storage-deployment/*.log
+            build/tests/storage-deployment/results.json
+            build/tests/storage-deployment/*.csv
+            build/tests/storage-deployment/summary.md
+            build/tests/storage-fresh-reopen/*.log
+            build/tests/storage-fresh-reopen/results.json
+            build/tests/storage-fresh-reopen/*.csv
+            build/tests/storage-fresh-reopen/summary.md
+            build/tests/storage-file-cache/*.log
+            build/tests/storage-file-cache/results.json
+            build/tests/storage-file-cache/*.csv
+            build/tests/storage-file-cache/summary.md
+            build/tests/storage-resource-summary.md
             build/ci/*.log
