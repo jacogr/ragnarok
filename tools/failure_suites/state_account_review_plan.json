@@ -1,0 +1,150 @@
+{
+  "build_name": "state-account-review-plan-results",
+  "cases": [
+    {
+      "arguments": [
+        "default-plan"
+      ],
+      "description": "Guard prepared review default-plan",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default-plan"
+      },
+      "name": "state-account-review-plan-default-plan"
+    },
+    {
+      "arguments": [
+        "profile"
+      ],
+      "description": "Guard prepared review profile",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "profile"
+      },
+      "name": "state-account-review-plan-profile"
+    },
+    {
+      "arguments": [
+        "default-execution"
+      ],
+      "description": "Guard prepared review default-execution",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default-execution"
+      },
+      "name": "state-account-review-plan-default-execution"
+    },
+    {
+      "arguments": [
+        "invalid-execution"
+      ],
+      "description": "Guard prepared review invalid-execution",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid-execution"
+      },
+      "name": "state-account-review-plan-invalid-execution"
+    },
+    {
+      "arguments": [
+        "prepare-admission"
+      ],
+      "description": "Guard prepared review prepare-admission",
+      "diagnostic": "outcome.status == AdmissionFailure",
+      "identity": {
+        "reason": "prepare-admission"
+      },
+      "name": "state-account-review-plan-prepare-admission"
+    },
+    {
+      "arguments": [
+        "prepare-directory"
+      ],
+      "description": "Guard prepared review prepare-directory",
+      "diagnostic": "outcome.status == DirectoryFailure",
+      "identity": {
+        "reason": "prepare-directory"
+      },
+      "name": "state-account-review-plan-prepare-directory"
+    },
+    {
+      "arguments": [
+        "prepare-footprint"
+      ],
+      "description": "Guard prepared review prepare-footprint",
+      "diagnostic": "outcome.status == FootprintFailure",
+      "identity": {
+        "reason": "prepare-footprint"
+      },
+      "name": "state-account-review-plan-prepare-footprint"
+    },
+    {
+      "arguments": [
+        "prepare-supervision"
+      ],
+      "description": "Guard prepared review prepare-supervision",
+      "diagnostic": "outcome.status == SupervisionFailure",
+      "identity": {
+        "reason": "prepare-supervision"
+      },
+      "name": "state-account-review-plan-prepare-supervision"
+    },
+    {
+      "arguments": [
+        "prepare-economics"
+      ],
+      "description": "Guard prepared review prepare-economics",
+      "diagnostic": "outcome.status == EconomicsFailure",
+      "identity": {
+        "reason": "prepare-economics"
+      },
+      "name": "state-account-review-plan-prepare-economics"
+    },
+    {
+      "arguments": [
+        "execute-linkage"
+      ],
+      "description": "Guard prepared review execute-linkage",
+      "diagnostic": "outcome.status == LinkageFailure",
+      "identity": {
+        "reason": "execute-linkage"
+      },
+      "name": "state-account-review-plan-execute-linkage"
+    },
+    {
+      "arguments": [
+        "execute-content"
+      ],
+      "description": "Guard prepared review execute-content",
+      "diagnostic": "outcome.status == ContentFailure",
+      "identity": {
+        "reason": "execute-content"
+      },
+      "name": "state-account-review-plan-execute-content"
+    },
+    {
+      "arguments": [
+        "execute-invariant"
+      ],
+      "description": "Guard prepared review execute-invariant",
+      "diagnostic": "outcome.status == InvariantFailure",
+      "identity": {
+        "reason": "execute-invariant"
+      },
+      "name": "state-account-review-plan-execute-invariant"
+    },
+    {
+      "arguments": [
+        "execute-review"
+      ],
+      "description": "Guard prepared review execute-review",
+      "diagnostic": "outcome.status == ReviewFailure",
+      "identity": {
+        "reason": "execute-review"
+      },
+      "name": "state-account-review-plan-execute-review"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_account_review_plan_results.nim"
+}
