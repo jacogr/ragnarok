@@ -1,0 +1,66 @@
+{
+  "build_name": "state-parent-globals-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard parent globals default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-parent-globals-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard parent globals invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-parent-globals-invalid"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard parent globals reason",
+      "diagnostic": "outcome.status == GlobalFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-parent-globals-reason"
+    },
+    {
+      "arguments": [
+        "profile"
+      ],
+      "description": "Guard parent globals profile",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "profile"
+      },
+      "name": "state-parent-globals-profile"
+    },
+    {
+      "arguments": [
+        "globals"
+      ],
+      "description": "Guard parent globals globals",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "globals"
+      },
+      "name": "state-parent-globals-globals"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_parent_globals_results.nim"
+}
