@@ -3,7 +3,7 @@
 
 ## Bounded immutable path witnesses for the pinned state trie. Capture validates structure only;
 ## independently supplied roots and keys grant lookup authority through a separate verifier.
-import std/algorithm
+import std/[algorithm, assertions]
 import ../codec/[bounded, state_layout, state_trie]
 
 type
@@ -493,3 +493,9 @@ proc decodeStateProof*(input: openArray[byte], limits: StateProofLimits,
   for i in 0..<int(size):
     supplied[i] = input[int(overhead)+i] # Retain no caller-owned mutable byte storage.
   captureStateProof(nodes, supplied, limits) # Canonical layout/path checks remain shared and noncryptographic.
+
+proc byteLength*(lookup: VerifiedStateLookup): int {.requires: lookup.valid and lookup.present.} =
+  ## Inspect the authenticated value extent without allocating a detached copy.
+  let data = lookup.proof.data
+  assert data != nil
+  data.value.len
