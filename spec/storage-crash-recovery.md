@@ -190,3 +190,11 @@ Strict restart never selects by a staging filename or recreates an existing targ
 forensic name/byte remains unchanged by refused recreation and strict admission. A legacy empty
 identity grants only generation0 repository metadata, not an authenticated complete JAM state;
 subsequent explicit publication is independently checked against the authored complete mapping.
+
+## storage_legacy_repair_crash
+
+The child receives an independently exact generation/root token for a genuine torn append.
+Actual truncation/barrier process death leaves either the exact torn tail or the confirmed complete
+prefix visible. Strict startup admits only a complete prefix; a mismatched token preserves every
+byte and grants no owner. The same independent exact token can finish confirmation and publication
+can resume. No killed recovery process returns a live owner or grants checkpoint-import trust.
