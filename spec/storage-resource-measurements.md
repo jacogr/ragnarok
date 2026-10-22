@@ -212,3 +212,11 @@ refuse. Fresh-reopen and file-cache schema2 reports independently reparse every 
 or read-only scan, require exact child counters and preserve unavailable/refused advice explicitly.
 Historical reports retain their original schemas and evidence; newer admission does not silently
 upgrade their claims. Final qualification reruns the affected panels on the frozen current sources.
+
+## Grouped CI evidence
+
+The existing opt-in Perf Storage job retains its original speed command and adds all six resource
+panels sequentially through their Make targets. Setup-free resource summaries independently validate
+every report, append after the speed summary, explicitly fail missing/refused evidence and retain
+all raw JSON/CSV/logs in the same job artifact. No new trigger, label, separate job or unsolicited
+CI request is introduced. Local qualification does not assert Linux Actions success.

@@ -622,3 +622,17 @@ class NimonyCISafeguards(unittest.TestCase):
 # Imports expose inert test helpers without downloading tools or starting compilation.
 if __name__ == '__main__':
     unittest.main(verbosity=2)
+
+
+class StorageResourceCISafeguards(unittest.TestCase):
+    """All resource panels stay beside the existing speed panel in one opt-in Perf Storage job."""
+
+    def test_resource_panels_and_artifacts_remain_grouped(self):
+        """No new CI trigger, label, extra job or replacement speed command is introduced."""
+        text=(ROOT/'.github/workflows/ci.yml').read_text(); section=text.split('  bench-storage:\n',1)[1]
+        self.assertEqual(section.count('run: make bench-storage\n'),1)
+        self.assertIn('run: make bench-storage-resources bench-storage-allocations bench-storage-lifetimes bench-storage-deployment bench-storage-fresh-reopen bench-storage-file-cache',section)
+        self.assertIn('summary-storage-resources SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"',section)
+        for name in ('storage-resources','storage-allocations','storage-lifetimes','storage-deployment','storage-fresh-reopen','storage-file-cache'):
+            self.assertIn('build/tests/'+name+'/results.json',section)
+            self.assertIn('build/tests/'+name+'/*.log',section)
