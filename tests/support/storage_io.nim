@@ -47,3 +47,9 @@ proc reusedDescriptorOpen*(): cint {.importc: "storage_io_reused_open", cdecl,
   ## Prove the caller never accidentally closed the replacement resource by retrying.
 proc limitReads*(limit: csize_t) {.importc: "storage_io_read_limit", cdecl, header: "observer.h".}
   ## Cap genuine native read progress; zero restores unrestricted calls and actual EOF.
+
+proc growOnRead*(descriptor: cint, extent: int64): cint {.importc: "storage_io_grow_on_read",
+    cdecl, header: "observer.h".}
+  ## Borrow this test-owned writable descriptor until reset or one real read grows at most64 KiB.
+proc growthPending*(): cint {.importc: "storage_io_growth_pending", cdecl, header: "observer.h".}
+  ## Require actual post-stat growth; resetting observation never closes the borrowed fixture handle.
