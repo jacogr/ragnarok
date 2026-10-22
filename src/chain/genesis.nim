@@ -71,6 +71,17 @@ func blockSnapshotContext*(outcome: BlockSnapshotResult): BlockSnapshotContext
   BlockSnapshotContext(state: outcome.completed.state, parameters: outcome.completed.configuration,
     header: outcome.completed.sealedHeader, hash: outcome.completed.identity,
     slot: outcome.completed.timeslot, validators: outcome.completed.activePopulation)
+type BlockSnapshotRetentionInfo* = object ## Copied exact index-array extents exclude shared immutable state/header payloads and fixed wrapper bytes.
+  keys*, services*: int
+  indexBytes*: uint64
+func blockSnapshotRetention*(outcome: BlockSnapshotResult): BlockSnapshotRetentionInfo
+    {.requires: outcome.status == GenesisError.None.} =
+  ## Project private array lengths without returning/copying the snapshot indexes; capture bounds each count to 16384.
+  let keys = outcome.completed.keys.len
+  let services = outcome.completed.services.len
+  BlockSnapshotRetentionInfo(keys: keys, services: services,
+    indexBytes: uint64(keys) * uint64(sizeof(StateKey)) + uint64(services) * uint64(sizeof(ServiceIndex)))
+
 func unavailableGenesis*(): GenesisResult =
   ## Construct an explicit unavailable result for absent snapshot/configuration.
   GenesisResult(status: GenesisError.Unavailable)
