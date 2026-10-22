@@ -184,6 +184,47 @@ def application_download_load(context):
     return observed
 
 
+@PLAN.setup
+def prepare_current_download_peer(context):
+    """Build the shipped integration/offload profile for the current executable workload."""
+    context.current_download_peer = context.checks.build(context.compiler, ROOT/'src/ragnarok.nim',
+        'ragnarok-current-download', context.crypto, native_libraries=(context.bs,),
+        quic_library=context.quic, defines=('integration', 'offload'))
+
+
+@PLAN.workload
+def application_current_download(context):
+    """Verify explicit current command success, partial refusal and timeout through independent TLS/maps."""
+    import hashlib
+    import os
+    from native_fixtures import unit_runtime_fixtures
+    from application_current_download import observe
+    peer_build, peer = context.current_download_peer
+    observed = dict(passed=False)
+    if peer_build['exit_code'] == 0:
+        # A failed current peer build must never execute a previous binary or build an unrelated witness.
+        compiled, responder = context.checks.build(context.compiler,
+            ROOT/'tests/native/application_current_download.nim', 'application-current-download',
+            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+        observed['build'] = compiled
+        if compiled['exit_code'] == 0:
+            _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
+                suite='pvm_current_download_command')['pvm_current_download_command']
+            for path, expected in files:
+                # Preserve independent input identities before launching either live process.
+                if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                    raise ValueError('Current download fixture mismatch: '+str(path))
+            environment = dict(os.environ, **{name: str(path) for name, path in inputs.items()})
+            try:
+                result = observe(peer, responder, context.checks.folder/'current-download-work', environment)
+                observed.update(run=result, fixtures={str(path): digest for path, digest in files},
+                                passed=result['passed'])
+            except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
+                observed['failure'] = str(error) # Process, CLI, protocol and cleanup refusals remain this workload's own failure.
+    announce('executable current downloads and durable partial progress', observed['passed'])
+    return observed
+
+
 @PLAN.workload
 def application_download_sequence(context):
     """Verify actual executable multi-child success, later refusal and timeout against independent native TLS/maps."""
