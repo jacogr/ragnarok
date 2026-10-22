@@ -57,7 +57,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [unit, e2e, docker, interop, perf, pvm-reference, bench-pvm, bench-storage, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         self.assertNotIn('synchronize', triggers)
         self.assertNotIn('opened', triggers)
@@ -95,7 +95,7 @@ class NimonyCISafeguards(unittest.TestCase):
                                    "inputs.suite == 'unit' || inputs.suite == 'docker' ||")+' }}'),
                                ('guards', '&full ${{ '+full+' }}'), ('failures', '*full'),
                                ('pvm-reference', '${{ '+full.replace("inputs.suite == 'full')",
-                                   "(inputs.suite == 'interop' || inputs.suite == 'pvm-reference' || inputs.suite == 'full'))").replace("github.event.label.name == 'ci:full')",
+                                   "(inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full'))").replace("github.event.label.name == 'ci:full')",
                                    "(github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))")+' }}'),
                                ('e2e', '${{ '+e2e+' }}'),
                                ('telemetry-interop', '${{ '+full.replace("inputs.suite == 'full')",
@@ -223,7 +223,7 @@ class NimonyCISafeguards(unittest.TestCase):
         index = jobs.index('pvm-reference')
         self.assertEqual(jobs[index:index+2], ['pvm-reference', 'telemetry-interop'])
         self.assertIn('name: Interop PVM', text)
-        self.assertIn('name: Interop JAM Tart', text)
+        self.assertIn('name: Interop Telemetry', text)
         self.assertIn('name: Perf PVM', text)
         self.assertIn('name: Perf Storage', text)
         index = jobs.index('bench-pvm')

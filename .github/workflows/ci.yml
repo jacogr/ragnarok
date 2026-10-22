@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [unit, e2e, docker, interop, perf, pvm-reference, bench-pvm, bench-storage, full]
+        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, full]
         default: full
         required: true
 
@@ -322,7 +322,7 @@ jobs:
   # Keep Interop jobs adjacent; group requests run every implementation comparison.
   # Pinned public-API comparisons remain distinct from frozen native fixtures and future fuzzing.
   pvm-reference:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'pvm-reference' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
     name: Interop PVM
     timeout-minutes: 45
     runs-on: ubuntu-latest
@@ -355,7 +355,7 @@ jobs:
 
   telemetry-interop:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
-    name: Interop JAM Tart
+    name: Interop Telemetry
     timeout-minutes: 60
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
