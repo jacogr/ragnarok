@@ -43,3 +43,7 @@ under one root, with explicit unknown/absent/present outcomes and no complete-ma
 from one complete map under explicit codec/copy policies. Its
 [contract](../../spec/state-global-snapshot.md) preserves the exact source owner
 and distinguishes this serialization certificate from full state/STF parity.
+
+[`manifest.nim`](manifest.nim) checks exact complete-map coverage against explicit
+service serialization inputs; [its contract](../../spec/state-manifest.md) excludes
+opaque captures and preserves the original complete source without root-trust claims.
