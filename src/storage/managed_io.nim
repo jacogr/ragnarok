@@ -263,7 +263,7 @@ proc readManagedFile*(directory: ManagedDirectory, kind: ManagedFileKind, epoch:
   if descriptor < 0: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   defer:
     if descriptor >= 0: discard closeNative(descriptor) # Refused reads never leak their exact native descriptor.
-  if not regular(descriptor): return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
+  # readAll validates this held descriptor and its regular extent in one authoritative preflight.
   let loaded = readAll(descriptor, limit)
   let closing = descriptor
   descriptor = -1
@@ -363,14 +363,14 @@ proc openManagedJournal*(journal: var ManagedJournal, directory: ManagedDirector
   if descriptor < 0: return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   defer:
     if descriptor >= 0: discard closeNative(descriptor)
-  if not regular(descriptor): return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
+  # readAll validates this held descriptor and its regular extent in one authoritative preflight.
   let loaded = readAll(descriptor, limit)
   if loaded.error != FileError.None: return loaded
   if syncFile(descriptor) != 0 or syncFile(state.descriptor) != 0:
     return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   journal.descriptor = descriptor
   journal.state = state
-  journal.size = uint64(loaded.value.len)
+  journal.size = uint64(loaded.completed.len) # Scalar observation must not extract/copy the owned payload.
   journal.limit = limit
   journal.poisoned = false
   journal.active = true
