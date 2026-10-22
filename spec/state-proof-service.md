@@ -142,3 +142,12 @@ dependencies coalesce. No hashing, root comparison or value conflict resolution
 is involved because plans request facts without granting them.
 Suite `state_proof_plan_union` checks shared dependencies, default inputs,
 exact/short output quotas and preservation of both inputs.
+
+## Complete snapshot batch adapter
+
+The snapshot `generateStateProofs` overload preflights and copies complete state
+once, then delegates the existing bounded atomic path-set generator. Raw query
+order and duplicates remain supported; no multiproof compression or performance
+claim is made. The single-path overload shares its unchanged complete-map
+preflight. Suites `state_proof_snapshot_batch` and `state_snapshot_proof` cover
+ordered membership/absence, limits, defaults and retained-source behavior.
