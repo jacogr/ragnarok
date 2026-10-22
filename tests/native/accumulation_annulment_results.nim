@@ -11,6 +11,8 @@ let refused = if argument == "default": default(AccumulationAnnulmentResult[Prep
       StateStoreSnapshot), [],
     default(AccumulationAnnulmentLimits))
 case argument
+of "inputs": discard owner.annulmentInputs.value # Default source grants no frame/input/skip payload.
+of "slot": discard owner.annulmentSlot.value # Default source grants no frame/input/skip payload.
 of "info": discard owner.annulmentInfo.value # No fabricated empty accounting.
 of "prior": discard owner.annulmentPrior.value # No default complete-map source.
 of "decision": discard owner.annulmentDecisionAt(AccumulationAnnulmentIndex(

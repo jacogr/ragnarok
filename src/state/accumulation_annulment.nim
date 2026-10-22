@@ -3,7 +3,7 @@
 
 ## Current GP accpar conflict annulment over genuine common-source normalized outcomes.
 ## Pure immutable certificates distinguish original effects from selected state/count observations.
-import ../codec/[bounded, state_accounts, state_layout]
+import ../codec/[bounded, state_accounts, state_layout, header, state_safrole]
 import ./[accumulation_outcome, accumulation_effects, accumulation_context,
   accumulation_invocation, accumulation_service, accumulation_inputs, store]
 
@@ -19,7 +19,7 @@ type
     annulled*: bool ## True only for the two original modified-set conflict with a different supervisor.
   AccumulationAnnulmentError* {.pure.} = enum ## Refused/default alternatives carry no source, state or decision payload.
     Uninitialized, None, InvalidInputs, InvalidState, InvalidOutcome, SourceMismatch,
-    DuplicateService, MalformedState, LimitExceeded, InvalidIndex
+    DuplicateService, MalformedState, LimitExceeded, InvalidIndex, NoInvocationSlot
   OutcomeRow = object # Immutable rows retain only genuine original outcomes and their calculated decision.
     outcome: AccumulationOutcome
     decision: AccumulationAnnulmentDecision
@@ -29,6 +29,7 @@ type
     prior: StateStoreSnapshot
     rows: seq[OutcomeRow]
     info: AccumulationAnnulmentInfo
+    slot: HeaderSlot
   PreparedAccumulationAnnulment* = object ## Only successful common-source preparation constructs a certificate.
     data: nil AnnulmentData
   AccumulationAnnulmentResult*[T] = object ## Successful payloads are private and extraction requires selected success.
@@ -94,6 +95,8 @@ proc prepareAccumulationAnnulment*(inputs: PreparedAccumulationInputs, prior: St
   var rows = newSeq[OutcomeRow](outcomes.len)
   var modified = 0'u64
   var work = 0'u64
+  var slot = HeaderSlot(0)
+  var entropy = default(StateEntropyWord)
   template spend() =
     if work >= uint64(limits.checks): fail(AccumulationAnnulmentError.LimitExceeded)
     inc work # The preincrement comparison proves this natural fits.
@@ -103,9 +106,21 @@ proc prepareAccumulationAnnulment*(inputs: PreparedAccumulationInputs, prior: St
       fail(AccumulationAnnulmentError.InvalidOutcome) # No caller-authored completion metadata.
     let context = original.outcomeContext.value
     let initial = context.effectInitialContext.value
-    let source = initial.contextInvocation.value.bootstrapService.value
+    let invocation = initial.contextInvocation.value
+    let source = invocation.bootstrapService.value
     if not source.serviceSourceMatches(inputs, prior):
       fail(AccumulationAnnulmentError.SourceMismatch) # Equal roots or service metadata cannot replace original owner identity.
+    let frame = invocation.bootstrapInfo.value
+    if index == 0:
+      slot = frame.slot
+      entropy = frame.entropy # Bind the first actual invocation frame; empty sources expose no invented slot.
+    else:
+      spend()
+      if uint32(frame.slot) != uint32(slot):
+        fail(AccumulationAnnulmentError.SourceMismatch) # Common input/map owners cannot authorize mixing invocation times.
+      spend()
+      if array[32, byte](frame.entropy) != array[32, byte](entropy):
+        fail(AccumulationAnnulmentError.SourceMismatch) # Candidate allocation entropy belongs to the same actual invocation frame.
     let count = context.effectModifiedAccountCount
     if count.error != AccumulationEffectError.None:
       fail(AccumulationAnnulmentError.InvalidOutcome) # Disabled tracking cannot impersonate an empty modified set.
@@ -157,7 +172,8 @@ proc prepareAccumulationAnnulment*(inputs: PreparedAccumulationInputs, prior: St
   AccumulationAnnulmentResult[PreparedAccumulationAnnulment](
     status: AccumulationAnnulmentError.None,
     completed: PreparedAccumulationAnnulment(data: AnnulmentData(inputs: inputs, prior: prior,
-      rows: rows, info: AccumulationAnnulmentInfo(outcomes: rows.len, modified: int(modified),
+      rows: rows, slot: slot, info: AccumulationAnnulmentInfo(outcomes: rows.len, modified: int(
+          modified),
         annulled: annulled, checks: work))))
 
 proc annulmentInfo*(plan: PreparedAccumulationAnnulment): AccumulationAnnulmentResult[
@@ -231,3 +247,21 @@ proc annulmentSelectedModifiedCountAt*(plan: PreparedAccumulationAnnulment,
       status: row.error) # No fabricated empty modified set.
   let count = if row.value.decision.annulled: 0 else: row.value.modified
   AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: count)
+
+proc annulmentInputs*(plan: PreparedAccumulationAnnulment): AccumulationAnnulmentResult[
+    PreparedAccumulationInputs] =
+  ## Retain the exact input owner for validating additional certified non-executing participants.
+  let data = plan.data
+  if data == nil: return AccumulationAnnulmentResult[PreparedAccumulationInputs](
+      status: AccumulationAnnulmentError.Uninitialized) # No default provenance.
+  AccumulationAnnulmentResult[PreparedAccumulationInputs](status: AccumulationAnnulmentError.None,
+      completed: data.inputs)
+proc annulmentSlot*(plan: PreparedAccumulationAnnulment): AccumulationAnnulmentResult[HeaderSlot] =
+  ## Copy the shared actual invocation time; initialized empty sources have no invented slot.
+  let data = plan.data
+  if data == nil: return AccumulationAnnulmentResult[HeaderSlot](
+      status: AccumulationAnnulmentError.Uninitialized) # Default differs from a genuine empty source.
+  if data.rows.len == 0: return AccumulationAnnulmentResult[HeaderSlot](
+      status: AccumulationAnnulmentError.NoInvocationSlot) # A later skip-only adapter must bind its own real slots.
+  AccumulationAnnulmentResult[HeaderSlot](status: AccumulationAnnulmentError.None,
+      completed: data.slot)

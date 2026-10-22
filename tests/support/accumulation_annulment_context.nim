@@ -7,7 +7,7 @@ import std/assertions
 import ../../src/state/[accumulation_annulment, accumulation_outcome, accumulation_dispatch, store]
 import ../../src/pvm/machine
 import ../../src/chain/parameters
-import ../../src/codec/[bounded, state_accounts, state_layout, state_trie]
+import ../../src/codec/[bounded, state_accounts, state_layout, state_trie, header, state_safrole]
 import ./[accumulation_batch_context, pvm_accumulation_program, pvm_accumulation_context]
 
 proc annulmentPolicy*(): AccumulationAnnulmentLimits =
@@ -99,10 +99,12 @@ proc profile(): Parameters =
   for index in 110..<114: wire[index] = 0 # Clear the complete E4 memo-width field.
   wire[110] = 128
   decodeParameters(wire).value
-proc annulmentOriginal*(source: BatchFixture, index: uint64, enabled = true): AccumulationOutcome =
+proc annulmentOriginal*(source: BatchFixture, index: uint64, enabled = true,
+    slot = HeaderSlot(128), entropy = default(StateEntropyWord)): AccumulationOutcome =
   ## Normalize actual terminal selection; no caller-authored state, gas or modification flag exists.
-  let execution = batchExecution(source, index, parameters = profile(), copyLimit = MemoryByteLimit(
-      128), transferLimit = ElementLimit(1), deletedAccounts = ElementLimit(2),
+  let execution = batchExecution(source, index, slot = slot, entropy = entropy,
+      parameters = profile(), copyLimit = MemoryByteLimit(128), transferLimit = ElementLimit(1),
+          deletedAccounts = ElementLimit(2),
     modifiedAccounts = ElementLimit(if enabled: 8'u64 else: 0'u64))
   assert execution.error == AccumulationDispatchError.None, "original dispatch service ordinal " &
       $index & ": " & $execution.error

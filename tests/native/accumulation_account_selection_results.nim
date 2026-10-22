@@ -10,6 +10,8 @@ let refused = if argument == "default": default(AccumulationAccountSelectionResu
   else: prepareAccumulationAccountSelection(default(PreparedAccumulationAnnulment), [], default(
       AccumulationAccountSelectionLimits))
 case argument
+of "skip": discard owner.selectedAccountSkipAt(AccumulationAccountSelectionIndex(
+    0)).value # Default source grants no frame/input/skip payload.
 of "info": discard owner.accountSelectionInfo.value # No fabricated empty subset.
 of "source": discard owner.accountSelectionSource.value # No fake conflict certificate.
 of "account": discard owner.selectedAccountAt(AccumulationAccountSelectionIndex(

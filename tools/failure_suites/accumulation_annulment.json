@@ -11,6 +11,8 @@
     {"identity": {"reason": "original"}, "arguments": ["original"], "name": "accumulation-annulment-original", "diagnostic": "outcome.status == None", "description": "Parallel annulment original extraction guard"},
     {"identity": {"reason": "selected-info"}, "arguments": ["selected-info"], "name": "accumulation-annulment-selected-info", "diagnostic": "outcome.status == None", "description": "Parallel annulment selected-info extraction guard"},
     {"identity": {"reason": "selected-state"}, "arguments": ["selected-state"], "name": "accumulation-annulment-selected-state", "diagnostic": "outcome.status == None", "description": "Parallel annulment selected-state extraction guard"},
-    {"identity": {"reason": "modified"}, "arguments": ["modified"], "name": "accumulation-annulment-modified", "diagnostic": "outcome.status == None", "description": "Parallel annulment modified extraction guard"}
+    {"identity": {"reason": "modified"}, "arguments": ["modified"], "name": "accumulation-annulment-modified", "diagnostic": "outcome.status == None", "description": "Parallel annulment modified extraction guard"},
+    {"identity": {"reason": "inputs"}, "arguments": ["inputs"], "name": "accumulation-annulment-inputs", "diagnostic": "outcome.status == None", "description": "Skipped-source inputs extraction guard"},
+    {"identity": {"reason": "slot"}, "arguments": ["slot"], "name": "accumulation-annulment-slot", "diagnostic": "outcome.status == None", "description": "Skipped-source slot extraction guard"}
   ]
 }

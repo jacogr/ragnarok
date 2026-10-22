@@ -48,3 +48,10 @@ removing any foreign publication gate. The certificate deliberately retains the
 original outcome through an explicitly named accessor for gas/provision provenance;
 it does not expose a fabricated selected effect context or claim complete accpar
 publication. No protocol discrepancy or pin change is introduced.
+
+## Common invocation frame extension
+
+The [skipped-credit adapter](pvm-skipped-credit-selection.md) adds checked common
+bootstrap slot/entropy agreement and guarded input/slot provenance. A genuine
+empty executed source exposes NoInvocationSlot, distinct from a real invocation
+at slot0. These are source-coherence checks, not authenticated block/header proof.
