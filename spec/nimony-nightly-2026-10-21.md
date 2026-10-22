@@ -121,3 +121,30 @@ remain unavailable on Darwin. Linux resident-pressure and debugger call-site mea
 not rerun on this host. Inventory, pinned formatting of all nine new/changed Nim inputs and diff
 checks passed. Raw local evidence is under `build/ci/nimony-storage-next-*`. The candidate remains
 held pending the next published nightly.
+
+
+## Qualification after merged current-download PVM work
+
+Merge master `edc4f528` normally (qualification merge `dd5efba6`), preserving all 131 changed
+upstream files byte-for-byte and both held compiler pins. The tranche adds signed current input,
+worker preparation, retained publication handoffs, Services memory/disk adoption, authenticated
+native downloads, explicit complete policies and the current command, with ancestry, durable
+partial-progress and RPC/lease witnesses. No additional compiler compatibility edits were needed.
+
+All 350 production modules, 2,139 compiler guards and 89 focused executable/Make/CI/native-profile/
+verification-harness Python tests passed. All 16 new native PVM suites passed, plus six affected
+options, startup, handoff and legacy ancestor/download command suites (22 native suites total).
+All 31 declared runtime-refusal probes in the eight new families passed their independent exact
+assertion diagnostics. The full checked ARC/Clang/LTO integration/offload peer build passed, as
+did Linux x86-64 semantic checking of that production entry point with both defines enabled.
+
+The existing registered `application_current_download` E2E workload also passed all six actual
+executable cases, using its freshly compiled shipped profile and independent native TLS/map
+witness: journal/managed adoption, replay/empty refusal after one adoption, timeout after one
+adoption and legacy-policy rejection. Existing fixture hashes, request authority, strict durable
+reopen, output/exit checks and joined responder cleanup remained required. These selected cases
+are not a full E2E-plan run or Linux native linking/runtime qualification.
+
+Inventory, pinned formatting of all 69 new/changed Nim inputs and diff checks passed. Local
+results apply to macOS ARM64; raw evidence and preserved input identities are under ignored
+`build/ci/nimony-pvm-sync-*`. The candidate remains held pending the next published nightly.
