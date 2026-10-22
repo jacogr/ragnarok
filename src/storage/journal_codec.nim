@@ -114,7 +114,7 @@ proc decodeFrame(input: openArray[byte], contextual: bool, contextLimit: ByteLim
   let inspected = inspectFrame(input, contextual, contextLimit, limits.encoded, limit)
   if inspected.error != FrameError.None: return FrameResult[JournalFrame](status: inspected.error)
   let prefix = inspected.value
-  let decoded = decodeTrieExport(input.toOpenArray(prefix, input.len-33), limits)
+  var decoded = decodeTrieExport(input.toOpenArray(prefix, input.len-33), limits)
   if decoded.error == RecordError.LimitExceeded: return FrameResult[JournalFrame](
       status: FrameError.LimitExceeded)
   if decoded.error != RecordError.None:
@@ -125,7 +125,7 @@ proc decodeFrame(input: openArray[byte], contextual: bool, contextLimit: ByteLim
     for i in 0..<context.len: context[i] = input[24+i] # Never return a mutable borrow into caller bytes.
   FrameResult[JournalFrame](status: FrameError.None,
     completed: JournalFrame(generation: RepositoryGeneration(number(input, 8)),
-        batch: decoded.value, context: context))
+        batch: decoded.takeValue, context: context))
 
 proc encodeJournalFrame*(generation: RepositoryGeneration, batch: TrieExport,
     limits: RecordLimits, limit: ByteLimit): FrameResult[seq[byte]] =
