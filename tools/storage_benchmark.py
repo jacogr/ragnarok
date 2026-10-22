@@ -12,6 +12,7 @@ import platform
 import subprocess
 import tempfile
 from native_checks import NativeChecks
+from storage_growth import run_growth, SOURCES as GROWTH_SOURCES
 from build_crypto import dependencies as crypto_sources, build_native as build_crypto
 from pvm_reference import command
 from setup_nimony import installed
@@ -69,7 +70,7 @@ def cpu_model():
 # Persist progress and failures before rendering any comparison; older success cannot survive a failed rerun.
 def run():
     BUILD.mkdir(parents=True,exist_ok=True)
-    for name in ('summary.md','samples.csv','results.json'):
+    for name in ('summary.md','samples.csv','results.json','growth/results.json','growth/samples.csv'):
         (BUILD/name).unlink(missing_ok=True)
     report=dict(status='running',checks=[],passes=[],cases=[])
     def save():
@@ -79,7 +80,7 @@ def run():
     try:
         compiler,_=installed()
         source=ROOT/'tests/performance/storage_workload.nim'
-        sources=[*sorted((ROOT/'src').rglob('*.nim')),source,
+        sources=[*[ROOT/name for name in GROWTH_SOURCES],*sorted((ROOT/'src').rglob('*.nim')),source,
             ROOT/'tests/support/managed_storage_samples.nim',ROOT/'tests/support/storage_samples.nim',
             ROOT/'tools/storage_benchmark.py',ROOT/'tools/storage_benchmark_report.py',
             ROOT/'tools/native_checks.py',ROOT/'tools/pvm_reference.py',ROOT/'spec/toolchain.json',
@@ -117,6 +118,7 @@ def run():
                         raise RuntimeError('Storage workload failed: '+evidence['log'])
                     observations[f'{engine}-{count}-{topology}-{value_bytes}-{batch_width}']=parse_output(Path(evidence['log']).read_text(),engine,count,topology,value_bytes,batch_width)
             report['passes'].append(observations);save()
+        report['growth']=run_growth(compiler,library,BUILD/'growth',atomic_text)
         report['cases']=aggregate(report['passes']);report['status']='checks-passed'
         report['hardware']['load_average_end']=os.getloadavg()
         write_samples(report)

@@ -39,4 +39,4 @@ First establish sustained fixture correctness and bounded public-API execution, 
 validate raw output and statistics, publish the panel through the existing job, and collect matched
 baseline evidence. Add focused read/growth/I/O attribution only where it resolves measurement gaps.
 Use those results to choose storage-local optimizations, qualify affected recovery consumers and
-record the retained/rejected hypotheses. Native stacked PRs use semantic titles and a maximum of30.
+record the retained/rejected hypotheses. Native stacked PRs use semantic titles and a maximum of 30.

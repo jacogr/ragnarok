@@ -16,6 +16,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 from storage_benchmark_report import ENGINES,COUNTS,TOPOLOGIES,VALUE_BYTES,BATCH_WIDTHS,CASES,PHASES,METRICS,REPORT_VERSION,PROFILE,REQUIRED_SOURCES,parse_output,aggregate,summarize_benchmark
 from summarize_tests import summarize
+from test_storage_growth_report import fixture as growth_fixture
 
 
 # Authored complete sample grids isolate report correctness from machine-dependent timing values.
@@ -48,6 +49,7 @@ def report_fixture():
         checks=[dict(exit_code=0,log=f'check-{i}.log',elapsed_seconds=0.001)
             for i in range(1+2*len(ENGINES)*len(CASES))])
     report['cases']=aggregate(report['passes'])
+    report['growth']=growth_fixture()
     return report
 
 
@@ -73,7 +75,8 @@ def native_stub(folder):
             storage_benchmark,'cpu_model',return_value='fixture CPU'),patch.object(
             storage_benchmark.NativeChecks,'build',return_value=(
                 dict(exit_code=0,log='native-build.log',elapsed_seconds=0.001),folder/'binary')),patch.object(
-            storage_benchmark,'command',side_effect=command):
+            storage_benchmark,'command',side_effect=command),patch.object(
+            storage_benchmark,'run_growth',return_value=growth_fixture()):
         yield storage_benchmark
 
 
@@ -91,6 +94,37 @@ class StorageBenchmarkTests(unittest.TestCase):
         self.assertIn('warm resident',text)
         self.assertEqual(len(report['cases']),128)
         self.assertEqual(report['cases'][0]['engines']['memory']['median_ns'],107.5)
+
+    def test_missing_or_failed_growth_panel_refuses_parent_success(self):
+        """The original matrix alone cannot claim overall success after sustained integration."""
+        for bad in (None,dict(status='failed')):
+            report=report_fixture();report['growth']=bad
+            with self.assertRaises(ValueError):
+                summarize_benchmark(report)
+
+    def test_parent_build_failure_clears_stale_growth_success(self):
+        """A failed short workload must not leave an old successful child report in current artifacts."""
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary);(folder/'growth').mkdir()
+            for name in ('results.json','samples.csv'):
+                (folder/'growth'/name).write_text('old success')
+            with native_stub(folder) as runner,patch.object(runner.NativeChecks,'build',return_value=(
+                    dict(exit_code=1,log='failed-build.log'),folder/'binary')):
+                with self.assertRaisesRegex(RuntimeError,'Storage benchmark build failed'):
+                    runner.run()
+            self.assertFalse((folder/'growth/results.json').exists())
+            self.assertFalse((folder/'growth/samples.csv').exists())
+
+    def test_growth_failure_fails_parent_and_removes_stale_csv(self):
+        """A successful short matrix cannot hide a later sustained execution failure."""
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary);(folder/'samples.csv').write_text('old success')
+            with native_stub(folder) as runner,patch.object(runner,'run_growth',side_effect=RuntimeError('growth refused')):
+                with self.assertRaisesRegex(RuntimeError,'growth refused'):
+                    runner.run()
+            self.assertEqual(json.loads((folder/'results.json').read_text())['status'],'failed')
+            self.assertFalse((folder/'samples.csv').exists())
+            self.assertIn('Status: failed',(folder/'summary.md').read_text())
 
     def test_missing_duplicate_or_wrong_sample(self):
         raw=output('memory',1024)

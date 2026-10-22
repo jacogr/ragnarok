@@ -79,3 +79,18 @@ frequency/affinity isolation and do not certify production throughput, power los
 behavior or long-running growth. See the [feature contract](../spec/storage-benchmark.md) for
 verification and [managed storage](managed-storage.md) for operational behavior and recovery.
 [Checkpoint imports](checkpoint-import.md) still require independent exact trust.
+
+## Sustained publication panel
+
+The same Perf Storage job now also runs 64/256 four-key publications against 1,024/8,192 entries,
+using leading keys and 256-byte values. Each of its two opposite-order passes has three warmups
+and ten measured samples. Publication, strict reopen, nine-root reclamation and current-only
+reclamation stay separate. Every payload includes the complete revision number; generation256
+cannot silently wrap to a seed value. Complete maps and held readers are checked outside timing.
+
+The main Markdown summary includes this panel; `growth/results.json`, `growth/samples.csv` and
+native logs retain its raw evidence beside the original short matrix. Parent source/compiler/
+profile provenance explicitly covers both workloads. A failed or incomplete sustained panel fails
+the entire job, even when the original short matrix passed. Selected bytes and physical nodes
+exclude unknown files, filesystem allocation and memory held by readers. See the
+[sustained workload contract](../spec/storage-growth-benchmark.md).
