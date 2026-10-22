@@ -190,3 +190,12 @@ without any root trust field or new network protocol. Extra/missing selectors
 refuse before encoding. Existing per-proof/view/wire ceilings still apply.
 Suite `state_proof_service_encoding` checks byte identity with the shared codec,
 exact/short framing budgets, wrong plans, extra keys and source preservation.
+
+## Receiving local responses
+
+`decodeServiceProofs` consumes canonical RPV1 with a separately retained exact
+plan and independently selected root. Declared counts must match the request
+before witness decoding. Shared framing/pre-copy aggregate quotas and atomic
+authentication remain mandatory. Exact verified identities must also match;
+wrong roots and malformed framing never return a prefix view.
+Suite `state_proof_service_decoding` verifies round trips and receiving policy.

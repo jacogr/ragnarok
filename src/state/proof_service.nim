@@ -389,3 +389,26 @@ proc encodeServiceProofs*(view: ProofView, plan: ServiceProofPlan, viewLimits: P
   if encoded.error != ProofViewError.None:
     return viewFailure(encoded)
   ServiceProofResult[seq[byte]](status: ServiceProofError.None, completed: encoded.value)
+
+proc decodeServiceProofs*(input: openArray[byte], plan: ServiceProofPlan,
+    expectedRoot: StateRoot, viewLimits: ProofViewLimits, perProof: StateProofLimits,
+    aggregate: StateProofBatchLimits, wireBytes: ByteLimit): ServiceProofResult[ProofView] =
+  ## Decode existing canonical RPV1, reverify its witnesses under explicit root authority and match the plan.
+  if not plan.valid:
+    return ServiceProofResult[ProofView](status: ServiceProofError.Uninitialized)
+  if input.len >= 8:
+    # Declared count cannot grow the requested work or conceal an omitted response before decoding.
+    var count = 0'u64
+    for i in 0..<4: count = count or (uint64(input[4+i]) shl (8*i))
+    if count != uint64(plan.len):
+      return ServiceProofResult[ProofView](status: ServiceProofError.InvalidInput)
+  let effective = StateProofBatchLimits(
+    items: ElementLimit(min(uint64(aggregate.items), uint64(viewLimits.items))),
+    nodes: aggregate.nodes,
+    valueBytes: ByteLimit(min(uint64(aggregate.valueBytes), uint64(viewLimits.valueBytes))))
+  let decoded = decodeProofView(input, expectedRoot, viewLimits, perProof, effective, wireBytes)
+  if decoded.error != ProofViewError.None:
+    return viewFailure(decoded)
+  if not matchesProofPlan(decoded.value, plan).value:
+    return ServiceProofResult[ProofView](status: ServiceProofError.InvalidInput)
+  ServiceProofResult[ProofView](status: ServiceProofError.None, completed: decoded.value)
