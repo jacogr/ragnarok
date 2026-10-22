@@ -95,7 +95,42 @@ proc cycle() =
   assert visitOrderedRecordCollection(empty, policy, none, accept).value.records == 0
   assert none.calls == 0
 
+proc batchCycle() =
+  ## Preserve target metadata and serialized order while rejecting all duplicates before hashes or delivery.
+  let policy = storageLimits().codec
+  let physical = exportFullTrie(storageTrie(7), policy.records).value
+  var wire = encodeTrieExport(physical, policy).value
+  var delivered = Delivery(stopAfter: -1)
+  reset(0)
+  let completed = visitTrieExport(wire, policy, delivered, accept)
+  assert completed.error == RecordError.None
+  let info = completed.value
+  assert array[32, byte](info.base) == array[32, byte](physical.base)
+  assert array[32, byte](info.root) == array[32, byte](physical.root)
+  assert info.entries == physical.entries and info.nodes == physical.nodes
+  assert info.records == uint64(physical.records.len) and info.valueBytes == 2
+  assert sameRecords(delivered.records, physical.records) and int(calls()) == physical.records.len
+  let header = "RAGNAROK-TRIE-V1\n".len+88
+  var duplicate = wire
+  for index in header..<header+73:
+    duplicate.add(wire[index]) # The authored first record is a complete one-byte leaf.
+  duplicate[header-8] = byte(physical.records.len+1)
+  var none = Delivery(stopAfter: -1)
+  reset(0)
+  assert visitTrieExport(duplicate, policy, none, accept).error == RecordError.DuplicateNode
+  assert none.calls == 0 and int(calls()) == 0
+  duplicate[header+72] = duplicate[header+72] xor 1 # Duplicate refusal still precedes a hash mismatch.
+  assert visitTrieExport(duplicate, policy, none, accept).error == RecordError.DuplicateNode
+  assert none.calls == 0 and int(calls()) == 0
+  var narrow = policy
+  narrow.records.valueBytes = ByteLimit(1)
+  assert visitTrieExport(wire, narrow, none, accept).error == RecordError.LimitExceeded
+  assert none.calls == 0 and int(calls()) == 0
+  wire[0] = 0
+  assert sameRecords(delivered.records, physical.records) # Success owns records independently of retired bytes.
+
 let before = getOccupiedMem()
 cycle()
+batchCycle()
 assert getOccupiedMem() == before
 echo "PASS storage record delivery: exact ownership, preflight, late integrity and consumer refusal"
