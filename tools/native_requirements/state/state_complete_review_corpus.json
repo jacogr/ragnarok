@@ -1,0 +1,17 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "complete_review",
+    "complete_serialization",
+    "multiservice_serialization"
+  ],
+  "includes": [
+    "crypto"
+  ],
+  "libraries": [
+    "observer"
+  ],
+  "observers": [],
+  "prepared": false
+}
