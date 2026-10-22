@@ -393,6 +393,21 @@ proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
   committed
 
 
+proc confirmsCurrentDiskPublication*(disk: DiskStateStore,
+    publication: PreparedCurrentDiskPublication, generation: RepositoryGeneration): bool =
+  ## After collection/join, bind a claimed confirmed receipt to the exact current candidate, selected generation and full context.
+  ## Read only validated cached owners/metadata; callers must not access any leased graph while a worker is active.
+  let data = publication.data
+  if data == nil or uint64(generation) != uint64(data.next): return false
+  let selected = disk.generation
+  if selected.error != DiskStoreError.None or uint64(selected.value) != uint64(
+      data.next): return false
+  let state = disk.snapshot
+  if state.error != DiskStoreError.None or not sameStateSnapshot(state.value,
+      data.update.currentUpdateState): return false
+  let context = disk.snapshotContext
+  context.error == FileError.None and context.value == data.context
+
 func ready*(maintenance: PreparedDiskMaintenance): bool =
   ## Default/refused maintenance objects grant neither graph borrowing nor file mutation authority.
   maintenance.initialized

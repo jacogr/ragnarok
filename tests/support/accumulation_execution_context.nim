@@ -30,6 +30,7 @@ type
     round*: BlockAccumulationRound ## Genuine admitted-parent bound initial plan.
     state*: StateStore             ## Original complete parent map, before any staged block publication.
     entries*: seq[StateEntry]      ## Authored full map for independent equal-root source-substitution tests.
+    older*: seq[OwnedHeader]       ## Original signed lookup headers used by genuine report admission.
 
 proc executionRoundConfig*(): AccumulationRoundConfig =
   ## Reserve room for two allowance groups and one optional report independently of actual consumption.
@@ -130,7 +131,7 @@ proc executionFixture*(base: OwnedReport, options = executionFixtureConfig()): E
   let queue = planBlockAccumulationQueue(planBlockReports(context.staged, context.older, config()).value,
     executionQueueConfig()).value
   ExecutionFixture(round: planBlockInitialAccumulation(queue, executionRoundConfig()).value,
-    state: context.original, entries: context.source)
+    state: context.original, entries: context.source, older: context.older)
 
 proc executionService*(fixture: ExecutionFixture, index: uint64, slot = HeaderSlot(
     2)): PreparedAccumulationService =
