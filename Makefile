@@ -46,7 +46,7 @@ check-docker: docker-build
 	done 2>&1 | tee build/ci/docker-smoke.log
 
 # Every native build/test target owns its source and pinned Rust/Cargo preparation.
-setup: check-inventory toolchain sources rust-tools ui-assets build-info
+setup: check-inventory toolchain model-tools sources rust-tools ui-assets build-info
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
 
 # Refresh source/release metadata even when all native dependencies are already provisioned.
@@ -100,6 +100,11 @@ host-tools:
 toolchain: host-tools
 	mkdir -p build/ci
 	$(PYTHON) tools/setup_nimony.py --ensure 2>&1 | tee build/ci/setup.log
+
+# Verification-only tools use separate pins and never replace the application compiler.
+.PHONY: model-tools
+model-tools: toolchain
+	$(PYTHON) tools/setup_tlanif.py 2>&1 | tee build/ci/model-tools.log
 
 # Remove all generated artifacts, including the local compiler and downloaded archives.
 clean:
@@ -236,6 +241,7 @@ help:
 	  'make bench-storage  Compare validated memory, journal and managed storage' \
 	  'make bench-pvm      Measure validated PVM workloads against PolkaVM backends' \
 	  'make check-pvm-reference  Run pinned PolkaVM probes and matching native suites' \
+	  'make model-tools   Build the pinned verification-only tlanif' \
 	  'make check-python  Run Python reference/tooling/provenance tests' \
 	  'make check-unit    Run native suites and independent corpora' \
 	  'make check-failures Run runtime contract/crash probes and positive controls' \
