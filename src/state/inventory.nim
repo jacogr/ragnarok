@@ -190,3 +190,7 @@ proc inventoryRequestAt*(inventory: StateInventory, service: InventoryServiceInd
       status: StateInventoryError.InvalidIndex) # Full-width child bound precedes narrowing.
   StateInventoryResult[StateRequestItem](status: StateInventoryError.None,
     completed: data.rows[int(uint64(service))].requests[int(uint64(index))])
+
+func sameStateInventory*(left, right: StateInventory): bool =
+  ## Compare initialized exact logical captures by owner identity; equal maps and default handles do not match.
+  left.data != nil and left.data == right.data
