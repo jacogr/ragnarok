@@ -14,7 +14,8 @@ proc annulmentPolicy*(): AccumulationAnnulmentLimits =
   ## Small independent ceilings bound both original modifications and the complete pair scan.
   AccumulationAnnulmentLimits(outcomes: ElementLimit(2), modified: ElementLimit(8),
       checks: ElementLimit(128))
-proc parentCode(target = 99'u64, supervisor = 42'u64, selfWrite = false, eject = false): seq[byte] =
+proc parentCode(target = 99'u64, supervisor = 42'u64, selfWrite = false, eject = false,
+    emit = false): seq[byte] =
   ## No-op supervisor calls still mark the junior; an optional genuine self upgrade tests mutually conflicting originals.
   if eject:
     return guestEnvelope([registerImmediate(7, target), @[10'u8, 23], @[50'u8,
@@ -24,9 +25,14 @@ proc parentCode(target = 99'u64, supervisor = 42'u64, selfWrite = false, eject =
     for instruction in @[registerImmediate(7, high(uint64)), registerImmediate(8, 65536),
         registerImmediate(9, 0), registerImmediate(10, 0), @[10'u8, 21]]:
       code.add(instruction) # Mark self before the foreign supervisor mutation.
-  for instruction in @[registerImmediate(7, target), registerImmediate(8, supervisor), @[10'u8, 29],
-      @[50'u8, 0]]:
+  for instruction in @[registerImmediate(7, target), registerImmediate(8, supervisor), @[10'u8, 29]]:
     code.add(instruction) # Preserve the ordinary parent program when selfWrite is false.
+  if emit:
+    for instruction in @[registerImmediate(7, high(uint64)), registerImmediate(8, 99),
+        registerImmediate(9, 0), registerImmediate(10, 0), registerImmediate(11, 5),
+        registerImmediate(12, 196608), @[10'u8, 22]]:
+      code.add(instruction) # Paid gas and memo bytes originate in a real second producer.
+  code.add(@[50'u8, 0])
   guestEnvelope(code)
 proc juniorCode(write = true, panic = false, checkpointAfter = false, emit = true,
     reciprocal = false): seq[byte] =
@@ -56,10 +62,12 @@ proc juniorCode(write = true, panic = false, checkpointAfter = false, emit = tru
   guestEnvelope(code)
 proc annulmentFixture*(supervisor = 42'u32, incarnation = 0'u32, incoming = false,
     write = true, panic = false, checkpointAfter = false, emit = true,
-        handoff = false, mutual = false, eject = false, parentTarget = 99'u64): BatchFixture =
+        handoff = false, mutual = false, eject = false, parentTarget = 99'u64,
+            parentEmit = false): BatchFixture =
   ## Amend the authored complete prior before either real execution captures it.
   result = batchFixture(incoming = incoming, firstEnvelope = parentCode(target = parentTarget,
-      supervisor = (if handoff: 99'u64 else: 42'u64), selfWrite = mutual, eject = eject),
+      supervisor = (if handoff: 99'u64 else: 42'u64), selfWrite = mutual, eject = eject,
+          emit = parentEmit),
     secondEnvelope = juniorCode(write, panic, checkpointAfter, emit, reciprocal = mutual))
   let key = chapterServiceKey(StateChapter(255), ServiceIndex(99))
   var metadata = decodeServiceMetadata(result.state.snapshot.value.lookup(key).value.bytes,

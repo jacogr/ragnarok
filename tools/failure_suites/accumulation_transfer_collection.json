@@ -90,6 +90,39 @@
       "name": "accumulation-transfer-collection-transfer",
       "diagnostic": "outcome.status == None",
       "description": "Transfer collection transfer extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "selection"
+      },
+      "arguments": [
+        "selection"
+      ],
+      "name": "accumulation-transfer-collection-selection",
+      "diagnostic": "outcome.status == None",
+      "description": "Transfer collection selection extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "ordinary-selection"
+      },
+      "arguments": [
+        "ordinary-selection"
+      ],
+      "name": "accumulation-transfer-collection-ordinary-selection",
+      "diagnostic": "outcome.status == None",
+      "description": "Transfer collection ordinary-selection extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "invalid-selection"
+      },
+      "arguments": [
+        "invalid-selection"
+      ],
+      "name": "accumulation-transfer-collection-invalid-selection",
+      "diagnostic": "outcome.status == None",
+      "description": "Transfer collection invalid-selection extraction guard"
     }
   ]
 }
