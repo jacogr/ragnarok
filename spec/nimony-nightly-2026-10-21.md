@@ -43,3 +43,23 @@ NativeChecks profile controls establish the bounded cache fix. Raw local compile
 is under ignored `build/ci/` and `build/nimony-upgrade-probes/`. Local results apply to macOS ARM64;
 checksum verification of the Linux asset is not a Linux runtime pass. Historical M1 migration evidence
 remains historical evidence, not a new claim of complete JAM client parity.
+
+## Qualification after merged storage resource work
+
+Merge master `e0c3a430` into this upgrade without rewriting the published compiler commit.
+All 81 master-changed files outside the original upgrade scope remain byte-identical to master;
+the shared infrastructure guide retains both the cache-policy update and the merged package-setup
+bounds. CI wiring, storage resource/report contracts, workload axes and provenance checks are preserved.
+No additional storage compatibility edits were needed.
+
+On the merged tree, all 112 storage Python safeguards and 86 Make/CI/cache integration safeguards
+passed. All 11 new or affected native suites passed: allocator observations, deployment domain and
+fixtures, seven lifetime controls, and sustained growth fixtures. The five ordinary-growth,
+allocator-instrumented, deployment, lifetime and fresh-reopen benchmark profiles built with the
+new compiler. Sixteen bounded native invocations passed their maintained independent parsers:
+seven lifetime scenarios, three deployment backends, one allocator trajectory, one ordinary growth
+trajectory, and separate producer/strict-consumer pairs for journal and managed reopen. Reopen
+controls also preserved every stored byte. These are compatibility controls, not a rerun of complete
+resource panels or new speed/resource measurements. Earlier production-module/guard verification
+covers unchanged runtime sources and compiler pins; the new storage inputs have this additional
+qualification. Local raw evidence is under `build/ci/nimony-storage-*`.
