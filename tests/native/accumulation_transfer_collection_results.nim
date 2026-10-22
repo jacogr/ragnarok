@@ -3,12 +3,21 @@
 
 ## Strict runtime guards reject extraction from failed/default transfer collection alternatives.
 
-import std/cmdline
+import std/[cmdline, syncio]
 import ../../src/codec/bounded
-import ../../src/state/[accumulation_transfers, accumulation_outcome]
+import ../../src/state/[accumulation_transfers, accumulation_outcome, accumulation_annulment]
 let argument = paramStr(1)
 let absent = default(PreparedAccumulationTransfers)
 case argument
+of "selection": discard absent.transferCollectionAnnulment.value # No default accpar certificate.
+of "ordinary-selection":
+  let ordinary = prepareAccumulationTransfers([], AccumulationTransferCollectionLimits())
+  if ordinary.error != AccumulationTransferCollectionError.None: quit(
+      3) # A setup refusal cannot impersonate the required extraction guard.
+  discard ordinary.value.transferCollectionAnnulment.value # A genuine unbound collection has NoAnnulment.
+of "invalid-selection":
+  discard prepareAnnulmentTransfers(default(PreparedAccumulationAnnulment),
+      AccumulationTransferCollectionLimits()).value # No default conflict source can initialize output.
 of "info":
   discard absent.transferCollectionInfo.value # Missing owner exposes no copied counts.
 of "source":

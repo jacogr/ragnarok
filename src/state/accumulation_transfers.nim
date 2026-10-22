@@ -1,11 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Collect ordered outgoing transfers from immutable terminal-selected outcomes with explicit work limits.
+## Collect explicit-order or current accpar outgoing transfers with immutable source proof and work limits.
 ## This captures provenance and values, without certifying round membership or applying deferred credits.
 
-import ../codec/[bounded, c2_records]
-import ./[accumulation_outcome, accumulation_effects]
+import std/algorithm
+import ../codec/[bounded, c2_records, state_accounts]
+import ./[accumulation_outcome, accumulation_effects, accumulation_annulment]
 
 type
   AccumulationTransferSourceIndex* = distinct uint64 ## Source ordinal is distinct from a transfer's ordinal inside a selected context.
@@ -18,9 +19,10 @@ type
     sources*, transfers*: int
     memoBytes*: AccumulationMemoBytes
   AccumulationTransferCollectionError* {.pure.} = enum ## Defaults and failures never retain partial transfers or successful source handles.
-    Uninitialized, None, InvalidOutcome, InvalidIndex, LimitExceeded
+    Uninitialized, None, InvalidOutcome, InvalidIndex, LimitExceeded, InvalidSelection, NoAnnulment
   # Private acyclic owner retains the exact normalized sources and complete fixed-value transfer copies.
   TransferCollectionData = ref object
+    selection: PreparedAccumulationAnnulment
     sources: seq[AccumulationOutcome]
     transfers: seq[DeferredTransfer]
     info: AccumulationTransferCollectionInfo
@@ -117,3 +119,72 @@ proc prepareAccumulationTransfers*(sources: openArray[AccumulationOutcome],
       data: TransferCollectionData(sources: retained, transfers: transfers,
         info: AccumulationTransferCollectionInfo(sources: sources.len, transfers: int(count),
           memoBytes: AccumulationMemoBytes(count*128)))))
+
+proc transferCollectionAnnulment*(plan: PreparedAccumulationTransfers):
+    AccumulationTransferCollectionResult[PreparedAccumulationAnnulment] =
+  ## Retain the exact accpar certificate; ordinary explicit-order collections have no conflict-selection claim.
+  let data = plan.data
+  if data == nil:
+    return AccumulationTransferCollectionResult[PreparedAccumulationAnnulment](
+        status: AccumulationTransferCollectionError.Uninitialized) # No default collection provenance.
+  if data.selection.annulmentInfo.error != AccumulationAnnulmentError.None:
+    return AccumulationTransferCollectionResult[PreparedAccumulationAnnulment](
+        status: AccumulationTransferCollectionError.NoAnnulment) # Initialized ordinary collections remain distinct from bound accpar projections.
+  AccumulationTransferCollectionResult[PreparedAccumulationAnnulment](
+      status: AccumulationTransferCollectionError.None, completed: data.selection)
+
+type SelectedTransferSource = object # Sort only nominal service identity; retain original owner and selected count together.
+  service: ServiceIndex
+  outcome: AccumulationOutcome
+  transfers: int
+
+func compareSource(left, right: SelectedTransferSource): int =
+  ## Current accpar concatenates in numeric service order, independent of execution/certificate array order.
+  if uint32(left.service) < uint32(right.service): return -1
+  if uint32(left.service) > uint32(right.service): return 1
+  0 # Genuine annulment certificates already prove unique service membership.
+
+proc prepareAnnulmentTransfers*(selection: PreparedAccumulationAnnulment,
+    limits: AccumulationTransferCollectionLimits):
+    AccumulationTransferCollectionResult[PreparedAccumulationTransfers] =
+  ## Collect selected outgoing values while retaining every actual producer for pending-budget gas accounting.
+  ## The certificate owns common-source/unique-service/conflict proof; no caller-authored flags or substituted maps are accepted.
+  template fail(reason: AccumulationTransferCollectionError) =
+    return AccumulationTransferCollectionResult[PreparedAccumulationTransfers](status: reason)
+  let selected = selection.annulmentInfo
+  if selected.error != AccumulationAnnulmentError.None:
+    fail(AccumulationTransferCollectionError.InvalidSelection) # A default certificate is not an initialized empty source set.
+  let count = selected.value.outcomes
+  const sourceBytes = sizeof(SelectedTransferSource)+sizeof(AccumulationOutcome)
+  if uint64(count) > uint64(limits.sources) or count > high(int) div sourceBytes:
+    fail(AccumulationTransferCollectionError.LimitExceeded) # Bound all producers, including canceled and empty-output originals, before capture/sort.
+  var rows = newSeq[SelectedTransferSource](count)
+  var total = 0'u64
+  for index in 0..<count:
+    let ordinal = AccumulationAnnulmentIndex(uint64(index))
+    let info = selection.annulmentSelectedInfoAt(ordinal).value
+    if uint64(info.transfers) > uint64(limits.transfers)-total:
+      fail(AccumulationTransferCollectionError.LimitExceeded) # Only surviving append counts consume the selected record cap.
+    total += uint64(info.transfers)
+    rows[index] = SelectedTransferSource(service: info.service,
+      outcome: selection.annulmentOriginalOutcomeAt(ordinal).value,
+      transfers: info.transfers) # Original gas/provisions remain inseparable from their genuine source even when selected transfers are zero.
+  if total > uint64(limits.memoBytes) div 128 or total > uint64(high(int) div sizeof(
+      DeferredTransfer)):
+    fail(AccumulationTransferCollectionError.LimitExceeded) # Prove exact memo bytes and native record extent before allocating or multiplying.
+  rows.sort(compareSource)
+  var originals = newSeq[AccumulationOutcome](count)
+  var transfers = newSeq[DeferredTransfer](int(total))
+  var cursor = 0
+  for index, row in rows:
+    originals[index] = row.outcome # Retain all original producers in the same canonical source order.
+    let context = row.outcome.outcomeContext.value
+    for ordinal in 0..<row.transfers:
+      transfers[cursor] = context.effectTransferAt(AccumulationTransferIndex(uint64(ordinal))).value
+      inc cursor # Frozen selected cardinalities and checked total prove every access is in range.
+  AccumulationTransferCollectionResult[PreparedAccumulationTransfers](
+    status: AccumulationTransferCollectionError.None,
+    completed: PreparedAccumulationTransfers(data: TransferCollectionData(selection: selection,
+      sources: originals, transfers: transfers,
+      info: AccumulationTransferCollectionInfo(sources: count, transfers: int(total),
+        memoBytes: AccumulationMemoBytes(total*128)))))
