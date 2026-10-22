@@ -161,3 +161,11 @@ extra artifacts cannot escape the panel directory or overwrite its result/summar
 failure retires every public success artifact while retaining failed JSON and the originating log.
 The summary shows owner, held and closed boundaries separately so retained readers and copied
 payloads cannot be mistaken for the same ownership behavior.
+
+## Cache and environment provenance
+
+Resource panels record start/end output-filesystem geometry, capacity/available bytes, numeric
+filesystem device identity, physical RAM when observable, and inherited address-space/data limits.
+Unavailable capacity stays explicit. Recorded limits are not changed and do not claim enforcement.
+Cache policy explicitly remains unchanged; neither filesystem metadata nor low page-fault counts
+establish eviction, disk-device activity or an out-of-core workload.

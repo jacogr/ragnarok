@@ -16,6 +16,7 @@ from pvm_reference import command
 from setup_nimony import installed
 from storage_benchmark import atomic_text, source_hashes, cpu_model
 from storage_resources import ROOT, CHILD, COUNTERS, PROFILE, identity
+from storage_environment import environment, validate_environment
 
 
 def panel_identity(compiler, library, source):
@@ -33,12 +34,14 @@ def validate_panel(report, source, defines, cases, arguments, parser):
         if not condition:
             raise ValueError('Invalid storage resource panel: '+field)
     require(type(report) is dict and report.get('status') == 'checks-passed' and not report.get('error'), 'status')
-    require(type(report.get('schema_version')) is int and report['schema_version'] == 1 and
+    require(type(report.get('schema_version')) is int and report['schema_version'] == 2 and
             report.get('profile') == PROFILE, 'schema/profile')
     require(report.get('source') == str(source) and report.get('defines') == list(defines) and
             report.get('cases') == [list(c) for c in cases], 'plan')
     require(type(report.get('native_binary_sha256')) is str and len(report['native_binary_sha256']) == 64, 'binary')
     require(type(report.get('inputs')) is dict and type(report['inputs'].get('sources')) is dict, 'inputs')
+    validate_environment(report.get('environment_start'))
+    validate_environment(report.get('environment_end'))
     checks = report.get('checks'); runs = report.get('runs')
     require(type(checks) is list and len(checks) == 1+len(cases) and type(runs) is list and len(runs) == len(cases), 'coverage')
     for check in checks:
@@ -81,7 +84,7 @@ def run_panel(folder, source, defines, cases, arguments, parser, render, *, arti
     for name in ('results.json', 'summary.md', *names):
         # Only this panel's public artifacts retire; other evidence directories and logs remain intact.
         (folder/name).unlink(missing_ok=True)
-    report = dict(status='running', schema_version=1, profile=PROFILE, source=str(source),
+    report = dict(status='running', schema_version=2, profile=PROFILE, source=str(source),
                   defines=list(defines), cases=[list(c) for c in cases], python_executable=sys.executable, checks=[], runs=[])
     def save():
         """Atomic progress survives failed native assertions and failed final rendering."""
@@ -90,6 +93,7 @@ def run_panel(folder, source, defines, cases, arguments, parser, render, *, arti
     try:
         compiler, _ = installed(); library = build_native(dependencies(False))
         report['inputs'] = panel_identity(compiler, library, source)
+        report['environment_start'] = environment(folder)
         report['hardware'] = dict(platform=platform.platform(), machine=platform.machine(), cpu=cpu_model(),
                                   page_size_bytes=os.sysconf('SC_PAGE_SIZE'), load_average_start=os.getloadavg())
         build, binary = NativeChecks(folder).build(compiler, source, 'panel-native', crypto_library=library, defines=defines)
@@ -112,6 +116,7 @@ def run_panel(folder, source, defines, cases, arguments, parser, render, *, arti
             save()
         if panel_identity(compiler, library, source) != report['inputs'] or hashlib.sha256(binary.read_bytes()).hexdigest() != report['native_binary_sha256']:
             raise RuntimeError('Resource panel inputs changed')
+        report['environment_end'] = environment(folder)
         report['hardware']['load_average_end'] = os.getloadavg()
         report['status'] = 'checks-passed'
         validate_panel(report, source, defines, cases, arguments, parser)
