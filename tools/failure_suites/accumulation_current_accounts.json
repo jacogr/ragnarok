@@ -1,0 +1,84 @@
+{
+  "source": "tests/native/accumulation_current_accounts_results.nim",
+  "build_name": "accumulation-current-accounts-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-accounts-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current account timestamp extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-accounts-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current account timestamp extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "current-accounts-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Current account timestamp extraction: info"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "current-accounts-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Current account timestamp extraction: source"
+    },
+    {
+      "identity": {
+        "reason": "state"
+      },
+      "arguments": [
+        "state"
+      ],
+      "name": "current-accounts-state",
+      "diagnostic": "outcome.status == None",
+      "description": "Current account timestamp extraction: state"
+    },
+    {
+      "identity": {
+        "reason": "projection"
+      },
+      "arguments": [
+        "projection"
+      ],
+      "name": "current-accounts-projection",
+      "diagnostic": "outcome.status == ProjectionFailure",
+      "description": "Current account timestamp extraction: projection"
+    },
+    {
+      "identity": {
+        "reason": "backend"
+      },
+      "arguments": [
+        "backend"
+      ],
+      "name": "current-accounts-backend",
+      "diagnostic": "outcome.status == StateFailure",
+      "description": "Current account timestamp extraction: backend"
+    }
+  ]
+}
