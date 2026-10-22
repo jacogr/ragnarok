@@ -257,6 +257,26 @@ proc scanRecords(input: openArray[byte], limits: RecordLimits, collection: bool,
   RecordResult[RecordScan](status: RecordError.None, completed: RecordScan(
     batch: batch, count: int(count), header: header, valueBytes: bytes))
 
+proc readRecord(input: openArray[byte], offset: var int): TrieRecord =
+  ## Decode one owned transport only after whole-input scan; the borrowed input stays stable during this call.
+  let tag = input[offset]
+  let digest = StateNodeHash(readHash(input, offset+1))
+  offset += 33
+  if tag == 0:
+    var key = default(array[31, byte])
+    for j in 0..<31: key[j] = input[offset+j] # First pass proved this entire fixed prefix.
+    let size = int(number(input, offset+31))
+    offset += 39
+    var payload = newSeq[byte](size)
+    for j in 0..<size: payload[j] = input[offset+j]
+    offset += size
+    result = TrieRecord(kind: TrieRecordKind.Leaf, digest: digest, key: StateKey(key),
+        payload: payload)
+  else:
+    result = TrieRecord(kind: TrieRecordKind.Branch, digest: digest,
+      left: StateNodeHash(readHash(input, offset)), right: StateNodeHash(readHash(input, offset+32)))
+    offset += 64
+
 proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: bool,
     ordered = false): RecordResult[TrieExport] =
   ## Detached decoding shares the exact structural preflight with bounded admission consumers.
@@ -271,23 +291,7 @@ proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: boo
   batch.records = newSeq[TrieRecord](int(count))
   offset = header
   for i in 0..<int(count):
-    let tag = input[offset]
-    let digest = StateNodeHash(readHash(input, offset+1))
-    offset += 33
-    if tag == 0:
-      var key = default(array[31, byte])
-      for j in 0..<31: key[j] = input[offset+j] # First pass proved this entire fixed prefix.
-      let size = int(number(input, offset+31))
-      offset += 39
-      var payload = newSeq[byte](size)
-      for j in 0..<size: payload[j] = input[offset+j]
-      offset += size
-      batch.records[i] = TrieRecord(kind: TrieRecordKind.Leaf, digest: digest, key: StateKey(key),
-          payload: payload)
-    else:
-      batch.records[i] = TrieRecord(kind: TrieRecordKind.Branch, digest: digest,
-        left: StateNodeHash(readHash(input, offset)), right: StateNodeHash(readHash(input, offset+32)))
-      offset += 64
+    batch.records[i] = readRecord(input, offset) # Each descriptor receives one independent payload owner.
   let validated = validateRecords(batch, batch.records, limits, collection, ordered)
   if validated != RecordError.None: return RecordResult[TrieExport](status: validated)
   RecordResult[TrieExport](status: RecordError.None, completed: batch)
