@@ -102,25 +102,25 @@ toolchain: host-tools
 	$(PYTHON) tools/setup_nimony.py --ensure 2>&1 | tee build/ci/setup.log
 
 # Verification-only tools use separate pins and never replace the application compiler.
-.PHONY: model-tools check-models
+.PHONY: model-tools check-models summary-models
 model-tools: toolchain
 	$(PYTHON) tools/setup_tlanif.py 2>&1 | tee build/ci/model-tools.log
 
-# The source/module verification group also checks bounded lifecycle abstractions in CI.
-check-models: model-tools
+# Lifecycle model verification owns an independent local/CI gate.
+check-models: check-inventory model-tools
 	$(PYTHON) tools/test_models.py 2>&1 | tee build/ci/models.log
 
 # Remove all generated artifacts, including the local compiler and downloaded archives.
 clean:
 	rm -rf -- build
 
-# Local complete verification runs the same six independent groups scheduled concurrently by CI.
-check: check-python check-modules check-unit check-failures check-guards check-e2e
+# Local complete verification runs the same independent groups scheduled concurrently by CI.
+check: check-models check-python check-modules check-unit check-failures check-guards check-e2e
 test: check
 
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.
 modules: check-modules
-check-modules: check-inventory check-models toolchain ui-assets build-info
+check-modules: check-inventory toolchain ui-assets build-info
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" 2>&1 | tee build/ci/modules.log
 runtime: check-unit
 check-unit: setup format-check
@@ -166,7 +166,7 @@ telemetry-interop-collector: host-tools rust-tools
 check-telemetry-interop-ci: check-inventory telemetry-interop-collector
 	$(MAKE) check-telemetry-interop JAMTART="$(CURDIR)/build/jamtart-reference-target/debug/tart-backend" 2>&1 | tee build/ci/telemetry-interop.log
 
-# An explicit external collector is an optional interoperability gate, outside the six self-contained CI groups.
+# An explicit external collector is an optional interoperability gate, outside the self-contained CI groups.
 telemetry-interop-python:
 	@test -n "$(JAMTART)" || { echo 'Set JAMTART to an explicitly built tart-backend binary'; exit 1; }
 	$(PYTHON) -m venv build/telemetry-interop-python
@@ -209,6 +209,10 @@ summary-runtime: summary-unit
 summary-unit:
 	mkdir -p build/ci
 	$(PYTHON) tools/summarize_tests.py --kind runtime --report build/tests/runtime/results.json --output "$(SUMMARY_OUTPUT)"
+summary-models:
+	mkdir -p build/ci
+	$(PYTHON) tools/summarize_tests.py --kind models --report build/tests/models/results.json --output "$(SUMMARY_OUTPUT)"
+
 summary-modules:
 	mkdir -p build/ci
 	$(PYTHON) tools/summarize_tests.py --kind modules --report build/tests/modules/results.json --output "$(SUMMARY_OUTPUT)"

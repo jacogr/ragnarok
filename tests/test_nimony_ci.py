@@ -61,7 +61,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('pull_request_target', triggers)
         self.assertNotIn('synchronize', triggers)
         self.assertNotIn('opened', triggers)
-        for target in ('check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
+        for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
             self.assertEqual(text.count('run: make '+target+'\n'), 1)
@@ -90,7 +90,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('if: &requested ${{ '+requested+' }}', text)
         self.assertIn('if: &full ${{ '+full+' }}', text)
         for job, condition in [('modules', '&requested ${{ '+requested+' }}'),
-                               ('python', '*requested'), ('unit', '*requested'),
+                               ('python', '*requested'), ('models', '*requested'), ('unit', '*requested'),
                                ('docker', '${{ '+requested.replace("inputs.suite == 'unit' ||",
                                    "inputs.suite == 'unit' || inputs.suite == 'docker' ||")+' }}'),
                                ('guards', '&full ${{ '+full+' }}'), ('failures', '*full'),
@@ -298,7 +298,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('cargo', python_plan)
         self.assertNotIn('tools/test_e2e.py', runtime)
         complete = subprocess.check_output(command+['check'], cwd=ROOT, text=True)
-        for runner in ('test_python', 'test_modules', 'test_guards', 'test_e2e'):
+        for runner in ('test_models', 'test_python', 'test_modules', 'test_guards', 'test_e2e'):
             # Complete local verification owns exactly one invocation of every independently selectable group.
             self.assertEqual(complete.count('tools/'+runner+'.py'), 1)
         self.assertEqual(complete.count('tools/test_runtime.py'), 2)
@@ -323,7 +323,7 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertIn('FAIL Python verification', output.getvalue())
             self.assertEqual(runner.return_value.command.call_count, 1)
             self.assertIn('test_*.py', runner.return_value.command.call_args.args[0])
-            self.assertEqual(runner.return_value.command.call_args.kwargs['timeout'], 300)
+            self.assertEqual(runner.return_value.command.call_args.kwargs['timeout'], 900)
             report = json.loads((folder/'results.json').read_text())
             self.assertEqual(report['status'], 'failed')
             self.assertEqual(report['check']['exit_code'], 7)

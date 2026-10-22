@@ -104,7 +104,7 @@ def main():
                 modes.append((code, normalized(output)))
             actual = verdict(*modes[0])
             passed = actual == case['expected'] and modes[0] == modes[1]
-            records.append(dict(model=model.name, case=case['name'], verdict=actual, passed=passed,
+            records.append(dict(model=model.name, case=case['name'], expected=case['expected'], verdict=actual, passed=passed,
                                 source_sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
             print(stem+': '+actual+', serial/parallel '+('agree' if modes[0] == modes[1] else 'DISAGREE'))
     passed = bool(records) and all(record['passed'] for record in records)

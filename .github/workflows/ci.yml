@@ -85,6 +85,35 @@ jobs:
             build/tests/modules/*.log
             build/tests/modules/results.json
 
+  models:
+    if: *requested
+    name: Model verification
+    timeout-minutes: 15
+    strategy: *os-strategy
+    runs-on: ${{ matrix.os }}
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Check lifecycle safety, mutants and reachability
+        run: make check-models
+      - *summary
+      # Retain only replayable models and diagnostics, never compiler/dependency trees.
+      - name: Retain model verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: ${{ matrix.os }}-models-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/model-tools.log
+            build/ci/models.log
+            build/ci/setup.log
+            build/tests/models/*.log
+            build/tests/models/*.nif
+            build/tests/models/results.json
+
   python:
     if: *requested
     name: Python reference and tooling tests

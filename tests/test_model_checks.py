@@ -25,6 +25,17 @@ class ModelChecks(unittest.TestCase):
             self.assertNotEqual(test_models.verdict(code, output), 'violated')
             self.assertNotEqual(test_models.verdict(code, output), 'pass')
 
+    def test_visible_summary(self):
+        """CI summaries label intentional violations and reject empty evidence."""
+        from summarize_tests import summarize
+        report = dict(status='passed', cases=[dict(model='worker.nif', case='mutant',
+            expected='violated', verdict='violated', passed=True)])
+        text = summarize(report, 'models')
+        self.assertIn('## Model verification', text)
+        self.assertIn('| violated | violated | Pass |', text)
+        with self.assertRaises(ValueError):
+            summarize(dict(status='passed', cases=[]), 'models')
+
     def test_switches(self):
         """Typos, duplicate switches and expression injection fail instead of passing vacuously."""
         source = '(assign Mut.0. 0)'

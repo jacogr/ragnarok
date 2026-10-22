@@ -153,6 +153,9 @@ if name == 'check_inventory.py' and os.environ.get('FAIL_INVENTORY'):
 if name == 'setup_nimony.py':
     Path('build/toolchain').mkdir(parents=True, exist_ok=True)
     Path('build/toolchain/env.sh').write_text('export NIMONY=/fixture/nimony\\n')
+# A failing model check must retain its status through the independent Make gate.
+if name == 'test_models.py' and os.environ.get('FAIL_MODELS'):
+    sys.exit(7)
 # A failing runtime must not turn green merely because tee successfully wrote its log.
 if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' in sys.argv and os.environ.get('FAIL_FAILURES'))):
     print('deliberate runtime failure')
@@ -180,6 +183,8 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             calls = (folder/'calls').read_text().splitlines()
             self.assertEqual(calls.count('setup_nimony.py'), 1)
+            self.assertEqual(calls.count('setup_tlanif.py'), 1)
+            self.assertEqual(calls.count('test_models.py'), 1)
             self.assertEqual(calls.count('check_inventory.py'), 1)
             self.assertEqual(calls.count('build_ui.py'), 1)
             self.assertEqual(calls.count('build_ui.py --rpc-test'), 1)
@@ -195,6 +200,9 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
             self.assertLess(calls.index('check_inventory.py'), calls.index('setup_nimony.py'))
             self.assertLess(calls.index('setup_submodules.py'), calls.index('test_runtime.py'))
             self.assertTrue((folder/'build/ci/runtime.log').is_file())
+            failed_model = subprocess.run(arguments+['check-models'], cwd=folder,
+                env={**environment, 'FAIL_MODELS': '1'}, capture_output=True, text=True)
+            self.assertNotEqual(failed_model.returncode, 0, failed_model.stdout+failed_model.stderr)
             for name in ('test_python.py', 'test_modules.py', 'test_runtime.py', 'test_runtime.py --group failures', 'test_guards.py', 'test_e2e.py'):
                 # Each group is scheduled once after clean; setup dependencies are shared by Make.
                 self.assertEqual(calls.count(name), 1)

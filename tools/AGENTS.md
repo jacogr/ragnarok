@@ -7,9 +7,9 @@ Read [verification infrastructure](../docs/testing/infrastructure.md) for harnes
   `make check` (alias `make test`) for complete verification. Make owns setup dependencies and
   command sequencing; `make clean` removes all of `build/`.
   `make check` must provision tools/sources/native dependencies without project-specific pre-steps.
-  CI runs `check-modules`, `check-python`, `check-unit`, `check-failures`, `check-guards` and
+  CI runs `check-models`, `check-modules`, `check-python`, `check-unit`, `check-failures`, `check-guards` and
   `check-e2e` as independent parallel jobs; use the affected group locally and `make check` for
-  all six. Nim 2 is a historical measurement control, never a second production target. Keep compiler and dependency sources pristine. Follow [the compiler record](../docs/nimony-trial.md) for limitations/evidence.
+  all independent groups. Nim 2 is a historical measurement control, never a second production target. Keep compiler and dependency sources pristine. Follow [the compiler record](../docs/nimony-trial.md) for limitations/evidence.
   Implemented-scope migration parity is not full JAM functionality or compiler-wide safety.
 
 - Format project Rust code with the pinned `rustfmt` defaults (four spaces, 100-column target).
