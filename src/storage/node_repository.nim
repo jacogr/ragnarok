@@ -36,7 +36,8 @@ type
     left, right: StateNodeHash
   RepositoryTable = ref object ## Immutable sorted cell inventories remain independent for changed revisions.
     records: seq[StoredRecord]
-    starts: array[257, int] ## Derived immutable first-byte bounds; full addresses still decide equality.
+    prefixBits: int  ## One private constructor chooses 4/8/12 bits from the bounded inventory size.
+    starts: seq[int] ## Derived immutable prefix bounds; full addresses still decide equality.
   RepositoryData = ref object ## Published metadata retains an immutable table, never a previous revision owner.
     table: RepositoryTable
     commitment: StateTrieCommitment
@@ -118,18 +119,27 @@ proc position(records: seq[StoredRecord], digest: StateNodeHash): int =
     elif order > 0: stop = middle # Search only smaller remaining addresses.
     else: return middle
   -1
+func hashPrefix(digest: StateNodeHash, bits: int): int =
+  ## Bounded private widths use at most two bytes; they never substitute for complete address equality.
+  let raw = array[32, byte](digest)
+  if bits == 4: int(raw[0]) shr 4
+  elif bits == 8: int(raw[0])
+  else: (int(raw[0]) shl 4) or (int(raw[1]) shr 4)
 proc newRepositoryTable(records: var seq[StoredRecord]): RepositoryTable =
-  ## Consume an already sorted private inventory; derive bounded search ranges without granting graph authority.
-  result = RepositoryTable(records: move(records), starts: default(array[257, int]))
+  ## Consume sorted cells; small tables avoid 2 KiB headers while large tables bound typical search intervals.
+  let bits = if records.len < 256: 4 elif records.len < 16384: 8 else: 12
+  let buckets = 1 shl bits
+  result = RepositoryTable(records: move(records), prefixBits: bits, starts: newSeq[int](buckets+1))
   var cursor = 0
-  for prefix in 0..256:
-    # Canonical-order validation/merge precedes every caller; the sentinel consumes every possible byte.
-    while cursor < result.records.len and int(array[32, byte](result.records[cursor].digest)[0]) < prefix:
+  for prefix in 0..buckets:
+    # Every chosen directory is bounded by 4097 offsets and retains logarithmic collision behavior.
+    while cursor < result.records.len and hashPrefix(result.records[cursor].digest, bits) < prefix:
       inc cursor
     result.starts[prefix] = cursor
+
 proc position(table: RepositoryTable, digest: StateNodeHash): int =
-  ## Search one exact first-byte interval, retaining full 32-byte comparison and logarithmic worst-case work.
-  let prefix = int(array[32, byte](digest)[0])
+  ## Search one exact derived prefix interval, retaining full 32-byte comparison and logarithmic worst-case work.
+  let prefix = hashPrefix(digest, table.prefixBits)
   var first = table.starts[prefix]
   var stop = table.starts[prefix+1]
   while first < stop:
