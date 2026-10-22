@@ -15,7 +15,7 @@ proc annulmentPolicy*(): AccumulationAnnulmentLimits =
   AccumulationAnnulmentLimits(outcomes: ElementLimit(2), modified: ElementLimit(8),
       checks: ElementLimit(128))
 proc parentCode(target = 99'u64, supervisor = 42'u64, selfWrite = false, eject = false,
-    emit = false): seq[byte] =
+    emit = false, yieldOutput = false): seq[byte] =
   ## No-op supervisor calls still mark the junior; an optional genuine self upgrade tests mutually conflicting originals.
   if eject:
     return guestEnvelope([registerImmediate(7, target), @[10'u8, 23], @[50'u8,
@@ -32,10 +32,13 @@ proc parentCode(target = 99'u64, supervisor = 42'u64, selfWrite = false, eject =
         registerImmediate(9, 0), registerImmediate(10, 0), registerImmediate(11, 5),
         registerImmediate(12, 196608), @[10'u8, 22]]:
       code.add(instruction) # Paid gas and memo bytes originate in a real second producer.
+  if yieldOutput:
+    code.add(registerImmediate(7, 65536))
+    code.add(@[10'u8, 27]) # A second actual producer may yield the same commitment without deduplicating service identity.
   code.add(@[50'u8, 0])
   guestEnvelope(code)
 proc juniorCode(write = true, panic = false, checkpointAfter = false, emit = true,
-    reciprocal = false): seq[byte] =
+    reciprocal = false, zeroYield = false): seq[byte] =
   ## Real provision/checkpoint/upgrade/transfer/yield effects distinguish original and annulled observations.
   var code = @[registerImmediate(7, 42), registerImmediate(8, 65536), registerImmediate(9, 1),
     @[10'u8, 28], @[10'u8, 19]]
@@ -54,7 +57,7 @@ proc juniorCode(write = true, panic = false, checkpointAfter = false, emit = tru
         registerImmediate(9, 0), registerImmediate(10, 0), registerImmediate(11, 10),
         registerImmediate(12, 196608), @[10'u8, 22]]:
       code.add(instruction) # Only actual outgoing transfer calls modify the payer.
-  code.add(registerImmediate(7, 65536))
+  code.add(registerImmediate(7, if zeroYield: 65537'u64 else: 65536'u64))
   code.add(@[10'u8, 27]) # Yield and provisions alone do not mark the invoking account.
   if checkpointAfter: code.add(@[10'u8, 19]) # Exceptional selection may retain or discard the self mutation.
   if panic: code.add(@[0'u8]) # Genuine guest panic chooses the exceptional context.
@@ -63,12 +66,13 @@ proc juniorCode(write = true, panic = false, checkpointAfter = false, emit = tru
 proc annulmentFixture*(supervisor = 42'u32, incarnation = 0'u32, incoming = false,
     write = true, panic = false, checkpointAfter = false, emit = true,
         handoff = false, mutual = false, eject = false, parentTarget = 99'u64,
-            parentEmit = false): BatchFixture =
+            parentEmit = false, parentYield = false, zeroYield = false): BatchFixture =
   ## Amend the authored complete prior before either real execution captures it.
   result = batchFixture(incoming = incoming, firstEnvelope = parentCode(target = parentTarget,
       supervisor = (if handoff: 99'u64 else: 42'u64), selfWrite = mutual, eject = eject,
-          emit = parentEmit),
-    secondEnvelope = juniorCode(write, panic, checkpointAfter, emit, reciprocal = mutual))
+          emit = parentEmit, yieldOutput = parentYield),
+    secondEnvelope = juniorCode(write, panic, checkpointAfter, emit, reciprocal = mutual,
+        zeroYield = zeroYield))
   let key = chapterServiceKey(StateChapter(255), ServiceIndex(99))
   var metadata = decodeServiceMetadata(result.state.snapshot.value.lookup(key).value.bytes,
     ByteLimit(ServiceMetadataBytes)).value.metadata

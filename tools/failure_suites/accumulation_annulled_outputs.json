@@ -1,0 +1,13 @@
+{
+  "source": "tests/native/accumulation_annulled_outputs_results.nim",
+  "build_name": "accumulation-annulled-outputs-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {"identity": {"reason": "default"}, "arguments": ["default"], "name": "annulled-output-default", "diagnostic": "outcome.status == None", "description": "Selected yield default extraction guard"},
+    {"identity": {"reason": "refused"}, "arguments": ["refused"], "name": "annulled-output-refused", "diagnostic": "outcome.status == None", "description": "Selected yield refused extraction guard"},
+    {"identity": {"reason": "info"}, "arguments": ["info"], "name": "annulled-output-info", "diagnostic": "outcome.status == None", "description": "Selected yield info extraction guard"},
+    {"identity": {"reason": "source"}, "arguments": ["source"], "name": "annulled-output-source", "diagnostic": "outcome.status == None", "description": "Selected yield source extraction guard"},
+    {"identity": {"reason": "pair"}, "arguments": ["pair"], "name": "annulled-output-pair", "diagnostic": "outcome.status == None", "description": "Selected yield pair extraction guard"},
+    {"identity": {"reason": "entry"}, "arguments": ["entry"], "name": "annulled-output-entry", "diagnostic": "outcome.status == None", "description": "Selected yield entry extraction guard"}
+  ]
+}
