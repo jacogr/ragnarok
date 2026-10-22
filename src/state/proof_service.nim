@@ -282,3 +282,39 @@ proc planProofCode*(view: ProofView, service: ServiceIndex, length: RequestLengt
   if account.error != ServiceProofError.None:
     return ServiceProofResult[ServiceProofPlan](status: account.error)
   planProofHistorical(service, ServicePreimageHash(array[32, byte](account.value.codeHash)), length, limit)
+
+proc mergeProofPlans*(left, right: ServiceProofPlan,
+    limit: ElementLimit): ServiceProofResult[ServiceProofPlan] =
+  ## Union sorted requested identities, counting exact unique output before allocation; no hashing occurs.
+  let a = left.data
+  let b = right.data
+  if a == nil:
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.Uninitialized)
+  if b == nil:
+    return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.Uninitialized)
+  var i = 0
+  var j = 0
+  var count = 0
+  while i < a.keys.len or j < b.keys.len:
+    # Coalesce only equal key identities; query plans contain no values or conflicting root claims.
+    if uint64(count) >= uint64(limit) or count >= high(int) div sizeof(StateKey):
+      return ServiceProofResult[ServiceProofPlan](status: ServiceProofError.LimitExceeded)
+    let order = if i == a.keys.len: 1
+      elif j == b.keys.len: -1
+      else: comparePlanKey(a.keys[i], b.keys[j])
+    if order <= 0: inc i
+    if order >= 0: inc j
+    inc count
+  var keys = newSeq[StateKey](count)
+  i = 0
+  j = 0
+  for at in 0..<count:
+    # Revisit immutable inputs only after exact count/native allocation extents have been established.
+    let order = if i == a.keys.len: 1
+      elif j == b.keys.len: -1
+      else: comparePlanKey(a.keys[i], b.keys[j])
+    keys[at] = if order <= 0: a.keys[i] else: b.keys[j]
+    if order <= 0: inc i
+    if order >= 0: inc j
+  ServiceProofResult[ServiceProofPlan](status: ServiceProofError.None,
+    completed: ServiceProofPlan(data: PlanData(keys: keys)))
