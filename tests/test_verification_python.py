@@ -25,7 +25,7 @@ class VerificationPython(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             (folder/'results.json').write_text(json.dumps(dict(status='checks-passed')))
-            timeout = subprocess.TimeoutExpired(['python', 'unittest'], 300,
+            timeout = subprocess.TimeoutExpired(['python', 'unittest'], 900,
                                                 output=b'test_slow_reference ... ', stderr=b'diagnostic')
             with patch.object(test_python, 'BUILD', folder), patch.object(
                     test_python.NativeChecks, 'command', side_effect=timeout) as command, patch('sys.stdout'):
@@ -35,7 +35,7 @@ class VerificationPython(unittest.TestCase):
             report = json.loads((folder/'results.json').read_text())
             self.assertEqual(report['status'], 'failed')
             self.assertEqual(report['check']['exit_code'], 124)
-            self.assertEqual(command.call_args.kwargs['timeout'], 300)
+            self.assertEqual(command.call_args.kwargs['timeout'], 900)
             self.assertIn('-v', command.call_args.args[0])
             output = (folder/'python-tests.log').read_text()
             self.assertIn('test_slow_reference', output)

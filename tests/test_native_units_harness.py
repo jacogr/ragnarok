@@ -150,7 +150,9 @@ class NativeUnitHarness(unittest.TestCase):
 
     # The quick plan discovers pure codecs once and links each state case with its explicit native profile.
     def test_unit_entrypoint(self):
-        with temporary_folder('hastur') as folder:
+        # Real source invalidation has dedicated tests; this exhaustive command plan uses a stable epoch.
+        with temporary_folder('hastur') as folder, patch.object(
+                native_tests, 'source_identity', return_value='0123456789abcdef'):
             libraries = native_libraries(folder)
             commands = unit_plan(folder/'nimony', libraries)
             self.assertEqual(len(commands), 1+len(native_tests.UNIT_LINKS))
@@ -317,7 +319,9 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Host-specific linker flags and profile caches must keep production and instrumented builds separate.
     def test_linked_host_profiles(self):
-        with temporary_folder('hastur') as folder:
+        # Real source invalidation has dedicated tests; this exhaustive command plan uses a stable epoch.
+        with temporary_folder('hastur') as folder, patch.object(
+                native_tests, 'source_identity', return_value='0123456789abcdef'):
             libraries = native_libraries(folder)
             for system in ('Linux', 'Darwin'):
                 # No native build occurs here; compare the planned Linux and local linking profiles explicitly.
