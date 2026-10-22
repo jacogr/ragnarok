@@ -1,0 +1,128 @@
+{
+  "source": "tests/native/accumulation_guest_results.nim",
+  "build_name": "accumulation-guest-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "value"
+      },
+      "arguments": [
+        "value"
+      ],
+      "name": "guest-runner-value",
+      "diagnostic": "outcome.status == None",
+      "description": "Current guest successful coverage extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "service"
+      },
+      "arguments": [
+        "service"
+      ],
+      "name": "guest-runner-service",
+      "diagnostic": "outcome.status == ServiceFailure",
+      "description": "Current guest service reason extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "invocation"
+      },
+      "arguments": [
+        "invocation"
+      ],
+      "name": "guest-runner-invocation",
+      "diagnostic": "outcome.status == InvocationFailure",
+      "description": "Current guest invocation reason extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "context"
+      },
+      "arguments": [
+        "context"
+      ],
+      "name": "guest-runner-context",
+      "diagnostic": "outcome.status == ContextFailure",
+      "description": "Current guest context reason extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "machine"
+      },
+      "arguments": [
+        "machine"
+      ],
+      "name": "guest-runner-machine",
+      "diagnostic": "outcome.status == MachineFailure",
+      "description": "Current guest machine reason extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "dispatch"
+      },
+      "arguments": [
+        "dispatch"
+      ],
+      "name": "guest-runner-dispatch",
+      "diagnostic": "outcome.status == DispatchFailure",
+      "description": "Current guest dispatch reason extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "outcome"
+      },
+      "arguments": [
+        "outcome"
+      ],
+      "name": "guest-runner-outcome",
+      "diagnostic": "outcome.status == OutcomeFailure",
+      "description": "Current guest outcome reason extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "skip"
+      },
+      "arguments": [
+        "skip"
+      ],
+      "name": "guest-runner-skip",
+      "diagnostic": "outcome.status == SkipFailure",
+      "description": "Current guest skip reason extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "absent"
+      },
+      "arguments": [
+        "absent"
+      ],
+      "name": "guest-runner-absent",
+      "diagnostic": "outcome.status == AbsentFailure",
+      "description": "Current guest absent reason extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "annulment"
+      },
+      "arguments": [
+        "annulment"
+      ],
+      "name": "guest-runner-annulment",
+      "diagnostic": "outcome.status == AnnulmentFailure",
+      "description": "Current guest annulment reason extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "coverage"
+      },
+      "arguments": [
+        "coverage"
+      ],
+      "name": "guest-runner-coverage",
+      "diagnostic": "outcome.status == CoverageFailure",
+      "description": "Current guest coverage reason extraction guard"
+    }
+  ]
+}
