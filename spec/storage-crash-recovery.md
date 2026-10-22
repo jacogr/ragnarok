@@ -150,3 +150,11 @@ then kills after every actual eight-byte write across all three files. Each exis
 the exact expected byte prefix; later names must remain absent until their first real progress.
 CURRENT remains old, strict startup preserves staging, and explicit bounded cleanup permits a
 complete retry. The bounded completed control checks the full independently encoded selected files.
+
+## Historical-root/context replacement crashes
+
+`storage_history_compaction_crash` retains both independently selected complete historical/current
+roots and opaque FullStateV1 head context through every write, sync, rename and retirement boundary.
+Strict restart and explicit cleanup/retry preserve both complete authored maps and exact context.
+Detached old context/readers remain valid. The current-only control instead excludes the obsolete
+physical root after replacement; retained parent readers do not imply physical retention authority.
