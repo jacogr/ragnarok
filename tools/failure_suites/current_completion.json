@@ -1,0 +1,139 @@
+{
+  "source": "tests/native/current_completion_results.nim",
+  "build_name": "current-completion-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "value"
+      },
+      "arguments": [
+        "value"
+      ],
+      "name": "current-completion-value",
+      "diagnostic": "outcome.status == None",
+      "description": "Current completion guarded value"
+    },
+    {
+      "identity": {
+        "reason": "sequence"
+      },
+      "arguments": [
+        "sequence"
+      ],
+      "name": "current-completion-sequence",
+      "diagnostic": "outcome.status == SequenceFailure",
+      "description": "Current completion guarded sequence"
+    },
+    {
+      "identity": {
+        "reason": "statistics"
+      },
+      "arguments": [
+        "statistics"
+      ],
+      "name": "current-completion-statistics",
+      "diagnostic": "outcome.status == StatisticsFailure",
+      "description": "Current completion guarded statistics"
+    },
+    {
+      "identity": {
+        "reason": "accounts"
+      },
+      "arguments": [
+        "accounts"
+      ],
+      "name": "current-completion-accounts",
+      "diagnostic": "outcome.status == AccountsFailure",
+      "description": "Current completion guarded accounts"
+    },
+    {
+      "identity": {
+        "reason": "finalization"
+      },
+      "arguments": [
+        "finalization"
+      ],
+      "name": "current-completion-finalization",
+      "diagnostic": "outcome.status == FinalizationFailure",
+      "description": "Current completion guarded finalization"
+    },
+    {
+      "identity": {
+        "reason": "ready"
+      },
+      "arguments": [
+        "ready"
+      ],
+      "name": "current-completion-ready",
+      "diagnostic": "outcome.status == ReadyFailure",
+      "description": "Current completion guarded ready"
+    },
+    {
+      "identity": {
+        "reason": "recent"
+      },
+      "arguments": [
+        "recent"
+      ],
+      "name": "current-completion-recent",
+      "diagnostic": "outcome.status == RecentFailure",
+      "description": "Current completion guarded recent"
+    },
+    {
+      "identity": {
+        "reason": "validators"
+      },
+      "arguments": [
+        "validators"
+      ],
+      "name": "current-completion-validators",
+      "diagnostic": "outcome.status == ValidatorsFailure",
+      "description": "Current completion guarded validators"
+    },
+    {
+      "identity": {
+        "reason": "activity"
+      },
+      "arguments": [
+        "activity"
+      ],
+      "name": "current-completion-activity",
+      "diagnostic": "outcome.status == ActivityFailure",
+      "description": "Current completion guarded activity"
+    },
+    {
+      "identity": {
+        "reason": "preimages"
+      },
+      "arguments": [
+        "preimages"
+      ],
+      "name": "current-completion-preimages",
+      "diagnostic": "outcome.status == PreimagesFailure",
+      "description": "Current completion guarded preimages"
+    },
+    {
+      "identity": {
+        "reason": "authorization"
+      },
+      "arguments": [
+        "authorization"
+      ],
+      "name": "current-completion-authorization",
+      "diagnostic": "outcome.status == AuthorizationFailure",
+      "description": "Current completion guarded authorization"
+    },
+    {
+      "identity": {
+        "reason": "consensus"
+      },
+      "arguments": [
+        "consensus"
+      ],
+      "name": "current-completion-consensus",
+      "diagnostic": "outcome.status == ConsensusFailure",
+      "description": "Current completion guarded consensus"
+    }
+  ]
+}
