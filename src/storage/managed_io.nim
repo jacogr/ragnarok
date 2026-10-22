@@ -370,7 +370,7 @@ proc openManagedJournal*(journal: var ManagedJournal, directory: ManagedDirector
     return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
   journal.descriptor = descriptor
   journal.state = state
-  journal.size = uint64(loaded.value.len)
+  journal.size = uint64(loaded.completed.len) # Scalar observation must not extract/copy the owned payload.
   journal.limit = limit
   journal.poisoned = false
   journal.active = true
