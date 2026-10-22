@@ -8,10 +8,10 @@ import ../../src/codec/[bounded, state_layout, state_trie]
 
 type
   StorageGrowthFixture* = object ## Test-owned changes and complete roots never authorize protocol history.
-    seed*: TrieExport
-    changes*: seq[TrieExport]
-    roots*: seq[StateRoot]
-    reads*: seq[StateNodeHash]
+    seed*: TrieExport          ## Complete physical seed; it grants no protocol-state or checkpoint authority.
+    changes*: seq[TrieExport]  ## One prepared four-key physical delta per local revision.
+    roots*: seq[StateRoot]     ## Seed root followed by each exact prepared revision.
+    reads*: seq[StateNodeHash] ## Final leaf addresses prepared outside measured operations.
 
 proc growthKey*(index: int): StateKey =
   ## Leading two-byte identities preserve sorted complete-map iteration and bound every fixture key.
@@ -30,7 +30,7 @@ proc growthValue*(index, revision: int): seq[byte] =
     result[position] = byte((revision shr (position*8)) and 255) # Independent complete revision encoding.
 proc growthRevision*(index, count, publications: int, hot = false): int =
   ## Closed-form latest write ordinal is independent of the mutation-preparation loop.
-  assert count in [1024, 8192] and publications >= 0 and publications <= 256
+  assert count in [1024, 8192, 32768] and publications >= 0 and publications <= 256
   assert index >= 0 and index < count
   let writes = publications*4
   let period = if hot: 256 else: count
@@ -39,14 +39,14 @@ proc growthRevision*(index, count, publications: int, hot = false): int =
   ordinal div 4+1
 proc growthLimits*(): RepositoryLimits =
   ## Bound complete graphs and accumulated revisions without weakening production admission checks.
-  let trie = StateTrieLimits(items: ElementLimit(8192), perValue: ByteLimit(256),
-    totalValueBytes: ByteLimit(2097152), nodes: TrieNodeLimit(100000))
+  let trie = StateTrieLimits(items: ElementLimit(32768), perValue: ByteLimit(256),
+    totalValueBytes: ByteLimit(8388608), nodes: TrieNodeLimit(100000))
   RepositoryLimits(codec: RecordLimits(trie: trie,
-    records: TrieExportLimits(records: TrieNodeLimit(100000), valueBytes: ByteLimit(4194304)),
-    encoded: ByteLimit(16777216)), records: ElementLimit(200000), valueBytes: ByteLimit(8388608))
+    records: TrieExportLimits(records: TrieNodeLimit(100000), valueBytes: ByteLimit(16777216)),
+    encoded: ByteLimit(67108864)), records: ElementLimit(200000), valueBytes: ByteLimit(33554432))
 proc prepareGrowth*(count, publications: int, hot = false): StorageGrowthFixture =
   ## Prepare Merklized seed/changes once, outside all measured publication/reopen/retention intervals.
-  assert count in [1024, 8192] and publications in [64, 256]
+  assert count in [1024, 8192, 32768] and publications in [64, 256]
   result = default(StorageGrowthFixture)
   let limits = growthLimits()
   var entries: seq[StateEntry] = @[]

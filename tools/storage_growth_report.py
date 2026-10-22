@@ -8,10 +8,10 @@ import re
 import statistics
 
 ENGINES=('memory','journal','managed')
-COUNTS=(1024,8192)
+COUNTS=(1024,8192,32768)
 PUBLICATIONS=(64,256)
 PATTERNS=('sweep','hot')
-CASES=tuple((count,steps,pattern) for count in COUNTS for steps in PUBLICATIONS for pattern in PATTERNS)
+CASES=tuple((count,steps,pattern) for count in COUNTS for steps in PUBLICATIONS for pattern in PATTERNS if count!=32768 or pattern=='sweep')
 PHASES=('publication','reopen','retention','maintenance','retained_reopen','compacted_reopen','extraction_before','extraction_after','reads_before','reads_after','snapshots')
 METRICS=('stored_nodes','retained_nodes','current_nodes','snapshot_bytes','journal_bytes',
          'retained_snapshot_bytes','retained_journal_bytes','compacted_snapshot_bytes','compacted_journal_bytes')
@@ -25,7 +25,7 @@ def unavailable(engine,phase):
 
 def parse_growth(output,engine,count,steps,pattern='sweep'):
     """Require exact identities, complete ordered samples and bounded typed timings/physical metrics."""
-    if engine not in ENGINES or type(count) is not int or count not in COUNTS or type(steps) is not int or steps not in PUBLICATIONS or pattern not in PATTERNS:
+    if engine not in ENGINES or type(count) is not int or count not in COUNTS or type(steps) is not int or steps not in PUBLICATIONS or pattern not in PATTERNS or (count,steps,pattern) not in CASES:
         raise ValueError('Unknown sustained storage configuration')
     rows=[]
     durations=[]
@@ -149,6 +149,8 @@ def aggregate_growth(passes):
                         unstable=max(paired)/min(paired)>1.25)
             cases.append(dict(items=count,publications=steps,pattern=pattern,phase=phase,engines=engines,ratios=ratios))
     for count in COUNTS:
+        if (count,64,'hot') not in CASES:
+            continue # The bounded largest-map plan intentionally contains sweep trajectories only.
         # At 64 publications both patterns perform exactly the same writes: physical work is a positive control.
         for engine in ENGINES:
             sweep=passes[0][f'{engine}-{count}-64-sweep'][0]
@@ -160,14 +162,14 @@ def aggregate_growth(passes):
 
 def validate_growth(report):
     """Native completion, source-bound binary identity and raw-derived statistics all remain mandatory."""
-    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=10:
+    if type(report) is not dict or report.get('status')!='checks-passed' or type(report.get('schema_version')) is not int or report['schema_version']!=11:
         raise ValueError('Invalid sustained report status/schema')
     if re.fullmatch('[0-9a-f]{64}',str(report.get('native_binary_sha256'))) is None:
         raise ValueError('Invalid sustained native identity')
     from storage_growth_io import validate_io
     validate_io(report.get('io'))
     checks=report.get('checks')
-    if type(checks) is not list or len(checks)!=49:
+    if type(checks) is not list or len(checks)!=1+2*len(ENGINES)*len(CASES):
         raise ValueError('Incomplete sustained native execution')
     logs=[]
     for check in checks:
@@ -190,6 +192,8 @@ def _growth_scaling(cases):
     rows=[]
     for count in COUNTS:
         for pattern in PATTERNS:
+            if any((count,steps,pattern) not in CASES for steps in PUBLICATIONS):
+                continue # Only explicitly configured matching trajectory pairs can produce a growth ratio.
             pair=[next(c for c in cases if c['items']==count and c['publications']==steps and
                 c['pattern']==pattern and c['phase']=='publication') for steps in PUBLICATIONS]
             for engine in ENGINES:

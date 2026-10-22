@@ -35,8 +35,8 @@ def fixture():
     passes=[{f'{e}-{n}-{s}-{p}':parse_growth(output(e,n,s,p),e,n,s,p) for e in order for n,s,p in CASES}
         for order in (ENGINES,tuple(reversed(ENGINES)))]
     from test_storage_growth_io import fixture as io_fixture
-    return dict(io=io_fixture(),status='checks-passed',schema_version=10,native_binary_sha256='a'*64,passes=passes,
-        cases=aggregate_growth(passes),checks=[dict(exit_code=0,elapsed_seconds=0.01,log=f'{i}.log') for i in range(49)])
+    return dict(io=io_fixture(),status='checks-passed',schema_version=11,native_binary_sha256='a'*64,passes=passes,
+        cases=aggregate_growth(passes),checks=[dict(exit_code=0,elapsed_seconds=0.01,log=f'{i}.log') for i in range(61)])
 
 
 class StorageGrowthReportTests(unittest.TestCase):
@@ -44,7 +44,7 @@ class StorageGrowthReportTests(unittest.TestCase):
 
     def test_complete_raw_derived_panel(self):
         report=fixture();cases=validate_growth(report)
-        self.assertEqual(len(cases),88)
+        self.assertEqual(len(cases),110)
         self.assertEqual(cases[0]['engines']['memory']['median_ns'],107.5*64)
         self.assertIn('Sustained storage workload',summarize_growth(report))
         self.assertIn('Strict disk reopen | — |',summarize_growth(report))
@@ -75,7 +75,7 @@ class StorageGrowthReportTests(unittest.TestCase):
     def test_growth_curve_normalizes_fourfold_work(self):
         from storage_growth_report import _growth_scaling
         report=fixture();rows=_growth_scaling(validate_growth(report))
-        self.assertEqual(len(rows),12)
+        self.assertEqual(len(rows),15)
         self.assertEqual(rows[0]['normalized_ratio'],1)
         self.assertIsNone(rows[0]['selected_byte_growth'])
         self.assertEqual(rows[0]['payload_bytes'],196608)
@@ -117,6 +117,13 @@ class StorageGrowthReportTests(unittest.TestCase):
         report=fixture();report['passes'][0]['memory-1024-64-sweep'][0]['publication_samples'][0]=True
         with self.assertRaises(ValueError):
             validate_growth(report)
+
+    def test_largest_case_is_bounded_and_cannot_invent_hot_coverage(self):
+        with self.assertRaises(ValueError):
+            parse_growth(output('memory',32768,64,'hot'),'memory',32768,64,'hot')
+        report=fixture()
+        self.assertIn('memory-32768-256-sweep',report['passes'][0])
+        self.assertNotIn('memory-32768-256-hot',report['passes'][0])
 
     def test_bounded_canonical_values(self):
         raw=output('managed',1024,64)

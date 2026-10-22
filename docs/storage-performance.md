@@ -159,3 +159,12 @@ and observer object against their starting identities. The primitive bridge and 
 locations of the locked Rust provider are included; provider copies must be byte-identical.
 A changed or missing input fails the run and removes successful CSV/summary output. Source
 addition/removal is detected, while timestamp-only changes do not invalidate identical content.
+
+## Larger complete-map control
+
+The sustained panel also includes 32,768 entries at 64/256 sweep publications. The larger case
+uses the same 256-byte values and four-key changes, preserving matching operations while bounding
+the CI matrix. Hot/sweep locality comparisons remain at 1,024/8,192 entries; no unexecuted largest
+hot case is reported. Only benchmark fixture budgets increase; production policies/defaults and
+the existing short-run matrix are unchanged. Exact complete maps, history and held readers are
+validated at the larger size too.

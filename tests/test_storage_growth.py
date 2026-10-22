@@ -45,10 +45,10 @@ class StorageGrowthExecutionTests(unittest.TestCase):
             with native_stub(folder):
                 report=storage_growth.run_growth('compiler','library',folder,atomic_text)
             self.assertEqual(report['status'],'checks-passed')
-            self.assertEqual(len(report['checks']),49)
+            self.assertEqual(len(report['checks']),61)
             rows=list(csv.DictReader(io.StringIO((folder/'samples.csv').read_text())))
-            self.assertEqual(len(rows),624)
-            self.assertEqual(sum(row['warmup']=='False' for row in rows),480)
+            self.assertEqual(len(rows),780)
+            self.assertEqual(sum(row['warmup']=='False' for row in rows),600)
             self.assertEqual(json.loads((folder/'results.json').read_text()),report)
 
     def test_publication_csv_preserves_every_call_and_warmup(self):
@@ -59,8 +59,8 @@ class StorageGrowthExecutionTests(unittest.TestCase):
             total+=1
             measured+=row['warmup']=='False'
             self.assertLessEqual(int(row['revision']),int(row['publications']))
-        self.assertEqual(total,99840)
-        self.assertEqual(measured,76800)
+        self.assertEqual(total,124800)
+        self.assertEqual(measured,96000)
 
     def test_late_publication_csv_failure_removes_both_raw_files(self):
         with tempfile.TemporaryDirectory() as temporary:
