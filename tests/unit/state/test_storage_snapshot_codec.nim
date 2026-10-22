@@ -27,10 +27,18 @@ let view = owner.publish(old, exportTrieChanges(first, second,
     limits.repository.codec.records).value).value
 let selection = selectRepositoryRoots(view, [old.commitment.root, view.commitment.root],
     limits.roots).value
-let encoded = encodeRepositorySnapshot(selection, default(StorageChainId),
-    StorageSchema.FullStateV1, [1'u8, 2], limits).value
-let restored = decodeRepositorySnapshot(encoded.bytes, default(StorageChainId),
-    StorageSchema.FullStateV1, limits).value
+var encoding = encodeRepositorySnapshot(selection, default(StorageChainId),
+    StorageSchema.FullStateV1, [1'u8, 2], limits)
+assert encoding.error == SnapshotError.None
+let beforeEncodingTransfer = getOccupiedMem()
+let encoded = encoding.takeValue
+assert encoding.error == SnapshotError.Uninitialized and getOccupiedMem() == beforeEncodingTransfer
+var decoding = decodeRepositorySnapshot(encoded.bytes, default(StorageChainId),
+    StorageSchema.FullStateV1, limits)
+assert decoding.error == SnapshotError.None
+let beforeDecodingTransfer = getOccupiedMem()
+let restored = decoding.takeValue
+assert decoding.error == SnapshotError.Uninitialized and getOccupiedMem() == beforeDecodingTransfer
 assert restored.context == @[1'u8, 2] and array[32, byte](restored.checksum) == array[32, byte](
     encoded.checksum)
 var repository = restored.repository
