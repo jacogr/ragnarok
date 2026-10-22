@@ -13,6 +13,8 @@ import ./handoff
 import ./candidate
 import ./block_input
 import ./preparation_worker
+import ./[proof_query, proof_worker]
+import ../state/proof_service
 import ./[disk_chain, disk_worker]
 import ./[checkpoint_identity, checkpoint_transfer, checkpoint_session, checkpoint_worker, checkpoint_file]
 import ../codec/bounded
@@ -29,6 +31,16 @@ import ../rpc/[server, protocol]
 import ../chain/[parameters, genesis]
 import ../ui/server
 
+type
+  StateProofAdmissionError* {.pure.} = enum ## Admission grants a ticket only after capture and native submission succeed.
+    Uninitialized, None, Closed, Busy, QueryFailure, WorkerFailure
+  StateProofAdmission* = object ## Private guarded alternatives cannot forge a successful managed lease.
+    case status: StateProofAdmissionError
+    of None: ticket: ProofWorkerTicket
+    of QueryFailure: queryReason: ProofQueryError
+    of WorkerFailure: workerReason: ProofWorkerError
+    else: discard # Closed/busy/default refusals expose no authority.
+
 type Services* = object ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
   rpc*: Server
   ui*: UiServer
@@ -37,6 +49,9 @@ type Services* = object ## Owns listeners/exporter; fields are borrowed by synch
   canonical: ApplicationChain
   adoption: AccumulationHandoff
   worker: PreparationWorker
+  proofWorker: StateProofWorker
+  proofInput: ProofQuery
+  proofing: bool
   checkpointExport: ApplicationCheckpointSession
   rpcLease: nil RpcChainLease
   preparing: bool
@@ -58,8 +73,26 @@ type Services* = object ## Owns listeners/exporter; fields are borrowed by synch
   diskEnabled, publishing, diskFaulted, diskManaged: bool
   compactBytes: ByteLimit
 
+func error*(admission: StateProofAdmission): StateProofAdmissionError =
+  ## Read the reason without granting a selected-state lease ticket.
+  admission.status
+func value*(admission: StateProofAdmission): ProofWorkerTicket {.inline,
+    requires: admission.status == StateProofAdmissionError.None.} =
+  ## Only accepted managed work exposes its worker ticket.
+  admission.ticket
+func queryError*(admission: StateProofAdmission): ProofQueryError {.inline,
+    requires: admission.status == StateProofAdmissionError.QueryFailure.} =
+  ## Capture refusals retain the exact selection/plan/budget reason.
+  admission.queryReason
+func workerError*(admission: StateProofAdmission): ProofWorkerError {.inline,
+    requires: admission.status == StateProofAdmissionError.WorkerFailure.} =
+  ## Native refusal carries no successful ticket and leaves RPC available.
+  admission.workerReason
+
 proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not services.started.} =
   ## Only closed aggregates may relocate; native workers and callback borrows require the original stable parent address.
+  `=wasMoved`(services.proofWorker)
+  `=wasMoved`(services.proofInput)
   `=wasMoved`(services.diskWorker)
   `=wasMoved`(services.disk)
   `=wasMoved`(services.diskMaintenance)
@@ -85,6 +118,8 @@ proc `=dup`*(source: Services): Services {.error.}
   ## Composite ownership includes the stable worker and all listener lifetimes.
 proc `=destroy`*(services: Services) =
   ## Retire partially configured owners and the shared snapshot even without explicit shutdown.
+  `=destroy`(services.proofWorker) # Explicit joined close precedes every selected-state alias retirement.
+  `=destroy`(services.proofInput)
   `=destroy`(services.diskWorker) # Join must precede every disk/canonical/publication alias retirement.
   `=destroy`(services.disk)
   `=destroy`(services.diskMaintenance)
@@ -155,18 +190,27 @@ func diskPublicationActive*(services: Services): bool =
   ## Scalar-only observation is permitted while canonical graphs remain exclusively borrowed.
   services.publishing
 func diskPublicationOutcome*(services: Services): DiskChainResult[RepositoryGeneration] {.requires:
-    not services.preparing and not services.publishing.} =
+    not (services.proofing or services.preparing or services.publishing).} =
   ## Preserve the actual last IO receipt, including across close, until a later startup/job replaces it.
   services.diskCommitOutcome
 func diskPreparationOutcome*(services: Services): DiskChainResult[
     PreparedDiskPublication] {.requires:
-    not services.preparing and not services.publishing.} =
+    not (services.proofing or services.preparing or services.publishing).} =
   ## Failed host staging keeps its own typed context refusal; default means no such failure was recorded.
   services.diskStageOutcome
 
+proc stopStateProofs*(services: var Services) =
+  ## Join before dropping the captured selection or releasing this proof job's exact RPC token.
+  services.proofWorker.close()
+  if not services.proofing: return # An idle proof worker cannot release another worker's lease.
+  services.proofInput = default(ProofQuery)
+  services.proofing = false
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+
 proc stopPreparation*(services: var Services) =
   ## Join and discard private execution before reopening canonical/RPC access; listeners and canonical state remain owned.
-  if services.publishing: return # A disk borrower owns the same RPC lease until its own joined retirement.
+  if services.proofing or services.publishing: return # A proof/disk borrower owns the same RPC lease until its own joined retirement.
   services.worker.close()
   services.preparing = false
   discard services.rpc.resumeChain(services.rpcLease)
@@ -178,6 +222,7 @@ proc stopCheckpointExport*(services: var Services) =
 
 proc close*(services: var Services) =
   ## Idempotent retirement happens after every dispatcher/native callback has ended its borrows.
+  services.stopStateProofs() # Join selected-state access before any canonical/RPC owner retires.
   services.stopCheckpointExport() # Repeated close preserves the fixed joined-outcome journal.
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical or listener alias.
@@ -464,8 +509,8 @@ proc startRecovered*(services: var Services, options: Options, role: string,
     return false # Refused/default recovery never falls back to configured genesis.
   startServices(services, options, role, true, genesisStoreLimits(), recovered.value)
 
-func chainView*(services: Services): ChainView {.requires: not services.preparing and
-    not services.publishing.} =
+func chainView*(services: Services): ChainView {.requires: not (services.proofing or
+    services.preparing or services.publishing).} =
   ## Return an immutable selected-history alias; default/closed/legacy services have no canonical head.
   services.canonical.chainView
 
@@ -505,23 +550,23 @@ proc takeCheckpointShutdown*(services: var Services): ApplicationCheckpointShutd
   ## Explicit acknowledgement unblocks export restart without retrying or adopting a possibly published state.
   services.checkpointExport.takeShutdown()
 
-proc checkpointIdentity*(services: Services): ApplicationCheckpointIdentityResult {.requires: not services.preparing and
-    not services.publishing.} =
+proc checkpointIdentity*(services: Services): ApplicationCheckpointIdentityResult {.requires: not (
+    services.proofing or services.preparing or services.publishing).} =
   ## Capture fixed context only while canonical aliases are available; no file metadata supplies independent trust.
   captureApplicationCheckpointIdentity(services.canonical)
-proc prepareCheckpoint*(services: Services, limit: ByteLimit): PreparedApplicationCheckpoint {.requires: not services.preparing and
-    not services.publishing.} =
+proc prepareCheckpoint*(services: Services, limit: ByteLimit): PreparedApplicationCheckpoint {.requires: not (
+    services.proofing or services.preparing or services.publishing).} =
   ## Explicit host-side serialization runs outside callbacks and before any detached I/O admission or execution lease.
   prepareApplicationCheckpoint(services.canonical, limit)
 
 proc stateSnapshot*(services: Services): StateStoreResult[StateStoreSnapshot] {.requires:
-    not services.preparing and not services.publishing.} =
+    not (services.proofing or services.preparing or services.publishing).} =
   ## Retain only immutable complete state independently of listener lifetime and future adoption.
   services.canonical.stateSnapshot
 
 proc applyAccumulation*(services: var Services, source: PreparedFinalAccumulation,
     limits: AccumulationCompositionLimits): ApplicationChainResult[BlockSnapshot] {.requires:
-    not services.preparing and not services.publishing.} =
+    not (services.proofing or services.preparing or services.publishing).} =
   ## Publish between dispatcher turns using the startup RPC choice; enabled-listener refusal never falls back.
   if services.diskEnabled: return durabilityRequired() # Explicit disk consumers enqueue and poll; dispatcher IO must stay nonblocking.
   if services.chainRpc:
@@ -537,29 +582,88 @@ func accumulationStage*(services: Services): AccumulationHandoffStage =
 
 proc enqueueAccumulation*(services: var Services, source: PreparedFinalAccumulation,
     limits: AccumulationCompositionLimits): AccumulationEnqueueError {.requires:
-    not services.preparing and not services.publishing.} =
+    not (services.proofing or services.preparing or services.publishing).} =
   ## Hand one finalized candidate to the next dispatcher turn; canonical authority is rechecked at adoption.
   services.adoption.enqueue(services.canonical, source, limits)
 
 proc enqueueCandidate*(services: var Services, candidate: OwnedBlock,
     ancestors: openArray[OwnedHeader], limits: ApplicationCandidateLimits,
     composition: AccumulationCompositionLimits): ApplicationCandidateResult {.requires:
-    not services.preparing and not services.publishing.} =
+    not (services.proofing or services.preparing or services.publishing).} =
   ## Prepare from this selected head and queue the genuine successor; publication waits for the next service tick.
   services.adoption.enqueueCandidate(services.canonical, candidate, ancestors, limits, composition)
 
 proc beginBlockInput*(services: Services, input: var BlockInput, extent: ByteLimit,
     ancestors: openArray[OwnedHeader], resources: BlockInputLimits,
     policies: ApplicationCandidateLimits): BlockInputAdmission {.requires:
-    not services.preparing and not services.publishing.} =
+    not (services.proofing or services.preparing or services.publishing).} =
   ## Bind bounded reception to this exact canonical history without preparing or publishing a block.
   input.begin(services.canonical, extent, ancestors, resources, policies)
 
 proc enqueueBlockInput*(services: var Services, input: var BlockInput, id: BlockInputId,
     composition: AccumulationCompositionLimits): BlockInputResult {.requires:
-    not services.preparing and not services.publishing.} =
+    not (services.proofing or services.preparing or services.publishing).} =
   ## Explicit producer work runs outside transport callbacks; finalized success waits for a later adoption tick.
   input.enqueue(id, services.canonical, services.adoption, composition)
+
+func stateProofActive*(services: Services): bool =
+  ## Cancelled and Done proof jobs retain exclusion until exact collection or joined stop.
+  services.proofing
+
+proc stateProofAvailable*(services: Services): bool =
+  ## Reject scalar exclusions before creating any temporary canonical ARC alias.
+  if not services.started or services.proofing or services.preparing or services.publishing:
+    return false # A native borrower owns the graph or no stable service owner exists.
+  if services.diskFaulted or services.rpc.chainPaused:
+    return false # Uncertain IO and foreign RPC suspension cannot grant proof access.
+  if services.adoption.stage != AccumulationHandoffStage.Idle:
+    return false # Pending/unacknowledged adoption retains its existing exclusive producer capacity.
+  services.canonical.stateSnapshot.error == StateStoreError.None
+
+proc stageStateProof(services: var Services, selected: BlockHash, plan: ServiceProofPlan,
+    limits: ProofQueryLimits): ProofQueryError =
+  ## This activation and all its canonical ARC aliases retire BEFORE the worker can start.
+  let captured = captureProofQuery(services.canonical.chainView.blockAt(selected), plan, limits)
+  if captured.error == ProofQueryError.None:
+    services.proofInput = captured.value # One staged owner survives after every temporary alias retires.
+  captured.error
+
+proc beginStateProof*(services: var Services, selected: BlockHash, plan: ServiceProofPlan,
+    limits: ProofQueryLimits): StateProofAdmission {.raises.} =
+  ## Capture one exact retained block, detach the plan, pause RPC, then transfer the query to one slot.
+  if not services.started: return StateProofAdmission(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable:
+    return StateProofAdmission(status: StateProofAdmissionError.Busy)
+  discard services.proofWorker.start() # A reusable idle thread cannot observe staging until submission.
+  let reason = services.stageStateProof(selected, plan, limits)
+  if reason != ProofQueryError.None:
+    return StateProofAdmission(status: StateProofAdmissionError.QueryFailure, queryReason: reason)
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil:
+    services.proofInput = default(ProofQuery)
+    return StateProofAdmission(status: StateProofAdmissionError.Busy)
+  let admitted = services.proofWorker.submit(services.proofInput)
+  if admitted.error == ProofWorkerError.None:
+    services.proofing = true # Only scalar/ticket operations follow successful native submission.
+    return StateProofAdmission(status: StateProofAdmissionError.None, ticket: admitted.value)
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+  services.proofInput = default(ProofQuery) # A refusal never grants the worker access to this owner.
+  StateProofAdmission(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
+
+proc stateProofPhase*(services: var Services): ProofWorkerPhase =
+  ## Synchronized scalar polling never observes or copies selected-state ARC owners.
+  services.proofWorker.phase
+proc cancelStateProof*(services: var Services, ticket: ProofWorkerTicket): bool =
+  ## Cancellation requests discard without releasing graph access or bounded capacity.
+  services.proofWorker.cancel(ticket)
+proc collectStateProof*(services: var Services, ticket: ProofWorkerTicket): ProofWorkerCompletion =
+  ## Only matching Done collection retires the query and reopens canonical/RPC access together.
+  result = services.proofWorker.collect(ticket)
+  if result.kind != ProofWorkerCompletionKind.Uninitialized:
+    services.proofing = false
+    discard services.rpc.resumeChain(services.rpcLease)
+    services.rpcLease = nil # A stale/foreign/early ticket never resumes another lease.
 
 func preparationActive*(services: Services): bool =
   ## Done and cancelled work still retain the canonical exclusion gate until collection or joined close.
@@ -567,7 +671,7 @@ func preparationActive*(services: Services): bool =
 
 proc preparationAvailable*(services: Services): bool =
   ## Preflight scalar exclusion before reading any canonical handle; no implicit legacy state is permitted.
-  if not services.started or services.preparing or services.publishing:
+  if not services.started or services.proofing or services.preparing or services.publishing:
     return false # Existing native work owns all shared graph aliases.
   if services.diskFaulted or services.rpc.chainPaused:
     return false # IO uncertainty or another RPC lease forbids new execution.
@@ -611,7 +715,7 @@ proc takeAccumulation*(services: var Services): ApplicationChainResult[BlockSnap
 
 proc cancelAccumulation*(services: var Services): bool =
   ## Cancel only unattempted work; finished outcomes still require acknowledgement or explicit shutdown.
-  if services.preparing or services.publishing: return false # Active preparation has no pending adoption to cancel.
+  if services.proofing or services.preparing or services.publishing: return false # Active preparation has no pending adoption to cancel.
   services.adoption.cancel()
 
 proc stageDiskPublication(services: var Services): bool =
@@ -646,11 +750,11 @@ proc stageDiskPublication(services: var Services): bool =
 
 func startupDiskMaintenanceOutcome*(services: Services): DiskChainResult[
     ManagedCompaction] {.requires:
-    not services.preparing and not services.publishing.} =
+    not (services.proofing or services.preparing or services.publishing).} =
   ## Retain a real pre-listener startup compaction receipt; default means no startup maintenance was due.
   services.startupMaintenance
 func diskMaintenanceFailed*(services: Services): bool {.requires:
-    not services.preparing and not services.publishing.} =
+    not (services.proofing or services.preparing or services.publishing).} =
   ## Observe actual preparation/admission/IO/cleanup failure without treating joined nonexecution as rollback or failure.
   if services.maintenanceStage.error notin {DiskChainError.Uninitialized,
       DiskChainError.None}: return true
@@ -661,12 +765,12 @@ func diskMaintenanceFailed*(services: Services): bool {.requires:
   if outcome.error != DiskChainError.None: return true
   outcome.value.cleanup != FileError.None
 func diskMaintenanceCompletion*(services: Services): DiskPublicationCompletion {.requires:
-    not services.preparing and not services.publishing.} =
+    not (services.proofing or services.preparing or services.publishing).} =
   ## Retain the exact completed or queued-not-executed maintenance receipt across joined shutdown.
   services.maintenanceCompletion
 func diskMaintenancePreparation*(services: Services): DiskChainResult[
     PreparedDiskMaintenance] {.requires:
-    not services.preparing and not services.publishing.} =
+    not (services.proofing or services.preparing or services.publishing).} =
   ## Preserve a refused host context/root preparation without fabricating a worker result.
   services.maintenanceStage
 func diskMaintenanceAdmissionError*(services: Services): DiskWorkerError =
@@ -693,7 +797,7 @@ proc beginDiskMaintenance*(services: var Services): bool =
   if not services.started or not services.diskEnabled or not services.diskManaged or
       services.diskFaulted:
     return false
-  if services.preparing or services.publishing: return false
+  if services.proofing or services.preparing or services.publishing: return false
   if services.rpc.chainPaused: return false
   if not services.stageDiskMaintenance(): return false
   let admitted = services.diskWorker.submitMaintenance(services.disk, services.diskMaintenance)
@@ -710,7 +814,7 @@ proc beginDiskMaintenance*(services: var Services): bool =
   true
 proc tick*(services: var Services, peers: uint32) =
   ## Attempt one pending adoption between native callbacks; exclusive preparation leaves independent UI work available.
-  if services.preparing:
+  if services.proofing or services.preparing:
     services.ui.tick()
     return # Never create RPC contexts or canonical ARC aliases while the worker owns its lease.
   if services.publishing:

@@ -1,0 +1,37 @@
+{
+  "cases": [
+    {
+      "name": "base",
+      "assignments": {},
+      "expected": "pass"
+    },
+    {
+      "name": "unguarded-canonical-read",
+      "assignments": {
+        "Mut": "1"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "foreign-stop-resumes",
+      "assignments": {
+        "Mut": "2"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "cancel-resumes",
+      "assignments": {
+        "Mut": "3"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "reachable-cancelled-done",
+      "assignments": {
+        "Witness": "(true)"
+      },
+      "expected": "violated"
+    }
+  ]
+}
