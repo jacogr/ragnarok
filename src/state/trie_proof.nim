@@ -499,3 +499,12 @@ proc byteLength*(lookup: VerifiedStateLookup): int {.requires: lookup.valid and 
   let data = lookup.proof.data
   assert data != nil
   data.value.len
+
+func witness*(lookup: VerifiedStateLookup): StateProof {.requires: lookup.valid.} =
+  ## Export the immutable raw witness; another consumer still supplies independent root/key authority.
+  lookup.proof
+proc suppliedByteLength*(proof: StateProof): StateProofResult[int] =
+  ## Inspect unverified transport size without allocating a detached value copy.
+  let data = proof.data
+  if data == nil: return proofFailure[int](StateProofError.Uninitialized)
+  StateProofResult[int](status: StateProofError.None, completed: data.value.len)

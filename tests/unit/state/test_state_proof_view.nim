@@ -68,5 +68,13 @@ proc main() =
   assert projectProofView(view, [key], ProofViewLimits(items: ElementLimit(1))).error ==
       ProofViewError.LimitExceeded
   assert view.lookup(key).value.bytes == @[byte 7]
+  var exported = exportProofQueries(view, budget).value
+  assert exported.len == 2
+  assert verifyStateProofs(exported, root, limits, aggregate).value.len == 2
+  exported[0].key = chapterKey(StateChapter(3))
+  assert view.lookup(key).value.bytes == @[byte 7]
+  assert exportProofQueries(view, ProofViewLimits()).error == ProofViewError.LimitExceeded
+  assert default(StateProof).suppliedByteLength.error == StateProofError.Uninitialized
+  assert present.suppliedByteLength.value == 1
   echo "state-proof-view: ok"
 main()

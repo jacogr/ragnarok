@@ -182,3 +182,25 @@ proc projectProofView*(source: ProofView, queries: openArray[StateKey],
       return ProofViewResult[ProofView](status: ProofViewError.DuplicateKey)
   ProofViewResult[ProofView](status: ProofViewError.None,
     completed: ProofView(data: ViewData(root: source.root, entries: entries)))
+
+proc exportProofQueries*(view: ProofView, limits: ProofViewLimits): ProofViewResult[seq[
+    StateProofQuery]] =
+  ## Export detached request records with immutable raw witnesses under an explicitly rechecked policy.
+  let data = view.data
+  if data == nil:
+    return ProofViewResult[seq[StateProofQuery]](status: ProofViewError.Uninitialized)
+  if uint64(data.entries.len) > uint64(limits.items) or
+      data.entries.len > high(int) div sizeof(StateProofQuery):
+    return ProofViewResult[seq[StateProofQuery]](status: ProofViewError.LimitExceeded)
+  var bytes = 0'u64
+  for lookup in data.entries:
+    # Tightened value ceilings refuse before allocating the output request array.
+    if lookup.present:
+      let size = uint64(lookup.byteLength)
+      if size > uint64(limits.valueBytes)-bytes:
+        return ProofViewResult[seq[StateProofQuery]](status: ProofViewError.LimitExceeded)
+      bytes += size
+  var queries = newSeq[StateProofQuery](data.entries.len)
+  for i, lookup in data.entries:
+    queries[i] = StateProofQuery(key: lookup.key, proof: lookup.witness) # No verified discriminator crosses transport.
+  ProofViewResult[seq[StateProofQuery]](status: ProofViewError.None, completed: queries)
