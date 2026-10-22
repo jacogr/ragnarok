@@ -127,3 +127,11 @@ responses, close/restart and rollback preserving an existing conflicting endpoin
 still owns its canonical lease, then verifies the exact original RPC pause remains active and
 normal proof completion/1000-cycle ownership checks still pass. Native lowering rejection fixtures
 cover both ManagementServer and ResourceSampler aggregate copies.
+
+Linux integration regression: merged CI at `42112504144fab5e14cc1e62bb0d5f2594994b15`
+exposed pinned-compiler lowering of the Linux RSS helper's deferred Boolean return. The helper
+uses an explicit guard and result assignment so the existing RSS/resource tests compile on Linux.
+No bounds, cleanup or overflow checks are removed. Cross-target semantic checks of resources,
+the management server and Services cover the Linux import boundary; native Linux CI separately
+verifies the affected modules, guard diagnostics and runtime suites. See the
+[compiler observation](../docs/nimony-compatibility.md#deferred-linux-rss-return).
