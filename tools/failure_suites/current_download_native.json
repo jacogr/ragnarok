@@ -1,0 +1,66 @@
+{
+  "source": "tests/native/current_download_native_results.nim",
+  "build_name": "current-download-native-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "cases": [
+    {
+      "identity": {
+        "reason": "session"
+      },
+      "arguments": [
+        "session"
+      ],
+      "name": "current-download-native-session",
+      "diagnostic": "outcome.successful",
+      "description": "Current native selected session extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "schedule"
+      },
+      "arguments": [
+        "schedule"
+      ],
+      "name": "current-download-native-schedule",
+      "diagnostic": "reason.status == ScheduleFailure",
+      "description": "Current native selected schedule extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "download"
+      },
+      "arguments": [
+        "download"
+      ],
+      "name": "current-download-native-download",
+      "diagnostic": "reason.status == DownloadFailure",
+      "description": "Current native selected download extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "stream"
+      },
+      "arguments": [
+        "stream"
+      ],
+      "name": "current-download-native-stream",
+      "diagnostic": "reason.status == StreamFailure",
+      "description": "Current native selected stream extraction guard"
+    },
+    {
+      "identity": {
+        "reason": "peer"
+      },
+      "arguments": [
+        "peer"
+      ],
+      "name": "current-download-native-peer",
+      "diagnostic": "outcome.status == None",
+      "description": "Current native selected peer extraction guard"
+    }
+  ]
+}

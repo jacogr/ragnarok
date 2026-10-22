@@ -1,0 +1,44 @@
+{
+  "source": "tests/native/current_download_policy_results.nim",
+  "build_name": "current-download-policy-results",
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-download-policy-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current policy extraction contract default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-download-policy-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current policy extraction contract refused"
+    },
+    {
+      "identity": {
+        "reason": "success-field"
+      },
+      "arguments": [
+        "success-field"
+      ],
+      "name": "current-download-policy-success-field",
+      "diagnostic": "not outcome.status == None",
+      "description": "Current policy extraction contract success-field"
+    }
+  ]
+}

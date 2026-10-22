@@ -1,0 +1,169 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Strict complete current v1 download policies preserve all nominal stage budgets without inferred defaults.
+## Text/file decoding is bounded and atomic; successful plain policy snapshots own no callback resources.
+
+import std/[strutils, syncio]
+import ../quic/current_block_download_loop
+
+const
+  CurrentDownloadPolicyBytes* = 65536 ## Hard startup input cap, independent of block and state resource policies.
+  PolicyValues = 389
+  PolicyHeader = "ragnarok-current-download-policy-v1"
+
+type
+  CurrentDownloadPolicyError* {.pure.} = enum ## Failure alternatives contain only a reason and bounded field diagnostic.
+    Uninitialized, None, FileFailure, LimitExceeded, WrongVersion, InvalidLine,
+    InvalidNumber, DuplicateField, MissingField, UnknownField, InvalidPolicy
+  CurrentDownloadPolicyResult* = object ## Private successful alternative prevents partial/default policy extraction.
+    case status: CurrentDownloadPolicyError
+    of None:
+      policy: CurrentDownloadLoopLimits
+    else:
+      field: string # A failed field name is diagnostic text, never a successful child policy.
+  PolicyValue = object ## At most 389 bounded keys/numbers are retained before schema assignment.
+    name: string
+    number: uint64
+    used: bool
+  PolicyInput = object ## First-error state keeps generic leaf assignment atomic to the public boundary.
+    values: seq[PolicyValue]
+    error: CurrentDownloadPolicyError
+    field: string
+
+include ./current_download_policy_fields
+
+func error*(outcome: CurrentDownloadPolicyResult): CurrentDownloadPolicyError =
+  ## Defaults/refusals never authorize startup or policy extraction.
+  outcome.status
+func value*(outcome: CurrentDownloadPolicyResult): CurrentDownloadLoopLimits {.requires:
+    outcome.status == CurrentDownloadPolicyError.None.} =
+  ## Copy only a complete policy; stage semantics remain the existing stages' responsibility.
+  outcome.policy
+func fieldName*(outcome: CurrentDownloadPolicyResult): string {.requires:
+    outcome.status != CurrentDownloadPolicyError.None.} =
+  ## Explain only an actual failure without exposing partial numeric configuration.
+  outcome.field
+proc refused(reason: CurrentDownloadPolicyError, field = ""): CurrentDownloadPolicyResult =
+  ## Construct a payload-free failed/default alternative.
+  CurrentDownloadPolicyResult(status: reason, field: field)
+
+proc decimal(text: string, number: var uint64): bool =
+  ## Parse canonical uint64 decimal with pre-multiply bounds, never using zero as a failure sentinel.
+  number = 0
+  if text.len == 0 or text.len > 20 or (text.len > 1 and text[0] == '0'): return false
+  for character in text:
+    if character notin {'0'..'9'}: return false # Refuse signs, spaces, exponent forms and non-ASCII numerals.
+    let digit = uint64(ord(character) - ord('0'))
+    if number > (high(uint64) - digit) div 10: return false # Prove multiply and addition before wrapping is possible.
+    number = number * 10 + digit
+  true
+
+proc readField[T](input: var PolicyInput, name: string, field: var T) {.untyped.} =
+  ## The explicit schema instantiates only unsigned 32/64-bit scalars and their nominal wrappers.
+  if input.error notin [CurrentDownloadPolicyError.None,
+      CurrentDownloadPolicyError.MissingField]: return # Keep the first selected error and no public partial policy.
+  for index in 0..<input.values.len:
+    if input.values[index].name == name:
+      let number = input.values[index].number
+      when T is bool:
+        if number > 1:
+          input.error = CurrentDownloadPolicyError.InvalidNumber
+          input.field = name
+          return # Discovery opt-in accepts only an explicit canonical zero or one.
+        field = number == 1
+      else:
+        when sizeof(T) == 4:
+          if number > uint64(high(uint32)):
+            input.error = CurrentDownloadPolicyError.InvalidNumber
+            input.field = name
+            return # Check every narrow nominal conversion before assignment.
+        elif sizeof(T) != 8:
+          {.error: "current v1 policy leaves require reviewed boolean or unsigned 32/64-bit domains".}
+        field = T(number)
+      input.values[index].used = true
+      return # One unique key supplies exactly one declared field.
+  if input.error == CurrentDownloadPolicyError.None:
+    input.error = CurrentDownloadPolicyError.MissingField
+    input.field = name # Continue marking known fields so unknown-key diagnostics remain exact.
+
+proc writeField[T](text: var string, name: string, field: T) {.untyped.} =
+  ## Complete fixed schema bounds output extent; unsigned conversion preserves every supported domain width.
+  when T is bool:
+    text.add(name & "=" & (if field: "1" else: "0") & "\n")
+  else:
+    text.add(name & "=" & $uint64(field) & "\n") # Only the reviewed nominal unsigned leaf widths reach this branch.
+
+proc encodeCurrentDownloadPolicy*(policy: CurrentDownloadLoopLimits): string =
+  ## Emit every explicit v1 value; this serializer provides no defaults or semantic-policy certification.
+  result = PolicyHeader & "\n"
+  currentPolicyFields(policy, result, writeField)
+
+proc decodeCurrentDownloadPolicy*(text: string): CurrentDownloadPolicyResult =
+  ## Bounded lexical preflight precedes private typed assignment; no failed parse publishes a prefix.
+  if text.len > CurrentDownloadPolicyBytes: return refused(CurrentDownloadPolicyError.LimitExceeded)
+  var input = PolicyInput(error: CurrentDownloadPolicyError.None, values: @[])
+  var position, line = 0
+  while position < text.len:
+    let first = position
+    while position < text.len and text[position] != '\n': inc position # Input cap bounds the complete scan.
+    let extent = position - first
+    if line == 0:
+      if extent != PolicyHeader.len or text.substr(first, position - 1) !=
+          PolicyHeader: return refused(CurrentDownloadPolicyError.WrongVersion)
+    elif extent > 0 and text[first] != '#':
+      if extent > 214: return refused(CurrentDownloadPolicyError.LimitExceeded) # Key <=192, '=', decimal <=20, all before copying.
+      var separator = -1
+      for index in first..<position:
+        let character = text[index]
+        if character == '=':
+          if separator >= 0: return refused(CurrentDownloadPolicyError.InvalidLine)
+          separator = index
+        elif separator < 0 and character notin {'a'..'z', 'A'..'Z', '0'..'9', '.'}:
+          return refused(CurrentDownloadPolicyError.InvalidLine) # Exact ASCII keys have no escapes or whitespace aliases.
+      if separator <= first or separator - first > 192: return refused(
+          CurrentDownloadPolicyError.InvalidLine)
+      let name = text.substr(first, separator - 1)
+      var number = 0'u64
+      if separator + 1 == position or not decimal(text.substr(separator + 1, position - 1), number):
+        return refused(CurrentDownloadPolicyError.InvalidNumber, name)
+      for previous in input.values:
+        if previous.name == name: return refused(CurrentDownloadPolicyError.DuplicateField,
+            name) # Bound duplicate work before appending.
+      if input.values.len == PolicyValues: return refused(CurrentDownloadPolicyError.LimitExceeded)
+      input.values.add(PolicyValue(name: name, number: number, used: false))
+    inc line
+    if position < text.len: inc position # Skip only a proven present LF; final newline is optional.
+  if line == 0: return refused(CurrentDownloadPolicyError.WrongVersion)
+  var policy = default(CurrentDownloadLoopLimits)
+  currentPolicyFields(policy, input, readField)
+  if input.error notin [CurrentDownloadPolicyError.None, CurrentDownloadPolicyError.MissingField]:
+    return refused(input.error, input.field) # A typed conversion failure precedes unrelated unset fields.
+  for entry in input.values:
+    if not entry.used: return refused(CurrentDownloadPolicyError.UnknownField,
+        entry.name) # No extension/typo silently changes caller intent.
+  if input.error != CurrentDownloadPolicyError.None: return refused(input.error, input.field)
+  let schedule = policy.schedule
+  let stream = policy.stream
+  if uint64(schedule.peers) == 0 or uint64(schedule.peers) > 16 or schedule.attempts == 0 or
+      uint64(schedule.retryDelay) == 0 or uint64(policy.input.blockBytes) == 0 or
+      uint64(stream.readBytes) == 0 or uint64(stream.readBytes) > 4096 or
+      uint64(stream.writeBytes) == 0 or uint64(stream.writeBytes) > 42 or
+      uint64(stream.timeout) == 0 or uint64(policy.attemptTimeout) == 0:
+    return refused(CurrentDownloadPolicyError.InvalidPolicy) # Reject unusable outer dispatcher bounds before any startup/native work.
+  CurrentDownloadPolicyResult(status: CurrentDownloadPolicyError.None, policy: policy)
+
+proc loadCurrentDownloadPolicy*(path: string): CurrentDownloadPolicyResult {.raises.} =
+  ## Read at most cap+1 bytes through public string bulk-write APIs, including files that grow during the read.
+  var file: File = nil
+  if path.len == 0 or not open(file, path, fmRead): return refused(
+      CurrentDownloadPolicyError.FileFailure)
+  defer: close(file) # Every parse/size/I/O return ends the native file borrow.
+  var text = newString(CurrentDownloadPolicyBytes + 1)
+  let buffer = text.beginStore(text.len)
+  let count = readBuffer(file, cast[pointer](buffer), text.len)
+  text.endStore()
+  if count < 0: return refused(CurrentDownloadPolicyError.FileFailure)
+  if count > CurrentDownloadPolicyBytes: return refused(CurrentDownloadPolicyError.LimitExceeded)
+  text.setLen(count)
+  decodeCurrentDownloadPolicy(text)

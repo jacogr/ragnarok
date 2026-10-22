@@ -1,0 +1,56 @@
+{
+  "build_name": "current-download-loop-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Current Download dispatcher runtime contract default",
+      "diagnostic": "dispatcher.hasCompletion",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "current-download-loop-default"
+    },
+    {
+      "arguments": [
+        "unclosed"
+      ],
+      "description": "Current Download dispatcher runtime contract unclosed",
+      "diagnostic": "contains([Uninitialized, Closed], dispatcher.status)",
+      "identity": {
+        "reason": "unclosed"
+      },
+      "name": "current-download-loop-unclosed"
+    },
+    {
+      "identity": {
+        "reason": "demand"
+      },
+      "arguments": [
+        "demand"
+      ],
+      "name": "current-download-loop-demand",
+      "diagnostic": "dispatcher.status == AwaitingAncestors",
+      "description": "Current dispatcher guarded ancestry demand"
+    },
+    {
+      "identity": {
+        "reason": "remaining"
+      },
+      "arguments": [
+        "remaining"
+      ],
+      "name": "current-download-loop-remaining",
+      "diagnostic": "dispatcher.status == AwaitingAncestors",
+      "description": "Current dispatcher guarded ancestry remaining"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/current_download_loop_results.nim"
+}
