@@ -33,6 +33,7 @@ proc main(): int =
       stdout.writeLine("       ragnarok --version | --help")
       stdout.writeLine("Options: --with-telemetry --telemetry HOST:PORT --chain FILE")
       stdout.writeLine("         --with-rpc --rpc-port NUMBER --with-ui --ui-port NUMBER --dev-ui-dir DIRECTORY")
+      stdout.writeLine("         --with-management --management-socket /PRIVATE_DIRECTORY/admin.sock (local HTTP; disabled by default)")
       stdout.writeLine("         --with-state --chain FILE [--state-writes COUNT] [--state-write-bytes BYTES]")
       stdout.writeLine("         State mutation defaults: 1000 writes, 100000 value bytes per batch.")
       stdout.writeLine("         --state-storage memory|disk --state-db PATH (disk requires --with-state)")

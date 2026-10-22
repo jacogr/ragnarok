@@ -90,3 +90,9 @@ Explicit checkpoint recovery can seed Services from an independently trusted sea
 head and complete map, with one retained head and finality unset. Full chain profile
 agreement is checked before listeners open; the selected checkpoint is never its
 own trust source. See [the recovery contract](../../spec/application-recovery.md).
+
+Services also owns an independently optional local HTTP management listener. Explicit
+`--with-management` plus `--management-socket` selects a private Unix endpoint; public RPC/UI/state
+activation never enables it. Management ticks remain available during canonical worker leases
+because its initial registry holds only startup metadata and bounded OS resource observations.
+Future mutations require explicit host scheduling. See [management RPC](../../spec/management-rpc.md).

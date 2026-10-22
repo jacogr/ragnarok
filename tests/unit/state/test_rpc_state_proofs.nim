@@ -12,7 +12,7 @@ import ../../../src/rpc/[server, protocol]
 import ../../../src/codec/[bounded, state_layout, state_trie, state_safrole]
 from ../../../src/codec/composite import ServiceIndex
 import ../../../src/state/[proof_plan, planned_proof, proof_view, proof_service, proof_global]
-import ../../support/[proof_query_context, rpc_socket, arc_evidence]
+import ../../support/[proof_query_context, rpc_socket, arc_evidence, management_socket]
 from ../../support/application_candidate_context import SeedFixture
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
@@ -24,14 +24,18 @@ proc selection(context: SeedFixture): tuple[hash: BlockHash, root: StateRoot,
   ## Retire independent fixture/canonical aliases before returning only fixed expected identities.
   let selected = querySelection(context).value
   (selected.blockHash, selected.stateRoot, selected.serviceAt(ServiceListIndex(0)))
-proc listener(owner: var Services, path: string, command = "server"): uint16 {.raises.} =
+proc listener(owner: var Services, path: string, command = "server",
+    management = ""): uint16 {.raises.} =
   ## Bind a real ephemeral RPC listener; bounded retries cover only the reservation/rebind race.
   for attempt in 0..<8:
     let reserved = reservation()
     discard posix.close(reserved.fd)
     var options = default(Options)
-    assert parseOptions(@[command, "--chain", path, "--with-state", "--with-rpc", "--rpc-port",
-      $reserved.port, "--state-writes", "1000", "--state-write-bytes", "1000000"], options)
+    var arguments = @[command, "--chain", path, "--with-state", "--with-rpc", "--rpc-port",
+      $reserved.port, "--state-writes", "1000", "--state-write-bytes", "1000000"]
+    if management.len > 0:
+      arguments.add("--with-management"); arguments.add("--management-socket"); arguments.add(management)
+    assert parseOptions(arguments, options)
     if owner.start(options, command): return reserved.port
   assert false, "proof RPC listener startup"
   0'u16
@@ -56,7 +60,8 @@ proc proofBytes(message: string): seq[byte] =
   assert base64.encode(decoded) == encoded
   result = newSeq[byte](decoded.len)
   for index in 0..<decoded.len: result[index] = byte(decoded[index]) # Copy only fully decoded initialized bytes.
-proc roundtrip(owner: var Services, peer: cint, pending: var string, call: string): string =
+proc roundtrip(owner: var Services, peer: cint, pending: var string, call: string,
+    management = ""): string =
   ## Admit after parsing, observe the exclusive lease, collect, then consume acknowledgement before terminal output.
   sendText(peer, call)
   var claimed = false
@@ -67,6 +72,10 @@ proc roundtrip(owner: var Services, peer: cint, pending: var string, call: strin
       break # A fast worker still retains its host lease until the next collection tick.
     discard pauseMicros(1000) # Local socket delivery need not coincide with the first dispatcher turn.
   assert claimed and owner.rpc.chainPaused
+  if management.len > 0:
+    let admin = managementInfo(owner.management, management)
+    assert "\"residentBytes\":" in admin and "\"freeBytes\":" in admin
+    assert owner.stateProofActive and owner.rpc.chainPaused # Management cannot collect or release the worker lease.
   owner.settle()
   let acknowledged = readPacket(owner.rpc, peer, pending)
   assert "\"id\":7" in acknowledged and "\"error\"" notin acknowledged
@@ -76,6 +85,8 @@ proc cycle(owner: var Services, peer: cint, pending: var string, call: string) =
   ## All response/decoder temporaries retire before the next ownership observation.
   let message = owner.roundtrip(peer, pending, call)
   assert "\"format\":\"RPV1\"" in message and "\"error\"" notin message
+proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
+  ## Private management fixture names do not collide across test processes.
 proc main() {.raises.} =
   ## Freeze root authority independently; no externally retained canonical owner enters native execution.
   failHash(0)
@@ -97,12 +108,18 @@ proc main() {.raises.} =
       quote(hashText) & "," & keyText & "]}"
   var owner = default(Services)
   defer: owner.close()
-  let port = owner.listener(path)
+  var adminDirectory = "/tmp/ragnarok-proof-admin-" & $processId()
+  assert mkdir(adminDirectory.toCString(), Mode(0o700)) == 0
+  defer:
+    owner.close() # End the socket lifetime before removing its enclosing private directory.
+    assert rmdir(adminDirectory.toCString()) == 0
+  var adminPath = adminDirectory & "/admin.sock"
+  let port = owner.listener(path, management = adminPath)
   let peer = client(port)
   defer: discard posix.close(peer)
   var pending = ""
   owner.rpc.upgrade(peer, pending)
-  let message = owner.roundtrip(peer, pending, call)
+  let message = owner.roundtrip(peer, pending, call, adminPath)
   assert "\"header_hash\":" & quote(hashText) in message
   assert "\"state_root\":" & quote(rootText) in message
   let packet = proofBytes(message)

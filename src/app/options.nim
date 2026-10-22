@@ -15,9 +15,10 @@ const
   MaximumCompactionBytes = 128'u64*1024*1024 # Leave journal capacity for a bounded final publication frame.
   DefaultStateWrites = 1000'u64       # CLI defaults do not widen explicitly supplied component policies.
   DefaultStateWriteBytes = 100000'u64 # Each omitted mutation ceiling resolves independently.
-  Switches = ["--with-ui", "--with-rpc", "--with-telemetry", "--with-state", "--download-local-ancestors"]
-  Values = ["--telemetry", "--chain", "--rpc-port", "--ui-port", "--dev-ui-dir", "--state-writes",
-      "--state-write-bytes", "--state-checkpoint", "--state-trust", "--state-header",
+  Switches = ["--with-ui", "--with-rpc", "--with-management", "--with-telemetry", "--with-state", "--download-local-ancestors"]
+  Values = ["--telemetry", "--chain", "--management-socket", "--rpc-port", "--ui-port",
+      "--dev-ui-dir", "--state-writes", "--state-write-bytes", "--state-checkpoint",
+      "--state-trust", "--state-header",
       "--state-checkpoint-bytes", "--state-storage", "--state-db", "--state-layout",
       "--state-migrate-from",
       "--state-compact-bytes", "--download-ancestor", "--download-blocks",
@@ -30,11 +31,11 @@ type StateDiskLayout* {.pure.} = enum ## Physical layout is independent of memor
   Journal, Managed
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
-  parsed, telemetry, rpc, ui, state, recover, localAncestors: bool
+  parsed, telemetry, rpc, ui, state, recover, localAncestors, management: bool
   positional: seq[string]
   ancestorFiles: seq[string]
   downloadCount, remoteAncestors, discoverAncestors: int
-  endpoint, chain, directory: string
+  endpoint, chain, directory, managementPath: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
   backend: StateStorage
   layout: StateDiskLayout
@@ -136,6 +137,10 @@ proc rpcPort*(options: Options): uint16 =
   ## UI implies RPC; configuration alone leaves the listener disabled.
   if options.parsed and (options.rpc or options.ui): options.rpcNumber else: 0'u16
 
+proc managementSocket*(options: Options): string =
+  ## Only explicit activation returns a pathname; configuring a path never starts management.
+  if options.parsed and options.management: options.managementPath else: ""
+
 proc uiPort*(options: Options): uint16 =
   ## An enabled UI listener uses the validated configured port, defaulting to 8888.
   if options.parsed and options.ui: options.uiNumber else: 0'u16
@@ -195,6 +200,7 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       case name
       of "--with-telemetry": candidate.telemetry = true
       of "--with-rpc": candidate.rpc = true
+      of "--with-management": candidate.management = true
       of "--with-ui": candidate.ui = true
       of "--with-state": candidate.state = true
       of "--download-local-ancestors": candidate.localAncestors = true
@@ -207,6 +213,12 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       case name
       of "--telemetry": candidate.endpoint = value
       of "--chain": candidate.chain = value
+      of "--management-socket":
+        if value.len > 103 or value[0] != '/' or value.endsWith('/'): return false
+        for character in value:
+          if ord(character) < 32 or ord(character) ==
+              127: return false # Native paths cannot truncate or carry controls.
+        candidate.managementPath = value
       of "--dev-ui-dir": candidate.directory = value
       of "--state-checkpoint": candidate.recoveryFile = value
       of "--state-trust": candidate.recoveryIdentity = value
@@ -295,11 +307,13 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
     if not candidate.state or recoveryCount != recoveryControls.len:
       return false # Partial/disabled external imports cannot activate or reuse an earlier successful parse.
     candidate.recover = true
+  if candidate.management and candidate.managementPath.len == 0: return false # No default endpoint is invented.
   if candidate.telemetry and (candidate.endpoint.len == 0 or candidate.chain.len == 0): return false
   if candidate.chain.len > 0 and not (candidate.telemetry or candidate.rpc or
       candidate.ui or candidate.state): return false
   if candidate.ui and candidate.uiNumber == candidate.rpcNumber: return false
-  if candidate.telemetry or candidate.rpc or candidate.ui or candidate.state:
+  if candidate.telemetry or candidate.rpc or candidate.ui or candidate.state or
+      candidate.management:
     if candidate.positional.len == 0 or candidate.positional[0] notin ["server", "client", "mesh", "download"]:
       return false # Socket services belong to network commands, never no-socket selftests.
   if candidate.positional.len > 0 and candidate.positional[0] == "download":
