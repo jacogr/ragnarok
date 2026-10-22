@@ -1,0 +1,95 @@
+{
+  "source": "tests/native/accumulation_current_outputs_results.nim",
+  "build_name": "accumulation-current-outputs-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "reason": "default"
+      },
+      "arguments": [
+        "default"
+      ],
+      "name": "current-outputs-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Current output extraction: default"
+    },
+    {
+      "identity": {
+        "reason": "refused"
+      },
+      "arguments": [
+        "refused"
+      ],
+      "name": "current-outputs-refused",
+      "diagnostic": "outcome.status == None",
+      "description": "Current output extraction: refused"
+    },
+    {
+      "identity": {
+        "reason": "info"
+      },
+      "arguments": [
+        "info"
+      ],
+      "name": "current-outputs-info",
+      "diagnostic": "outcome.status == None",
+      "description": "Current output extraction: info"
+    },
+    {
+      "identity": {
+        "reason": "source"
+      },
+      "arguments": [
+        "source"
+      ],
+      "name": "current-outputs-source",
+      "diagnostic": "outcome.status == None",
+      "description": "Current output extraction: source"
+    },
+    {
+      "identity": {
+        "reason": "pair"
+      },
+      "arguments": [
+        "pair"
+      ],
+      "name": "current-outputs-pair",
+      "diagnostic": "outcome.status == None",
+      "description": "Current output extraction: pair"
+    },
+    {
+      "identity": {
+        "reason": "entry"
+      },
+      "arguments": [
+        "entry"
+      ],
+      "name": "current-outputs-entry",
+      "diagnostic": "outcome.status == None",
+      "description": "Current output extraction: entry"
+    },
+    {
+      "identity": {
+        "reason": "root"
+      },
+      "arguments": [
+        "root"
+      ],
+      "name": "current-outputs-root",
+      "diagnostic": "outcome.status == None",
+      "description": "Current output extraction: root"
+    },
+    {
+      "identity": {
+        "reason": "history"
+      },
+      "arguments": [
+        "history"
+      ],
+      "name": "current-outputs-history",
+      "diagnostic": "outcome.status == HistoryFailure",
+      "description": "Current output extraction: history"
+    }
+  ]
+}
