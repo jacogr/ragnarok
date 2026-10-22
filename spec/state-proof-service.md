@@ -72,3 +72,11 @@ equation uses an explicit query slot; that slot carries no independent chain-tim
 authority. No extra chronological rule is imposed. Unavailable logical values
 return `AbsentValue`. Suite `state_proof_service_historical` checks exact interval
 boundaries and incomplete/malformed dependency sets.
+
+## Code resolution
+
+`readProofCode` derives the code hash from this view's current metadata and
+resolves that identity with the historical preimage reader. Detached alternative
+code hashes cannot replace it. This resolves bytes only: program validation, PVM
+execution and refinement-anchor provenance remain their existing owners' work.
+Suite `state_proof_service_code` covers selection, time, quotas and missing history.
