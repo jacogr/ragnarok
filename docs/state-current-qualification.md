@@ -210,3 +210,13 @@ retain original logical/query causes; managed RPC/native refusal remains separat
 and plan alias untouched until actual `collectStateProof(ticket)` or joined close; cancellation and
 Done retain exclusion. Authenticate detached response bytes against your independently selected
 expected root. See [managed logical proofs](../spec/application-managed-logical-proofs.md).
+
+## Freeze targeted logical review before content execution
+
+Use `Services.planLogicalReview(source, limits)` to admit the complete original-current review and
+its original parameter rates without content hashing. Inspect `logicalReviewPlanInfo`, then call
+`Services.executeLogicalReview(plan)` with that immutable plan. Execution accepts no replacement
+source or policy; a backend failure can be retried on the same plan after recovery. Both calls require
+all managed graph leases to have ended by actual collection/join. The returned pair retains the
+original current inventory for predicate joins, separately from the raw-key companion. See the
+[frozen review contract](../spec/application-logical-review-plans.md).

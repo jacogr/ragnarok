@@ -969,6 +969,17 @@ proc reviewLogicalState*(services: Services, source: CurrentLogicalState,
   ## Explicit immutable logical sources may alias canonical state; original-current review runs only outside all managed graph leases.
   logical_review.reviewLogicalState(source, limits)
 
+proc planLogicalReview*(services: Services, source: CurrentLogicalState,
+    limits: AccountReviewPlanLimits): LogicalReviewResult[LogicalReviewPlan] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Frozen admission may share canonical graphs, so every existing native exclusion remains checked.
+  logical_review.planLogicalReview(source, limits)
+proc executeLogicalReview*(services: Services,
+    source: LogicalReviewPlan): LogicalReviewResult[ReviewedLogicalState] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Content retry touches retained original aliases only outside native graph leases; it grants no adoption authority.
+  logical_review.executeLogicalReview(source)
+
 proc captureLogicalSeed*(services: Services, declarations: openArray[StateService],
     limits: LogicalSeedLimits): LogicalSeedResult {.requires:
     not (services.proofing or services.preparing or services.publishing).} =

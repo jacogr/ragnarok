@@ -79,6 +79,11 @@ proc main() {.raises.} =
     discard owner.executeCollectedSupplied(plan, [])
   elif mode.endsWith("-logical-checkpoint"):
     discard owner.captureLogicalCheckpoint(logical, ByteLimit(1048576))
+  elif mode.endsWith("-logical-review-plan"):
+    discard owner.planLogicalReview(logical, default(AccountReviewPlanLimits))
+  elif mode.endsWith("-logical-review-execution"):
+    let plan = default(LogicalReviewPlan)
+    discard owner.executeLogicalReview(plan)
   elif mode.endsWith("-logical-review"):
     discard owner.reviewLogicalState(logical, default(AccountReviewPlanLimits))
   elif mode.endsWith("selected"):
