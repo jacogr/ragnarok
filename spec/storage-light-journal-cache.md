@@ -83,3 +83,7 @@ Next work is explicit validated partial-tail repair under a held lease, grouped 
 append/bootstrap crash qualification, checkpoint compaction and guarded reclamation. There is
 no automatic repair, pruning, startup selection or full-state integration. Historical M1 framing
 completion remains distinct from complete state serialization.
+
+The maintained [bootstrap/append process-crash qualification](storage-light-journal-process-crashes.md)
+checks every actual successful ordinary and short-write boundary with exact child supervision,
+forensic bytes, retained leases and explicit partial-tail recovery.
