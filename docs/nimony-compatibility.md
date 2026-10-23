@@ -107,6 +107,32 @@ weaker assertion is required. Retest the minimal probe before removing these ada
 the same failure; the
 [two-line draft](../spec/nimony-reports-2026-10-23/sequence-slice.md) includes clean-run output.
 
+### Remaining unit/corpus adapters on the October 23 pin
+
+Master run [39986981066](https://github.com/jacogr/ragnarok/actions/runs/39986981066/job/120541195603)
+exposed additional instantiations of the same sequence-slice defect at
+`4724f66c2e01b17810c844f26575b2317995fda2`. The preserved
+[minimal reproducer and workaround](../spec/nimony-reports-2026-10-23/sequence-slice.md)
+are a draft, not a filed upstream issue. A public issue search on 2026-10-23 found no matching
+report; unrelated older slice issues are not evidence of this defect.
+
+Use the narrowest equivalent operation while keeping source owners alive:
+
+- For read-only decoding, quorum subsets and `join`, pass `toOpenArray(first, last)` directly.
+  A half-open prefix `[0..<stop]` becomes `toOpenArray(0, stop-1)`, retaining the empty-prefix
+  case. This covers storage identity/history/head truncation, assurance subsets and block-driver
+  field groups without allocating replacement sequences.
+- For fixed wire prefixes and offender markers, compare every expected byte by index after
+  checking the required extent. Preserve literal bytes, order and comparison length.
+- If a fixture needs an owned mutable prefix or a `seq` parameter, allocate a sequence of the
+  exact original length and copy its elements explicitly (or construct the fixed element list).
+  The authored admission header, shortened sealer state and two-response download modes keep
+  their previous ownership and ranges.
+
+Retain all negative truncations, exact output markers, published vector counts, ARC observations
+and corpus requests. These adapters do not change the compiler/stdlib, protocol rules or pins.
+Recheck the minimal slice probe before removing them after a future compiler upgrade.
+
 ## Deferred Linux RSS return
 
 At pin `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`, the management RSS helper's Linux
@@ -123,3 +149,15 @@ The Linux branch can be checked on macOS with the pinned compiler's supported co
 `nimony check --os:linux --cpu:amd64 --mm:arc --cc:clang -d:release src/management/resources.nim`.
 Use a private `--nimcache` for each target/module. This proves target semantic lowering only;
 Linux native tests still own linking, OS behavior and ownership evidence.
+
+## Callback stub names in included transport tests
+
+On the same October 23 pin, `test_quic_transport.nim` includes `src/quic/transport.nim` and declared
+a top-level callback named `verify`. Within the included `verifyForward`, the local proc-valued
+`let verify = owner.verify` became ambiguous with that test callback at the invocation
+`verify(peer, der, length)`. The original diagnostic listed both candidates. Renaming only the
+unit's rejecting callback to `rejectFixtureIdentity` avoids this observed name collision;
+its C calling convention, signature, zero return value, all registrations and production
+forwarding code remain unchanged. No matching public upstream issue was found in the
+2026-10-23 callback/ambiguity search. Keep this observation scoped to the reproduced included
+module/test combination rather than treating all callback variables as unsupported.

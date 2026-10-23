@@ -37,6 +37,7 @@ proc main() {.raises.} =
       discard posix.unlink(path.toCString()) # Every synchronous inspection/command returns after closing its actual disk lock.
   let healthy = @[DownloadTransferMode.Healthy, DownloadTransferMode.Healthy,
       DownloadTransferMode.Healthy]
+  let healthyPair = @[healthy[0], healthy[1]] # Independently owned two-response modes retain the original order.
   let first = responseFrame(context.children[0])
   let second = responseFrame(context.children[1])
   let third = responseFrame(context.children[2])
@@ -94,21 +95,21 @@ proc main() {.raises.} =
   assertDiskPrefix(context, 6, ChainPath, DiskPath)
   let localProgress = exchangeDownloads(context, @[responseFrame(context.children[6]),
       responseFrame(context.children[7])],
-    healthy[0..1], 2, downloadLimits(), ChainPath, PolicyPath, "local-progress", local,
+    healthyPair, 2, downloadLimits(), ChainPath, PolicyPath, "local-progress", local,
         firstChild = 6)
   assert localProgress.outcome.error == DownloadCommandResult.Adopted and
       localProgress.outcome.adoptedBlocks == 2
   assert localProgress.secondRequests == 2
   assertDiskPrefix(context, 8, ChainPath, DiskPath)
   removeDisk()
-  let empty = exchangeDownloads(context, @[first, @[0'u8, 0, 0, 0]], healthy[0..1], 3,
+  let empty = exchangeDownloads(context, @[first, @[0'u8, 0, 0, 0]], healthyPair, 3,
     downloadLimits(), ChainPath, PolicyPath, "disk-empty", extra())
   assert empty.outcome.error == DownloadCommandResult.Exhausted and empty.outcome.adoptedBlocks == 1
   assertDiskPrefix(context, 1, ChainPath, DiskPath)
   removeDisk()
   var limits = downloadLimits()
   limits.composition.validators.services = ElementLimit(1)
-  let refused = exchangeDownloads(context, @[first, second], healthy[0..1], 3, limits,
+  let refused = exchangeDownloads(context, @[first, second], healthyPair, 3, limits,
     ChainPath, PolicyPath, "disk-refused", extra())
   assert refused.outcome.error == DownloadCommandResult.Exhausted and
       refused.outcome.adoptedBlocks == 1
@@ -125,7 +126,7 @@ proc main() {.raises.} =
   assertDiskPrefix(context, 1, ChainPath, DiskPath)
   removeDisk()
   initializeFinalizedPrefix(context, DiskPath)
-  let finalized = exchangeDownloads(context, @[second, third], healthy[0..1], 2, downloadLimits(),
+  let finalized = exchangeDownloads(context, @[second, third], healthyPair, 2, downloadLimits(),
     ChainPath, PolicyPath, "disk-finalized", local, firstChild = 1)
   assert finalized.outcome.error == DownloadCommandResult.Adopted and
       finalized.outcome.adoptedBlocks == 2

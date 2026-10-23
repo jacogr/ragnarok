@@ -39,7 +39,7 @@ assert info.proofBytes == uint64(OrdinaryProofBytes), "ordinary proof size"
 assert array[32, byte](blake2b256(wire).value) == OrdinaryHash, "independent ordinary full bundle hash"
 assert info.packageHash.bytes == source.inputRefinementIdentity.value.identityInfo.value.packageHash.bytes, "original executed package hash"
 let base = int(info.packageBytes)
-assert wire[base..base+5] == @[97'u8, 98, 99, 97, 98, 100], "all raw extrinsics precede imports without prefixes"
+assert samePrefix(wire.toOpenArray(base, base+5), [97'u8, 98, 99, 97, 98, 100]), "all raw extrinsics precede imports without prefixes"
 assert wire[base+6] == 1 and wire[base+6+4104] == 2, "ordered imported leaf bytes"
 let proofStart = base+6+8208
 assert wire[proofStart] == 2 and wire[proofStart+65] == 2, "only Merkle paths have count prefixes"

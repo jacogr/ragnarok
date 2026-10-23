@@ -26,8 +26,8 @@ proc main() {.raises.} =
   assert encodeDiskHead(restored, chain, generation, limit).value == wire
   # Fixed prefix, exact header extent and output ceilings refuse before any partial owner escapes.
   for stop in [0, 1, DiskHeadPrefixBytes-1, DiskHeadPrefixBytes, DiskHeadPrefixBytes+1, wire.high]:
-    assert restoreDiskHead(wire[0..<stop], chain, generation, identity.parameters, state,
-        limit).error != DiskHeadError.None
+    assert restoreDiskHead(wire.toOpenArray(0, stop-1), chain, generation, identity.parameters,
+        state, limit).error != DiskHeadError.None
   assert encodeDiskHead(owner, chain, generation, ByteLimit(wire.len-1)).error ==
       DiskHeadError.LimitExceeded
   assert restoreDiskHead(wire, chain, generation, identity.parameters, state, ByteLimit(
