@@ -37,8 +37,13 @@ is a failure, not evidence of coverage.
 
 ## Requesting CI
 
-PR creation, pushes and stack rebases do not start CI. In the PR sidebar, add one label to
-request verification of the current PR merge revision:
+PR opening, reopening and source updates automatically run **Smoke**: complete Nim/Rust
+formatting and unoptimized semantic compilation of every production module in one discovered
+import graph, plus the real peer main with integration/offload enabled. Run `make check-smoke`
+locally. No formatting is applied and no native libraries are linked. Master/full/unit source
+audits use the same complete graph with their checked-release profile.
+
+In the PR sidebar, add one label to request heavier verification of the current PR merge revision:
 
 | Label | Requested checks |
 | --- | --- |
@@ -48,7 +53,7 @@ request verification of the current PR merge revision:
 | `ci:perf` | All Perf jobs: the validated interpreted PVM speed comparison |
 | `ci:full` | All verification, Interop and Perf jobs |
 
-The label addition is the request; leaving a label on a PR does not enable automatic checks on
+The label addition is the request; leaving a label on a PR does not enable automatic heavy checks on
 later commits. Remove and reapply the label to request checks after another push or rebase.
 For stacks, request checks on the top PR when the combined changes are ready. For example:
 
@@ -59,13 +64,14 @@ gh pr edit <number> --remove-label ci:full
 gh pr edit <number> --add-label ci:full
 ```
 
-A new request cancels an older run for the same PR; unrelated labels schedule no runners and
+New smoke updates cancel older smoke runs for that PR, without cancelling labeled heavy CI.
+A new heavy request cancels an older heavy run for the same PR; unrelated labels schedule no runners and
 cannot cancel requested checks. Results apply only to the tested revision. A focused run does
 not claim the deferred groups passed. Master pushes/merges always request full verification;
 newer master runs supersede older ones.
 
 For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
-choose `unit`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `bench-storage`, `bench-storage-growth` or `full`
+choose `smoke`, `unit`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `bench-storage`, `bench-storage-growth` or `full`
 (the default). `interop` runs all Interop jobs; `perf` runs all Perf jobs. The existing
 `ref-pvm` and `bench-pvm` selections remain available for individual PVM jobs.
 **Perf PVM** also runs automatically on master pushes. Its validated interpreted

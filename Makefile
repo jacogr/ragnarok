@@ -66,11 +66,12 @@ setup: check-inventory toolchain model-tools sources rust-tools ui-assets build-
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
 
 # Refresh source/release metadata even when all native dependencies are already provisioned.
-build-info: toolchain
+build-info: compiler-tools
 	$(PYTHON) tools/build_info.py
 
 # Build the missing JS tool at the exact backend revision recorded by the compiler.
-web-toolchain: toolchain
+web-toolchain: compiler-tools
+	@if ! command -v cc >/dev/null 2>&1; then $(MAKE) host-tools; fi
 	$(PYTHON) tools/setup_web.py
 
 # Browser automation is test-only; reuse installed Chrome or provision pinned Chromium.
@@ -124,7 +125,11 @@ host-tools:
 	fi
 
 # Create diagnostics before opening logs, including on the very first invocation after clean.
-toolchain: host-tools
+toolchain: host-tools compiler-tools
+
+# Semantic checks and formatting need the pinned tools, not C/link/runtime dependency installation.
+.PHONY: compiler-tools
+compiler-tools:
 	mkdir -p build/ci
 	$(PYTHON) tools/setup_nimony.py --ensure 2>&1 | tee build/ci/setup.log
 
@@ -147,11 +152,16 @@ test: check
 
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.
 modules: check-modules
-check-modules: check-inventory toolchain ui-assets build-info
+check-modules: check-inventory compiler-tools ui-assets build-info
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" 2>&1 | tee build/ci/modules.log
 runtime: check-unit
 check-unit: setup format-check
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" 2>&1 | tee build/ci/runtime.log
+
+# Fast PR gate checks all formatting and every production source with an unoptimized semantic profile.
+.PHONY: check-smoke
+check-smoke: check-inventory format-check ui-assets build-info
+	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" --smoke --output build/tests/smoke 2>&1 | tee build/ci/smoke.log
 
 # Optional differential verification owns Rust setup; ordinary native tests retain frozen inputs.
 check-pvm-reference: setup
@@ -214,7 +224,7 @@ unit: setup
 	fi
 
 # Apply both pinned language formatters; check mode must leave source files untouched.
-format: toolchain rust-tools
+format: compiler-tools rust-tools
 	. ./build/toolchain/env.sh; $(PYTHON) tools/format.py
 # Storage measures matching public operations; Make provisions the checked native crypto toolchain first.
 # Separate whole-process resource observations never contribute speed samples to Perf Storage.
@@ -269,7 +279,7 @@ bench-storage-growth: setup
 bench-storage: setup
 	$(PYTHON) tools/storage_benchmark.py --panel comparison
 
-format-check: toolchain rust-tools
+format-check: compiler-tools rust-tools
 	. ./build/toolchain/env.sh; $(PYTHON) tools/format.py --check
 
 # Summaries can run after a failed job; do not trigger setup or disguise a missing report.
@@ -327,6 +337,7 @@ summary-e2e:
 help:
 	@printf '%s\n' 'make / make build  Provision dependencies and build build/ragnarok' \
 	  'make setup         Provision pinned toolchains, submodules and Cargo dependencies' \
+	  'make check-smoke   Check all formatting and semantically compile every production module' \
 	  'make package-binary  Build and smoke-test a relocatable native archive in build/dist/' \
 	  'make docker-build  Build the Linux amd64 runtime image (DOCKER_IMAGE=ragnarok:local)' \
 	  'make check-docker  Build and smoke-test the image locally; never publish it' \

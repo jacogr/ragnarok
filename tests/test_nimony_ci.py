@@ -52,15 +52,13 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (folder/'ci.yml').read_text()
         self.assertNotIn('github.head_ref', text)
         self.assertNotIn('github.ref_name', text)
-        # PR labels are the only PR trigger; opening, pushing and rebasing cannot request runners.
+        # PR updates request only smoke; heavy jobs still require explicit labels.
         triggers = text.split('"on":\n', 1)[1].split('\npermissions:', 1)[0]
         self.assertIn('push:\n    branches: [master]\n', triggers)
-        self.assertIn('pull_request:\n    types: [labeled]\n', triggers)
+        self.assertIn('pull_request:\n    types: [opened, reopened, synchronize, labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [unit, e2e, build, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, storage-diagnostics, storage-pressure, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, storage-diagnostics, storage-pressure, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
-        self.assertNotIn('synchronize', triggers)
-        self.assertNotIn('opened', triggers)
         for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
@@ -72,6 +70,25 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('nimony-trial', text)
         self.assertNotIn('tools/setup_nimony.py', text)
         self.assertNotIn('cargo fetch', text)
+
+    def test_pr_updates_request_only_smoke_with_isolated_concurrency(self):
+        """An ordinary PR update runs the small gate without requesting or cancelling heavy CI."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        section = re.search(r'^  smoke:\n(.*?)(?=^  [\w-]+:|\Z)', text, re.MULTILINE | re.DOTALL).group(1)
+        self.assertIn("github.event_name == 'pull_request' && github.event.action != 'labeled'", section)
+        self.assertIn("inputs.suite == 'smoke'", section)
+        self.assertIn('run: make check-smoke', section)
+        self.assertIn('persist-credentials: false', section)
+        self.assertNotIn('needs:', section)
+        self.assertNotIn('pull_request_target', text)
+        self.assertIn("format('smoke-{0}', github.event.pull_request.number)", text)
+        self.assertNotIn('github.event.pull_request.labels', text)
+        # These plans require no fixture checkout, Cargo dependency build or native linker provisioning.
+        plan = subprocess.check_output(['make', '-n', '--no-print-directory', 'check-smoke'], cwd=ROOT, text=True)
+        for unwanted in ('setup_submodules.py', 'setup_tlanif.py', 'build_crypto.py', 'apt-get', 'cargo fetch'):
+            self.assertNotIn(unwanted, plan)
+        self.assertIn('format.py --check', plan)
+        self.assertIn('test_modules.py --compiler "$NIMONY" --smoke', plan)
 
     # Scope guards must act on the label addition, never on persistent PR labels or a branch name.
     def test_ci_request_scopes(self):
@@ -114,10 +131,10 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('persist-credentials: false', text)
         self.assertIn('permissions:\n  contents: read', text)
 
-    # Ignored labels cannot replace/cancel a pending requested run; selected requests share one PR group.
+    # Automatic smoke updates and explicit heavy requests use separate cancellation groups.
     def test_ci_request_concurrency(self):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && "
+        expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && "
                     "github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && "
                     "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.run_id || github.ref }}")
         self.assertIn('group: '+expected+'\n  cancel-in-progress: true', text)
@@ -540,6 +557,46 @@ class NimonyCISafeguards(unittest.TestCase):
                 extract(data.getvalue(), temporary)
             self.assertEqual(list(temporary.iterdir()), [])
 
+    def test_all_source_profiles_and_failed_compilations(self):
+        """Every discovered module is imported, debug skips optimization, and either compiler failure stays red."""
+        with temporary_folder() as root:
+            (root/'src').mkdir()
+            for name in ('ragnarok.nim', 'unimported.nim'):
+                (root/'src'/name).write_text('discard')
+            caches = []
+            for smoke in (True, False):
+                for codes in ((0, 0), (7, 0), (0, 7)):
+                    outputs = [subprocess.CompletedProcess([], code, '', 'diagnostic') for code in codes]
+                    with self.subTest(smoke=smoke, codes=codes), patch.object(modules, 'ROOT', root), patch.object(
+                            modules.subprocess, 'check_output', return_value='fixture'), patch.object(
+                            modules.subprocess, 'run', side_effect=outputs) as command, patch('sys.stdout'):
+                        report = modules.audit(root/'compiler', root/'evidence', smoke=smoke)
+                    self.assertEqual([row['source'] for row in report['modules']], ['src/ragnarok.nim', 'src/unimported.nim'])
+                    self.assertEqual(report['jobs'], 1)
+                    self.assertEqual(report['profile'], 'debug-unoptimized' if smoke else 'checked-release')
+                    self.assertEqual(report['status'] == 'compile-checks-passed', codes == (0, 0))
+                    self.assertEqual(command.call_count, 2)
+                    imports = (root/'evidence/all_sources.nim').read_text()
+                    self.assertIn(str(root/'src/unimported.nim'), imports)
+                    self.assertEqual(len([line for line in imports.splitlines() if line.startswith('import ')]), 2)
+                    for call in command.call_args_list:
+                        arguments = call.args[0]
+                        for flag in ('check', '--mm:arc', '--boundchecks:on'):
+                            self.assertIn(flag, arguments)
+                        self.assertEqual('--opt:none' in arguments, smoke)
+                        self.assertEqual('-d:release' in arguments, not smoke)
+                        self.assertEqual('--passC:-flto=thin' in arguments, not smoke)
+                        caches.append(next(value for value in arguments if value.startswith('--nimcache:')))
+                    main = command.call_args_list[-1].args[0]
+                    for flag in ('--isMain', '-d:integration', '-d:offload'):
+                        self.assertIn(flag, main)
+            self.assertEqual(len(set(caches)), len(caches))
+            (root/'src/ragnarok.nim').unlink()
+            with patch.object(modules, 'ROOT', root):
+                with self.assertRaisesRegex(ValueError, 'peer entry point'):
+                    modules.audit(root/'compiler', root/'evidence', smoke=True)
+            self.assertFalse((root/'evidence/results.json').exists())
+
     # Same-version archives for a different platform or commit are not accepted as the selected nightly.
     def test_identity_mismatch(self):
         pins = host_pins(json.loads((ROOT/'spec/toolchain.json').read_text()), 'Linux', 'x86_64')
@@ -573,26 +630,27 @@ class NimonyCISafeguards(unittest.TestCase):
                         with self.assertRaises(failure):
                             verify_version(Path('/fixture/nimony'), '0.6.3')
 
-    # Inventory discovery must include a newly added module and keep a failed module red while checking later files.
     def test_inventory_failure_and_new_module(self):
+        """A newly added, otherwise unused source enters the shared graph and cannot bypass its verdict."""
         with temporary_folder() as root:
             (root/'src').mkdir()
-            # The third file represents new code that must not rely on a manually updated allowlist.
-            for name in ('a.nim', 'b.nim', 'new.nim'):
+            for name in ('a.nim', 'b.nim', 'new.nim', 'ragnarok.nim'):
                 (root/'src'/name).write_text('discard\n')
-            ready = threading.Barrier(2)
-            # Require overlapping checks while retaining one genuine failure and a later new source.
-            def check(compiler, source, folder):
-                if source.name != 'new.nim':
-                    # The first two modules must overlap without depending on host scheduling speed.
-                    ready.wait(timeout=5)
-                return dict(source=str(source.relative_to(root)), passed=source.name != 'b.nim')
-            with patch.dict('os.environ', {'COMPILE_CHECK_JOBS': '2'}), patch.object(modules, 'ROOT', root), patch.object(modules, 'check_module', side_effect=check), patch.object(modules.subprocess, 'check_output', return_value='fixture'), patch('sys.stdout', new=io.StringIO()):
+            def check(compiler, source, folder, **options):
+                """The graph's failed verdict must dominate a successful peer-main check."""
+                if source.name == 'all_sources.nim':
+                    text = source.read_text()
+                    for path in sorted((root/'src').glob('*.nim')):
+                        self.assertIn(str(path), text)
+                return dict(source=str(source.relative_to(root)), passed=source.name != 'all_sources.nim')
+            with patch.object(modules, 'ROOT', root), patch.object(modules, 'check_module', side_effect=check) as command, patch.object(
+                    modules.subprocess, 'check_output', return_value='fixture'), patch('sys.stdout'):
                 report = modules.audit(root/'nimony', root/'evidence')
             self.assertEqual(report['status'], 'compile-checks-failed')
-            self.assertEqual(report['jobs'], 2)
-            self.assertEqual(len(report['modules']), 3)
-            self.assertEqual([row['source'] for row in report['modules']], ['src/a.nim', 'src/b.nim', 'src/new.nim'])
+            self.assertEqual(command.call_count, 2)
+            self.assertEqual([row['source'] for row in report['modules']],
+                             ['src/a.nim', 'src/b.nim', 'src/new.nim', 'src/ragnarok.nim'])
+            self.assertFalse(any(row['passed'] for row in report['modules']))
             self.assertTrue((root/'evidence/results.json').is_file())
 
     # A stalled compiler cannot be counted as a pass or silently disappear from the inventory.
