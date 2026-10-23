@@ -334,3 +334,8 @@ predecessor/successor checksums and expected local sequence. Opaque results reta
 successor; consuming decode transfers bytes only after complete verification. See
 [authenticated update frames](../../spec/storage-light-deltas.md). Durable journal ownership
 and partial-tail recovery remain separate work.
+
+`light_journal_manifest.nim` selects a positive physical light-journal epoch and its checkpoint
+sequence using a distinct `CURRENT` schema. A checksummed journal anchor binds that exact
+selection; old light-image and full-state formats have no fallback. See the
+[selection and anchor contract](../../spec/storage-light-journal-selection.md).
