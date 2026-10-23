@@ -4,7 +4,7 @@
 ## GP 0.8.0 register-only instruction mutations; see spec/pvm-registers.md. This evaluator does
 ## not advance PC, charge gas or publish a machine execution step.
 ##
-## Exposes registerOnlyOpcode, evaluateRegisters and checked register-evaluation results
+## Exposes registerOnlyOpcode, evaluateRegisterWrite, evaluateRegisters and guarded scalar/array results
 ## for the implemented arithmetic/logic instruction subset.
 
 import ./[program, machine]
@@ -20,6 +20,28 @@ type
     else:
       # Failed/default alternatives carry only their reason.
       discard
+
+  RegisterWriteResult* = object ## Successful arithmetic evaluation identifies one copied destination/value; failures grant neither.
+    case status: RegisterError
+    of None:
+      # Only the evaluator can create a validated write from an owned decoded instruction.
+      completedIndex: RegisterIndex
+      completedValue: RegisterValue
+    else:
+      # Default/invalid/unsupported alternatives contain no writable register selection.
+      discard
+
+func error*(r: RegisterWriteResult): RegisterError =
+  ## Inspect scalar evaluation status without authorizing either success field.
+  r.status
+func destination*(r: RegisterWriteResult): RegisterIndex {.inline, requires: r.status ==
+    RegisterError.None.} =
+  ## Select success before obtaining the evaluator's bounded destination index.
+  r.completedIndex
+func writeValue*(r: RegisterWriteResult): RegisterValue {.inline, requires: r.status ==
+    RegisterError.None.} =
+  ## Return a copied register-width bit pattern only for a successful evaluation.
+  r.completedValue
 
 func error*(r: RegisterResult): RegisterError =
   ## Inspect the reason without permitting result retagging.
@@ -102,18 +124,18 @@ func countBits(value: uint64, bits: int, mode: int): uint64 =
       # A one completes the contiguous zero prefix/suffix.
       break
 
-proc evaluateRegisters*(decoded: ProgramResult[Instruction],
-    registers: RegisterFile): RegisterResult =
+proc evaluateRegisterWrite*(decoded: ProgramResult[Instruction],
+    registers: RegisterFile): RegisterWriteResult {.inline.} =
   ## Evaluate a private validated instruction result without repeating its owner/PC lookup.
   ## Failed/default results and non-register instructions fail before reading any payload or array.
   ## All operands use the original copied register file, including source/destination aliases.
   # Invalid owners and unmarked/out-of-range addresses never yield executable operands.
   if decoded.error != ProgramError.None:
-    return RegisterResult(status: RegisterError.InvalidInstruction)
+    return RegisterWriteResult(status: RegisterError.InvalidInstruction)
   let item = decoded.value
   # The implemented set excludes control flow, host calls and all memory instructions.
   if not registerOnlyOpcode(item.opcode):
-    return RegisterResult(status: RegisterError.UnsupportedInstruction)
+    return RegisterWriteResult(status: RegisterError.UnsupportedInstruction)
   let a = uint64(registers[int(byte(item.a))])
   let b = uint64(registers[int(byte(item.b))])
   let x = uint64(item.x)
@@ -386,9 +408,18 @@ proc evaluateRegisters*(decoded: ProgramResult[Instruction],
     answer = min(a, b)
   else:
     # Keep scope rejection explicit even though the supported set was checked above.
-    return RegisterResult(status: RegisterError.UnsupportedInstruction)
+    return RegisterWriteResult(status: RegisterError.UnsupportedInstruction)
+  RegisterWriteResult(status: RegisterError.None, completedIndex: RegisterIndex(byte(destination)),
+    completedValue: RegisterValue(answer))
+
+proc evaluateRegisters*(decoded: ProgramResult[Instruction],
+    registers: RegisterFile): RegisterResult =
+  ## Compatibility evaluation materializes the complete copied array only after the scalar write succeeds.
+  let written = evaluateRegisterWrite(decoded, registers)
+  if written.error != RegisterError.None:
+    return RegisterResult(status: written.error) # Failed scalar results carry no destination or value.
   var copied = registers
-  copied[destination] = RegisterValue(answer)
+  copied[int(byte(written.destination))] = written.writeValue
   RegisterResult(status: RegisterError.None, completed: copied)
 
 proc evaluateRegisters*(program: Program, pc: CodeAddress,

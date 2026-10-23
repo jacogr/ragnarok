@@ -454,11 +454,11 @@ proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Me
   var failedPage = PageAddress(0)
   if registerOnlyOpcode(item.opcode):
     # Register-only execution retains its existing scope and copied-register semantics.
-    let mutation = evaluateRegisters(decoded, info.registers)
+    let mutation = evaluateRegisterWrite(decoded, info.registers)
     if mutation.error != RegisterError.None:
       # Defensive evaluator failure cannot publish the tentative copied gas state.
       return InstructionEvaluation(status: StepError.UnsupportedInstruction)
-    info.registers = mutation.value
+    info.registers[int(byte(mutation.destination))] = mutation.writeValue
     info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
   elif memoryOpcode(item.opcode):
     # Memory exceptions retain the charged gas/flag but never publish partial CPU or memory writes.

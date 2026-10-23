@@ -102,3 +102,29 @@ pricing exceptions and unresolved specification questions. Local execution limit
 and remaining integration scope still prevent an unrestricted PVM conformance claim.
 M1 framing is complete; full state serialization, whole-block parity and full
 chainspec equivalence remain open.
+
+
+## Scalar write evaluation, 2026-10-23
+
+`evaluateRegisterWrite(decoded, registers)` evaluates the same 85 operations into a
+`RegisterWriteResult`. On success, `destination` returns a nominal register index
+below thirteen and `writeValue` returns its copied 64-bit pattern. Both accessors
+require success. Default, invalid and unsupported alternatives expose only their
+`RegisterError`; callers cannot retag the result or construct its private fields.
+Operands and conditional fallbacks still read the original register array before
+any caller applies the write. Neither the input array nor any machine is mutated.
+
+The executor applies this one scalar write to its private CPU cursor after gas and
+capability checks. The existing `evaluateRegisters` overloads retain their complete
+copied-array API, materializing that array only after successful scalar evaluation.
+There is one arithmetic implementation for both forms; no alternate opcode table,
+unchecked entry point or gas behavior is introduced.
+
+The independent frozen arithmetic corpus checks the scalar destination/value and
+both array entry points for every witness across all 85 operations. It also checks
+input/result independence, default/invalid results and unsupported instructions.
+Dependent register chains, charged-step snapshots and cached execution retain their
+existing complete-state checks. Six runtime accessor failure probes and their actual
+positive control verify both guarded fields across default/invalid/unsupported
+origins; three compiler probes reject private payload/status access. These tests do
+not change the existing complete-JAM parity gates or the scoped M1 framing status.
