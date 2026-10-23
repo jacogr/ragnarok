@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Runtime-selected failed scalar arithmetic results must reject both payload accessors; valid mode is the positive control.
+## Runtime-selected failed scalar arithmetic results must reject payload accessors and direct application; valid mode is the positive control.
 import std/[assertions, cmdline, syncio]
 import ../../src/pvm/[program, machine, registers]
 let origin = paramStr(1)
@@ -23,6 +23,14 @@ else:
 if origin == "valid":
   assert written.error == RegisterError.None
   assert byte(written.destination) == 0 and uint64(written.writeValue) == 7
+  var applied = default(RegisterFile)
+  applyRegisterWrite(applied, written)
+  for index in 0..<13:
+    # A genuine successful write changes exactly its selected destination in a caller-owned array.
+    assert uint64(applied[index]) == (if index == 0: 7'u64 else: 0'u64)
+elif member == "apply":
+  var untouched = default(RegisterFile)
+  applyRegisterWrite(untouched, written) # Failed/default selections must stop before any writable payload is selected.
 elif member == "destination":
   discard written.destination # Every failed origin must terminate at the accessor's success precondition.
 elif member == "value":

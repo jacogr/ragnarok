@@ -728,3 +728,42 @@ sanitizer output and all samples remain under `build/pvm10/memory-probe`,
 complete registers/gas/memory/permissions, source aliases and assertion controls.
 No affinity/frequency isolation or hardware-counter claim is added. Full STF/JAM
 parity remains open; compiled comparison and fuzzing stay deferred.
+
+
+## Retained register-coordinate proofs, 2026-10-23
+
+The decoder captures bounded A/B/D coordinates alongside the unchanged nominal
+operands, and the arithmetic/memory/control kernels consume the same genuine result.
+A successful scalar write applies through its private bounded index. Normal bounds
+and assertions stay enabled; proven coordinates remove redundant guards without an
+assumption, unchecked mode, new owner or larger cached instruction/write record.
+Opcode-class and combined experiments are retained separately and excluded from
+this feature after their real-sieve results failed to establish a stronger choice.
+
+Two matched eleven-guest comparisons of the complete coordinate path retain the
+following execution-time reductions on the recorded Apple M1 Max:
+
+| Guest | First comparison | Production confirmation |
+| --- | ---: | ---: |
+| Arithmetic,10000 iterations |14.5% |16.0% |
+| Mixed bits,1000 iterations |14.1% |14.2% |
+| Aligned memory,1000 iterations |7.8% |4.9% |
+| Crossing memory,1000 iterations |7.4% |5.7% |
+| Alternating blocks,1000 iterations |14.2% |15.6% |
+
+Other hosts/sparse rows range from flat to gains of a few percent; no broad claim
+follows for those smaller differences or sub-microsecond short calls. All eleven
+pinned interpreter fixtures pass byte-identically, with complete state/source checks.
+Sieve observes22.288→20.838ms in the isolated comparison and20.478→20.273ms in
+production confirmation. The latter is only about1%, so no consistent real-sieve
+gain is established. The pinned reference remains around6.0ms. All outliers and
+per-pass values stay in `build/pvm10/execution-probe`, `execution-slots-all-paired`,
+`coordinates-final` and `coordinates-final-paired`; prototype metadata distinguishes
+parent checkout sources from actual copied candidate sources.
+
+The compiler/layout control confirms unchanged56-byte instructions and24-byte
+write results on this host. Exact negative/positive query/application controls,
+private-field rejection, independent arithmetic/destination cases and full execution/
+host/retry consumers accompany the feature. Checked ARC/Clang ThinLTO, pins and
+normal error/capability gates remain unchanged. Local timing/no-isolation limits,
+open full STF/JAM parity, deferred compiled comparison and deferred fuzzing remain.

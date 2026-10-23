@@ -154,3 +154,27 @@ all thirteen output registers. Upper-half-only words explicitly select 32-bit ze
 behavior. Dependent-register, mixed-program and cached/nested execution consumers
 remain controls, along with the pinned mixed-bit performance guest. Timing and
 remaining interpreter gaps are recorded in the benchmark contract.
+
+
+## Applying bounded scalar writes, 2026-10-23
+
+Arithmetic evaluation now reads the genuine result's bounded A/B/D coordinates,
+including the same original destination value and alias behavior. The private scalar
+write index is constrained to0–12. Existing `destination` still returns the nominal
+`RegisterIndex`, and all compatibility array/program/PC APIs retain their status and
+copied-input contracts.
+
+`applyRegisterWrite(registers, written)` applies exactly one successful write to a
+caller-owned `var RegisterFile`. Success selection is a precondition; default,
+invalid-instruction and unsupported results cannot authorize mutation. The helper
+uses the private bounded index directly, allowing the compiler to eliminate a
+redundant array guard without disabling bounds or assertions. Compatibility array
+evaluation applies it only to its independent copied array; the executor applies
+it only to its private CPU cursor.
+
+Every independent arithmetic fixture now checks direct application against the
+existing complete-array result, including untouched source registers. Retained
+owner-release/operand-copy controls compare captured coordinates as well. Three
+new application-failure controls join the existing payload-access family and its
+genuine positive control. Independent dependent-register chains, both destination
+profiles and memory/control/host/retry composition remain required.

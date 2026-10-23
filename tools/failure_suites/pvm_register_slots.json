@@ -1,0 +1,39 @@
+{
+  "build_name": "pvm-register-slots-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "PVM register coordinates default",
+      "diagnostic": "decoded.status == None",
+      "identity": {
+        "origin": "default"
+      },
+      "name": "pvm-register-slots-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "PVM register coordinates invalid",
+      "diagnostic": "decoded.status == None",
+      "identity": {
+        "origin": "invalid"
+      },
+      "name": "pvm-register-slots-invalid"
+    },
+    {
+      "arguments": [
+        "unmarked"
+      ],
+      "description": "PVM register coordinates unmarked",
+      "diagnostic": "decoded.status == None",
+      "identity": {
+        "origin": "unmarked"
+      },
+      "name": "pvm-register-slots-unmarked"
+    }
+  ],
+  "source": "tests/native/pvm_register_slots_results.nim"
+}

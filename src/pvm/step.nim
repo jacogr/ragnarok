@@ -351,15 +351,17 @@ proc finishWorking(memory: var WorkingMemory): MachineError =
 
 # Apply one memory instruction to tentative copied state only after gas affordability is established.
 # Failed preflight leaves registers and memory untouched; faultPage is meaningful only on Fault.
-proc memoryMutation(item: Instruction, info: var MachineInfo, memory: var WorkingMemory,
-    failedPage: var PageAddress): MachineError =
+proc memoryMutation(decoded: ProgramResult[Instruction], info: var MachineInfo,
+    memory: var WorkingMemory, failedPage: var PageAddress): MachineError =
+  let item = decoded.value
+  let indices = instructionRegisters(decoded)
   let op = item.opcode
   let loading = op in {52'u8..58'u8, 124'u8..130'u8}
   var width = 1
   var signedLoad = false
   var base = 0'u64
   let offset = uint64(item.x)
-  var stored = uint64(info.registers[int(byte(item.a))])
+  var stored = uint64(info.registers[indices.aIndex])
   if loading:
     # Load pairs alternate unsigned/signed at 8/16/32 bits, followed by an unsigned 64-bit load.
     let index = (if op <= 58: int(op) - 52 else: int(op) - 124)
@@ -367,7 +369,7 @@ proc memoryMutation(item: Instruction, info: var MachineInfo, memory: var Workin
     signedLoad = index in [1, 3, 5]
     if op >= 124:
       # Indirect loads read the original B even when it aliases destination A.
-      base = uint64(info.registers[int(byte(item.b))])
+      base = uint64(info.registers[indices.bIndex])
   elif op <= 33:
     # Absolute immediate stores use X as the address and Y as the stored bit pattern.
     width = 1 shl (int(op) - 30)
@@ -378,12 +380,12 @@ proc memoryMutation(item: Instruction, info: var MachineInfo, memory: var Workin
   elif op <= 73:
     # Indirect immediate stores use original A plus X and store Y.
     width = 1 shl (int(op) - 70)
-    base = uint64(info.registers[int(byte(item.a))])
+    base = uint64(info.registers[indices.aIndex])
     stored = uint64(item.y)
   else:
     # Indirect register stores use original B plus X and store original A.
     width = 1 shl (int(op) - 120)
-    base = uint64(info.registers[int(byte(item.b))])
+    base = uint64(info.registers[indices.bIndex])
   # Mask operands before addition: the sum fits 33 bits and preserves every cyclic physical address.
   let address = MemoryAddress((base and 0xffffffff'u64) + (offset and 0xffffffff'u64))
   if loading:
@@ -400,7 +402,7 @@ proc memoryMutation(item: Instruction, info: var MachineInfo, memory: var Workin
       if (value and (1'u64 shl (bits - 1))) != 0:
         # Fill the high bits explicitly instead of relying on checked narrowing casts.
         value = value or (high(uint64) shl bits)
-    info.registers[int(byte(item.a))] = RegisterValue(value)
+    info.registers[indices.aIndex] = RegisterValue(value)
   else:
     # Scalar stores preflight the complete access before changing direct snapshots or private staged bytes.
     let written = storeWorking(memory, address, AccessWidth(byte(width)), RegisterValue(stored), failedPage)
@@ -419,10 +421,12 @@ func signedLess(a, b: uint64): bool =
   (a xor 0x8000000000000000'u64) < (b xor 0x8000000000000000'u64)
 
 # Evaluate the condition against the original register file; decoding already saturated register IDs.
-func branchCondition(item: Instruction, registers: RegisterFile): bool =
-  let a = uint64(registers[int(byte(item.a))])
+func branchCondition(decoded: ProgramResult[Instruction], registers: RegisterFile): bool =
+  let item = decoded.value
+  let indices = instructionRegisters(decoded)
+  let a = uint64(registers[indices.aIndex])
   let b = (if item.opcode <= 90: uint64(item.x)
-    else: uint64(registers[int(byte(item.b))]))
+    else: uint64(registers[indices.bIndex]))
   case item.opcode
   of 81, 170:
     # Equality has identical signed and unsigned interpretations.
@@ -460,6 +464,7 @@ func branchCondition(item: Instruction, registers: RegisterFile): bool =
 proc controlMutation(program: Program, decoded: ProgramResult[Instruction],
     info: var MachineInfo): StepExit =
   let item = decoded.value # The private caller supplies this machine's genuine result; payload and validation facts cannot separate.
+  let indices = instructionRegisters(decoded)
   let pc = uint64(info.pc)
   let next = CodeAddress(pc + 1 + uint64(item.skip))
   var target = next
@@ -475,9 +480,9 @@ proc controlMutation(program: Program, decoded: ProgramResult[Instruction],
     return StepExit.Continued
   elif item.opcode in {50'u8, 180'u8}:
     # Dynamic addresses use original operands, wrapping to 32 bits after addition.
-    let base = (if item.opcode == 50: item.a else: item.b)
+    let base = (if item.opcode == 50: indices.aIndex else: indices.bIndex)
     let offset = (if item.opcode == 50: item.x else: item.y)
-    let address = (uint64(info.registers[int(byte(base))]) + uint64(offset)) and 0xffffffff'u64
+    let address = (uint64(info.registers[base]) + uint64(offset)) and 0xffffffff'u64
     if address == 0xffff0000'u64:
       # The halt sentinel takes precedence over table bounds or table contents.
       outcome = StepExit.Halt
@@ -512,7 +517,7 @@ proc controlMutation(program: Program, decoded: ProgramResult[Instruction],
       # Both successors must be valid, even when the condition would avoid the invalid one.
       valid = valid and instructionHasFallthrough(
           decoded) # A present successor after this terminating conditional is a validated block start.
-      if not branchCondition(item, info.registers):
+      if not branchCondition(decoded, info.registers):
         # Only the selected PC changes; validation above still considered the taken target.
         target = next
   if not valid:
@@ -520,7 +525,7 @@ proc controlMutation(program: Program, decoded: ProgramResult[Instruction],
     outcome = StepExit.Panic
   if item.opcode in {80'u8, 180'u8}:
     # The instruction table specifies this mutation even when the jump panics or halts.
-    info.registers[int(byte(item.a))] = RegisterValue(uint64(item.x))
+    info.registers[indices.aIndex] = RegisterValue(uint64(item.x))
   if outcome == StepExit.Continued:
     # Every successful control transfer enters a block that must be charged next time.
     info.pc = target
@@ -584,11 +589,11 @@ proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Wo
     if mutation.error != RegisterError.None:
       # Defensive evaluator failure cannot publish the tentative copied gas state.
       return InstructionEvaluation(status: StepError.UnsupportedInstruction)
-    info.registers[int(byte(mutation.destination))] = mutation.writeValue
+    applyRegisterWrite(info.registers, mutation)
     info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
   elif memoryOpcode(item.opcode):
     # Memory exceptions retain the charged gas/flag but never publish partial CPU or memory writes.
-    case memoryMutation(item, info, memory, failedPage)
+    case memoryMutation(decoded, info, memory, failedPage)
     of MachineError.None:
       # A complete load/store has already updated only its specified state fields.
       discard

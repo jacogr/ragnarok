@@ -83,6 +83,11 @@ for row in 0..<count:
   let written = evaluateRegisterWrite(decoded, input)
   assert written.error == RegisterError.None
   assert int(byte(written.destination)) == destination and uint64(written.writeValue) == expected
+  var applied = input
+  applyRegisterWrite(applied, written)
+  for index in 0..<13:
+    # Every independent arithmetic row also validates direct bounded application without array-copy aliases.
+    assert uint64(applied[index]) == uint64(output[index])
   let retainedWrite = written
   var changedInput = input
   changedInput[destination] = RegisterValue(not expected)
@@ -154,6 +159,8 @@ block validatedResultOwnership:
   changed.opcode = 0
   changed.d = RegisterIndex(255)
   assert decoded.value.opcode == 200 and byte(decoded.value.d) == 2
+  let coordinates = instructionRegisters(decoded)
+  assert coordinates.aIndex == 0 and coordinates.bIndex == 1 and coordinates.dIndex == 2
   var input = default(RegisterFile)
   input[0] = RegisterValue(7)
   input[1] = RegisterValue(11)
