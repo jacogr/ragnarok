@@ -16,7 +16,7 @@ type
   LightReplayError* {.pure.} = enum ## Incomplete replay never exposes a successful prefix through a failed result.
     Uninitialized, None, InvalidFormat, LimitExceeded, WrongCheckpoint, SequenceExhausted,
     IncompleteTail, InvalidDelta, InvalidSelection, BackendFailure, NotIncomplete, ChangedInput
-  LightJournalReplay* = object ## Private immutable progress becomes public only after complete strict replay or explicit planning.
+  LightJournalReplay* = object ## Private immutable progress authenticates a complete anchor/frame prefix; strict consumers must also prove the entire selected extent was consumed.
     ready: bool
     image: PreparedLightSnapshot
     last: LightDeltaSequence
@@ -262,49 +262,101 @@ proc partialShape(input: openArray[byte], image: PreparedLightSnapshot,
     for index in 0..<input.len-stop:
       if input[stop+index] != checksum[index]: return LightDeltaError.ChecksumMismatch
   LightDeltaError.None
-proc scan(input: openArray[byte], manifest: LightJournalManifest, checkpoint: PreparedLightSnapshot,
-    limits: LightReplayLimits): Scan =
-  ## Private sequential admission publishes no prefix on any malformed, complete-corrupt or over-budget suffix.
-  if not manifest.initialized or not checkpoint.initialized: return Scan(
-      reason: LightReplayError.Uninitialized)
-  if uint64(input.len) > uint64(limits.bytes): return Scan(reason: LightReplayError.LimitExceeded)
+proc beginLightJournalReplay*(anchor: openArray[byte], manifest: LightJournalManifest,
+    checkpoint: PreparedLightSnapshot, limits: LightReplayLimits): LightReplayResult[
+        LightJournalReplay] =
+  ## Authenticate exactly one selected anchor/checkpoint prefix; callers must still consume and verify every following frame.
+  if not manifest.initialized or not checkpoint.initialized: return fail[LightJournalReplay](
+      LightReplayError.Uninitialized)
+  if uint64(anchor.len) > uint64(limits.bytes): return fail[LightJournalReplay](
+      LightReplayError.LimitExceeded)
   if array[32, byte](manifest.chainId) != array[32, byte](checkpoint.chainId) or
       array[32, byte](manifest.root) != array[32, byte](checkpoint.root) or
       array[32, byte](manifest.snapshotChecksum) != array[32, byte](checkpoint.checksum):
-    return Scan(reason: LightReplayError.WrongCheckpoint)
-  if input.len < LightJournalAnchorBytes: return Scan(reason: LightReplayError.InvalidFormat)
-  let anchor = validateLightJournalAnchor(input.toOpenArray(0, LightJournalAnchorBytes-1), manifest, limits.bytes)
-  if anchor != LightSelectionError.None:
-    return Scan(reason: LightReplayError.InvalidSelection, selection: anchor)
-  var progress = LightJournalReplay(ready: true, image: checkpoint, last: manifest.baseSequence,
-    extent: LightJournalAnchorBytes)
+    return fail[LightJournalReplay](LightReplayError.WrongCheckpoint)
+  if anchor.len != LightJournalAnchorBytes: return fail[LightJournalReplay](
+      LightReplayError.InvalidFormat)
+  let checked = validateLightJournalAnchor(anchor, manifest, limits.bytes)
+  if checked != LightSelectionError.None:
+    return LightReplayResult[LightJournalReplay](status: LightReplayError.InvalidSelection,
+        selectionCause: checked)
+  LightReplayResult[LightJournalReplay](status: LightReplayError.None,
+    completed: LightJournalReplay(
+    ready: true, image: checkpoint, last: manifest.baseSequence, extent: LightJournalAnchorBytes))
+proc advanceLightJournalReplay*(before: LightJournalReplay, frame: openArray[byte],
+    limits: LightReplayLimits): LightReplayResult[LightJournalReplay] =
+  ## Authenticate one exact complete frame without retaining transport; failures expose no candidate and preserve the prior immutable prefix.
+  if not before.ready: return fail[LightJournalReplay](LightReplayError.Uninitialized)
+  let maximum = min(uint64(limits.bytes), uint64(high(int)))
+  if uint64(before.extent) > maximum or uint64(frame.len) > maximum-uint64(before.extent):
+    return fail[LightJournalReplay](LightReplayError.LimitExceeded)
+  if before.count >= uint64(limits.frames): return fail[LightJournalReplay](
+      LightReplayError.LimitExceeded)
+  if uint64(before.last) == high(uint64): return fail[LightJournalReplay](
+      LightReplayError.SequenceExhausted)
+  let expected = LightDeltaSequence(uint64(before.last)+1)
+  let extent = lightDeltaExtent(frame, limits.frame)
+  if extent.error == LightDeltaError.IncompleteFrame:
+    # Preserve available identity and partial-shape refusals exactly as whole-buffer tail inspection does.
+    let partial = decodeLightDelta(frame, before.image, expected, limits.frame)
+    if partial.error != LightDeltaError.IncompleteFrame:
+      return LightReplayResult[LightJournalReplay](status: LightReplayError.InvalidDelta,
+          deltaCause: partial.error)
+    let shape = partialShape(frame, before.image, limits.frame)
+    if shape != LightDeltaError.None:
+      return LightReplayResult[LightJournalReplay](status: LightReplayError.InvalidDelta,
+          deltaCause: shape)
+    return fail[LightJournalReplay](LightReplayError.IncompleteTail)
+  if extent.error != LightDeltaError.None:
+    return LightReplayResult[LightJournalReplay](status: LightReplayError.InvalidDelta,
+        deltaCause: extent.error)
+  if extent.value != frame.len:
+    return LightReplayResult[LightJournalReplay](status: LightReplayError.InvalidDelta,
+        deltaCause: LightDeltaError.InvalidFormat)
+  let checked = decodeLightDelta(frame, before.image, expected, limits.frame)
+  if checked.error != LightDeltaError.None:
+    return LightReplayResult[LightJournalReplay](status: LightReplayError.InvalidDelta,
+        deltaCause: checked.error)
+  LightReplayResult[LightJournalReplay](status: LightReplayError.None,
+    completed: LightJournalReplay(
+    ready: true, image: checked.value.snapshot, last: expected, count: before.count+1,
+    extent: before.extent+frame.len))
+func scanFailure(outcome: LightReplayResult[LightJournalReplay]): Scan =
+  ## Copy only the selected inner diagnostic; a failed result never exports its candidate prefix.
+  case outcome.error
+  of LightReplayError.InvalidDelta: Scan(reason: outcome.error, delta: outcome.deltaError)
+  of LightReplayError.InvalidSelection: Scan(reason: outcome.error,
+      selection: outcome.selectionError)
+  else: Scan(reason: outcome.error)
+proc scan(input: openArray[byte], manifest: LightJournalManifest, checkpoint: PreparedLightSnapshot,
+    limits: LightReplayLimits): Scan =
+  ## Whole-buffer and streaming consumers use the same anchor and exact-frame authentication steps.
+  if not manifest.initialized or not checkpoint.initialized: return Scan(
+      reason: LightReplayError.Uninitialized)
+  if uint64(input.len) > uint64(limits.bytes): return Scan(reason: LightReplayError.LimitExceeded)
+  if input.len < LightJournalAnchorBytes:
+    return scanFailure(beginLightJournalReplay(input, manifest, checkpoint, limits))
+  let started = beginLightJournalReplay(input.toOpenArray(0, LightJournalAnchorBytes-1), manifest,
+      checkpoint, limits)
+  if started.error != LightReplayError.None: return scanFailure(started)
+  var progress = started.value
   while progress.extent < input.len:
-    # Each step checks frame and sequence capacity before extent parsing, proof work or addition.
+    # Capacity/sequence precede even extent parsing, preserving the established refusal ordering.
     if progress.count >= uint64(limits.frames): return Scan(reason: LightReplayError.LimitExceeded)
     if uint64(progress.last) == high(uint64): return Scan(
         reason: LightReplayError.SequenceExhausted)
-    let expected = LightDeltaSequence(uint64(progress.last)+1)
     let offset = progress.extent
     let extent = lightDeltaExtent(input.toOpenArray(offset, input.len-1), limits.frame)
     if extent.error == LightDeltaError.IncompleteFrame:
-      # Prefix identity/sequence and partial syntax must both pass before explicit tail planning is possible.
-      let partial = decodeLightDelta(input.toOpenArray(offset, input.len-1), progress.image,
-          expected, limits.frame)
-      if partial.error != LightDeltaError.IncompleteFrame:
-        return Scan(reason: LightReplayError.InvalidDelta, delta: partial.error)
-      let shape = partialShape(input.toOpenArray(offset, input.len-1), progress.image, limits.frame)
-      if shape != LightDeltaError.None: return Scan(reason: LightReplayError.InvalidDelta, delta: shape)
+      let partial = advanceLightJournalReplay(progress, input.toOpenArray(offset, input.len-1), limits)
+      if partial.error != LightReplayError.IncompleteTail: return scanFailure(partial)
       return Scan(reason: LightReplayError.IncompleteTail, progress: progress)
     if extent.error != LightDeltaError.None: return Scan(reason: LightReplayError.InvalidDelta,
         delta: extent.error)
-    let complete = decodeLightDelta(input.toOpenArray(offset, offset+extent.value-1),
-        progress.image, expected, limits.frame)
-    if complete.error != LightDeltaError.None: return Scan(reason: LightReplayError.InvalidDelta,
-        delta: complete.error)
-    progress.image = complete.value.snapshot
-    progress.last = expected
-    inc progress.count
-    progress.extent += extent.value
+    let advanced = advanceLightJournalReplay(progress, input.toOpenArray(offset,
+        offset+extent.value-1), limits)
+    if advanced.error != LightReplayError.None: return scanFailure(advanced)
+    progress = advanced.value
   Scan(reason: LightReplayError.None, progress: progress)
 proc replayLightJournal*(input: openArray[byte], manifest: LightJournalManifest,
     checkpoint: PreparedLightSnapshot, limits: LightReplayLimits): LightReplayResult[

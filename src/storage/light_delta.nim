@@ -130,8 +130,8 @@ func prefix(input: openArray[byte], offset: int, expected: openArray[byte]): boo
     if offset+index >= input.len: return true
     if input[offset+index] != expected[index]: return false
   true
-proc lightDeltaExtent*(input: openArray[byte], limits: LightDeltaLimits): LightDeltaResult[int] =
-  ## Identify one complete bounded frame, never accepting trailing bytes as part of its checksum.
+proc lightDeltaDeclaredExtent*(input: openArray[byte], limits: LightDeltaLimits): LightDeltaResult[int] =
+  ## Bound one declared frame from available fixed header bytes before any frame-sized allocation; no proof or checksum authority is granted.
   let maximum = min(uint64(limits.bytes), uint64(high(int)))
   if maximum < uint64(LightDeltaOverhead): return failed[int](LightDeltaError.LimitExceeded)
   for index in 0..<min(input.len, Magic.len):
@@ -143,8 +143,13 @@ proc lightDeltaExtent*(input: openArray[byte], limits: LightDeltaLimits): LightD
     return failed[int](LightDeltaError.LimitExceeded)
   if count > body div uint64(EditBytes): return failed[int](LightDeltaError.InvalidFormat)
   let extent = body+uint64(LightDeltaOverhead)
-  if extent > uint64(input.len): return failed[int](LightDeltaError.IncompleteFrame)
   LightDeltaResult[int](status: LightDeltaError.None, completed: int(extent))
+proc lightDeltaExtent*(input: openArray[byte], limits: LightDeltaLimits): LightDeltaResult[int] =
+  ## Identify one complete bounded frame, never accepting trailing bytes as part of its checksum.
+  let declared = lightDeltaDeclaredExtent(input, limits)
+  if declared.error != LightDeltaError.None: return declared
+  if declared.value > input.len: return failed[int](LightDeltaError.IncompleteFrame)
+  declared
 proc snapshotFailure[T](outcome: LightSnapshotResult[PreparedLightSnapshot]): LightDeltaResult[T] =
   ## Translate only the already selected atomic admission refusal, retaining no candidate image.
   case outcome.error
