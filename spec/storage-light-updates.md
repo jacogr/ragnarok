@@ -46,3 +46,8 @@ The1,000 successful/partial-failure/recovery edit cycles retain20,736 occupied A
 bytes before/after. Three runtime guards, two positive controls, three privacy
 rejections and actual owner-duplication lowering rejection pass. Formatting and
 verification inventory pass. Local checks do not claim exact-head Linux CI.
+
+Combined `update(proofs, forgottenKeys)` batches support replacing evidence at capacity
+through one validated image and one file publication. Their disjointness, combined
+mutation allowance and final-set quota rules are specified in
+[atomic light evidence batches](storage-light-atomic-batches.md).

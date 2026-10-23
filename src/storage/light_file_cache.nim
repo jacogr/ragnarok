@@ -178,3 +178,14 @@ proc forget*(owner: var LightFileCache, keys: openArray[StateKey]): LightFileRes
   let reason = decodedError(edited.error)
   if reason != FileError.None: return LightFileResult[StorageDurability](status: reason)
   owner.publish(edited.value)
+
+proc update*(owner: var LightFileCache, proofs: openArray[LightStateProof],
+    forgottenKeys: openArray[StateKey]): LightFileResult[StorageDurability] =
+  ## Atomically replace local evidence at capacity through one validated image and one synchronized publication.
+  let data = owner.data
+  if data == nil: return LightFileResult[StorageDurability](status: FileError.Uninitialized)
+  if data.poisoned: return LightFileResult[StorageDurability](status: FileError.RecoveryRequired)
+  let edited = data.image.update(proofs, forgottenKeys)
+  let reason = decodedError(edited.error)
+  if reason != FileError.None: return LightFileResult[StorageDurability](status: reason)
+  owner.publish(edited.value)
