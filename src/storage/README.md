@@ -278,3 +278,8 @@ Immutable readers survive publication and close; uncertain IO requires explicit 
 and validated reopen. Pending cleanup revalidates the selected image before removal.
 See [the lifecycle and durability contract](../../spec/storage-light-files.md).
 Application startup and consensus root selection remain separately scoped work.
+
+Prepared light images support bounded `admit` and `forget` edits at the same independently
+selected root. File owners retain verified proof evidence after reopen and expose the same
+operations through synchronized atomic publication. Exact final image quotas precede hashing;
+unchanged proofs are retained without rehashing. See [incremental light evidence](../../spec/storage-light-updates.md).

@@ -6,7 +6,7 @@
 import std/assertions
 import ./[light_snapshot, light_state_cache, managed_io, managed_manifest, database_identity,
   file_errors, durability]
-import ../codec/state_trie
+import ../codec/[state_trie, state_layout]
 
 type
   LightFileConfig* = object ## Caller-selected trust and resource policy never come from on-disk metadata.
@@ -17,14 +17,10 @@ type
     case status: FileError
     of None: completed: T
     else: discard
-  SelectedImage = object ## One validated read binds its immutable cache and checksum to the same exact bytes.
-    cache: LightStateCache
-    checksum: StorageChecksum
   FileOwner = ref object ## Stable private lifetime groups one lease, policy and last confirmed immutable cache.
     directory: ManagedDirectory
     config: LightFileConfig
-    cache: LightStateCache
-    checksum: StorageChecksum
+    image: PreparedLightSnapshot
     poisoned: bool
   LightFileCache* = object ## Exclusive explicit retirement authority; immutable cache readers do not retain its lease.
     data: nil FileOwner
@@ -81,20 +77,17 @@ func decodedError(reason: LightSnapshotError): FileError =
   of LightSnapshotError.LimitExceeded, LightSnapshotError.LengthOverflow: FileError.LimitExceeded
   of LightSnapshotError.BackendFailure: FileError.BackendFailure
   else: FileError.InvalidFrame
-proc readCurrent(data: FileOwner): LightFileResult[SelectedImage] =
-  ## Read once under the held lease; the checksum and decoded knowledge always describe the same exact bytes.
+proc readCurrent(data: FileOwner): LightFileResult[PreparedLightSnapshot] =
+  ## Retain the exact fully verified selected image so later admission need not resubmit old evidence.
   let loaded = readManagedFile(data.directory, ManagedFileKind.Current, ManagedEpoch(0),
       data.config.limits.bytes)
-  if loaded.error != FileError.None: return LightFileResult[SelectedImage](status: loaded.error)
-  let bytes = loaded.value
-  let decoded = decodeLightSnapshot(bytes, data.config.chain, data.config.root, data.config.limits)
-  let reason = decodedError(decoded.error)
-  if reason != FileError.None: return LightFileResult[SelectedImage](status: reason)
-  assert bytes.len >= 32
-  var checksum = default(array[32, byte])
-  for index in 0..<32: checksum[index] = bytes[bytes.len-32+index]
-  LightFileResult[SelectedImage](status: FileError.None,
-    completed: SelectedImage(cache: decoded.value, checksum: StorageChecksum(checksum)))
+  if loaded.error != FileError.None: return LightFileResult[PreparedLightSnapshot](
+      status: loaded.error)
+  let restored = restoreLightSnapshot(loaded.value, data.config.chain, data.config.root,
+      data.config.limits)
+  let reason = decodedError(restored.error)
+  if reason != FileError.None: return LightFileResult[PreparedLightSnapshot](status: reason)
+  LightFileResult[PreparedLightSnapshot](status: FileError.None, completed: restored.value)
 proc openLightFileCache*(owner: var LightFileCache, path: string,
     config: LightFileConfig): FileError =
   ## Acquire an existing namespace and verify its complete image against explicit independent expectations.
@@ -106,8 +99,7 @@ proc openLightFileCache*(owner: var LightFileCache, path: string,
     if owner.data == nil: discard data.directory.close # Refused opens retire the lease without selecting fallback bytes.
   let loaded = readCurrent(data)
   if loaded.error != FileError.None: return loaded.error
-  data.checksum = loaded.value.checksum
-  data.cache = loaded.value.cache
+  data.image = loaded.value
   owner.data = data
   FileError.None
 proc initializeLightFileCache*(owner: var LightFileCache, path: string, config: LightFileConfig,
@@ -123,8 +115,7 @@ proc initializeLightFileCache*(owner: var LightFileCache, path: string, config: 
     if owner.data == nil: discard data.directory.close # Failed bootstrap leaves forensic files but no live authority.
   let published = replaceManagedManifest(data.directory, prepared.bytes, config.limits.bytes)
   if published != FileError.None: return LightFileResult[StorageDurability](status: published)
-  data.cache = prepared.cache
-  data.checksum = prepared.checksum
+  data.image = prepared
   owner.data = data
   LightFileResult[StorageDurability](status: FileError.None,
       completed: StorageDurability.FileAndDirectorySynced)
@@ -133,7 +124,7 @@ proc snapshot*(owner: LightFileCache): LightFileResult[LightStateCache] =
   let data = owner.data
   if data == nil: return LightFileResult[LightStateCache](status: FileError.Uninitialized)
   if data.poisoned: return LightFileResult[LightStateCache](status: FileError.RecoveryRequired)
-  LightFileResult[LightStateCache](status: FileError.None, completed: data.cache)
+  LightFileResult[LightStateCache](status: FileError.None, completed: data.image.cache)
 proc publish*(owner: var LightFileCache, prepared: PreparedLightSnapshot): LightFileResult[
     StorageDurability] =
   ## Atomically replace the selected image only after matching its opaque preparation to the fixed owner policy.
@@ -147,8 +138,7 @@ proc publish*(owner: var LightFileCache, prepared: PreparedLightSnapshot): Light
     # Staging collisions precede mutation; IO uncertainty blocks all fresh observations until validated reopen.
     if published in {FileError.IoFailure, FileError.PublishedUnsynced}: data.poisoned = true
     return LightFileResult[StorageDurability](status: published)
-  data.cache = prepared.cache
-  data.checksum = prepared.checksum
+  data.image = prepared
   LightFileResult[StorageDurability](status: FileError.None,
       completed: StorageDurability.FileAndDirectorySynced)
 proc discardPending*(owner: var LightFileCache): FileError =
@@ -160,9 +150,30 @@ proc discardPending*(owner: var LightFileCache): FileError =
   if selected.error != FileError.None:
     data.poisoned = true # Invalid or unreadable selected bytes cannot authorize cleanup or fresh cache reads.
     return selected.error
-  if array[32, byte](selected.value.checksum) != array[32, byte](data.checksum):
+  if array[32, byte](selected.value.checksum) != array[32, byte](data.image.checksum):
     data.poisoned = true
     return FileError.RecoveryMismatch
   let discarded = discardManagedPending(data.directory)
   if discarded != FileError.None: data.poisoned = true
   discarded
+
+proc admit*(owner: var LightFileCache, updates: openArray[LightStateProof]): LightFileResult[
+    StorageDurability] =
+  ## Authenticate incoming proof evidence privately, then publish through the same atomic synchronized file path.
+  let data = owner.data
+  if data == nil: return LightFileResult[StorageDurability](status: FileError.Uninitialized)
+  if data.poisoned: return LightFileResult[StorageDurability](status: FileError.RecoveryRequired)
+  let edited = data.image.admit(updates)
+  let reason = decodedError(edited.error)
+  if reason != FileError.None: return LightFileResult[StorageDurability](status: reason)
+  owner.publish(edited.value)
+proc forget*(owner: var LightFileCache, keys: openArray[StateKey]): LightFileResult[
+    StorageDurability] =
+  ## Durably drop only local evidence; the unchanged root never derives from the remaining partial cache.
+  let data = owner.data
+  if data == nil: return LightFileResult[StorageDurability](status: FileError.Uninitialized)
+  if data.poisoned: return LightFileResult[StorageDurability](status: FileError.RecoveryRequired)
+  let edited = data.image.forget(keys)
+  let reason = decodedError(edited.error)
+  if reason != FileError.None: return LightFileResult[StorageDurability](status: reason)
+  owner.publish(edited.value)
