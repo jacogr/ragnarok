@@ -65,6 +65,7 @@ type
     pages: seq[PageData]
     dirty: seq[byte]
     active: bool
+    recent: array[2, int] # Fixed page slots retain no page/chunk owner and never imply permissions.
   MachineInfo* = object ## Copied CPU state has no pointer into registers or mutable backing storage.
     pc*: CodeAddress
     gas*: MachineGas
@@ -362,8 +363,17 @@ type ScalarSpan = object
   ## Private validated slots and byte extents belong only to the immutable memory inspected in this call.
   first, last, offset, firstCount, count: int
 
-proc scalarSpan(memory: Memory, address: MemoryAddress, width: AccessWidth,
-    writing: bool): MachineResult[ScalarSpan] =
+func scalarSlot[Cached: static[bool]](data: MemoryData, page: uint32,
+    recent: array[2, int]): int {.inline.} =
+  ## Immutable calls compile without hint probes; writer calls accept only exact bounded physical-page matches.
+  when Cached:
+    for slot in recent:
+      if slot >= 0 and slot < data.pages.len and uint32(data.pages[slot].index) == page:
+        return slot
+  lowerBound(data, page)
+
+proc scalarSpan[Cached: static[bool]](memory: Memory, address: MemoryAddress, width: AccessWidth,
+    writing: bool, recent: array[2, int] = [-1, -1]): MachineResult[ScalarSpan] =
   ## Resolve each touched page once, preserving overflow, protected-memory and presence-before-permission precedence.
   if memory.data == nil: return MachineResult[ScalarSpan](status: MachineError.InvalidOwner)
   if byte(width) notin [1'u8, 2'u8, 4'u8, 8'u8]:
@@ -373,7 +383,7 @@ proc scalarSpan(memory: Memory, address: MemoryAddress, width: AccessWidth,
   let start = uint64(address) and 0xffffffff'u64
   if start > uint64(high(uint32)) - uint64(byte(width)):
     # Exclusive-end overflow retains the approved final-page presence rule before permissions.
-    let at = lowerBound(data, 0xfffff'u32)
+    let at = scalarSlot[Cached](data, 0xfffff'u32, recent)
     if at < data.pages.len and uint32(data.pages[at].index) == 0xfffff'u32 and
         data.pages[at].access != PageAccess.Inaccessible:
       return MachineResult[ScalarSpan](status: MachineError.Panic)
@@ -383,7 +393,7 @@ proc scalarSpan(memory: Memory, address: MemoryAddress, width: AccessWidth,
     return MachineResult[ScalarSpan](status: MachineError.Panic)
   let firstPage = uint32(start div 4096)
   let lastPage = uint32((start + uint64(byte(width)) - 1) div 4096)
-  let first = lowerBound(data, firstPage)
+  let first = scalarSlot[Cached](data, firstPage, recent)
   var last = first
   var firstAccess = PageAccess.Inaccessible
   if first < data.pages.len and uint32(data.pages[first].index) == firstPage:
@@ -391,7 +401,7 @@ proc scalarSpan(memory: Memory, address: MemoryAddress, width: AccessWidth,
   var lastAccess = firstAccess
   if firstPage != lastPage:
     # Supported scalar widths reach at most two pages; retain both resolved slots for the payload operation.
-    last = lowerBound(data, lastPage)
+    last = scalarSlot[Cached](data, lastPage, recent)
     lastAccess = PageAccess.Inaccessible
     if last < data.pages.len and uint32(data.pages[last].index) == lastPage:
       lastAccess = data.pages[last].access
@@ -412,7 +422,7 @@ proc scalarSpan(memory: Memory, address: MemoryAddress, width: AccessWidth,
 proc load*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineResult[
     RegisterValue] =
   ## Load a complete little-endian scalar from preflighted page spans; instruction sign extension remains separate.
-  let checked = scalarSpan(memory, address, width, false)
+  let checked = scalarSpan[false](memory, address, width, false)
   if checked.error != MachineError.None: return failure[RegisterValue, ScalarSpan](checked)
   if memory.data == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
   let data = memory.data
@@ -427,7 +437,7 @@ proc load*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineR
 proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
     value: RegisterValue): MachineResult[Memory] =
   ## Preflight once, then clone only touched pages and publish an independent atomic snapshot.
-  let checked = scalarSpan(memory, address, width, true)
+  let checked = scalarSpan[false](memory, address, width, true)
   if checked.error != MachineError.None: return failure[Memory, ScalarSpan](checked)
   if memory.data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   let data = memory.data
@@ -580,7 +590,7 @@ proc newScalarMemoryWriter*(memory: Memory): MachineResult[ScalarMemoryWriter] =
   ## Retain a genuine immutable base; working vectors/chunks allocate only after a complete successful scalar preflight.
   if memory.data == nil: return MachineResult[ScalarMemoryWriter](status: MachineError.InvalidOwner)
   MachineResult[ScalarMemoryWriter](status: MachineError.None, completed:
-    ScalarMemoryWriter(base: memory, pages: @[], dirty: @[], active: false))
+    ScalarMemoryWriter(base: memory, pages: @[], dirty: @[], active: false, recent: [-1, -1]))
 
 proc prepareWriterSpan(writer: ScalarMemoryWriter, slot, offset, count: int) =
   ## The validated nonempty page interval clones each header/chunk only on its first write in this private epoch.
@@ -601,15 +611,24 @@ func writerScalar(writer: ScalarMemoryWriter, source: MemoryData, slot, offset,
   if writer.active: pageScalar(writer.pages[slot], offset, count)
   else: pageScalar(source.pages[slot], offset, count)
 
+proc rememberScalarSpan(writer: ScalarMemoryWriter, span: ScalarSpan) =
+  ## Only complete successful preflight supplies slots; epoch sealing retains their exact sorted page positions.
+  if span.first != span.last:
+    writer.recent = [span.first, span.last]
+  elif writer.recent[0] != span.first:
+    writer.recent[1] = writer.recent[0]
+    writer.recent[0] = span.first
+
 proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
     width: AccessWidth): MachineResult[RegisterValue] =
   ## Read the writer's latest scalar state; nil/default-invalid builders never imply a zero-filled address space.
   if writer == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
   let source = writer.base.data
   if source == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
-  let checked = scalarSpan(writer.base, address, width, false)
+  let checked = scalarSpan[true](writer.base, address, width, false, writer.recent)
   if checked.error != MachineError.None: return failure[RegisterValue, ScalarSpan](checked)
   let span = checked.value
+  rememberScalarSpan(writer, span)
   var value = writerScalar(writer, source, span.first, span.offset, span.firstCount)
   if span.firstCount < span.count:
     # Full preflight precedes both reads; the remaining suffix proves a bounded sub-word shift.
@@ -623,7 +642,7 @@ proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: Acces
   if writer == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
   let source = writer.base.data
   if source == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
-  let checked = scalarSpan(writer.base, address, width, true)
+  let checked = scalarSpan[true](writer.base, address, width, true, writer.recent)
   if checked.error != MachineError.None: return failure[bool, ScalarSpan](checked)
   if not writer.active:
     # Page count and vector extent already belong to the admitted base; no write can insert pages or change permissions.
@@ -633,6 +652,7 @@ proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: Acces
         index]) # Retain immutable source pages through checked indexed reads.
     writer.active = true
   let span = checked.value
+  rememberScalarSpan(writer, span)
   prepareWriterSpan(writer, span.first, span.offset, span.firstCount)
   if span.firstCount < span.count:
     prepareWriterSpan(writer, span.last, 0, span.count-span.firstCount)
