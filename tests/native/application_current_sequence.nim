@@ -12,26 +12,35 @@ import ../../src/state/[block_admission, report_admission, accumulation_current_
 import ../support/[accumulation_current_chain_context,
   current_download_command_context,
   current_application_context, current_services_disk_samples, block_download_transport,
-  current_consecutive_context, current_consecutive_download_context, current_preimage_sequence_context]
+  current_consecutive_context, current_consecutive_download_context,
+  current_preimage_sequence_context, current_guarantee_sequence_context, current_guarantee_remote_context]
 
 proc main() {.raises.} =
   ## The witness owns wire/state assertions; Python owns process arguments, output and joined cleanup.
   let mode = getEnv("RAGNAROK_CURRENT_SEQUENCE_CASE")
   assert mode in ["journal", "managed", "journal-resumed", "managed-resumed", "replay", "empty",
       "timeout", "resource", "managed-maintenance", "maintenance-resource", "maintenance-resumed",
-      "preimages-journal", "preimages-managed", "preimages-repeated", "preimages-resumed"]
+      "preimages-journal", "preimages-managed", "preimages-repeated", "preimages-resumed",
+      "guarantees-journal", "guarantees-managed", "guarantees-wrong", "guarantees-timeout"]
   let preimages = mode in ["preimages-journal", "preimages-managed", "preimages-repeated", "preimages-resumed"]
+  let guarantees = mode in ["guarantees-journal", "guarantees-managed", "guarantees-wrong", "guarantees-timeout"]
   let managed = mode in ["managed", "managed-resumed", "empty", "managed-maintenance",
-      "maintenance-resource", "maintenance-resumed", "preimages-managed", "preimages-repeated"]
-  let partial = mode in ["replay", "empty", "timeout", "resource", "maintenance-resource", "preimages-repeated"]
-  let total = if preimages and not partial: 2 else: 3
+      "maintenance-resource", "maintenance-resumed", "preimages-managed", "preimages-repeated",
+      "guarantees-managed", "guarantees-wrong"]
+  let partial = mode in ["replay", "empty", "timeout", "resource", "maintenance-resource",
+      "preimages-repeated", "guarantees-wrong", "guarantees-timeout"]
+  let total = if guarantees or (preimages and not partial): 2 else: 3
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var report = newSeq[byte](raw.len)
   for index, octet in raw: report[index] = byte(octet)
   let base = decodeOwnedReport(report, 2).value
   var fixture = default(CurrentConsecutiveFixture)
   var repeated = default(OwnedBlock)
-  if preimages:
+  var remoteFixture = default(CurrentGuaranteeSequenceFixture)
+  if guarantees:
+    remoteFixture = currentGuaranteeSequenceFixture(base)
+    fixture = remoteFixture.sequence
+  elif preimages:
     let authored = currentPreimageSequenceFixture(base)
     fixture = authored.sequence
     repeated = authored.repeated
@@ -39,12 +48,13 @@ proc main() {.raises.} =
     fixture = currentConsecutiveFixture(base) # Ordinary witnesses retain their original three-successor fixture.
   writeFile("current-chain.json", fixture.seed.currentApplicationText)
   var limits = currentConsecutivePolicy()
-  if mode == "timeout":
+  if mode in ["timeout", "guarantees-timeout"]:
     limits.stream.timeout = CurrentDownloadTimeout(20000)
     limits.attemptTimeout = CurrentDownloadAttemptTimeout(30000)
   if mode in ["resource", "maintenance-resource"]:
     limits.candidate.completion.composition.recent.history.blocks = ElementLimit(
         3) # Third successor requires four retained C3 rows.
+  if guarantees: limits.input.discoverAncestors = true
   writeFile("current-policy.conf", encodeCurrentDownloadPolicy(limits))
   var requests = newSeq[array[42, byte]](0)
   var responses = newSeq[seq[byte]](0)
@@ -61,6 +71,10 @@ proc main() {.raises.} =
       responses.add(currentConsecutiveResponse(fixture.children[index]))
     modes.add(if index == 2 and mode == "timeout": NoFin else: DownloadTransferMode.Healthy)
   var servers = default(DownloadResponders)
+  if guarantees:
+    requests = currentGuaranteeRequests(remoteFixture)
+    responses = currentGuaranteeResponses(remoteFixture, mode == "guarantees-wrong")
+    modes = @[Healthy, Healthy, (if mode == "guarantees-timeout": NoFin else: Healthy)]
   let resumed = mode in ["journal-resumed", "managed-resumed", "maintenance-resumed", "preimages-resumed"]
   if resumed:
     assert servers.openSequenceResponders(@[requests[0]], @[responses[0]], @[modes[0]])
@@ -88,7 +102,8 @@ proc main() {.raises.} =
   let count = prefixRequests+servers.requestCount(true)
   assert servers.requestCount(false) == 0, "unused identity receives no request"
   servers.close() # Completed application IO/worker shutdown precedes strict independent disk inspection.
-  assert count == total, "exact consecutive executable request count"
+  let expectedRequests = if guarantees: total+1 else: total
+  assert count == expectedRequests, "exact current and original-context executable request count"
   let adopted = if partial: total-1 else: total
   var owner = default(Services)
   defer: owner.close()

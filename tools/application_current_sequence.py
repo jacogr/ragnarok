@@ -3,7 +3,7 @@
 
 """Observe actual current-command exits and progress alongside an independent native TLS/map witness.
 
-Exposes observe and observe_preimages; process failures always reap the responder and cannot borrow another case's verdict.
+Exposes observe, observe_preimages and observe_guarantees; process failures always reap the responder and cannot borrow another case's verdict.
 """
 import subprocess
 import tempfile
@@ -12,10 +12,11 @@ from pathlib import Path
 from application_current_download import ready_port
 
 
-def _observe(peer, responder, directory, environment, cases):
+def _observe(peer, responder, directory, environment, cases, extra=(), context_requests=0):
     """Check each current command transcript and independent durable prefix before the next case."""
     directory.mkdir(parents=True, exist_ok=True)
-    if not cases or any(total not in (2, 3) for _, total, _ in cases):
+    if (not cases or context_requests not in (0, 1)
+            or any(total not in (2, 3) for _, total, _ in cases)):
         raise ValueError('Current sequence case plan must contain bounded two/three-child cases')
     rows = []
     for name, total, partial in cases:
@@ -31,15 +32,16 @@ def _observe(peer, responder, directory, environment, cases):
                 arguments = [str(peer), 'download-current', str(port),
                     environment['RAGNAROK_TEST_CERT'], environment['RAGNAROK_TEST_KEY'],
                     environment['RAGNAROK_TEST_PEER_B'], 'jamnp-s/1/00000000',
-                    '4000' if name == 'timeout' else '10000', 'current-policy.conf',
+                    '4000' if name in ('timeout', 'guarantees-timeout') else '10000', 'current-policy.conf',
                     '--with-state', '--chain', 'current-chain.json', '--state-writes', '1000',
                     '--state-write-bytes', '1000000', '--state-storage', 'disk',
                     '--state-db', 'current-state.db', '--download-blocks', str(total)]
                 if name in ('managed', 'managed-resumed', 'empty', 'managed-maintenance',
                             'maintenance-resource', 'maintenance-resumed', 'preimages-managed',
-                            'preimages-repeated'):
+                            'preimages-repeated', 'guarantees-managed', 'guarantees-wrong'):
                     arguments += ['--state-layout', 'managed', '--state-compact-bytes',
                                   '1' if 'maintenance' in name else '0']
+                arguments += list(extra) # Source-owned acquisition options never alter the shared credential/endpoint tuple.
                 runs = []
                 for step, requested in enumerate((1, total-1) if name.endswith('-resumed') else (total,)):
                     # A fresh executable lifetime must select the prefix persisted by the previous one.
@@ -50,7 +52,7 @@ def _observe(peer, responder, directory, environment, cases):
                     (folder/f'application-{step}.stdout').write_text(result.stdout)
                     (folder/f'application-{step}.stderr').write_text(result.stderr)
                     adopted = total-1 if partial else requested
-                    marker = 'FAILED Timeout' if name == 'timeout' else ('FAILED Exhausted' if partial else 'ADOPTED')
+                    marker = 'FAILED Timeout' if name in ('timeout', 'guarantees-timeout') else ('FAILED Exhausted' if partial else 'ADOPTED')
                     progress = f'CURRENT_DOWNLOAD_PROGRESS adopted={adopted} requested={requested}'
                     passed = (result.returncode == (2 if partial else 0)
                         and 'CURRENT_DOWNLOAD_'+marker in (result.stdout+result.stderr).splitlines()
@@ -67,7 +69,7 @@ def _observe(peer, responder, directory, environment, cases):
                 code = process.wait(timeout=10)
             # Each complete CLI transcript and the independent full-history witness must agree.
             adopted = total-1 if partial else total
-            verified = f'CURRENT_SEQUENCE_VERIFIED adopted={adopted} requests={total}'
+            verified = f'CURRENT_SEQUENCE_VERIFIED adopted={adopted} requests={total+context_requests}'
             passed = code == 0 and verified in log.read_text().splitlines() and all(r['passed'] for r in runs)
             row = dict(case=name, runs=runs, responder_exit_code=code, responder_log=str(log), passed=passed)
             rows.append(row)
@@ -99,3 +101,11 @@ def observe_preimages(peer, responder, directory, environment):
     cases = [('preimages-journal', 2, False), ('preimages-managed', 2, False),
              ('preimages-repeated', 3, True), ('preimages-resumed', 2, False)]
     return _observe(peer, responder, directory, environment, cases)
+
+
+def observe_guarantees(peer, responder, directory, environment):
+    """Current blocks and one separately counted original-context request must all receive independent verification."""
+    cases = [('guarantees-journal', 2, False), ('guarantees-managed', 2, False),
+             ('guarantees-wrong', 2, True), ('guarantees-timeout', 2, True)]
+    return _observe(peer, responder, directory, environment, cases,
+                    extra=('--download-discover-ancestors', '1'), context_requests=1)
