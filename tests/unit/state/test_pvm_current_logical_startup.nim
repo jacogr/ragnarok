@@ -162,9 +162,10 @@ proc sourceChecks(fixture: NamespaceExecutionFixture) =
 proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false, omitted = false,
     refuse = false, namespaces = false, refresh = false, partial = false,
         unwritable = false, keyBytes = 0, replacement = false, omitMembership = false,
-            sequential = false) {.raises.} =
+            sequential = false, retired = false, unsupported = false,
+        replacementLength = 1, replacementHash = default(array[32, byte])) {.raises.} =
   ## Actual command sockets, worker collection and adoption use explicit files; strict disk restart reconstructs a fresh physical logical owner.
-  let refused = refuse or omitMembership
+  let refused = refuse or omitMembership or unsupported
   var chainPath = "pvm-logical-cli-chain"
   var policyPath = "pvm-logical-cli-policy"
   var sourcePath = "pvm-logical-cli-source"
@@ -189,6 +190,10 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
         8192) # Read the actual long zero-filled writable/heap span under explicit original policies.
   if sequential: policy.candidate.round.blockGas = Gas(
       200000) # Same original affordable-prefix policy as the signed fixture.
+  if retired:
+    # Original cleanup touches metadata, two storage keys, three requests and three preimages before retirement.
+    policy.candidate.completion.execution.initial.guests.accountWriteFacts = ElementLimit(16)
+    policy.candidate.completion.execution.initial.accounts.writes.writes = ElementLimit(16)
   if replacement:
     # Host capacities and selected history limits are separate original execution policies.
     policy.candidate.completion.execution.initial.guests.createdAccounts = ElementLimit(4)
@@ -223,7 +228,9 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
   var heads = @[fixture.parent.bestBlock.value, model.chainView.bestBlock.value]
   var children = @[first]
   for index in 0..<2:
-    let child = currentEmptyChild(model.chainView.bestBlock.value)
+    let parent = model.chainView.bestBlock.value
+    let child = if retired: currentSameEpochBodyChild(parent, [0'u8, 0, 0, 0, 0, 0, 0])
+      else: currentEmptyChild(parent) # Later-epoch expiry fixtures use the existing explicitly bounded signer.
     let update = phaseCurrentUpdate(model, child, [], policy.candidate)
     model.installPrepared(update)
     children.add(child)
@@ -294,7 +301,9 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
           updated # The exact maximum source key remains restartable.
     elif replacement:
       assert updated != text and "s=99\n" in updated
-      assert ("r=" & repeat('0', 64) & (if sequential: ":0\n" else: ":1\n")) in updated, "new code request survives source export"
+      let length = if sequential: 0 else: replacementLength
+      let expected = "r=" & logicalHex(replacementHash) & ":" & $length & "\n"
+      assert expected in updated, "new-generation code request survives source export"
     elif namespaces:
       assert updated != text and "k=07\n" in updated # Exported raw identity comes only from the actual qualified adopted source.
     else: assert updated == text # Strict identity preservation exports the same canonical declarations after actual adoption.
@@ -358,7 +367,30 @@ proc main() {.raises.} =
   let sequential = namespaceSequentialReplacementFixture(decodeOwnedReport(bytes, 2).value,
     sequentialPolicy).toNamespaceExecutionFixture
 
+  var retirementPolicy = currentCandidateLimits()
+  retirementPolicy.completion.execution.initial.guests.accountWriteFacts = ElementLimit(16)
+  retirementPolicy.completion.execution.initial.accounts.writes.writes = ElementLimit(16)
+  let retired = namespaceRetiredReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    retirementPolicy).toNamespaceExecutionFixture
+  let reusedOrigin = namespaceRetiredReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    retirementPolicy, reuse = true)
+  let reused = reusedOrigin.toNamespaceExecutionFixture
+  let oldCode = reusedOrigin.services[1].metadata.codeHash
+  let oldLength = int(uint32(reusedOrigin.services[1].requests[^1].length))
+  let orphan = namespaceRetiredReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    retirementPolicy, orphan = true).toNamespaceExecutionFixture
   for layout in 0..2:
+    command(retired, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, replacementLength = 0)
+    command(reused, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, replacementLength = oldLength, replacementHash = array[32, byte](oldCode))
+    command(reused, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, partial = true, replacementLength = oldLength, replacementHash = array[32,
+          byte](oldCode))
+    command(orphan, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, unsupported = true)
+    command(retired, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, omitMembership = true)
     command(sequential, layout, namespaces = true, refresh = true, replacement = true,
         sequential = true)
     command(sequential, layout, namespaces = true, refresh = true, partial = true,

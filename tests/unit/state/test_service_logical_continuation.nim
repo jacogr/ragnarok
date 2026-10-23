@@ -19,7 +19,8 @@ import ../../../src/state/[accumulation_current_driver, accumulation_current_seq
   accumulation_effects, accumulation_round, accumulation_queue, report_admission,
   block_transition, block_admission, current_logical, current_identities,
   supplied_logical_inventory, supplied_services, store]
-import ../../../src/codec/[bounded, composite, report_owned, state_accounts, state_layout, state_requests]
+import ../../../src/codec/[bounded, composite, report_owned, state_accounts, state_layout,
+    state_requests, state_service_values]
 import ../../../src/chain/[provider, genesis]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Early planning ceilings must refuse independently of crypto availability.
@@ -160,6 +161,23 @@ proc main() {.raises.} =
   let missingContinuation = continueCurrentNamespaces(missingSequence.parent,
     missingSequence.update, policy())
   assert missingContinuation.error == LogicalContinuationError.UnsupportedChange
+  var retirementPolicy = candidatePolicy()
+  retirementPolicy.completion.execution.initial.guests.accountWriteFacts = ElementLimit(16)
+  retirementPolicy.completion.execution.initial.accounts.writes.writes = ElementLimit(16)
+  let retired = namespaceRetiredReplacementFixture(nativeBase(), retirementPolicy)
+  let retiredHistory = retired.update.currentUpdateServiceIdentityHistory
+  assert retiredHistory.serviceIdentityHistoryInfo.value.creations == 1
+  assert retiredHistory.serviceIdentityHistoryInfo.value.deletions == 1
+  assert retiredHistory.serviceIdentityHistorySource.value.completedSequenceInfo.value.entries == 3
+  let death = retiredHistory.serviceIdentityDeletionAt(ServiceDeletionIndex(0)).value
+  let birth = retiredHistory.serviceIdentityCreationAt(ServiceCreationIndex(0)).value
+  assert uint64(death.entry) == 1 and uint64(birth.entry) == 2
+  discard check(Fixture(origin: retired, update: retired.update), 2)
+  let reused = namespaceRetiredReplacementFixture(nativeBase(), retirementPolicy, reuse = true)
+  discard check(Fixture(origin: reused, update: reused.update), 2)
+  let orphan = namespaceRetiredReplacementFixture(nativeBase(), retirementPolicy, orphan = true)
+  let rejectedOrphan = continueCurrentNamespaces(orphan.parent, orphan.update, policy())
+  assert rejectedOrphan.error == LogicalContinuationError.UnsupportedChange
   let grown = fixture()
   let continued = check(grown, 3)
   let created = grown.update.currentUpdateServiceIdentityHistory.serviceIdentityCreationAt(
@@ -220,7 +238,11 @@ proc main() {.raises.} =
   assert copySuppliedServices(repeated.value.currentLogicalInventory.value, policy().projection).value.len == 4
   for i in 0..<25: discard continueCurrentNamespaces(grown.origin.parent, grown.update, policy()).value # Warm complete roster reconstruction/current qualification.
   let before = getOccupiedMem()
-  for i in 0..<1000: discard continueCurrentNamespaces(grown.origin.parent, grown.update, policy()).value
+  for i in 0..<1000:
+    # Both ordinary additions and retired-generation aliases must release every temporary owner.
+    discard continueCurrentNamespaces(grown.origin.parent, grown.update, policy()).value
+    discard continueCurrentNamespaces(retired.parent, retired.update, policy()).value
+    discard continueCurrentNamespaces(reused.parent, reused.update, policy()).value
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("service_logical_continuation", 1000, before, after)

@@ -154,6 +154,7 @@ type SignedBlockFixtureConfig* = object ## Authored signed-parent/block data is 
   ready*: ReadyRow                 ## Original parent ready row.
   preimageWire*: seq[byte]         ## Exact child preimage extrinsic, including intentional malformed cases.
   poolCopies*: int                 ## Number of original authorizer duplicates per core.
+  namespaceValueBytes*: uint64     ## Explicit original namespace fixture bound; existing profiles retain65 bytes.
   accumulationGas*: uint64         ## Declared original report budget, authored before queue roots and signatures.
   refinementGas*: uint64           ## Gas observation encoded in each signed report digest.
   historyPeaks*: seq[HistoryPeak]  ## Original parent history belt.
@@ -171,8 +172,8 @@ proc signedBlockFixtureConfig*(): SignedBlockFixtureConfig =
   ## Preserve the existing tiny signed profile and resource defaults in one place.
   SignedBlockFixtureConfig(mode: 0, reports: 2, maxWriteBytes: 1000000'u64, withDispute: false,
       withAvailable: false, extra: @[], accountCode: @[], ready: @[], preimageWire: @[],
-      poolCopies: 1, accumulationGas: 10'u64, refinementGas: high(uint64), historyPeaks: @[],
-          targetSlot: 0'u32,
+      poolCopies: 1, namespaceValueBytes: 65, accumulationGas: 10'u64, refinementGas: high(uint64),
+          historyPeaks: @[], targetSlot: 0'u32,
       withTicket: false, shiftPending: false, guaranteeSlot: 0'u32, refinement: @[], parentPools: @[],
       storeWrites: 1000'u64, completeState: false, serviceNamespaces: @[])
 
@@ -302,7 +303,8 @@ proc authored*(base: OwnedReport, options = signedBlockFixtureConfig()): Context
   for entry in options.extra: entries.add(entry)
   if options.serviceNamespaces.len > 0:
     assert options.completeState # Scoped rollback sentinels never enter complete logical fixtures.
-    seedServiceNamespaces(entries, options.serviceNamespaces)
+    seedServiceNamespaces(entries, options.serviceNamespaces, ByteLimit(
+        options.namespaceValueBytes))
   var bounds = limits()
   bounds.writeValueBytes = ByteLimit(options.maxWriteBytes)
   bounds.writes = ElementLimit(options.storeWrites) # Optional inherited batch limits enter the original store before any stage.
