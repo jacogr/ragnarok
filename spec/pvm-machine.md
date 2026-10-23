@@ -22,8 +22,9 @@ trap increment beyond code without relaxing executable-entry validation. It does
 not authenticate an exit reason; callers follow `StepOutcome.exit` when deciding
 whether to execute again. See [single-step terminal semantics](pvm-step.md).
 
-Memory is a sorted sparse sequence of immutable page references. Each page owns
-4096 bytes and inaccessible/read-only/read-write permission. A missing page has
+Memory is a sorted sparse sequence of immutable page headers. Each header owns
+eight immutable 512-byte chunks and inaccessible/read-only/read-write permission;
+the public page image remains 4096 bytes. A missing page has
 zero underlying bytes and inaccessible permissions. Inaccessible stored pages
 retain their bytes, so changing their permissions need not erase their contents.
 `captureMemory` requires sorted unique page ordinals below 2^20 and applies a
@@ -35,8 +36,8 @@ can change permissions or contents, preserves other pages, and enforces the
 original owner's page ceiling for insertions. Replacement at the ceiling is
 allowed. This is not a guest store or a host-function implementation.
 
-Published owners form acyclic ARC graphs. Updates copy the page-reference vector
-and at most the touched pages, sharing all other immutable pages. No backing
+Published owners form acyclic ARC graphs. Updates copy the page-reference vector and touched headers/chunks, sharing all
+other immutable page storage. No backing
 reference or borrowed pointer is public. Failure returns only a typed reason;
 a guest page-fault address is part of that reason, never partial operation progress.
 
@@ -147,7 +148,7 @@ bounded byte counts. Loads and stores reuse these slots rather than searching th
 page vector for every byte. It preserves owner/width validation, low-32 address
 selection, exclusive-end overflow, protected-prefix panic, cross-page store presence
 priority and failure atomicity. No unchecked pointer or mutable backing storage is
-exposed; successful stores still clone the vector and touched page images.
+exposed; successful stores still clone the vector and touched storage before publication.
 
 The native machine suite adds 64 neighboring page pairs separated by holes, checking
 unaligned eight-byte loads/stores, every output byte, exact hole faults and retained
@@ -156,3 +157,30 @@ reference, pinned boundary reference and memory-instruction suite pass; machine 
 memory-step owners return to their ARC baselines after 1000 cycles. A compiler guard
 keeps the resolved-span helper private. Measurement and remaining copying costs are
 recorded in [the interpreter comparison](pvm-benchmark-comparison.md).
+
+
+## Persistent page chunks, 2026-10-23
+
+A private page header retains eight fully initialized 512-byte chunk owners. Scalar
+stores clone at most two touched chunks, including when an eight-byte scalar crosses
+a chunk/page boundary. Host writes clone every intersected chunk only after complete
+range/permission/copy-budget preflight. All mutation targets private successors;
+predecessors and untouched chunks remain immutable. Permission-only successors share
+payload owners while preserving predecessor permissions. Zero/remap/free operations
+retain their existing byte and page-budget contracts.
+
+The public `PageImage`, 4096-byte guest page, page-count limit and byte-copy policy
+are unchanged. `captureMemory` copies all input bytes into private chunks and
+`pageImage` materializes a complete independent array; no chunk, reference or mutable
+view is exported. Chunk geometry is an implementation detail, not a protocol page
+size or a new caller resource policy. Owners remain an acyclic ARC graph.
+
+The `pvm_memory_chunks` native suite retains original/read-only/remapped and three
+write generations across nine interior/page boundaries. Independent full-page byte
+expectations check overlapping scalar/host writes, input mutation, copy-budget
+refusal and unchanged predecessor permissions. A thousand repeated groups release
+all owners. Machine, host-memory, scalar/boundary references, memory instruction,
+heap mapping, initialization and execution/host suites pass with their ARC evidence.
+Compiler probes keep chunk cloning and byte mutation private. The
+[benchmark record](pvm-benchmark-comparison.md) reports broad execution improvements,
+preparation boundaries and remaining interpreted performance gaps.
