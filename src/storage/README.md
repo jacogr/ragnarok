@@ -97,6 +97,11 @@ Strict reopen validates the whole journal and refuses partial tails. Retained re
 valid after file close. All calls are synchronous storage work; run them outside networking
 callbacks. See the record contract for bounded IO, cooperative inode locking and uncertainty rules.
 
+Unordered record duplicate preflight first proves uniqueness with compact digest prefixes when
+possible; every collision falls back to the full32-byte identity check before any integrity hash.
+No prefix becomes a physical identity or graph authority. See the
+[duplicate preflight contract](../../spec/storage-duplicate-prefix-preflight.md).
+
 `encodeFramedTrieExport` strictly validates raw batches before writing them into one owned buffer
 with checked zero-filled frame reservations. Both journal formats fill metadata/context and their
 new checksum around that body without retaining another encoded body. See the
