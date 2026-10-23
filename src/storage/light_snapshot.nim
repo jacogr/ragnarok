@@ -266,6 +266,14 @@ proc decodeLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId,
         proofReason: admitted.error)
   LightSnapshotResult[LightStateCache](status: LightSnapshotError.None, completed: admitted.value)
 
+proc ownedSnapshot(encoded: sink seq[byte], chain: StorageChainId, root: StateRoot,
+    limits: LightSnapshotLimits, cache: LightStateCache): PreparedLightSnapshot =
+  ## Only fully validated bytes may enter this private immutable owner; the last 32 bytes carry their checked checksum.
+  assert encoded.len >= Overhead
+  var checksum = default(array[32, byte])
+  for index in 0..<32: checksum[index] = encoded[encoded.len-32+index]
+  PreparedLightSnapshot(owner: SnapshotData(chain: chain, root: root, limits: limits,
+    encoded: encoded, cache: cache, checksum: StorageChecksum(checksum)))
 proc restoreLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId,
     expectedRoot: StateRoot, limits: LightSnapshotLimits): LightSnapshotResult[
         PreparedLightSnapshot] =
@@ -278,11 +286,20 @@ proc restoreLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId
     return LightSnapshotResult[PreparedLightSnapshot](status: decoded.error)
   var encoded = newSeq[byte](input.len)
   for index, octet in input: encoded[index] = octet
-  var checksum = default(array[32, byte])
-  for index in 0..<32: checksum[index] = input[input.len-32+index]
   LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.None,
-    completed: PreparedLightSnapshot(owner: SnapshotData(chain: expectedChain, root: expectedRoot,
-      limits: limits, encoded: encoded, cache: decoded.value, checksum: StorageChecksum(checksum))))
+    completed: ownedSnapshot(encoded, expectedChain, expectedRoot, limits, decoded.value))
+proc takeLightSnapshot*(input: var seq[byte], expectedChain: StorageChainId,
+    expectedRoot: StateRoot, limits: LightSnapshotLimits): LightSnapshotResult[
+        PreparedLightSnapshot] =
+  ## Consume an owned image only after full validation; every refusal preserves the original input unchanged.
+  let decoded = decodeLightSnapshot(input, expectedChain, expectedRoot, limits)
+  if decoded.error == LightSnapshotError.ProofFailure:
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.ProofFailure,
+      proofReason: decoded.proofError)
+  if decoded.error != LightSnapshotError.None:
+    return LightSnapshotResult[PreparedLightSnapshot](status: decoded.error)
+  LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.None,
+    completed: ownedSnapshot(move(input), expectedChain, expectedRoot, limits, decoded.value))
 
 type
   EntrySource = object ## A merge cursor borrows either a trusted encoded entry or an incoming transport index.

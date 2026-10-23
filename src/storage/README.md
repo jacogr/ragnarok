@@ -283,3 +283,8 @@ Prepared light images support bounded `admit` and `forget` edits at the same ind
 selected root. File owners retain verified proof evidence after reopen and expose the same
 operations through synchronized atomic publication. Exact final image quotas precede hashing;
 unchanged proofs are retained without rehashing. See [incremental light evidence](../../spec/storage-light-updates.md).
+
+Light-file reopening transfers its owned read buffer into the validated prepared image.
+The public `takeLightSnapshot` consumes only on success; failed validation preserves
+the caller buffer, and borrowed restoration retains its copying contract. See the
+[ownership and measured memory record](../../spec/storage-light-restore-memory.md).
