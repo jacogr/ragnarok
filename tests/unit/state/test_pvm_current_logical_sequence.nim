@@ -93,6 +93,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone,
       else: copySuppliedServices(logical.currentLogicalInventory.value,
           namespaceRefreshLimits.projection).value
     owner.checkRepricedLogicalSeed(update, stableDeclarations)
+    if index > 0: owner.checkShortLogicalSeed(update, stableDeclarations)
     let identities = if index == 0:
         preserveCurrentIdentities(parent, update, currentIdentityTestLimits)
       else: preserveCurrentIdentities(logical, update, currentIdentityTestLimits)

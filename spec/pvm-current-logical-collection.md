@@ -182,6 +182,15 @@ are retained. The source itself matches complete namespaces, but continuation re
 cannot authorize replacement of the producer's full original Parameters. Canonical Services
 configuration is never mutated by this negative source control.
 
+## Whole selected history at actual collection
+
+For subsequent actual native children, a complete logical source on the exact same physical
+best head, Parameters and absent finality is also captured from a shortened one-head view.
+Its complete-map matching succeeds, but continuation refuses `ViewMismatch` because the producer
+retained the full original ordered history. Successful source undercoverage is not promoted to
+qualification. The genuine completed logical source still qualifies afterward across every layout,
+RPC mode and joined-preparation timing.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable

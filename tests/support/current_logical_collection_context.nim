@@ -195,3 +195,17 @@ proc checkRepricedLogicalSeed*(owner: Services, update: PreparedCurrentChainUpda
   assert sameStateSnapshot(profile.parentContext.value.state, update.currentUpdatePriorState)
   assert preserveCurrentIdentities(parent.value, update, currentIdentityTestLimits).error ==
       CurrentIdentityError.ViewMismatch
+proc checkShortLogicalSeed*(owner: Services, update: PreparedCurrentChainUpdate,
+    declarations: openArray[StateService]) =
+  ## A successful complete source on the exact same physical best head cannot substitute for the original whole selected history.
+  let view = owner.chainView
+  assert view.retainedCount > 1 and view.finalizedBlock.error != GenesisError.None
+  let shortened = restoreLocalChainView([view.bestBlock]).value
+  assert shortened.retainedCount == 1
+  let profile = captureParentProfile(shortened, parentProfileTestLimits).value
+  let globals = qualifyParentGlobals(profile, parentGlobalsTestLimits).value
+  let parent = captureLogicalParent(globals, declarations, suppliedLogicalTestLimits)
+  assert parent.error == ParentLogicalError.None
+  assert sameStateSnapshot(profile.parentContext.value.state, update.currentUpdatePriorState)
+  assert preserveCurrentIdentities(parent.value, update, currentIdentityTestLimits).error ==
+      CurrentIdentityError.ViewMismatch
