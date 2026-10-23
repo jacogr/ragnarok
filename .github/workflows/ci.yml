@@ -44,7 +44,7 @@ env:
 jobs:
   modules:
     if: &requested ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
-    name: Source compilation
+    name: Compile source
     timeout-minutes: 30
     strategy: &os-strategy
       fail-fast: false
@@ -66,7 +66,7 @@ jobs:
       - &inventory
         name: Validate verification inventory
         run: make check-inventory
-      - name: Source compilation
+      - name: Compile source
         run: make check-modules
       - &summary
         name: Show verification coverage
@@ -84,6 +84,60 @@ jobs:
             build/ci/*.log
             build/tests/modules/*.log
             build/tests/modules/results.json
+
+  python:
+    if: *requested
+    name: Compile reference & tooling
+    timeout-minutes: 15
+    strategy: *os-strategy
+    runs-on: ${{ matrix.os }}
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Compile reference & tooling
+        run: make check-python
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: ${{ matrix.os }}-python-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/python/*.log
+            build/tests/python/results.json
+
+  guards:
+    if: &full ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
+    name: Compile rejection guards
+    timeout-minutes: 30
+    strategy: *os-strategy
+    runs-on: ${{ matrix.os }}
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Compile rejection guards
+        run: make check-guards
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: ${{ matrix.os }}-guards-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/guards/*.log
+            build/tests/guards/results.json
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
 
   models:
     if: *requested
@@ -113,60 +167,6 @@ jobs:
             build/tests/models/*.log
             build/tests/models/*.nif
             build/tests/models/results.json
-
-  python:
-    if: *requested
-    name: Python reference and tooling tests
-    timeout-minutes: 15
-    strategy: *os-strategy
-    runs-on: ${{ matrix.os }}
-    steps:
-      - *checkout
-      - *python
-      - *inventory
-      - name: Python reference and tooling tests
-        run: make check-python
-      - *summary
-      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
-      - name: Retain verification evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: ${{ matrix.os }}-python-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/*.log
-            build/tests/python/*.log
-            build/tests/python/results.json
-
-  guards:
-    if: &full ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
-    name: Compiler rejection guards
-    timeout-minutes: 30
-    strategy: *os-strategy
-    runs-on: ${{ matrix.os }}
-    steps:
-      - *checkout
-      - *python
-      - *inventory
-      - name: Compiler rejection guards
-        run: make check-guards
-      - *summary
-      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
-      - name: Retain verification evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: ${{ matrix.os }}-guards-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/*.log
-            build/tests/guards/*.log
-            build/tests/guards/results.json
-            build/bandersnatch/build.log
-            build/bandersnatch/cargo-features.log
 
   unit:
     if: *requested
