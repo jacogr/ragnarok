@@ -17,3 +17,5 @@ Actual block preimage provision qualifies added content and the exact updated re
 Actual junior service ejection qualifies a reduced complete service inventory and proves account absence. The application_supplied_service_ejection native suite also rejects a complete-looking declaration for an omitted, stale or unselected effect, and crosses the exact-plan response against the prior root.
 
 Actual guest write followed by panic qualifies only the selected original exceptional namespace. The application_supplied_panic_rollback native suite also rejects a complete-looking declaration for an omitted, stale or unselected effect, and crosses the exact-plan response against the prior root.
+
+Actual write/checkpoint/trap execution qualifies the checkpoint-selected new namespace. The application_supplied_checkpoint_selection native suite also rejects a complete-looking declaration for an omitted, stale or unselected effect, and crosses the exact-plan response against the prior root.
