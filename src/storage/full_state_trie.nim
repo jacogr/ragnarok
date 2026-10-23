@@ -125,6 +125,26 @@ proc branch(left, right: nil TrieNode): nil TrieNode =
   TrieNode(leaf: false, left: left, right: right, entries: entryCount(left)+entryCount(right),
     nodes: 1+nodeCount(left)+nodeCount(right), valueBytes: valueSize(left)+valueSize(right))
 
+proc buildInitial(ordered: openArray[WriteIndex], writes: openArray[TrieWrite],
+    first, stop, depth: int): nil TrieNode =
+  ## Build each final node once from a sorted unique range sharing the previous key bits.
+  if first == stop: return nil # An empty partition has the canonical empty identity.
+  if stop-first == 1:
+    let write = writes[ordered[first].position]
+    assert write.kind == TrieWriteKind.Put # Only the constructor selects this private build path.
+    return leaf(write.key, write.value) # Singleton leaves need no intervening unary branches.
+  assert depth < 248 # Distinct full keys must split before exhausting their serialized bits.
+  var lower = first
+  var upper = stop
+  while lower < upper:
+    # Lexicographic order and the shared prefix make the current zero/one boundary monotonic.
+    let middle = lower+(upper-lower) div 2
+    if one(ordered[middle].key, depth): upper = middle # Keep the first possible one-bit key.
+    else: lower = middle+1 # This zero-bit key and all earlier identities precede the split.
+  let left = buildInitial(ordered, writes, first, lower, depth+1)
+  let right = buildInitial(ordered, writes, lower, stop, depth+1)
+  branch(left, right) # Retain unary branches whenever their nonempty child contains multiple leaves.
+
 proc remove(node: nil TrieNode, key: StateKey, depth: int): nil TrieNode =
   ## Delete by path copying; absent keys reuse their exact previous subtree identities.
   if node == nil: return nil # Absence is an idempotent no-op.
@@ -212,7 +232,8 @@ proc bytes*(view: TrieValue): seq[byte] {.requires: view.owner != nil.} =
   result = newSeq[byte](owner.payload.len)
   for i, octet in owner.payload: result[i] = octet # Retain the owner throughout copying.
 
-proc apply*(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[FullStateTrie] =
+proc applyBatch(source: FullStateTrie, writes: openArray[TrieWrite],
+    construction: bool): TrieResult[FullStateTrie] =
   ## Preflight the complete batch, build a private topology, then hash and return one new revision.
   ## No operation changes source or any previously retained revision, including backend refusal.
   let data = source.data
@@ -259,13 +280,18 @@ proc apply*(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[Ful
         return TrieResult[FullStateTrie](status: TrieError.LimitExceeded) # Deleted bytes release budget before insertion.
       inc count
       total += size
-  var candidate = data.root
-  for index in ordered:
-    candidate = remove(candidate, index.key, 0) # Remove replacements first to bound every intermediate byte/count sum.
-  for index in ordered:
-    let write = writes[index.position]
-    if write.kind == TrieWriteKind.Put:
-      candidate = insert(candidate, leaf(write.key, write.value), 0) # New payloads have private owned backing.
+  var candidate: nil TrieNode = nil
+  if construction:
+    assert data.root == nil # Initial-map construction never replaces or shares an existing graph.
+    candidate = buildInitial(ordered, writes, 0, ordered.len, 0)
+  else:
+    candidate = data.root # Ordinary updates preserve path copying and unchanged subtree identities.
+    for index in ordered:
+      candidate = remove(candidate, index.key, 0) # Remove replacements before any insertion.
+    for index in ordered:
+      let write = writes[index.position]
+      if write.kind == TrieWriteKind.Put:
+        candidate = insert(candidate, leaf(write.key, write.value), 0) # New payloads have owned backing.
   if nodeCount(candidate) > uint64(limits.trie.nodes):
     return TrieResult[FullStateTrie](status: TrieError.LimitExceeded) # Exact final topology refuses before any hashing.
   let hashed = hashCandidate(candidate, limits.trie.perValue)
@@ -277,6 +303,10 @@ proc apply*(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[Ful
   TrieResult[FullStateTrie](status: TrieError.None,
     completed: FullStateTrie(data: RevisionData(root: candidate, limits: limits)))
 
+proc apply*(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[FullStateTrie] =
+  ## Atomically path-copy validated writes, preserving all previous revisions even on hash refusal.
+  applyBatch(source, writes, false)
+
 proc newFullStateTrie*(entries: openArray[StateEntry],
     limits: FullStateTrieLimits): TrieResult[FullStateTrie] =
   ## Build an owned complete revision without routing initial entries through mutation-batch ceilings.
@@ -284,7 +314,7 @@ proc newFullStateTrie*(entries: openArray[StateEntry],
     return TrieResult[FullStateTrie](status: TrieError.LimitExceeded) # Bound borrowed entry-derived scratch before allocation.
   if entries.len > high(int) div sizeof(TrieWrite) or entries.len > high(int) div sizeof(StateEntry):
     return TrieResult[FullStateTrie](status: TrieError.LengthOverflow) # Initial typed scratch must fit host addressing.
-  # Reuse exactly the batch validation/build path with construction-only count/byte allowances.
+  # Reuse batch validation/hash publication with construction-only count/byte allowances.
   var initial = limits
   initial.writes = ElementLimit(entries.len)
   initial.writeValueBytes = limits.trie.totalValueBytes
@@ -293,7 +323,7 @@ proc newFullStateTrie*(entries: openArray[StateEntry],
   for i, entry in entries:
     writes[i] = TrieWrite(key: entry.key, kind: TrieWriteKind.Put,
         value: entry.value) # Synchronous borrowed aliases are never published.
-  let built = empty.apply(writes)
+  let built = applyBatch(empty, writes, true)
   if built.error != TrieError.None: return built # No initialized revision escapes a failed constructor.
   let data = built.value.data
   assert data != nil # A successful construction owns an initialized revision.
