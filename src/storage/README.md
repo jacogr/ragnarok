@@ -59,6 +59,17 @@ batch is validated before hashing. Updates copy affected paths and share unchang
 subtrees; cached complete hashes keep root work on newly created paths. Failure exposes only a
 reason and leaves all retained revisions unchanged.
 
+## Root-bound lookup proofs
+
+`state_proof.nim` verifies bounded root-to-terminal node paths for one serialized key against
+an independently trusted complete-state root. Successful `VerifiedStateLookup` values retain
+the exact root/key binding and distinguish Present from Absent; incomplete local evidence is a
+failure rather than absence. Present-byte extraction copies private immutable storage. The
+[light proof/trust contract](../../spec/storage-light-state-proofs.md) defines the canonical path,
+left-edge 255-bit comparison, resource ceilings and trust requirements. This is a local storage
+primitive; light startup, trusted heads, database identity/schema, cache policy and network formats
+remain separate work. It never hashes a partial mapping into a complete state root.
+
 ## Boundaries and ownership
 
 The trie reuses GP 0.8.0 key/node encodings and crypto primitives. The existing complete-map
