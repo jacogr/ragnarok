@@ -15,6 +15,8 @@ type
   LightStateProof* = object ## Stable borrowed input binds an untrusted detached proof to its exact query.
     key*: StateKey
     proof*: StateProof
+  LightProofReader* = proc(index: int): LightStateProof {.closure.}
+    ## Borrowed synchronous transport source; restoration never retains this closure or its captured backing input.
   LightCacheError* {.pure.} = enum ## Unknown local data is distinct from an authenticated Absent lookup.
     Uninitialized, None, UnknownKey, LimitExceeded, LengthOverflow, DuplicateKey,
     InvalidProof, IncompleteProof, ValueMismatch, BackendFailure
@@ -245,3 +247,40 @@ proc newLightStateCache*(root: StateRoot, updates: openArray[LightStateProof],
   assert data != nil # Every owner reference is still local to this constructor until return.
   data.limits = limits
   admitted
+
+proc restoreLightStateCache*(root: StateRoot, count: int,
+    reader: nil LightProofReader,
+    limits: LightCacheLimits): LightCacheResult[LightStateCache] =
+  ## Verify a synchronous canonical proof stream into one private final cache, publishing no partial prefix.
+  if reader == nil: return LightCacheResult[LightStateCache](status: LightCacheError.Uninitialized)
+  if count < 0 or uint64(count) > uint64(limits.items):
+    return LightCacheResult[LightStateCache](status: LightCacheError.LimitExceeded)
+  if count > high(int) div sizeof(CacheEntry):
+    return LightCacheResult[LightStateCache](status: LightCacheError.LengthOverflow)
+  var entries = newSeq[CacheEntry](count)
+  var total = 0'u64
+  var previous = default(StateKey)
+  for index in 0..<count:
+    # Each borrowed callback returns only untrusted transport; no caller-selected success can bypass proof verification.
+    let update = reader(index)
+    let nodes = uint64(update.proof.nodes.len)
+    let size = uint64(update.proof.value.len)
+    if nodes > 249 or nodes > uint64(limits.proof.nodes) or size > uint64(limits.proof.valueBytes):
+      return LightCacheResult[LightStateCache](status: LightCacheError.LimitExceeded)
+    if index > 0:
+      let comparison = compareKey(previous, update.key)
+      if comparison == 0: return LightCacheResult[LightStateCache](
+          status: LightCacheError.DuplicateKey)
+      if comparison > 0: return LightCacheResult[LightStateCache](
+          status: LightCacheError.InvalidProof)
+    if size > uint64(limits.valueBytes)-total:
+      return LightCacheResult[LightStateCache](status: LightCacheError.LimitExceeded)
+    let checked = verifyStateProof(root, update.key, update.proof, limits.proof)
+    if checked.error != StateProofError.None:
+      return LightCacheResult[LightStateCache](status: proofError(checked.error))
+    entries[index] = CacheEntry(key: update.key, lookup: checked.value, valueBytes: size)
+    total += size # The remaining aggregate quota proves this addition before the next callback.
+    previous = update.key
+  LightCacheResult[LightStateCache](status: LightCacheError.None,
+    completed: LightStateCache(data: CacheData(root: root, limits: limits, entries: entries,
+        valueBytes: total)))
