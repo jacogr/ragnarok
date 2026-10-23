@@ -2,7 +2,7 @@
 
 The root [Dockerfile](../Dockerfile) builds the current development proof peer for **Linux amd64**.
 It uses the maintained `make build` path: pinned Nimony and Rust, ARC, Clang, release/speed
-optimization, full LTO, bounds/assertion checks, minified embedded UI and the integration/offload
+optimization, ThinLTO, bounds/assertion checks, minified embedded UI and the integration/offload
 profiles. This packages the implemented client scope; it does not change the project's release
 or protocol-completeness status.
 
@@ -39,7 +39,7 @@ Git metadata and dependency sources in the `builder` stage. The final Ubuntu run
 the peer, maintained crypto/Bandersnatch/QUIC shared libraries, CA certificates and system runtime
 libraries. Packaging uses [patchelf](https://github.com/NixOS/patchelf) to replace absolute
 build-directory dependencies with library names and a binary-relative runpath into the packaged
-library directory. The full-LTO compiled code and checks remain unchanged. The final-stage
+library directory. The ThinLTO compiled code and checks remain unchanged. The final-stage
 version check catches missing loader dependencies during the build.
 
 The entry point is `ragnarok`; the default command prints help. It runs as UID/GID **10001:10001**
@@ -57,7 +57,7 @@ docker run --rm --entrypoint /bin/bash ragnarok:builder -lc 'make unit SUITE=nat
 
 The builder retains the project, compiler and native build dependencies for later development and
 fuzzing targets. Fuzz harnesses, sanitizer/coverage instrumentation, corpora and their CI scheduling
-are future work. The release build already retains full LTO; a fuzzing target must explicitly
+are future work. The release build already retains ThinLTO; a fuzzing target must explicitly
 select its required instrumented compiler/linker profile when added.
 
 ## CI

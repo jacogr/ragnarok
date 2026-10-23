@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# Build the checked full-LTO peer with Make; keep its toolchains available as the builder target.
+# Build the checked ThinLTO peer with Make; keep its toolchains available as the builder target.
 # Official image digests pin the bootstrap environments; application toolchain pins remain in spec/.
 FROM rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS rust-toolchain
 FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS builder

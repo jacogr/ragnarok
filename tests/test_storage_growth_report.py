@@ -33,7 +33,7 @@ def output(engine,count,steps,pattern='sweep'):
 def build_command(binary='/fixture/growth-native'):
     """Authored checked argv proves command binding independently of actual compilation."""
     return ['/fixture/nimony','c','--mm:arc','--cc:clang','-d:release','--opt:speed','--boundchecks:on',
-        '--passC:-flto','--passL:-flto','--out:'+str(binary),'/fixture/tests/performance/storage_growth_workload.nim']
+        '--passC:-flto=thin','--passL:-flto=thin','--out:'+str(binary),'/fixture/tests/performance/storage_growth_workload.nim']
 
 
 def commands(binary='/fixture/growth-native'):

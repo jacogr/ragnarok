@@ -87,7 +87,7 @@ def validate(report):
     require(len({c['log'] for c in checks}) == len(checks), 'duplicate logs')
     build = checks[0]['command']
     required = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on',
-                '--passC:-flto', '--passL:-flto']
+                '--passC:-flto=thin', '--passL:-flto=thin']
     require(len(build) >= 11 and build[1] == 'c' and build[2:9] == required and build[-1] == str(SOURCE), 'build')
     outputs = [v.removeprefix('--out:') for v in build if v.startswith('--out:')]
     require(len(outputs) == 1, 'build output')

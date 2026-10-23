@@ -358,6 +358,8 @@ class NativeUnitHarness(unittest.TestCase):
                                 self.assertIn('--forward:--passC:-Dbs_'+function+'=bo_'+function, args)
                         self.assertNotIn('--forward:--passC:-flto', args)
                         self.assertNotIn('--forward:--passL:-flto', args)
+                        self.assertNotIn('--forward:--passC:-flto=thin', args)
+                        self.assertNotIn('--forward:--passL:-flto=thin', args)
                         self.assertEqual('--forward:--passL:-fuse-ld=lld' in args, system == 'Linux')
                         record = native_tests.NATIVE_REQUIREMENTS[name]
                         key = json.dumps({field: record[field] for field in

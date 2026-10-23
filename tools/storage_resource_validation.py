@@ -64,7 +64,7 @@ def validate_checks(checks, count):
 def validate_build(check, source, defines):
     """Native resource builds admit only the maintained checked ARC/Clang/LTO crypto profile."""
     build = check['command']; required = ['--mm:arc','--cc:clang','-d:release','--opt:speed','--boundchecks:on',
-                                         '--passC:-flto','--passL:-flto']
+                                         '--passC:-flto=thin','--passL:-flto=thin']
     crypto = ROOT/'build/crypto'; include = '--passC:-I'+str(ROOT/'native/crypto')
     libraries = {'--passL:'+str(crypto/'libragnarok_crypto.dylib'), '--passL:'+str(crypto/'libragnarok_crypto.so')}
     rpath = '--passL:-Wl,-rpath,'+str(crypto)

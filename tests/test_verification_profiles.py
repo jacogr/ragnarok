@@ -37,7 +37,7 @@ class VerificationProfiles(unittest.TestCase):
                     arguments = command.call_args.args[0]
                     self.assertEqual(binary.parent, checks.folder)
                     for flag in ('--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
-                                 '--boundchecks:on', '--passC:-flto', '--passL:-flto', '-d:integration'):
+                                 '--boundchecks:on', '--passC:-flto=thin', '--passL:-flto=thin', '-d:integration'):
                         # Every executable retains guards, ARC, native optimization and the explicit feature profile.
                         self.assertIn(flag, arguments)
                     self.assertEqual('--passL:-fuse-ld=lld' in arguments, system == 'Linux')
@@ -61,7 +61,7 @@ class VerificationProfiles(unittest.TestCase):
                 self.assertIn('--out:'+str(first), args)
                 self.assertIn('--out:'+str(second), other)
                 for flag in ('--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
-                             '--boundchecks:on', '--passC:-flto', '--passL:-flto'):
+                             '--boundchecks:on', '--passC:-flto=thin', '--passL:-flto=thin'):
                     # Cache reuse cannot substitute weaker compiler flags for the original checked profile.
                     self.assertIn(flag, args)
 

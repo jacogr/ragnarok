@@ -49,7 +49,7 @@ def main():
     BUILD.mkdir(parents=True, exist_ok=True)
     (BUILD/'results.json').unlink(missing_ok=True)
     started = time.monotonic()
-    report = dict(status='failed', suites=[], e2e_group=arguments.group, environment=dict(system=platform.system(),
+    report = dict(status='failed', suites=[], e2e_group=arguments.group, e2e_lto='thin', environment=dict(system=platform.system(),
                   machine=platform.machine(), python=platform.python_version()))
     # Sequential E2E builds reuse only matching source epochs, native bytes and checked LTO profiles.
     checks = NativeChecks(BUILD, reuse_builds=True)

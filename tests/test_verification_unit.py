@@ -21,7 +21,7 @@ from native_tests import UNIT_SUITES
 # Keep unit ownership and failure safeguards independent of other verification groups.
 class VerificationUnit(unittest.TestCase):
     def test_builder_keeps_checked_non_lto_and_default_full_lto_profiles_separate(self):
-        """Fast test builds retain checks and cannot reuse full-LTO intermediates or change E2E defaults."""
+        """Fast test builds retain checks and cannot reuse ThinLTO intermediates or change E2E defaults."""
         from native_checks import NativeChecks
         import tempfile
         with tempfile.TemporaryDirectory() as temporary:
@@ -34,8 +34,10 @@ class VerificationUnit(unittest.TestCase):
                 arguments = command.call_args.args[0]
                 for flag in ('--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on'):
                     self.assertIn(flag, arguments)
-                self.assertEqual('--passC:-flto' in arguments, lto)
-                self.assertEqual('--passL:-flto' in arguments, lto)
+                self.assertNotIn('--passC:-flto', arguments)
+                self.assertNotIn('--passL:-flto', arguments)
+                self.assertEqual('--passC:-flto=thin' in arguments, lto)
+                self.assertEqual('--passL:-flto=thin' in arguments, lto)
                 caches.append(next(arg for arg in arguments if str(arg).startswith('--nimcache:')))
             self.assertNotEqual(*caches)
             self.assertTrue(NativeChecks(folder).lto)
