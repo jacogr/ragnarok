@@ -9,6 +9,7 @@ Exposes passed and an E2E CLI that runs owned workloads and writes a fresh compl
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import platform
 import subprocess
@@ -27,18 +28,28 @@ SELFTESTS = PLAN.names('selftest')
 # Completeness and execution share one pre-execution plan, independent of observed successes.
 def passed(report):
     """Require every declared lifecycle and selftest to have passed in this invocation."""
-    return PLAN.passed(report)
+    group = report.get('e2e_group')
+    try:
+        selected = PLAN.select(group)
+    except ValueError:
+        # Unknown or substituted scope names cannot turn a partial report into a complete verdict.
+        return False
+    unselected = set(WORKLOADS)-set(selected.names('workload'))
+    return not any(name in report for name in unselected) and selected.passed(report)
 
 
 # Provision this group's own native bridges and fixtures; no earlier unit run or binary is required.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compiler', type=Path, required=True)
-    compiler = parser.parse_args().compiler.resolve()
+    parser.add_argument('--group', choices=PLAN.groups(), default=os.environ.get('E2E_GROUP') or None)
+    arguments = parser.parse_args()
+    plan = PLAN.select(arguments.group)
+    compiler = arguments.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)
     (BUILD/'results.json').unlink(missing_ok=True)
     started = time.monotonic()
-    report = dict(status='failed', suites=[], environment=dict(system=platform.system(),
+    report = dict(status='failed', suites=[], e2e_group=arguments.group, environment=dict(system=platform.system(),
                   machine=platform.machine(), python=platform.python_version()))
     # Sequential E2E builds reuse only matching source epochs, native bytes and checked LTO profiles.
     checks = NativeChecks(BUILD, reuse_builds=True)
@@ -59,12 +70,15 @@ def main():
         crypto, _, report['crypto_native'] = prepare_crypto(BUILD)
         bs, _, report['bandersnatch_native'] = prepare_bandersnatch(BUILD)
         quic, certificates, report['quic_native'] = prepare_quic()
-        import test_integration as integration_fixture
-        integration_fixture.BUILD.mkdir(parents=True, exist_ok=True)
-        wires, _ = integration_fixture.corpus()
-        report['fixture_sha256'] = {str(i): hashlib.sha256((wires/f'{i}.bin').read_bytes()).hexdigest()
-                                   for i in range(8)}
-        run(compiler, crypto, bs, quic, certificates, wires, report, checks)
+        wires = None
+        if 'prepare_integrated_peer' in plan.names('setup'):
+            # Only integrated transport scenarios consume these generated wires; other groups stay standalone.
+            import test_integration as integration_fixture
+            integration_fixture.BUILD.mkdir(parents=True, exist_ok=True)
+            wires, _ = integration_fixture.corpus()
+            report['fixture_sha256'] = {str(i): hashlib.sha256((wires/f'{i}.bin').read_bytes()).hexdigest()
+                                       for i in range(8)}
+        run(compiler, crypto, bs, quic, certificates, wires, report, checks, group=arguments.group)
         report['status'] = 'checks-passed' if passed(report) else 'failed'
     except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
         # Setup, compilation and workload exceptions remain failures with retained diagnostics.

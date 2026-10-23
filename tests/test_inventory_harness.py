@@ -21,6 +21,17 @@ from failure_checks import FAILURE_SUITES, load_suites
 
 # Exercise invalid declarations and real command wiring without substituting native verdicts.
 class InventoryPreflight(unittest.TestCase):
+    def test_e2e_matrix_matches_source_owned_groups(self):
+        """A newly declared or missing family must fail preflight rather than silently lose E2E coverage."""
+        from check_inventory import validate_e2e_groups
+        workflow = (ROOT/'.github/workflows/ci.yml').read_text()
+        validate_e2e_groups(workflow)
+        row = '          - {group: application, name: Application}\n'
+        for replacement in ('', row+row, row.replace('group: application', 'group: unknown')):
+            # All mutations keep valid YAML but violate exact declared-group coverage.
+            with self.subTest(replacement=replacement), self.assertRaisesRegex(ValueError, 'E2E matrix'):
+                validate_e2e_groups(workflow.replace(row, replacement))
+
     # Both a new ARC key and a new failure family must fail preflight when their report keys collide.
     def test_arc_failure_report_key_collision(self):
         from unittest.mock import patch

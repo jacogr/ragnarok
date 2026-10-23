@@ -8,9 +8,21 @@ Exposes validate_inventory and a CLI that fails on missing or
 inconsistent verification declarations.
 """
 from pathlib import Path
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+# Match the workflow's explicit family matrix against the source-owned plan before provisioning.
+def validate_e2e_groups(workflow):
+    """Reject missing, duplicate, reordered or unknown CI families without executing native work."""
+    from e2e_checks import PLAN
+    section = re.search(r'^  e2e:\n(.*?)(?=^  [\w-]+:|\Z)', workflow, re.MULTILINE | re.DOTALL)
+    groups = () if section is None else tuple(re.findall(
+        r'^          - \{group: ([a-z_]+), name: [^}\n]+\}$', section[1], re.MULTILINE))
+    if not groups or groups != PLAN.groups():
+        raise ValueError('E2E matrix must contain each declared group once in lexical order')
 
 
 # Resolve local inventories only; pinned dependency trees retain their existing setup/provenance checks.
@@ -27,6 +39,7 @@ def validate_inventory():
         # Unit ARC observations must not masquerade as foreign runtime-contract results.
         raise ValueError('ARC report keys overlap runtime failure families: '+', '.join(sorted(collisions)))
     runtime_sources()
+    validate_e2e_groups((ROOT/'.github/workflows/ci.yml').read_text())
     expected = {unit_source(name) for name in UNIT_SUITES}
     for source in expected:
         # Each positive native source requires its own checked-in output contract.

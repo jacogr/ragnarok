@@ -21,6 +21,8 @@ export COMPILE_CHECK_JOBS ?= 4
 export UI_MINIFY ?= $(if $(filter 1 true,$(CI)),1,0)
 # Optional one-suite selection is passed through the environment, never interpolated as shell code.
 export SUITE ?=
+# Select one independent E2E family; an empty value retains complete local verification.
+export E2E_GROUP ?=
 SUMMARY_OUTPUT ?= build/ci/summary.md
 # The pinned compiler supports Linux x86-64; Docker can emulate it on an ARM development host.
 DOCKER ?= docker

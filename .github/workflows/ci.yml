@@ -270,10 +270,21 @@ jobs:
 
   e2e:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full')) }}
-    name: E2E Networking
+    name: E2E ${{ matrix.family.name }}
     timeout-minutes: 60
-    strategy: *os-strategy
+    strategy:
+      fail-fast: false
+      matrix:
+        os: *ci-os
+        family:
+          - {group: application, name: Application}
+          - {group: current, name: Current Downloads}
+          - {group: offload, name: Offload}
+          - {group: telemetry, name: Telemetry}
+          - {group: transport, name: Transport}
     runs-on: ${{ matrix.os }}
+    env:
+      E2E_GROUP: ${{ matrix.family.group }}
     steps:
       - *checkout
       - *python
@@ -286,7 +297,7 @@ jobs:
         if: always()
         uses: *upload-artifact
         with:
-          name: ${{ matrix.os }}-e2e-${{ github.run_attempt }}
+          name: ${{ matrix.os }}-e2e-${{ matrix.family.group }}-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -318,6 +329,18 @@ jobs:
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
             build/quic/build.log
+
+  e2e-status:
+    name: E2E Networking
+    needs: e2e
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full'))) }}
+    strategy: *os-strategy
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Require every E2E family
+        env:
+          SHARDS_RESULT: ${{ needs.e2e.result }}
+        run: test "$SHARDS_RESULT" = success
 
   # Keep Interop jobs adjacent; group requests run every implementation comparison.
   # Pinned public-API comparisons remain distinct from frozen native fixtures and future fuzzing.

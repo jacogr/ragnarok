@@ -76,6 +76,54 @@ class E2EPlans(unittest.TestCase):
         self.assertNotIn('failure', context.report)
         self.assertFalse(plan.passed(context.report))
 
+    def test_group_selection_closes_dependencies_without_sibling_work(self):
+        """Select transitive setup in declaration order; ordinary full runs still execute every task."""
+        plan, events = E2EPlan(), []
+
+        @plan.setup
+        def peer(context):
+            """Record the shared peer prerequisite."""
+            events.append('peer')
+
+        @plan.setup(requires=('peer',))
+        def witness(context):
+            """Record a prerequisite which itself depends on the peer."""
+            events.append('witness')
+
+        @plan.workload(group='application', requires=('witness',))
+        def application(context):
+            """Run the selected lifecycle once."""
+            events.append('application')
+            return dict(passed=True)
+
+        @plan.selftest(group='transport', requires=('peer',))
+        def parser(context):
+            """A sibling group's selftest must not run with the application family."""
+            events.append('parser')
+            return dict(passed=True)
+
+        @plan.workload(group='transport', requires=('peer',))
+        def transport(context):
+            """Keep a separate lifecycle verdict in the transport family."""
+            events.append('transport')
+            return dict(passed=True)
+
+        selected = plan.select('application')
+        context = SimpleNamespace(report=dict(suites=[]))
+        selected.run(context)
+        self.assertEqual(events, ['peer', 'witness', 'application'])
+        self.assertTrue(selected.passed(context.report))
+        self.assertFalse(plan.passed(context.report))
+        events.clear()
+        plan.run(SimpleNamespace(report=dict(suites=[])))
+        self.assertEqual(events, ['peer', 'witness', 'application', 'parser', 'transport'])
+        with self.assertRaisesRegex(ValueError, 'Unknown E2E group'):
+            plan.select('typo')
+        for dependency in ('missing', 'application'):
+            # Unknown prerequisites and foreign workload dependencies would omit or duplicate coverage.
+            with self.subTest(dependency=dependency), self.assertRaisesRegex(ValueError, 'prerequisite'):
+                plan.register('workload', lambda context: None, 'invalid', 'transport', (dependency,))
+
     def test_invalid_or_aliased_verdicts(self):
         """Missing, untyped and differently named rows cannot satisfy a declared test."""
         for result in (None, {}, dict(passed=1), dict(name='replacement', passed=True)):

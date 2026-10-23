@@ -295,3 +295,15 @@ launches independent processes and state, checks fixture hashes and publishes it
 verdict. A failed shared build blocks every dependent workload from running stale binaries.
 The E2E report records setup, workload and selftest durations under `task_timings`, including
 tasks which raise, so build costs can be distinguished from live scenarios.
+
+CI runs E2E families in parallel on separate VMs: Application (RPC, state and explicit downloads),
+Current Downloads, Offload, Telemetry and Transport (peer entry points, retained/integrated
+services, mesh, resilience and soak). Decorators beside each verdict declare its group and
+earlier prerequisites. Selection closes over those prerequisites in original declaration order;
+only setup builds may be shared between groups. Every workload and selftest has exactly one
+owning group. Network/resource scenarios remain sequential inside each VM, with independent
+native dependencies, fresh fixtures, reports and uniquely named evidence artifacts.
+`E2E_GROUP=<group> make check-e2e` runs one complete family; plain `make check-e2e` retains the
+complete serial plan. Reports and summaries explicitly identify partial group scope and require
+all that group's declared verdicts. The stable **E2E Networking** aggregate requires every
+matrix job to succeed, including refusal of skipped/cancelled groups. Job timeouts are unchanged.
