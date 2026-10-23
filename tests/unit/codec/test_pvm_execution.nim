@@ -261,10 +261,42 @@ proc executionCycle() =
   assert uint64(load(memory, MemoryAddress(65536), AccessWidth(8)).value) == 0
   assert uint64(machineInfo(input).value.registers[0]) == 0
 
+proc cursorSnapshotCycle() =
+  ## Retain every externally observable step root while private execution overwrites the same page twice and stops at a host.
+  let program = owner([@[51'u8, 0, 7], @[62'u8, 0, 0, 0, 1, 0], @[51'u8, 0, 9],
+      @[62'u8, 0, 0, 0, 1, 0], @[10'u8, 5], @[0'u8]])
+  let input = source(program, memoryOwner(PageAccess.ReadWrite), default(RegisterFile), 0, high(
+      uint64), false)
+  var roots = @[input]
+  for index in 0..<4:
+    let once = stepOnce(roots[index], GasCycleLimit(1000))
+    assert once.error == StepError.None and once.value.exit == StepExit.Continued
+    roots.add(once.value.machine) # These immutable aliases remain live while all independent cursor runs execute.
+  let host = execute(input, ExecutionStepLimit(5), GasCycleLimit(1000))
+  assert host.error == StepError.None and host.value.exit == StepExit.Host
+  assert uint64(host.value.hostCall) == 5
+  same(machineInfo(host.value.machine).value, machineInfo(roots[4]).value)
+  for start in 0..<4:
+    assert execute(roots[start], ExecutionStepLimit(uint64(4-start)), GasCycleLimit(1000)).error ==
+        StepError.StepLimitExceeded # Earlier private writes are discarded on local refusal, even with retained intermediate roots.
+    let resumed = execute(roots[start], ExecutionStepLimit(uint64(5-start)), GasCycleLimit(1000))
+    assert resumed.error == StepError.None and resumed.value.exit == StepExit.Host
+    same(machineInfo(resumed.value.machine).value, machineInfo(host.value.machine).value)
+    assert pageImage(memoryOf(resumed.value.machine).value, PageIndex(16)).value.bytes ==
+        pageImage(memoryOf(host.value.machine).value, PageIndex(16)).value.bytes
+  for index in 0..<roots.len:
+    let expected = if index < 2: 0'u64 elif index < 4: 7'u64 else: 9'u64
+    assert uint64(load(memoryOf(roots[index]).value, MemoryAddress(65536), AccessWidth(8)).value) == expected
+  assert uint64(load(memoryOf(host.value.machine).value, MemoryAddress(65536), AccessWidth(
+      8)).value) == 9
+
 executionCycle()
+cursorSnapshotCycle()
 let before = getOccupiedMem()
 # Retained intermediate roots form no cycles; repeated complete invocation lifetimes release all owners.
-for iteration in 0..<1000: executionCycle()
+for iteration in 0..<1000:
+  executionCycle()
+  cursorSnapshotCycle() # Every retained root and temporary cursor must return to the same warm ARC baseline.
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("pvm_execution", 1000, before, after)

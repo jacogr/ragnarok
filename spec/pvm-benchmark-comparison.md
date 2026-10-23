@@ -127,3 +127,35 @@ The interpreter-only command passes locally with all five validated workloads,
 selected tooling/CI/summary checks pass. Raw checks confirm no compiler command ran;
 compiled rows carry no samples. Existing native code, workload inputs, pins and build
 profiles are unchanged. These local results do not imply an exact-head Linux result.
+
+
+## Invocation cursor optimization, 2026-10-23
+
+A fresh checked baseline at `3240ebba` used the unchanged five-workload fixture, pinned
+Nimony/Rust/PolkaVM, checked ARC/Clang LTO and the same Apple M1 Max host. macOS `sample`
+on repeated validated workloads found instruction-loop machine capture, opcode revalidation
+and ARC root retirement alongside decoding and memory copying. The candidate removes the
+per-instruction machine root while retaining successor validation and immutable observable exits;
+it changes no gas, protocol, memory or resource checks.
+
+Preserved baseline/candidate binaries were run twice in opposite orders. Each invocation retains
+the established three warmups and ten validated measured samples per guest. Median native times
+across the twenty measured samples per variant were:
+
+| Fixed guest | Before (µs) | Cursor (µs) | Less execution time |
+| --- | ---: | ---: | ---: |
+| Arithmetic, 10000 iterations | 1466.79 | 848.21 | 42.2% |
+| Memory aligned, 1000 iterations | 481.08 | 357.83 | 25.6% |
+| Memory crossing, 1000 iterations | 632.40 | 554.25 | 12.4% |
+| Host/memory aligned, 1000 iterations | 689.12 | 548.94 | 20.3% |
+| Host/memory crossing, 1000 iterations | 835.42 | 748.08 | 10.5% |
+
+The full existing comparison also passes with both active engines and explicit compiled deferral.
+Its candidate native/PolkaVM ratios remain roughly 7.5–18.2×; some reference/arithmetic samples
+are marked noisy by the existing report heuristics. These are bounded local microbenchmarks,
+without CPU isolation or deterministic instruction/cache counts; no whole-client throughput,
+Linux timing, compiled comparison or full parity claim follows. Input/output validation and all
+samples remain intact. Baseline/candidate reports, exact build/source metadata, native binaries,
+paired samples and sampling evidence are retained locally under `build/pvm8/perf-baseline` and
+`build/pvm8/perf-candidate`; reproduce with `make bench-pvm` on the compared revisions.
+Further profiling and focused fuzzing remain required work toward interpreter competitiveness.
