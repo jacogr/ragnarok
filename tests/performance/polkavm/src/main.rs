@@ -27,9 +27,9 @@ fn main() {
     };
     let data = std::fs::read(&args[1]).unwrap();
     assert!(data.len() >= 12 && &data[..8] == b"PVMBEN01");
-    assert_eq!(word(&data, 8, 4), 5);
+    assert_eq!(word(&data, 8, 4), 10);
     let mut cursor = 12;
-    for row in 0..5 {
+    for row in 0..10 {
         assert!(data.len() - cursor >= 273);
         let h = &data[cursor..cursor + 273];
         let length = word(h, 0, 4) as usize;
@@ -39,7 +39,7 @@ fn main() {
         let price = word(h, 29, 8);
         let halt = word(h, 45, 4) as u32;
         let halt_price = word(h, 49, 8);
-        assert!(kind <= 2 && iterations > 0 && iterations <= 10000);
+        assert!(kind <= 4 && iterations > 0 && iterations <= 10000);
         assert!(price > 0 && price < 1000 && halt_price > 0 && halt_price < 1000);
         cursor += 273;
         assert!(length >= 4 && length <= 128 && length <= data.len() - cursor);
@@ -48,7 +48,7 @@ fn main() {
         let preparation = Instant::now();
         let mut config = Config::default();
         config.set_backend(Some(backend));
-        config.set_allow_dynamic_paging(kind != 0);
+        config.set_allow_dynamic_paging(matches!(kind, 1 | 2 | 4));
         let engine = match Engine::new(&config) {
             Ok(engine) => engine,
             Err(error) if backend == BackendKind::Compiler => {
@@ -66,7 +66,7 @@ fn main() {
         parts.code_and_jump_table = wire.to_vec().into();
         let mut profile = ModuleConfig::new();
         profile.set_page_size(4096);
-        profile.set_dynamic_paging(kind != 0);
+        profile.set_dynamic_paging(matches!(kind, 1 | 2 | 4));
         profile.set_gas_metering(Some(GasMeteringKind::Sync));
         profile.set_cost_model(Some(CostModelKind::Full(CacheModel::L2Hit)));
         let module =
@@ -84,14 +84,24 @@ fn main() {
             // Instantiation, input resets and register setup are excluded from execution time.
             let mut instance = module.instantiate().unwrap();
             let mut original = vec![33_u8; 8192];
-            if kind != 0 {
+            let pairs = if kind == 4 { 64 } else { 1 };
+            if matches!(kind, 1 | 2 | 4) {
                 assert!(matches!(address, 0x10000 | 0x10fff));
                 let offset = (address - 0x10000) as usize;
                 original[offset..offset + 8].copy_from_slice(&word(h, 13, 8).to_le_bytes());
-                instance
-                    .zero_memory_with_memory_protection(0x10000, 8192, MemoryProtection::ReadWrite)
-                    .unwrap();
-                instance.write_memory(0x10000, &original).unwrap();
+                // Sparse cases contain exactly the same mapped pairs and holes as the native owner.
+                for pair in 0..pairs {
+                    let base = 0x10000 + pair * 16384;
+                    instance
+                        .zero_memory_with_memory_protection(base, 8192, MemoryProtection::ReadWrite)
+                        .unwrap();
+                    if pair == 0 {
+                        instance.write_memory(base, &original).unwrap();
+                    } else {
+                        // Untouched pages carry independent canaries and are checked completely after execution.
+                        instance.write_memory(base, &[33_u8; 8192]).unwrap();
+                    }
+                }
             }
             for i in 0..13 {
                 instance.set_reg(Reg::from_raw(i as u32).unwrap(), word(h, 65 + i * 8, 8));
@@ -127,10 +137,23 @@ fn main() {
                     word(h, 169 + i * 8, 8)
                 );
             }
-            if kind != 0 {
+            if matches!(kind, 1 | 2 | 4) {
                 let offset = (address - 0x10000) as usize;
                 original[offset..offset + 8].copy_from_slice(&word(h, 21, 8).to_le_bytes());
                 assert_eq!(instance.read_memory(0x10000, 8192).unwrap(), original);
+                for pair in 1..pairs {
+                    // Every mapped byte outside the scalar remains observable to the harness.
+                    assert_eq!(
+                        instance.read_memory(0x10000 + pair * 16384, 8192).unwrap(),
+                        [33_u8; 8192]
+                    );
+                }
+            }
+            if kind == 4 {
+                for pair in 0..64 {
+                    // Sparse mapping holes must remain inaccessible after the measured execution.
+                    assert!(instance.read_memory(0x12000 + pair * 16384, 4096).is_err());
+                }
             }
             assert!(elapsed > 0);
             println!("sample\t{row}\t{sample}\t{elapsed}\t{prepare_ns}");

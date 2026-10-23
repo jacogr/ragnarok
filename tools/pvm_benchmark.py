@@ -74,7 +74,7 @@ def run():
         from pvm_benchmark_reference import fixtures
         fixture=ROOT/'tests/fixtures/pvm-benchmark.bin';expected,count=fixtures()
         descriptor=json.loads((ROOT/'tests/fixtures/pvm_benchmark.fixture.json').read_text())
-        if (fixture.read_bytes()!=expected or count!=5
+        if (fixture.read_bytes()!=expected or count!=len(NAMES)
                 or digest(fixture)!=descriptor['files'][fixture.name]):
             raise ValueError('Benchmark inputs differ from independent expectations')
         compiler,_=installed();rust=json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
