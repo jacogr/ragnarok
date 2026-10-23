@@ -3,8 +3,8 @@
 
 ## Exact selected inventories preserve disjoint historical roots, empty maps, permutations and independent ownership.
 # @@Verification={"arc": "storage_selection_compaction_arc_release"}
-import std/[assertions, syncio]
-import ../../support/arc_evidence
+import std/[algorithm, assertions, syncio]
+import ../../support/[arc_evidence, storage_snapshot_samples]
 import ../../../src/storage/[full_state_trie, node_records, record_codec, node_repository]
 import ../../../src/codec/[state_layout, state_trie, bounded]
 
@@ -86,12 +86,75 @@ proc exercise(count: int) =
     detached.payload[0] = detached.payload[0] xor 128
     assert independent.lookupNode(digest).value.payload == payload(0)
 
+proc compareDigest(left, right: TrieRecord): int =
+  ## The raw codec preserves caller order; independently canonicalize the oracle by complete physical digest.
+  let a = array[32, byte](left.digest)
+  let b = array[32, byte](right.digest)
+  for index in 0..<32:
+    if a[index] < b[index]: return -1 # First differing full-address byte fixes canonical physical order.
+    if a[index] > b[index]: return 1
+  0
+
+proc shared(count: int) =
+  ## Dense shared branch/leaf words must reset per root while the distinct union retains each complete address once.
+  let fixture = snapshotFixture(count, 1)
+  let limits = fixture.limits.repository
+  var owner = cloneRepositorySelection(fixture.selection, limits).value
+  var trie = restoreFullTrie(owner.snapshot.value, owner.snapshot.value.commitment.root,
+    FullStateTrieLimits(trie: limits.codec.trie, writes: ElementLimit(1),
+      writeValueBytes: ByteLimit(1))).value
+  var versions = @[trie]
+  var roots = @[trie.commitment.root]
+  var raw = default(array[31, byte])
+  raw[0] = byte((count-1) shr 8)
+  raw[1] = byte((count-1) and 255)
+  for turn in 0..<5:
+    # Each single-key replacement shares most of the prior complete graph, including bitmap words.
+    let next = trie.apply([TrieWrite(key: StateKey(raw), kind: TrieWriteKind.Put,
+      value: @[byte(70+turn)])]).value
+    let batch = exportTrieChanges(trie, next, limits.codec.records).value
+    let view = owner.publish(owner.snapshot.value, batch).value
+    assert array[32, byte](view.commitment.root) == array[32, byte](next.commitment.root)
+    versions.add(next)
+    roots.add(next.commitment.root)
+    trie = next
+  let view = owner.snapshot.value
+  assert owner.close == RepositoryError.None
+  var expected: seq[TrieRecord] = @[]
+  var valueBytes = 0'u64
+  for turn in [0, 2, 5]:
+    # Independent full exports and complete-digest equality form an oracle without relying on selection traversal.
+    let records = exportFullTrie(versions[turn], limits.codec.records).value.records
+    for record in records:
+      var found = false
+      for prior in expected:
+        if array[32, byte](prior.digest) == array[32, byte](record.digest): found = true
+      if not found:
+        expected.add(record)
+        if record.kind == TrieRecordKind.Leaf: valueBytes += uint64(record.payload.len)
+  let selected = selectRepositoryRoots(view, [roots[5], roots[0], roots[2], roots[5]],
+    ElementLimit(4)).value
+  assert selected.retainedNodes == expected.len and selected.retainedValueBytes == valueBytes
+  expected.sort(compareDigest) # Canonical selection bytes require address order, independently of export order.
+  let canonical = encodeRecordCollection(RecordCollection(records: expected), limits.codec).value
+  assert encodeRepositorySelection(selected, limits.codec).value == canonical
+  let reordered = selectRepositoryRoots(view, [roots[2], roots[0], roots[5]], ElementLimit(3)).value
+  assert encodeRepositorySelection(reordered, limits.codec).value == canonical
+  var copy = cloneRepositorySelection(selected, limits).value
+  let held = copy.snapshot.value
+  assert copy.close == RepositoryError.None
+  for turn in [0, 2, 5]:
+    let restored = restoreHistoricalStateEntries(held, roots[turn], limits.codec.trie).value
+    assert restored.len == count
+    assert restored[restored.len-1].value == versions[turn].lookup(StateKey(raw)).value.bytes
+
 proc cycle() =
   ## Empty, singleton and several disjoint physical roots retire without keeping a source trie or table alive.
   exercise(0)
   exercise(1)
   exercise(3)
 
+for count in [63, 64, 65, 129, 257]: shared(count) # Cross full and partial bitmap words with shared subtrees.
 exercise(65)
 exercise(257)
 for warmup in 0..<10:

@@ -70,7 +70,9 @@ sort of k selected indexes. A lexical scratch scope releases traversal bitmaps a
 positions first. During final copying, both old and exact index buffers coexist; their lengths
 are bounded by the already admitted physical inventory. For a union of many small historical
 graphs, the extra final buffer can exceed the just-retired traversal scratch. No universal peak
-memory or timing improvement is claimed. Allocator exhaustion keeps the established fail-stop
+memory or timing improvement is claimed for that implementation. The later
+[bitmap construction layer](storage-selection-bitmaps.md) preserves this exact retained footprint
+while removing its growable union index, per-root record list and selected-index sort. Allocator exhaustion keeps the established fail-stop
 contract, and no normal failure can expose a partly frozen plan.
 
 ## Verification and reproducibility
