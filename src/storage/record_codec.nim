@@ -23,6 +23,9 @@ type
   RecordError* {.pure.} = enum ## No default/refused operation exposes bytes or records.
     Uninitialized, None, InvalidFormat, NonCanonical, LimitExceeded, DuplicateNode,
     HashMismatch, BackendFailure, ConsumerRefused
+  RecordBatchInfo* = object ## Exact target-bearing delivery summary; fields grant no graph or mutation authority.
+    base*, root*: StateRoot
+    entries*, nodes*, records*, valueBytes*: uint64
   RecordCollectionInfo* = object ## Successful delivery summary; no retained records or graph authority.
     records*, valueBytes*: uint64
   RecordConsumer*[T] = proc(state: var T, record: var TrieRecord): bool {.nimcall.}
@@ -344,23 +347,66 @@ proc decodeOrderedRecordCollection*(input: openArray[byte], limits: RecordLimits
   RecordResult[RecordCollection](status: RecordError.None,
     completed: RecordCollection(records: move(batch.records)))
 
-proc visitOrderedRecordCollection*[T](input: openArray[byte], limits: RecordLimits,
-    state: var T, consume: RecordConsumer[T]): RecordResult[RecordCollectionInfo] =
-  ## Preflight the entire stable borrowed input before delivering one owned, locally hashed record at a time.
-  ## A visited prefix is provisional until success; callbacks must stage privately for transactional use.
-  ## The callback may move the record payload; no borrow into input or the local record survives this call.
-  let scanned = scanRecords(input, limits, true, true)
-  if scanned.error != RecordError.None:
-    return RecordResult[RecordCollectionInfo](status: scanned.error)
-  let shape = scanned.value
+proc uniqueInputRecords(input: openArray[byte], shape: RecordScan): RecordError =
+  ## Unordered transports need only bounded address scratch, never a complete decoded descriptor batch.
+  var identities = newSeq[StateNodeHash](shape.count)
   var offset = shape.header
   for index in 0..<shape.count:
-    # The complete structural pass proved this record; stable input preserves its bounds through delivery.
+    # Whole-input preflight already proved each exact field and size; the borrowed bytes stay stable.
+    identities[index] = StateNodeHash(readHash(input, offset+1))
+    let tag = input[offset]
+    offset += 33
+    if tag == 0:
+      let size = int(number(input, offset+31))
+      offset += 39
+      offset += size
+    else:
+      offset += 64 # The structural scan admitted only canonical branch tags here.
+  identities.sort(compareHash)
+  for index in 1..<identities.len:
+    if compareHash(identities[index-1], identities[index]) == 0:
+      return RecordError.DuplicateNode
+  RecordError.None
+
+proc deliverRecords[T](input: openArray[byte], limits: RecordLimits, collection, ordered: bool,
+    state: var T, consume: RecordConsumer[T]): RecordResult[RecordScan] =
+  ## Local structural/duplicate checks precede all crypto and callbacks; each delivered owner stays detached.
+  let scanned = scanRecords(input, limits, collection, ordered)
+  if scanned.error != RecordError.None: return RecordResult[RecordScan](status: scanned.error)
+  let shape = scanned.value
+  if not ordered:
+    let unique = uniqueInputRecords(input, shape)
+    if unique != RecordError.None: return RecordResult[RecordScan](status: unique)
+  var offset = shape.header
+  for index in 0..<shape.count:
+    # Stable input preserves the complete scan's bounds through each synchronous callback.
     var record = readRecord(input, offset)
     let checked = recordIntegrity(record, limits)
-    if checked != RecordError.None:
-      return RecordResult[RecordCollectionInfo](status: checked)
-    if not consume(state, record):
-      return RecordResult[RecordCollectionInfo](status: RecordError.ConsumerRefused)
+    if checked != RecordError.None: return RecordResult[RecordScan](status: checked)
+    if not consume(state, record): return RecordResult[RecordScan](
+        status: RecordError.ConsumerRefused)
+  RecordResult[RecordScan](status: RecordError.None, completed: shape)
+
+proc visitOrderedRecordCollection*[T](input: openArray[byte], limits: RecordLimits,
+    state: var T, consume: RecordConsumer[T]): RecordResult[RecordCollectionInfo] =
+  ## Preflight stable borrowed input, then deliver one owned locally hashed record at a time.
+  ## Visited prefixes remain provisional until success; callbacks must stage privately for transactional use.
+  ## The callback may move the payload; no borrow into input or the local record may escape.
+  let delivered = deliverRecords(input, limits, true, true, state, consume)
+  if delivered.error != RecordError.None:
+    return RecordResult[RecordCollectionInfo](status: delivered.error)
+  let shape = delivered.value
   RecordResult[RecordCollectionInfo](status: RecordError.None,
     completed: RecordCollectionInfo(records: uint64(shape.count), valueBytes: shape.valueBytes))
+
+proc visitTrieExport*[T](input: openArray[byte], limits: RecordLimits,
+    state: var T, consume: RecordConsumer[T]): RecordResult[RecordBatchInfo] =
+  ## Deliver target-bearing records in serialized order after whole-input shape/budget/duplicate preflight.
+  ## Stable bytes are borrowed synchronously; callbacks own one record and must treat prefixes as provisional.
+  let delivered = deliverRecords(input, limits, false, false, state, consume)
+  if delivered.error != RecordError.None: return RecordResult[RecordBatchInfo](
+      status: delivered.error)
+  let shape = delivered.value
+  RecordResult[RecordBatchInfo](status: RecordError.None, completed: RecordBatchInfo(
+    base: shape.batch.base, root: shape.batch.root, entries: shape.batch.entries,
+    nodes: shape.batch.nodes, records: uint64(shape.count), valueBytes: shape.valueBytes))
