@@ -68,6 +68,9 @@ type
     valueBytes: uint64
   RepositorySelection* = object ## Opaque bounded root union; old plans remain valid after publication/close.
     data: nil RepositorySelectionData
+  RootSlot = object ## Sorting borrowed identities with ordinals preserves first-occurrence output order.
+    root: StateRoot
+    position: int
   GraphCollection {.pure.} = enum ## Admission avoids collection; extraction and retention request exact positions.
     None, Leaves, Records
   GraphVisit = object ## Traversal scratch optionally collects reachable leaf or complete-record positions.
@@ -563,6 +566,38 @@ proc retainedRoots*(selection: RepositorySelection): seq[
   var roots = newSeq[StateRoot](data.roots.len)
   for index, root in data.roots: roots[index] = root # No mutable alias to the accepted plan escapes.
   roots
+proc compareRoot(left, right: StateRoot): int =
+  ## Root inventories use the same complete lexical identity order as physical addresses.
+  compareHash(StateNodeHash(array[32, byte](left)), StateNodeHash(array[32, byte](right)))
+
+proc compareRootSlot(left, right: RootSlot): int =
+  ## Equal identities sort by caller position so only the earliest borrowed slot survives.
+  let order = compareRoot(left.root, right.root)
+  if order != 0: return order # Distinct complete commitments remain independent inventory entries.
+  if left.position < right.position: -1
+  elif left.position > right.position: 1
+  else: 0
+
+proc distinctRoots(roots: openArray[StateRoot]): seq[StateRoot] =
+  ## Deduplicate in O(r log r) comparisons without changing caller order or retaining sorting scratch.
+  var duplicates = newSeq[uint64](graphWords(roots.len))
+  var count = roots.len
+  block:
+    # The public caller proved this typed extent; retire all ordinal descriptors before output allocation.
+    var ordered = newSeq[RootSlot](roots.len)
+    for position, root in roots: ordered[position] = RootSlot(root: root, position: position)
+    ordered.sort(compareRootSlot)
+    for index in 1..<ordered.len:
+      if compareRoot(ordered[index-1].root, ordered[index].root) == 0:
+        mark(duplicates, ordered[index].position) # Later occurrences never choose output order.
+        dec count
+  result = newSeq[StateRoot](count)
+  var next = 0
+  for position, root in roots:
+    if not marked(duplicates, position):
+      result[next] = root # Copy the original first occurrence, with no alias to caller-mutated storage.
+      inc next
+
 proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
     limit: ElementLimit): RepositoryResult[RepositorySelection] =
   ## Validate an explicit bounded root union including current selection, without changing the source.
@@ -571,17 +606,13 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
       status: RepositoryError.Uninitialized)
   if roots.len == 0: return RepositoryResult[RepositorySelection](
       status: RepositoryError.RootMismatch)
-  if uint64(roots.len) > uint64(limit) or roots.len > high(int) div sizeof(StateRoot):
+  if uint64(roots.len) > uint64(limit) or roots.len > high(int) div sizeof(RootSlot):
     return RepositoryResult[RepositorySelection](status: RepositoryError.LimitExceeded)
+  let unique = distinctRoots(roots) # Count every borrowed slot before coalescing complete identities.
   var selected = false
-  var unique: seq[StateRoot] = @[]
-  for root in roots:
-    # Count every borrowed slot against the ceiling, then coalesce equal root identities.
-    if array[32, byte](root) == array[32, byte](source.commitment.root): selected = true
-    var duplicate = false
-    for prior in unique:
-      if array[32, byte](prior) == array[32, byte](root): duplicate = true
-    if not duplicate: unique.add(root)
+  for root in unique:
+    if array[32, byte](root) == array[32, byte](source.commitment.root):
+      selected = true # Required current-root membership still precedes every graph traversal.
   if not selected: return RepositoryResult[RepositorySelection](
       status: RepositoryError.RootMismatch)
   var indices: seq[int] = @[]
@@ -640,9 +671,6 @@ proc exportRepositorySelection*(selection: RepositorySelection,
     records[index] = copyRecord(source.table.records[position]) # Never export shared mutable payload bytes.
   RepositoryResult[seq[TrieRecord]](status: RepositoryError.None, completed: records)
 
-proc compareRoot(left, right: StateRoot): int =
-  ## Canonical root inventories use the same fixed lexical byte order as physical addresses.
-  compareHash(StateNodeHash(array[32, byte](left)), StateNodeHash(array[32, byte](right)))
 proc exportRepositoryImage*(selection: RepositorySelection, limits: TrieExportLimits,
     roots: ElementLimit): RepositoryResult[RepositoryImage] =
   ## Bound and detach a validated union, preserving current metadata and ordering its unique root set.
