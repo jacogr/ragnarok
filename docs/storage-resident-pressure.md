@@ -50,9 +50,10 @@ services even when the outer timeout runner stops; only generated owned units ma
 
 Results are under `build/tests/storage-resident-pressure/`: `results.json`, `summary.md`,
 `observations.csv`, raw per-unit receipts and native logs. Failed/partial runs retain evidence
-and remove successful public summaries. The explicit `storage-pressure` workflow-dispatch
-scope runs the enforcement probe before native setup and retains artifacts on failure.
-No performance speed panel, PR label, push or merge implicitly requests this experiment.
+and remove successful public summaries. The temporary `storage-pressure` workflow-dispatch
+scope has been retired. For local Linux diagnosis, run `make probe-storage-resident-pressure`
+before `make bench-storage-resident-pressure`; retain the result directory on failure.
+No CI job implicitly requests this experiment.
 
 Use the observations to distinguish transient buffering/copy costs from retained graph memory,
 completed reclaim/swap operation and hard-cap failure. Timings on shared CI are descriptive;

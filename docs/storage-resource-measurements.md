@@ -112,5 +112,6 @@ Unlike the richer resource panels, these schema2 reports omit CPU/OS and active 
 a same-host comparison needs a separate host/pairing record. Whole-child RSS and live Nim bytes
 remain distinct, descriptive observations.
 
-Use the existing `storage-pressure` workflow-dispatch scope for isolated Linux memory treatments.
+Use the local Linux commands in [resident pressure](storage-resident-pressure.md) for isolated
+memory treatments; the temporary diagnostic CI scope has been retired.
 The ordinary Perf Storage and Perf Storage Growth workloads, samples and budgets are unchanged.
