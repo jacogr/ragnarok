@@ -466,9 +466,9 @@ proc inspectRange(memory: Memory, address: MemoryAddress, length: MemoryLength,
   let lastPage = (start + size - 1) div 4096
   var page = start div 4096
   let data = memory.data
+  var at = lowerBound(data, uint32(page))
   while page <= lastPage:
     # Page permissions suffice for every byte in this nonwrapping interval, including low memory.
-    let at = lowerBound(data, uint32(page))
     if at == data.pages.len or uint32(data.pages[at].index) != uint32(page):
       # Absent sparse pages are inaccessible; report the first failing physical page in range order.
       return MachineResult[bool](status: MachineError.Fault, failedPage: PageAddress(uint32(page * 4096)))
@@ -477,6 +477,7 @@ proc inspectRange(memory: Memory, address: MemoryAddress, length: MemoryLength,
       # Retained inaccessible bytes are not readable; read-only pages cannot receive host writes.
       return MachineResult[bool](status: MachineError.Fault, failedPage: PageAddress(uint32(page * 4096)))
     inc page
+    inc at # Strictly ordered stored pages advance with the required contiguous physical interval.
   MachineResult[bool](status: MachineError.None, completed: true)
 
 proc readableRange*(memory: Memory, address: MemoryAddress, length: MemoryLength): MachineResult[bool] =
@@ -488,6 +489,32 @@ proc writableRange*(memory: Memory, address: MemoryAddress, length: MemoryLength
   ## Inspect a complete natural writable interval without mutation, preserving the first physical fault reason.
   ## Host dispatchers can establish permission precedence before ID lookup and independent local copying policy.
   inspectRange(memory, address, length, MemoryByteLimit(0x100000000'u64), true)
+
+proc copyPageOut(page: PageData, offset: int, output: var seq[byte], first, count: int)
+    {.requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 4096-offset and
+      first >= 0 and first < output.len and count <= output.len-first.} =
+  ## Copy immutable owned chunks into a fresh independent result; no source byte pointer escapes.
+  var copied = 0
+  while copied < count:
+    # Each batch stays inside one512-byte source allocation and the already-sized destination.
+    let position = offset+copied
+    let within = position mod 512
+    let batch = min(count-copied, 512-within)
+    copyMem(addr output[first+copied], unsafeAddr page.chunks[position div 512].bytes[within], batch)
+    copied += batch
+
+proc copyPageIn(page: PageData, offset: int, input: openArray[byte], first, count: int)
+    {.requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 4096-offset and
+      first >= 0 and first < input.len and count <= input.len-first.} =
+  ## The caller cloned every touched chunk; borrowed public input cannot alias private snapshot storage.
+  var copied = 0
+  while copied < count:
+    # Disjoint raw byte copies have no endian conversion and never cross an allocation boundary.
+    let position = offset+copied
+    let within = position mod 512
+    let batch = min(count-copied, 512-within)
+    copyMem(addr page.chunks[position div 512].bytes[within], unsafeAddr input[first+copied], batch)
+    copied += batch
 
 proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
     limit: MemoryByteLimit): MachineResult[seq[byte]] =
@@ -503,16 +530,17 @@ proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
   let size = int(uint64(length))
   var bytes = newSeq[byte](size)
   var copied = 0
+  var at = 0
+  if size > 0:
+    at = lowerBound(data, uint32(uint64(address) div 4096)) # Empty intervals never inspect or narrow their ignored pointer.
   while copied < size:
     # The preflight proved all addresses and native index conversions before allocation.
     let physical = uint64(address) + uint64(copied)
-    let at = lowerBound(data, uint32(physical div 4096))
     let offset = int(physical mod 4096)
     let count = min(size - copied, 4096 - offset)
-    for i in 0..<count:
-      # Copy only the requested portion of each page; no mutable page reference escapes.
-      bytes[copied + i] = pageByte(data.pages[at], offset+i)
+    copyPageOut(data.pages[at], offset, bytes, copied, count)
     copied += count
+    inc at # Complete preflight proved each consecutive physical page occupies the next sorted slot.
   MachineResult[seq[byte]](status: MachineError.None, completed: bytes)
 
 proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
@@ -535,17 +563,16 @@ proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
     # Share all old page owners by index; each touched page is cloned exactly once below.
     pages.add(data.pages[i])
   var copied = 0
+  var at = lowerBound(data, uint32(uint64(address) div 4096))
   while copied < input.len:
     # Nonwrapping contiguous ranges visit each affected page exactly once.
     let physical = uint64(address) + uint64(copied)
-    let at = lowerBound(data, uint32(physical div 4096))
     let offset = int(physical mod 4096)
     let count = min(input.len - copied, 4096 - offset)
     pages[at] = writablePageClone(data.pages[at], offset, count)
-    for i in 0..<count:
-      # Mutations target only the private clone; untouched bytes and permissions are preserved.
-      setPageByte(pages[at], offset+i, input[copied+i])
+    copyPageIn(pages[at], offset, input, copied, count)
     copied += count
+    inc at # New cloned pages retain their source indices and sorted vector positions.
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 
