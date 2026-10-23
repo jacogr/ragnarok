@@ -141,13 +141,38 @@ proc recordIntegrity(record: TrieRecord, limits: RecordLimits): RecordError =
       record.digest): return RecordError.HashMismatch
   RecordError.None
 
+proc distinctPrefixes(prefixes: var seq[uint64]): bool =
+  ## Distinct complete eight-byte prefixes prove full identities distinct; a collision proves nothing further.
+  prefixes.sort()
+  for index in 1..<prefixes.len:
+    if prefixes[index-1] == prefixes[index]: return false # Only the existing full-width fallback may reject duplicates.
+  true
+
+func hashPrefix(digest: StateNodeHash): uint64 =
+  ## Pack all first-eight physical bytes bijectively; this scratch key never substitutes for a full address.
+  let bytes = array[32, byte](digest)
+  result = 0
+  for index in 0..<8: result = result or (uint64(bytes[index]) shl (index*8))
+
+proc uniqueRecordPrefixes(records: openArray[TrieRecord]): bool =
+  ## Keep compact scratch local so any collision retires it before allocating full-address fallback storage.
+  if records.len < 2: return true # Empty/singleton inventories cannot contain a duplicate.
+  var prefixes = newSeq[uint64](records.len)
+  let first = hashPrefix(records[0].digest)
+  var same = true
+  for index, record in records:
+    prefixes[index] = hashPrefix(record.digest)
+    if prefixes[index] != first: same = false
+  if same: return false # Hostile shared prefixes need no sort before full-identity comparison.
+  distinctPrefixes(prefixes)
+
 proc validateRecords(batch: TrieExport, records: openArray[TrieRecord], limits: RecordLimits,
     collection: bool, ordered = false): RecordError =
   ## Verify each physical node commitment; only the private decoder's strict first pass can supply order.
   let checked = extent(batch, records, limits, collection)
   if checked.error != RecordError.None: return checked.error
-  if not ordered:
-    # General mutable records need independent duplicate scratch; ordered decoding already proved strict identities.
+  if not ordered and not uniqueRecordPrefixes(records):
+    # Prefix collisions retain independent full-width duplicate scratch; ordered decoding already proved strict identities.
     var identities = newSeq[StateNodeHash](records.len)
     for i, record in records: identities[i] = record.digest # Fixed scratch has been preflighted.
     identities.sort(compareHash)
@@ -368,8 +393,31 @@ proc decodeOrderedRecordCollection*(input: openArray[byte], limits: RecordLimits
   RecordResult[RecordCollection](status: RecordError.None,
     completed: RecordCollection(records: move(batch.records)))
 
+proc uniqueInputPrefixes(input: openArray[byte], shape: RecordScan): bool =
+  ## Whole-input preflight proved every offset; this hash-free prefix scan confers no record/graph authority.
+  if shape.count < 2: return true
+  var prefixes = newSeq[uint64](shape.count)
+  let first = number(input, shape.header+1)
+  var same = true
+  var offset = shape.header
+  for index in 0..<shape.count:
+    # Prefix extraction reads only the first eight bytes of a previously bounded complete physical digest.
+    prefixes[index] = number(input, offset+1)
+    if prefixes[index] != first: same = false
+    let tag = input[offset]
+    offset += 33
+    if tag == 0:
+      let size = int(number(input, offset+31))
+      offset += 39
+      offset += size
+    else:
+      offset += 64 # The strict structural scan admitted only canonical leaf/branch widths.
+  if same: return false # Common-prefix hostile input falls back without sorting a constant scratch array.
+  distinctPrefixes(prefixes)
+
 proc uniqueInputRecords(input: openArray[byte], shape: RecordScan): RecordError =
   ## Unordered transports need only bounded address scratch, never a complete decoded descriptor batch.
+  if uniqueInputPrefixes(input, shape): return RecordError.None
   var identities = newSeq[StateNodeHash](shape.count)
   var offset = shape.header
   for index in 0..<shape.count:
