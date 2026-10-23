@@ -3,7 +3,7 @@
 
 """Observe actual current-command exits and progress alongside an independent native TLS/map witness.
 
-Exposes observe; process failures always reap the responder and cannot borrow another case's verdict.
+Exposes observe and observe_preimages; process failures always reap the responder and cannot borrow another case's verdict.
 """
 import subprocess
 import tempfile
@@ -12,15 +12,13 @@ from pathlib import Path
 from application_current_download import ready_port
 
 
-def observe(peer, responder, directory, environment):
+def _observe(peer, responder, directory, environment, cases):
     """Check each current command transcript and independent durable prefix before the next case."""
     directory.mkdir(parents=True, exist_ok=True)
-    cases = [('journal', False), ('managed', False), ('journal-resumed', False),
-             ('managed-resumed', False), ('replay', True), ('empty', True),
-             ('timeout', True), ('resource', True), ('managed-maintenance', False),
-             ('maintenance-resource', True), ('maintenance-resumed', False)]
+    if not cases or any(total not in (2, 3) for _, total, _ in cases):
+        raise ValueError('Current sequence case plan must contain bounded two/three-child cases')
     rows = []
-    for name, partial in cases:
+    for name, total, partial in cases:
         folder = Path(tempfile.mkdtemp(prefix=name+'-', dir=directory))
         log = folder/'responder.log'
         process = None
@@ -36,13 +34,14 @@ def observe(peer, responder, directory, environment):
                     '4000' if name == 'timeout' else '10000', 'current-policy.conf',
                     '--with-state', '--chain', 'current-chain.json', '--state-writes', '1000',
                     '--state-write-bytes', '1000000', '--state-storage', 'disk',
-                    '--state-db', 'current-state.db', '--download-blocks', '3']
+                    '--state-db', 'current-state.db', '--download-blocks', str(total)]
                 if name in ('managed', 'managed-resumed', 'empty', 'managed-maintenance',
-                            'maintenance-resource', 'maintenance-resumed'):
+                            'maintenance-resource', 'maintenance-resumed', 'preimages-managed',
+                            'preimages-repeated'):
                     arguments += ['--state-layout', 'managed', '--state-compact-bytes',
                                   '1' if 'maintenance' in name else '0']
                 runs = []
-                for step, requested in enumerate((1, 2) if name.endswith('-resumed') else (3,)):
+                for step, requested in enumerate((1, total-1) if name.endswith('-resumed') else (total,)):
                     # A fresh executable lifetime must select the prefix persisted by the previous one.
                     command = list(arguments)
                     command[command.index('--download-blocks')+1] = str(requested)
@@ -50,7 +49,7 @@ def observe(peer, responder, directory, environment):
                         capture_output=True, text=True, timeout=20)
                     (folder/f'application-{step}.stdout').write_text(result.stdout)
                     (folder/f'application-{step}.stderr').write_text(result.stderr)
-                    adopted = 2 if partial else requested
+                    adopted = total-1 if partial else requested
                     marker = 'FAILED Timeout' if name == 'timeout' else ('FAILED Exhausted' if partial else 'ADOPTED')
                     progress = f'CURRENT_DOWNLOAD_PROGRESS adopted={adopted} requested={requested}'
                     passed = (result.returncode == (2 if partial else 0)
@@ -67,8 +66,8 @@ def observe(peer, responder, directory, environment):
                 (folder/'current-stop').write_text('stop')
                 code = process.wait(timeout=10)
             # Each complete CLI transcript and the independent full-history witness must agree.
-            adopted = 2 if partial else 3
-            verified = f'CURRENT_SEQUENCE_VERIFIED adopted={adopted} requests=3'
+            adopted = total-1 if partial else total
+            verified = f'CURRENT_SEQUENCE_VERIFIED adopted={adopted} requests={total}'
             passed = code == 0 and verified in log.read_text().splitlines() and all(r['passed'] for r in runs)
             row = dict(case=name, runs=runs, responder_exit_code=code, responder_log=str(log), passed=passed)
             rows.append(row)
@@ -84,3 +83,19 @@ def observe(peer, responder, directory, environment):
                     process.kill()
                     process.wait(timeout=5)
     return dict(passed=len(rows) == len(cases) and all(row['passed'] for row in rows), cases=rows)
+
+
+def observe(peer, responder, directory, environment):
+    """Preserve the ordinary three-child success, maintenance, refusal and restart plan."""
+    cases = [('journal', 3, False), ('managed', 3, False), ('journal-resumed', 3, False),
+             ('managed-resumed', 3, False), ('replay', 3, True), ('empty', 3, True),
+             ('timeout', 3, True), ('resource', 3, True), ('managed-maintenance', 3, False),
+             ('maintenance-resource', 3, True), ('maintenance-resumed', 3, False)]
+    return _observe(peer, responder, directory, environment, cases)
+
+
+def observe_preimages(peer, responder, directory, environment):
+    """Separate nonempty delivery cases require two adoptions and fresh third-body refusal."""
+    cases = [('preimages-journal', 2, False), ('preimages-managed', 2, False),
+             ('preimages-repeated', 3, True), ('preimages-resumed', 2, False)]
+    return _observe(peer, responder, directory, environment, cases)
