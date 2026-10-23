@@ -75,11 +75,58 @@ See the source contracts for [current globals](../spec/state-current-globals.md)
 [detached reconstruction](../spec/state-supplied-services.md) and
 [current-bound logical provenance](../spec/state-current-logical.md).
 
+## Continue an unchanged logical identity set
+
+A configured selected parent can now seed the same complete logical description used by a completed
+current successor. This path consumes the existing successful producer; it never executes guests
+again or edits the producer's snapshot. Keep the host ARC gate open throughout construction and
+retirement, including temporary aliases.
+
+| Step | Input and operation | Bounded result |
+| --- | --- | --- |
+| Original configured seed | Full selected `ChainView`, `captureParentProfile`, `qualifyParentGlobals`, then `captureLogicalParent` with complete supplied declarations | `SelectedLogicalParent` retains the exact physical selected state, whole view, full Parameters and original raw keys |
+| Preserve identities | Configured seed or prior `CurrentLogicalState`, actual next update, `preserveCurrentIdentities` | Exact original physical parent and whole prior view must match; every physical namespace identity must remain present and no new identity may appear |
+| Cache request keys | `captureCurrentRequestKeys` | Independent service/request/native-descriptor limits precede one key derivation per request; the immutable companion retains those original keys |
+| Freeze reconstruction | `planCurrentRefresh` | All service/child descriptors, raw keys, actual target payload extents, metadata/request wire bytes and work are admitted before output copying |
+| Freeze full qualification | `planCurrentLogicalRefresh` | Actual profile/global policies, complete-map and retained raw-key quotas are frozen; no later source or target substitution is accepted |
+| Complete refresh | `executeCurrentLogicalRefresh` | Existing full current and raw-key matching returns `CurrentLogicalState` on the actual successor; supplied payloads and histories refresh while original identities remain fixed |
+
+Request-key capture and complete matching retain their mandatory hashing. Reconstruction planning,
+fixed-context observations and admitted detached copying use cached facts without hashing. Metadata
+and request histories still pass their exact existing codecs. Failed stages preserve typed source,
+missing identity, malformed value, backend and resource reasons; they expose no successful prefix.
+The original configured source and completed source remain distinct guarded alternatives through
+`identityParent` and `identityPriorCurrent`; the wrong alternative returns `WrongSource`.
+
+Exact full-view provenance includes retained history, full Parameter bytes and finality presence or
+absence. Equal state roots or unchanged cardinalities cannot replace it. The fixed
+`currentUpdateChildContext`, `currentUpdatePriorViewInfo` and `currentUpdateViewInfo` getters
+permit small observations before admitting heavy selected-view/index copies. Successful reconstruction does not grant a
+producer-owned manifest, trusted-root policy, installation or finality authority.
+
+The signed integration witnesses cover complete original code namespaces, real HALT execution,
+funded existing-key storage growth, forget/restore request histories, and repeated actual children.
+Creation, deletion and ejection refuse identity preservation. Separate tests cover equal-root physical
+owners, altered history/finality/Parameters, reordered/mutated caller declarations, scope retirement,
+exact resource ledgers and actual proof-worker collection/join ownership. All sixteen authenticated
+chapter captures and mixed present-empty/absence proofs use independently selected actual roots.
+Review still consumes the original current compact inventory; the independently matched raw-key
+companion has a different compact identity. Do not join review predicates across those owners.
+
+See [selected parent profiles](../spec/state-parent-profile.md),
+[original logical seeds](../spec/state-parent-logical.md),
+[identity preservation](../spec/state-current-identities.md),
+[request-key companions](../spec/state-current-request-keys.md),
+[reconstruction plans](../spec/state-current-refresh-plan.md),
+[full logical refresh](../spec/state-current-logical-refresh.md),
+[proof integration](../spec/state-current-logical-proofs.md) and
+[worker leases](../spec/state-current-logical-worker-lease.md).
+
 ## Remaining producer contract and parity gates
 
 PVM and state agreed to defer a public delta API until a jointly designed producer contract has a
-concrete consumer. Preserving supplied information is complete within the contracts above; execution
-propagation is a separate feature. That design must settle:
+concrete consumer. Identity-preserving supplied continuation is implemented within the bounded
+contracts above. General producer mutation propagation remains separate. That design must settle:
 
 - Exact original logical/physical parent and prepared-successor provenance, including untouched keys.
 - Explicit operation identities and ordering, including absence versus present-empty values.
