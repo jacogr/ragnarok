@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Repeated real Services children continue complete logical provenance after a guest overwrites an existing service99 storage identity.
-import std/[assertions, envvars, syncio]
+import std/[assertions, envvars, syncio, strutils, base64]
 import std/posix/posix
+import ../../support/rpc_socket
 import ../../support/[current_namespace_execution_context, current_application_context,
     current_logical_collection_context, current_consecutive_context,
     accumulation_current_candidate_context, parent_profile_context, parent_globals_context,
@@ -15,6 +16,7 @@ import ../../../src/codec/[bounded, block_codec, report_owned, state_layout, sta
 import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_identities,
     current_logical, accumulation_current_update, store, block_admission, report_admission, supplied_services]
 import ../../../src/storage/managed_manifest
+import ../../../src/rpc/server
 proc overwriteCode(): seq[byte] =
   ## Actual write host targets the existing raw key5 of funded service99; the original present-empty value grows without creating a namespace identity.
   let instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 196608),
@@ -22,7 +24,8 @@ proc overwriteCode(): seq[byte] =
       @[10'u8, 5], @[50'u8, 0]]
   result = @[0'u8]
   for octet in guestEnvelope(instructions, @[5'u8, 17, 18, 19]): result.add(octet)
-proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone: bool) {.raises.} =
+proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone,
+    network: bool) {.raises.} =
   ## Each matching native collection precedes logical continuation; each explicit adoption precedes signing/preparing the following child.
   var path = "pvm-current-logical-sequence-chain"
   writeFile(path, fixture.parent.bestBlock.value.currentApplicationText)
@@ -31,15 +34,35 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone: bo
     discard posix.unlink(path.toCString())
     if layout == 2: removeManagedSample(database, [ManagedEpoch(1)])
     elif layout == 1: discard posix.unlink(database.toCString()) # Only this invocation's exact physical namespace is removed after joined close.
+  var port = 0'u16
+  if network:
+    let reserved = reservation()
+    port = reserved.port
+    discard posix.close(reserved.fd) # Only this invocation's actual loopback reservation selects the listener.
   var options = default(Options)
   if layout == 0:
-    assert parseOptions(@["server", "--with-state", "--chain", path], options)
+    var args = @["server", "--with-state", "--chain", path]
+    if network:
+      args.add("--with-rpc")
+      args.add("--rpc-port")
+      args.add($port) # Append individual explicit arguments supported by the pinned compiler.
+    assert parseOptions(args, options)
   else:
-    options = currentDiskOptions(path, database, layout == 2, 0)
+    options = currentDiskOptions(path, database, layout == 2, port)
   var input = default(CurrentBlockInput)
   var owner = default(Services)
   defer: owner.close()
   assert owner.start(options, "current logical sequence")
+  var peer = -1.cint
+  var pending = ""
+  defer:
+    if peer >= 0: discard posix.close(peer) # Client retirement precedes the outer Services joined close on every raised path.
+  if network:
+    peer = client(port)
+    upgrade(owner.rpc, peer, pending)
+    sendText(peer, """{"jsonrpc":"2.0","method":"subscribeBestBlock","params":[],"id":1}""")
+    assert "\"result\":1" in readPacket(owner.rpc, peer, pending)
+    assert "\"slot\":1" in readPacket(owner.rpc, peer, pending)
   let profile = captureParentProfile(owner.chainView, parentProfileTestLimits).value
   let globals = qualifyParentGlobals(profile, parentGlobalsTestLimits).value
   let original = owner.stateSnapshot.value
@@ -96,6 +119,15 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone: bo
     assert sameStateSnapshot(owner.stateSnapshot.value, logical.logicalProducer.currentUpdateState)
     assert owner.chainView.retainedCount == index+2
     assert owner.chainView.finalizedBlock.error != GenesisError.None
+    if network:
+      # Only the reopened host gate can serve current subscriber/query observations, and all three surfaces must identify the qualified posterior.
+      let hash = base64.encode(array[32, byte](update.currentUpdateChildContext.hash))
+      assert hash in readPacket(owner.rpc, peer, pending)
+      sendText(peer, """{"jsonrpc":"2.0","method":"bestBlock","id":2}""")
+      assert hash in readPacket(owner.rpc, peer, pending)
+      sendText(peer, "{\"jsonrpc\":\"2.0\",\"method\":\"stateRoot\",\"params\":[\"" & hash & "\"],\"id\":3}")
+      let root = base64.encode(array[32, byte](logical.logicalProducer.currentUpdateState.commitment.root))
+      assert root in readPacket(owner.rpc, peer, pending)
     assert owner.preparationAvailable and owner.stateProofAvailable
     owner.proveLogicalCurrent(logical) # Installed current provenance survives a real canonical proof lease before the next preparation.
     if index == 1:
@@ -104,6 +136,9 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone: bo
       owner.proveLogicalCurrent(logical) # Capacity is truly reusable after both cancellations, with the same original logical owner/root.
   assert original.lookup(key).value.bytes.len == 0 # Original physical aliases remain immutable across every real adoption.
   assert first.logicalProducer.currentUpdateState.lookup(key).value.bytes == @[17'u8, 18, 19]
+  if peer >= 0:
+    discard posix.close(peer)
+    peer = -1 # No stale client or pending response can cross the later Services close/restart lifetime.
   let uncollected = currentEmptyChild(owner.chainView.bestBlock.value)
   owner.joinLogicalChild(input, uncollected, policies, joinAfterDone)
   assert logical.logicalProducer.currentUpdateState.lookup(key).value.bytes == @[17'u8, 18, 19]
@@ -170,7 +205,8 @@ proc main() {.raises.} =
   let fixture = namespaceExecutionFixture(decodeOwnedReport(bytes, 2).value, namespaceHaltCode(),
       overwriteCode())
   for layout in 0..2:
-    for joinAfterDone in [false, true]: scenario(fixture, layout, joinAfterDone)
+    for joinAfterDone in [false, true]:
+      for network in [false, true]: scenario(fixture, layout, joinAfterDone, network)
   echo "PVM current logical sequence passed"
 try:
   main()

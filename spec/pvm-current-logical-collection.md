@@ -110,6 +110,15 @@ then yields no completion. The retained logical successor is unchanged, the cano
 owner remains live, and a subsequent full authenticated proof restarts the bounded worker before
 another real preparation. No close/reopen or new physical source is substituted for this reuse.
 
+## Enabled RPC logical consumers
+
+The real sequence runs with RPC disabled and with an invocation-owned loopback listener/client
+across all layouts and both preparation-join timings. After every confirmed logical adoption,
+subscription notification, best-block query and selected state-root query must all name the exact
+qualified successor and its posterior map root. Preparation, publication and proof leases still
+exclude the RPC graph through cancellation/Done. Client retirement precedes joined shutdown;
+no stale socket or response is reused across restart. This changes no RPC/root policy.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
