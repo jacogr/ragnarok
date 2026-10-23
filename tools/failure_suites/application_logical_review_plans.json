@@ -1,0 +1,23 @@
+{
+  "build_name": "application-logical-review-plans-results",
+  "cases": [
+    {
+      "arguments": [
+        "preparation"
+      ],
+      "description": "Frozen logical review preparation-reason extraction guard",
+      "diagnostic": "outcome.status == PreparationFailure",
+      "identity": {
+        "reason": "preparation"
+      },
+      "name": "application-logical-review-plans-preparation"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_logical_review_plans_results.nim"
+}

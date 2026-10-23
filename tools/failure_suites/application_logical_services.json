@@ -231,6 +231,72 @@
         "reason": "publication-logical-review"
       },
       "name": "application-logical-services-publication-logical-review"
+    },
+    {
+      "arguments": [
+        "preparation-logical-review-plan"
+      ],
+      "description": "Managed frozen logical review exclusion preparation-logical-review-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-review-plan"
+      },
+      "name": "application-logical-services-preparation-logical-review-plan"
+    },
+    {
+      "arguments": [
+        "preparation-logical-review-execution"
+      ],
+      "description": "Managed frozen logical review exclusion preparation-logical-review-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-review-execution"
+      },
+      "name": "application-logical-services-preparation-logical-review-execution"
+    },
+    {
+      "arguments": [
+        "proof-logical-review-plan"
+      ],
+      "description": "Managed frozen logical review exclusion proof-logical-review-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-review-plan"
+      },
+      "name": "application-logical-services-proof-logical-review-plan"
+    },
+    {
+      "arguments": [
+        "proof-logical-review-execution"
+      ],
+      "description": "Managed frozen logical review exclusion proof-logical-review-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-review-execution"
+      },
+      "name": "application-logical-services-proof-logical-review-execution"
+    },
+    {
+      "arguments": [
+        "publication-logical-review-plan"
+      ],
+      "description": "Managed frozen logical review exclusion publication-logical-review-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-review-plan"
+      },
+      "name": "application-logical-services-publication-logical-review-plan"
+    },
+    {
+      "arguments": [
+        "publication-logical-review-execution"
+      ],
+      "description": "Managed frozen logical review exclusion publication-logical-review-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-review-execution"
+      },
+      "name": "application-logical-services-publication-logical-review-execution"
     }
   ],
   "crypto_library": "observer",
