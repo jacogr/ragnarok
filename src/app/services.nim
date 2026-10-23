@@ -14,6 +14,7 @@ import ./candidate
 import ./block_input
 import ./preparation_worker
 import ./[collected_supplied_plan, collected_supplied_state]
+import ./logical_checkpoint
 import ./logical_seed
 import ../codec/state_composition
 import ./current_logical as collected_logical
@@ -898,6 +899,12 @@ proc executeCollectedSupplied*(services: Services, plan: CollectedSuppliedPlan,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Recheck frozen prior provenance and complete borrowed successor declarations outside every managed native lease.
   collected_supplied_state.executeCollectedSupplied(services.canonical, plan, declarations)
+
+proc captureLogicalCheckpoint*(services: Services, source: CurrentLogicalState,
+    limit: ByteLimit): LogicalCheckpointResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Explicit retained logical sources may share canonical ARC graphs; checkpoint copying requires the managed host gate open.
+  logical_checkpoint.captureLogicalCheckpoint(source, limit)
 
 proc captureLogicalSeed*(services: Services, declarations: openArray[StateService],
     limits: LogicalSeedLimits): LogicalSeedResult {.requires:
