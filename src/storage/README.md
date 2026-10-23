@@ -268,3 +268,13 @@ Bounded read metadata controls capacity only. Actual short reads, EOF and the ex
 remain authoritative, and strict format admission still runs after loading. For matched peak-RSS
 observations, the checked comparison rules and Linux qualification, see the
 [read-memory record](../../spec/storage-read-memory-qualification.md).
+
+## Light proof-cache files
+
+`light_file_cache.nim` owns an explicitly selected separate directory and stable lock.
+It publishes opaque light images through synchronized atomic `CURRENT` replacement and
+reopens only after bounded proof verification against independently supplied chain/root.
+Immutable readers survive publication and close; uncertain IO requires explicit close
+and validated reopen. Pending cleanup revalidates the selected image before removal.
+See [the lifecycle and durability contract](../../spec/storage-light-files.md).
+Application startup and consensus root selection remain separately scoped work.
