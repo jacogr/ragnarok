@@ -20,8 +20,9 @@ import ../state/account_review_plan
 import ./logical_checkpoint
 import ./frozen_supplied
 import ../state/supplied_services
+import ./logical_service_proof
 import ./logical_seed
-import ../codec/state_composition
+import ../codec/[state_composition, composite]
 import ./current_logical as collected_logical
 import ../state/[parent_logical, current_logical]
 import ./[proof_query, proof_worker]
@@ -1290,3 +1291,10 @@ proc executeCollectedLogical*(services: Services, plan: CollectedLogicalPlan): C
     not (services.proofing or services.preparing or services.publishing).} =
   ## Retry cannot bypass native exclusion or the frozen update's exact canonical-parent check.
   collected_logical.executeCollectedLogical(services.canonical, plan)
+
+proc planLogicalServiceProof*(services: Services, source: CurrentLogicalState,
+    service: ServiceIndex, limits: LogicalServiceProofLimits): LogicalServiceProofResult[
+        LogicalServiceProof] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Namespace selection reads retained source aliases only outside the managed native graph lease.
+  logical_service_proof.planLogicalServiceProof(source, service, limits)

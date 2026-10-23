@@ -462,6 +462,39 @@
         "reason": "publication-collected-plan-execution"
       },
       "name": "application-logical-services-publication-collected-plan-execution"
+    },
+    {
+      "arguments": [
+        "preparation-logical-service-selection"
+      ],
+      "description": "Managed host exclusion preparation-logical-service-selection",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-service-selection"
+      },
+      "name": "application-logical-services-preparation-logical-service-selection"
+    },
+    {
+      "arguments": [
+        "proof-logical-service-selection"
+      ],
+      "description": "Managed host exclusion proof-logical-service-selection",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-service-selection"
+      },
+      "name": "application-logical-services-proof-logical-service-selection"
+    },
+    {
+      "arguments": [
+        "publication-logical-service-selection"
+      ],
+      "description": "Managed host exclusion publication-logical-service-selection",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-service-selection"
+      },
+      "name": "application-logical-services-publication-logical-service-selection"
     }
   ],
   "crypto_library": "observer",

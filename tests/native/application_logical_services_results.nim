@@ -4,6 +4,7 @@
 ## Actual managed preparation and proof leases reject both logical source alternatives before canonical access.
 import std/[assertions, cmdline, syncio, strutils, monotimes, times]
 import std/posix/posix
+import ../../src/app/logical_service_proof
 import ../../src/app/current_logical
 import ../../src/state/supplied_services
 import ../../src/app/frozen_supplied
@@ -14,7 +15,7 @@ import ../../src/app/[services, current_logical, preparation_worker, current_blo
     proof_worker, current_handoff, disk_worker]
 import ../../src/state/[parent_logical, current_logical, proof_plan, accumulation_current_update,
     accumulation_round, accumulation_queue, report_admission, block_transition, block_admission]
-import ../../src/codec/[bounded, report_owned, state_layout]
+import ../../src/codec/[bounded, report_owned, state_layout, composite]
 import ../../src/chain/[provider, genesis]
 import ../support/[current_repeated_logical_context, collected_logical_context,
     collected_logical_services_context, accumulation_current_candidate_context, current_logical_proof_context]
@@ -73,7 +74,9 @@ proc main() {.raises.} =
     assert owner.stateProofActive # Proof Done plus cancellation keeps the same canonical exclusion.
   let receipt = default(PreparationCompletion)
   let logical = default(CurrentLogicalState)
-  if mode.endsWith("-collected-plan-selected"):
+  if mode.endsWith("-logical-service-selection"):
+    discard owner.planLogicalServiceProof(logical, ServiceIndex(99), default(LogicalServiceProofLimits))
+  elif mode.endsWith("-collected-plan-selected"):
     discard owner.planCollectedLogical(receipt, default(SelectedLogicalParent), default(CollectedLogicalLimits))
   elif mode.endsWith("-collected-plan-current"):
     discard owner.planCollectedLogical(receipt, logical, default(CollectedLogicalLimits))
