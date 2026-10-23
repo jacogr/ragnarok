@@ -126,6 +126,10 @@ not block/finality authority. Run `storage_retention_plan` for its ownership and
 ceilings. The sorted detached result is maintenance transport, not an ordinary single-root batch.
 It performs no file replacement, generation reset, context rewrite or reclamation.
 
+Selection traversal uses independent per-root seen bits, a retained union bitmap and sparse dirty-word
+reset; the final exact inventory follows physical order without sorting selected indices. See the
+[bitmap construction contract](../../spec/storage-selection-bitmaps.md).
+
 `encodeRepositorySelection` serializes an opaque admitted union directly into owned canonical
 collection bytes. It avoids detached record/value copies and repeated hashes; raw mutable record
 encoders remain strict. Snapshot encoding uses this path and hashes its new outer frame once.
