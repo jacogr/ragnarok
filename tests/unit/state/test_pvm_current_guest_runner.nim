@@ -4,7 +4,8 @@
 
 ## Actual current guests connect creation, skipped credit and absent identity to complete provider and selected-state proofs.
 import std/[assertions, syncio]
-import ../../../src/state/[accumulation_guest_runner, accumulation_coverage, accumulation_annulment,
+import ../../../src/state/[accumulation_guest_runner, accumulation_effects, accumulation_coverage,
+  accumulation_annulment,
   accumulation_account_selection, accumulation_creation_union, accumulation_selected_writes,
   accumulation_annulled_outputs, accumulation_global_roles, accumulation_inputs,
   accumulation_service,
@@ -82,6 +83,22 @@ let prior = source.state.snapshot.value
 let completed = run(source)
 assert completed.error == AccumulationGuestError.None, $completed.error
 let coverage = completed.value
+# The explicit current guest policy reaches the actual new host's original request identity capture.
+var traceLimits = policy()
+traceLimits.requestFacts = ElementLimit(4)
+let traced = run(source, traceLimits)
+assert traced.error == AccumulationGuestError.None
+let tracedContext = traced.value.coverageOriginalAt(AccumulationCoverageIndex(
+    0)).value.outcomeContext.value
+assert tracedContext.effectRequestFactCount.value == 1
+let requestFact = tracedContext.effectRequestFactAt(AccumulationRequestFactIndex(0)).value
+let createdFact = tracedContext.effectCreatedAccountFactAt(AccumulationCreatedAccountIndex(0)).value
+assert uint32(requestFact.service) == uint32(createdFact.service)
+assert array[31, byte](requestFact.key) == array[31, byte](createdFact.requestKey)
+assert uint32(requestFact.length) == 1
+assert coverage.coverageOriginalAt(AccumulationCoverageIndex(
+    0)).value.outcomeContext.value.effectRequestFactCount.error ==
+    AccumulationEffectError.RequestFactsDisabled
 let info = coverage.coverageInfo.value
 assert info.services == 3 and info.executed == 1 and info.skipped == 1 and info.absent == 1, "current guest check: info.services == 3 and info.executed == 1 and info.skipped == 1 and info.absent == 1"
 assert uint64(info.gasUsed) > 3855, "actual new host and instruction prices are consumed"

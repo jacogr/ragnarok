@@ -64,7 +64,8 @@ proc planLogicalSourceExport*(source: CurrentLogicalState,
     for j in 0..<row.storage:
       let key = compact.inventoryStorageAt(ordinal, InventoryStorageIndex(uint64(j))).value
       charge(3)
-      if key.keyBytes > uint64(limits.perKey) or key.keyBytes > available div 2: fail(
+      if key.keyBytes > uint64(CurrentLogicalSourceKeyBytes) or
+          key.keyBytes > uint64(limits.perKey) or key.keyBytes > available div 2: fail(
           LogicalSourceExportError.LimitExceeded)
       charge(key.keyBytes*2) # Hex expands only admitted raw key bytes, including genuine empty keys.
       scratch = max(scratch, key.keyBytes)

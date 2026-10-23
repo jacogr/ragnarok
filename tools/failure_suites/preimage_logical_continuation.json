@@ -1,0 +1,33 @@
+{
+  "build_name": "preimage-logical-continuation-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "preimage_logical_continuation guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "preimage-logical-continuation-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "preimage_logical_continuation selected reason",
+      "diagnostic": "outcome.status == PreimageFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "preimage-logical-continuation-reason"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/preimage_logical_continuation_results.nim"
+}

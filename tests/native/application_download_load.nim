@@ -87,6 +87,8 @@ proc round(owner: var Services, expected: array[42, byte], frame: seq[byte],
     lease(owner, true)
     for turn in 0..<8:
       assert servers.poll(), "flush real directional reset"
+      if servers.resetObserved:
+        break # Observe Running at actual reset delivery, not after an unnecessary fixed polling delay.
       discard pauseMicros(1000) # Permit actual UDP delivery while the client lease remains uncollected.
 
     assert servers.resetObserved, "native rejection before releasing the worker lease"

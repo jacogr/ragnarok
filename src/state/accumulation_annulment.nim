@@ -19,7 +19,8 @@ type
     annulled*: bool ## True only for the two original modified-set conflict with a different supervisor.
   AccumulationAnnulmentError* {.pure.} = enum ## Refused/default alternatives carry no source, state or decision payload.
     Uninitialized, None, InvalidInputs, InvalidState, InvalidOutcome, SourceMismatch,
-    DuplicateService, MalformedState, LimitExceeded, InvalidIndex, NoInvocationSlot
+    DuplicateService, MalformedState, LimitExceeded, InvalidIndex, NoInvocationSlot,
+      StorageFactsDisabled, RequestFactsDisabled, CreatedAccountsDisabled, DeletedAccountsDisabled
   OutcomeRow = object # Immutable rows retain only genuine original outcomes and their calculated decision.
     outcome: AccumulationOutcome
     decision: AccumulationAnnulmentDecision
@@ -269,3 +270,116 @@ proc annulmentSlot*(plan: PreparedAccumulationAnnulment): AccumulationAnnulmentR
       status: AccumulationAnnulmentError.NoInvocationSlot) # A later skip-only adapter must bind its own real slots.
   AccumulationAnnulmentResult[HeaderSlot](status: AccumulationAnnulmentError.None,
       completed: data.slot)
+
+proc annulmentSelectedStorageFactCountAt*(plan: PreparedAccumulationAnnulment,
+    index: AccumulationAnnulmentIndex): AccumulationAnnulmentResult[int] =
+  ## Annulled executions contribute a proven empty selected trace; surviving executions require explicit enabled raw identity capture.
+  let row = selectedRow(plan, index)
+  if row.error != AccumulationAnnulmentError.None:
+    return AccumulationAnnulmentResult[int](status: row.error)
+  if row.value.decision.annulled:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: 0)
+  let count = row.value.outcome.outcomeContext.value.effectStorageFactCount
+  if count.error == AccumulationEffectError.StorageWriteFactsDisabled:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.StorageFactsDisabled)
+  if count.error != AccumulationEffectError.None:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.InvalidOutcome)
+  AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: count.value)
+
+proc annulmentSelectedStorageFactAt*(plan: PreparedAccumulationAnnulment,
+    index: AccumulationAnnulmentIndex, fact: AccumulationStorageFactIndex): AccumulationAnnulmentResult[
+        AccumulationStorageFact] =
+  ## No original fact may escape through an annulled selection; default/disabled/bounds failures remain distinct.
+  let count = plan.annulmentSelectedStorageFactCountAt(index)
+  if count.error != AccumulationAnnulmentError.None:
+    return AccumulationAnnulmentResult[AccumulationStorageFact](status: count.error)
+  if uint64(fact) >= uint64(count.value):
+    return AccumulationAnnulmentResult[AccumulationStorageFact](
+        status: AccumulationAnnulmentError.InvalidIndex)
+  let row = selectedRow(plan, index).value
+  AccumulationAnnulmentResult[AccumulationStorageFact](status: AccumulationAnnulmentError.None,
+      completed: row.outcome.outcomeContext.value.effectStorageFactAt(fact).value)
+
+proc annulmentSelectedRequestFactCountAt*(plan: PreparedAccumulationAnnulment,
+    index: AccumulationAnnulmentIndex): AccumulationAnnulmentResult[int] =
+  ## Cancelled invocations have a proven empty selected request trace; survivors require enabled original identity capture.
+  let row = selectedRow(plan, index)
+  if row.error != AccumulationAnnulmentError.None:
+    return AccumulationAnnulmentResult[int](status: row.error)
+  if row.value.decision.annulled:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: 0)
+  let count = row.value.outcome.outcomeContext.value.effectRequestFactCount
+  if count.error == AccumulationEffectError.RequestFactsDisabled:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.RequestFactsDisabled)
+  if count.error != AccumulationEffectError.None:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.InvalidOutcome)
+  AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: count.value)
+proc annulmentSelectedRequestFactAt*(plan: PreparedAccumulationAnnulment,
+    index: AccumulationAnnulmentIndex, fact: AccumulationRequestFactIndex): AccumulationAnnulmentResult[
+        AccumulationRequestFact] =
+  ## Never export an original request identity through its cancelled selection; validate full ordinals before extraction.
+  let count = plan.annulmentSelectedRequestFactCountAt(index)
+  if count.error != AccumulationAnnulmentError.None:
+    return AccumulationAnnulmentResult[AccumulationRequestFact](status: count.error)
+  if uint64(fact) >= uint64(count.value):
+    return AccumulationAnnulmentResult[AccumulationRequestFact](
+        status: AccumulationAnnulmentError.InvalidIndex)
+  let row = selectedRow(plan, index).value
+  AccumulationAnnulmentResult[AccumulationRequestFact](status: AccumulationAnnulmentError.None,
+      completed: row.outcome.outcomeContext.value.effectRequestFactAt(fact).value)
+
+proc annulmentSelectedCreatedAccountFactCountAt*(plan: PreparedAccumulationAnnulment,
+    index: AccumulationAnnulmentIndex): AccumulationAnnulmentResult[int] =
+  ## Cancelled invocations have a proven empty selected membership trace; survivors require enabled original identity capture.
+  let row = selectedRow(plan, index)
+  if row.error != AccumulationAnnulmentError.None:
+    return AccumulationAnnulmentResult[int](status: row.error)
+  if row.value.decision.annulled:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: 0)
+  let count = row.value.outcome.outcomeContext.value.effectCreatedAccountFactCount
+  if count.error == AccumulationEffectError.CreatedAccountsDisabled:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.CreatedAccountsDisabled)
+  if count.error != AccumulationEffectError.None:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.InvalidOutcome)
+  AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: count.value)
+proc annulmentSelectedCreatedAccountFactAt*(plan: PreparedAccumulationAnnulment,
+    index: AccumulationAnnulmentIndex, fact: AccumulationCreatedAccountIndex): AccumulationAnnulmentResult[
+        AccumulationCreatedAccount] =
+  ## Never export an original service identity through its cancelled selection; validate full ordinals before extraction.
+  let count = plan.annulmentSelectedCreatedAccountFactCountAt(index)
+  if count.error != AccumulationAnnulmentError.None:
+    return AccumulationAnnulmentResult[AccumulationCreatedAccount](status: count.error)
+  if uint64(fact) >= uint64(count.value):
+    return AccumulationAnnulmentResult[AccumulationCreatedAccount](
+        status: AccumulationAnnulmentError.InvalidIndex)
+  let row = selectedRow(plan, index).value
+  AccumulationAnnulmentResult[AccumulationCreatedAccount](status: AccumulationAnnulmentError.None,
+      completed: row.outcome.outcomeContext.value.effectCreatedAccountFactAt(fact).value)
+
+proc annulmentSelectedDeletedAccountFactCountAt*(plan: PreparedAccumulationAnnulment,
+    index: AccumulationAnnulmentIndex): AccumulationAnnulmentResult[int] =
+  ## Cancelled invocations have a proven empty selected membership trace; survivors require enabled original identity capture.
+  let row = selectedRow(plan, index)
+  if row.error != AccumulationAnnulmentError.None:
+    return AccumulationAnnulmentResult[int](status: row.error)
+  if row.value.decision.annulled:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: 0)
+  let count = row.value.outcome.outcomeContext.value.effectDeletedAccountFactCount
+  if count.error == AccumulationEffectError.DeletedAccountsDisabled:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.DeletedAccountsDisabled)
+  if count.error != AccumulationEffectError.None:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.InvalidOutcome)
+  AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: count.value)
+proc annulmentSelectedDeletedAccountFactAt*(plan: PreparedAccumulationAnnulment,
+    index: AccumulationAnnulmentIndex, fact: AccumulationDeletedAccountIndex): AccumulationAnnulmentResult[
+        AccumulationDeletedAccount] =
+  ## Never export an original service identity through its cancelled selection; validate full ordinals before extraction.
+  let count = plan.annulmentSelectedDeletedAccountFactCountAt(index)
+  if count.error != AccumulationAnnulmentError.None:
+    return AccumulationAnnulmentResult[AccumulationDeletedAccount](status: count.error)
+  if uint64(fact) >= uint64(count.value):
+    return AccumulationAnnulmentResult[AccumulationDeletedAccount](
+        status: AccumulationAnnulmentError.InvalidIndex)
+  let row = selectedRow(plan, index).value
+  AccumulationAnnulmentResult[AccumulationDeletedAccount](status: AccumulationAnnulmentError.None,
+      completed: row.outcome.outcomeContext.value.effectDeletedAccountFactAt(fact).value)

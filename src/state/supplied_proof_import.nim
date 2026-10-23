@@ -45,23 +45,41 @@ func logicalFailure*(outcome: SuppliedProofImportResult): SuppliedLogicalResult[
     SuppliedProofImportError.LogicalFailure.} =
   ## Preserve actual compact/raw-key capture refusal without successful prefix authority.
   outcome.logicalReason
-proc importSuppliedProofState*(source: ProofView, expected: StateRoot, profile: StateProfile,
-    services: openArray[StateService], limits: SuppliedProofImportLimits): SuppliedProofImportResult =
-  ## Borrow explicitly supplied profile/declarations only during this synchronous call; no physical inversion, root discovery, source substitution or current-producer reconstruction occurs.
-  let restored = importProofState(source, expected, limits.restoration)
+proc qualifyRestored(restored: ProofStateImportResult, profile: StateProfile,
+    services: openArray[StateService], globalLimits: GlobalStateLimits,
+    logicalLimits: SuppliedLogicalLimits): SuppliedProofImportResult =
+  ## Both restoration paths share the exact atomic typed qualification stages without exposing an earlier successful owner.
   if restored.error != ProofStateImportError.None:
     return SuppliedProofImportResult(status: SuppliedProofImportError.RestorationFailure,
         restorationReason: restored) # Verified subsets must prove completeness before any typed global/source certificate is attempted.
-  let globals = validateGlobalState(restored.value.snapshot.value, profile, limits.globals)
+  let globals = validateGlobalState(restored.value.snapshot.value, profile, globalLimits)
   if globals.error != GlobalStateError.None:
     return SuppliedProofImportResult(status: SuppliedProofImportError.GlobalFailure,
         globalReason: globals) # Root equality alone grants no schema validity.
-  let manifest = validateStateManifest(globals.value, services, limits.logical.inventory.manifest)
+  let manifest = validateStateManifest(globals.value, services, logicalLimits.inventory.manifest)
   if manifest.error != StateManifestError.None:
     return SuppliedProofImportResult(status: SuppliedProofImportError.ManifestFailure,
         manifestReason: manifest) # Explicit complete namespace matching precedes retained raw-key capture.
-  let logical = captureSuppliedLogicalInventory(manifest.value, services, limits.logical)
+  let logical = captureSuppliedLogicalInventory(manifest.value, services, logicalLimits)
   if logical.error != SuppliedLogicalError.None:
     return SuppliedProofImportResult(status: SuppliedProofImportError.LogicalFailure,
         logicalReason: logical) # Each independent existing stage keeps its own quota and exact failure; no earlier result escapes.
   SuppliedProofImportResult(status: SuppliedProofImportError.None, completed: logical.value)
+
+type SuppliedProofPageImportLimits* = object ## Delivered pages have independent restoration budgets; typed qualification retains its established all-global and logical policies.
+  restoration*: ProofPageImportLimits
+  globals*: GlobalStateLimits
+  logical*: SuppliedLogicalLimits
+
+proc importSuppliedProofState*(source: ProofView, expected: StateRoot, profile: StateProfile,
+    services: openArray[StateService], limits: SuppliedProofImportLimits): SuppliedProofImportResult =
+  ## Borrow stable supplied declarations for complete single-view restoration and atomic typed qualification.
+  qualifyRestored(importProofState(source, expected, limits.restoration), profile,
+      services, limits.globals, limits.logical)
+
+proc importSuppliedProofPages*(pages: openArray[ProofView], expected: StateRoot,
+    profile: StateProfile, services: openArray[StateService],
+    limits: SuppliedProofPageImportLimits): SuppliedProofImportResult =
+  ## Restore arbitrary authenticated pages directly, then expose supplied logical state only after every existing typed stage succeeds.
+  qualifyRestored(importProofPages(pages, expected, limits.restoration), profile,
+      services, limits.globals, limits.logical)

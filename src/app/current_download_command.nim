@@ -8,10 +8,11 @@ import std/[syncio, monotimes, times]
 import std/posix/posix
 import ./[options, services, chain, current_handoff, current_download_policy,
     current_block_download, ancestor_inputs, ancestor_response, current_logical_download,
-    current_logical_startup]
+    current_logical_startup, logical_source_export]
 import ./download_schedule
 import ../codec/[bounded, header]
-import ../state/report_anchors
+import ../state/[report_anchors, current_logical, accumulation_current_update, store, supplied_services]
+import ../lib/atomic_file
 import ../chain/[genesis, provider]
 import ../quic/[current_block_download_loop, current_block_download_session,
     current_block_download_peers, ancestor_peer, ancestor_stream]
@@ -19,7 +20,8 @@ import ../quic/[current_block_download_loop, current_block_download_session,
 type CurrentDownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
   Uninitialized, Adopted, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,
   InvalidAncestors, StartupFailure, AdmissionFailure, TransportFailure, DispatchFailure, Exhausted,
-    Timeout, StorageMaintenanceFailure, InvalidLogicalSource
+    Timeout, StorageMaintenanceFailure, InvalidLogicalSource, LogicalSourceUnavailable,
+    LogicalSourceExportFailure, LogicalSourcePublicationFailure, LogicalSourcePublishedUnsynced
 
 type CurrentDownloadCommandOutcome* = object ## Immutable scalar diagnostics describe confirmed installed progress, never execution authority.
   status: CurrentDownloadCommandResult
@@ -195,7 +197,7 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
     ports: array[16, uint16], keys: array[16, CurrentDownloadPeerKey], ancestors: seq[OwnedHeader],
     limits: CurrentDownloadLoopLimits, started: MonoTime, timeout: uint64, requested: int,
     adopted: var int, observed: var ObservedDownloadHead, qualifyLogical: bool,
-    logical: CurrentLogicalDownloadPolicy): CurrentDownloadCommandResult {.raises.} =
+    logical: CurrentLogicalDownloadPolicy, lastLogical: var CurrentLogicalState): CurrentDownloadCommandResult {.raises.} =
   ## Stable endpoints outlive every retired child session; joined teardown precedes caller reconciliation on all exits.
   let initial = owner.chainView.bestBlock
   if initial.error != GenesisError.None: return CurrentDownloadCommandResult.AdmissionFailure
@@ -211,7 +213,10 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
   if admitted.error != CurrentBlockDownloadError.None: return CurrentDownloadCommandResult.AdmissionFailure
   discard preflight.cancel(admitted.value) # Exact raw admission is checked before any outgoing TLS engine opens.
   var dispatcher = default(CurrentDownloadLoop)
-  defer: dispatcher.close() # Every native input/execution/disk borrower joins before outer canonical inspection or alias retirement.
+  defer:
+    let settled = dispatcher.closeAndCaptureLogical() # Join and consume this dispatcher's own durable receipt before any logical alias replacement.
+    if options.updateLogicalDownloadSource and settled.error == CurrentDownloadSessionError.None:
+      lastLogical = settled.value # A child confirmed only during shutdown now has the same exact logical companion as an ordinary adoption tick.
   let configured = if qualifyLogical:
       dispatcher.configure(owner, peers, older, limits, CurrentDownloadLoopTick(0), logical)
     else: dispatcher.configure(owner, peers, older, limits, CurrentDownloadLoopTick(0))
@@ -237,6 +242,11 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
       if array[32, byte](selected.value.blockHash) != array[32, byte](child.blockHash) or
           array[32, byte](child.parentHash) != observed.hash or uint32(child.slot) <= observed.slot:
         return CurrentDownloadCommandResult.DispatchFailure # Status cannot manufacture a canonical child or unrelated replacement.
+      if options.updateLogicalDownloadSource:
+        let retained = dispatcher.logicalAdoption
+        if retained.error != CurrentDownloadSessionError.None:
+          return CurrentDownloadCommandResult.DispatchFailure # A raw/unqualified receipt cannot update the source file.
+        lastLogical = retained.value # Copy only after matching adoption retired every native graph lease.
       inc adopted
       observed = ObservedDownloadHead(initialized: true, hash: array[32, byte](child.blockHash),
           slot: uint32(child.slot))
@@ -295,6 +305,28 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
     var remaining = default(Timespec)
     discard nanosleep(requestedPause, remaining) # One bounded pause avoids spinning; endpoint polling remains nonblocking.
 
+type LogicalSourceRefreshError {.pure.} = enum ## Private file-stage status cannot grant adoption or a logical certificate.
+  None, ExportFailure, IoFailure, PublishedUnsynced
+proc refreshLogicalSource(path: string, source: CurrentLogicalState,
+    projection: SuppliedServicesLimits): LogicalSourceRefreshError =
+  ## Run only after transport/Services teardown, admitting detached text plus native bytes under one explicit projection byte budget.
+  let bytes = min(uint64(projection.bytes) div 2, uint64(CurrentLogicalSourceBytes))
+  let limits = LogicalSourceExportLimits(services: projection.services, facts: projection.facts,
+    perKey: projection.perValue, bytes: ByteLimit(bytes))
+  let planned = planLogicalSourceExport(source, limits)
+  if planned.error != LogicalSourceExportError.None: return LogicalSourceRefreshError.ExportFailure
+  let exported = executeLogicalSourceExport(planned.value)
+  if exported.error != LogicalSourceExportError.None: return LogicalSourceRefreshError.ExportFailure
+  let text = exported.value
+  var nativeBytes = newSeq[byte](text.len)
+  for i, character in text:
+    nativeBytes[i] = byte(character) # Whole export admission proves the copy extent; both complete buffers fit the original byte budget.
+  let written = replaceAtomicFile(path, nativeBytes, ByteLimit(bytes))
+  case written
+  of AtomicFileError.None: LogicalSourceRefreshError.None # File and parent synchronization both completed.
+  of AtomicFileError.PublishedUnsynced: LogicalSourceRefreshError.PublishedUnsynced # Visible bytes never masquerade as durable export.
+  else: LogicalSourceRefreshError.IoFailure # Existing atomic replacement preserves the previous file on ordinary pre-publication failure.
+
 proc performDownloads(options: Options, adopted: var int): CurrentDownloadCommandResult {.raises.} =
   ## One Services owner retains every confirmed prefix; per-child barriers precede ancestry mutation and final shutdown joins.
   adopted = 0
@@ -307,8 +339,15 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
   if timeout == 0: return CurrentDownloadCommandResult.InvalidEndpoint
   let policy = loadCurrentDownloadPolicy(options.argument(8))
   if policy.error != CurrentDownloadPolicyError.None: return CurrentDownloadCommandResult.InvalidPolicy
-  let limits = policy.value
+  var limits = policy.value
   let qualifyLogical = options.logicalDownloadEnabled
+  let namespaceEnabled = options.namespaceDownloadPolicyPath.len > 0
+  var namespacePolicy = default(CurrentNamespacePolicy)
+  if namespaceEnabled:
+    let configured = loadCurrentNamespacePolicy(options.namespaceDownloadPolicyPath)
+    if configured.error != CurrentDownloadPolicyError.None: return CurrentDownloadCommandResult.InvalidPolicy
+    namespacePolicy = configured.value
+    configureCurrentNamespaces(limits.candidate, namespacePolicy) # Frozen explicit capture reaches actual native inputs before any Services or outgoing peer exists.
   var logicalLimits = default(CurrentLogicalStartupLimits)
   var declarations = default(CurrentLogicalDeclarations)
   if qualifyLogical:
@@ -361,7 +400,9 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
   if qualifyLogical:
     let captured = captureCurrentLogicalStartup(owner.chainView, declarations, logicalLimits)
     if captured.error != CurrentLogicalStartupError.None: return CurrentDownloadCommandResult.InvalidLogicalSource
-    logical = captured.value # Full actual selected map/history/Parameters qualification precedes outgoing child peers.
+    logical = if namespaceEnabled: initCurrentLogicalDownloadPolicy(captured.value,
+        namespacePolicy.continuation)
+      else: captured.value # Full actual original map/history/Parameters qualification precedes explicit mode selection and outgoing child peers.
   let started = getMonoTime()
   if options.localDownloadAncestors:
     # Capture before any worker lease; no complete view/map alias survives into receiveChildren.
@@ -380,8 +421,9 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
     if not acquired.successful: return acquired.refusal # No child request follows a failed/partial ancestry capture.
     ancestors = acquired.captured
   var observed = default(ObservedDownloadHead)
+  var lastLogical = default(CurrentLogicalState)
   let terminal = receiveChildren(owner, options, peers, ports, keys, ancestors, limits,
-    started, timeout, requested, adopted, observed, qualifyLogical, logical)
+    started, timeout, requested, adopted, observed, qualifyLogical, logical, lastLogical)
   if observed.initialized:
     let settled = owner.chainView.bestBlock # Joined shutdown may confirm an IO receipt after the command reached its deadline.
     if settled.error != GenesisError.None: return CurrentDownloadCommandResult.DispatchFailure
@@ -391,6 +433,20 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
         return CurrentDownloadCommandResult.DispatchFailure # Only this run's one outstanding child can add shutdown-confirmed progress.
       inc adopted
   if owner.diskMaintenanceFailed: return CurrentDownloadCommandResult.StorageMaintenanceFailure
+  if options.updateLogicalDownloadSource and adopted > 0:
+    # A shutdown-confirmed extra canonical child needs its own genuine logical receipt; never serialize the previous confirmed source against a newer database.
+    let retained = lastLogical.currentLogicalUpdate
+    if retained.error != CurrentLogicalError.None: return CurrentDownloadCommandResult.LogicalSourceUnavailable
+    if not sameStateSnapshot(retained.value.currentUpdateState, owner.stateSnapshot.value) or
+        not sameChainView(retained.value.currentUpdateView, owner.chainView):
+      return CurrentDownloadCommandResult.LogicalSourceUnavailable
+    let projection = if namespaceEnabled: namespacePolicy.continuation.projection else: logicalLimits.projection
+    owner.close() # No native worker, callback or Services lease remains during requested synchronous file publication.
+    case refreshLogicalSource(options.logicalDownloadSourcePath, lastLogical, projection)
+    of LogicalSourceRefreshError.None: discard # Preserve the real download terminal status and confirmed prefix count.
+    of LogicalSourceRefreshError.ExportFailure: return CurrentDownloadCommandResult.LogicalSourceExportFailure
+    of LogicalSourceRefreshError.IoFailure: return CurrentDownloadCommandResult.LogicalSourcePublicationFailure
+    of LogicalSourceRefreshError.PublishedUnsynced: return CurrentDownloadCommandResult.LogicalSourcePublishedUnsynced
   terminal
 
 proc runCurrentDownloads*(options: Options): CurrentDownloadCommandOutcome {.raises.} =

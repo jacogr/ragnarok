@@ -2,15 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine complete signed custom-code namespace transitions and explicit original declarations; no private current owner is fabricated.
-import std/assertions
+import std/[assertions, syncio]
 import ./[current_namespace_context, service_namespace_seed, current_namespace_execution_context,
     accumulation_activity_context, accumulation_execution_context,
-    accumulation_current_candidate_context, parent_profile_context, parent_globals_context,
+    accumulation_current_candidate_context, accumulation_current_chain_context,
+    parent_profile_context, parent_globals_context,
     supplied_logical_context, pvm_accumulation_program]
 import ../../src/codec/[bounded, report_owned, state_accounts, state_composition, state_requests, state_service_values]
 import ../../src/crypto/primitives
 import ../../src/state/[parent_profile, parent_globals, parent_logical, store,
-    accumulation_current_update, accumulation_round, accumulation_queue, report_admission,
+    accumulation_current_update, accumulation_current_completion, accumulation_round,
+    accumulation_queue, report_admission,
     block_transition, block_admission]
 import ../../src/app/[chain, candidate]
 type CurrentNamespaceTransition* = object ## Test descriptors retain actual source inputs, complete original logical selection and genuine current update independently.
@@ -34,8 +36,9 @@ proc namespaceEjectCode*(): seq[byte] =
   result = @[0'u8]
   for octet in guestEnvelope([registerImmediate(7, 99), @[10'u8, 23], @[50'u8, 0]]): result.add(octet)
 proc namespaceTransitionFixture*(base: OwnedReport, options: ExecutionFixtureConfig,
-    deleted = ElementLimit(0)): CurrentNamespaceTransition =
-  ## Complete original namespaces/code requests enter roots and signatures before actual candidate execution under explicit deletion policy.
+    deleted = ElementLimit(0), policy = currentCandidateLimits(),
+    parameters = currentChainSettings()): CurrentNamespaceTransition =
+  ## Complete original namespaces/code requests enter roots and signatures before actual execution under explicit deletion and composition policies.
   var config = options
   assert config.signed.extra.len == 0 and config.signed.serviceNamespaces.len == 2
   let codes = [config.firstProgram, config.secondProgram]
@@ -52,7 +55,7 @@ proc namespaceTransitionFixture*(base: OwnedReport, options: ExecutionFixtureCon
   config.signed.completeState = true
   config.signed.extra = @[activityParentEntry()]
   let source = executionFixture(base, config)
-  let view = source.executionNamespaceParent
+  let view = source.executionNamespaceParent(parameters)
   let profile = captureParentProfile(view, parentProfileTestLimits).value
   let globals = qualifyParentGlobals(profile, parentGlobalsTestLimits).value
   let snapshot = profile.parentContext.value.state
@@ -68,9 +71,16 @@ proc namespaceTransitionFixture*(base: OwnedReport, options: ExecutionFixtureCon
   let parent = captureLogicalParent(globals, services, suppliedLogicalTestLimits).value
   let admission = source.round.roundBlockQueue.value.accumulationAdmission.value
   let bound = admission.reportBlockStage.value.value.admitted
-  var limits = currentCandidateLimits()
+  var limits = policy
   limits.completion.execution.initial.guests.deletedAccounts = deleted
   limits.completion.execution.execution.round.guests.deletedAccounts = deleted
   let application = initApplicationChain(view).value
-  let update = prepareCurrentCandidate(application, bound.admittedBlock, source.older, limits).value
+  let prepared = prepareCurrentCandidate(application, bound.admittedBlock, source.older, limits)
+  if prepared.error != CurrentCandidateError.None:
+    # Preserve the genuine failed stage without extracting any refused candidate.
+    echo "namespace preparation refused ", prepared.error
+    if prepared.error == CurrentCandidateError.CompletionFailure:
+      # Nested completion diagnostics apply only to that selected refusal.
+      echo "completion refused ", prepared.completionFailure.error
+  let update = prepared.value
   CurrentNamespaceTransition(source: source, parent: parent, update: update, services: services)

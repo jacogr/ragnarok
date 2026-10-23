@@ -1,0 +1,33 @@
+{
+  "build_name": "state-proof-page-import-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "state_proof_page_import guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "state-proof-page-import-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "state_proof_page_import selected reason",
+      "diagnostic": "outcome.status == StoreFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-proof-page-import-reason"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_proof_page_import_results.nim"
+}
