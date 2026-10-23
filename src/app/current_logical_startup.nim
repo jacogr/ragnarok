@@ -11,8 +11,8 @@ import ../state/[parent_profile, parent_globals, parent_logical, global_snapshot
     supplied_logical_inventory, supplied_services, store]
 
 const CurrentLogicalSourceBytes* = 65536 ## Startup transport cap is independent of retained declarations and decoded payload policies.
-const SourceHeader = "ragnarok-current-logical-source-v1"
-const MaxSourceLines = 4096 ## Fixed syntax cap bounds duplicate-service preflight and native ordinal conversions.
+const CurrentLogicalSourceHeader* = "ragnarok-current-logical-source-v1" ## Shared existing v1 identity-only transport header; export and parser accept one representation.
+const CurrentLogicalSourceLines* = 4096 ## Fixed syntax cap bounds duplicate-service preflight and native ordinal conversions.
 type
   CurrentLogicalStartupLimits* = object ## Every actual-source projection, full parent qualification and later continuation policy is explicit.
     projection*: SuppliedServicesLimits
@@ -113,13 +113,14 @@ proc decodeCurrentLogicalDeclarations*(text: string,
     while position < text.len and text[position] != '\n': inc position
     let extent = position-first
     if line == 0:
-      if extent != SourceHeader.len or text.substr(first, position-1) != SourceHeader:
+      if extent != CurrentLogicalSourceHeader.len or text.substr(first, position-1) != CurrentLogicalSourceHeader:
         return fail[Output](CurrentLogicalStartupError.WrongVersion)
     elif extent > 0 and text[first] != '#':
       inc count
       if extent >= 2 and text[first] == 's' and text[first+1] == '=': inc services
-      if count > MaxSourceLines or uint64(count) > uint64(limits.facts) or uint64(services) >
-          uint64(limits.services):
+      let tooManyFacts = uint64(count) > uint64(limits.facts)
+      let tooManyServices = uint64(services) > uint64(limits.services)
+      if count > CurrentLogicalSourceLines or tooManyFacts or tooManyServices:
         return fail[Output](CurrentLogicalStartupError.LimitExceeded)
     inc line
     if position < text.len: inc position # Consume only the proven LF; final newline is optional.
