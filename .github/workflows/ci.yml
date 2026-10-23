@@ -407,7 +407,7 @@ jobs:
 
   # Build locally and execute the final image; no registry credentials or image publishing.
   docker:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
     name: Docker image
     timeout-minutes: 30
     runs-on: ubuntu-latest

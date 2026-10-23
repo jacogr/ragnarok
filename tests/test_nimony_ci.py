@@ -91,8 +91,8 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('if: &full ${{ '+full+' }}', text)
         for job, condition in [('modules', '&requested ${{ '+requested+' }}'),
                                ('python', '*requested'), ('models', '*requested'), ('unit', '*requested'),
-                               ('docker', '${{ '+requested.replace("inputs.suite == 'unit' ||",
-                                   "inputs.suite == 'unit' || inputs.suite == 'docker' ||")+' }}'),
+                               ('docker', '${{ '+full.replace("inputs.suite == 'full')",
+                                   "(inputs.suite == 'docker' || inputs.suite == 'full'))")+' }}'),
                                ('guards', '&full ${{ '+full+' }}'), ('failures', '*full'),
                                ('pvm-reference', '${{ '+full.replace("inputs.suite == 'full')",
                                    "(inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full'))").replace("github.event.label.name == 'ci:full')",
