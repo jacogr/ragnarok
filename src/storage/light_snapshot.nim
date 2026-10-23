@@ -80,6 +80,13 @@ proc byteLength*(snapshot: PreparedLightSnapshot): int {.requires: snapshot.owne
   let owner = snapshot.owner
   assert owner != nil
   owner.encoded.len
+proc encodedView(owner: nil SnapshotData): lent seq[byte] {.requires: owner != nil.} =
+  ## A checked parameter borrow retains its provenance through the prepared handle's nullable owner field.
+  assert owner != nil
+  owner.encoded
+proc encodedBytes*(snapshot: PreparedLightSnapshot): lent seq[byte] {.requires: snapshot.owner != nil.} =
+  ## Borrow immutable canonical bytes for an immediate operation; the snapshot owner must outlive the view.
+  encodedView(snapshot.owner)
 proc bytes*(snapshot: PreparedLightSnapshot): seq[byte] {.requires: snapshot.owner != nil.} =
   ## Copy canonical output; no mutable backing storage can change a prepared image's authority.
   let owner = snapshot.owner

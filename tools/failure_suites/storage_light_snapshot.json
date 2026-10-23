@@ -145,6 +145,19 @@
       "name": "storage-light-snapshot-length-default",
       "diagnostic": "not snapshot.owner == nil",
       "description": "Light snapshot length default guard"
+    },
+    {
+      "identity": {
+        "member": "borrowed",
+        "origin": "default"
+      },
+      "arguments": [
+        "borrowed",
+        "default"
+      ],
+      "name": "storage-light-snapshot-borrowed-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot borrowed bytes default guard"
     }
   ]
 }

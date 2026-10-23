@@ -113,7 +113,7 @@ proc initializeLightFileCache*(owner: var LightFileCache, path: string, config: 
   if acquired != FileError.None: return LightFileResult[StorageDurability](status: acquired)
   defer:
     if owner.data == nil: discard data.directory.close # Failed bootstrap leaves forensic files but no live authority.
-  let published = replaceManagedManifest(data.directory, prepared.bytes, config.limits.bytes)
+  let published = replaceManagedManifest(data.directory, prepared.encodedBytes, config.limits.bytes)
   if published != FileError.None: return LightFileResult[StorageDurability](status: published)
   data.image = prepared
   owner.data = data
@@ -133,7 +133,8 @@ proc publish*(owner: var LightFileCache, prepared: PreparedLightSnapshot): Light
   if data.poisoned: return LightFileResult[StorageDurability](status: FileError.RecoveryRequired)
   let checked = binding(prepared, data.config)
   if checked != FileError.None: return LightFileResult[StorageDurability](status: checked)
-  let published = replaceManagedManifest(data.directory, prepared.bytes, data.config.limits.bytes)
+  let published = replaceManagedManifest(data.directory, prepared.encodedBytes,
+      data.config.limits.bytes)
   if published != FileError.None:
     # Staging collisions precede mutation; IO uncertainty blocks all fresh observations until validated reopen.
     if published in {FileError.IoFailure, FileError.PublishedUnsynced}: data.poisoned = true
