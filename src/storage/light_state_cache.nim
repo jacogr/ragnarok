@@ -231,3 +231,17 @@ proc forget*(cache: LightStateCache, keys: openArray[StateKey]): LightCacheResul
   LightCacheResult[LightStateCache](status: LightCacheError.None,
     completed: LightStateCache(data: CacheData(root: data.root, limits: data.limits,
       entries: entries, valueBytes: bytes)))
+
+proc newLightStateCache*(root: StateRoot, updates: openArray[LightStateProof],
+    limits: LightCacheLimits): LightCacheResult[LightStateCache] =
+  ## Restore a complete bounded proof set independently of future mutation-batch ceilings.
+  ## The fresh unpublished owner receives the original exact policy only after full proof admission.
+  var initial = limits
+  initial.writes = ElementLimit(updates.len)
+  let empty = newLightStateCache(root, initial)
+  let admitted = empty.admit(updates)
+  if admitted.error != LightCacheError.None: return admitted # Failures expose no partially restored cache.
+  let data = admitted.value.data
+  assert data != nil # Every owner reference is still local to this constructor until return.
+  data.limits = limits
+  admitted
