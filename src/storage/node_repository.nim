@@ -72,11 +72,15 @@ type
     root: StateRoot
     position: int
   GraphCollection {.pure.} = enum ## Admission avoids collection; extraction and retention request exact positions.
-    None, Leaves, Records
+    None, Leaves, Records, Union
   GraphVisit = object ## Traversal scratch optionally collects reachable leaf or complete-record positions.
     seen: seq[uint64]
     leaves: seq[int]
     collect: GraphCollection
+    dirtyWords: seq[int]
+    retained: seq[uint64]
+    retainedCount: int
+    retainedBytes: uint64
   GraphCounts = object ## Explicitly initialized running totals bound untrusted graph traversal.
     entries, nodes, bytes: uint64
 
@@ -230,6 +234,15 @@ proc graph(table: RepositoryTable, digest: StateNodeHash, depth: int,
   if marked(visit.seen, index): return RepositoryError.InvalidGraph # Cycles and repeated logical subtrees cannot represent a full-key map.
   if counts.nodes >= uint64(limits.nodes): return RepositoryError.LimitExceeded
   inc counts.nodes
+  if visit.collect == GraphCollection.Union:
+    # Dirty words reset sparse roots without retaining a second per-record ordinal list.
+    let word = index div 64
+    if visit.seen[word] == 0: visit.dirtyWords.add(word)
+    if not marked(visit.retained, index):
+      # A source table bounds both the unique union cardinality and its aggregate owned value bytes.
+      mark(visit.retained, index)
+      inc visit.retainedCount
+      visit.retainedBytes += uint64(payloadBytes(table.records[index]))
   mark(visit.seen, index)
   if visit.collect == GraphCollection.Records:
     visit.leaves.add(index) # Retention needs branch and leaf addresses, each once per validated root.
@@ -266,10 +279,31 @@ proc graph(table: RepositoryTable, digest: StateNodeHash, depth: int,
   RepositoryError.None
 
 proc resetGraph(visit: var GraphVisit) =
-  ## Reuse union traversal scratch while clearing every record seen by the preceding complete root.
-  for index in visit.leaves:
-    unmark(visit.seen, index) # Records collection includes branches and leaves, including empty-root no-ops.
-  visit.leaves.setLen(0) # Retain bounded capacity; no previous root can authorize a repeated subtree.
+  ## Clear only preceding-root membership; retained union bits never authorize a later root's topology.
+  if visit.collect == GraphCollection.Union:
+    for word in visit.dirtyWords:
+      visit.seen[word] = 0 # Whole-word clearing is safe because each previously nonempty word was recorded once.
+    visit.dirtyWords.setLen(0)
+  else:
+    for index in visit.leaves:
+      unmark(visit.seen, index) # Existing complete-record admission keeps its per-record reset contract.
+    visit.leaves.setLen(0)
+
+proc freezeGraphUnion(visit: GraphVisit): seq[int] =
+  ## Scan only retained bitmap words into one exact, intrinsically ordered inventory without sorting or growth.
+  result = newSeq[int](visit.retainedCount)
+  var next = 0
+  for word, present in visit.retained:
+    var remaining = present
+    var bit = 0
+    while remaining != 0:
+      # Only a marked existing physical position can reach this output; unused final-word bits remain clear.
+      if (remaining and 1) != 0:
+        result[next] = word*64+bit
+        inc next
+      remaining = remaining shr 1
+      inc bit
+  assert next == result.len # Per-record union counting and canonical freezing must agree exactly.
 
 proc newNodeRepository*(limits: RepositoryLimits): NodeRepository =
   ## Open an initialized empty in-memory owner; allocation exhaustion keeps the fail-stop policy.
@@ -620,31 +654,23 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
       selected = true # Required current-root membership still precedes every graph traversal.
   if not selected: return RepositoryResult[RepositorySelection](
       status: RepositoryError.RootMismatch)
-  var indices: seq[int] = @[]
+  var exact: seq[int] = @[]
   var bytes = 0'u64
   block:
-    # Traversal scratch retires before freezing the long-lived exact index inventory.
-    var retained = newSeq[uint64](graphWords(source.table.records.len))
-    var visit = GraphVisit(seen: newSeq[uint64](graphWords(source.table.records.len)),
-        collect: GraphCollection.Records)
+    # Two bitmaps and at most one ordinal per dirty word replace growable whole-record inventories.
+    let words = graphWords(source.table.records.len)
+    var visit = GraphVisit(seen: newSeq[uint64](words), collect: GraphCollection.Union,
+      retained: newSeq[uint64](words), retainedCount: 0, retainedBytes: 0)
     for root in unique:
-      # Reuse bounded storage, but reset membership and counters for independent per-root graph checks.
+      # Independent per-root seen bits and graph counters retain cycle, route, duplicate and quota checks.
       resetGraph(visit)
       var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
       let checked = graph(source.table, StateNodeHash(array[32, byte](root)), 0,
         default(array[31, byte]), source.limits.codec.trie, visit, counts)
       if checked != RepositoryError.None:
         return RepositoryResult[RepositorySelection](status: checked)
-      for index in visit.leaves:
-        if not marked(retained, index):
-          mark(retained, index)
-          indices.add(index)
-          bytes += uint64(payloadBytes(source.table.records[
-              index])) # Unique source records are bounded by source.valueBytes.
-  indices.sort() # Canonicalize the immutable union once; repeated exports/clones can borrow this order.
-  var exact = newSeq[int](indices.len)
-  for position, index in indices:
-    exact[position] = index # Freeze only validated sorted slots; no growable capacity outlives traversal.
+    exact = freezeGraphUnion(visit)
+    bytes = visit.retainedBytes # No traversal scratch or growable capacity survives in the accepted selection.
   RepositoryResult[RepositorySelection](status: RepositoryError.None,
     completed: RepositorySelection(data: RepositorySelectionData(source: view, roots: unique,
       indices: move(exact), valueBytes: bytes)))
