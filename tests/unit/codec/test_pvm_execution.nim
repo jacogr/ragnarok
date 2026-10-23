@@ -323,6 +323,156 @@ proc prefixExitCycle(registers: RegisterFile) =
     assert uint64(load(memoryOf(second.machine).value, MemoryAddress(65536), AccessWidth(
         8)).value) == 7
 
+type WorkspaceExit {.pure.} = enum ## Explicit observations span both sides of adaptive writer activation.
+  Host, Fault, Panic, Halt, OutOfGas
+
+proc workspacePage(memory: Memory, value: int) =
+  ## Complete page expectations retain untouched canaries outside the low eight-byte store.
+  let image = pageImage(memory, PageIndex(16)).value
+  assert image.access == PageAccess.ReadWrite
+  for offset in 0..<4096:
+    let wanted = if offset == 0: byte(value) elif offset == 510: 27'u8
+      elif offset == 512: 37'u8 elif offset == 4095: 99'u8 else: 0'u8
+    assert image.bytes[offset] == wanted
+
+proc workspaceCase(count: int, ending: WorkspaceExit, baseRegisters: RegisterFile) =
+  ## Compare staged execution against retained immutable public-step roots before and after the fourth store.
+  var parts: seq[seq[byte]] = @[]
+  for index in 0..<count:
+    parts.add(@[51'u8, 0, byte(index+1)])
+    parts.add(@[62'u8, 0, 0, 0, 1, 0])
+  var expectedExit = StepExit.Panic
+  var extra = 0
+  case ending
+  of WorkspaceExit.Host:
+    parts.add(@[10'u8, 7])
+    expectedExit = StepExit.Host
+  of WorkspaceExit.Fault:
+    parts.add(@[55'u8, 1, 0, 16, 1, 0])
+    expectedExit = StepExit.Fault
+  of WorkspaceExit.Panic:
+    discard # The final authored trap below causes this terminal observation.
+  of WorkspaceExit.Halt:
+    parts.add(@[50'u8, 2])
+    expectedExit = StepExit.Halt
+  of WorkspaceExit.OutOfGas:
+    parts.add(@[1'u8]) # Fallthrough enters the unpaid final trap block after all stores committed.
+    expectedExit = StepExit.OutOfGas
+    extra = 1
+  parts.add(@[0'u8])
+  let program = owner(parts)
+  let empty = memoryOwner(PageAccess.ReadWrite)
+  var image = pageImage(empty, PageIndex(16)).value
+  image.bytes[510] = 27
+  image.bytes[512] = 37
+  image.bytes[4095] = 99
+  let memory = withPage(empty, image).value
+  var registers = baseRegisters
+  registers[2] = RegisterValue(0xffff0000'u64)
+  let input = source(program, memory, registers, 0, 0, true)
+  var roots = @[input]
+  for index in 0..<count*2:
+    let evaluated = stepOnce(roots[roots.len-1], GasCycleLimit(1000))
+    assert evaluated.error == StepError.None and evaluated.value.exit == StepExit.Continued
+    roots.add(evaluated.value.machine)
+  var beforeExit = roots[roots.len-1]
+  if extra != 0:
+    let crossed = stepOnce(beforeExit, GasCycleLimit(1000)).value
+    assert crossed.exit == StepExit.Continued
+    beforeExit = crossed.machine
+  let once = stepOnce(beforeExit, GasCycleLimit(1000)).value
+  let run = execute(input, ExecutionStepLimit(uint64(count*2+extra+1)), GasCycleLimit(1000))
+  assert run.error == StepError.None and run.value.exit == expectedExit and once.exit == expectedExit
+  var expected = machineInfo(once.machine).value
+  if expectedExit in {StepExit.Panic, StepExit.Halt}: expected.pc = CodeAddress(0)
+  elif expectedExit == StepExit.Host: expected.pc = machineInfo(beforeExit).value.pc
+  same(machineInfo(run.value.machine).value, expected)
+  if expectedExit == StepExit.Fault: assert uint32(run.value.faultPage) == 69632
+  if expectedExit == StepExit.Host: assert uint64(run.value.hostCall) == 7
+  workspacePage(memoryOf(run.value.machine).value, count)
+  assert execute(input, ExecutionStepLimit(uint64(count*2)), GasCycleLimit(1000)).error ==
+      StepError.StepLimitExceeded
+  for index in 0..<roots.len:
+    workspacePage(memoryOf(roots[index]).value, index div 2) # All older snapshots survive private staging and discarded prefixes.
+  same(machineInfo(input).value, machineInfo(source(program, memory, registers, 0, 0, true)).value)
+
+type
+  WorkspaceReason {.pure.} = enum ## The typed callback shares the same checked workspace continuation.
+    Refused
+  WorkspaceContext = object ## One published mid-program snapshot remains alive during a second staged epoch.
+    calls: int
+    retained: Machine
+
+proc workspaceReply(context: var WorkspaceContext, stopped: StepOutcome): HostResponse {.raises: [].} =
+  ## Observe the completed fourth store and replace memory before the next guest segment starts.
+  assert stopped.exit == StepExit.Host and uint64(stopped.hostCall) == 7
+  assert uint64(machineInfo(stopped.machine).value.registers[0]) == 4
+  assert uint64(load(memoryOf(stopped.machine).value, MemoryAddress(65536), AccessWidth(
+      8)).value) == 4
+  context.retained = stopped.machine
+  inc context.calls
+  let cpu = machineInfo(stopped.machine).value
+  var registers = cpu.registers
+  registers[10] = RegisterValue(77)
+  let replaced = store(memoryOf(stopped.machine).value, MemoryAddress(65536), AccessWidth(8),
+      RegisterValue(99)).value
+  HostResponse(action: HostAction.Continue, gas: cpu.gas, gasDeficit: GasDeficit(0),
+      registers: registers, memory: replaced)
+
+proc workspaceTyped(context: var WorkspaceContext, stopped: StepOutcome): HostResult[
+    WorkspaceReason] {.raises: [].} =
+  ## Success uses the same posterior state in the fallible host API.
+  hostSuccess[WorkspaceReason](workspaceReply(context, stopped))
+
+proc workspaceHostCycle(baseRegisters: RegisterFile) =
+  ## Two four-store epochs must freeze around the callback and restart from its replaced memory.
+  var parts: seq[seq[byte]] = @[]
+  for value in 1..4:
+    parts.add(@[51'u8, 0, byte(value)])
+    parts.add(@[62'u8, 0, 0, 0, 1, 0])
+  parts.add(@[10'u8, 7])
+  parts.add(@[58'u8, 1, 0, 0, 1, 0]) # r1 observes the host's complete replacement before any new store.
+  for value in 5..8:
+    parts.add(@[51'u8, 0, byte(value)])
+    parts.add(@[62'u8, 0, 0, 0, 1, 0])
+  parts.add(@[50'u8, 2])
+  let program = owner(parts)
+  var registers = baseRegisters
+  registers[2] = RegisterValue(0xffff0000'u64)
+  let input = source(program, memoryOwner(PageAccess.ReadWrite), registers, 0, 0, true)
+  for typed in [false, true]:
+    var context = WorkspaceContext(calls: 0, retained: default(Machine))
+    var completed = default(StepOutcome)
+    if typed:
+      let run = executeWithHost(input, context, workspaceTyped, ExecutionStepLimit(19),
+          HostCallLimit(1), GasCycleLimit(0))
+      assert run.error == HostExecutionError.None
+      completed = run.value
+    else:
+      let run = executeWithHost(input, context, workspaceReply, ExecutionStepLimit(19),
+          HostCallLimit(1), GasCycleLimit(0))
+      assert run.error == StepError.None
+      completed = run.value
+    assert completed.exit == StepExit.Halt and context.calls == 1
+    let cpu = machineInfo(completed.machine).value
+    assert uint64(cpu.pc) == 0 and uint64(cpu.gas) == 0 and cpu.blockCharged
+    for index in 0..<13:
+      let wanted = if index == 0: 8'u64 elif index == 1: 99'u64 elif index ==
+          10: 77'u64 else: uint64(registers[index])
+      assert uint64(cpu.registers[index]) == wanted
+    assert uint64(load(memoryOf(completed.machine).value, MemoryAddress(65536), AccessWidth(
+        8)).value) == 8
+    assert uint64(load(memoryOf(context.retained).value, MemoryAddress(65536), AccessWidth(
+        8)).value) == 4
+    assert uint64(load(memoryOf(input).value, MemoryAddress(65536), AccessWidth(8)).value) == 0
+
+workspaceHostCycle(registers)
+
+for count in [1, 3, 4, 5, 9]:
+  for ending in [WorkspaceExit.Host, WorkspaceExit.Fault, WorkspaceExit.Panic, WorkspaceExit.Halt,
+      WorkspaceExit.OutOfGas]:
+    workspaceCase(count, ending, registers)
+
 executionCycle()
 cursorSnapshotCycle()
 prefixExitCycle(registers)
@@ -330,6 +480,9 @@ let before = getOccupiedMem()
 # Retained intermediate roots form no cycles; repeated complete invocation lifetimes release all owners.
 for iteration in 0..<1000:
   executionCycle()
+  workspaceHostCycle(registers)
+  workspaceCase(5, WorkspaceExit.Host, registers)
+  workspaceCase(5, WorkspaceExit.Fault, registers)
   prefixExitCycle(registers)
   cursorSnapshotCycle() # Every retained root and temporary cursor must return to the same warm ARC baseline.
 let after = getOccupiedMem()

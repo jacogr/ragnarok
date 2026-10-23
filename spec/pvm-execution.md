@@ -190,3 +190,27 @@ These cases join the existing 1000-cycle ARC release group. Existing gas shortag
 load-and-jump terminal mutations, repeated faults/hosts, nested callbacks, cached
 execution and dependent arithmetic-chain controls also pass. See the benchmark
 record for the measured arithmetic improvement and unchanged parity limits.
+
+
+## Adaptive private scalar writes, 2026-10-23
+
+The bounded transition loop keeps its first three successful stores on the existing
+immutable path. Its fourth successful store activates a private scalar writer for
+that segment. Subsequent loads observe staged bytes, and subsequent stores reuse
+private touched chunks. Arithmetic/load-only runs allocate no writer; short segments
+such as one-store host loops retain their direct path. The threshold is an internal
+implementation choice, with no new caller budget or guest-visible behavior.
+
+Every actual host/fault/panic/halt/out-of-gas observation seals the current epoch
+before publishing a machine. Host replies resume from the actual frozen callback
+memory and begin an independent epoch. Local errors, including step exhaustion,
+release private progress without granting a machine or resumable prefix. Public
+single-step APIs keep their existing immutable store path.
+
+The execution suite compares full CPU and page contents against retained public
+single-step traces for 1/3/4/5/9-store prefixes ending in each observable exit. It
+checks local budget refusal at the same boundaries. Ordinary and fallible host APIs
+also cross two activation epochs around a callback that retains its snapshot and
+replaces memory/registers. These cases join the existing 1000-cycle ARC group.
+Measured memory gains and the arithmetic tradeoff are recorded in the interpreter
+benchmark contract; this is scoped execution plumbing, not full JAM parity.
