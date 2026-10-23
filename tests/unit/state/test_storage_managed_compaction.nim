@@ -24,10 +24,26 @@ proc main() {.raises.} =
   assert initializeManagedRepository(repository, path, default(StorageChainId), selection,
     [1'u8], limits, StorageSchema.FullStateV1) == FileError.None
   let old = repository.snapshot.value
+  let repeated = repository.snapshot.value
+  assert old.matches(repeated) and repeated.matches(old)
+  assert not old.matches(default(RepositoryView)) and not default(RepositoryView).matches(old)
+  assert not default(RepositoryView).matches(default(RepositoryView))
+  assert array[32, byte](old.commitment.root) == array[32, byte](initial.commitment.root)
+  assert uint64(old.generation) == uint64(initial.generation)
+  assert not old.matches(initial) # Managed initialization cloned the exact same metadata into a different owner.
+  let beforeRefusals = getOccupiedMem()
+  for attempt in 0..<1000:
+    # Foreign equal-metadata views cannot authorize maintenance, even with otherwise invalid root inventories.
+    assert repository.compact(initial, []).error == FileError.StaleView
+    assert repository.compact(default(RepositoryView), [old.commitment.root]).error ==
+        FileError.StaleView
+  assert getOccupiedMem() == beforeRefusals
+  assert uint64(repository.physicalEpoch.value) == 1 and repository.snapshot.value.matches(old)
   let middle = repository.publish(old, exportTrieChanges(first, second,
       limits.repository.codec.records).value, [2'u8]).value
   let head = repository.publish(middle, exportTrieChanges(second, third,
       limits.repository.codec.records).value, [3'u8]).value
+  assert not old.matches(head) and not head.matches(old)
   assert repository.compact(old, [head.commitment.root]).error == FileError.StaleView
   assert repository.compact(head, [middle.commitment.root]).error == FileError.InvalidRetention
   let result = repository.compact(head, [middle.commitment.root, head.commitment.root]).value
@@ -52,14 +68,15 @@ proc main() {.raises.} =
       limits.repository.codec.records).value, [4'u8]).value
   assert uint64(next.generation) == 4
   assert repository.close == FileError.None
+  assert old.matches(repeated) # Source retirement cannot change an independently retained owner's exact identity.
   assert openManagedRepository(repository, path, default(StorageChainId), limits,
       StorageSchema.FullStateV1) == FileError.None
   assert uint64(repository.physicalEpoch.value) == 2
   assert uint64(repository.snapshot.value.generation) == 4
   assert repository.snapshotContext.value == @[4'u8]
-  let repeated = repository.compact(repository.snapshot.value, [middle.commitment.root,
+  let repeatedCompaction = repository.compact(repository.snapshot.value, [middle.commitment.root,
       next.commitment.root]).value
-  assert uint64(repeated.epoch) == 3 and repeated.reclaimedNodes == 0
+  assert uint64(repeatedCompaction.epoch) == 3 and repeatedCompaction.reclaimedNodes == 0
   assert repository.close == FileError.None
   removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2), ManagedEpoch(3)])
   assert memory.close == RepositoryError.None
