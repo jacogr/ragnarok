@@ -21,6 +21,7 @@ import ./logical_checkpoint
 import ./frozen_supplied
 import ../state/supplied_services
 import ./logical_service_proof
+import ./logical_export
 import ./logical_seed
 import ../codec/[state_composition, composite]
 import ./current_logical as collected_logical
@@ -1298,3 +1299,14 @@ proc planLogicalServiceProof*(services: Services, source: CurrentLogicalState,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Namespace selection reads retained source aliases only outside the managed native graph lease.
   logical_service_proof.planLogicalServiceProof(source, service, limits)
+
+proc planLogicalExport*(services: Services, source: CurrentLogicalState,
+    limits: SuppliedServicesLimits): LogicalExportResult[LogicalExportPlan] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Complete export admission reads retained original source graphs only outside managed native leases.
+  logical_export.planLogicalExport(source, limits)
+proc executeLogicalExport*(services: Services, plan: LogicalExportPlan): LogicalExportResult[seq[
+    StateService]] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Detached copying remains excluded through actual collection/join of every native graph borrower.
+  logical_export.executeLogicalExport(plan)

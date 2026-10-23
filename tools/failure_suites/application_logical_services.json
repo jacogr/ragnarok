@@ -495,6 +495,72 @@
         "reason": "publication-logical-service-selection"
       },
       "name": "application-logical-services-publication-logical-service-selection"
+    },
+    {
+      "arguments": [
+        "preparation-logical-export-plan"
+      ],
+      "description": "Managed host exclusion preparation-logical-export-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-export-plan"
+      },
+      "name": "application-logical-services-preparation-logical-export-plan"
+    },
+    {
+      "arguments": [
+        "preparation-logical-export-execution"
+      ],
+      "description": "Managed host exclusion preparation-logical-export-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-export-execution"
+      },
+      "name": "application-logical-services-preparation-logical-export-execution"
+    },
+    {
+      "arguments": [
+        "proof-logical-export-plan"
+      ],
+      "description": "Managed host exclusion proof-logical-export-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-export-plan"
+      },
+      "name": "application-logical-services-proof-logical-export-plan"
+    },
+    {
+      "arguments": [
+        "proof-logical-export-execution"
+      ],
+      "description": "Managed host exclusion proof-logical-export-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-export-execution"
+      },
+      "name": "application-logical-services-proof-logical-export-execution"
+    },
+    {
+      "arguments": [
+        "publication-logical-export-plan"
+      ],
+      "description": "Managed host exclusion publication-logical-export-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-export-plan"
+      },
+      "name": "application-logical-services-publication-logical-export-plan"
+    },
+    {
+      "arguments": [
+        "publication-logical-export-execution"
+      ],
+      "description": "Managed host exclusion publication-logical-export-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-export-execution"
+      },
+      "name": "application-logical-services-publication-logical-export-execution"
     }
   ],
   "crypto_library": "observer",
