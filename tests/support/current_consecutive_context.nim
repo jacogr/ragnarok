@@ -28,15 +28,15 @@ proc transcript(domain: string, seed: array[32, byte]): seq[byte] =
   for index, octet in domain: result[index] = byte(octet)
   for index, octet in seed: result[domain.len+index] = octet
 
-proc currentEmptyChild*(parent: BlockSnapshot): OwnedBlock =
-  ## Derive an ordinary child from the actual parent; this authored fixture deliberately stops before an epoch crossing.
+proc currentBodyChild*(parent: BlockSnapshot, body: openArray[byte]): OwnedBlock =
+  ## Seal a complete authored body against the actual parent; this fixture deliberately stops before an epoch crossing.
   assert uint32(parent.slot) < high(uint32)
   let slot = uint32(parent.slot)+1
   assert uint64(slot) < uint64(parent.epochSlots), "ordinary first-epoch fixture only"
   let limits = currentConsecutiveLimits()
   let frame = limits.reporting.admission.frame
   let headerConfig = limits.reporting.reports.ancestors.header
-  let body = @[0'u8, 0, 0, 0, 0, 0, 0]
+  assert body.len > 0 and uint64(body.len) <= uint64(frame.maxBytes)
   let extrinsic = decodeExtrinsic(body, frame)
   assert extrinsic.error == FrameError.None and extrinsic.value.consumed == body.len
   let entropy = decodeStateEntropy(parent.stateSnapshot.lookup(chapterKey(StateChapter(
@@ -65,10 +65,14 @@ proc currentEmptyChild*(parent: BlockSnapshot): OwnedBlock =
   var wire = newSeq[byte](100000)
   let size = encodeHeader(child, headerConfig, wire).value
   wire.setLen(size)
-  for octet in body: wire.add(octet) # Seven exact empty extrinsics follow the fully sealed header.
+  for octet in body: wire.add(octet) # The exact validated extrinsic bytes follow the fully sealed header.
   let decoded = decodeBlock(wire, frame)
   assert decoded.error == FrameError.None and decoded.value.consumed == wire.len
   decoded.value.owner
+
+proc currentEmptyChild*(parent: BlockSnapshot): OwnedBlock =
+  ## Preserve the original seven-zero empty-body witness through the same genuine first-epoch signing path.
+  currentBodyChild(parent, [0'u8, 0, 0, 0, 0, 0, 0])
 
 proc phaseCurrentUpdate*(chain: ApplicationChain, child: OwnedBlock,
     ancestors: openArray[OwnedHeader], limits: CurrentCandidateLimits): PreparedCurrentChainUpdate =
