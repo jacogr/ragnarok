@@ -4,7 +4,7 @@
 ## Dynamic invalid-access probes with valid controls under the same optimized profile.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/storage/full_state_trie
+import ../../src/storage/[full_state_trie, node_records]
 import ../../src/codec/[bounded, state_layout, state_trie]
 
 proc main() =
@@ -22,6 +22,14 @@ proc main() =
       elif origin == "failed": newFullStateTrie([StateEntry(key: default(StateKey))], default(FullStateTrieLimits))
       else: initialized
     echo selected.value.commitment.entries # Failed/default construction cannot expose a revision.
+  of "take":
+    var selected = if origin == "default": default(TrieResult[TrieExport])
+      elif origin == "failed": exportFullTrie(trie, default(TrieExportLimits))
+      else: exportFullTrie(trie, TrieExportLimits(records: TrieNodeLimit(1), valueBytes: ByteLimit(0)))
+    if origin == "moved":
+      let held = selected.takeValue # A second extraction must fail even while the first owned export remains alive.
+      assert held.records.len == 1
+    echo selected.takeValue.records.len
   of "apply":
     let selected = if origin == "failed": trie.apply([TrieWrite(key: default(StateKey))])
       else: trie.apply([])
