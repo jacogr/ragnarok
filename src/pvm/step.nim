@@ -23,9 +23,9 @@ type
     next: range[0..2]
     entries: array[16, BlockChargeEntry]
     replaceUpper: array[8, bool]
-  InstructionCache = object ## Sixteen genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
-    entries: array[16, ProgramResult[Instruction]]
-    replaceUpper: array[8, bool]
+  InstructionCache = object ## Thirty-two genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
+    entries: array[32, ProgramResult[Instruction]]
+    replaceUpper: array[16, bool]
   HostCallId* = distinct uint64 ## Host identifiers occupy a register-width domain distinct from gas, addresses and step budgets.
   ExecutionStepLimit* = distinct uint64 ## Local scheduling policy bounds attempted instructions; it is not guest gas or a guest exit.
   HostCallLimit* = distinct uint64 ## Local dispatch budget, independent of attempted guest instructions and guest gas.
@@ -706,12 +706,12 @@ proc stepOnce*(source: Machine, limit: GasCycleLimit): StepResult =
 
 proc cachedInstruction(program: Program, address: CodeAddress,
     cache: var InstructionCache): ProgramResult[Instruction] {.inline.} =
-  ## Preserve the natural direct-slot hit first, then inspect its paired way within the same sixteen-result budget.
+  ## Preserve the natural direct-slot hit first, then inspect its paired way within the same thirty-two-result budget.
   let slot = int(uint64(address) mod uint64(cache.entries.len)) # Fixed positive capacity proves the native index.
   if cache.entries[slot].error == ProgramError.None and uint64(cache.entries[slot].value.address) ==
       uint64(address):
     return cache.entries[slot] # Most existing working sets keep their original single-comparison hit path.
-  let alternative = slot xor 8 # Toggling one of four bounded index bits stays within 0..15.
+  let alternative = slot xor 16 # Toggling one of five bounded index bits stays within 0..31.
   if cache.entries[alternative].error == ProgramError.None and uint64(cache.entries[
       alternative].value.address) == uint64(address):
     return cache.entries[alternative]
@@ -724,7 +724,7 @@ proc cachedInstruction(program: Program, address: CodeAddress,
       else:
         # A third successful colliding decode alternates the two residents; failures never replace or advance this bit.
         let bucket = slot mod cache.replaceUpper.len
-        destination = if cache.replaceUpper[bucket]: bucket+8 else: bucket
+        destination = if cache.replaceUpper[bucket]: bucket+16 else: bucket
         cache.replaceUpper[bucket] = not cache.replaceUpper[bucket]
     cache.entries[destination] = result
 
