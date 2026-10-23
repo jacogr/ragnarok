@@ -92,3 +92,42 @@ StateStore, disk-store hash failure and historical roots. The private observer r
 1,000 success/refusal/recovery ARC cycles and exact unchanged source/held-value checks.
 Inventory and full pinned formatting also pass. This is scoped local evidence, distinct from
 full Linux CI, whole-client verification or earlier resident-pressure results.
+
+## Fixed public StateStore comparison
+
+`STATE_STORE_BASELINE_REF=e42c652ac266490e8c48eb005d1024602f2aef4b make measure-state-store`
+passes using the unchanged maintained workload, compiler/providers and checked ARC/Clang LTO
+profile. Baseline production sources come from the explicit reviewed Git commit; the measurement
+tool checks unchanged compiler/crypto inputs and archives only regular project sources. The
+candidate measurement head is `8377aa1b11bbcf67bdf41cd9a621e78aa9409afb`; the subsequent commit
+changes qualification prose only. Each binary runs in two fresh processes with identical complete
+samples. The fixed workload source SHA-256 is
+`cdcc5eb91e2493e1d92d41bae36588b84225f5a939ed235eb5ba2bae611533b1`.
+
+| Entries | Snapshot window | Baseline retained bytes | Candidate retained bytes | Saved bytes | Hash calls, both |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 128 | 1 | 128,496 | 108,048 | 20,448 | 640 |
+| 128 | 8 | 237,728 | 214,784 | 22,944 | 640 |
+| 1,024 | 1 | 1,079,456 | 873,776 | 205,680 | 1,152 |
+| 1,024 | 8 | 1,805,136 | 1,596,960 | 208,176 | 1,152 |
+
+Initialized and sampled live-heap maxima also fall in all four cases. These are occupied ARC
+checkpoints after fixed operations, not total allocation counts or process RSS. Hash-work counts
+remain exactly unchanged; the workload independently validates complete final roots and maps.
+StateStore's existing sorted mapping and its separate value copies remain present, so its savings
+are distinct from the standalone trie panel. No throughput claim is made.
+
+Complete report: `build/storage-db12-state-store-measurements.json`; original build/run logs
+remain in `build/tests/state-store-measurements/`. Raw per-suite evidence and exact source/config/
+compiler/provider identities are recorded in `build/storage-db12-final-verification.json` and
+`build/storage-db12-selected-checks.json`. The existing physical repository representation and
+its prior reopen/pressure qualification are not relabeled as results for a new storage layout.
+
+## Completed scope and next decision
+
+This bounded increment qualifies smaller incremental nodes, copied paths and retained leaves,
+with measured public StateStore savings and unchanged hash work. The next representation decision
+should start from these measured owner costs and retained-snapshot needs. The complete graphs
+remain resident; a database larger than RAM still needs separately specified bounded working-set
+ownership and on-disk graph authority. Allocation exhaustion, external checkpoint authority,
+full/light startup and whole-client protocol serialization retain their separate gates.
