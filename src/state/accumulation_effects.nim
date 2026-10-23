@@ -91,9 +91,10 @@ type
   AccumulationDeletedAccount* = object ## Copied successful-ejection facts; final absence is checked in the producing context.
     service*: ServiceIndex ## Actual target whose balance was reclaimed by this invocation.
     ordinal*: AccumulationServiceLifecycleIndex ## Shared position among captured successful creations and ejections.
-  # Immutable fixed facts retain neither account values nor parent effect graphs.
+  # Fixed deletion facts and separately retained map handles never retain parent effect graphs.
   DeletedAccountsData = ref object
     values: seq[AccumulationDeletedAccount]
+    states: seq[StateStoreSnapshot] # Each enabled successful ejection retains its exact atomic post-ejection map, never an effect-owner chain.
   AccumulationCreatedAccountIndex* = distinct uint64 ## A created-account ordinal cannot substitute a service identity.
   AccumulationCreatedAccount* = object ## Copied creation facts remain tied to their producing effect context for final-value extraction.
     service*: ServiceIndex ## Actual reserved/automatic ID chosen by a genuine successful new call.
@@ -601,19 +602,22 @@ proc prepareDeletedAccount(previous: EffectData, service: ServiceIndex):
     return AccumulationEffectResult[DeletedAccountsData](status: AccumulationEffectError.None,
       completed: previous.deleted) # Disabled tracing retains the earlier local ejection behavior.
   let count = previous.deleted.values.len
-  if uint64(count) >= uint64(previous.deletedLimit) or count >= high(int) div sizeof(AccumulationDeletedAccount):
+  if uint64(count) >= uint64(previous.deletedLimit) or count >= high(int) div (sizeof(
+      AccumulationDeletedAccount)+sizeof(StateStoreSnapshot)):
     return AccumulationEffectResult[DeletedAccountsData](
         status: AccumulationEffectError.LimitExceeded) # No candidate balance or partial key owner escapes.
   var values = newSeq[AccumulationDeletedAccount](count+1)
+  var states = newSeq[StateStoreSnapshot](count+1)
   for index in 0..<previous.deleted.values.len:
     let value = previous.deleted.values[index]
-    values[index] = value # Fixed service identities do not retain a chain of old effect versions.
+    values[index] = value # Facts and exact maps share their original immutable owners.
+    states[index] = previous.deleted.states[index]
   # Immutable selected versions retain both counts, so rollback also restores their shared next ordinal.
   let ordinal = uint64(previous.created.values.len)+uint64(previous.deleted.values.len)
   values[count] = AccumulationDeletedAccount(service: service,
     ordinal: AccumulationServiceLifecycleIndex(ordinal))
   AccumulationEffectResult[DeletedAccountsData](status: AccumulationEffectError.None,
-    completed: DeletedAccountsData(values: values))
+    completed: DeletedAccountsData(values: values, states: states))
 
 proc effectInitialContext*(context: AccumulationEffectContext): AccumulationEffectResult[
     InitialAccumulationContext] =
@@ -787,6 +791,20 @@ proc effectDeletedAccountFactAt*(context: AccumulationEffectContext,
   AccumulationEffectResult[AccumulationDeletedAccount](status: AccumulationEffectError.None,
     completed: data.deleted.values[int(uint64(index))])
 
+proc effectDeletedAccountStateAt*(context: AccumulationEffectContext,
+    index: AccumulationDeletedAccountIndex): AccumulationEffectResult[StateStoreSnapshot] =
+  ## Retain the exact post-ejection map paired with this selected fact; defaults, disabled tracing and bad indices grant no map.
+  let count = context.effectDeletedAccountFactCount
+  if count.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[StateStoreSnapshot](status: count.error)
+  if uint64(index) >= uint64(count.value):
+    return AccumulationEffectResult[StateStoreSnapshot](
+        status: AccumulationEffectError.InvalidIndex)
+  let data = context.data
+  assert data != nil # The successful count validates this exact immutable selected context.
+  AccumulationEffectResult[StateStoreSnapshot](status: AccumulationEffectError.None,
+    completed: data.deleted.states[int(uint64(index))])
+
 proc effectCreatedAccountCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
   ## Count this selected context's genuine creations; unsupported lineages expose no partial membership proof.
   let data = context.data
@@ -958,7 +976,7 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
     writeFacts: AccountWriteFactsData(values: facts), writeFactLimit: accountWriteFacts,
     accountKeys: AccountKeysData(keys: @[]), accountKeyLimit: accountWriteKeys,
     created: CreatedAccountsData(values: @[]), createdLimit: createdAccounts,
-    deleted: DeletedAccountsData(values: @[]), deletedLimit: deletedAccounts,
+    deleted: DeletedAccountsData(values: @[], states: @[]), deletedLimit: deletedAccounts,
     nextService: initial.value.contextInfo.value.nextService,
     staging: initial.value.contextStaging.value, queues: initial.value.contextQueues.value,
     privileges: initial.value.contextPrivileges.value,
@@ -2198,7 +2216,11 @@ proc recordAccumulationEject*(effects: AccumulationEffects, target: Accumulation
   if previous.accountScope != AccumulationAccountScope.Unsupported and uint64(
       previous.deletedLimit) != 0:
     candidate.accountScope = AccumulationAccountScope.DeletedAccounts # Successful bounded ejections alone certify foreign removals.
-  candidate.deleted = captured.value # Enabled membership survives broader legacy scope gates.
+  let deletion = captured.value
+  if uint64(previous.deletedLimit) != 0:
+    # Preparation allocated a private admitted successor array; only a successful atomic commit fills its final map.
+    deletion.states[previous.deleted.values.len] = changed.value
+  candidate.deleted = deletion # Enabled membership and its exact post-ejection map survive broader legacy scope gates.
   candidate.writeFacts = facts.value # Bind physical keys to the same immutable account successor.
   candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)

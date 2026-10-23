@@ -192,17 +192,21 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
           var creation = default(ServiceCreationRow)
           var deletion = default(ServiceDeletionRow)
           var creations, deletions = 0
+          var creationIndex = ServiceCreationIndex(0)
+          var deletionIndex = ServiceDeletionIndex(0)
           for j in 0..<extent.creations:
             spend()
             let row = members.serviceIdentityCreationAt(ServiceCreationIndex(uint64(j))).value
             if uint32(row.fact.service) == uint32(originalRow.service):
               creation = row
+              creationIndex = ServiceCreationIndex(uint64(j))
               inc creations # Original capture limits bound each scan and native count.
           for j in 0..<extent.deletions:
             spend()
             let row = members.serviceIdentityDeletionAt(ServiceDeletionIndex(uint64(j))).value
             if uint32(row.fact.service) == uint32(originalRow.service):
               deletion = row
+              deletionIndex = ServiceDeletionIndex(uint64(j))
               inc deletions # Membership alone cannot select among multiple generations.
           if creations != 1 or deletions != 1 or not roster[i].present:
             fail(LogicalContinuationError.UnsupportedChange)
@@ -214,12 +218,20 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
           if not laterEntry and not localOrder:
             fail(LogicalContinuationError.UnsupportedChange) # Successive entries use genuine selected predecessors; parallel invocation positions alone give no order.
           if nonempty and not laterEntry:
-            fail(LogicalContinuationError.UnsupportedChange) # A local pair alone exposes no intermediate namespace-retirement state.
+            # The actual atomic ejection map certifies nonempty retirement within one invocation.
+            spend() # Account for the additional ejection metadata lookup before resolving its owner.
+            let barrier = members.serviceIdentityRetirementAt(creationIndex, deletionIndex)
+            if barrier.error != ServiceIdentityHistoryError.None:
+              fail(LogicalContinuationError.UnsupportedChange)
+            roster[i].retired = barrier.value
+            roster[i].hasRetired = true
           if laterEntry:
             # Private history coordinates select this completed producer's exact post-ejection state, including selected provisions.
             let sequence = members.serviceIdentityHistorySource.value.completedSequenceSource.value
             roster[i].retired = sequence.currentSequenceStateAt(deletion.entry).value
             roster[i].hasRetired = true
+          if roster[i].hasRetired:
+            # Both forms of genuine retirement bind subsequent touches to this exact selected birth.
             roster[i].birthEntry = creation.entry
             roster[i].birthOutcome = creation.outcome
             roster[i].birthOrdinal = creation.fact.ordinal

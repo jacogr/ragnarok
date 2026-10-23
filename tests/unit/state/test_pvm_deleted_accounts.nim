@@ -299,6 +299,14 @@ block budgets_and_defaults:
       0)).value.service) == 77
   assert normalizeAccumulationOutcome(disabled).value.outcomeContext.value.effectDeletedAccountFactCount.error ==
       AccumulationEffectError.DeletedAccountsDisabled
+  assert independent.effectDeletedAccountStateAt(AccumulationDeletedAccountIndex(high(
+      uint64))).error == AccumulationEffectError.InvalidIndex
+  assert default(AccumulationEffectContext).effectDeletedAccountStateAt(
+      AccumulationDeletedAccountIndex(0)).error == AccumulationEffectError.Uninitialized
+  let disabledState = normalizeAccumulationOutcome(
+      disabled).value.outcomeContext.value.effectDeletedAccountStateAt(
+      AccumulationDeletedAccountIndex(0))
+  assert disabledState.error == AccumulationEffectError.DeletedAccountsDisabled
   assert independent.effectDeletedAccountFactAt(AccumulationDeletedAccountIndex(high(
       uint64))).error == AccumulationEffectError.InvalidIndex
   let foreign = setup(envelope(repeat = true), two = true)
@@ -376,6 +384,11 @@ block recreate_prior_target:
           0)).value.ordinal) == 0
       assert uint64(regular.effectCreatedAccountFactAt(AccumulationCreatedAccountIndex(
           0)).value.ordinal) == 1
+      let barrier = regular.effectDeletedAccountStateAt(AccumulationDeletedAccountIndex(0)).value
+      assert barrier.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77))).error ==
+          StateStoreError.MissingKey
+      assert regular.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
+          77))).error == StateStoreError.None
       let chosen = normalizeAccumulationOutcome(first).value.outcomeContext.value
       assert chosen.effectCreatedAccountFactCount.value == (if panic: 0 else: 1)
       assert chosen.effectDeletedAccountFactCount.value == (if panic and not checkpoint: 0 else: 1)
@@ -450,6 +463,25 @@ let fixture = setup(envelope(provide = true))
 let first = execute(fixture)
 let second = execute(fixture, 1)
 let plan = prepare(fixture, first, second).value
+block ejection_capture_failure:
+  # The original prepared owner admits capture before hashing; failed atomic ejection exposes no snapshot prefix.
+  let initial = prepareAccumulationEffects(first.effects.effectsSource.value,
+    deletedAccounts = ElementLimit(2)).value
+  let prior = initial.effectContext(AccumulationDimension.Regular).value.effectAccounts.value
+  failHash(1)
+  let refused = recordAccumulationEject(initial, AccumulationEjectTarget(77), profile())
+  assert refused.error == AccumulationEffectError.BackendFailure
+  failHash(0)
+  let context = initial.effectContext(AccumulationDimension.Regular).value
+  assert context.effectDeletedAccountFactCount.value == 0
+  assert context.effectDeletedAccountStateAt(AccumulationDeletedAccountIndex(0)).error ==
+      AccumulationEffectError.InvalidIndex
+  assert sameStateSnapshot(prior, context.effectAccounts.value)
+  let recovered = recordAccumulationEject(initial, AccumulationEjectTarget(77), profile()).value
+  let barrier = recovered.effectContext(AccumulationDimension.Regular).value.effectDeletedAccountStateAt(
+      AccumulationDeletedAccountIndex(0)).value
+  assert barrier.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77))).error ==
+      StateStoreError.MissingKey
 block stale_and_backend:
   var state = fixture.state
   discard applyAccumulationBatch(state, plan).value
@@ -471,16 +503,20 @@ block stale_and_backend:
 block detached_owner:
   var owned = default(PreparedAccumulationBatch)
   var state = default(StateStore)
+  var barrier = default(StateStoreSnapshot)
   block sources:
     let local = setup(envelope())
     let first = execute(local)
     let context = normalizeAccumulationOutcome(first).value.outcomeContext.value
+    barrier = context.effectDeletedAccountStateAt(AccumulationDeletedAccountIndex(0)).value
     var copied = context.effectDeletedAccountAt(AccumulationDeletedAccountIndex(0)).value
     copied.service = ServiceIndex(0)
     assert uint32(context.effectDeletedAccountAt(AccumulationDeletedAccountIndex(
         0)).value.service) == 77, "copied facts cannot mutate deletion proof backing"
     owned = prepare(local, first, execute(local, 1)).value
     state = local.state # All caller execution/context owners disappear before application.
+  assert barrier.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77))).error ==
+      StateStoreError.MissingKey
   discard applyAccumulationBatch(state, owned).value
   assert state.snapshot.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       77))).error == StateStoreError.MissingKey, "plan retains target deletion after caller sources leave scope"

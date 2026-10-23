@@ -196,6 +196,47 @@ proc main() {.raises.} =
       assert service.preimages[0].value == @[77'u8]
       postFound = true
   assert postFound
+  var checkpointPolicy = retirementPolicy
+  checkpointPolicy.completion.execution.initial.guests.provisions = AccumulationProvisionLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  checkpointPolicy.completion.execution.initial.provisions.values = PreimageLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  checkpointPolicy.completion.execution.initial.provisions.encodedBytes = ByteLimit(128)
+  let checkpoint = namespaceAtomicReplacementFixture(nativeBase(), checkpointPolicy)
+  let checkpointHistory = checkpoint.update.currentUpdateServiceIdentityHistory
+  assert checkpointHistory.serviceIdentityHistorySource.value.completedSequenceInfo.value.entries == 1
+  let barrier = checkpointHistory.serviceIdentityRetirementAt(ServiceCreationIndex(0),
+      ServiceDeletionIndex(0))
+  assert barrier.error == ServiceIdentityHistoryError.None
+  assert barrier.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(99))).error ==
+      StateStoreError.MissingKey
+  assert checkpointHistory.serviceIdentityRetirementAt(ServiceCreationIndex(high(uint64)),
+      ServiceDeletionIndex(0)).error == ServiceIdentityHistoryError.InvalidIndex
+  assert default(ServiceIdentityHistory).serviceIdentityRetirementAt(ServiceCreationIndex(0),
+      ServiceDeletionIndex(0)).error == ServiceIdentityHistoryError.InvalidSource
+  let checkpointLogical = check(Fixture(origin: checkpoint, update: checkpoint.update), 2)
+  let checkpointServices = copySuppliedServices(checkpointLogical.currentLogicalInventory.value,
+      policy().projection).value
+  var checkpointFound = false
+  for service in checkpointServices:
+    # Coalesced old identities need refreshed phase evidence and genuine absence in the earlier checkpoint.
+    if uint32(service.service) == 99:
+      assert service.storage.len == 1 and service.preimages.len == 1 and service.requests.len == 2
+      assert service.storage[0].key == @[5'u8] and service.storage[0].value == @[8'u8]
+      assert service.preimages[0].value == @[77'u8]
+      checkpointFound = true
+  assert checkpointFound
+  for kind in 0..<3:
+    # A selected atomic ejection map permits reuse without a guest checkpoint or with a later checkpoint; an orphan still refuses.
+    let unsupported = namespaceAtomicReplacementFixture(nativeBase(), checkpointPolicy,
+      checkpoint = kind != 0, late = kind == 1, orphan = kind == 2)
+    let refusal = continueCurrentNamespaces(unsupported.parent, unsupported.update, policy())
+    if kind == 2:
+      assert refusal.error == LogicalContinuationError.UnsupportedChange # Metadata removal cannot erase the orphan identity.
+    else:
+      assert refusal.error == LogicalContinuationError.None # Genuine ejection is the barrier independently of guest checkpoint placement.
+  let checkpointPanic = namespaceAtomicReplacementFixture(nativeBase(), checkpointPolicy, panic = true)
+  discard check(Fixture(origin: checkpointPanic, update: checkpointPanic.update), 1)
   let grown = fixture()
   let continued = check(grown, 3)
   let created = grown.update.currentUpdateServiceIdentityHistory.serviceIdentityCreationAt(
@@ -262,6 +303,7 @@ proc main() {.raises.} =
     discard continueCurrentNamespaces(retired.parent, retired.update, policy()).value
     discard continueCurrentNamespaces(reused.parent, reused.update, policy()).value
     discard continueCurrentNamespaces(postBirth.parent, postBirth.update, policy()).value
+    discard continueCurrentNamespaces(checkpoint.parent, checkpoint.update, policy()).value
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("service_logical_continuation", 1000, before, after)

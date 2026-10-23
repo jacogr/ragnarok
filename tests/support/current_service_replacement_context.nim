@@ -189,3 +189,74 @@ proc namespaceRetiredReplacementFixture*(base: OwnedReport,
   let parameters = decodeParameters(wire).value
   namespaceTransitionFixture(base, options, ElementLimit(4), policy, parameters,
     unavailableHistory(RequestSlot(0), RequestSlot(1)))
+
+proc checkpointImmediate(index: byte, value: uint64): seq[byte] =
+  ## Compact signed small constants keep the real cleanup/replacement program within the shared guest envelope.
+  if value <= 127 or value == high(uint64):
+    return @[51'u8, index, byte(value and 255)] # One-byte sign extension represents the self sentinel exactly.
+  retirementImmediate(index, value)
+proc namespaceAtomicReplacementFixture*(base: OwnedReport,
+    policy: CurrentCandidateLimits, checkpoint = true, late = false,
+    orphan = false, panic = false): CurrentNamespaceTransition =
+  ## One actual supervisor empties, ejects, checkpoints and recreates its nonexecuting junior before new-generation writes.
+  var seeds = namespaceSeeds()
+  var payload = newSeq[byte](192)
+  let halt = namespaceHaltCode()
+  let haltHash = ServicePreimageHash(array[32, byte](blake2b256(halt).value))
+  seeds[0].preimages.add(StatePreimageItem(hash: haltHash, value: halt))
+  seeds[0].requests.add(StateRequestItem(hash: haltHash,
+    length: RequestLength(uint32(halt.len)), history: availableHistory(RequestSlot(1))))
+  for i, octet in array[32, byte](haltHash): payload[
+      160+i] = octet # Original idle code lets later empty children verify durable state without repeating cleanup.
+  for h in 0..<2:
+    # Full original hashes precede signatures and identify the only old requests removed by the guest.
+    for i, octet in array[32, byte](seeds[1].preimages[h].hash): payload[h*32+i] = octet
+    seeds[1].requests[h].history = unavailableHistory(RequestSlot(0), RequestSlot(1))
+  payload[64] = 5
+  payload[65] = 8
+  payload[66] = 77
+  var instructions: seq[seq[byte]] = @[]
+  for length in [0'u64, 1]:
+    # Both old raw keys are removed; zero value length invokes deletion without reading value bytes.
+    for instruction in [checkpointImmediate(7, 99), checkpointImmediate(8, 196672),
+      checkpointImmediate(9, length), checkpointImmediate(10, 0),
+      checkpointImmediate(11, 0), @[10'u8, 5]]: instructions.add(instruction)
+  for h in 0..<2:
+    # Original unavailable histories have expired under the original slot/Parameters, so forget also removes the old blobs.
+    for instruction in [checkpointImmediate(7, 99), checkpointImmediate(8, uint64(196608+h*32)),
+      checkpointImmediate(9, uint64(h)), @[10'u8, 26]]: instructions.add(instruction)
+  instructions.add(checkpointImmediate(7, 99))
+  instructions.add(@[10'u8, 23])
+  if checkpoint and not late:
+    instructions.add(@[10'u8, 19]) # Only this interval proves the old namespace retired before the new birth.
+  for instruction in [checkpointImmediate(7, high(uint64)), checkpointImmediate(8, 99),
+    checkpointImmediate(9, 0), checkpointImmediate(10, 196704), @[10'u8, 20],
+    checkpointImmediate(7, 99), checkpointImmediate(8, 196672), checkpointImmediate(9, 1),
+    checkpointImmediate(10, 196673), checkpointImmediate(11, 1), @[10'u8, 5],
+    checkpointImmediate(7, 99), checkpointImmediate(8, 196640), checkpointImmediate(9, 1), @[10'u8, 25],
+    checkpointImmediate(7, 99), checkpointImmediate(8, 196674), checkpointImmediate(9, 1), @[10'u8, 28]]:
+    instructions.add(instruction) # Each host result replaces r7; every next foreign target is restored explicitly.
+  for instruction in [checkpointImmediate(7, high(uint64)), checkpointImmediate(8, 196768),
+    checkpointImmediate(9, 0), checkpointImmediate(10, 0), @[10'u8, 21]]:
+    instructions.add(instruction) # A genuine final self-upgrade leaves subsequent blocks on independently supplied idle code.
+  if checkpoint and late:
+    instructions.add(@[10'u8, 19]) # A post-birth checkpoint is genuine but cannot certify the required earlier barrier.
+  instructions.add(if panic: @[0'u8] else: @[50'u8, 0])
+  var program = @[0'u8]
+  for octet in guestEnvelope(instructions, writable = payload): program.add(octet)
+  if orphan:
+    let hash = ServicePreimageHash(array[32, byte](blake2b256([3'u8]).value))
+    seeds[1].preimages.add(StatePreimageItem(hash: hash, value: @[
+        3'u8])) # Metadata disappearance cannot certify an untouched orphan absent.
+  var options = executionFixtureConfig()
+  options.firstProgram = program
+  options.secondProgram = namespaceHaltCode()
+  options.second = ExecutionEnding.Missing
+  options.registrar = 42
+  options.secondSupervisor = 42
+  options.signed.targetSlot = 5000
+  options.signed.namespaceValueBytes = 512
+  options.signed.serviceNamespaces = seeds
+  var wire = encodeParameters(currentChainSettings())
+  for i in 74..<78: wire[i] = 0 # Authored zero anchor age admits strict expiry at slot5000.
+  namespaceTransitionFixture(base, options, ElementLimit(4), policy, decodeParameters(wire).value)
