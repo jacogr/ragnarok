@@ -17,7 +17,8 @@ def observe(peer, responder, directory, environment):
     directory.mkdir(parents=True, exist_ok=True)
     cases = [('journal', False), ('managed', False), ('journal-resumed', False),
              ('managed-resumed', False), ('replay', True), ('empty', True),
-             ('timeout', True), ('resource', True)]
+             ('timeout', True), ('resource', True), ('managed-maintenance', False),
+             ('maintenance-resource', True), ('maintenance-resumed', False)]
     rows = []
     for name, partial in cases:
         folder = Path(tempfile.mkdtemp(prefix=name+'-', dir=directory))
@@ -36,8 +37,10 @@ def observe(peer, responder, directory, environment):
                     '--with-state', '--chain', 'current-chain.json', '--state-writes', '1000',
                     '--state-write-bytes', '1000000', '--state-storage', 'disk',
                     '--state-db', 'current-state.db', '--download-blocks', '3']
-                if name in ('managed', 'managed-resumed', 'empty'):
-                    arguments += ['--state-layout', 'managed', '--state-compact-bytes', '0']
+                if name in ('managed', 'managed-resumed', 'empty', 'managed-maintenance',
+                            'maintenance-resource', 'maintenance-resumed'):
+                    arguments += ['--state-layout', 'managed', '--state-compact-bytes',
+                                  '1' if 'maintenance' in name else '0']
                 runs = []
                 for step, requested in enumerate((1, 2) if name.endswith('-resumed') else (3,)):
                     # A fresh executable lifetime must select the prefix persisted by the previous one.

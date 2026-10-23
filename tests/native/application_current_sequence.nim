@@ -18,9 +18,10 @@ proc main() {.raises.} =
   ## The witness owns wire/state assertions; Python owns process arguments, output and joined cleanup.
   let mode = getEnv("RAGNAROK_CURRENT_SEQUENCE_CASE")
   assert mode in ["journal", "managed", "journal-resumed", "managed-resumed", "replay", "empty",
-      "timeout", "resource"]
-  let managed = mode in ["managed", "managed-resumed", "empty"]
-  let partial = mode in ["replay", "empty", "timeout", "resource"]
+      "timeout", "resource", "managed-maintenance", "maintenance-resource", "maintenance-resumed"]
+  let managed = mode in ["managed", "managed-resumed", "empty", "managed-maintenance",
+      "maintenance-resource", "maintenance-resumed"]
+  let partial = mode in ["replay", "empty", "timeout", "resource", "maintenance-resource"]
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var report = newSeq[byte](raw.len)
   for index, octet in raw: report[index] = byte(octet)
@@ -30,7 +31,7 @@ proc main() {.raises.} =
   if mode == "timeout":
     limits.stream.timeout = CurrentDownloadTimeout(20000)
     limits.attemptTimeout = CurrentDownloadAttemptTimeout(30000)
-  if mode == "resource":
+  if mode in ["resource", "maintenance-resource"]:
     limits.candidate.completion.composition.recent.history.blocks = ElementLimit(
         3) # Third successor requires four retained C3 rows.
   writeFile("current-policy.conf", encodeCurrentDownloadPolicy(limits))
@@ -47,7 +48,7 @@ proc main() {.raises.} =
       responses.add(currentConsecutiveResponse(fixture.children[index]))
     modes.add(if index == 2 and mode == "timeout": NoFin else: DownloadTransferMode.Healthy)
   var servers = default(DownloadResponders)
-  let resumed = mode in ["journal-resumed", "managed-resumed"]
+  let resumed = mode in ["journal-resumed", "managed-resumed", "maintenance-resumed"]
   if resumed:
     assert servers.openSequenceResponders(@[requests[0]], @[responses[0]], @[modes[0]])
   else:
