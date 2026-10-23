@@ -34,6 +34,11 @@ type
     key: StateKey
     payload: seq[byte]
     left, right: StateNodeHash
+  ImageRecordStage = object ## Private provisional cells never escape failed encoded-image admission.
+    records: seq[StoredRecord]
+    limits: RepositoryLimits
+    bytes: uint64
+    failure: RepositoryError
   RepositoryTable = ref object ## Immutable sorted cell inventories remain independent for changed revisions.
     records: seq[StoredRecord]
     prefixBits: int  ## One private constructor chooses 4/8/12 bits from the bounded inventory size.
@@ -44,6 +49,12 @@ type
     generation: RepositoryGeneration
     valueBytes: uint64
     limits: RepositoryLimits
+  PublicationStage = object ## Privately staged cells preserve codec-before-policy and quota-before-conflict precedence.
+    head: RepositoryData
+    added, touched: seq[StoredRecord]
+    count: int
+    bytes: uint64
+    quotaExceeded, conflict: bool
   RepositoryView* = object ## Owner-bound immutable physical read view with copied scalar metadata.
     data: nil RepositoryData
   NodeRepository* = object ## Copies are independent updateable handles sharing immutable prior data only.
@@ -115,6 +126,23 @@ proc storeRecord(source: TrieRecord): StoredRecord =
     bytes[index] = octet # Borrowed transport must not become a mutable alias of an admitted record.
   StoredRecord(kind: source.kind, digest: source.digest, key: source.key, payload: bytes,
     left: source.left, right: source.right)
+proc storeDecodedRecord(source: var TrieRecord): StoredRecord =
+  ## Only the synchronous local decoder supplies this owned temporary; mutable raw callers still copy.
+  StoredRecord(kind: source.kind, digest: source.digest, key: source.key,
+    payload: move(source.payload), left: source.left, right: source.right)
+proc prepareImageRecords(stage: var ImageRecordStage, info: RecordCollectionInfo) =
+  ## The codec has bounded this exact count; reserve private cell references without repeating input inspection.
+  stage.records = newSeqOfCap[StoredRecord](int(info.records))
+proc acceptImageRecord(stage: var ImageRecordStage, record: var TrieRecord): bool =
+  ## Accumulate private immutable owners while leaving all later codec integrity checks observable.
+  if stage.failure != RepositoryError.None: return true
+  if uint64(stage.records.len) >= uint64(stage.limits.records) or
+      uint64(record.payload.len) > uint64(stage.limits.valueBytes)-stage.bytes:
+    stage.failure = RepositoryError.LimitExceeded
+    return true # Complete integrity validation still precedes any staged repository refusal.
+  stage.bytes += uint64(record.payload.len)
+  stage.records.add(storeDecodedRecord(record))
+  true
 proc copyRecord(source: StoredRecord): TrieRecord =
   ## Deep-copy only mutable byte storage; fixed addresses and keys copy by value.
   var bytes = newSeq[byte](source.payload.len)
@@ -263,37 +291,17 @@ proc lookupNode*(view: RepositoryView, digest: StateNodeHash): RepositoryResult[
   RepositoryResult[TrieRecord](status: RepositoryError.None, completed: copyRecord(
       data.table.records[index]))
 
-proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
-    batch: TrieExport, decoded: bool): RepositoryResult[RepositoryView] =
-  ## Private admission always validates the complete graph; only an exact local decoder may supply integrity.
-  let head = repository.head
-  if head == nil: return RepositoryResult[RepositoryView](status: RepositoryError.Uninitialized)
-  if expected.data == nil or expected.data != head:
-    return RepositoryResult[RepositoryView](status: RepositoryError.StaleView) # Equal roots do not authorize a stale handle.
-  if array[32, byte](batch.base) != array[32, byte](head.commitment.root):
-    return RepositoryResult[RepositoryView](status: RepositoryError.BaseMismatch)
-  if uint64(head.generation) == high(uint64):
-    return RepositoryResult[RepositoryView](status: RepositoryError.GenerationExhausted)
+func transportDigest(record: TrieRecord): StateNodeHash =
+  ## Private publication traversal projects only the fixed address from an untrusted raw transport.
+  record.digest
+proc admitPublication[T](repository: var NodeRepository, head: RepositoryData,
+    batch: RecordBatchInfo, count: int, bytes: uint64, added: var seq[StoredRecord],
+    touched: openArray[T], address: proc(record: T): StateNodeHash {.nimcall.}): RepositoryResult[
+        RepositoryView] =
+  ## Private bounded cells still need complete target topology and exact touched-record reachability.
+  ## Callers preserve independent integrity, head/base/generation and quota/conflict precedence first.
   let limits = head.limits
-  if uint64(batch.records.len) > uint64(limits.codec.records.records):
-    return RepositoryResult[RepositoryView](status: RepositoryError.LimitExceeded)
-  var count = head.table.records.len
-  var bytes = head.valueBytes
-  for record in batch.records:
-    if position(head.table.records, record.digest) < 0:
-      if uint64(count) >= uint64(limits.records) or count >= high(int) div sizeof(TrieRecord):
-        return RepositoryResult[RepositoryView](status: RepositoryError.LimitExceeded)
-      if uint64(record.payload.len) > uint64(limits.valueBytes)-bytes:
-        return RepositoryResult[RepositoryView](status: RepositoryError.LimitExceeded)
-      inc count
-      bytes += uint64(record.payload.len) # Subtraction proved aggregate retained bytes fit.
-  if not decoded:
-    # Mutable caller transports never inherit an earlier decode's integrity authority.
-    let validated = validateTrieExport(batch, limits.codec)
-    if validated != RecordError.None:
-      return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
-          recordReason: validated)
-  if batch.records.len == 0 and array[32, byte](batch.root) == array[32, byte](
+  if batch.records == 0 and array[32, byte](batch.root) == array[32, byte](
       head.commitment.root):
     # Immutable current graphs need no traversal or table copy; exact metadata remains mandatory.
     if batch.entries != uint64(head.commitment.entries) or batch.nodes != head.commitment.nodes:
@@ -304,14 +312,6 @@ proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
     repository.head = data # A new exact view identity/generation still invalidates old publication handles.
     return RepositoryResult[RepositoryView](status: RepositoryError.None,
       completed: RepositoryView(data: data))
-  var added = newSeqOfCap[StoredRecord](count-head.table.records.len)
-  for record in batch.records:
-    let old = position(head.table.records, record.digest)
-    if old >= 0:
-      if not sameRecord(head.table.records[old], record):
-        return RepositoryResult[RepositoryView](status: RepositoryError.RecordConflict)
-    else:
-      added.add(storeRecord(record)) # Append only initialized nonnil cells; raw transport stays detached.
   added.sort(compareRecord) # Only newly admitted records require sorting; the published table is already ordered.
   var records = newSeqOfCap[StoredRecord](count)
   var prior = 0
@@ -333,8 +333,8 @@ proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
   if complete != RepositoryError.None: return RepositoryResult[RepositoryView](status: complete)
   if counts.entries != batch.entries or counts.nodes != batch.nodes:
     return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph)
-  for record in batch.records:
-    if not marked(visit.seen, position(table, record.digest)):
+  for record in touched:
+    if not marked(visit.seen, position(table, address(record))):
       return RepositoryResult[RepositoryView](status: RepositoryError.InvalidGraph) # Do not admit unrelated orphan records through a revision batch.
   let data = RepositoryData(table: table,
       commitment: StateTrieCommitment(root: batch.root,
@@ -344,10 +344,83 @@ proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
   repository.head = data # No failed validation can change the prior published owner.
   RepositoryResult[RepositoryView](status: RepositoryError.None, completed: RepositoryView(data: data))
 
+
+func storedDigest(record: StoredRecord): StateNodeHash =
+  ## The private staged-publication path exposes only an immutable cell's fixed physical identity.
+  record.digest
+proc preparePublicationRecords(stage: var PublicationStage, info: RecordCollectionInfo) =
+  ## Whole-input preflight bounded this count; new-cell capacity also respects inherited physical headroom.
+  let maximum = uint64(stage.head.limits.records)
+  let retained = uint64(stage.head.table.records.len)
+  let available = if retained < maximum: maximum-retained else: 0'u64
+  stage.added = newSeqOfCap[StoredRecord](int(min(info.records, available)))
+  stage.touched = newSeqOfCap[StoredRecord](int(info.records))
+proc acceptPublicationRecord(stage: var PublicationStage, record: var TrieRecord): bool =
+  ## Continue codec hashing after repository refusal; base/generation and quota precedence resolve afterward.
+  let limits = stage.head.limits
+  let old = position(stage.head.table.records, record.digest)
+  if old < 0:
+    if not stage.quotaExceeded:
+      let maximum = high(int) div sizeof(TrieRecord)
+      let full = uint64(stage.count) >= uint64(limits.records) or stage.count >= maximum
+      let payload = uint64(record.payload.len)
+      if full or payload > uint64(limits.valueBytes)-stage.bytes:
+        stage.quotaExceeded = true
+      else:
+        inc stage.count
+        stage.bytes += uint64(record.payload.len) # A successful subtraction check bounded this aggregate.
+  elif not sameRecord(stage.head.table.records[old], record):
+    stage.conflict = true
+  if stage.quotaExceeded or stage.conflict: return true
+  let cell = if old >= 0: stage.head.table.records[old] else: storeDecodedRecord(record)
+  if old < 0:
+    stage.added.add(cell) # Only new decoded owners enter the private merge inventory.
+  stage.touched.add(cell)
+  true
+proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
+    batch: TrieExport): RepositoryResult[RepositoryView] =
+  ## Raw mutable transports always require independent integrity and complete graph admission.
+  let head = repository.head
+  if head == nil: return RepositoryResult[RepositoryView](status: RepositoryError.Uninitialized)
+  if expected.data == nil or expected.data != head:
+    return RepositoryResult[RepositoryView](status: RepositoryError.StaleView) # Equal roots do not authorize a stale handle.
+  if array[32, byte](batch.base) != array[32, byte](head.commitment.root):
+    return RepositoryResult[RepositoryView](status: RepositoryError.BaseMismatch)
+  if uint64(head.generation) == high(uint64):
+    return RepositoryResult[RepositoryView](status: RepositoryError.GenerationExhausted)
+  let limits = head.limits
+  if uint64(batch.records.len) > uint64(limits.codec.records.records):
+    return RepositoryResult[RepositoryView](status: RepositoryError.LimitExceeded)
+  var count = head.table.records.len
+  var bytes = head.valueBytes
+  for record in batch.records:
+    if position(head.table.records, record.digest) < 0:
+      if uint64(count) >= uint64(limits.records) or count >= high(int) div sizeof(TrieRecord):
+        return RepositoryResult[RepositoryView](status: RepositoryError.LimitExceeded)
+      if uint64(record.payload.len) > uint64(limits.valueBytes)-bytes:
+        return RepositoryResult[RepositoryView](status: RepositoryError.LimitExceeded)
+      inc count
+      bytes += uint64(record.payload.len) # Subtraction proved aggregate retained bytes fit.
+  let validated = validateTrieExport(batch, limits.codec)
+  if validated != RecordError.None:
+    return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
+      recordReason: validated)
+  var added = newSeqOfCap[StoredRecord](count-head.table.records.len)
+  for record in batch.records:
+    let old = position(head.table.records, record.digest)
+    if old >= 0:
+      if not sameRecord(head.table.records[old], record):
+        return RepositoryResult[RepositoryView](status: RepositoryError.RecordConflict)
+    else:
+      added.add(storeRecord(record)) # Append only initialized nonnil cells; raw transport stays detached.
+  let info = RecordBatchInfo(base: batch.base, root: batch.root, entries: batch.entries,
+    nodes: batch.nodes, records: uint64(batch.records.len), valueBytes: 0)
+  admitPublication(repository, head, info, count, bytes, added, batch.records, transportDigest)
+
 proc publish*(repository: var NodeRepository, expected: RepositoryView,
     batch: TrieExport): RepositoryResult[RepositoryView] =
   ## Verify every mutable raw record and complete target before atomic publication.
-  publishBatch(repository, expected, batch, false)
+  publishBatch(repository, expected, batch)
 
 proc publishEncoded*(repository: var NodeRepository, expected: RepositoryView,
     input: openArray[byte]): RepositoryResult[RepositoryView] =
@@ -357,11 +430,22 @@ proc publishEncoded*(repository: var NodeRepository, expected: RepositoryView,
   if head == nil: return RepositoryResult[RepositoryView](status: RepositoryError.Uninitialized)
   if expected.data == nil or expected.data != head:
     return RepositoryResult[RepositoryView](status: RepositoryError.StaleView)
-  var decoded = decodeTrieExport(input, head.limits.codec)
-  if decoded.error != RecordError.None:
+  var stage = PublicationStage(head: head, added: @[], touched: @[],
+    count: head.table.records.len, bytes: head.valueBytes, quotaExceeded: false, conflict: false)
+  let delivered = visitTrieExport(input, head.limits.codec, stage,
+    preparePublicationRecords, acceptPublicationRecord)
+  if delivered.error != RecordError.None:
     return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
-      recordReason: decoded.error)
-  publishBatch(repository, expected, decoded.takeValue, true)
+      recordReason: delivered.error)
+  let info = delivered.value
+  if array[32, byte](info.base) != array[32, byte](head.commitment.root):
+    return RepositoryResult[RepositoryView](status: RepositoryError.BaseMismatch)
+  if uint64(head.generation) == high(uint64):
+    return RepositoryResult[RepositoryView](status: RepositoryError.GenerationExhausted)
+  if stage.quotaExceeded: return RepositoryResult[RepositoryView](
+      status: RepositoryError.LimitExceeded)
+  if stage.conflict: return RepositoryResult[RepositoryView](status: RepositoryError.RecordConflict)
+  admitPublication(repository, head, info, stage.count, stage.bytes, stage.added, stage.touched, storedDigest)
 
 proc collectStateEntries(view: RepositoryView, expected: StateRoot,
     limits: StateTrieLimits, selected: bool): RepositoryResult[seq[StateEntry]] =
@@ -583,43 +667,26 @@ proc imageMetadata(generation: RepositoryGeneration, commitment: StateTrieCommit
   if not selected: return RepositoryError.RootMismatch
   RepositoryError.None
 
-proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
-    roots: ElementLimit, encoded: ByteLimit, decoded: bool): RepositoryResult[NodeRepository] =
-  ## Private callers either validate raw records here or just decoded them under these exact limits.
-  ## No public entry point accepts the decoded flag; all graph/ordering/reachability checks are shared.
-  let metadata = imageMetadata(image.generation, image.commitment, image.roots, limits, roots)
-  if metadata != RepositoryError.None: return RepositoryResult[NodeRepository](status: metadata)
-  let recordCount = image.collection.records.len
-  if uint64(recordCount) > uint64(limits.records) or recordCount > high(int) div sizeof(TrieRecord):
-    return RepositoryResult[NodeRepository](status: RepositoryError.LimitExceeded)
-  if not decoded:
-    # Mutable raw images have no integrity authority, even if a caller previously decoded them.
-    let validated = validateRecordCollection(image.collection, imageRecordLimits(limits, encoded))
-    if validated != RecordError.None:
-      return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
-        recordReason: validated)
-  var records = newSeqOfCap[StoredRecord](recordCount)
-  var bytes = 0'u64
-  for index, record in image.collection.records:
-    if index > 0 and compareHash(image.collection.records[index-1].digest, record.digest) >= 0:
-      return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph) # Persisted address order is exact, not silently normalized.
-    records.add(storeRecord(record))
-    bytes += uint64(record.payload.len) # Collection preflight proved the aggregate physical byte bound.
+proc admitImageRecords(records: var seq[StoredRecord], bytes: uint64,
+    generation: RepositoryGeneration, commitment: StateTrieCommitment, roots: openArray[StateRoot],
+    limits: RepositoryLimits): RepositoryResult[NodeRepository] =
+  ## Private sorted/integrity-checked cells still need independent graph, inventory and selected-root admission.
+  ## Root metadata was checked synchronously; no public caller can supply these private immutable cells.
   let table = newRepositoryTable(records)
   var retained = newSeq[uint64](graphWords(table.records.len))
   var count = 0
   var visit = GraphVisit(seen: newSeq[uint64](graphWords(table.records.len)),
       collect: GraphCollection.Records)
-  for root in image.roots:
+  for root in roots:
     # Serialized roots never inherit prior cycle/route/count authority when scratch storage is reused.
     resetGraph(visit)
     var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
     let checked = graph(table, StateNodeHash(array[32, byte](root)), 0,
       default(array[31, byte]), limits.codec.trie, visit, counts)
     if checked != RepositoryError.None: return RepositoryResult[NodeRepository](status: checked)
-    if compareRoot(root, image.commitment.root) == 0:
-      if counts.entries != uint64(image.commitment.entries) or counts.nodes !=
-          image.commitment.nodes:
+    if compareRoot(root, commitment.root) == 0:
+      if counts.entries != uint64(commitment.entries) or counts.nodes !=
+          commitment.nodes:
         return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph)
     for index in visit.leaves:
       if not marked(retained, index):
@@ -629,13 +696,35 @@ proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
       status: RepositoryError.InvalidGraph)
   RepositoryResult[NodeRepository](status: RepositoryError.None,
     completed: NodeRepository(head: RepositoryData(table: table,
-      commitment: image.commitment, generation: image.generation, valueBytes: bytes,
+      commitment: commitment, generation: generation, valueBytes: bytes,
           limits: limits)))
+
+
+proc restoreImage(image: RepositoryImage, limits: RepositoryLimits,
+    roots: ElementLimit, encoded: ByteLimit): RepositoryResult[NodeRepository] =
+  ## Mutable raw images always require independent local integrity and complete graph admission.
+  let metadata = imageMetadata(image.generation, image.commitment, image.roots, limits, roots)
+  if metadata != RepositoryError.None: return RepositoryResult[NodeRepository](status: metadata)
+  let recordCount = image.collection.records.len
+  if uint64(recordCount) > uint64(limits.records) or recordCount > high(int) div sizeof(TrieRecord):
+    return RepositoryResult[NodeRepository](status: RepositoryError.LimitExceeded)
+  let validated = validateRecordCollection(image.collection, imageRecordLimits(limits, encoded))
+  if validated != RecordError.None:
+    return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
+      recordReason: validated)
+  var records = newSeqOfCap[StoredRecord](recordCount)
+  var bytes = 0'u64
+  for index, record in image.collection.records:
+    if index > 0 and compareHash(image.collection.records[index-1].digest, record.digest) >= 0:
+      return RepositoryResult[NodeRepository](status: RepositoryError.InvalidGraph) # Persisted address order is exact, not silently normalized.
+    records.add(storeRecord(record))
+    bytes += uint64(record.payload.len) # Collection preflight proved the aggregate physical byte bound.
+  admitImageRecords(records, bytes, image.generation, image.commitment, image.roots, limits)
 
 proc restoreRepositoryImage*(image: RepositoryImage, limits: RepositoryLimits,
     roots: ElementLimit, encoded: ByteLimit): RepositoryResult[NodeRepository] =
   ## Independently verify every mutable raw record and complete graph before creating an owned repository.
-  restoreImage(image, limits, roots, encoded, false)
+  restoreImage(image, limits, roots, encoded)
 
 proc decodeRepositoryImage*(input: openArray[byte], generation: RepositoryGeneration,
     commitment: StateTrieCommitment, roots: openArray[StateRoot], limits: RepositoryLimits,
@@ -645,16 +734,16 @@ proc decodeRepositoryImage*(input: openArray[byte], generation: RepositoryGenera
   ## Integrity failures retain RecordError, while topology/metadata/budget refusals use RepositoryError.
   let metadata = imageMetadata(generation, commitment, roots, limits, rootLimit)
   if metadata != RepositoryError.None: return RepositoryResult[NodeRepository](status: metadata)
-  var decoded = decodeOrderedRecordCollection(input, imageRecordLimits(limits, encoded))
-  if decoded.error != RecordError.None:
+  let policy = imageRecordLimits(limits, encoded)
+  var stage = ImageRecordStage(records: @[], limits: limits, bytes: 0,
+      failure: RepositoryError.None)
+  let delivered = visitOrderedRecordCollection(input, policy, stage, prepareImageRecords, acceptImageRecord)
+  if delivered.error != RecordError.None:
     return RepositoryResult[NodeRepository](status: RepositoryError.InvalidRecords,
-      recordReason: decoded.error)
-  var ownedRoots = newSeq[StateRoot](roots.len)
-  for index, root in roots:
-    ownedRoots[index] = root # Bounded scalar copies cannot retain mutable caller metadata.
-  let image = RepositoryImage(generation: generation, commitment: commitment,
-    roots: ownedRoots, collection: decoded.takeValue)
-  restoreImage(image, limits, rootLimit, encoded, true)
+      recordReason: delivered.error)
+  if stage.failure != RepositoryError.None:
+    return RepositoryResult[NodeRepository](status: stage.failure)
+  admitImageRecords(stage.records, stage.bytes, generation, commitment, roots, limits)
 
 proc repositoryLimits*(selection: RepositorySelection): RepositoryLimits {.requires: selection.initialized.} =
   ## Copy inherited scalar policy without exposing physical records or an updateable source handle.
