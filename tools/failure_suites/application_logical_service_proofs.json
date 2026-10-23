@@ -1,0 +1,34 @@
+{
+  "build_name": "application-logical-service-proofs-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "application_logical_service_proofs guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "application-logical-service-proofs-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "application_logical_service_proofs selected reason",
+      "diagnostic": "outcome.status == KeyFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "application-logical-service-proofs-reason"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_logical_service_proofs_results.nim"
+}
