@@ -37,10 +37,10 @@ stopDiskPublication; src/rpc/server.nim pauseChain/resumeChain. Join correctness
            (and (neq target.0 role.0.)
                 (prime rpc.0. (if (eq Mut.0. 1) 0 rpc.0.))))))
   (def :StaleResume.0.#resumeChain: a retained earlier token must compare unequal to the current lease.#
-    (and (gt old.0. 0) (gt rpc.0. 0) (neq old.0. rpc.0.)
+    (and (ge phase.0. 2) (gt old.0. 0) (gt rpc.0. 0) (neq old.0. rpc.0.)
          (prime rpc.0. (if (eq Mut.0. 2) 0 rpc.0.))))
   (def :NestedPause.0.#pauseChain: an existing lease returns no second token or replacement identity.#
-    (and (gt rpc.0. 0) (prime rpc.0. (if (eq Mut.0. 3) 3 rpc.0.))))
+    (and (ge phase.0. 2) (gt rpc.0. 0) (prime rpc.0. (if (eq Mut.0. 3) 3 rpc.0.))))
   (def :Next.0.
     (or Pause.0. Submit.0. Refuse.0. Run.0. Done.0. Retire.0.
         ForeignStop.0. StaleResume.0. NestedPause.0.))
