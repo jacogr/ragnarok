@@ -13,6 +13,8 @@ import ./[handoff, current_handoff, current_block_input]
 import ./candidate
 import ./block_input
 import ./preparation_worker
+import ./current_logical as collected_logical
+import ../state/[parent_logical, current_logical]
 import ./[proof_query, proof_worker]
 import ../state/[proof_service, proof_plan, proof_view, trie_proof]
 import ./[disk_chain, disk_worker]
@@ -882,6 +884,18 @@ proc collectPreparation*(services: var Services, ticket: PreparationTicket): Pre
     services.preparing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # Stale/early collection cannot release another active lease.
+
+proc refreshCollectedLogical*(services: Services, completion: PreparationCompletion,
+    source: SelectedLogicalParent, limits: CollectedLogicalLimits): CollectedLogicalResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Run bounded host qualification only after all managed native leases end; canonical installation remains separately owned.
+  collected_logical.refreshCollectedLogical(services.canonical, completion, source, limits)
+
+proc refreshCollectedLogical*(services: Services, completion: PreparationCompletion,
+    source: CurrentLogicalState, limits: CollectedLogicalLimits): CollectedLogicalResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Run bounded host qualification only after all managed native leases end; canonical installation remains separately owned.
+  collected_logical.refreshCollectedLogical(services.canonical, completion, source, limits)
 
 proc takeAccumulation*(services: var Services): ApplicationChainResult[BlockSnapshot] {.requires:
     services.accumulationStage == AccumulationHandoffStage.Finished.} =

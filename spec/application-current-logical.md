@@ -24,3 +24,17 @@ alternatives; lifecycle and stale-parent refusals; per-stage budget/backend fail
 Services exclusion; unchanged canonical head before explicit adoption and detached proof use.
 M1 framing/current request namespace remains complete, separately from full serialization/STF/JAM
 parity. General producer mutation propagation and current-pin independent golden sources remain open.
+
+## Managed host entry points
+
+Services exposes both source alternatives through the same `refreshCollectedLogical` name. Its
+existing preparation, proof and disk-publication exclusion contract is checked before reading the
+canonical owner. Cancellation and Done keep these guards closed; only actual collection/join ends
+the lease. The wrapper stores no new canonical alias and makes no publication-policy decision.
+
+The native `application_logical_services` witness reparses a complete configured parent, captures
+its logical seed against that exact Services-owned physical map, collects actual current execution,
+qualifies, explicitly adopts and continues from the completed logical predecessor. It then generates
+mixed proofs under the independently selected actual posterior root after the second adoption.
+Proof response bytes remain usable after Services closes. Retained logical/current receipts remain
+untouched throughout each preparation and proof lease. No RPC method/schema or storage format changes.
