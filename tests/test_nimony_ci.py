@@ -57,7 +57,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [opened, reopened, synchronize, labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, storage-diagnostics, storage-pressure, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
@@ -76,6 +76,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         section = re.search(r'^  smoke:\n(.*?)(?=^  [\w-]+:|\Z)', text, re.MULTILINE | re.DOTALL).group(1)
         self.assertIn("github.event_name == 'pull_request' && github.event.action != 'labeled'", section)
+        self.assertIn("github.event_name == 'push' ||", section)
         self.assertIn("inputs.suite == 'smoke'", section)
         self.assertIn('run: make check-smoke', section)
         self.assertIn('persist-credentials: false', section)

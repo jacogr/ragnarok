@@ -104,8 +104,9 @@ host-tools setup. The ordinary panel runs first; a separate checked release/LTO 
 debug symbols supplies bounded abort backtraces under the same child-only128 MiB limit.
 Unrestricted controls and selected-byte checks bracket each diagnostic attempt. Results live
 under `build/tests/storage-abort-diagnostics/`; its summary reports captured traces, requiring
-source inspection to identify the allocating caller. The explicit `storage-diagnostics` CI
-scope also runs the new preflight and post-stat growth regressions on Linux.
+source inspection to identify the allocating caller. The temporary `storage-diagnostics` CI
+scope has been retired; the local Make command remains available. Preflight and post-stat
+growth regressions remain in the ordinary unit suites.
 
 
 The completed [Linux qualification](../spec/storage-allocation-failures.md#completed-linux-allocating-call-diagnosis)

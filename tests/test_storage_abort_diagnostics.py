@@ -78,17 +78,3 @@ class AbortDiagnosticTests(unittest.TestCase):
                 patch.object(diagnostic, 'ceilings') as panel, self.assertRaises(RuntimeError):
             diagnostic.run(folder)
         panel.assert_not_called()
-
-    def test_explicit_workflow_keeps_optimized_measurements_separate(self):
-        """This expensive ptrace job runs only on explicit dispatch, with retained failures and controls."""
-        root = Path(__file__).resolve().parents[1]
-        section = (root/'.github/workflows/ci.yml').read_text().split('  storage-diagnostics:\n')[1]
-        self.assertIn("github.event_name == 'workflow_dispatch'", section)
-        self.assertIn("inputs.suite == 'storage-diagnostics'", section)
-        self.assertIn('run: make diagnose-storage-aborts', section)
-        for suite in ('storage_managed_read_preflight', 'storage_journal_read_preflight',
-                      'storage_read_growth'):
-            self.assertIn('make unit SUITE='+suite, section)
-        self.assertIn('if: always()', section)
-        self.assertIn('build/tests/storage-abort-diagnostics/**/*.log', section)
-        self.assertIn('diagnose-storage-aborts: setup\n', (root/'Makefile').read_text())

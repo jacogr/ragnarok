@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, storage-diagnostics, storage-pressure, full]
+        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, full]
         default: full
         required: true
 
@@ -44,7 +44,7 @@ env:
 jobs:
   # Complete source import graph plus peer main and read-only formatting; no native linking or fixture setup.
   smoke:
-    if: ${{ (github.event_name == 'pull_request' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke') }}
     name: Smoke
     timeout-minutes: 10
     runs-on: ubuntu-latest
@@ -682,77 +682,3 @@ jobs:
           BENCH_STORAGE_RESULT: ${{ needs.bench-storage.result }}
           BENCH_STORAGE_GROWTH_RESULT: ${{ needs.bench-storage-growth.result }}
         run: test "$BENCH_PVM_RESULT" = success && test "$BENCH_STORAGE_RESULT" = success && test "$BENCH_STORAGE_GROWTH_RESULT" = success
-
-  # Explicit Linux diagnosis keeps ptrace and symbolized comparisons outside speed measurements.
-  storage-diagnostics:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'storage-diagnostics' }}
-    name: Storage Linux allocation diagnosis
-    timeout-minutes: 30
-    runs-on: ubuntu-latest
-    steps:
-      - *checkout
-      - *python
-      - *inventory
-      - name: Qualify current reader guards on Linux
-        run: |
-          make unit SUITE=storage_managed_read_preflight
-          make unit SUITE=storage_journal_read_preflight
-          make unit SUITE=storage_read_growth
-      - name: Capture capped native abort call chains and strict controls
-        run: make diagnose-storage-aborts
-      - name: Show native allocating callers
-        if: always()
-        run: |
-          if test -f build/tests/storage-abort-diagnostics/summary.md; then
-            cat build/tests/storage-abort-diagnostics/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Retain Linux allocation evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: storage-abort-diagnostics-${{ github.run_attempt }}
-          retention-days: 30
-          if-no-files-found: ignore
-          path: |
-            build/tests/storage-abort-diagnostics/**/*.log
-            build/tests/storage-abort-diagnostics/**/*.json
-            build/tests/storage-abort-diagnostics/**/*.md
-            build/tests/storage-abort-diagnostics/symbols-native
-            build/tests/storage-abort-diagnostics/ordinary/limits-native
-            build/tests/unit/**/*.log
-            build/ci/*.log
-
-  # Controlled pressure is explicit and isolated from performance speed panels and host VM policy.
-  storage-pressure:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'storage-pressure' }}
-    name: Storage Linux resident pressure
-    timeout-minutes: 30
-    runs-on: ubuntu-latest
-    steps:
-      - *checkout
-      - *python
-      - *inventory
-      - name: Prove private resident-limit enforcement before native setup
-        run: make probe-storage-resident-pressure
-      - name: Measure strict native reopens under controlled resident pressure
-        run: make bench-storage-resident-pressure
-      - name: Show resident pressure observations
-        if: always()
-        run: |
-          if test -f build/tests/storage-resident-pressure/summary.md; then
-            cat build/tests/storage-resident-pressure/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Retain resident pressure evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: storage-resident-pressure-${{ github.run_attempt }}
-          retention-days: 30
-          if-no-files-found: ignore
-          path: |
-            build/tests/storage-resident-pressure/**/*.log
-            build/tests/storage-resident-pressure/**/*.json
-            build/tests/storage-resident-pressure/*.md
-            build/tests/storage-resident-pressure/*.csv
-            build/tests/storage-resident-pressure/resident-native
-            build/ci/*.log
