@@ -1,0 +1,56 @@
+{
+  "build_name": "application-logical-services-results",
+  "cases": [
+    {
+      "arguments": [
+        "preparation-selected"
+      ],
+      "description": "Managed logical exclusion preparation-selected",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-selected"
+      },
+      "name": "application-logical-services-preparation-selected"
+    },
+    {
+      "arguments": [
+        "preparation-current"
+      ],
+      "description": "Managed logical exclusion preparation-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-current"
+      },
+      "name": "application-logical-services-preparation-current"
+    },
+    {
+      "arguments": [
+        "proof-selected"
+      ],
+      "description": "Managed logical exclusion proof-selected",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-selected"
+      },
+      "name": "application-logical-services-proof-selected"
+    },
+    {
+      "arguments": [
+        "proof-current"
+      ],
+      "description": "Managed logical exclusion proof-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-current"
+      },
+      "name": "application-logical-services-proof-current"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_logical_services_results.nim"
+}
