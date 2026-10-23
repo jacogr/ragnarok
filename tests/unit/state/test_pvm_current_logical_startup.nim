@@ -402,7 +402,33 @@ proc main() {.raises.} =
   postBirthPolicy.completion.execution.execution.round.provisions.encodedBytes = ByteLimit(128)
   let postBirth = namespaceRetiredReplacementFixture(decodeOwnedReport(bytes, 2).value,
     postBirthPolicy, postBirth = true).toNamespaceExecutionFixture
+  var checkpointPolicy = retirementPolicy
+  checkpointPolicy.completion.execution.initial.guests.provisions = AccumulationProvisionLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  checkpointPolicy.completion.execution.initial.provisions.values = PreimageLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  checkpointPolicy.completion.execution.initial.provisions.encodedBytes = ByteLimit(128)
+  let checkpoint = namespaceAtomicReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    checkpointPolicy).toNamespaceExecutionFixture
+  let withoutCheckpoint = namespaceAtomicReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    checkpointPolicy, checkpoint = false).toNamespaceExecutionFixture
+  let afterBirthCheckpoint = namespaceAtomicReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    checkpointPolicy, late = true).toNamespaceExecutionFixture
+  let orphanRetirement = namespaceAtomicReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    checkpointPolicy, orphan = true).toNamespaceExecutionFixture
   for layout in 0..2:
+    command(checkpoint, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0)
+    command(checkpoint, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0, partial = true)
+    command(checkpoint, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0, omitMembership = true)
+    for supported in [withoutCheckpoint, afterBirthCheckpoint]:
+      # Atomic ejection evidence survives independently of guest checkpoint placement.
+      command(supported, layout, namespaces = true, refresh = true, replacement = true,
+        retired = true, postBirth = true, replacementLength = 0)
+    command(orphanRetirement, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0, unsupported = true)
     command(postBirth, layout, namespaces = true, refresh = true, replacement = true,
       retired = true, postBirth = true, replacementLength = 0)
     command(postBirth, layout, namespaces = true, refresh = true, replacement = true,
