@@ -160,8 +160,8 @@ proc findServiceCode*(table: StateCodeAvailability, service: ServiceIndex): Code
   ## Search only already admitted fixed rows; absent account identity differs from an account with no stored code.
   let data = table.data
   if data == nil: return CodeAvailabilityResult[int](status: CodeAvailabilityError.Uninitialized)
-  for i, row in data.rows:
-    if row.info.service == service: return CodeAvailabilityResult[int](
+  for i in 0..<data.rows.len:
+    if data.rows[i].info.service == service: return CodeAvailabilityResult[int](
         status: CodeAvailabilityError.None, completed: i)
   CodeAvailabilityResult[int](status: CodeAvailabilityError.NoService)
 proc copyServiceCode*(table: StateCodeAvailability, index: int,

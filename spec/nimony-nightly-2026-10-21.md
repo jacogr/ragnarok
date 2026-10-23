@@ -553,3 +553,43 @@ compatibility change was required. Inventory and diff checks passed.
 Raw evidence and copied audit receipts are under ignored `build/ci/nimony-smoke-*`. These are
 local macOS semantic/tooling results. Publishing this merge automatically requests the new
 remote Smoke check; no heavy CI labels are requested. Nightly pin and #2737 hold remain unchanged.
+
+
+## Authenticated state import/export, code and bounded value reads
+
+Merge master `b723f0c1aeaa3b807f062af69004f1fd76352ea5` normally (merge `b2ba535e`),
+covering eight state merges. Preserve complete service-code availability, expected-root snapshot
+reconstruction, managed whole-map and paged logical proofs, authenticated historical code,
+identity-only startup export, atomic supplied logical qualification and bounded authenticated
+value slices. Partial witnesses still confer no complete-map/root authority. Pins, formats,
+worker lease boundaries, quotas, typed refusals and explicit adoption policy remain unchanged.
+
+The new `findServiceCode` search hits the pinned compiler's known retained-ref iteration rule.
+Read admitted fixed rows by checked index rather than copying an iterator row. This preserves
+first-match order and NoService/default behavior without unchecked borrows. No other new
+compatibility change was required. The initial smoke/native/privacy failures identified that loop;
+all affected checks passed after adaptation. Of 128 incoming files, 124 remain byte-identical to
+master. The other three overlaps retain the earlier indexed adaptations in current logical
+startup, proof-view and trie-proof code.
+
+Both unoptimized smoke and checked-release audits passed all 392 production modules plus the
+real integration/offload main. Full pinned formatting passed, including 89 incoming Nim files.
+All 132 state Python checks, 55 incoming privacy/nominal compiler rejections and 32 selected
+native suites passed. The selection covers all ten incoming suites, existing service-proof and
+proof-view consumers, ordinary/global Services proof consumers and logical startup. It retains
+complete maps/roots, code/time selection, paged completeness refusal, mutable-input isolation,
+backend failure/retry and source-owned allocation/lifetime checks.
+
+All 100 strict runtime refusal probes across the ten changed families passed with successful
+checked ARC/Clang/ThinLTO builds and exact assertion diagnostics, alongside genuine native
+positive controls. All 24 selected actual current-download executable cases and the canonical
+production build passed. All 14 changed production modules passed Linux x86-64 semantic checks.
+Inventory, pinned formatting and diff checks passed. Debug/release receipts and incoming-tree
+preservation are retained alongside the per-suite/refusal evidence under ignored
+`build/ci/nimony-state-proof-*`.
+
+Runtime qualification is local macOS ARM64; Linux checking is semantic only. No new full E2E,
+performance, exhaustive proof correctness or complete JAM/STF claim is made. The October 22
+compiler/browser pin and sequence-element copy-hook hold for #2737 remain unchanged. Publishing
+this update also requests automatic Smoke; heavy CI remains opt-in. The next compiler increment
+still waits for a selected published nightly and rechecks the documented workaround probes.
