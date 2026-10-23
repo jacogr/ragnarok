@@ -598,9 +598,8 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
   # CPU values are local to this invocation; immutable memory updates cannot mutate retained source snapshots.
   while remaining > 0:
     dec remaining # Each attempted instruction consumes exactly one local step, including invalid entry and every exit.
-    let prior = info
-    let priorMemory = memory
-    let decoded = cachedInstruction(program, prior.pc, instructions)
+    let causingPc = info.pc # Nonfinal instruction exits preserve registers/memory; only the causing PC needs restoration.
+    let decoded = cachedInstruction(program, causingPc, instructions)
     if decoded.error != ProgramError.None:
       info.pc = CodeAddress(0) # Trusted terminal/import snapshots retain the existing uncharged deblob panic rule.
       return publishInstruction(program, memory, info, InstructionEffect(kind: StepExit.Panic), true)
@@ -613,9 +612,9 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
       if effect.kind in {StepExit.Panic, StepExit.Halt}:
         info.pc = CodeAddress(0) # Final exits preserve posterior registers/memory, including load-and-jump mutations.
       else:
-        info.pc = prior.pc
-        info.registers = prior.registers
-        memory = priorMemory # Fault, gas and host exits retain causing-instruction state plus posterior gas/charged flag.
+        # OutOfGas exits before mutation, failed memory preflight writes nothing, and Host changes only PC.
+        # Preserve posterior gas/charged state without copying or rolling back the complete register file.
+        info.pc = causingPc
       return publishInstruction(program, memory, info, effect, true)
   StepResult(status: StepError.StepLimitExceeded) # Bounded exhaustion grants no machine or resumable prefix.
 

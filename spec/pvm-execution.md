@@ -170,3 +170,23 @@ sharing operands. A thousand repeated collision/host groups return ARC memory to
 The private decoder helper has a compiler rejection guard. Existing execution, mixed-program,
 host-failure and metered fault references remain regression controls. Run
 `make unit SUITE=pvm_execution_cache` and `make check-inventory`.
+
+
+## Causing-PC exit cursor, 2026-10-23
+
+The private iterative loop retains only the causing PC for each attempted instruction.
+It no longer copies all registers and retains an extra memory handle for rollback.
+This relies on the evaluator's explicit effect contract: OutOfGas returns before
+mutation; failed memory preflight changes neither registers nor memory; Host changes
+only PC. Those exits retain posterior gas/charged state and restore the causing PC.
+Final Panic/Halt still preserve specified posterior register mutations and normalize
+PC to zero. Local errors retire all private progress without exposing a snapshot.
+Public single-step snapshots and their terminal-PC rules remain unchanged.
+
+The execution suite compares complete CPU fields (including reserved-zero deficit)
+and all page bytes at fault/host exits after an arithmetic/store prefix against
+retained public single-step roots. Earlier roots and their pages stay unchanged.
+These cases join the existing 1000-cycle ARC release group. Existing gas shortages,
+load-and-jump terminal mutations, repeated faults/hosts, nested callbacks, cached
+execution and dependent arithmetic-chain controls also pass. See the benchmark
+record for the measured arithmetic improvement and unchanged parity limits.
