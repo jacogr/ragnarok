@@ -268,3 +268,40 @@ state. The full pinned interpreter comparison passes and still shows roughly
 `build/pvm9/exits-confirm` and the preceding fresh `build/pvm9/writes-profile`.
 The same checked ThinLTO, fixed inputs, local noise/no-isolation and no Linux,
 compiled, deterministic-counter or full-client performance claim limits apply.
+
+
+## Persistent page chunks, 2026-10-23
+
+Fresh sampling after scalar writes attributed much of memory execution to the two
+full-image copies made when cloning a 4096-byte page. Private persistent 512-byte
+chunks let scalar stores copy at most two payloads while retaining complete public
+page images and immutable predecessor snapshots. Host writes copy only intersected
+chunks; permission changes share immutable payloads. Page sizes, budgets, access
+checks, fault precedence, guest fixtures and pinned toolchains stay unchanged.
+
+Two independent opposite-order comparisons confirmed the improvement. Confirmation
+medians across twenty validated samples per preserved binary were:
+
+| Fixed guest | Prior cursor (µs) | Chunked pages (µs) | Less execution time |
+| --- | ---: | ---: | ---: |
+| Arithmetic, 10000 iterations | 481.19 | 487.27 | No established gain |
+| Memory aligned, 1000 iterations | 267.12 | 149.54 | 44.0% |
+| Memory crossing, 1000 iterations | 415.52 | 188.46 | 54.6% |
+| Host/memory aligned, 1000 iterations | 394.17 | 294.23 | 25.4% |
+| Host/memory crossing, 1000 iterations | 554.33 | 331.54 | 40.2% |
+
+The first comparison gave 42.8–55.0% memory and 25.3–41.9% host/memory savings.
+Arithmetic was 1.3–4.1% slower across those comparisons on this shared host; no
+arithmetic improvement is claimed. The full pinned interpreted comparison passes,
+with native/reference ratios now roughly 4.3–8.9×. Marked noisy rows and all outliers
+remain in its reports. Baseline, candidate and confirmation artifacts remain under
+`build/pvm9/exits`, `build/pvm9/chunks` and `build/pvm9/chunks-confirm`.
+
+Capturing a complete page now constructs eight chunk owners, and page observations
+assemble them into a copied array. Those preparation/validation operations remain
+outside the execution timer. The full benchmark retains native one-time preparation
+observations (about 2–8 µs in this candidate run); two per guest do not establish a
+preparation-speed change or cross-runtime preparation comparison. Steady-state
+execution gains do not imply lower setup cost, whole-client throughput, Linux or
+compiled performance. Checked ARC/Clang ThinLTO and all normal assertions/bounds
+checks remain enabled. Fuzzing remains deferred.
