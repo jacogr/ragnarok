@@ -7,7 +7,7 @@
 ## interface.
 
 import std/[assertions, envvars, parseutils, strutils, syncio]
-import ../../../src/storage/full_state_trie
+import ../../../src/storage/[full_state_trie, state_proof]
 import ../../../src/codec/[state_trie, state_layout, bounded]
 
 type
@@ -81,6 +81,11 @@ proc matches(snapshot: FullStateTrie, expected: Mapping) =
     let found = snapshot.lookup(entry.key)
     assert found.error == TrieError.None
     assert found.value.byteLength == entry.value.len and found.value.bytes == entry.value
+    # Proofs from retained revisions authenticate against the pinned published root, not a derived partial mapping.
+    let ceiling = StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(entry.value.len))
+    let proof = snapshot.prove(entry.key, ceiling).value
+    let verified = verifyStateProof(expected.root, entry.key, proof, ceiling).value
+    assert verified.kind == StateLookupKind.Present and verified.bytes == entry.value
 
 ## Select finite budgets for both complete maps and either direction's unique-key writes.
 proc policy(before, after: Mapping): FullStateTrieLimits =
@@ -121,6 +126,10 @@ proc replay(before, after: Mapping) =
   for entry in before.entries:
     if find(after.entries, entry.key) < 0:
       assert applied.value.lookup(entry.key).error == TrieError.MissingKey
+      let ceiling = StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(0))
+      let proof = applied.value.prove(entry.key, ceiling).value
+      let verified = verifyStateProof(after.root, entry.key, proof, ceiling).value
+      assert verified.kind == StateLookupKind.Absent # A deleted key is authenticated absent at the post-state root.
   let independent = initialized.value
   var reversed = newSeq[TrieWrite](changes.len)
   # Reverse only the batch order; preserve every borrowed key/value and the original mapping.
