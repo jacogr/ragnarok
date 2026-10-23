@@ -23,7 +23,10 @@ reclamation are described in the [managed operator guide](../../docs/managed-sto
 
 ## Complete-state revisions
 
-`newFullStateTrie(entries, limits)` copies serialized 31-byte keys and raw values into an
+`newFullStateTrie(entries, limits)` borrows entries directly during construction, copying serialized
+31-byte keys and raw values only into final immutable leaves. The
+[constructor memory evidence](../../spec/storage-trie-construction-memory.md) records checked
+peak-memory reductions and unchanged retained graphs. It publishes an
 immutable, acyclic ARC-owned trie. Each initialized `FullStateTrie` represents a complete
 full-node mapping. Copying a revision retains its identity; `revision.apply(writes)` returns
 an independently retained revision. Source revisions and lookup values survive subsequent
