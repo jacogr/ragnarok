@@ -92,5 +92,5 @@ let before = getOccupiedMem()
 for cycle in 0..<1000: construction(2, 33)
 let after = getOccupiedMem()
 assert before == after
-recordArcRelease("full_state_trie_construction_arc_release", 1000, before, after)
+recordArcRelease("full_state_trie_construction", 1000, before, after)
 echo "PASS full state trie construction: direct borrowed maps, independent roots, bounded preflight and owned values"
