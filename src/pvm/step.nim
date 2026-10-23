@@ -434,8 +434,9 @@ func branchCondition(item: Instruction, registers: RegisterFile): bool =
 
 # Apply control mutations after gas charging; panic/halt still retain explicit load mutations.
 # All operands are read before writes, including aliased load-and-dynamic-jump registers.
-proc controlMutation(program: Program, item: Instruction,
+proc controlMutation(program: Program, decoded: ProgramResult[Instruction],
     info: var MachineInfo): StepExit =
+  let item = decoded.value # The private caller supplies this machine's genuine result; payload and validation facts cannot separate.
   let pc = uint64(info.pc)
   let next = CodeAddress(pc + 1 + uint64(item.skip))
   var target = next
@@ -482,10 +483,12 @@ proc controlMutation(program: Program, item: Instruction,
       else:
         # Validated PC is host-int bounded and the displacement is at most signed 32 bits.
         target = CodeAddress(pc + uint64(item.displacement))
-    valid = valid and blockTarget(program, target)
+    valid = valid and instructionTargetStartsBlock(
+        decoded) # This result binds the target fact to the exact decoded operands.
     if item.opcode in {81'u8..90'u8, 170'u8..175'u8}:
       # Both successors must be valid, even when the condition would avoid the invalid one.
-      valid = valid and blockTarget(program, next)
+      valid = valid and instructionHasFallthrough(
+          decoded) # A present successor after this terminating conditional is a validated block start.
       if not branchCondition(item, info.registers):
         # Only the selected PC changes; validation above still considered the taken target.
         target = next
@@ -584,7 +587,7 @@ proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Wo
     info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
   else:
     # This path is reachable only for explicitly supported control/no-op instructions.
-    outcome = controlMutation(program, item, info)
+    outcome = controlMutation(program, decoded, info)
   if outcome notin {StepExit.Panic, StepExit.Halt}:
     if not terminatesBlock(item.opcode):
       # Every admitted nonterminator advances by the decoded skip, except a failed scalar access retaining its genuine causing PC.

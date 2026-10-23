@@ -1,0 +1,39 @@
+{
+  "build_name": "pvm-static-target-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "PVM static target default",
+      "diagnostic": "decoded.status == None",
+      "identity": {
+        "origin": "default"
+      },
+      "name": "pvm-static-target-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "PVM static target invalid",
+      "diagnostic": "decoded.status == None",
+      "identity": {
+        "origin": "invalid"
+      },
+      "name": "pvm-static-target-invalid"
+    },
+    {
+      "arguments": [
+        "unmarked"
+      ],
+      "description": "PVM static target unmarked",
+      "diagnostic": "decoded.status == None",
+      "identity": {
+        "origin": "unmarked"
+      },
+      "name": "pvm-static-target-unmarked"
+    }
+  ],
+  "source": "tests/native/pvm_static_target_results.nim"
+}

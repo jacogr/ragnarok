@@ -510,3 +510,64 @@ unchanged. Post-change sampling now ranks basic-block membership/control checks 
 ahead of pipeline pricing; these are the next measured target. Sampling ranks are
 directional, not deterministic counters. No Linux, compiled or full JAM throughput
 result is claimed. Fuzzing remains deferred, and full STF/JAM parity remains open.
+
+
+## Retained static control targets and real-sieve cross-check, 2026-10-23
+
+Post-pricing sampling identified repeated block-membership checks on the small
+alternating guest. The decoder now seals static target membership in its genuine
+result, and the control handler reuses the result without separating operands from
+validation facts. Both conditional successors remain required; dynamic checks, gas
+ordering, bounds/assertions and the final control opcode check remain enabled.
+
+Two opposite-order preserved-binary comparisons against the published four-price
+parent show the following execution-time reductions on this Apple M1 Max:
+
+| Fixed guest | Less execution time across both comparisons |
+| --- | ---: |
+| Arithmetic,10000 iterations | 35.9–36.5% |
+| Mixed bits,1000 iterations | 32.1–33.2% |
+| Alternating blocks,1000 iterations | 33.2–33.7% |
+| Aligned memory,1000 iterations | 20.6–20.8% |
+| Host loops | approximately6–11% |
+| Sparse memory | approximately13–17% |
+
+Crossing-memory confirmation was noisy for both binaries, so no consistent gain is
+established for that row. Every sample remains recorded. Short-call observations
+remain timer-sensitive. Accepted source/binary identities and all eleven validated
+pinned comparisons are preserved under `build/pvm9/static-target-sealed`,
+`static-target-sealed-paired`, `static-target-sealed-confirm` and `static-target-final`.
+Separate rejected handler-argument/check-removal experiments remain in ignored
+artifacts; their regressions are excluded from production, whose hashes match the
+accepted, tested sealed-result implementation.
+
+A real upstream Rust sieve supplies a necessary larger-working-set cross-check.
+The independently prepared experiment in [PR1309](https://github.com/jacogr/ragnarok/pull/1309)
+provides one linked guest and an explicitly interpreted PolkaVM host. This branch
+uses ordinary public production execution, with no prepared execution extension.
+The linked guest includes an extra checked prime-count export, so these results
+must not be compared directly with stock published sieve numbers. At limit100000,
+104 invocations across two reversed orders validate prime count9592, all13 registers,
+all262 mapped pages/permissions, gas, terminal state and unchanged source snapshots.
+Three warmups per engine/pass leave twenty measured process-CPU samples per engine:
+
+| Engine, same linked guest/input | Median process CPU (ms) |
+| --- | ---: |
+| Frozen master `b723f0c1aeaa3b807f062af69004f1fd76352ea5` | 236.186 |
+| Published four-price parent | 119.270 |
+| This static-target implementation | 118.750 |
+| Pinned PolkaVM interpreter | 5.937 |
+
+This change establishes no real-sieve gain over its parent. The batch approximately
+halves frozen-master time here, while remaining about20× slower than interpreted
+PolkaVM. Frozen master source hashes are checked against Git; linked input, binary,
+source/toolchain identities and every sample are retained in `build/pvm9/sieve-probe`.
+A separate41-run validated sampling pass still finds block pricing dominant on this
+larger guest, making pricing working-set behavior a future investigation. Sampling
+is directional and excluded from timing. No10-million-input result is claimed for
+this branch. Pins and normal checked ARC/Clang ThinLTO remain unchanged.
+
+These are local macOS observations without CPU isolation or deterministic counters;
+no Linux, compiled-backend or whole JAM throughput result follows. Fuzzing remains
+deferred. Documented M1 framing completion remains scoped; full STF/JAM parity is
+open. Work pauses after this review unit until the maintainer resumes after merging.

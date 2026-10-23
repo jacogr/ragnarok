@@ -248,3 +248,23 @@ Only successful simulations under the invocation's fixed program/profile/cycle l
 enter the memo; failed prices never evict. New calls/limits start empty, and host
 continuations retain only this invocation's memo. See the block-cache contract for
 capacity, replacement, exact gas/limit/pressure tests and the benchmark evidence.
+
+
+## Retained static control validation, 2026-10-23
+
+The private control handler now accepts the genuine decoded result, keeping operands
+and owner-established static-target facts together. Static branches reuse that fact;
+conditionals also require the sealed fallthrough fact before selecting a successor.
+Both destinations must remain valid even when the predicate avoids the invalid one.
+Gas charging still precedes control mutation, and invalid load-and-jump still retains
+its specified register write. Dynamic jump alignment, sentinel, table and destination
+checks, and the evaluator's final terminating-control opcode check remain in place.
+
+The existing sixteen-result invocation-local memo retains the scalar fact without
+additional entries, heap allocation or public mutable metadata. New calls and owners
+retain their independent caches. Tests exercise all sixteen conditional families
+with three register values, untaken invalid targets, unchanged source machines and
+zero-gas precedence, plus invalid static load-and-jump mutation. Program/step/gas,
+independent mixed-program, memory, host, metered fault/retry and cache/ARC controls
+pass under the pinned checked release configuration. Default/failed result access
+and private-field rejection have separate negative controls.
