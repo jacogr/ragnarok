@@ -15,12 +15,14 @@ type
     valid: bool
     start: CodeAddress
     charge: BlockGas
-  BlockChargeCache = object ## Keep the first block as a direct hit and three bounded recent prices; no failed simulation enters the memo.
+  BlockChargeCache = object ## Retain the first/three recent prices on the hot path, with a bounded sixteen-entry secondary table for larger working sets.
     valid: bool
     start: CodeAddress
     charge: BlockGas
     recent: array[3, BlockChargeEntry]
     next: range[0..2]
+    entries: array[16, BlockChargeEntry]
+    replaceUpper: array[8, bool]
   InstructionCache = object ## Sixteen genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
     entries: array[16, ProgramResult[Instruction]]
     replaceUpper: array[8, bool]
@@ -259,9 +261,22 @@ func memoryOpcode(opcode: byte): bool =
   opcode in {30'u8..33'u8, 52'u8..62'u8, 70'u8..73'u8, 120'u8..130'u8}
 
 func initBlockChargeCache(): BlockChargeCache =
-  ## New invocation/limit pairs explicitly start with no valid primary/recent block or inherited replacement progress.
+  ## New invocation/limit pairs explicitly start with no valid hot/secondary entries or inherited replacement progress.
   BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0),
-    recent: default(array[3, BlockChargeEntry]), next: 0)
+    recent: default(array[3, BlockChargeEntry]), next: 0,
+    entries: default(array[16, BlockChargeEntry]), replaceUpper: default(array[8, bool]))
+
+proc cachedSecondaryCharge(cache: BlockChargeCache, start: CodeAddress,
+    needed: var uint64): bool {.noinline.} =
+  ## A bounded secondary table handles larger working sets without expanding the primary/recent hot loop.
+  let slot = int((uint64(start)*11400714819323198485'u64) shr 61)
+  if cache.entries[slot].valid and uint64(cache.entries[slot].start) == uint64(start):
+    needed = uint64(cache.entries[slot].charge)
+    return true
+  elif cache.entries[slot+8].valid and uint64(cache.entries[slot+8].start) == uint64(start):
+    needed = uint64(cache.entries[slot+8].charge)
+    return true
+  false # Full address tags prevent a collision from authorizing the wrong price.
 
 proc cachedCharge(cache: BlockChargeCache, start: CodeAddress,
     needed: var uint64): bool {.inline.} =
@@ -273,10 +288,10 @@ proc cachedCharge(cache: BlockChargeCache, start: CodeAddress,
     if entry.valid and uint64(entry.start) == uint64(start):
       needed = uint64(entry.charge)
       return true
-  false # A miss does not modify the caller's initialized price or authorize a debit.
+  cachedSecondaryCharge(cache, start, needed) # Cold misses alone consult the larger bounded table.
 
 proc rememberCharge(cache: var BlockChargeCache, start: CodeAddress, charge: BlockGas) =
-  ## Keep the first successful block fast; later successful misses rotate three bounded secondary entries.
+  ## Preserve the first successful block; later successful misses fill the hot ring and one tagged secondary way.
   if not cache.valid:
     cache.valid = true
     cache.start = start
@@ -285,6 +300,14 @@ proc rememberCharge(cache: var BlockChargeCache, start: CodeAddress, charge: Blo
     cache.recent[cache.next] = BlockChargeEntry(valid: true, start: start, charge: charge)
     if cache.next == 2: cache.next = 0
     else: inc cache.next # The 0..2 domain and branch prove the next index; no guest-length counter can wrap.
+    let slot = int((uint64(start)*11400714819323198485'u64) shr 61)
+    if cache.replaceUpper[slot]:
+      cache.entries[slot+8] = BlockChargeEntry(valid: true, start: start, charge: charge)
+    else:
+      cache.entries[slot] = BlockChargeEntry(valid: true, start: start, charge: charge)
+    cache.replaceUpper[slot] = not cache.replaceUpper[
+        slot] # Insertion alternates two fixed ways; hits retain read-only hot lookup.
+
 
 func initWorkingMemory(memory: Memory, buffered: bool): WorkingMemory =
   ## No mutable builder or vector allocates before enough successful stores justify a private epoch.

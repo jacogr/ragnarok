@@ -24,7 +24,7 @@ pricing reuse. All use finite gas and local native step limits.
 ## Build and measurement contract
 
 The native driver uses pinned Nimony 0.6.3 nightly
-`5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`, ARC, Clang, LTO and checked release
+`4724f66c2e01b17810c844f26575b2317995fda2`, ARC, Clang, LTO and checked release
 with bounds/assertion contracts enabled. The optional reference crate uses pinned
 Rust 1.99.0 and the exact upstream release profile: LTO, one codegen unit and debug
 symbols. Its transitive versions/checksums match the pinned upstream lock. Default
@@ -571,3 +571,51 @@ These are local macOS observations without CPU isolation or deterministic counte
 no Linux, compiled-backend or whole JAM throughput result follows. Fuzzing remains
 deferred. Documented M1 framing completion remains scoped; full STF/JAM parity is
 open. Work pauses after this review unit until the maintainer resumes after merging.
+
+
+## Secondary block-price working set, 2026-10-23
+
+A fresh baseline on master `cdc9dc7a` uses the October23 Nimony pin `4724f66c2`.
+Historical tables above retain their original compiler identity; current comparisons
+use matched checked release ARC/Clang ThinLTO binaries, unchanged Rust/PolkaVM pins
+and the exact same linked sieve/input and eleven synthetic fixtures.
+
+The chosen tiered cache preserves the original first-plus-three hot lookup and
+consults a sixteen-entry two-way secondary table only on misses. Only successful
+prices enter either level, exact tags protect collisions, and every visit still
+checks/debits gas. A separate original-source diagnostic trace and policy replay
+identify working-set pressure; their instrumented durations never enter these tables.
+The final insertion policy alternates ways without mutating lookup hits, rather
+than claiming the offline LRU experiment's exact miss count.
+
+Two reversed-order comparisons (an isolated candidate and its final production
+integration) validate thirteen invocations per engine/pass, discarding only the
+three declared warmups from timing summaries. Full terminal registers, all mapped
+bytes/permissions, exact gas, prime count9592 and unchanged source snapshots are
+checked on every native invocation. Assertion-failure controls pass before timing.
+Each comparison retains twenty measured process-CPU samples per engine:
+
+| Sieve limit100000 | Baseline CPU (ms) | Candidate CPU (ms) | PolkaVM interpreted CPU (ms) |
+| --- | ---: | ---: | ---: |
+| First matched comparison | 122.054 | 27.328 | 6.223 |
+| Production confirmation | 119.472 | 26.831 | 5.965 |
+
+This is approximately77.5% less execution CPU time, or4.5× faster than the matched
+baseline. The remaining sieve gap is about4.4–4.5× to interpreted PolkaVM. This
+fixture has an extra checked prime-count export; it is not directly comparable to
+stock published sieve scores. No10-million-input result follows.
+
+The larger cache has explicit small-workload costs. Matched synthetic comparisons
+show arithmetic4.2–5.9% slower and mixed bits8.4–13.6% slower. Memory/sparse changes
+range from near-flat to about7.5% slower; hosts vary in both directions within about4%.
+Alternating blocks range from flat to2.1% slower. Sub-microsecond calls remain too
+sensitive to timing granularity for a broad claim. A direct replacement cache and
+an outlined lookup without the hot ring were measured and rejected for larger
+small-workload regressions. No samples are removed to conceal these tradeoffs.
+
+Raw reports, source/fixture/binary identities and rejected experiments remain under
+`build/pvm10/baseline`, `price-working-set-final`, `price-working-set-tier-paired`,
+`price-working-set-final-paired` and `sieve-probe`. Existing synthetic fixtures remain
+byte-identical. The scope remains local Apple M1 Max/macOS without affinity/frequency
+isolation or deterministic hardware counters. No Linux, compiled or whole JAM
+throughput claim follows; full STF/JAM parity remains open and fuzzing is deferred.
