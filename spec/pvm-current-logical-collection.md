@@ -160,6 +160,18 @@ these bounded early-slot successors while actual current metadata/globals advanc
 layouts strictly reopen all four confirmed maps and exact block/hash/parent/slot identities.
 Original five-byte configured request storage remains immutable across the full flow.
 
+## Bounded retained plans after joined Services close
+
+`pvm_current_logical_retention` collects both genuine history branches, refuses reconstruction
+one byte below their actual 244/248-byte metadata/request wire requirement, then freezes complete
+plans at the exact independent wire bounds. Canonical ownership stays unchanged and enqueue
+idle throughout admission. After original Services/worker lifetimes join and retire, each retained
+plan still produces logical results naming its exact original collected snapshot and literal
+history. Following warmup, 1,000 cycles of both complete refreshes require equal occupied Nim
+memory before/after; native verification records fresh ARC evidence for 2,000 retired results.
+
+Run `make unit SUITE=pvm_current_logical_retention`.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
