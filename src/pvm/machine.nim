@@ -159,6 +159,28 @@ proc setPageByte(page: PageData, offset: int, value: byte) {.inline.} =
   ## Only private writable clones reach this helper, and their touched chunk was copied before the first write.
   page.chunks[offset div 512].bytes[offset mod 512] = value
 
+proc setPageScalar(page: PageData, offset, count: int, value: uint64) {.inline,
+    requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 8 and count <=
+        4096-offset.} =
+  ## Callers exclusively own every touched chunk after clone/prepare; no immutable snapshot storage is modified.
+  if count == 1:
+    setPageByte(page, offset, byte(value and 255))
+    return
+  let chunk = offset div 512
+  let within = offset mod 512
+  if within <= 512-count:
+    # Copy only a complete admitted span from a disjoint initialized stack word into the private chunk.
+    var endian = 1'u16
+    var tag = default(array[2, byte])
+    copyMem(addr tag[0], addr endian, 2)
+    if tag[0] == 1:
+      var word = value
+      copyMem(addr page.chunks[chunk].bytes[within], addr word, count)
+      return
+  for index in 0..<count:
+    # Big-endian and chunk-crossing writes retain byte-wise little-endian semantics.
+    setPageByte(page, offset+index, byte((value shr (8*index)) and 255))
+
 proc captureMemory*(pages: openArray[PageImage], limit: PageLimit): MachineResult[Memory] =
   ## Validate sorted unique physical page ordinals and the allocation limit before capturing any page.
   # A local resource ceiling is not a consensus memory size or gas limit.
@@ -414,14 +436,12 @@ proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
   for index in 0..<data.pages.len:
     pages.add(data.pages[index]) # Untouched immutable page owners remain shared with the source.
   pages[span.first] = writablePageClone(data.pages[span.first], span.offset, span.firstCount)
-  for i in 0..<span.firstCount:
-    # Each byte targets only the first private clone, with a bounded shift below 64.
-    setPageByte(pages[span.first], span.offset+i, byte((uint64(value) shr (8*i)) and 255))
+  setPageScalar(pages[span.first], span.offset, span.firstCount, uint64(value))
   if span.firstCount < span.count:
-    # A second clone exists only for an actual crossing, after complete permission preflight.
+    # Only a real crossing clones the second page; firstCount<8 proves a suffix shift below64.
     pages[span.last] = writablePageClone(data.pages[span.last], 0, span.count-span.firstCount)
-    for i in span.firstCount..<span.count:
-      setPageByte(pages[span.last], i-span.firstCount, byte((uint64(value) shr (8*i)) and 255))
+    setPageScalar(pages[span.last], 0, span.count-span.firstCount, uint64(value) shr (
+        8*span.firstCount))
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 
@@ -589,11 +609,11 @@ proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: Acces
   prepareWriterSpan(writer, span.first, span.offset, span.firstCount)
   if span.firstCount < span.count:
     prepareWriterSpan(writer, span.last, 0, span.count-span.firstCount)
-  for index in 0..<span.firstCount:
-    setPageByte(writer.pages[span.first], span.offset+index, byte((uint64(value) shr (8*index)) and 255))
-  for index in span.firstCount..<span.count:
-    setPageByte(writer.pages[span.last], index-span.firstCount, byte((uint64(value) shr (
-        8*index)) and 255))
+  setPageScalar(writer.pages[span.first], span.offset, span.firstCount, uint64(value))
+  if span.firstCount < span.count:
+    # Both private page spans were prepared before mutation; source/snapshot aliases remain immutable.
+    setPageScalar(writer.pages[span.last], 0, span.count-span.firstCount, uint64(value) shr (
+        8*span.firstCount))
   MachineResult[bool](status: MachineError.None, completed: true)
 
 proc snapshotMemory*(writer: nil ScalarMemoryWriter): MachineResult[Memory] =
