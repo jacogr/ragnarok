@@ -532,3 +532,24 @@ resident-pressure comparison. Merged performance evidence keeps its original com
 scope. Raw evidence is under ignored `build/ci/nimony-storage-layout-*`. The nightly availability
 check follows this completed synchronization; pins and hold change only after a candidate is
 actually selected and qualified.
+
+
+## Automatic PR smoke synchronization
+
+Merge master `b589f43d` normally (merge `87e0d4f2`). Preserve automatic lightweight Smoke on
+PR open/reopen/synchronize, opt-in heavy checks and the source-only compiler setup. The new
+module audit compiles all discovered production modules in one import graph and the real
+integration/offload main separately, using fresh private caches for each audit. It exposes an
+unoptimized checked smoke profile and retains the checked release/ThinLTO semantic profile.
+
+All 70 affected Make/CI/inventory/profile Python safeguards passed. `make check-smoke` passed
+repository-wide pinned formatting (4,229 Nim inputs plus the Rust crate) and all 383 production
+modules plus the production main. The refactored `make check-modules` independently passed both
+compilations for the same complete inventory under checked-release flags. Native source/tests,
+compiler/browser pins and native build/check/unit helpers are byte-identical to checked head
+`5a56ae8b`; reuse its runtime evidence rather than claiming fresh native executions. No source
+compatibility change was required. Inventory and diff checks passed.
+
+Raw evidence and copied audit receipts are under ignored `build/ci/nimony-smoke-*`. These are
+local macOS semantic/tooling results. Publishing this merge automatically requests the new
+remote Smoke check; no heavy CI labels are requested. Nightly pin and #2737 hold remain unchanged.
