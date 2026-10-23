@@ -4,21 +4,40 @@
 """Validate raw baseline observations and keep deferred compiled comparisons explicit."""
 import statistics
 
-ENGINES=('ragnarok','polkavm_interpreter','polkavm_compiler')
-ACTIVE_ENGINES=ENGINES[:2]
+ENGINES=('ragnarok','ragnarok_planned','polkavm_interpreter','polkavm_compiler')
+ACTIVE_ENGINES=ENGINES[:3]
 DEFERRED_COMPILER='Deferred by maintainer until the interpreter baseline is competitive'
 NAMES=('arithmetic-10000','memory-aligned-1000','memory-crossing-1000',
        'hosts-aligned-1000','hosts-crossing-1000','arithmetic-1','arithmetic-16',
        'bits-mixed-1000','sparse-aligned-1000','sparse-crossing-1000','blocks-alternating-1000')
 
 
+def validate_plan(item):
+    """Check a complete bounded native price-plan witness independently of rendered tables."""
+    keys={'prepare_once_ns','code_bytes','block_count','payload_bytes','cycle_limit'}
+    if (not isinstance(item,dict) or set(item)!=keys or any(type(v) is not int or v<=0 for v in item.values())
+            or item['prepare_once_ns']>=(1<<63) or item['block_count']>min(item['code_bytes'],100000)
+            or item['payload_bytes']!=item['code_bytes']*8 or item['payload_bytes']>8*1024*1024
+            or item['cycle_limit']>=(1<<64)):
+        raise ValueError('Invalid gas-plan benchmark metadata')
+
+
 # A successful process with missing/duplicate samples is not a successful benchmark.
 def parse_output(output, engine):
     if engine not in ENGINES:raise ValueError('Unknown benchmark engine')
-    rows={i:dict(samples=[],reason=None) for i in range(len(NAMES))}
+    rows={i:dict(samples=[],reason=None,plan=None) for i in range(len(NAMES))}
     for line in output.splitlines():
         fields=line.split('\t')
-        if fields[0]=='sample' and len(fields)==5:
+        if fields[0]=='gas-plan' and len(fields)==7 and engine=='ragnarok_planned':
+            row,prepare,code,blocks,payload,cycles=map(int,fields[1:])
+            if (row not in rows or rows[row]['plan'] is not None or rows[row]['samples'] or
+                    not 0<prepare<(1<<63) or not 0<blocks<=min(code,100000) or
+                    payload!=code*8 or not 0<payload<=8*1024*1024 or not 0<cycles<(1<<64)):
+                raise ValueError('Invalid gas-plan benchmark metadata')
+            rows[row]['plan']=dict(prepare_once_ns=prepare,code_bytes=code,block_count=blocks,
+                                   payload_bytes=payload,cycle_limit=cycles)
+            validate_plan(rows[row]['plan'])
+        elif fields[0]=='sample' and len(fields)==5:
             row,sample,elapsed,prepare=map(int,fields[1:])
             if row not in rows or not 0<=sample<13 or not 0<elapsed<(1<<63) or prepare<0:
                 raise ValueError('Invalid benchmark sample')
@@ -36,6 +55,13 @@ def parse_output(output, engine):
             if row['samples']:raise ValueError('Unavailable backend supplied timings')
         elif sorted(item['sample'] for item in row['samples'])!=list(range(13)):
             raise ValueError('Missing or duplicate benchmark samples')
+        if row['samples'] and len({s['prepare_once_ns'] for s in row['samples']})!=1:
+            raise ValueError('Inconsistent one-time preparation observations')
+        if engine=='ragnarok_planned':
+            if row['plan'] is None or row['reason'] is not None:
+                raise ValueError('Missing gas-plan benchmark metadata')
+            if any(s['prepare_once_ns']!=row['plan']['prepare_once_ns'] for s in row['samples']):
+                raise ValueError('Gas-plan preparation mismatch')
     return [rows[i] for i in range(len(NAMES))]
 
 
@@ -53,7 +79,7 @@ def quality(raw):
 # Merge two opposite-order passes, retaining warmups separately from execution statistics.
 def aggregate(passes):
     if len(passes)!=2 or any(set(item)!=set(ENGINES) for item in passes):
-        raise ValueError('Benchmark needs two complete three-engine passes')
+        raise ValueError('Benchmark needs two complete interpreter/deferred passes')
     cases=[]
     for index,name in enumerate(NAMES):
         engines={}
@@ -75,6 +101,12 @@ def aggregate(passes):
                 engines[engine]=dict(status='measured',samples=raw,median_ns=statistics.median(samples),
                     min_ns=min(samples),max_ns=max(samples),stdev_ns=statistics.pstdev(samples),
                     quality=quality(raw))
+                engines[engine]['preparation_median_ns']=statistics.median(row['samples'][0]['prepare_once_ns'] for row in observations)
+                if engine=='ragnarok_planned':
+                    plans=[row['plan'] for row in observations]
+                    if any({k:v for k,v in p.items() if k!='prepare_once_ns'}!={k:v for k,v in plans[0].items() if k!='prepare_once_ns'} for p in plans):
+                        raise ValueError('Inconsistent gas-plan resource observations')
+                    engines[engine]['plans']=plans
         cases.append(dict(name=name,engines=engines))
     return cases
 
@@ -85,8 +117,8 @@ def summarize_benchmark(report):
     lines=['## PVM speed comparison','','**Status: '+report['status']+'**','',
         'Execution µs per fixed guest: median [min–max], 20 validated samples in two opposite-order passes.',
         'Three warmups per pass; setup/compilation, input reset and result validation are excluded.','',
-        '| Workload | Ragnarök PVM | PolkaVM interpreted | PolkaVM compiled | Ragnarök / interpreted |',
-        '| --- | ---: | ---: | ---: | ---: |']
+        '| Workload | Ragnarök PVM | Ragnarök planned | PolkaVM interpreted | PolkaVM compiled | Dynamic / interpreted | Planned / interpreted |',
+        '| --- | ---: | ---: | ---: | ---: | ---: | ---: |']
     cases=report.get('cases',[])
     if report['status']=='checks-passed' and [item['name'] for item in cases]!=list(NAMES):
         raise ValueError('Incomplete benchmark marked successful')
@@ -109,11 +141,36 @@ def summarize_benchmark(report):
                         or statistics.median(samples)!=item['median_ns']
                         or min(samples)!=item['min_ns'] or max(samples)!=item['max_ns']):
                     raise ValueError('Unverified benchmark statistics')
+                prepared=[]
+                for p in range(2):
+                    values={s['prepare_once_ns'] for s in item['samples'] if s['pass_index']==p}
+                    if len(values)!=1 or any(type(v) is not int or not 0<=v<(1<<63) for v in values):
+                        raise ValueError('Unverified preparation observations')
+                    prepared.append(next(iter(values)))
+                if statistics.median(prepared)!=item['preparation_median_ns']:
+                    raise ValueError('Unverified preparation median')
+                if engine=='ragnarok_planned':
+                    plans=item.get('plans',[])
+                    if len(plans)!=2:raise ValueError('Missing gas-plan preparation observations')
+                    for p,plan in enumerate(plans):
+                        validate_plan(plan)
+                        if plan['prepare_once_ns']!=prepared[p]:raise ValueError('Gas-plan preparation mismatch')
+                    if any({k:v for k,v in plan.items() if k!='prepare_once_ns'}!={k:v for k,v in plans[0].items() if k!='prepare_once_ns'} for plan in plans):
+                        raise ValueError('Inconsistent gas-plan resource observations')
                 noisy=noisy or quality(item['samples'])['noisy']
                 cells.append(f'{item["median_ns"]/1000:.2f} [{item["min_ns"]/1000:.2f}–{item["max_ns"]/1000:.2f}]')
         ratio=case['engines']['ragnarok']['median_ns']/case['engines']['polkavm_interpreter']['median_ns']
+        planned_ratio=case['engines']['ragnarok_planned']['median_ns']/case['engines']['polkavm_interpreter']['median_ns']
         if noisy:noisy_rows.append(case['name'])
-        lines.append('| '+case['name']+(' †' if noisy else '')+' | '+' | '.join(cells)+f' | {ratio:.1f}× |')
+        lines.append('| '+case['name']+(' †' if noisy else '')+' | '+' | '.join(cells)+f' | {ratio:.1f}× | {planned_ratio:.1f}× |')
+    if cases:
+        lines+=['','Native preparation observations (two one-time wall observations; includes immutable plan construction).','',
+                '| Workload | Dynamic prep µs | Planned prep µs | Plan payload bytes |',
+                '| --- | ---: | ---: | ---: |']
+        for case in cases:
+            dynamic=case['engines']['ragnarok'];planned=case['engines']['ragnarok_planned']
+            lines.append(f"| {case['name']} | {dynamic['preparation_median_ns']/1000:.2f} | {planned['preparation_median_ns']/1000:.2f} | {planned['plans'][0]['payload_bytes']} |")
+        lines+=['','Planned execution reuses a bounded immutable price table; cold construction is paid before execution and must be amortized.']
     if noisy_rows:
         lines+=['','† Noisy: per-pass medians differ by more than 25% or central sample spread exceeds 2×. Ratios are provisional; no samples were discarded.']
     reasons={item['engines']['polkavm_compiler'].get('reason') for item in cases

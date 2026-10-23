@@ -9,7 +9,8 @@ corpora establish a useful common subset before timing. This is the first limite
 baseline, not a declaration that all PVM/JAM correctness gates are closed.
 
 One consolidated comparison covers all workloads. The maintainer currently selects
-Ragnarök versus the PolkaVM interpreter; compiled comparison is explicitly deferred
+Ragnarök with dynamic and optional [planned pricing](pvm-gas-plans.md) versus the PolkaVM
+interpreter; compiled comparison is explicitly deferred
 until the interpreter baseline is competitive. No compiler backend process is started
 by `make bench-pvm`, and no CI kernel settings are changed. The
 independent fixture generator encodes original guest bytes and derives complete

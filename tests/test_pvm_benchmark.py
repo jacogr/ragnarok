@@ -17,9 +17,14 @@ from pvm_benchmark_report import ACTIVE_ENGINES,DEFERRED_COMPILER,ENGINES,NAMES,
 
 
 # Small deterministic durations exercise report logic without running any measured engine.
-def output(unavailable=False):
+def output(unavailable=False,planned=False):
+    """Synthetic samples preserve complete rows and explicit prepared-policy witnesses."""
     if unavailable:return '\n'.join(f'unavailable\t{row}\tunsupported platform' for row in range(len(NAMES)))
-    return '\n'.join(f'sample\t{row}\t{sample}\t{1000+row+sample}\t50' for row in range(len(NAMES)) for sample in range(13))
+    lines=[]
+    for row in range(len(NAMES)):
+        if planned:lines.append(f'gas-plan\t{row}\t50\t16\t1\t128\t1000000')
+        lines.extend(f'sample\t{row}\t{sample}\t{1000+row+sample}\t50' for sample in range(13))
+    return '\n'.join(lines)
 
 
 class PvmBenchmarkTests(unittest.TestCase):
@@ -88,6 +93,16 @@ class PvmBenchmarkTests(unittest.TestCase):
             if package['name']!='ragnarok-pvm-benchmark':
                 self.assertIn(tuple(package.get(k) for k in fields),known)
 
+    def test_planned_mode_requires_complete_policy_witnesses(self):
+        """A dynamic run cannot be relabeled; metadata and repeated one-time setup observations must agree."""
+        good=output(planned=True);parse_output(good,'ragnarok_planned')
+        for bad in (output(),good.replace('gas-plan\t0\t50','gas-plan\t0\t51',1),
+                    good.replace('\t16\t1\t128\t1000000','\t16\t1\t127\t1000000',1),
+                    good.replace('\t16\t1\t128\t1000000','\t16\t1\t128\t0',1),
+                    good+'\n'+good.splitlines()[0]):
+            with self.subTest(tail=bad[-60:]),self.assertRaises(ValueError):parse_output(bad,'ragnarok_planned')
+        with self.assertRaises(ValueError):parse_output(good,'ragnarok')
+
     def test_release_profile_matches_upstream(self):
         """The reference baseline uses upstream LTO/codegen settings rather than weaker local defaults."""
         upstream=tomllib.loads((ROOT/'vendor/polkavm/Cargo.toml').read_text())
@@ -105,7 +120,7 @@ class PvmBenchmarkTests(unittest.TestCase):
 
     def test_compiled_deferral_is_explicit_and_carries_no_timings(self):
         """The maintainer-selected interpreter baseline cannot acquire fabricated compiler observations."""
-        one={engine:parse_output(output(),engine) for engine in ACTIVE_ENGINES}
+        one={engine:parse_output(output(planned=engine=='ragnarok_planned'),engine) for engine in ACTIVE_ENGINES}
         one['polkavm_compiler']=[dict(samples=[],reason=DEFERRED_COMPILER,deferred=True) for _ in NAMES]
         cases=aggregate([one,deepcopy(one)])
         text=summarize_benchmark(dict(status='checks-passed',cases=cases))
@@ -124,7 +139,7 @@ class PvmBenchmarkTests(unittest.TestCase):
 
     def test_noise_is_flagged_without_dropping_samples(self):
         """A loaded host may pass correctness but cannot yield an apparently stable speed ratio."""
-        one={engine:parse_output(output(engine=='polkavm_compiler'),engine) for engine in ENGINES}
+        one={engine:parse_output(output(engine=='polkavm_compiler',engine=='ragnarok_planned'),engine) for engine in ENGINES}
         other=deepcopy(one)
         for row in other['ragnarok']:
             for sample in row['samples']:sample['execution_ns']*=5
@@ -150,7 +165,7 @@ class PvmBenchmarkTests(unittest.TestCase):
 
     def test_table_and_unavailable_backend(self):
         """Twenty measured samples per workload survive aggregation; unavailable compiled cells stay empty."""
-        one={engine:parse_output(output(engine=='polkavm_compiler'),engine) for engine in ENGINES}
+        one={engine:parse_output(output(engine=='polkavm_compiler',engine=='ragnarok_planned'),engine) for engine in ENGINES}
         cases=aggregate([one,deepcopy(one)])
         report=dict(status='checks-passed',cases=cases)
         text=summarize_benchmark(report)

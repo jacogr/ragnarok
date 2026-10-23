@@ -8,7 +8,7 @@
 ## Guarded StepResult snapshots expose read-only exit and selected faultPage/hostCall metadata.
 ## Successful steps publish immutable snapshots; local failures publish no state or gas progress.
 
-import ./[program, machine, registers, gas]
+import ./[program, machine, registers, gas, gas_plan]
 
 type
   BlockChargeEntry = object ## One complete successful pipeline price belongs to this invocation's immutable program and cycle limit.
@@ -58,7 +58,7 @@ type
   StepError* {.pure.} = enum ## Local scope/resource/specification failures are distinct from guest execution outcomes.
     Uninitialized, None, InvalidMachine, UnsupportedInstruction, GasCycleLimitExceeded,
     NegativeBranchTarget, AmbiguousAccessOrder, StepLimitExceeded, InvalidHostSuspension,
-      InvalidHostResponse, HostCallLimitExceeded
+      InvalidHostResponse, HostCallLimitExceeded, InvalidGasPlan
   StepResult* = object ## Failed/default alternatives carry only their reason; no partial machine or charge escapes.
     case status: StepError
     of None:
@@ -533,9 +533,10 @@ proc controlMutation(program: Program, decoded: ProgramResult[Instruction],
   outcome
 
 # Mutate only invocation-owned CPU values and a checked private memory workspace; observable exits publish immutable roots.
-proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var WorkingMemory,
-    limit: GasCycleLimit, control, memoryAccess, hostCalls: bool, cache: var BlockChargeCache,
-    decoded: ProgramResult[Instruction]): InstructionEvaluation =
+proc evaluateInstruction[UsePlan: static[bool]](program: Program, info: var MachineInfo,
+    memory: var WorkingMemory, limit: GasCycleLimit, control, memoryAccess, hostCalls: bool,
+        cache: var BlockChargeCache,
+    decoded: ProgramResult[Instruction], plan: GasPlan = default(GasPlan)): InstructionEvaluation =
   if uint64(info.gasDeficit) != 0:
     # Terminal host debt must never be reinterpreted as executable zero gas.
     return InstructionEvaluation(status: StepError.InvalidMachine)
@@ -553,17 +554,32 @@ proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Wo
     # Exact cached starts already certify block membership; arbitrary interior entry retains the complete containing-block lookup.
     var chargeError = GasError.None
     var needed = 0'u64
-    if not cachedCharge(cache, info.pc, needed):
-      let start = containingBlockStart(program, info.pc)
-      if start.error != ProgramError.None: return InstructionEvaluation(
-          status: StepError.InvalidMachine)
-      if not cachedCharge(cache, start.value, needed):
-        # Only successful prices under this invocation's immutable program/limit enter the memo; failures publish no prefix.
-        let charge = blockGas(program, start.value, limit)
-        chargeError = charge.error
-        if chargeError == GasError.None:
-          needed = uint64(charge.value)
-          rememberCharge(cache, start.value, charge.value)
+    when UsePlan:
+      let direct = blockGas(plan, info.pc)
+      if direct.error == GasPlanError.None:
+        needed = uint64(direct.value)
+      elif direct.error == GasPlanError.InvalidStart:
+        let start = containingBlockStart(program, info.pc)
+        if start.error != ProgramError.None:
+          return InstructionEvaluation(status: StepError.InvalidMachine)
+        let priced = blockGas(plan, start.value)
+        if priced.error != GasPlanError.None:
+          return InstructionEvaluation(status: StepError.InvalidGasPlan)
+        needed = uint64(priced.value)
+      else:
+        return InstructionEvaluation(status: StepError.InvalidGasPlan)
+    else:
+      if not cachedCharge(cache, info.pc, needed):
+        let start = containingBlockStart(program, info.pc)
+        if start.error != ProgramError.None: return InstructionEvaluation(
+            status: StepError.InvalidMachine)
+        if not cachedCharge(cache, start.value, needed):
+          # Only successful prices under this invocation's immutable program/limit enter the memo; failures publish no prefix.
+          let charge = blockGas(program, start.value, limit)
+          chargeError = charge.error
+          if chargeError == GasError.None:
+            needed = uint64(charge.value)
+            rememberCharge(cache, start.value, charge.value)
     case chargeError
     of GasError.None:
       # Prove affordability before subtraction and before evaluating any register mutation.
@@ -660,8 +676,9 @@ proc publishInstruction(program: Program, memory: var WorkingMemory, info: Machi
   if finishWorking(memory) != MachineError.None: return StepResult(status: StepError.InvalidMachine)
   publishInstruction(program, memory.current, info, effect, terminal)
 
-proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
-    hostCalls: bool, cache: var BlockChargeCache, decoded: ProgramResult[Instruction]): StepResult =
+proc stepDecoded[UsePlan: static[bool]](source: Machine, limit: GasCycleLimit, control,
+    memoryAccess, hostCalls: bool, cache: var BlockChargeCache, decoded: ProgramResult[Instruction],
+        plan: GasPlan = default(GasPlan)): StepResult =
   ## Single-step APIs retain their exact immutable-snapshot boundary and capability/refusal semantics.
   let captured = machineInfo(source)
   let owner = programOf(source)
@@ -670,8 +687,8 @@ proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
       originalMemory.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
   var info = captured.value
   var memory = initWorkingMemory(originalMemory.value, false)
-  let evaluated = evaluateInstruction(owner.value, info, memory, limit, control, memoryAccess,
-      hostCalls, cache, decoded)
+  let evaluated = evaluateInstruction[UsePlan](owner.value, info, memory, limit, control,
+      memoryAccess, hostCalls, cache, decoded, plan)
   if evaluated.status != StepError.None: return StepResult(status: evaluated.status)
   if evaluated.effect.kind == StepExit.OutOfGas:
     return StepResult(status: StepError.None, completed: StepOutcome(kind: StepExit.OutOfGas,
@@ -679,35 +696,57 @@ proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
   publishInstruction(owner.value, memory, info, evaluated.effect, false)
 
 # Single-step calls never inherit cached work across owners, scopes or local simulation limits.
-proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
-    hostCalls: bool): StepResult =
+proc stepImpl[UsePlan: static[bool]](source: Machine, limit: GasCycleLimit, control, memoryAccess,
+    hostCalls: bool, plan: GasPlan = default(GasPlan)): StepResult =
   var cache = initBlockChargeCache()
   let owner = programOf(source)
   let current = machineInfo(source)
   if owner.error != MachineError.None or current.error != MachineError.None:
     # Absent roots cannot provide either a program or an executable instruction.
     return StepResult(status: StepError.InvalidMachine)
+  when UsePlan:
+    if not matchesProgram(plan, owner.value): return StepResult(status: StepError.InvalidGasPlan)
   let decoded = instruction(owner.value, current.value.pc)
-  stepDecoded(source, limit, control, memoryAccess, hostCalls, cache, decoded)
+  stepDecoded[UsePlan](source, limit, control, memoryAccess, hostCalls, cache, decoded, plan)
 
 proc stepRegisters*(source: Machine, limit: GasCycleLimit): StepResult =
   ## Preserve the register-only capability boundary for existing callers; no control opcode is accepted.
-  stepImpl(source, limit, false, false, false)
+  stepImpl[false](source, limit, false, false, false)
 
 proc stepControl*(source: Machine, limit: GasCycleLimit): StepResult =
   ## Execute one register/control instruction under Psi_1, including trap, unlikely and dynamic halt.
   ## Memory/host instructions remain local UnsupportedInstruction failures with no state progress.
-  stepImpl(source, limit, true, false, false)
+  stepImpl[false](source, limit, true, false, false)
 
 proc stepMemory*(source: Machine, limit: GasCycleLimit): StepResult =
   ## Execute one register/control/load/store instruction; host calls remain outside this capability.
   ## Memory fault/panic retains charged gas and original PC/registers/memory; local gates have no snapshot.
-  stepImpl(source, limit, true, true, false)
+  stepImpl[false](source, limit, true, true, false)
 
 proc stepOnce*(source: Machine, limit: GasCycleLimit): StepResult =
   ## Evaluate Psi_1 for every valid opcode, including host suspension; no host function is invoked here.
   ## Existing specification gates remain local failures and expose no partially updated machine.
-  stepImpl(source, limit, true, true, true)
+  stepImpl[false](source, limit, true, true, true)
+
+proc stepWithPlan(source: Machine, plan: GasPlan, control, memoryAccess,
+    hostCalls: bool): StepResult =
+  ## Validate the immutable policy once before entering the same scoped single-step evaluator.
+  let configured = gasPlanInfo(plan)
+  if configured.error != GasPlanError.None: return StepResult(status: StepError.InvalidGasPlan)
+  stepImpl[true](source, configured.value.cycleLimit, control, memoryAccess, hostCalls, plan)
+
+proc stepRegisters*(source: Machine, plan: GasPlan): StepResult =
+  ## Retain the register-only capability/refusal boundary under a matching complete gas plan.
+  stepWithPlan(source, plan, false, false, false)
+proc stepControl*(source: Machine, plan: GasPlan): StepResult =
+  ## Apply the existing register/control step semantics with immutable precomputed block prices.
+  stepWithPlan(source, plan, true, false, false)
+proc stepMemory*(source: Machine, plan: GasPlan): StepResult =
+  ## Preserve paid faults, permission ordering and atomic memory snapshots with the fixed plan policy.
+  stepWithPlan(source, plan, true, true, false)
+proc stepOnce*(source: Machine, plan: GasPlan): StepResult =
+  ## Evaluate any admitted opcode, including a genuine host suspension, under matching immutable prices.
+  stepWithPlan(source, plan, true, true, true)
 
 proc cachedInstruction(program: Program, address: CodeAddress,
     cache: var InstructionCache): ProgramResult[Instruction] {.inline.} =
@@ -736,9 +775,9 @@ proc cachedInstruction(program: Program, address: CodeAddress,
 # Evaluate recursive Psi iteratively over an already validated program and captured machine.
 # The shared remaining budget counts attempted instructions, including the exiting instruction.
 # Each gas simulation is independently bounded by gasLimit. Local failures expose no partial progress.
-proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLimit,
-    chargeCache: var BlockChargeCache, instructions: var InstructionCache,
-        cursor: var ExecutionCursor, resumed: bool): StepResult =
+proc executeBudget[UsePlan: static[bool]](source: Machine, remaining: var uint64,
+    gasLimit: GasCycleLimit, chargeCache: var BlockChargeCache, instructions: var InstructionCache,
+        cursor: var ExecutionCursor, resumed: bool, plan: GasPlan = default(GasPlan)): StepResult =
   var program = default(Program)
   var info = default(MachineInfo)
   var memory = initWorkingMemory(default(Memory), true)
@@ -761,6 +800,9 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
     program = owner.value
     info = original.value
     memory.current = originalMemory.value
+  when UsePlan:
+    if not matchesProgram(plan, program):
+      return StepResult(status: StepError.InvalidGasPlan)
   # CPU values are local to this invocation; immutable memory updates cannot mutate retained source snapshots.
   while remaining > 0:
     dec remaining # Each attempted instruction consumes exactly one local step, including invalid entry and every exit.
@@ -769,8 +811,8 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
     if decoded.error != ProgramError.None:
       info.pc = CodeAddress(0) # Trusted terminal/import snapshots retain the existing uncharged deblob panic rule.
       return publishInstruction(program, memory, info, InstructionEffect(kind: StepExit.Panic), true)
-    let evaluated = evaluateInstruction(program, info, memory, gasLimit, true, true, true,
-        chargeCache, decoded)
+    let evaluated = evaluateInstruction[UsePlan](program, info, memory, gasLimit, true, true, true,
+        chargeCache, decoded, plan)
     if evaluated.status != StepError.None:
       return StepResult(status: evaluated.status) # The whole private cursor retires; local failures never publish earlier progress.
     let effect = evaluated.effect
@@ -795,7 +837,18 @@ proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycle
   var chargeCache = initBlockChargeCache()
   var instructions = default(InstructionCache) # Fresh explicit empty memo prevents cross-program or cross-invocation operand reuse.
   var unusedCursor = default(ExecutionCursor) # Ordinary execution uses source validation and its original loop-local CPU storage.
-  executeBudget(source, remaining, gasLimit, chargeCache, instructions, unusedCursor, false)
+  executeBudget[false](source, remaining, gasLimit, chargeCache, instructions, unusedCursor, false)
+
+proc execute*(source: Machine, stepLimit: ExecutionStepLimit, plan: GasPlan): StepResult =
+  ## Reuse immutable complete prices while all CPU, attempt budgets and memory staging stay invocation-local.
+  var remaining = uint64(stepLimit)
+  var chargeCache = initBlockChargeCache()
+  var instructions = default(InstructionCache)
+  var unusedCursor = default(ExecutionCursor)
+  let settings = gasPlanInfo(plan)
+  if settings.error != GasPlanError.None: return StepResult(status: StepError.InvalidGasPlan)
+  executeBudget[true](source, remaining, settings.value.cycleLimit, chargeCache, instructions,
+      unusedCursor, false, plan)
 
 # Lift guest/engine results without confusing guest terminal exits with local host errors.
 func executionResult[Reason: enum](evaluated: StepResult): HostExecutionResult[Reason] =
@@ -807,11 +860,12 @@ func executionResult[Reason: enum](evaluated: StepResult): HostExecutionResult[R
 
 # Advance a shared invocation budget to the next dispatch or terminal result.
 # Dispatch credit is consumed before callbacks, identically for both public callback forms.
-proc nextHost(cursor: var ExecutionCursor, remaining, calls: var uint64, gasLimit: GasCycleLimit,
-    chargeCache: var BlockChargeCache, instructions: var InstructionCache): StepResult =
+proc nextHost[UsePlan: static[bool]](cursor: var ExecutionCursor, remaining, calls: var uint64,
+    gasLimit: GasCycleLimit, chargeCache: var BlockChargeCache, instructions: var InstructionCache,
+        plan: GasPlan = default(GasPlan)): StepResult =
   ## Both callback forms share the ordinary transition loop and reserve dispatch credit before external code.
-  let evaluated = executeBudget(default(Machine), remaining, gasLimit, chargeCache, instructions,
-      cursor, true)
+  let evaluated = executeBudget[UsePlan](default(Machine), remaining, gasLimit, chargeCache,
+      instructions, cursor, true, plan)
   if evaluated.error != StepError.None: return evaluated
   if evaluated.value.exit == StepExit.Host:
     if calls == 0: return StepResult(status: StepError.HostCallLimitExceeded)
@@ -830,14 +884,15 @@ proc applyCursorResponse(cursor: var ExecutionCursor, response: HostResponse,
   if applied != StepError.None: return InstructionEvaluation(status: applied)
   InstructionEvaluation(status: StepError.None, effect: InstructionEffect(kind: exit))
 
-proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
-    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
-        raises: [].},
+proc runFallibleHost[Context; Reason: enum; UsePlan: static[bool]](source: Machine,
+    context: var Context, handler: proc(context: var Context, suspension: StepOutcome): HostResult[
+        Reason] {.nimcall, raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit,
-        gasLimit: GasCycleLimit): HostExecutionResult[Reason] =
+        gasLimit: GasCycleLimit, plan: GasPlan = default(GasPlan)): HostExecutionResult[Reason] =
   ## Run Psi_H* with typed local callback refusals and one instruction budget across continuations.
   ## Context is exclusively borrowed for this synchronous call. Callback effects persist on local errors;
   ## callers requiring atomic external effects must stage their context. Neither callback nor context is retained.
+  let retainedPlan = plan # Keep an immutable policy value across mutable callback scheduling.
   var remaining = uint64(stepLimit)
   var calls = uint64(hostLimit)
   var cursor = default(ExecutionCursor)
@@ -849,7 +904,7 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   var instructions = default(InstructionCache) # Host replies preserve the program, so scalar decoder hits remain valid until this invocation returns.
   while true:
     # Publish the next actual callback observation from this invocation's validated continuation.
-    let evaluated = nextHost(cursor, remaining, calls, gasLimit, chargeCache, instructions)
+    let evaluated = nextHost[UsePlan](cursor, remaining, calls, gasLimit, chargeCache, instructions, retainedPlan)
     if evaluated.error != StepError.None:
       # Local refusal exposes no machine progress; already-completed context mutations remain visible.
       return executionResult[Reason](evaluated)
@@ -876,11 +931,13 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
         return executionResult[Reason](publishInstruction(cursor.program, cursor.memory,
           cursor.info, applied.effect, true)) # Terminal replies preserve the host's posterior state and causing PC.
 
-proc executeWithHost*[Context](source: Machine, context: var Context,
+proc runHost[Context; UsePlan: static[bool]](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
-    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, gasLimit: GasCycleLimit): StepResult =
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, gasLimit: GasCycleLimit,
+        plan: GasPlan = default(GasPlan)): StepResult =
   ## Preserve the response-only API with the same guest/dispatch scheduler and response application boundary.
   ## Context is borrowed synchronously; already-performed callback effects survive later local errors.
+  let retainedPlan = plan # Retain the selected policy value independently of callback context updates.
   var remaining = uint64(stepLimit)
   var calls = uint64(hostLimit)
   var cursor = default(ExecutionCursor)
@@ -892,7 +949,7 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   var instructions = default(InstructionCache) # Host replies preserve the program, so scalar decoder hits remain valid until this invocation returns.
   while true:
     # All scheduling and charging happens in the same helper used by fallible callbacks.
-    let evaluated = nextHost(cursor, remaining, calls, gasLimit, chargeCache, instructions)
+    let evaluated = nextHost[UsePlan](cursor, remaining, calls, gasLimit, chargeCache, instructions, retainedPlan)
     if evaluated.error != StepError.None:
       # Preserve the legacy local engine refusal without reading a failed payload.
       return evaluated
@@ -905,3 +962,37 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
     if applied.effect.kind != StepExit.Continued:
       return publishInstruction(cursor.program, cursor.memory, cursor.info, applied.effect, true)
     # A valid Continue updates the private cursor without allocating an unobserved resumed machine root.
+
+proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
+        raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit,
+        gasLimit: GasCycleLimit): HostExecutionResult[Reason] =
+  ## Preserve fallible callback semantics and per-block cycle ceilings through the shared scheduler.
+  runFallibleHost[Context, Reason, false](source, context, handler, stepLimit, hostLimit, gasLimit)
+
+proc executeWithHost*[Context](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, gasLimit: GasCycleLimit): StepResult =
+  ## Preserve response-only callbacks with the existing dynamic price policy and shared invocation budgets.
+  runHost[Context, false](source, context, handler, stepLimit, hostLimit, gasLimit)
+
+proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
+        raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, plan: GasPlan): HostExecutionResult[Reason] =
+  ## Retain matching immutable prices across synchronous fallible callbacks; no callback or context is retained afterward.
+  let configured = gasPlanInfo(plan)
+  if configured.error != GasPlanError.None:
+    return executionResult[Reason](StepResult(status: StepError.InvalidGasPlan))
+  runFallibleHost[Context, Reason, true](source, context, handler, stepLimit, hostLimit,
+      configured.value.cycleLimit, plan)
+
+proc executeWithHost*[Context](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, plan: GasPlan): StepResult =
+  ## Reuse complete prices with ordinary callback reply validation and exact shared step/dispatch budgets.
+  let configured = gasPlanInfo(plan)
+  if configured.error != GasPlanError.None: return StepResult(status: StepError.InvalidGasPlan)
+  runHost[Context, true](source, context, handler, stepLimit, hostLimit,
+      configured.value.cycleLimit, plan)

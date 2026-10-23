@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 from dependencies import ROOT
 import pvm_sieve_benchmark as benchmark
-from pvm_sieve_report import ENGINES,LIMITS,parse_output,summarize
+from pvm_sieve_report import ENGINES,LIMITS,parse_output,parse_process_output,summarize
 
 
 def output(engine='ragnarok',limit=1000):
@@ -20,9 +20,11 @@ def output(engine='ragnarok',limit=1000):
 
 
 def report():
-    """Construct every required engine/pass/limit identity, with warmups distinguishable."""
+    """Construct every required engine/pass/limit identity with explicit plan preparation."""
     return dict(status='checks-passed',passes=[dict(limit=limit,engine=engine,pass_index=p,
-        samples=parse_output(output(engine,limit),engine,limit)) for limit in LIMITS for engine in ENGINES for p in range(2)])
+        samples=parse_output(output(engine,limit),engine,limit),
+        preparation=dict(cpu_ns=1000,wall_ns=2000,code_bytes=16,block_count=1,payload_bytes=128,cycle_limit=1000000) if engine=='ragnarok_planned' else None)
+        for limit in LIMITS for engine in ENGINES for p in range(2)])
 
 
 class SieveBenchmarkTests(unittest.TestCase):
@@ -53,6 +55,26 @@ class SieveBenchmarkTests(unittest.TestCase):
                     path.write_bytes(original)
             members[0].unlink()
             with self.assertRaises(FileNotFoundError):benchmark.verify_fixture(folder)
+
+    def test_plan_preparation_protocol(self):
+        """Only an explicit bounded complete planned process can supply preparation/resource observations."""
+        good='GAS_PLAN,1000,2000,16,1,128,1000000\n'+output('ragnarok_planned')
+        parsed=parse_process_output(good,'ragnarok_planned',1000)
+        self.assertEqual(parsed['preparation']['payload_bytes'],128)
+        for bad in (output('ragnarok_planned'),good.replace(',128,',',127,',1),
+                    good.replace(',1000000\n',',0\n',1),good.replace(',16,1,',',16,17,',1),
+                    good.replace('GAS_PLAN,1000,','GAS_PLAN,9223372036854775808,',1),
+                    good.splitlines()[0]+'\n'+good):
+            with self.subTest(tail=bad[-50:]),self.assertRaises(ValueError):parse_process_output(bad,'ragnarok_planned',1000)
+        with self.assertRaises(ValueError):parse_process_output(good,'ragnarok',1000)
+        data=report();data['passes'][2]['preparation']=None
+        with self.assertRaises(ValueError):summarize(data)
+        data=report();data['passes'][2]['preparation']['block_count']=2
+        with self.assertRaises(ValueError):summarize(data)
+        data=report()
+        for p in data['passes']:
+            if p['engine']=='ragnarok_planned':p['preparation']['cpu_ns']=0
+        with self.assertRaises(ValueError):summarize(data)
 
     def test_complete_protocol(self):
         """Both clocks and every sample survive parsing in original process order."""

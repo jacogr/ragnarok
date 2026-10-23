@@ -17,7 +17,7 @@ from native_checks import NativeChecks,ROOT
 from native_dependencies import require_submodule
 from native_fixture_contracts import load_fixture_contracts
 from pvm_benchmark import cpu_model
-from pvm_sieve_report import ENGINES,LIMITS,parse_output,summarize
+from pvm_sieve_report import ENGINES,LIMITS,parse_process_output,summarize
 from setup_nimony import installed
 
 BUILD=ROOT/'build/tests/pvm-sieve'
@@ -72,7 +72,7 @@ def run():
     def command(arguments,name,environment=None,failure=None):
         """Retain strict process status and diagnostics; negative controls require real failures."""
         row=checks.command(arguments,name,environment=environment,timeout=900)
-        output=row.pop('output');report['checks'].append(row);save()
+        output=row.pop('output');row['benchmark_environment']={key:environment[key] for key in ('RAGNAROK_PVM_PRICING','RAGNAROK_PVM_SIEVE_ASSERT_PROBE','RAGNAROK_PVM_SIEVE_INPUT','RAGNAROK_PVM_SIEVE_EXPECTED','RAGNAROK_PVM_SIEVE_SAMPLES') if environment and key in environment};report['checks'].append(row);save()
         if failure is None:
             if row['exit_code']!=0:raise RuntimeError(name+' failed: '+row['log'])
         elif row['exit_code']==0 or (failure and failure not in output):
@@ -117,14 +117,14 @@ def run():
                 raise ValueError('Invalid reference preparation output')
             data=folder/f'input-{limit}.bin';expected=folder/f'expected-{limit}.bin'
             immutable={path:digest(path) for path in (data,expected)}
-            environment=dict(os.environ,RAGNAROK_PVM_SIEVE_INPUT=str(data),
+            environment=dict(os.environ,RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0',RAGNAROK_PVM_SIEVE_INPUT=str(data),
                              RAGNAROK_PVM_SIEVE_EXPECTED=str(expected),RAGNAROK_PVM_SIEVE_SAMPLES='13')
-            arguments={'ragnarok':[binary],'polkavm_interpreter':
+            arguments={'ragnarok':[binary],'ragnarok_planned':[binary],'polkavm_interpreter':
                        [reference,'--sieve',FIXTURE/'sieve.polkavm',folder,limit,13]}
             for engine in ENGINES:
                 # Release assertions must remain live in both executables.
-                probe=dict(environment,RAGNAROK_PVM_SIEVE_ASSERT_PROBE='1')
-                sentinel='pvm sieve '+('native' if engine=='ragnarok' else 'reference')+' assertion control'
+                probe=dict(environment,RAGNAROK_PVM_SIEVE_ASSERT_PROBE='1',RAGNAROK_PVM_PRICING='planned' if engine=='ragnarok_planned' else 'dynamic')
+                sentinel='pvm sieve '+('reference' if engine=='polkavm_interpreter' else 'native')+' assertion control'
                 command(arguments[engine],f'assert-{limit}-{engine}',probe,sentinel)
             for name,path,changed in (('truncated',data,data.read_bytes()[:-1]),
                                       ('tampered',expected,expected.read_bytes()[:16]+bytes([expected.read_bytes()[16]^1])+expected.read_bytes()[17:])):
@@ -133,18 +133,19 @@ def run():
                     path.write_bytes(changed)
                     for engine in ENGINES:
                         # Both measured runners must reject bad data rather than regenerate expected bytes.
-                        command(arguments[engine],f'{name}-{limit}-{engine}',environment,'')
+                        command(arguments[engine],f'{name}-{limit}-{engine}',dict(environment,RAGNAROK_PVM_PRICING='planned' if engine=='ragnarok_planned' else 'dynamic'),'')
                 finally:
                     path.write_bytes(original)
             for pass_index,order in enumerate((ENGINES,tuple(reversed(ENGINES)))):
                 for engine in order:
                     for path,identity in immutable.items():
                         if digest(path)!=identity:raise ValueError('Changed prepared sieve input')
-                    samples=parse_output(command(arguments[engine],f'pass{pass_index}-{limit}-{engine}',environment),engine,limit)
+                    mode=dict(environment,RAGNAROK_PVM_PRICING='planned' if engine=='ragnarok_planned' else 'dynamic')
+                    observed=parse_process_output(command(arguments[engine],f'pass{pass_index}-{limit}-{engine}',mode),engine,limit)
                     for path,identity in immutable.items():
                         if digest(path)!=identity:raise ValueError('Sieve runner changed frozen data')
                     report['passes'].append(dict(limit=limit,engine=engine,pass_index=pass_index,
-                        inputs={str(p.relative_to(ROOT)):sha for p,sha in immutable.items()},samples=samples));save()
+                        inputs={str(p.relative_to(ROOT)):sha for p,sha in immutable.items()},**observed));save()
         report['status']='checks-passed';report['hardware']['load_average_end']=os.getloadavg()
         text=summarize(report)
         with (BUILD/'samples.csv').open('w',newline='') as output:

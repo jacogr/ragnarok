@@ -3,7 +3,7 @@
 
 ## Execute the exact linked upstream sieve supplied to PolkaVM; compare complete reference outputs.
 import std/[assertions, syncio, monotimes, envvars]
-import ../../src/pvm/[program, machine, gas]
+import ../../src/pvm/[program, machine, gas, gas_plan]
 import ../../src/pvm/step as reference
 
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
@@ -96,7 +96,24 @@ let captured = captureMemory(images, PageLimit(uint32(pageCount)))
 assert captured.error == MachineError.None
 let memory = captured.value
 let source = captureMachine(owner, memory, info).value
-let engine = "ragnarok"
+let pricing = getEnv("RAGNAROK_PVM_PRICING")
+assert pricing in ["", "dynamic", "planned"]
+let plannedMode = pricing == "planned"
+var plan = default(GasPlan)
+if plannedMode:
+  # Only additional immutable-price preparation is bracketed here; common program/memory capture stays outside execution.
+  let prepareWall = getMonoTime().ticks
+  let prepareCpu = cpuNanoseconds()
+  let created = newGasPlan(owner, GasPlanLimits(blocks: GasPlanBlockLimit(100000),
+    bytes: GasPlanByteLimit(8*1024*1024), cycles: GasCycleLimit(1000000)))
+  let prepareCpuNs = cpuNanoseconds()-prepareCpu
+  let prepareWallNs = getMonoTime().ticks-prepareWall
+  assert created.error == GasPlanError.None
+  plan = created.value
+  let info = gasPlanInfo(plan).value
+  echo "GAS_PLAN,", prepareCpuNs, ",", prepareWallNs, ",", info.codeBytes, ",",
+    info.blockCount, ",", info.payloadBytes, ",", uint64(info.cycleLimit)
+let engine = if plannedMode: "ragnarok_planned" else: "ragnarok"
 let requestedSamples = getEnv("RAGNAROK_PVM_SIEVE_SAMPLES")
 assert requestedSamples in ["1", "13"]
 let samples = if requestedSamples == "1": 1 else: 13
@@ -104,7 +121,8 @@ for sample in 0..<samples:
   # Program/memory/ABI setup is outside execution timing in both interpreters.
   let wallStart = getMonoTime().ticks
   let cpuStart = cpuNanoseconds()
-  let done = reference.execute(source, reference.ExecutionStepLimit(1000000000), GasCycleLimit(1000000))
+  let done = if plannedMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), plan)
+    else: reference.execute(source, reference.ExecutionStepLimit(1000000000), GasCycleLimit(1000000))
   let cpuElapsed = cpuNanoseconds() - cpuStart
   let elapsed = getMonoTime().ticks - wallStart
   assert done.error == reference.StepError.None, "current sieve execution"
