@@ -74,14 +74,14 @@ def run():
         from pvm_benchmark_reference import fixtures
         fixture=ROOT/'tests/fixtures/pvm-benchmark.bin';expected,count=fixtures()
         descriptor=json.loads((ROOT/'tests/fixtures/pvm_benchmark.fixture.json').read_text())
-        if (fixture.read_bytes()!=expected or count!=5
+        if (fixture.read_bytes()!=expected or count!=len(NAMES)
                 or digest(fixture)!=descriptor['files'][fixture.name]):
             raise ValueError('Benchmark inputs differ from independent expectations')
         compiler,_=installed();rust=json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
         sources=[*sorted((ROOT/'src').rglob('*.nim')),ROOT/'tests/performance/pvm_workload.nim',
                  *sorted((CRATE/'src').rglob('*.rs')),CRATE/'Cargo.toml',CRATE/'Cargo.lock',
                  ROOT/'tools/pvm_benchmark.py',ROOT/'tools/pvm_benchmark_report.py',ROOT/'tests/pvm_benchmark_reference.py',
-                 ROOT/'spec/toolchain.json',ROOT/'Makefile',ROOT/'.github/workflows/ci.yml']
+                 ROOT/'tests/pvm_gas_reference.py',ROOT/'spec/toolchain.json',ROOT/'Makefile',ROOT/'.github/workflows/ci.yml']
         report.update(head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
             worktree_dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT)),
             hardware=dict(platform=platform.platform(),cpu=cpu_model(),logical_cpus=os.cpu_count(),

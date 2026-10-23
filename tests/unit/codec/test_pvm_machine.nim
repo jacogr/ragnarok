@@ -298,6 +298,43 @@ for index in 0..255:
     # Invalid nominal values are local errors, never bounds-check crashes.
     assert updated.error == MachineError.InvalidRegister
 
+# Dense neighboring pairs separated by sparse holes expose incorrect reuse of insertion slots as page identities.
+block sparseScalarSpans:
+  var images: seq[PageImage] = @[]
+  for pair in 0..<64:
+    images.add(page(uint32(16+3*pair), PageAccess.ReadWrite))
+    images.add(page(uint32(17+3*pair), PageAccess.ReadWrite))
+  let memory = checked(captureMemory(images, PageLimit(128)))
+  let retained = memory
+  for pair in 0..<64:
+    let first = uint32(16+3*pair)
+    let address = MemoryAddress(uint64(first)*4096+4093)
+    var expected = 0'u64
+    for i in 0..<8:
+      # Independent literal byte selection spans three bytes in the first page and five in the second.
+      let offset = 4093+i
+      let ordinal = first+uint32(offset div 4096)
+      expected = expected or (uint64(byte((offset mod 4096+int(ordinal)) mod 256)) shl (8*i))
+    assert uint64(checked(load(memory, address, AccessWidth(8)))) == expected
+    let written = checked(store(memory, address, AccessWidth(8), RegisterValue(
+        0x9876543210abcdef'u64)))
+    assert uint64(checked(load(written, address, AccessWidth(8)))) == 0x9876543210abcdef'u64
+    assert uint64(checked(load(retained, address, AccessWidth(8)))) == expected
+    for side in 0..<2:
+      let actual = checked(pageImage(written, PageIndex(first+uint32(side))))
+      for i in 0..<4096:
+        # Full-page comparisons reject neighboring-byte writes and preserve original page ownership.
+        let relative = side*4096+i-4093
+        let wanted = if relative >= 0 and relative < 8:
+            byte((0x9876543210abcdef'u64 shr (8*relative)) and 255)
+          else: images[2*pair+side].bytes[i]
+        assert actual.bytes[i] == wanted
+    let gap = MemoryAddress((uint64(first)+1)*4096+4095)
+    let refused = store(memory, gap, AccessWidth(8), RegisterValue(0))
+    assert refused.error == MachineError.Fault
+    assert uint32(refused.faultPage) == (first+2)*4096
+    assert checked(pageImage(retained, PageIndex(first+1))).bytes == images[2*pair+1].bytes
+
 # Each call releases a machine, shared aliases, copied page and two generations of changed memory.
 proc releaseCycle() =
   let memory = checked(captureMemory([page(16, PageAccess.ReadWrite), page(17,

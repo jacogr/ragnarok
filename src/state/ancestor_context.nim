@@ -138,7 +138,8 @@ proc findLookupAnchor*(context: AncestorContext, hash: HeaderParent, slot: Heade
   let data = context.data
   if data == nil:
     return AncestorContextResult[int](status: AncestorContextError.Uninitialized)
-  for index, identity in data.hashes:
+  for index in 0..<data.hashes.len:
+    let identity = data.hashes[index]
     # A hash with the wrong slot or no retained child is a permanent mismatch, never an older-header hint.
     if array[32, byte](identity) != array[32, byte](hash): continue
     if uint32(data.headers[index].headerInfo.value.unsigned.slot) != uint32(slot):

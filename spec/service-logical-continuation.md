@@ -1,0 +1,11 @@
+# Logical continuation across selected service changes
+
+Scope: existing pinned GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` successful new/eject behavior, with no host, storage or wire changes.
+
+`continueCurrentNamespaces` now consumes optional service identity history frozen into its own genuine prepared update. The exact original parent, view and full Parameters binding remains mandatory. A bounded roster retains original ordinals, introduces only selected genuine creations, and permits final absence only with selected ejection membership. The raw storage and original request histories remain mandatory; a newly seeded code request must be reconstructed from the selected original request identity. No successor declarations are supplied.
+
+Admit the entire worst-case fixed roster before allocation, charge every membership scan, and admit final service count plus all output descriptors/payload wires before copying values. Actual successor metadata and namespace values feed the unchanged complete current profile, all-global, full-map and raw-key qualifiers. Deleting a service never legitimizes orphan physical rows: full-map matching remains mandatory.
+
+Absent service capture retains the previous strict service-set contract; storage-only continuation remains strict even when optional service capture exists. Membership arrays are not an ordered host log. Replacements at an original service ID remain refused rather than guessing namespace generations. New preimage identities still require their own genuine source contract.
+
+Completion witnesses include actual worker-collected creation and its requested code seed, eligible empty-service ejection, panic/checkpoint selection, missing creation/deletion history, exact source mismatch, bounded roster/cardinality/work/output minima before hashing, real backend failure, late raw-capture refusal, a repeated genuine child creating another service, and 1,000 full ARC qualification cycles. Existing storage and request continuation suites preserve compatibility. This is complete logical reconstruction for the supported producer shapes, not full STF parity or independent current-schema corpus completion.

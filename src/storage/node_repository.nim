@@ -175,8 +175,8 @@ proc copyRecord(source: StoredRecord): TrieRecord =
   ## Reconstruct canonical detached transport, initializing unused fields to zero/empty on both forms.
   if source.kind == TrieRecordKind.Leaf:
     var bytes = newSeq[byte](source.payload.len)
-    for index, octet in source.payload:
-      bytes[index] = octet # Returned mutable leaf values remain independent of their immutable cell.
+    for index in 0..<source.payload.len:
+      bytes[index] = source.payload[index] # Returned mutable leaf values remain independent of their immutable cell.
     result = TrieRecord(kind: TrieRecordKind.Leaf, digest: source.digest,
       key: source.key, payload: bytes)
   else:
@@ -608,7 +608,8 @@ proc retainedRoots*(selection: RepositorySelection): seq[
   let data = selection.data
   assert data != nil
   var roots = newSeq[StateRoot](data.roots.len)
-  for index, root in data.roots: roots[index] = root # No mutable alias to the accepted plan escapes.
+  for index in 0..<data.roots.len: roots[index] = data.roots[
+      index] # No mutable alias to the accepted plan escapes.
   roots
 proc compareRoot(left, right: StateRoot): int =
   ## Root inventories use the same complete lexical identity order as physical addresses.
@@ -702,7 +703,8 @@ proc exportRepositorySelection*(selection: RepositorySelection,
   let source = data.source.data
   assert source != nil
   var records = newSeq[TrieRecord](data.indices.len)
-  for index, position in data.indices:
+  for index in 0..<data.indices.len:
+    let position = data.indices[index]
     # The immutable selected indices already follow the source's full physical-address order.
     records[index] = copyRecord(source.table.records[position]) # Never export shared mutable payload bytes.
   RepositoryResult[seq[TrieRecord]](status: RepositoryError.None, completed: records)
@@ -862,7 +864,8 @@ proc measureRepositorySelection*(selection: RepositorySelection,
   let maximum = min(uint64(limits.encoded), uint64(high(int)))
   let source = data.source.data
   assert source != nil
-  for index in data.indices:
+  for ordinal in 0..<data.indices.len:
+    let index = data.indices[ordinal]
     let fixed = if source.table.records[index].kind == TrieRecordKind.Leaf: 72'u64 else: 97'u64
     let payload = uint64(payloadBytes(source.table.records[index]))
     if payload > uint64(limits.trie.perValue) or fixed > maximum-size:
@@ -909,7 +912,8 @@ proc encodeFramedRepositorySelection*(selection: RepositorySelection, limits: Re
   var offset = prefix+Magic.len
   putCollectionNumber(output, offset, uint64(data.indices.len))
   offset += 8
-  for position in data.indices:
+  for ordinal in 0..<data.indices.len:
+    let position = data.indices[ordinal]
     # These unique sorted physical cells passed local integrity and complete graph admission before publication.
     let cell = source.table.records[position]
     output[offset] = byte(ord(cell.kind))
@@ -922,8 +926,8 @@ proc encodeFramedRepositorySelection*(selection: RepositorySelection, limits: Re
       offset += 31
       putCollectionNumber(output, offset, uint64(cell.payload.len))
       offset += 8
-      for octet in cell.payload:
-        output[offset] = octet # Copy raw values directly from the stable private owner into the sole final buffer.
+      for index in 0..<cell.payload.len:
+        output[offset] = cell.payload[index] # Copy raw values directly from the stable private owner into the sole final buffer.
         inc offset
     else:
       putCollectionHash(output, offset, cell.left)
@@ -958,7 +962,8 @@ proc cloneRepositorySelection*(selection: RepositorySelection,
   if uint64(data.indices.len) > maximum or data.valueBytes > uint64(limits.valueBytes):
     return RepositoryResult[NodeRepository](status: RepositoryError.LimitExceeded)
   var records = newSeqOfCap[StoredRecord](data.indices.len)
-  for position in data.indices:
+  for ordinal in 0..<data.indices.len:
+    let position = data.indices[ordinal]
     # Selection construction proved unique full-address order, independent of borrowed root order.
     records.add(source.table.records[position]) # Share only selected immutable cells; no source view/table is retained.
   let cloned = RepositoryData(table: newRepositoryTable(records),

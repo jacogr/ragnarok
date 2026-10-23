@@ -49,8 +49,8 @@ proc main() =
     0, 7]
   assert encoded == @expected
   for stop in 0..<encoded.len:
-    let prefix = encoded[0..<stop]
-    assert decodeTrieExport(prefix, policy).error != RecordError.None
+    # Borrow each prefix, including empty input, without invoking the allocating stdlib slice.
+    assert decodeTrieExport(encoded.toOpenArray(0, stop-1), policy).error != RecordError.None
   var trailer = encoded
   trailer.add(0)
   assert decodeTrieExport(trailer, policy).error == RecordError.InvalidFormat

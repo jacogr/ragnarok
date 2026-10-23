@@ -23,22 +23,22 @@ proc namespaceHaltCode*(): seq[byte] =
   ## Existing whole-code framing prefixes maintained guestEnvelope with the single code metadata octet.
   result = @[0'u8]
   for octet in guestEnvelope([@[50'u8, 0]]): result.add(octet)
-proc executionNamespaceParent*(source: ExecutionFixture): ChainView =
+proc executionNamespaceParent*(source: ExecutionFixture, parameters = currentChainSettings()): ChainView =
   ## Capture exact original signed parent/state/Parameters without inventing completion authority.
   let admission = source.round.roundBlockQueue.value.accumulationAdmission.value
   let bound = admission.reportBlockStage.value.value.admitted
   let captured = captureBlockSnapshot(currentChainBytes(bound.admittedParent),
-      source.state.snapshot.value, currentChainSettings())
+      source.state.snapshot.value, parameters)
   assert captured.error == GenesisError.None
   genesisView(captured).finalizeView(captured.value.blockHash).value
-proc prepareNamespaceExecution*(source: ExecutionFixture): PreparedCurrentChainUpdate =
+proc prepareNamespaceExecution*(source: ExecutionFixture, policies = currentCandidateLimits()): PreparedCurrentChainUpdate =
   ## Run actual current candidate preparation on the execution fixture's exact original state/full view.
   let admission = source.round.roundBlockQueue.value.accumulationAdmission.value
   let bound = admission.reportBlockStage.value.value.admitted
   let app = initApplicationChain(source.executionNamespaceParent).value
-  prepareCurrentCandidate(app, bound.admittedBlock, source.older, currentCandidateLimits()).value
+  prepareCurrentCandidate(app, bound.admittedBlock, source.older, policies).value
 proc namespaceExecutionFixture*(base: OwnedReport, first, second: seq[byte],
-    secondBalance = 1000000'u64): NamespaceExecutionFixture =
+    secondBalance = 1000000'u64, policies = currentCandidateLimits()): NamespaceExecutionFixture =
   ## Code preimages are added by the maintained execution fixture; only their explicit request rows join our namespace seed.
   var seeds = namespaceSeeds()
   let codes = [first, second]
@@ -58,7 +58,7 @@ proc namespaceExecutionFixture*(base: OwnedReport, first, second: seq[byte],
   options.signed.extra = @[activityParentEntry()]
   let source = executionFixture(base, options)
   let parent = source.executionNamespaceParent
-  let update = source.prepareNamespaceExecution
+  let update = source.prepareNamespaceExecution(policies)
   NamespaceExecutionFixture(source: source, seeds: seeds, codes: codes, parent: parent,
       update: update)
 proc executableNamespaceServices*(fixture: NamespaceExecutionFixture,

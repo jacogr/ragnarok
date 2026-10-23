@@ -52,7 +52,7 @@ proc retain*(catalog: var RevisionRetention, view: RepositoryView): RetentionRes
     return RetentionResult[RetentionToken](status: RetentionError.LimitExceeded)
   let slot = RetainedSlot(view: view)
   var slots: seq[RetainedSlot] = @[]
-  for existing in head.slots: slots.add(existing) # Copy slot owners; never mutate shared history.
+  for i in 0..<head.slots.len: slots.add(head.slots[i]) # Copy slot owners; never mutate shared history.
   slots.add(slot)
   catalog.head = RetentionData(slots: slots, limit: head.limit)
   RetentionResult[RetentionToken](status: RetentionError.None, completed: RetentionToken(slot: slot))
@@ -62,7 +62,8 @@ proc lookup*(catalog: RevisionRetention, token: RetentionToken): RetentionResult
   if head == nil: return RetentionResult[RepositoryView](status: RetentionError.Uninitialized)
   let selected = token.slot
   if selected == nil: return RetentionResult[RepositoryView](status: RetentionError.InvalidToken)
-  for slot in head.slots:
+  for i in 0..<head.slots.len:
+    let slot = head.slots[i]
     if slot == selected:
       return RetentionResult[RepositoryView](status: RetentionError.None, completed: slot.view)
   RetentionResult[RepositoryView](status: RetentionError.MissingToken)
@@ -73,13 +74,15 @@ proc release*(catalog: var RevisionRetention, token: RetentionToken): RetentionE
   let selected = token.slot
   if selected == nil: return RetentionError.InvalidToken
   var index = -1
-  for i, slot in head.slots:
+  for i in 0..<head.slots.len:
+    let slot = head.slots[i]
     if slot == selected:
       index = i
       break # Exact identity found; slot numbering carries no external meaning.
   if index < 0: return RetentionError.MissingToken
   var slots: seq[RetainedSlot] = @[]
-  for i, slot in head.slots:
+  for i in 0..<head.slots.len:
+    let slot = head.slots[i]
     if i != index:
       slots.add(slot)
   catalog.head = RetentionData(slots: slots, limit: head.limit)

@@ -1,0 +1,55 @@
+{
+  "build_name": "current-request-provenance-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "current_request_provenance guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "current-request-provenance-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "current_request_provenance selected reason",
+      "diagnostic": "outcome.status == RequestHistoryFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "current-request-provenance-reason"
+    },
+    {
+      "arguments": [
+        "history"
+      ],
+      "description": "Guarded current request history",
+      "diagnostic": "hasRequestHistory(prepared)",
+      "identity": {
+        "reason": "history"
+      },
+      "name": "current-request-provenance-history"
+    },
+    {
+      "arguments": [
+        "capture"
+      ],
+      "description": "Guarded current request capture",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "capture"
+      },
+      "name": "current-request-provenance-capture"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/current_request_provenance_results.nim"
+}

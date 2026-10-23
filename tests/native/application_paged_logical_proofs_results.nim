@@ -13,7 +13,7 @@ import ../../src/app/[logical_code, full_logical_proof, logical_proof, proof_que
 import ../../src/state/[code_availability, current_logical, current_state, current_globals,
     current_profile, proof_plan, planned_proof, proof_view, proof_state_import, store,
     global_snapshot, manifest,
-    supplied_logical_inventory, supplied_services]
+    supplied_logical_inventory, supplied_services, supplied_proof_import]
 import ../../src/codec/[bounded, state_layout, state_trie, state_requests]
 import ../../src/chain/[provider, genesis]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -105,6 +105,7 @@ proc main() {.raises.} =
   let mergeLimits = ProofViewLimits(items: ElementLimit(128), valueBytes: ByteLimit(1048576))
   let importLimits = ProofStateImportLimits(lookups: ElementLimit(128), copyBytes: ByteLimit(
       1048576), store: genesisStoreLimits())
+  var received: seq[ProofView] = @[]
   var seen = 0
   for ordinal in 0..<info.pages:
     # Reverse-order transfer proves deterministic key ranges need no mutable receiver cursor or trusted arrival ordering.
@@ -134,6 +135,7 @@ proc main() {.raises.} =
     assert wire == direct.bytes(limits.query.wireBytes).value
     let view = decodePlannedProofs(wire, keys, root, limits.query.view, limits.query.proof,
         limits.query.aggregate, limits.query.wireBytes).value
+    received.add(view) # Retain independently verified pages for direct bounded reconstruction.
     assert view.len == current.keys
     let first = pages.logicalProofPageAt(LogicalProofPageIndex(
         0)).value.logicalProofPageKeys.value.keyAt(0).value
@@ -152,8 +154,8 @@ proc main() {.raises.} =
     fail(1) # Re-arm only after native matching collection and independent authentication have finished.
   assert seen == info.keys and merged.len == info.keys
   fail(0)
-  let view = merged
-  let restored = importProofState(view, root, ProofStateImportLimits(lookups: ElementLimit(128),
+  let restored = importProofPages(received, root, ProofPageImportLimits(
+      pages: ElementLimit(128), lookups: ElementLimit(128), scratchBytes: ByteLimit(65536),
       copyBytes: ByteLimit(1048576), store: genesisStoreLimits())).value.snapshot.value
   assert not sameStateSnapshot(restored, source) and restored.commitment.entries ==
       source.commitment.entries
@@ -165,10 +167,20 @@ proc main() {.raises.} =
       suppliedServicesTestLimits).value
   let policy = namespaceLogicalLimits()
   let profile = logical.currentLogicalSource.value.currentStateGlobals.value.qualifiedCurrentProfile.value.derivedStateProfile.value
-  let globals = validateGlobalState(restored, profile, policy.globals).value
-  let complete = validateStateManifest(globals, declarations,
-      policy.logical.inventory.manifest).value
-  let qualified = captureSuppliedLogicalInventory(complete, declarations, policy.logical).value
+  let typedLimits = SuppliedProofPageImportLimits(restoration: ProofPageImportLimits(
+      pages: ElementLimit(128), lookups: ElementLimit(128), scratchBytes: ByteLimit(65536),
+      copyBytes: ByteLimit(1048576), store: genesisStoreLimits()), globals: policy.globals,
+      logical: policy.logical)
+  assert importSuppliedProofPages([received[0]], root, profile, declarations,
+      typedLimits).restorationFailure.error == ProofStateImportError.Incomplete
+  assert importSuppliedProofPages(received, root, profile, [], typedLimits).error ==
+      SuppliedProofImportError.ManifestFailure
+  var shortLogical = typedLimits
+  shortLogical.logical.rawKeyBytes = ByteLimit(0)
+  assert importSuppliedProofPages(received, root, profile, declarations, shortLogical).error ==
+      SuppliedProofImportError.LogicalFailure
+  let qualified = importSuppliedProofPages(received, root, profile, declarations,
+      typedLimits).value
   assert not sameStateSnapshot(qualified.suppliedInventory.value.inventorySource.value.manifestSource.value, source)
   assert array[32, byte](owner.chainView.bestBlock.value.blockHash) ==
       head # Complete proof export/import grants no canonical adoption.

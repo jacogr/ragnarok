@@ -1,6 +1,24 @@
 # Source-sensitive native cache boundary
 
-## Observed failure and scope
+## Current policy after the October 21 nightly upgrade
+
+The compiler pin is now `29b96c31be1647665e5c57f2788e1c8cfeeddc9c`.
+Upstream [#2708](https://github.com/nim-lang/nimony/pull/2708) includes generic bodies and private
+declarations in interface checksums. The exact arity-change control below now prints `7`, `12`,
+then unchanged `12` in one persistent cache under checked ARC/Clang LTO. The old pinned compiler
+still fails its second build with the documented stale call. This is a bounded reproduction of
+the upstream fix, not a claim of compiler-wide cache correctness.
+
+Remove the whole-project source epoch and its digest cache. NativeChecks and Hastur retain
+compiler-path isolation, source-directory profiles, checked flags, native-library/header hashes,
+private worker caches and build locks. Nimony now owns source dependency invalidation; reports
+still hash source contents independently for provenance. Profile tests ensure ordinary source
+edits retain the same cache so incremental invalidation is exercised rather than bypassed.
+
+The following sections preserve the historical failure, workaround and measurements on the
+October 15 pin. They describe the retired policy, not the current cache implementation.
+
+## Historical observed failure and scope
 
 The PVM host-price optimization changed a private helper's arity. The pinned Nimony
 0.6.3 `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410` setup retained generated generic calls

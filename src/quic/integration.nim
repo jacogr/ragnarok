@@ -65,7 +65,7 @@ proc copyVerifiedWire*(value: VerifiedDigest, output: var openArray[byte]): Inte
   if data == nil: return IntegrationResult[int](status: IntegrationError.Owner) # Never read a missing snapshot.
   if output.len < data.wire.len: return IntegrationResult[int](
       status: IntegrationError.Owner) # Failure is atomic.
-  for i, b in data.wire: output[i] = b # Only caller storage is writable.
+  for i in 0..<data.wire.len: output[i] = data.wire[i] # Only caller storage is writable.
   IntegrationResult[int](status: IntegrationError.None, completed: data.wire.len)
 
 proc fixtureKey*(bank: IntegrationBank, index: int): IntegrationResult[PreimageKey] =
@@ -81,7 +81,8 @@ proc fixtureBytes*(bank: IntegrationBank, index: int): IntegrationResult[seq[byt
   if data == nil or index < 0 or index >= 8: return IntegrationResult[seq[byte]](
       status: IntegrationError.Owner)
   var copied = newSeq[byte](data.wires[index].len)
-  for i, b in data.wires[index]: copied[i] = b # No mutable bank backing storage is exported.
+  for i in 0..<data.wires[index].len: copied[i] = data.wires[index][
+      i] # No mutable bank backing storage is exported.
   IntegrationResult[seq[byte]](status: IntegrationError.None, completed: copied)
 
 proc preimageKey*(input: openArray[byte]): IntegrationResult[PreimageKey] {.raises: [].} =
@@ -126,7 +127,9 @@ proc findFixture*(bank: IntegrationBank, key: openArray[byte]): int {.raises: []
   let data = bank.data
   if data == nil: return -1 # Default banks never select their all-zero placeholder keys.
   if key.len != 32: return -1 # No key truncation/padding.
-  for index, expected in data.keys:
+  for index in 0..<data.keys.len:
+    # Copy each fixed key before examining it, keeping no iterator borrow through the ref.
+    let expected = data.keys[index]
     var matches = true
     for i, value in array[32, byte](expected):
       if key[i] != value: matches = false; break # Entire key equality selects the entry.

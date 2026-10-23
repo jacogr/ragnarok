@@ -1,0 +1,22 @@
+{
+  "build_name": "accumulation-storage-identities-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "accumulation_storage_identities guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "accumulation-storage-identities-value"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/accumulation_storage_identities_results.nim"
+}

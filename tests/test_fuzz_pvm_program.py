@@ -16,6 +16,17 @@ import native_checks
 class ProgramFuzzToolTests(unittest.TestCase):
     """Native Nim owns properties; these checks cover only tool selection, provenance and failure verdicts."""
 
+    def test_source_provenance_tracks_current_bytes(self):
+        """Source edits update the evidence map without requiring the retired cache-epoch helper."""
+        with temporary_folder() as root:
+            path = root/'target.nim'
+            path.write_bytes(b'first')
+            with patch.object(fuzz, 'ROOT', root), patch.object(
+                    fuzz, 'discover_project_sources', return_value={path}):
+                self.assertEqual(fuzz.source_hashes(), {'target.nim': hashlib.sha256(b'first').hexdigest()})
+                path.write_bytes(b'other')
+                self.assertEqual(fuzz.source_hashes(), {'target.nim': hashlib.sha256(b'other').hexdigest()})
+
     def test_count_is_canonical_and_finite(self):
         """Every campaign has an explicit count beyond seed initialization and below the operational ceiling."""
         for text, expected in [('16', 16), ('100000', 100000), ('1000000', 1000000)]:

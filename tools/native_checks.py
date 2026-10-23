@@ -15,7 +15,6 @@ import platform
 import subprocess
 import time
 from setup_nimony import cache_directory
-from native_source_identity import source_identity
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -83,12 +82,10 @@ class NativeChecks:
         flags += ['--passC:'+flag for flag in cflags]
         flags += ['--passL:'+flag for flag in link_flags]  # Explicit sanitizer/driver flags preserve ordinary callers' unchanged default profile.
         binary = self.folder/name
-        # The pinned compiler can retain old generic call bodies after an imported helper changes arity.
-        # Reuse only within this exact owned source epoch, including non-shared benchmark caches.
-        sources = source_identity(ROOT, source)
-        cache_name = name+'-sources-'+sources
+        # The pinned compiler invalidates imported generic bodies; retain stable profile caches.
+        cache_name = name
         if self.reuse_builds:
-            # Identical source epochs, flags and native bytes share frontend work; each main keeps its own binary.
+            # Identical directories, flags and native bytes share frontend work; each main keeps its own binary.
             inputs = [Path(path).resolve() for path in (crypto_library, quic_library, *native_libraries)
                       if path is not None]
             includes = [('crypto', crypto_library is not None), ('quic', quic_library is not None),
@@ -97,7 +94,7 @@ class NativeChecks:
                 # Header content changes must invalidate a profile just like changed native libraries.
                 if used:
                     inputs.extend(sorted((ROOT/'native'/directory).glob('*.h')))
-            profile = dict(directory=str(Path(source).resolve().parent), flags=flags, sources=sources,
+            profile = dict(directory=str(Path(source).resolve().parent), flags=flags,
                            native={str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs})
             identity = hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()[:16]
             cache_name = 'profile-'+identity

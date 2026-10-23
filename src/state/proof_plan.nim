@@ -70,8 +70,8 @@ iterator items*(plan: StateProofPlan): StateKey =
   ## Yield copied fixed identities in canonical byte order, retaining the immutable owner for iteration.
   let data = plan.data
   if data != nil:
-    for key in data.keys:
-      yield key # No mutable backing storage or root claim escapes.
+    for i in 0..<data.keys.len:
+      yield data.keys[i] # No mutable backing storage or root claim escapes.
 
 proc mergeStateProofPlans*(left, right: StateProofPlan,
     limit: ElementLimit): ProofPlanResult[StateProofPlan] =

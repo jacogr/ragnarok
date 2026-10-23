@@ -8,7 +8,8 @@ ENGINES=('ragnarok','polkavm_interpreter','polkavm_compiler')
 ACTIVE_ENGINES=ENGINES[:2]
 DEFERRED_COMPILER='Deferred by maintainer until the interpreter baseline is competitive'
 NAMES=('arithmetic-10000','memory-aligned-1000','memory-crossing-1000',
-       'hosts-aligned-1000','hosts-crossing-1000')
+       'hosts-aligned-1000','hosts-crossing-1000','arithmetic-1','arithmetic-16',
+       'bits-mixed-1000','sparse-aligned-1000','sparse-crossing-1000','blocks-alternating-1000')
 
 
 # A successful process with missing/duplicate samples is not a successful benchmark.

@@ -1,0 +1,28 @@
+{
+  "build_name": "pvm-fallthrough-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "PVM fallthrough default",
+      "diagnostic": "decoded.status == None",
+      "identity": {
+        "origin": "default"
+      },
+      "name": "pvm-fallthrough-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "PVM fallthrough invalid",
+      "diagnostic": "decoded.status == None",
+      "identity": {
+        "origin": "invalid"
+      },
+      "name": "pvm-fallthrough-invalid"
+    }
+  ],
+  "source": "tests/native/pvm_fallthrough_results.nim"
+}

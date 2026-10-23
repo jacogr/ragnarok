@@ -81,7 +81,8 @@ proc innerMachine*(machines: InnerMachines, id: InnerMachineId): InnerMachineRes
       status: InnerMachineError.InvalidContext)
   if uint64(id) >= 63: return InnerMachineResult[InnerMachineInfo](
       status: InnerMachineError.Missing)
-  for slot in data.slots:
+  for slotIndex in 0..<data.slots.len:
+    let slot = data.slots[slotIndex]
     if slot.id == uint64(id):
       return InnerMachineResult[InnerMachineInfo](status: InnerMachineError.None,
           completed: slot.info) # Sorted slots retain exact identity.
@@ -89,9 +90,11 @@ proc innerMachine*(machines: InnerMachines, id: InnerMachineId): InnerMachineRes
 
 proc retainedModule(machines: MapData, handle: uint64): bool =
   ## Handles retained by live instances remain occupied after their catalogue entry is expunged.
-  for item in machines.modules:
+  for moduleIndex in 0..<machines.modules.len:
+    let item = machines.modules[moduleIndex]
     if item.handle == handle: return true # A catalogue entry owns one immutable prepared module.
-  for item in machines.slots:
+  for slotIndex in 0..<machines.slots.len:
+    let item = machines.slots[slotIndex]
     if uint64(item.info.moduleHandle) == handle: return true # Live instances retain the underlying program.
   false
 
@@ -163,7 +166,8 @@ proc compileModule(machines: InnerMachines, gas: MachineGas, registers: Register
     transition.response.registers[7] = RegisterValue(high(uint64)-8)
     done() # HUH retains the complete original map for malformed program bytes.
   var modules = newSeqOfCap[ModuleData](data.modules.len+1)
-  for item in data.modules:
+  for moduleIndex in 0..<data.modules.len:
+    let item = data.modules[moduleIndex]
     modules.add(item) # Copy the catalogue descriptor; immutable program owners stay shared.
   modules.add(ModuleData(handle: handle, program: parsed.value, size: retainedSize))
   transition.machines = InnerMachines(data: MapData(slots: data.slots, modules: modules,
@@ -212,7 +216,8 @@ proc createInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: Re
   var found = false
   var program = default(Program)
   var size = 0'u64
-  for item in data.modules:
+  for moduleIndex in 0..<data.modules.len:
+    let item = data.modules[moduleIndex]
     if item.handle == handle:
       program = item.program
       size = item.size
@@ -271,14 +276,16 @@ proc expungeInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: R
       transition.response.registers[7] = RegisterValue(uint64(selected.value.pc))
       found = true
     var slots = newSeqOfCap[InnerData](data.slots.len)
-    for slot in data.slots:
+    for slotIndex in 0..<data.slots.len:
+      let slot = data.slots[slotIndex]
       if slot.id == id:
         size = slot.size # Each matching instance retains the exact immutable module byte extent.
       else:
         slots.add(slot) # Other instance owners and their module handles remain independent.
     if found:
       var retained = false
-      for item in data.modules:
+      for moduleIndex in 0..<data.modules.len:
+        let item = data.modules[moduleIndex]
         if item.handle == handle: retained = true # The catalogue still owns this module.
       for slot in slots:
         if uint64(slot.info.moduleHandle) == handle: retained = true # Another instance still owns this module.
@@ -286,7 +293,8 @@ proc expungeInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: R
         bytes: data.bytes-(if retained: 0'u64 else: size), limits: data.limits))
   elif mode == 1:
     var modules = newSeqOfCap[ModuleData](data.modules.len)
-    for item in data.modules:
+    for moduleIndex in 0..<data.modules.len:
+      let item = data.modules[moduleIndex]
       if item.handle == id:
         found = true
         size = item.size
@@ -294,7 +302,8 @@ proc expungeInnerMachine*(machines: InnerMachines, gas: MachineGas, registers: R
         modules.add(item) # Expunging a catalogue entry never removes a live instance.
     if found:
       var retained = false
-      for slot in data.slots:
+      for slotIndex in 0..<data.slots.len:
+        let slot = data.slots[slotIndex]
         if uint64(slot.info.moduleHandle) == id: retained = true # A live owner keeps both bytes and handle occupied.
       transition.machines = InnerMachines(data: MapData(slots: data.slots, modules: modules,
         bytes: data.bytes-(if retained: 0'u64 else: size), limits: data.limits))
@@ -368,7 +377,8 @@ proc innerPagesResponse*(machines: InnerMachines, gas: MachineGas, registers: Re
   if changed.error == MachineError.LimitExceeded: fail(InnerMachineError.LimitExceeded)
   if changed.error != MachineError.None: fail(InnerMachineError.InvalidContext)
   var slots = newSeqOfCap[InnerData](data.slots.len)
-  for slot in data.slots:
+  for slotIndex in 0..<data.slots.len:
+    let slot = data.slots[slotIndex]
     if slot.id == id:
       var info = slot.info
       info.memory = changed.value # Replace RAM alone; code, PC and block-charged flag retain original provenance.
@@ -446,7 +456,8 @@ proc transferInner(machines: InnerMachines, gas: MachineGas, registers: Register
     transition.response.memory = written.value # Peek changes only outer RAM; the invocation map remains the original owner.
   else:
     var slots = newSeqOfCap[InnerData](data.slots.len)
-    for slot in data.slots:
+    for slotIndex in 0..<data.slots.len:
+      let slot = data.slots[slotIndex]
       if slot.id == id:
         var info = slot.info
         info.memory = written.value
@@ -563,7 +574,8 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
   let written = memory.writeBytes(address, frame, MemoryByteLimit(112))
   if written.error != MachineError.None: fail(InnerMachineError.InvalidContext) # The immutable frame preflight proved the complete write.
   var slots = newSeqOfCap[InnerData](data.slots.len)
-  for slot in data.slots:
+  for slotIndex in 0..<data.slots.len:
+    let slot = data.slots[slotIndex]
     if slot.id == id: slots.add(InnerData(info: info, size: slot.size,
         id: slot.id)) # RAM/PC/flag share one completed segment certificate.
     else: slots.add(slot) # Retain all other machines unchanged.

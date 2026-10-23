@@ -1,0 +1,514 @@
+{
+  "source": "tests/native/storage_light_snapshot_results.nim",
+  "build_name": "storage-light-snapshot-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-light-snapshot-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light snapshot result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-light-snapshot-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light snapshot result failed guard"
+    },
+    {
+      "identity": {
+        "member": "reason",
+        "origin": "default"
+      },
+      "arguments": [
+        "reason",
+        "default"
+      ],
+      "name": "storage-light-snapshot-reason-default",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Light snapshot reason default guard"
+    },
+    {
+      "identity": {
+        "member": "reason",
+        "origin": "success"
+      },
+      "arguments": [
+        "reason",
+        "success"
+      ],
+      "name": "storage-light-snapshot-reason-success",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Light snapshot reason success guard"
+    },
+    {
+      "identity": {
+        "member": "chain",
+        "origin": "default"
+      },
+      "arguments": [
+        "chain",
+        "default"
+      ],
+      "name": "storage-light-snapshot-chain-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot chain default guard"
+    },
+    {
+      "identity": {
+        "member": "root",
+        "origin": "default"
+      },
+      "arguments": [
+        "root",
+        "default"
+      ],
+      "name": "storage-light-snapshot-root-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot root default guard"
+    },
+    {
+      "identity": {
+        "member": "limits",
+        "origin": "default"
+      },
+      "arguments": [
+        "limits",
+        "default"
+      ],
+      "name": "storage-light-snapshot-limits-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot limits default guard"
+    },
+    {
+      "identity": {
+        "member": "cache",
+        "origin": "default"
+      },
+      "arguments": [
+        "cache",
+        "default"
+      ],
+      "name": "storage-light-snapshot-cache-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot cache default guard"
+    },
+    {
+      "identity": {
+        "member": "checksum",
+        "origin": "default"
+      },
+      "arguments": [
+        "checksum",
+        "default"
+      ],
+      "name": "storage-light-snapshot-checksum-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot checksum default guard"
+    },
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "default"
+      },
+      "arguments": [
+        "bytes",
+        "default"
+      ],
+      "name": "storage-light-snapshot-bytes-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot bytes default guard"
+    },
+    {
+      "identity": {
+        "member": "length",
+        "origin": "default"
+      },
+      "arguments": [
+        "length",
+        "default"
+      ],
+      "name": "storage-light-snapshot-length-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot length default guard"
+    },
+    {
+      "identity": {
+        "member": "borrowed",
+        "origin": "default"
+      },
+      "arguments": [
+        "borrowed",
+        "default"
+      ],
+      "name": "storage-light-snapshot-borrowed-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot borrowed bytes default guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "default"
+      },
+      "arguments": [
+        "proof",
+        "default"
+      ],
+      "name": "storage-light-snapshot-proof-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Detached proof default result guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "uninitialized"
+      },
+      "arguments": [
+        "proof",
+        "uninitialized"
+      ],
+      "name": "storage-light-snapshot-proof-uninitialized",
+      "diagnostic": "outcome.status == None",
+      "description": "Detached proof uninitialized result guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "unknown"
+      },
+      "arguments": [
+        "proof",
+        "unknown"
+      ],
+      "name": "storage-light-snapshot-proof-unknown",
+      "diagnostic": "outcome.status == None",
+      "description": "Detached proof unknown result guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "limited"
+      },
+      "arguments": [
+        "proof",
+        "limited"
+      ],
+      "name": "storage-light-snapshot-proof-limited",
+      "diagnostic": "outcome.status == None",
+      "description": "Detached proof limited result guard"
+    },
+    {
+      "identity": {
+        "member": "batch",
+        "origin": "default"
+      },
+      "arguments": [
+        "batch",
+        "default"
+      ],
+      "name": "storage-light-snapshot-batch-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Batch proof default result guard"
+    },
+    {
+      "identity": {
+        "member": "batch",
+        "origin": "uninitialized"
+      },
+      "arguments": [
+        "batch",
+        "uninitialized"
+      ],
+      "name": "storage-light-snapshot-batch-uninitialized",
+      "diagnostic": "outcome.status == None",
+      "description": "Batch proof uninitialized result guard"
+    },
+    {
+      "identity": {
+        "member": "batch",
+        "origin": "unknown"
+      },
+      "arguments": [
+        "batch",
+        "unknown"
+      ],
+      "name": "storage-light-snapshot-batch-unknown",
+      "diagnostic": "outcome.status == None",
+      "description": "Batch proof unknown result guard"
+    },
+    {
+      "identity": {
+        "member": "batch",
+        "origin": "limited"
+      },
+      "arguments": [
+        "batch",
+        "limited"
+      ],
+      "name": "storage-light-snapshot-batch-limited",
+      "diagnostic": "outcome.status == None",
+      "description": "Batch proof limited result guard"
+    },
+    {
+      "identity": {
+        "member": "batch",
+        "origin": "duplicate"
+      },
+      "arguments": [
+        "batch",
+        "duplicate"
+      ],
+      "name": "storage-light-snapshot-batch-duplicate",
+      "diagnostic": "outcome.status == None",
+      "description": "Batch proof duplicate result guard"
+    },
+    {
+      "identity": {
+        "member": "batch-reason",
+        "origin": "default"
+      },
+      "arguments": [
+        "batch-reason",
+        "default"
+      ],
+      "name": "storage-light-snapshot-batch-reason-default",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Batch proof default reason guard"
+    },
+    {
+      "identity": {
+        "member": "batch-reason",
+        "origin": "success"
+      },
+      "arguments": [
+        "batch-reason",
+        "success"
+      ],
+      "name": "storage-light-snapshot-batch-reason-success",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Batch proof success reason guard"
+    },
+    {
+      "identity": {
+        "member": "cursor-finished",
+        "origin": "default"
+      },
+      "arguments": [
+        "cursor-finished",
+        "default"
+      ],
+      "name": "storage-light-snapshot-cursor-finished-default",
+      "diagnostic": "not cursor.owner == nil",
+      "description": "Light pagination cursor-finished default guard"
+    },
+    {
+      "identity": {
+        "member": "cursor-root",
+        "origin": "default"
+      },
+      "arguments": [
+        "cursor-root",
+        "default"
+      ],
+      "name": "storage-light-snapshot-cursor-root-default",
+      "diagnostic": "not cursor.owner == nil",
+      "description": "Light pagination cursor-root default guard"
+    },
+    {
+      "identity": {
+        "member": "page-len",
+        "origin": "default"
+      },
+      "arguments": [
+        "page-len",
+        "default"
+      ],
+      "name": "storage-light-snapshot-page-len-default",
+      "diagnostic": "page.ready",
+      "description": "Light pagination page-len default guard"
+    },
+    {
+      "identity": {
+        "member": "page-proofs",
+        "origin": "default"
+      },
+      "arguments": [
+        "page-proofs",
+        "default"
+      ],
+      "name": "storage-light-snapshot-page-proofs-default",
+      "diagnostic": "page.ready",
+      "description": "Light pagination page-proofs default guard"
+    },
+    {
+      "identity": {
+        "member": "page-next",
+        "origin": "default"
+      },
+      "arguments": [
+        "page-next",
+        "default"
+      ],
+      "name": "storage-light-snapshot-page-next-default",
+      "diagnostic": "page.ready",
+      "description": "Light pagination page-next default guard"
+    },
+    {
+      "identity": {
+        "member": "cursor-result",
+        "origin": "default"
+      },
+      "arguments": [
+        "cursor-result",
+        "default"
+      ],
+      "name": "storage-light-snapshot-cursor-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light pagination cursor-result default guard"
+    },
+    {
+      "identity": {
+        "member": "cursor-result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "cursor-result",
+        "failed"
+      ],
+      "name": "storage-light-snapshot-cursor-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light pagination cursor-result failed guard"
+    },
+    {
+      "identity": {
+        "member": "page-result",
+        "origin": "default"
+      },
+      "arguments": [
+        "page-result",
+        "default"
+      ],
+      "name": "storage-light-snapshot-page-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light pagination page-result default guard"
+    },
+    {
+      "identity": {
+        "member": "page-result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "page-result",
+        "failed"
+      ],
+      "name": "storage-light-snapshot-page-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light pagination page-result failed guard"
+    },
+    {
+      "identity": {
+        "member": "select-result",
+        "origin": "default"
+      },
+      "arguments": [
+        "select-result",
+        "default"
+      ],
+      "name": "storage-light-snapshot-select-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light selective export default result guard"
+    },
+    {
+      "identity": {
+        "member": "select-result",
+        "origin": "uninitialized"
+      },
+      "arguments": [
+        "select-result",
+        "uninitialized"
+      ],
+      "name": "storage-light-snapshot-select-result-uninitialized",
+      "diagnostic": "outcome.status == None",
+      "description": "Light selective export uninitialized result guard"
+    },
+    {
+      "identity": {
+        "member": "select-result",
+        "origin": "unknown"
+      },
+      "arguments": [
+        "select-result",
+        "unknown"
+      ],
+      "name": "storage-light-snapshot-select-result-unknown",
+      "diagnostic": "outcome.status == None",
+      "description": "Light selective export unknown result guard"
+    },
+    {
+      "identity": {
+        "member": "select-result",
+        "origin": "limited"
+      },
+      "arguments": [
+        "select-result",
+        "limited"
+      ],
+      "name": "storage-light-snapshot-select-result-limited",
+      "diagnostic": "outcome.status == None",
+      "description": "Light selective export limited result guard"
+    },
+    {
+      "identity": {
+        "member": "select-result",
+        "origin": "duplicate"
+      },
+      "arguments": [
+        "select-result",
+        "duplicate"
+      ],
+      "name": "storage-light-snapshot-select-result-duplicate",
+      "diagnostic": "outcome.status == None",
+      "description": "Light selective export duplicate result guard"
+    },
+    {
+      "identity": {
+        "member": "select-reason",
+        "origin": "default"
+      },
+      "arguments": [
+        "select-reason",
+        "default"
+      ],
+      "name": "storage-light-snapshot-select-reason-default",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Light selective export default reason guard"
+    },
+    {
+      "identity": {
+        "member": "select-reason",
+        "origin": "success"
+      },
+      "arguments": [
+        "select-reason",
+        "success"
+      ],
+      "name": "storage-light-snapshot-select-reason-success",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Light selective export success reason guard"
+    }
+  ]
+}

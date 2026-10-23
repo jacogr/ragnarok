@@ -8,7 +8,7 @@ import ./[current_block_download_peers, current_block_download_session, current_
 import ../app/[services, handoff, current_handoff, chain, candidate, current_block_input,
     current_block_download, download_schedule, preparation_worker, current_logical_download]
 import ../codec/[bounded, header]
-import ../chain/genesis
+import ../chain/[genesis, provider]
 import ../state/[accumulation_current_update, store, report_anchors, current_logical]
 
 type
@@ -365,8 +365,11 @@ proc tick*(dispatcher: var CurrentDownloadLoop, now: CurrentDownloadLoopTick): C
     return dispatcher.retry(now) # Closed cancelled input or rejected binding cannot hold the scheduler forever.
   CurrentDownloadLoopError.None
 
-proc close*(dispatcher: var CurrentDownloadLoop) =
-  ## Join execution before retiring callbacks/input, then settle only this dispatcher's handoff and end its Services borrow.
+proc closeAndCaptureLogical*(dispatcher: var CurrentDownloadLoop): CurrentDownloadSessionResult[
+    CurrentLogicalState] =
+  ## Join every native borrower, retain only this dispatcher's actual adopted logical receipt, then retire callbacks/input and the Services borrow.
+  result = default(CurrentDownloadSessionResult[CurrentLogicalState])
+  var captured = default(CurrentDownloadSessionResult[CurrentLogicalState])
   let borrowed = dispatcher.owner
   if borrowed != nil:
     let owner: ptr Services = borrowed
@@ -376,6 +379,17 @@ proc close*(dispatcher: var CurrentDownloadLoop) =
     owner[].stopPreparation() # Join before any native close callback or retained input/context owner can retire.
     let active = dispatcher.current
     if active != nil: discard dispatcher.session.retirePreparation(active, owner[])
+    if dispatcher.qualifyLogical:
+      # Retain only after every proof, publication and preparation lease joined; native callback teardown can then retire the receiver's own reference safely.
+      if dispatcher.status == CurrentDownloadLoopStage.Adopted:
+        captured = dispatcher.logicalResult
+      elif dispatcher.status == CurrentDownloadLoopStage.Queued:
+        # Inspect the scalar phase only after native joining; pending or refused work cannot supply an adopted logical receipt.
+        let finished = owner[].currentAccumulationPhase == CurrentHandoffPhase.Finished
+        if finished and active != nil:
+          captured = dispatcher.session.logicalCompletion(
+              active) # Qualification remains distinct from the actual receipt consumed below.
+
   dispatcher.catalog.close()
   if borrowed != nil and dispatcher.status == CurrentDownloadLoopStage.Queued:
     let owner: ptr Services = borrowed
@@ -384,6 +398,20 @@ proc close*(dispatcher: var CurrentDownloadLoop) =
     elif owner[].currentAccumulationPhase == CurrentHandoffPhase.Finished:
       dispatcher.completion = owner[].takeCurrentAccumulation()
       dispatcher.hasCompletion = true # Preserve an actual result produced by an explicit external Services tick.
+  if borrowed != nil and dispatcher.hasCompletion and dispatcher.completion.error ==
+      CurrentHandoffError.None and captured.error == CurrentDownloadSessionError.None:
+    # A successful qualification never substitutes actual installation: bind the retained producer to the consumed child and exact canonical state/full view after joined IO.
+    let owner: ptr Services = borrowed
+    let update = captured.value.currentLogicalUpdate
+    if update.error == CurrentLogicalError.None:
+      let actualChild = array[32, byte](update.value.currentUpdateChild.blockHash)
+      let receiptChild = array[32, byte](dispatcher.completion.value.blockHash)
+      if actualChild == receiptChild:
+        # Same child alone does not substitute physical ownership or the full selected history/Parameters tuple.
+        let sameState = sameStateSnapshot(update.value.currentUpdateState, owner[].stateSnapshot.value)
+        let sameView = sameChainView(update.value.currentUpdateView, owner[].chainView)
+        if sameState and sameView:
+          result = captured # Only the matching actual installed logical owner can leave joined close.
   let token = dispatcher.current
   if token != nil:
     discard dispatcher.session.discardInput(token) # Queued/terminal private ownership retires with the closed aggregate.
@@ -396,6 +424,10 @@ proc close*(dispatcher: var CurrentDownloadLoop) =
   dispatcher.owner = nil
   dispatcher.current = nil
   dispatcher.status = CurrentDownloadLoopStage.Closed
+
+proc close*(dispatcher: var CurrentDownloadLoop) =
+  ## Preserve explicit close compatibility while retiring any detached joined logical receipt only after every borrower has stopped.
+  discard dispatcher.closeAndCaptureLogical()
 
 proc ancestorDemand*(dispatcher: CurrentDownloadLoop): CurrentDownloadSessionResult[
     ReportLookupDemand] {.requires:

@@ -56,10 +56,10 @@ proc captureKey(draft: var WriteDraft, service: ServiceIndex, key: StateKey,
   ## Copy only the final selected value or genuine absence for one trusted physical fact.
   let charged = draft.spend()
   if charged != SelectedAccountWriteError.None: return charged # Final lookup consumes independent work.
-  for earlier in draft.rows:
+  for earlier in 0..<draft.rows.len:
     let checked = draft.spend()
     if checked != SelectedAccountWriteError.None: return checked # Bound conflict detection before comparison.
-    if array[31, byte](earlier.write.key) == array[31, byte](key):
+    if array[31, byte](draft.rows[earlier].write.key) == array[31, byte](key):
       return SelectedAccountWriteError.ConflictingKey # Never choose a physical-key winner across selected accounts/facts.
   if uint64(draft.rows.len) >= uint64(draft.limits.writes) or draft.rows.len >= high(
       int) div sizeof(WriteRow):

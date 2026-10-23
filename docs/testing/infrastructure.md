@@ -265,15 +265,12 @@ with E2E; neither path maintains another list of their names. Registration perfo
 network work. Failed builds never execute stale binaries, and failed offload selftests still
 prevent the subsequent live offload workload.
 
-Persistent native/Hastur caches include a shared [owned-source epoch](../../spec/pvm-native-cache-identity.md)
-so stale imported generic bodies cannot cross edited runtime/support/adjacent Nim
-sources. Unchanged source trees retain profile reuse; source edits may create a fresh
-project cache directory. Existing compiler identity, flags, native ABI hashes, worker
-isolation and locks remain in force. Compiler files and metadata are never modified.
-File discovery and metadata checks still run for every plan. A bounded process-local digest cache
-avoids rereading unchanged files; device/inode, size and nanosecond modification/change times
-invalidate cached bytes. Same-size edits with restored mtime and atomic replacements remain
-source changes. No metadata/digest cache persists between processes.
+Persistent native/Hastur caches rely on the pinned compiler's source dependency invalidation.
+The October 21 nightly fixes the reproduced stale imported-generic call; the former whole-tree
+[source epoch](../../spec/pvm-native-cache-identity.md) and digest memoization are retired.
+Source edits reuse the same profile cache so the compiler's invalidation is exercised. Compiler
+identity, checked flags, native library/header hashes, worker isolation, locks and independent
+source provenance remain in force. Compiler files and metadata are never modified.
 
 Storage IO observers are explicit native-only profiles: the `storage_io` test object and include
 directory are required for `io_read`, `io_write` or `io_fsync` call-site observation. SDK prototypes

@@ -12,6 +12,7 @@ import ../state/[parent_profile, parent_globals, parent_logical, global_snapshot
 
 const CurrentLogicalSourceBytes* = 65536 ## Startup transport cap is independent of retained declarations and decoded payload policies.
 const CurrentLogicalSourceHeader* = "ragnarok-current-logical-source-v1" ## Shared existing v1 identity-only transport header; export and parser accept one representation.
+const CurrentLogicalSourceKeyBytes* = 4096 ## Shared v1 raw-identity syntax ceiling also bounds canonical export.
 const CurrentLogicalSourceLines* = 4096 ## Fixed syntax cap bounds duplicate-service preflight and native ordinal conversions.
 type
   CurrentLogicalStartupLimits* = object ## Every actual-source projection, full parent qualification and later continuation policy is explicit.
@@ -171,8 +172,8 @@ proc decodeCurrentLogicalDeclarations*(text: string,
         if kind == 'p' and digits != 64: return fail[Output](CurrentLogicalStartupError.InvalidHex)
         if digits mod 2 != 0: return fail[Output](CurrentLogicalStartupError.InvalidHex)
         let bytes = digits div 2
-        if bytes > 4096 or uint64(bytes) > uint64(limits.perValue): return fail[Output](
-            CurrentLogicalStartupError.LimitExceeded)
+        if bytes > CurrentLogicalSourceKeyBytes or uint64(bytes) > uint64(
+            limits.perValue): return fail[Output](CurrentLogicalStartupError.LimitExceeded)
         var hash = default(array[32, byte])
         if kind == 'k':
           if uint64(bytes) > remaining: return fail[Output](
@@ -241,7 +242,8 @@ proc captureCurrentLogicalStartup*(view: ChainView, declarations: CurrentLogical
   if uint64(data.services) > uint64(projection.services) or uint64(data.rows.len) > uint64(
       projection.facts):
     return fail[Output](CurrentLogicalStartupError.LimitExceeded)
-  for row in data.rows:
+  for ordinal in 0..<data.rows.len:
+    let row = data.rows[ordinal]
     if row.kind == DeclarationKind.Storage and uint64(row.key.len) > uint64(projection.perValue):
       return fail[Output](CurrentLogicalStartupError.LimitExceeded) # A later tighter caller policy cannot inherit larger raw-key hashing permission.
   var available = min(uint64(projection.bytes), uint64(high(int)))
@@ -266,7 +268,8 @@ proc captureCurrentLogicalStartup*(view: ChainView, declarations: CurrentLogical
   var output = newSeq[StateService](data.services)
   var selected = -1
   # Each service's exact child arrays are counted and admitted before their first payload read or allocation.
-  for ordinal, row in data.rows:
+  for ordinal in 0..<data.rows.len:
+    let row = data.rows[ordinal]
     if row.kind == DeclarationKind.Service:
       inc selected
       var storage, preimages, requests = 0
@@ -303,7 +306,7 @@ proc captureCurrentLogicalStartup*(view: ChainView, declarations: CurrentLogical
           case child.kind
           of DeclarationKind.Storage, DeclarationKind.Preimage:
             let derived = if child.kind == DeclarationKind.Storage: serviceStorageKey(row.service,
-                child.key, ByteLimit(4096))
+                child.key, ByteLimit(CurrentLogicalSourceKeyBytes))
               else: servicePreimageKey(row.service, child.hash, ByteLimit(32))
             if derived.error != ServiceValueError.None:
               return CurrentLogicalStartupResult[Output](

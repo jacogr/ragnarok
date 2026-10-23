@@ -1,0 +1,99 @@
+{
+  "build_name": "storage-logical-continuation-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "storage_logical_continuation guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "storage-logical-continuation-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "storage_logical_continuation selected reason",
+      "diagnostic": "outcome.status == IdentityFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "storage-logical-continuation-reason"
+    },
+    {
+      "arguments": [
+        "metadata"
+      ],
+      "description": "Storage continuation guarded metadataError",
+      "diagnostic": "outcome.status == MetadataFailure",
+      "identity": {
+        "reason": "metadata"
+      },
+      "name": "storage-logical-continuation-metadata"
+    },
+    {
+      "arguments": [
+        "request"
+      ],
+      "description": "Storage continuation guarded requestError",
+      "diagnostic": "outcome.status == RequestFailure",
+      "identity": {
+        "reason": "request"
+      },
+      "name": "storage-logical-continuation-request"
+    },
+    {
+      "arguments": [
+        "profile"
+      ],
+      "description": "Storage continuation guarded profileFailure",
+      "diagnostic": "outcome.status == ProfileFailure",
+      "identity": {
+        "reason": "profile"
+      },
+      "name": "storage-logical-continuation-profile"
+    },
+    {
+      "arguments": [
+        "globals"
+      ],
+      "description": "Storage continuation guarded globalsFailure",
+      "diagnostic": "outcome.status == GlobalsFailure",
+      "identity": {
+        "reason": "globals"
+      },
+      "name": "storage-logical-continuation-globals"
+    },
+    {
+      "arguments": [
+        "state"
+      ],
+      "description": "Storage continuation guarded stateFailure",
+      "diagnostic": "outcome.status == StateFailure",
+      "identity": {
+        "reason": "state"
+      },
+      "name": "storage-logical-continuation-state"
+    },
+    {
+      "arguments": [
+        "logical"
+      ],
+      "description": "Storage continuation guarded logicalFailure",
+      "diagnostic": "outcome.status == LogicalFailure",
+      "identity": {
+        "reason": "logical"
+      },
+      "name": "storage-logical-continuation-logical"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/storage_logical_continuation_results.nim"
+}

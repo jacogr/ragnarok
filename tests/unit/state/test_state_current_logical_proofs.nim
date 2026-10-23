@@ -31,7 +31,11 @@ proc main() {.raises.} =
   let limits = logicalProofLimits()
   let response = executeProofQuery(logicalProofQuery(logical, plan)).value
   let wire = response.bytes(limits.wireBytes).value
-  assert wire.len >= 8 and wire[0..3] == @[82'u8, 80, 86, 49]
+  assert wire.len >= 8
+  let magic = [82'u8, 80, 86, 49]
+  for i in 0..<magic.len:
+    # Check each RPV1 magic byte without allocating a stdlib sequence slice.
+    assert wire[i] == magic[i]
   let verified = decodePlannedProofs(wire, plan, root, limits.view, limits.proof, limits.aggregate,
       limits.wireBytes).value
   let subset = captureStateProofPlan([chapterKey(StateChapter(11)), chapterServiceKey(StateChapter(

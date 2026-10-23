@@ -3,7 +3,7 @@
 
 ## Reject detached source/map or substituted count/index domains.
 
-# @@Verification={"group": "nominal", "expected": "openArray", "early": ["prepareComputedLinks(", "[2] expected: openArray but got: seq"]}
+# @@Verification={"group": "nominal","expected": "openArray","early": ["prepareComputedLinks(","[2] expected: openArray[ComputedWorkReport] but got: seq[SegmentLookup]"]}
 
 import ../../../src/state/[computed_links, computed_guarantee, computed_report, report_identity]
 import ../../../src/codec/[bounded, work_report]

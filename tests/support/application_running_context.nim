@@ -17,7 +17,8 @@ import ./[application_candidate_context, accumulation_runner_context,
   pvm_accumulation_program]
 import ./report_admission_context as signed_fixture
 
-const RunningGas* = 40_000_000'u64 ## Finite guest credit, independent of test deadlines or host sleeps.
+const RunningGas* = 400_000_000'u64
+  ## Finite credit leaves room for native pacing after PVM speedups; execution must still exhaust genuine guest gas.
 
 type RunningFixture* = object ## Detached exact wire bytes and complete seed text own no live worker aliases.
   seed*: string

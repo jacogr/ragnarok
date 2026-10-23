@@ -148,11 +148,13 @@ access. Local benchmark evidence and limits are recorded in the
 
 ## Invocation-scoped decoded instructions
 
-Bounded execution retains sixteen scalar decoder results in a fixed direct-slot memo. The complete
-instruction address tags every hit. A collision replaces only that slot after a genuine successful
-`instruction` decode; failed/default results never populate or evict successful entries. No input
-owner, callback, memory page, mutable register or partial state is retained by the memo.
-Direct slot inspection and an inline helper avoid an extra full-result copy on the hot path.
+Bounded execution retains sixteen scalar decoder results in eight paired sets. The natural
+address-modulo-sixteen slot is checked first, preserving ordinary direct hits; toggling index bit
+three selects its alternative. Complete instruction addresses tag both ways. A successful miss
+fills a free natural/paired entry, or alternates replacement between two occupied residents.
+Failed/default results never populate, evict or advance replacement. Hits do not reorder/copy the
+other way. No input owner, callback, memory page, mutable register or partial state is retained.
+The inline helper retains the same fixed sixteen-result capacity and eight bounded replacement flags.
 
 The program and decode profile remain fixed through one `execute` or `executeWithHost` invocation.
 Host continuations retain this invocation's memo; nested executions and new calls always start with
@@ -170,3 +172,99 @@ sharing operands. A thousand repeated collision/host groups return ARC memory to
 The private decoder helper has a compiler rejection guard. Existing execution, mixed-program,
 host-failure and metered fault references remain regression controls. Run
 `make unit SUITE=pvm_execution_cache` and `make check-inventory`.
+
+
+## Causing-PC exit cursor, 2026-10-23
+
+The private iterative loop retains only the causing PC for each attempted instruction.
+It no longer copies all registers and retains an extra memory handle for rollback.
+This relies on the evaluator's explicit effect contract: OutOfGas returns before
+mutation; failed memory preflight changes neither registers nor memory; Host changes
+only PC. Those exits retain posterior gas/charged state and restore the causing PC.
+Final Panic/Halt still preserve specified posterior register mutations and normalize
+PC to zero. Local errors retire all private progress without exposing a snapshot.
+Public single-step snapshots and their terminal-PC rules remain unchanged.
+
+The execution suite compares complete CPU fields (including reserved-zero deficit)
+and all page bytes at fault/host exits after an arithmetic/store prefix against
+retained public single-step roots. Earlier roots and their pages stay unchanged.
+These cases join the existing 1000-cycle ARC release group. Existing gas shortages,
+load-and-jump terminal mutations, repeated faults/hosts, nested callbacks, cached
+execution and dependent arithmetic-chain controls also pass. See the benchmark
+record for the measured arithmetic improvement and unchanged parity limits.
+
+
+## Adaptive private scalar writes, 2026-10-23
+
+The bounded transition loop keeps its first three successful stores on the existing
+immutable path. Its fourth successful store activates a private scalar writer for
+that segment. Subsequent loads observe staged bytes, and subsequent stores reuse
+private touched chunks. Arithmetic/load-only runs allocate no writer; short segments
+such as one-store host loops retain their direct path. The threshold is an internal
+implementation choice, with no new caller budget or guest-visible behavior.
+
+Every actual host/fault/panic/halt/out-of-gas observation seals the current epoch
+before publishing a machine. Host replies resume from the actual frozen callback
+memory and begin an independent epoch. Local errors, including step exhaustion,
+release private progress without granting a machine or resumable prefix. Public
+single-step APIs keep their existing immutable store path.
+
+The execution suite compares full CPU and page contents against retained public
+single-step traces for 1/3/4/5/9-store prefixes ending in each observable exit. It
+checks local budget refusal at the same boundaries. Ordinary and fallible host APIs
+also cross two activation epochs around a callback that retains its snapshot and
+replaces memory/registers. These cases join the existing 1000-cycle ARC group.
+Measured memory gains and the arithmetic tradeoff are recorded in the interpreter
+benchmark contract; this is scoped execution plumbing, not full JAM parity.
+
+
+## Retained instruction validation, 2026-10-23
+
+Cached genuine decoded results now retain their owner's sealed fallthrough fact.
+Every admitted nonterminator advances sequentially, except scalar faults retaining
+the already decoded causing PC. The evaluator can use that fact instead of another
+program opcode lookup after each arithmetic/load/store/no-op/host instruction.
+Other control successors retain the complete executable-location check, and control
+mutation still validates both conditional targets before selecting one. Gas shortage,
+capability refusal and local budgets retain their original ordering and payload rules.
+
+The paired memo and validation facts form one invocation-scoped decoded-instruction
+feature. Two colliding PCs and a literal three-way PC0/16/32 loop with distinct
+mutations/control verify exact full-address tags and replacement under pressure.
+Existing over-capacity traces, reused PCs in different programs, nested callbacks,
+shared budgets and 1000 ownership cycles remain controls. Final Paper conditionals
+preserve Panic for either chosen path when the other successor is absent; unpaid
+execution still returns OutOfGas first. Timing evidence and remaining gaps are in
+the interpreter comparison contract; no unchecked execution mode is introduced.
+
+
+## Multiple priced blocks per invocation, 2026-10-23
+
+Execution's private gas memo now retains the first successful block and three recent
+successful prices, with no heap allocation or owner retention. Exact cached starts
+reuse their established block membership; uncached interior PCs still resolve and
+pay their whole containing block. Every cached hit checks/debits the current balance.
+Only successful simulations under the invocation's fixed program/profile/cycle limit
+enter the memo; failed prices never evict. New calls/limits start empty, and host
+continuations retain only this invocation's memo. See the block-cache contract for
+capacity, replacement, exact gas/limit/pressure tests and the benchmark evidence.
+
+
+## Retained static control validation, 2026-10-23
+
+The private control handler now accepts the genuine decoded result, keeping operands
+and owner-established static-target facts together. Static branches reuse that fact;
+conditionals also require the sealed fallthrough fact before selecting a successor.
+Both destinations must remain valid even when the predicate avoids the invalid one.
+Gas charging still precedes control mutation, and invalid load-and-jump still retains
+its specified register write. Dynamic jump alignment, sentinel, table and destination
+checks, and the evaluator's final terminating-control opcode check remain in place.
+
+The existing sixteen-result invocation-local memo retains the scalar fact without
+additional entries, heap allocation or public mutable metadata. New calls and owners
+retain their independent caches. Tests exercise all sixteen conditional families
+with three register values, untaken invalid targets, unchanged source machines and
+zero-gas precedence, plus invalid static load-and-jump mutation. Program/step/gas,
+independent mixed-program, memory, host, metered fault/retry and cache/ARC controls
+pass under the pinned checked release configuration. Default/failed result access
+and private-field rejection have separate negative controls.

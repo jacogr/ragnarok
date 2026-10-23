@@ -11,11 +11,19 @@
 import ./[program, machine, registers, gas]
 
 type
-  BlockChargeCache = object ## Private constant-space memo bound to one execution's immutable program and cycle limit.
+  BlockChargeEntry = object ## One complete successful pipeline price belongs to this invocation's immutable program and cycle limit.
     valid: bool
     start: CodeAddress
     charge: BlockGas
-  InstructionCache = array[16, ProgramResult[Instruction]] ## Fixed-size scalar-only decoder memo belongs to one program invocation, including its host resumptions.
+  BlockChargeCache = object ## Keep the first block as a direct hit and three bounded recent prices; no failed simulation enters the memo.
+    valid: bool
+    start: CodeAddress
+    charge: BlockGas
+    recent: array[3, BlockChargeEntry]
+    next: range[0..2]
+  InstructionCache = object ## Sixteen genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
+    entries: array[16, ProgramResult[Instruction]]
+    replaceUpper: array[8, bool]
   HostCallId* = distinct uint64 ## Host identifiers occupy a register-width domain distinct from gas, addresses and step budgets.
   ExecutionStepLimit* = distinct uint64 ## Local scheduling policy bounds attempted instructions; it is not guest gas or a guest exit.
   HostCallLimit* = distinct uint64 ## Local dispatch budget, independent of attempted guest instructions and guest gas.
@@ -74,6 +82,17 @@ type
       effect: InstructionEffect
     else:
       discard # The invocation discards its private cursor on local refusal.
+
+  ExecutionCursor = object ## One invocation owns mutable CPU values and immutable program/memory children across host resumptions.
+    program: Program
+    memory: Memory
+    info: MachineInfo
+
+  WorkingMemory = object ## Short segments use immutable stores; longer private runs stage scalar writes until the next observation.
+    current: Memory
+    writer: nil ScalarMemoryWriter
+    stores: byte
+    buffered: bool
 
 type
   HostResultKind* {.pure.} = enum ## Callback selection is independent of the caller's enum: no numeric reason implies success.
@@ -157,6 +176,44 @@ func hostCall*(outcome: StepOutcome): HostCallId {.requires: outcome.kind == Ste
   ## Host-call metadata is meaningful only after selecting the Host alternative.
   outcome.callNumber
 
+proc initializeCursor(source: Machine, cursor: var ExecutionCursor): StepError =
+  ## Validate once before any guest/host work, then copy CPU values and retain immutable child owners.
+  let original = machineInfo(source)
+  let program = programOf(source)
+  let memory = memoryOf(source)
+  if original.error != MachineError.None or program.error != MachineError.None or memory.error !=
+      MachineError.None:
+    return StepError.InvalidMachine
+  if uint64(original.value.gasDeficit) != 0:
+    return StepError.InvalidMachine # Terminal debt is invalid even with an empty local instruction budget.
+  cursor = ExecutionCursor(program: program.value, memory: memory.value, info: original.value)
+  StepError.None
+
+proc applyResponseCursor(cursor: var ExecutionCursor, item: Instruction,
+    response: HostResponse, exit: var StepExit): StepError =
+  ## A genuine causing host instruction is supplied privately; validate all posterior fields before changing the cursor.
+  if uint64(response.gasDeficit) != 0: return StepError.InvalidHostResponse
+  var next = cursor.info.pc
+  var selected = StepExit.Continued
+  case response.action
+  of HostAction.Continue:
+    next = CodeAddress(uint64(next)+1+uint64(item.skip)) # Owned instruction bounds prove the successor addition.
+    if instructionOpcode(cursor.program, next).error != ProgramError.None:
+      return StepError.InvalidHostResponse # Preserve public captureMachine's executable-successor requirement.
+  of HostAction.Panic:
+    selected = StepExit.Panic # Host terminal replies retain the causing PC and posterior state.
+  of HostAction.OutOfGas:
+    selected = StepExit.OutOfGas
+  of HostAction.Halt, HostAction.Uninitialized:
+    return StepError.InvalidHostResponse # GP PR533 excludes Halt; an unselected response never implies continuation.
+  if readableRange(response.memory, MemoryAddress(0), MemoryLength(0)).error != MachineError.None:
+    return StepError.InvalidHostResponse # Empty range validation checks genuine memory ownership without payload allocation.
+  cursor.info = MachineInfo(pc: next, gas: response.gas, gasDeficit: response.gasDeficit,
+    blockCharged: cursor.info.blockCharged, registers: response.registers)
+  cursor.memory = response.memory
+  exit = selected
+  StepError.None
+
 proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepResult =
   ## Apply Psi_H's posterior host state to a recursive execute suspension at its causing ecalli.
   ## The host has already selected its action and gas; this function invokes no host or guest work.
@@ -184,42 +241,94 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
   if item.value.opcode != 10 or uint64(item.value.x) != uint64(suspension.hostCall):
     # Keep the causing instruction and its full-width host identifier consistent.
     return StepResult(status: StepError.InvalidHostSuspension)
-  var info = original.value
-  info.gas = response.gas
-  info.gasDeficit = response.gasDeficit
-  info.registers = response.registers
+  let memory = memoryOf(suspension.machine)
+  if memory.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
+  var cursor = ExecutionCursor(program: program.value, memory: memory.value, info: original.value)
   var exit = StepExit.Continued
-  case response.action
-  of HostAction.Continue:
-    # The validated instruction bounds PC and skip; retain the existing block's charged flag.
-    info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.value.skip))
-  of HostAction.Halt:
-    # PR533 removes host Halt from the mutator domain; retain the enum spelling only for source compatibility.
-    return StepResult(status: StepError.InvalidHostResponse)
-  of HostAction.Panic:
-    # Host panic likewise retains all posterior state and the causing host-call PC.
-    exit = StepExit.Panic
-  of HostAction.OutOfGas:
-    # Preserve the unsigned posterior balance supplied by the trusted host.
-    exit = StepExit.OutOfGas
-  of HostAction.Uninitialized:
-    # A default response is not an implicit continuation with zeroed registers or gas.
-    return StepResult(status: StepError.InvalidHostResponse)
+  let applied = applyResponseCursor(cursor, item.value, response, exit)
+  if applied != StepError.None: return StepResult(status: applied)
   let captured = (if exit == StepExit.Continued:
-    captureMachine(program.value, response.memory, info)
-    else: captureTerminalMachine(program.value, response.memory, info))
+    captureMachine(cursor.program, cursor.memory, cursor.info)
+    else: captureTerminalMachine(cursor.program, cursor.memory, cursor.info))
   if captured.error != MachineError.None:
-    # Invalid response memory publishes no partially applied host mutation.
-    return StepResult(status: StepError.InvalidHostResponse)
+    return StepResult(status: StepError.InvalidHostResponse) # Failed capture never exposes a partially applied response.
   StepResult(status: StepError.None, completed: StepOutcome(kind: exit, machine: captured.value))
 
 # Exact scalar load/store instruction set; host response application executes no instruction.
 func memoryOpcode(opcode: byte): bool =
   opcode in {30'u8..33'u8, 52'u8..62'u8, 70'u8..73'u8, 120'u8..130'u8}
 
+func initBlockChargeCache(): BlockChargeCache =
+  ## New invocation/limit pairs explicitly start with no valid primary/recent block or inherited replacement progress.
+  BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0),
+    recent: default(array[3, BlockChargeEntry]), next: 0)
+
+proc cachedCharge(cache: BlockChargeCache, start: CodeAddress,
+    needed: var uint64): bool {.inline.} =
+  ## Only exact starts from successful owned simulations grant a price; at most three secondary scalar entries are inspected.
+  if cache.valid and uint64(cache.start) == uint64(start):
+    needed = uint64(cache.charge)
+    return true
+  for entry in cache.recent:
+    if entry.valid and uint64(entry.start) == uint64(start):
+      needed = uint64(entry.charge)
+      return true
+  false # A miss does not modify the caller's initialized price or authorize a debit.
+
+proc rememberCharge(cache: var BlockChargeCache, start: CodeAddress, charge: BlockGas) =
+  ## Keep the first successful block fast; later successful misses rotate three bounded secondary entries.
+  if not cache.valid:
+    cache.valid = true
+    cache.start = start
+    cache.charge = charge
+  else:
+    cache.recent[cache.next] = BlockChargeEntry(valid: true, start: start, charge: charge)
+    if cache.next == 2: cache.next = 0
+    else: inc cache.next # The 0..2 domain and branch prove the next index; no guest-length counter can wrap.
+
+func initWorkingMemory(memory: Memory, buffered: bool): WorkingMemory =
+  ## No mutable builder or vector allocates before enough successful stores justify a private epoch.
+  WorkingMemory(current: memory, writer: nil, stores: 0, buffered: buffered)
+
+proc loadWorking(memory: WorkingMemory, address: MemoryAddress, width: AccessWidth): MachineResult[
+    RegisterValue] {.inline.} =
+  ## Loads observe the latest staged bytes when active, otherwise the current immutable snapshot.
+  if memory.writer != nil: load(memory.writer, address, width)
+  else: load(memory.current, address, width)
+
+proc storeWorking(memory: var WorkingMemory, address: MemoryAddress, width: AccessWidth,
+    value: RegisterValue, failedPage: var PageAddress): MachineError =
+  ## Retain the direct path for the first three stores; staging begins on the fourth successful write in this segment.
+  if memory.writer != nil:
+    let written = store(memory.writer, address, width, value)
+    if written.error == MachineError.Fault: failedPage = written.faultPage
+    return written.error
+  if memory.buffered and memory.stores == 3:
+    let created = newScalarMemoryWriter(memory.current)
+    if created.error != MachineError.None: return created.error
+    let written = store(created.value, address, width, value)
+    if written.error == MachineError.Fault: failedPage = written.faultPage
+    if written.error == MachineError.None:
+      memory.writer = created.value # A refused activation keeps the last immutable successful prefix untouched.
+    return written.error
+  let written = store(memory.current, address, width, value)
+  if written.error == MachineError.Fault: failedPage = written.faultPage
+  if written.error == MachineError.None:
+    memory.current = written.value
+    if memory.stores < 3: inc memory.stores # Saturation is bounded; no guest-length counter can wrap.
+  written.error
+
+proc finishWorking(memory: var WorkingMemory): MachineError =
+  ## Observable exits seal the active epoch once; local refusals discard it without publishing private progress.
+  if memory.writer != nil:
+    let frozen = snapshotMemory(memory.writer)
+    if frozen.error != MachineError.None: return frozen.error
+    memory.current = frozen.value
+  MachineError.None
+
 # Apply one memory instruction to tentative copied state only after gas affordability is established.
 # Failed preflight leaves registers and memory untouched; faultPage is meaningful only on Fault.
-proc memoryMutation(item: Instruction, info: var MachineInfo, memory: var Memory,
+proc memoryMutation(item: Instruction, info: var MachineInfo, memory: var WorkingMemory,
     failedPage: var PageAddress): MachineError =
   let op = item.opcode
   let loading = op in {52'u8..58'u8, 124'u8..130'u8}
@@ -256,7 +365,7 @@ proc memoryMutation(item: Instruction, info: var MachineInfo, memory: var Memory
   let address = MemoryAddress((base and 0xffffffff'u64) + (offset and 0xffffffff'u64))
   if loading:
     # Preflight includes all bytes before a value or destination-register mutation becomes visible.
-    let read = load(memory, address, AccessWidth(byte(width)))
+    let read = loadWorking(memory, address, AccessWidth(byte(width)))
     if read.error == MachineError.Fault:
       # Propagate the physical page reason without selecting a failed value.
       failedPage = read.faultPage
@@ -270,13 +379,9 @@ proc memoryMutation(item: Instruction, info: var MachineInfo, memory: var Memory
         value = value or (high(uint64) shl bits)
     info.registers[int(byte(item.a))] = RegisterValue(value)
   else:
-    # The scalar store preflights the entire access and publishes an independent immutable owner.
-    let written = store(memory, address, AccessWidth(byte(width)), RegisterValue(stored))
-    if written.error == MachineError.Fault:
-      # A failed cross-page store carries only its first failing page; no prefix bytes escape.
-      failedPage = written.faultPage
-    if written.error != MachineError.None: return written.error
-    memory = written.value
+    # Scalar stores preflight the complete access before changing direct snapshots or private staged bytes.
+    let written = storeWorking(memory, address, AccessWidth(byte(width)), RegisterValue(stored), failedPage)
+    if written != MachineError.None: return written # Complete scalar preflight preserves prior staged writes on every refusal.
   # All memory instructions are nonterminating; validated blobs guarantee a following instruction.
   info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
   MachineError.None
@@ -329,8 +434,9 @@ func branchCondition(item: Instruction, registers: RegisterFile): bool =
 
 # Apply control mutations after gas charging; panic/halt still retain explicit load mutations.
 # All operands are read before writes, including aliased load-and-dynamic-jump registers.
-proc controlMutation(program: Program, item: Instruction,
+proc controlMutation(program: Program, decoded: ProgramResult[Instruction],
     info: var MachineInfo): StepExit =
+  let item = decoded.value # The private caller supplies this machine's genuine result; payload and validation facts cannot separate.
   let pc = uint64(info.pc)
   let next = CodeAddress(pc + 1 + uint64(item.skip))
   var target = next
@@ -377,10 +483,12 @@ proc controlMutation(program: Program, item: Instruction,
       else:
         # Validated PC is host-int bounded and the displacement is at most signed 32 bits.
         target = CodeAddress(pc + uint64(item.displacement))
-    valid = valid and blockTarget(program, target)
+    valid = valid and instructionTargetStartsBlock(
+        decoded) # This result binds the target fact to the exact decoded operands.
     if item.opcode in {81'u8..90'u8, 170'u8..175'u8}:
       # Both successors must be valid, even when the condition would avoid the invalid one.
-      valid = valid and blockTarget(program, next)
+      valid = valid and instructionHasFallthrough(
+          decoded) # A present successor after this terminating conditional is a validated block start.
       if not branchCondition(item, info.registers):
         # Only the selected PC changes; validation above still considered the taken target.
         target = next
@@ -396,8 +504,8 @@ proc controlMutation(program: Program, item: Instruction,
     info.blockCharged = false
   outcome
 
-# Mutate only invocation-owned CPU values and an immutable memory handle; no per-instruction machine root is allocated.
-proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Memory,
+# Mutate only invocation-owned CPU values and a checked private memory workspace; observable exits publish immutable roots.
+proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var WorkingMemory,
     limit: GasCycleLimit, control, memoryAccess, hostCalls: bool, cache: var BlockChargeCache,
     decoded: ProgramResult[Instruction]): InstructionEvaluation =
   if uint64(info.gasDeficit) != 0:
@@ -414,24 +522,20 @@ proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Me
     # Capability rejection precedes evaluation and never fabricates a guest trap or gas debit.
     return InstructionEvaluation(status: StepError.UnsupportedInstruction)
   if not info.blockCharged:
-    # Interior entry still charges the entire containing block, including already-skipped instructions.
-    let start = containingBlockStart(program, info.pc)
-    if start.error != ProgramError.None: return InstructionEvaluation(
-        status: StepError.InvalidMachine)
-    # The private caller keeps one program/limit for this cache's entire lifetime.
-    # A cache hit reuses simulation work only; affordability and debit below still run on every visit.
+    # Exact cached starts already certify block membership; arbitrary interior entry retains the complete containing-block lookup.
     var chargeError = GasError.None
     var needed = 0'u64
-    if cache.valid and uint64(cache.start) == uint64(start.value):
-      # A successful prior simulation in this invocation has exactly the same immutable input.
-      needed = uint64(cache.charge)
-    else:
-      # Failed or locally refused simulations never populate the cache.
-      let charge = blockGas(program, start.value, limit)
-      chargeError = charge.error
-      if chargeError == GasError.None:
-        needed = uint64(charge.value)
-        cache = BlockChargeCache(valid: true, start: start.value, charge: charge.value)
+    if not cachedCharge(cache, info.pc, needed):
+      let start = containingBlockStart(program, info.pc)
+      if start.error != ProgramError.None: return InstructionEvaluation(
+          status: StepError.InvalidMachine)
+      if not cachedCharge(cache, start.value, needed):
+        # Only successful prices under this invocation's immutable program/limit enter the memo; failures publish no prefix.
+        let charge = blockGas(program, start.value, limit)
+        chargeError = charge.error
+        if chargeError == GasError.None:
+          needed = uint64(charge.value)
+          rememberCharge(cache, start.value, charge.value)
     case chargeError
     of GasError.None:
       # Prove affordability before subtraction and before evaluating any register mutation.
@@ -450,19 +554,18 @@ proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Me
       # A captured valid PC must have a valid containing block.
       return InstructionEvaluation(status: StepError.InvalidMachine)
   var outcome = StepExit.Continued
-  var changedMemory = memory
   var failedPage = PageAddress(0)
   if registerOnlyOpcode(item.opcode):
     # Register-only execution retains its existing scope and copied-register semantics.
-    let mutation = evaluateRegisters(decoded, info.registers)
+    let mutation = evaluateRegisterWrite(decoded, info.registers)
     if mutation.error != RegisterError.None:
       # Defensive evaluator failure cannot publish the tentative copied gas state.
       return InstructionEvaluation(status: StepError.UnsupportedInstruction)
-    info.registers = mutation.value
+    info.registers[int(byte(mutation.destination))] = mutation.writeValue
     info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
   elif memoryOpcode(item.opcode):
     # Memory exceptions retain the charged gas/flag but never publish partial CPU or memory writes.
-    case memoryMutation(item, info, changedMemory, failedPage)
+    case memoryMutation(item, info, memory, failedPage)
     of MachineError.None:
       # A complete load/store has already updated only its specified state fields.
       discard
@@ -484,11 +587,16 @@ proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Me
     info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
   else:
     # This path is reachable only for explicitly supported control/no-op instructions.
-    outcome = controlMutation(program, item, info)
-  if outcome notin {StepExit.Panic, StepExit.Halt} and
-      instructionOpcode(program, info.pc).error != ProgramError.None:
-    return InstructionEvaluation(status: StepError.InvalidMachine) # Preserve executable-successor validation before the next attempt, including final-slot host calls.
-  memory = changedMemory # Only immutable page owners pass between private iterations; published source memory never mutates.
+    outcome = controlMutation(program, decoded, info)
+  if outcome notin {StepExit.Panic, StepExit.Halt}:
+    if not terminatesBlock(item.opcode):
+      # Every admitted nonterminator advances by the decoded skip, except a failed scalar access retaining its genuine causing PC.
+      if outcome != StepExit.Fault and not instructionHasFallthrough(decoded):
+        return InstructionEvaluation(status: StepError.InvalidMachine)
+    elif instructionOpcode(program, info.pc).error != ProgramError.None:
+      # Every control successor keeps the complete executable-location check before the next attempt or budget refusal.
+      return InstructionEvaluation(status: StepError.InvalidMachine)
+  # The workspace owns staged writes; published source/exit snapshots never expose its mutable storage.
   if outcome == StepExit.Fault:
     return InstructionEvaluation(status: StepError.None,
         effect: InstructionEffect(kind: StepExit.Fault, failedPage: failedPage))
@@ -518,6 +626,12 @@ proc publishInstruction(program: Program, memory: Memory, info: MachineInfo,
     return StepResult(status: StepError.None,
         completed: StepOutcome(kind: effect.kind, machine: updated.value)) # Ordinary outcomes never inherit metadata from a prior instruction.
 
+proc publishInstruction(program: Program, memory: var WorkingMemory, info: MachineInfo,
+    effect: InstructionEffect, terminal: bool): StepResult =
+  ## Freeze only actual observations; the immutable publisher still validates program/memory/CPU construction.
+  if finishWorking(memory) != MachineError.None: return StepResult(status: StepError.InvalidMachine)
+  publishInstruction(program, memory.current, info, effect, terminal)
+
 proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
     hostCalls: bool, cache: var BlockChargeCache, decoded: ProgramResult[Instruction]): StepResult =
   ## Single-step APIs retain their exact immutable-snapshot boundary and capability/refusal semantics.
@@ -527,7 +641,7 @@ proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
   if captured.error != MachineError.None or owner.error != MachineError.None or
       originalMemory.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
   var info = captured.value
-  var memory = originalMemory.value
+  var memory = initWorkingMemory(originalMemory.value, false)
   let evaluated = evaluateInstruction(owner.value, info, memory, limit, control, memoryAccess,
       hostCalls, cache, decoded)
   if evaluated.status != StepError.None: return StepResult(status: evaluated.status)
@@ -539,7 +653,7 @@ proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
 # Single-step calls never inherit cached work across owners, scopes or local simulation limits.
 proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
     hostCalls: bool): StepResult =
-  var cache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
+  var cache = initBlockChargeCache()
   let owner = programOf(source)
   let current = machineInfo(source)
   if owner.error != MachineError.None or current.error != MachineError.None:
@@ -569,38 +683,61 @@ proc stepOnce*(source: Machine, limit: GasCycleLimit): StepResult =
 
 proc cachedInstruction(program: Program, address: CodeAddress,
     cache: var InstructionCache): ProgramResult[Instruction] {.inline.} =
-  ## A full-address tag prevents direct-slot collisions; only genuine successful scalar decoder results populate this invocation's memo.
-  let slot = int(uint64(address) mod uint64(cache.len)) # The fixed positive slot count proves native conversion and indexing bounds.
-  if cache[slot].error == ProgramError.None and uint64(cache[slot].value.address) == uint64(address):
-    return cache[slot] # Program and decode profile remain immutable throughout the enclosing invocation.
+  ## Preserve the natural direct-slot hit first, then inspect its paired way within the same sixteen-result budget.
+  let slot = int(uint64(address) mod uint64(cache.entries.len)) # Fixed positive capacity proves the native index.
+  if cache.entries[slot].error == ProgramError.None and uint64(cache.entries[slot].value.address) ==
+      uint64(address):
+    return cache.entries[slot] # Most existing working sets keep their original single-comparison hit path.
+  let alternative = slot xor 8 # Toggling one of four bounded index bits stays within 0..15.
+  if cache.entries[alternative].error == ProgramError.None and uint64(cache.entries[
+      alternative].value.address) == uint64(address):
+    return cache.entries[alternative]
   result = instruction(program, address)
   if result.error == ProgramError.None:
-    cache[slot] = result # Invalid entries never populate, evict a valid instruction or authorize a successful fallback.
+    var destination = slot
+    if cache.entries[slot].error == ProgramError.None:
+      if cache.entries[alternative].error != ProgramError.None:
+        destination = alternative # Fill a free paired way without disturbing the natural resident.
+      else:
+        # A third successful colliding decode alternates the two residents; failures never replace or advance this bit.
+        let bucket = slot mod cache.replaceUpper.len
+        destination = if cache.replaceUpper[bucket]: bucket+8 else: bucket
+        cache.replaceUpper[bucket] = not cache.replaceUpper[bucket]
+    cache.entries[destination] = result
 
 # Evaluate recursive Psi iteratively over an already validated program and captured machine.
 # The shared remaining budget counts attempted instructions, including the exiting instruction.
 # Each gas simulation is independently bounded by gasLimit. Local failures expose no partial progress.
 proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLimit,
-    chargeCache: var BlockChargeCache, instructions: var InstructionCache): StepResult =
-  let original = machineInfo(source)
-  let owner = programOf(source)
-  let originalMemory = memoryOf(source)
-  if original.error != MachineError.None or owner.error != MachineError.None or
-      originalMemory.error != MachineError.None:
-    # Absent owners are local API misuse, not a guest program failing deblob.
-    return StepResult(status: StepError.InvalidMachine)
-  if uint64(original.value.gasDeficit) != 0:
-    # Reject terminal debt before even a zero-budget or invalid-PC execution path.
-    return StepResult(status: StepError.InvalidMachine)
-  let program = owner.value
-  var info = original.value
-  var memory = originalMemory.value
+    chargeCache: var BlockChargeCache, instructions: var InstructionCache,
+        cursor: var ExecutionCursor, resumed: bool): StepResult =
+  var program = default(Program)
+  var info = default(MachineInfo)
+  var memory = initWorkingMemory(default(Memory), true)
+  if resumed:
+    # Only this invocation's validated host cursor can seed a continuation; no public mode exposes mutable state.
+    program = cursor.program
+    info = cursor.info
+    memory.current = cursor.memory
+  else:
+    let original = machineInfo(source)
+    let owner = programOf(source)
+    let originalMemory = memoryOf(source)
+    if original.error != MachineError.None or owner.error != MachineError.None or
+        originalMemory.error != MachineError.None:
+      # Absent owners are local API misuse, not a guest program failing deblob.
+      return StepResult(status: StepError.InvalidMachine)
+    if uint64(original.value.gasDeficit) != 0:
+      # Reject terminal debt before even a zero-budget or invalid-PC execution path.
+      return StepResult(status: StepError.InvalidMachine)
+    program = owner.value
+    info = original.value
+    memory.current = originalMemory.value
   # CPU values are local to this invocation; immutable memory updates cannot mutate retained source snapshots.
   while remaining > 0:
     dec remaining # Each attempted instruction consumes exactly one local step, including invalid entry and every exit.
-    let prior = info
-    let priorMemory = memory
-    let decoded = cachedInstruction(program, prior.pc, instructions)
+    let causingPc = info.pc # Nonfinal instruction exits preserve registers/memory; only the causing PC needs restoration.
+    let decoded = cachedInstruction(program, causingPc, instructions)
     if decoded.error != ProgramError.None:
       info.pc = CodeAddress(0) # Trusted terminal/import snapshots retain the existing uncharged deblob panic rule.
       return publishInstruction(program, memory, info, InstructionEffect(kind: StepExit.Panic), true)
@@ -613,19 +750,24 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
       if effect.kind in {StepExit.Panic, StepExit.Halt}:
         info.pc = CodeAddress(0) # Final exits preserve posterior registers/memory, including load-and-jump mutations.
       else:
-        info.pc = prior.pc
-        info.registers = prior.registers
-        memory = priorMemory # Fault, gas and host exits retain causing-instruction state plus posterior gas/charged flag.
-      return publishInstruction(program, memory, info, effect, true)
+        # OutOfGas exits before mutation, failed memory preflight writes nothing, and Host changes only PC.
+        # Preserve posterior gas/charged state without copying or rolling back the complete register file.
+        info.pc = causingPc
+      let published = publishInstruction(program, memory, info, effect, true)
+      if resumed and effect.kind == StepExit.Host and published.error == StepError.None:
+        cursor.info = info
+        cursor.memory = memory.current # The checked response resumes from the actual frozen callback memory.
+      return published
   StepResult(status: StepError.StepLimitExceeded) # Bounded exhaustion grants no machine or resumable prefix.
 
 proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycleLimit): StepResult =
   ## Execute a guest-only segment with a fresh local instruction budget; Host is returned to the caller.
   var remaining = uint64(stepLimit)
   # A direct execution has its own memo, never inherited from another program or local policy.
-  var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
+  var chargeCache = initBlockChargeCache()
   var instructions = default(InstructionCache) # Fresh explicit empty memo prevents cross-program or cross-invocation operand reuse.
-  executeBudget(source, remaining, gasLimit, chargeCache, instructions)
+  var unusedCursor = default(ExecutionCursor) # Ordinary execution uses source validation and its original loop-local CPU storage.
+  executeBudget(source, remaining, gasLimit, chargeCache, instructions, unusedCursor, false)
 
 # Lift guest/engine results without confusing guest terminal exits with local host errors.
 func executionResult[Reason: enum](evaluated: StepResult): HostExecutionResult[Reason] =
@@ -637,19 +779,28 @@ func executionResult[Reason: enum](evaluated: StepResult): HostExecutionResult[R
 
 # Advance a shared invocation budget to the next dispatch or terminal result.
 # Dispatch credit is consumed before callbacks, identically for both public callback forms.
-proc nextHost(current: Machine, remaining, calls: var uint64, gasLimit: GasCycleLimit,
+proc nextHost(cursor: var ExecutionCursor, remaining, calls: var uint64, gasLimit: GasCycleLimit,
     chargeCache: var BlockChargeCache, instructions: var InstructionCache): StepResult =
-  let evaluated = executeBudget(current, remaining, gasLimit, chargeCache, instructions)
-  if evaluated.error != StepError.None:
-    # Engine refusals carry no partial machine state.
-    return evaluated
+  ## Both callback forms share the ordinary transition loop and reserve dispatch credit before external code.
+  let evaluated = executeBudget(default(Machine), remaining, gasLimit, chargeCache, instructions,
+      cursor, true)
+  if evaluated.error != StepError.None: return evaluated
   if evaluated.value.exit == StepExit.Host:
-    # A host suspension can invoke external code only after reserving one dispatch allowance.
-    if calls == 0:
-      # Local dispatch limits do not consume guest gas or become guest OutOfGas exits.
-      return StepResult(status: StepError.HostCallLimitExceeded)
+    if calls == 0: return StepResult(status: StepError.HostCallLimitExceeded)
     dec calls
   evaluated
+
+proc applyCursorResponse(cursor: var ExecutionCursor, response: HostResponse,
+    instructions: var InstructionCache): InstructionEvaluation =
+  ## Only a genuine cursor-produced Host reaches this private continuation; reuse its invocation-bound decode.
+  let item = cachedInstruction(cursor.program, cursor.info.pc, instructions)
+  if item.error != ProgramError.None: return InstructionEvaluation(
+      status: StepError.InvalidHostSuspension)
+  if item.value.opcode != 10: return InstructionEvaluation(status: StepError.InvalidHostSuspension)
+  var exit = StepExit.Continued
+  let applied = applyResponseCursor(cursor, item.value, response, exit)
+  if applied != StepError.None: return InstructionEvaluation(status: applied)
+  InstructionEvaluation(status: StepError.None, effect: InstructionEffect(kind: exit))
 
 proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
@@ -661,14 +812,16 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   ## callers requiring atomic external effects must stage their context. Neither callback nor context is retained.
   var remaining = uint64(stepLimit)
   var calls = uint64(hostLimit)
-  var current = source
+  var cursor = default(ExecutionCursor)
+  let initialized = initializeCursor(source, cursor)
+  if initialized != StepError.None: return executionResult[Reason](StepResult(status: initialized))
   # Host responses preserve this invocation's program and fixed simulation limit.
   # Scalar cached prices retain neither context nor callbacks and disappear on every return.
-  var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
+  var chargeCache = initBlockChargeCache()
   var instructions = default(InstructionCache) # Host replies preserve the program, so scalar decoder hits remain valid until this invocation returns.
   while true:
-    # Iteration retains one current snapshot; the shared helper owns all guest/dispatch budget rules.
-    let evaluated = nextHost(current, remaining, calls, gasLimit, chargeCache, instructions)
+    # Publish the next actual callback observation from this invocation's validated continuation.
+    let evaluated = nextHost(cursor, remaining, calls, gasLimit, chargeCache, instructions)
     if evaluated.error != StepError.None:
       # Local refusal exposes no machine progress; already-completed context mutations remain visible.
       return executionResult[Reason](evaluated)
@@ -687,14 +840,13 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
           hostReason: reply.failure)
     of HostResultKind.Response:
       # The existing application boundary validates all supplied posterior state.
-      let applied = applyHostResponse(stopped, reply.value)
-      if applied.error != StepError.None:
-        # Malformed host replies are local failures, not fabricated guest panics or rollbacks.
-        return executionResult[Reason](applied)
-      if applied.value.exit != StepExit.Continued:
-        # Host terminal replies retain posterior state at the causing PC, without another guest attempt.
-        return executionResult[Reason](applied)
-      current = applied.value.machine
+      let applied = applyCursorResponse(cursor, reply.value, instructions)
+      if applied.status != StepError.None:
+        return executionResult[Reason](StepResult(
+            status: applied.status)) # Callback state is validated before private resumption.
+      if applied.effect.kind != StepExit.Continued:
+        return executionResult[Reason](publishInstruction(cursor.program, cursor.memory,
+          cursor.info, applied.effect, true)) # Terminal replies preserve the host's posterior state and causing PC.
 
 proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
@@ -703,14 +855,16 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   ## Context is borrowed synchronously; already-performed callback effects survive later local errors.
   var remaining = uint64(stepLimit)
   var calls = uint64(hostLimit)
-  var current = source
+  var cursor = default(ExecutionCursor)
+  let initialized = initializeCursor(source, cursor)
+  if initialized != StepError.None: return StepResult(status: initialized)
   # Host responses preserve this invocation's program and fixed simulation limit.
   # Scalar cached prices retain neither context nor callbacks and disappear on every return.
-  var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
+  var chargeCache = initBlockChargeCache()
   var instructions = default(InstructionCache) # Host replies preserve the program, so scalar decoder hits remain valid until this invocation returns.
   while true:
     # All scheduling and charging happens in the same helper used by fallible callbacks.
-    let evaluated = nextHost(current, remaining, calls, gasLimit, chargeCache, instructions)
+    let evaluated = nextHost(cursor, remaining, calls, gasLimit, chargeCache, instructions)
     if evaluated.error != StepError.None:
       # Preserve the legacy local engine refusal without reading a failed payload.
       return evaluated
@@ -718,11 +872,8 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
     if stopped.exit != StepExit.Host:
       # Guest exits never invoke host callbacks.
       return evaluated
-    let applied = applyHostResponse(stopped, handler(context, stopped))
-    if applied.error != StepError.None:
-      # Explicit posterior state must satisfy the existing host-response invariants.
-      return applied
-    if applied.value.exit != StepExit.Continued:
-      # Terminal host replies finish immediately without another instruction attempt.
-      return applied
-    current = applied.value.machine
+    let applied = applyCursorResponse(cursor, handler(context, stopped), instructions)
+    if applied.status != StepError.None: return StepResult(status: applied.status)
+    if applied.effect.kind != StepExit.Continued:
+      return publishInstruction(cursor.program, cursor.memory, cursor.info, applied.effect, true)
+    # A valid Continue updates the private cursor without allocating an unobserved resumed machine root.

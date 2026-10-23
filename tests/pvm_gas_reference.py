@@ -105,10 +105,11 @@ def cost(raw, code, pc, definitions):
 
 
 # Keep all historical entries and dependency sets; cycle updates construct a separate next state.
-def simulate(sequence, definitions):
-    code = b''.join(sequence)
+def simulate(sequence, definitions, prefix=()):
+    # Retain global PCs and raw target bytes when pricing a later block; default fixtures stay byte-identical.
+    code = b''.join([*prefix,*sequence])
     pending = list(enumerate(sequence))
-    pc, cycles, decode, starts = 0, 0, 4, 5
+    pc, cycles, decode, starts = sum(map(len,prefix)), 0, 4, 5
     resources = [4, 4, 4, 1, 1]
     history = []
     while True:

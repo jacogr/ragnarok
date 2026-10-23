@@ -25,3 +25,12 @@ worker, scheduling, producer or installation change is included.
 Completion: validate new guide links and pinned formatting; final production/source/model/Python
 qualification records remain local exact-source evidence and do not substitute for Linux CI or
 full current-pin JAM parity.
+
+
+Storage identity continuation now has a concrete producer/consumer boundary: bounded raw identities
+are captured at successful host writes, selected through checkpoint/terminal/parallel annulment,
+retained on their genuine current update and consumed with the original logical parent. See
+[the bounded continuation contract](storage-logical-continuation.md). Untouched keys and exact
+original view/Parameters survive; complete actual successor qualification remains mandatory.
+The general supplied-delta API is still absent. Other namespace mutations and independent STF/
+crypto/privilege gates retain the restrictions above.

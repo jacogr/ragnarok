@@ -15,7 +15,8 @@ type
     ## Native headers own layout; counts are checked before byte multiplication.
     f_frsize, f_blocks, f_bfree, f_bavail: uint64
   ResourceSampler* = object ## One private directory stream and copied scalar samples; no storage API aliases.
-    directory: nil ptr DIR
+    directory: DirStream
+    directoryOpen: bool
     nextMemory, nextDatabase, sampled: int64
     memoryKnown, diskKnown, databaseKnown, databaseEnabled: bool
     resident, heapOccupied, heapReserved: uint64
@@ -37,13 +38,9 @@ when defined(macosx):
   proc taskInfo(task: cuint, kind: cint, output: pointer,
       count: ptr cuint): cint {.importc: "task_info", header: "<mach/mach.h>".}
     ## Mach returns current resident bytes, rather than the lifetime peak from getrusage.
-  proc errorLocation(): ptr cint {.importc: "__error", header: "<errno.h>".}
-    ## Directory EOF must remain distinguishable from native read failure.
   let MemoryKind {.importc: "MACH_TASK_BASIC_INFO", header: "<mach/mach.h>".}: cint
   let MemoryCount {.importc: "MACH_TASK_BASIC_INFO_COUNT", header: "<mach/mach.h>".}: cuint
 else:
-  proc errorLocation(): ptr cint {.importc: "__errno_location", header: "<errno.h>".}
-    ## Linux errno is accessed through its supported thread-local libc accessor.
   proc pageSize(): cint {.importc: "getpagesize", header: "<unistd.h>".}
     ## The OS page size converts procfs resident-page observations into bytes.
 
@@ -53,15 +50,16 @@ proc `=dup`*(source: ResourceSampler): ResourceSampler {.error.}
   ## Implicit aggregate duplication is prohibited too.
 proc `=destroy`*(sampler: ResourceSampler) =
   ## Directory scans may retire midway without retaining handles or strings.
-  if sampler.directory != nil: discard closedir(sampler.directory)
+  var directory = sampler.directory # A mutable copy lets this retiring owner call the public close API.
+  discard closeDirStream(directory)
   `=destroy`(sampler.filesystemPath)
   `=destroy`(sampler.databasePath)
   `=destroy`(sampler.databaseStatus)
 
 proc close*(sampler: var ResourceSampler) =
   ## Idempotent native stream retirement before an enclosing server is reused.
-  if sampler.directory != nil: discard closedir(sampler.directory)
-  sampler.directory = nil
+  discard closeDirStream(sampler.directory)
+  sampler.directoryOpen = false
 
 proc configure*(sampler: var ResourceSampler, database, fallback: string) =
   ## Memory backends have zero database disk usage; filesystem reporting still uses the management directory.
@@ -159,7 +157,7 @@ proc tick*(sampler: var ResourceSampler) =
       sampler.diskKnown = product(volume.f_blocks, volume.f_frsize, sampler.total) and
         product(volume.f_bfree, volume.f_frsize, sampler.free) and
         product(volume.f_bavail, volume.f_frsize, sampler.available)
-  if sampler.databaseEnabled and sampler.directory == nil and now >= sampler.nextDatabase:
+  if sampler.databaseEnabled and not sampler.directoryOpen and now >= sampler.nextDatabase:
     sampler.nextDatabase = now + 10000
     sampler.scanLogical = 0; sampler.scanAllocated = 0; sampler.scanFiles = 0; sampler.scanCount = 0
     var status = default(FileStatus)
@@ -169,25 +167,24 @@ proc tick*(sampler: var ResourceSampler) =
       if sampler.countFile(status): sampler.finishScan(now) # Journal layout is one explicitly selected file.
       else: sampler.failScan("overflow")
     elif S_ISDIR(Mode(status.st_mode)):
-      sampler.directory = opendir(sampler.databasePath.toCString())
-      if sampler.directory == nil: sampler.failScan("unavailable")
+      sampler.directoryOpen = openDirStream(sampler.directory, sampler.databasePath.toCString()) == 0
+      if not sampler.directoryOpen: sampler.failScan("unavailable")
       else: sampler.databaseStatus = "sampling" # An older completed sample remains labelled by its age.
     else: sampler.failScan("unsupported-layout") # Symlinks/devices are never followed as database roots.
   for step in 0..<16:
-    if sampler.directory != nil:
-      errorLocation()[] = 0
-      let entry = readdir(sampler.directory)
-      if entry == nil:
-        if errorLocation()[] == 0: sampler.finishScan(now) # Only successful EOF publishes a complete total.
-        else: sampler.failScan("unavailable")
+    if sampler.directoryOpen:
+      var entryName: cstring = ""
+      var entryType: uint8 = 0
+      let entry = nextDirEntry(sampler.directory, entryName, entryType)
+      if entry == 0:
+        sampler.finishScan(now) # Only successful EOF publishes a complete total.
+      elif entry < 0:
+        sampler.failScan("unavailable")
       elif sampler.scanCount == 4096:
         sampler.failScan("entry-limit") # A large directory cannot monopolize the dispatcher indefinitely.
       else:
         inc sampler.scanCount
-        var name = ""
-        for c in entry.d_name:
-          if c == char(0): break # Native record extent bounds the terminated name read.
-          name.add(c)
+        let name = $entryName # The public stream API supplies a terminated name valid until the next entry.
         if name notin [".", ".."]:
           var status = default(FileStatus)
           var child = sampler.databasePath & "/" & name

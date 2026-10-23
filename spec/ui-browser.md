@@ -45,11 +45,12 @@ It is a diagnostic UI, without a wallet, authentication or validator controls.
 ## Compiler and build
 
 `spec/toolchain.json` remains pinned to Nimony 0.6.3 at
-`5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`. Its nightly package omits `jorogumo`.
+`29b96c31be1647665e5c57f2788e1c8cfeeddc9c`. Its nightly package omits `jorogumo`.
 `spec/web-toolchain.json` records SHA-256-verified source archives for that same compiler and
-its own `src/nativenif.commit` dependency, `9a9070b5ef8032ada9cd7cb20ce8532b51b10f39`.
+its own `src/nativenif.commit` dependency, `ec471df7e83d6938bd482b4f4dd5c8d2ef210c1f`.
 `make web-toolchain` restores those pristine sources as siblings under `build/web-toolchain/`
-and builds the missing backend. No compiler upgrade, source patch or private-runtime hook is used.
+and builds the missing backend. Compiler updates keep both source pins in step; sources remain
+pristine and no private-runtime hook is used.
 The Nim 2.2.12 executable from the already pinned formatter distribution bootstraps only the
 upstream backend; its bytes are checked against the pinned archive before execution. Application
 code is compiled by Nimony, not Nim 2. Source/backend/bootstrap identities govern backend reuse.

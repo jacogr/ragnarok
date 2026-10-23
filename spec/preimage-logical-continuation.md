@@ -1,0 +1,11 @@
+# Request-bound preimage continuation
+
+Scope: existing pinned GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` request/provision/forget behavior and adopted GP533 projection, without host, pin or wire changes.
+
+The original complete logical inventory and selected producer request history already retain the full service/hash/length identities that authorize provision. `continueCurrentNamespaces` closes the candidate preimage set over those request hashes and the original preimage identities. Actual values and presence come only from the matching genuine prepared successor; full current serialization and raw logical qualification remain mandatory. No second preimage event log or caller-supplied successor manifest is needed.
+
+Original preimage absence requires the matching selected expired-forget flag, unless the entire service was genuinely ejected. A successful ordinary request removal does not authorize loss of a retained preimage. Original and derived candidates coalesce only equal full hashes; physical key equality cannot replace logical identity. Duplicate request lengths sharing a hash do not create duplicate payload declarations.
+
+The complete worst-case candidate descriptor ledger is admitted before allocation; scans and canonical key derivations consume work, and all selected output descriptors and actual payload sizes are admitted before copying values. Defaults and failures expose no prefix. Storage-only continuation retains its original strict preimage contract.
+
+Completion witnesses: real block-body fulfillment, actual host provision including actual panic/checkpoint selection and GP533 concurrent-annulment projection, same-invocation selected solicit/provide, strict expired forget under an independently authored original profile and signed advancing slot, panic rollback of forget, exact parent mismatch, early scratch/work and output/late raw limits, 1,000 complete ARC qualification cycles, and opaque result guards. The tests author Parameters before original snapshot capture and candidate execution; they do not rewrite a completed source. Existing storage/request/service continuation suites remain compatibility witnesses. Full STF parity and the external current-schema corpus remain separate gates.

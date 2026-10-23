@@ -15,7 +15,8 @@ const
   MaximumCompactionBytes = 128'u64*1024*1024 # Leave journal capacity for a bounded final publication frame.
   DefaultStateWrites = 1000'u64       # CLI defaults do not widen explicitly supplied component policies.
   DefaultStateWriteBytes = 100000'u64 # Each omitted mutation ceiling resolves independently.
-  Switches = ["--with-ui", "--with-rpc", "--with-management", "--with-telemetry", "--with-state", "--download-local-ancestors"]
+  Switches = ["--with-ui", "--with-rpc", "--with-management", "--with-telemetry", "--with-state",
+      "--download-local-ancestors", "--download-update-logical-source"]
   Values = ["--telemetry", "--chain", "--management-socket", "--rpc-port", "--ui-port",
       "--dev-ui-dir", "--state-writes", "--state-write-bytes", "--state-checkpoint",
       "--state-trust", "--state-header",
@@ -23,7 +24,7 @@ const
       "--state-migrate-from",
       "--state-compact-bytes", "--download-ancestor", "--download-blocks",
       "--download-remote-ancestors", "--download-discover-ancestors",
-      "--download-logical-source", "--download-logical-policy"]
+      "--download-logical-source", "--download-logical-policy", "--download-namespace-policy"]
 
 type StateStorage* {.pure.} = enum ## Backend choice is independent of future full/light node modes.
   Memory, Disk
@@ -32,13 +33,13 @@ type StateDiskLayout* {.pure.} = enum ## Physical layout is independent of memor
   Journal, Managed
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
-  parsed, telemetry, rpc, ui, state, recover, localAncestors, management: bool
+  parsed, telemetry, rpc, ui, state, recover, localAncestors, management, updateLogicalSource: bool
   positional: seq[string]
   ancestorFiles: seq[string]
   downloadCount, remoteAncestors, discoverAncestors: int
   endpoint, chain, directory, managementPath: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
-  logicalSource, logicalPolicy: string
+  logicalSource, logicalPolicy, namespacePolicy: string
   backend: StateStorage
   layout: StateDiskLayout
   compactBytes: ByteLimit
@@ -87,6 +88,14 @@ proc logicalDownloadSourcePath*(options: Options): string =
 proc logicalDownloadPolicyPath*(options: Options): string =
   ## Complete separate resource-policy path is retained independently of the declaration file.
   if options.parsed: options.logicalPolicy else: ""
+
+func updateLogicalDownloadSource*(options: Options): bool =
+  ## Explicit paired opt-in updates only the already qualified source file after actual adoption and joined shutdown.
+  options.parsed and options.updateLogicalSource
+
+proc namespaceDownloadPolicyPath*(options: Options): string =
+  ## Only an explicitly paired current logical download can expose this opt-in namespace resource path.
+  if options.parsed: options.namespacePolicy else: ""
 
 func downloadBlocks*(options: Options): int =
   ## Valid commands default to one child; failed/default parsing reports no requested work.
@@ -216,6 +225,7 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--with-ui": candidate.ui = true
       of "--with-state": candidate.state = true
       of "--download-local-ancestors": candidate.localAncestors = true
+      of "--download-update-logical-source": candidate.updateLogicalSource = true
       else: return false # Switch classification above makes this branch unreachable.
       inc i
     elif name in Values:
@@ -245,12 +255,13 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
         of "managed": candidate.layout = StateDiskLayout.Managed
         else: return false # Layout spelling is explicit; existing paths never select migration implicitly.
       of "--state-db": candidate.database = value
-      of "--download-logical-source", "--download-logical-policy":
+      of "--download-logical-source", "--download-logical-policy", "--download-namespace-policy":
         for character in value:
           if ord(character) < 32 or ord(character) ==
               127: return false # Native startup paths cannot be truncated or contain control bytes.
         if name == "--download-logical-source": candidate.logicalSource = value
-        else: candidate.logicalPolicy = value
+        elif name == "--download-logical-policy": candidate.logicalPolicy = value
+        else: candidate.namespacePolicy = value
       of "--download-blocks":
         var number = 0'u64
         if value[0] == '0' or not decimalLimit(value, number) or number == 0 or
@@ -345,7 +356,8 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       return false # Other commands must not silently ignore supplied download controls.
   if candidate.remoteAncestors > 0 and candidate.discoverAncestors > 0:
     return false # Up-front fixed acquisition and child-driven discovery are explicit alternative command modes.
-  if candidate.logicalSource.len > 0 or candidate.logicalPolicy.len > 0:
+  if candidate.logicalSource.len > 0 or candidate.logicalPolicy.len > 0 or
+      candidate.namespacePolicy.len > 0 or candidate.updateLogicalSource:
     if candidate.logicalSource.len == 0 or candidate.logicalPolicy.len == 0 or
         candidate.positional.len == 0 or candidate.positional[0] != "download-current" or
             not candidate.state:

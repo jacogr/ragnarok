@@ -19,20 +19,23 @@ type
     Uninitialized, None, InvalidContexts, InvalidDimension, YieldAbsent, UnknownService,
     NotRequested, AlreadyProvided, InvalidLength, InvalidState, MalformedState, LimitExceeded,
       BackendFailure, InvalidIndex,
-      StorageFull,              ## Candidate storage footprint requires more balance than the account has.
-      InvalidParameters,        ## Deposit settings must come from a valid parameter snapshot.
-      NotManager,               ## Only the current privileged manager may replace the privilege state.
-      AmbiguousPrivileges,      ## Conflicting gas values for one service have no pinned dictionary interpretation.
-      InvalidCore,              ## The selected core is outside the current positional queue layout.
-      NotAssigner,              ## Only the current assigner may replace its core queue.
-      InvalidValidatorCount,    ## Staging population must be a supported multiple of three.
-      NotDelegator,             ## Only the current delegator may replace the staging roster.
-      InsufficientCash,         ## Account debits must preserve the creator's own minimum balance.
-      ServiceExists,            ## A registrar-selected reserved service ID is already occupied.
-      TransferGasLow,           ## Offered deferred gas is below the current destination minimum.
-      ModifiedAccountsDisabled, ## The caller did not enable bounded modified-account tracking.
-      CreatedAccountsDisabled,  ## Explicit creation facts require enabled bounded tracing.
-      AccountWriteFactsDisabled ## The caller did not enable bounded physical account-write facts.
+      StorageFull,               ## Candidate storage footprint requires more balance than the account has.
+      InvalidParameters,         ## Deposit settings must come from a valid parameter snapshot.
+      NotManager,                ## Only the current privileged manager may replace the privilege state.
+      AmbiguousPrivileges,  ## Conflicting gas values for one service have no pinned dictionary interpretation.
+      InvalidCore,               ## The selected core is outside the current positional queue layout.
+      NotAssigner,               ## Only the current assigner may replace its core queue.
+      InvalidValidatorCount,     ## Staging population must be a supported multiple of three.
+      NotDelegator,              ## Only the current delegator may replace the staging roster.
+      InsufficientCash,          ## Account debits must preserve the creator's own minimum balance.
+      ServiceExists,             ## A registrar-selected reserved service ID is already occupied.
+      TransferGasLow,            ## Offered deferred gas is below the current destination minimum.
+      ModifiedAccountsDisabled,  ## The caller did not enable bounded modified-account tracking.
+      CreatedAccountsDisabled,   ## Explicit creation facts require enabled bounded tracing.
+      AccountWriteFactsDisabled, ## The caller did not enable bounded physical account-write facts.
+      StorageWriteFactsDisabled, ## Raw storage identity capture was not enabled for this invocation.
+      RequestFactsDisabled,      ## The caller did not enable bounded original request identity capture.
+      DeletedAccountsDisabled    ## The caller did not enable bounded ejection membership capture.
   AccumulationModifiedAccountIndex* = distinct uint64 ## Modification ordinal is distinct from a protocol service identity.
   # Immutable unique membership facts contain only fixed identities and no parent-effect owners.
   ModifiedAccountsData = ref object
@@ -44,6 +47,32 @@ type
   # Immutable fixed facts retain no account payloads or parent-effect owners.
   AccountWriteFactsData = ref object
     values: seq[AccumulationAccountWriteFact]
+  AccumulationStorageFactLimits* = object ## Opt-in first-touch storage identities have independent descriptor, per-key and aggregate raw-byte ceilings.
+    items*: ElementLimit
+    perKey*, totalKeyBytes*: ByteLimit
+  AccumulationStorageFactIndex* = distinct uint64 ## Storage fact ordinals are neither services nor physical account-write indices.
+  StorageFactData = ref object ## Immutable raw identities retain no parent effect graph or account payload.
+    service: ServiceIndex
+    key: StateKey
+    raw: seq[byte]
+  AccumulationStorageFact* = object ## Only genuine successful storage operations create this immutable raw-key owner.
+    data: nil StorageFactData
+  AccumulationStorageFactInfo* = object ## Fixed copied observations remain distinct from the retained raw-key owner and final value.
+    service*: ServiceIndex
+    key*: StateKey
+    rawBytes*: int
+  StorageFactsData = ref object ## First-touch ordering and exact raw-byte accounting follow immutable implication selection.
+    values: seq[AccumulationStorageFact]
+    bytes: uint64
+  AccumulationRequestFactIndex* = distinct uint64 ## Logical request ordinal cannot substitute a physical account-write or raw-storage ordinal.
+  AccumulationRequestFact* = object ## Copied first-touch observation; only its producing context certifies successful provenance.
+    service*: ServiceIndex
+    hash*: ServicePreimageHash
+    length*: RequestLength
+    key*: StateKey
+    removedPreimage*: bool ## At least one actual expired forget on this selected lineage removed the associated preimage.
+  RequestFactsData = ref object ## Immutable fixed descriptors retain no payloads or parent effect graph.
+    values: seq[AccumulationRequestFact]
   AccumulationAccountScope* {.pure.} = enum ## Conservative mutation provenance since the credited initial context; equal bytes never reset it.
     Initial,         ## No account mutation occurred on this retained lineage.
     SelfMetadata,    ## Only supported metadata operations changed the invoking service's record.
@@ -113,6 +142,10 @@ type
     accountScope: AccumulationAccountScope
     modified: ModifiedAccountsData
     modifiedLimit: ElementLimit
+    requestFacts: RequestFactsData
+    requestFactLimit: ElementLimit
+    storageFacts: StorageFactsData
+    storageLimits: AccumulationStorageFactLimits
     writeFacts: AccountWriteFactsData
     writeFactLimit: ElementLimit
     designated: bool # Successful designate provenance follows exact implication/checkpoint ownership.
@@ -188,7 +221,9 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
         scope = AccumulationAccountScope.SelfMetadata # Self metadata preserves any existing bounded self-key proof.
     else:
       scope = AccumulationAccountScope.Unsupported # No broader mutation can opt itself back into publication.
-  EffectData(writeFacts: previous.writeFacts, writeFactLimit: previous.writeFactLimit,
+  EffectData(requestFacts: previous.requestFacts, requestFactLimit: previous.requestFactLimit,
+    storageFacts: previous.storageFacts, storageLimits: previous.storageLimits,
+    writeFacts: previous.writeFacts, writeFactLimit: previous.writeFactLimit,
     modified: previous.modified, modifiedLimit: previous.modifiedLimit,
     deleted: previous.deleted, deletedLimit: previous.deletedLimit,
     created: previous.created, createdLimit: previous.createdLimit,
@@ -199,6 +234,159 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
     nextService: previous.nextService,
     staging: previous.staging, queues: previous.queues, privileges: previous.privileges,
     output: previous.output, provisions: previous.provisions, transfers: previous.transfers)
+
+proc prepareRequestFact(previous: EffectData, service: ServiceIndex,
+    hash: ServicePreimageHash, length: RequestLength, key: StateKey,
+    removedPreimage: bool): AccumulationEffectResult[RequestFactsData] =
+  ## Retain original logical request identities before candidate-map publication, coalescing successful first touches without fabricating operation order.
+  let retained = previous.requestFacts
+  if uint64(previous.requestFactLimit) == 0:
+    return AccumulationEffectResult[RequestFactsData](status: AccumulationEffectError.None,
+        completed: retained)
+  var found = -1
+  for i in 0..<retained.values.len:
+    let fact = retained.values[i] # Read each immutable fact while retaining its original owner.
+                                  # One service/physical request identity must preserve exact original hash and full public length.
+    if uint32(fact.service) == uint32(service) and array[31, byte](fact.key) == array[31, byte](key):
+      if array[32, byte](fact.hash) != array[32, byte](hash) or uint32(fact.length) != uint32(length):
+        return AccumulationEffectResult[RequestFactsData](
+            status: AccumulationEffectError.InvalidState)
+      if fact.removedPreimage or not removedPreimage:
+        return AccumulationEffectResult[RequestFactsData](status: AccumulationEffectError.None,
+            completed: retained)
+      found = i # Expired-forget provenance is sticky on this immutable selected lineage.
+  let count = retained.values.len
+  if count > high(int) div sizeof(AccumulationRequestFact):
+    return AccumulationEffectResult[RequestFactsData](status: AccumulationEffectError.LimitExceeded)
+  var size = count
+  if found < 0:
+    if uint64(count) >= uint64(previous.requestFactLimit) or count >= high(int) div sizeof(AccumulationRequestFact):
+      return AccumulationEffectResult[RequestFactsData](
+          status: AccumulationEffectError.LimitExceeded)
+    inc size # Native descriptor bounds precede addition and allocation.
+  var values = newSeq[AccumulationRequestFact](size)
+  for i in 0..<retained.values.len: values[i] = retained.values[
+      i] # Older context/checkpoint facts remain immutable and independently retained.
+  if found < 0:
+    values[count] = AccumulationRequestFact(service: service, hash: hash, length: length,
+        key: key, removedPreimage: removedPreimage)
+  else:
+    values[found].removedPreimage = true # Publish the new observation only with the matching successful account successor.
+  AccumulationEffectResult[RequestFactsData](status: AccumulationEffectError.None,
+      completed: RequestFactsData(values: values))
+
+proc effectRequestFactCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
+  ## Disabled capture is distinct from a proven empty successful request trace.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.Uninitialized)
+  if uint64(data.requestFactLimit) == 0:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.RequestFactsDisabled)
+  AccumulationEffectResult[int](status: AccumulationEffectError.None,
+      completed: data.requestFacts.values.len)
+
+proc effectRequestFactAt*(context: AccumulationEffectContext,
+    index: AccumulationRequestFactIndex): AccumulationEffectResult[AccumulationRequestFact] =
+  ## Return a detached fixed fact only from this exact retained implication context after full-width index validation.
+  let count = context.effectRequestFactCount
+  if count.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[AccumulationRequestFact](status: count.error)
+  if uint64(index) >= uint64(count.value):
+    return AccumulationEffectResult[AccumulationRequestFact](
+        status: AccumulationEffectError.InvalidIndex)
+  let data = context.data
+  assert data != nil
+  AccumulationEffectResult[AccumulationRequestFact](status: AccumulationEffectError.None,
+      completed: data.requestFacts.values[int(uint64(index))])
+
+proc prepareStorageFact(previous: EffectData, service: ServiceIndex, key: StateKey,
+    raw: openArray[byte]): AccumulationEffectResult[StorageFactsData] =
+  ## Capture unique raw identities before candidate-map hashing; disabled capture preserves earlier execution behavior.
+  let retained = previous.storageFacts
+  let limits = previous.storageLimits
+  if uint64(limits.items) == 0:
+    return AccumulationEffectResult[StorageFactsData](status: AccumulationEffectError.None,
+        completed: retained)
+  for factIndex in 0..<retained.values.len:
+    let fact = retained.values[factIndex] # Preserve shared immutable identity ownership with checked indexed reads.
+ # Repeated writes and deletions retain one first-touch identity without recopying its raw bytes.
+    let data = fact.data
+    assert data != nil
+    if uint32(data.service) == uint32(service) and array[31, byte](data.key) == array[31, byte](key):
+      if data.raw.len != raw.len:
+        return AccumulationEffectResult[StorageFactsData](
+            status: AccumulationEffectError.InvalidState)
+      for i in 0..<raw.len:
+        if data.raw[i] != raw[i]:
+          return AccumulationEffectResult[StorageFactsData](
+              status: AccumulationEffectError.InvalidState) # Never let a physical collision replace original raw provenance.
+      return AccumulationEffectResult[StorageFactsData](status: AccumulationEffectError.None,
+          completed: retained)
+  let count = retained.values.len
+  let budget = min(uint64(limits.totalKeyBytes), uint64(high(int)))
+  if uint64(count) >= uint64(limits.items) or count >= high(int) div sizeof(AccumulationStorageFact):
+    return AccumulationEffectResult[StorageFactsData](status: AccumulationEffectError.LimitExceeded)
+  if uint64(raw.len) > uint64(limits.perKey) or retained.bytes > budget:
+    return AccumulationEffectResult[StorageFactsData](status: AccumulationEffectError.LimitExceeded)
+  if uint64(raw.len) > budget-retained.bytes:
+    return AccumulationEffectResult[StorageFactsData](
+        status: AccumulationEffectError.LimitExceeded) # Admit descriptors and every copied key byte before allocation.
+  var copied = newSeq[byte](raw.len)
+  for i, octet in raw: copied[i] = octet # Empty raw keys are real identities and consume one descriptor.
+  var values = newSeq[AccumulationStorageFact](count+1)
+  for i in 0..<retained.values.len: values[i] = retained.values[
+      i] # Share immutable independent facts, never older effect versions.
+  values[count] = AccumulationStorageFact(data: StorageFactData(service: service, key: key, raw: copied))
+  AccumulationEffectResult[StorageFactsData](status: AccumulationEffectError.None,
+      completed: StorageFactsData(values: values, bytes: retained.bytes+uint64(raw.len)))
+
+proc effectStorageFactCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
+  ## Disabled tracking is distinct from an enabled invocation with no successful storage calls.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.Uninitialized)
+  if uint64(data.storageLimits.items) == 0:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.StorageWriteFactsDisabled)
+  AccumulationEffectResult[int](status: AccumulationEffectError.None,
+      completed: data.storageFacts.values.len)
+
+proc effectStorageFactAt*(context: AccumulationEffectContext,
+    index: AccumulationStorageFactIndex): AccumulationEffectResult[AccumulationStorageFact] =
+  ## Extract one genuine first-touch raw identity from the same retained implication version.
+  let count = context.effectStorageFactCount
+  if count.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[AccumulationStorageFact](status: count.error)
+  if uint64(index) >= uint64(count.value):
+    return AccumulationEffectResult[AccumulationStorageFact](
+        status: AccumulationEffectError.InvalidIndex)
+  let data = context.data
+  assert data != nil
+  AccumulationEffectResult[AccumulationStorageFact](status: AccumulationEffectError.None,
+      completed: data.storageFacts.values[int(uint64(index))])
+
+proc storageFactInfo*(fact: AccumulationStorageFact): AccumulationEffectResult[
+    AccumulationStorageFactInfo] =
+  ## Observe exact service, physical key and original raw extent without copying key bytes or hashing.
+  let data = fact.data
+  if data == nil:
+    return AccumulationEffectResult[AccumulationStorageFactInfo](
+        status: AccumulationEffectError.Uninitialized)
+  AccumulationEffectResult[AccumulationStorageFactInfo](status: AccumulationEffectError.None,
+      completed: AccumulationStorageFactInfo(service: data.service, key: data.key,
+          rawBytes: data.raw.len))
+
+proc copyStorageFactKey*(fact: AccumulationStorageFact,
+    limit: ByteLimit): AccumulationEffectResult[seq[byte]] =
+  ## Return detached raw bytes only after exact current copy admission; no mutable backing escapes.
+  let data = fact.data
+  if data == nil:
+    return AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.Uninitialized)
+  if uint64(data.raw.len) > uint64(limit):
+    return AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.LimitExceeded)
+  var copied = newSeq[byte](data.raw.len)
+  for i in 0..<data.raw.len: copied[i] = data.raw[
+      i] # Mutating detached output cannot alter this fact or future checkpoints.
+  AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.None, completed: copied)
 
 # Bound unique nonmetadata keys before allocating a trace or hashing its prospective map.
 proc prepareSelfAccountKeys(previous: EffectData, writes: openArray[StateWrite]):
@@ -214,7 +402,8 @@ proc prepareSelfAccountKeys(previous: EffectData, writes: openArray[StateWrite])
     # Self metadata is already handled by the batch's separate fixed-record policy.
     if array[31, byte](write.key) == array[31, byte](own): continue
     var seen = false
-    for key in retained.keys:
+    for retainedIndex in 0..<retained.keys.len:
+      let key = retained.keys[retainedIndex]
       if array[31, byte](key) == array[31, byte](write.key): seen = true # Existing touched keys need no new descriptor.
     for earlier in 0..<index:
       if array[31, byte](writes[earlier].key) == array[31, byte](
@@ -229,7 +418,8 @@ proc prepareSelfAccountKeys(previous: EffectData, writes: openArray[StateWrite])
       completed: previous.accountKeys) # Replacements/deletions of already touched keys share the immutable key set.
   var keys = newSeq[StateKey](count)
   var destination = 0
-  for key in retained.keys:
+  for retainedIndex in 0..<retained.keys.len:
+    let key = retained.keys[retainedIndex]
     keys[destination] = key
     inc destination # The full new descriptor extent was preflighted above.
   for write in writes:
@@ -363,7 +553,8 @@ proc prepareCreatedAccount(previous: EffectData, service: ServiceIndex, requestK
     return AccumulationEffectResult[CreatedAccountsData](
         status: AccumulationEffectError.LimitExceeded) # No partial child/cursor/debit or descriptor allocation.
   var values = newSeq[AccumulationCreatedAccount](count+1)
-  for index, value in previous.created.values:
+  for index in 0..<previous.created.values.len:
+    let value = previous.created.values[index]
     values[index] = value # Immutable fixed facts are copied without retaining parent effect chains.
   values[count] = AccumulationCreatedAccount(service: service, requestKey: requestKey)
   AccumulationEffectResult[CreatedAccountsData](status: AccumulationEffectError.None,
@@ -372,8 +563,7 @@ proc prepareCreatedAccount(previous: EffectData, service: ServiceIndex, requestK
 # Bound successful-ejection membership before allocating proof storage or hashing the candidate map.
 proc prepareDeletedAccount(previous: EffectData, service: ServiceIndex):
     AccumulationEffectResult[DeletedAccountsData] =
-  if previous.accountScope == AccumulationAccountScope.Unsupported or uint64(
-      previous.deletedLimit) == 0:
+  if uint64(previous.deletedLimit) == 0:
     return AccumulationEffectResult[DeletedAccountsData](status: AccumulationEffectError.None,
       completed: previous.deleted) # Disabled tracing retains the earlier local ejection behavior.
   let count = previous.deleted.values.len
@@ -381,7 +571,8 @@ proc prepareDeletedAccount(previous: EffectData, service: ServiceIndex):
     return AccumulationEffectResult[DeletedAccountsData](
         status: AccumulationEffectError.LimitExceeded) # No candidate balance or partial key owner escapes.
   var values = newSeq[AccumulationDeletedAccount](count+1)
-  for index, value in previous.deleted.values:
+  for index in 0..<previous.deleted.values.len:
+    let value = previous.deleted.values[index]
     values[index] = value # Fixed service identities do not retain a chain of old effect versions.
   values[count] = AccumulationDeletedAccount(service: service)
   AccumulationEffectResult[DeletedAccountsData](status: AccumulationEffectError.None,
@@ -450,7 +641,8 @@ proc effectAccountModified*(context: AccumulationEffectContext,
     return AccumulationEffectResult[bool](status: count.error) # No fabricated false result for absent tracking.
   let data = context.data
   assert data != nil # Successful count retains this initialized owner.
-  for value in data.modified.values:
+  for modifiedIndex in 0..<data.modified.values.len:
+    let value = data.modified.values[modifiedIndex]
     if uint32(value) == uint32(service):
       return AccumulationEffectResult[bool](status: AccumulationEffectError.None,
           completed: true) # Exact nominal identity membership.
@@ -531,6 +723,32 @@ proc effectCreatedAccountFactAt*(context: AccumulationEffectContext,
   assert data != nil # The successful count validated this exact immutable owner.
   AccumulationEffectResult[AccumulationCreatedAccount](status: AccumulationEffectError.None,
     completed: data.created.values[int(uint64(index))])
+
+proc effectDeletedAccountFactCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
+  ## Read complete enabled ejection membership independently of legacy account publication scope.
+  ## Every successful eject call captures its fact before hashing, even after an unrelated unsupported mutation.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.Uninitialized) # Default is not enabled empty tracing.
+  if uint64(data.deletedLimit) == 0:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.DeletedAccountsDisabled) # Explicitly distinguish disabled history from zero ejections.
+  AccumulationEffectResult[int](status: AccumulationEffectError.None,
+      completed: data.deleted.values.len)
+
+proc effectDeletedAccountFactAt*(context: AccumulationEffectContext,
+    index: AccumulationDeletedAccountIndex): AccumulationEffectResult[AccumulationDeletedAccount] =
+  ## Copy genuine fixed ejection provenance through the same enabled owner; account values remain in effectAccounts.
+  let count = context.effectDeletedAccountFactCount
+  if count.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[AccumulationDeletedAccount](
+        status: count.error) # No partial or disabled proof extraction.
+  if uint64(index) >= uint64(count.value):
+    return AccumulationEffectResult[AccumulationDeletedAccount](
+        status: AccumulationEffectError.InvalidIndex) # Check upper bits before native narrowing.
+  let data = context.data
+  assert data != nil # The successful count validated this exact immutable owner.
+  AccumulationEffectResult[AccumulationDeletedAccount](status: AccumulationEffectError.None,
+    completed: data.deleted.values[int(uint64(index))])
 
 proc effectCreatedAccountCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
   ## Count this selected context's genuine creations; unsupported lineages expose no partial membership proof.
@@ -670,7 +888,9 @@ proc effectsSource*(effects: AccumulationEffects): AccumulationEffectResult[
 proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
     accountWriteKeys = ElementLimit(0), createdAccounts = ElementLimit(0),
         deletedAccounts = ElementLimit(0), modifiedAccounts = ElementLimit(0),
-            accountWriteFacts = ElementLimit(0)): AccumulationEffectResult[
+            accountWriteFacts = ElementLimit(0),
+    storageFacts = default(AccumulationStorageFactLimits),
+    requestFacts = ElementLimit(0)): AccumulationEffectResult[
     AccumulationEffects] =
   ## Begin at the actual initial I in both dimensions; no caller-selected replacement state or yield is accepted.
   ## accountWriteFacts independently bounds exact successful service/key pairs; zero disables their queries.
@@ -696,6 +916,8 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
     accounts: initial.value.contextAccounts.value, accountScope: AccumulationAccountScope.Initial,
     designated: false, blessed: false, assigned: false,
     modified: ModifiedAccountsData(values: members), modifiedLimit: modifiedAccounts,
+    requestFacts: RequestFactsData(values: @[]), requestFactLimit: requestFacts,
+    storageFacts: StorageFactsData(values: @[], bytes: 0), storageLimits: storageFacts,
     writeFacts: AccountWriteFactsData(values: facts), writeFactLimit: accountWriteFacts,
     accountKeys: AccountKeysData(keys: @[]), accountKeyLimit: accountWriteKeys,
     created: CreatedAccountsData(values: @[]), createdLimit: createdAccounts,
@@ -775,7 +997,7 @@ proc copyProvisionBytes*(provision: AccumulationProvision): AccumulationEffectRe
     return AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.Uninitialized)
   var bytes = newSeq[byte](data.bytes.len)
   # Exact retained length was bounded before construction; copy without exporting shared mutable storage.
-  for i, octet in data.bytes: bytes[i] = octet
+  for i in 0..<data.bytes.len: bytes[i] = data.bytes[i]
   AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.None, completed: bytes)
 
 proc recordAccumulationProvision*(effects: AccumulationEffects, service: ServiceIndex,
@@ -819,7 +1041,8 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
   if not requested.value:
     fail(AccumulationEffectError.NotRequested) # Only the exact outstanding (hash,length) request is eligible.
   # Equality is target plus complete raw bytes, not hash-only equality or an unrelated owner's coordinates.
-  for provision in previous.provisions.values:
+  for provisionIndex in 0..<previous.provisions.values.len:
+    let provision = previous.provisions.values[provisionIndex]
     let retained = provision.data
     assert retained != nil # Published provision sequences contain initialized owners only.
     if uint32(retained.service) == uint32(service) and retained.bytes == bytes:
@@ -833,7 +1056,7 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
   for i, octet in bytes: owned[i] = octet
   var provisions = newSeq[AccumulationProvision](previous.provisions.values.len+1)
   # Share only immutable prior provision owners; no new version links back to its parent effect pair.
-  for i, provision in previous.provisions.values: provisions[i] = provision
+  for i in 0..<previous.provisions.values.len: provisions[i] = previous.provisions.values[i]
   provisions[previous.provisions.values.len] = AccumulationProvision(data: ProvisionData(
       service: service, bytes: owned))
   let candidate = successorData(previous, previous.accounts)
@@ -1035,6 +1258,9 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
   if selected.error != AccumulationEffectError.None:
     fail(selected.error) # Canonical target and authority precede namespace hashing.
   var metadata = selected.value
+  if uint64(previous.storageLimits.items) != 0 and uint64(key.len) > uint64(
+      previous.storageLimits.perKey):
+    fail(AccumulationEffectError.LimitExceeded) # Raw-key capture's independent per-key limit precedes namespace hashing.
   let derived = serviceStorageKey(service, key, limit)
   if derived.error != ServiceValueError.None:
     fail(AccumulationEffectError.BackendFailure) # No alternate namespace on failed hashing.
@@ -1087,6 +1313,9 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
   let facts = prepareAccountWriteFacts(previous, service, writes)
   if facts.error != AccumulationEffectError.None:
     fail(facts.error) # All successful write facts fit before candidate account publication.
+  let storage = prepareStorageFact(previous, service, derived.value, key)
+  if storage.error != AccumulationEffectError.None:
+    fail(storage.error) # Full retained identity admission precedes candidate map hashing and publishes no prefix.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -1102,6 +1331,7 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
     selfAccountData(previous, changed.value, keys)
   else:
     successorData(previous, changed.value) # Foreign execution remains unsupported for parallel publication.
+  candidate.storageFacts = storage.value # The exact successful account successor owns these raw identities.
   candidate.writeFacts = facts.value # Bind physical keys to the same immutable account successor.
   candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
@@ -1435,6 +1665,10 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
     AccumulationAccountWriteFact(service: selected, key: request.value.key)])
   if facts.error != AccumulationEffectError.None:
     fail(facts.error) # All successful write facts fit before candidate account publication.
+  let requests = prepareRequestFact(previous, selected, ServicePreimageHash(array[32, byte](
+      source.codeHash)), source.length, request.value.key, false)
+  if requests.error != AccumulationEffectError.None:
+    fail(requests.error) # Seed request identity capacity precedes child/cursor/account publication.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply([
     StateWrite(key: parentEntry.key, kind: StateWriteKind.Put, value: parentEntry.value),
@@ -1454,6 +1688,7 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
       AccumulationAccountScope.Unsupported and uint64(previous.createdLimit) != 0:
     candidate.accountScope = if previous.accountScope == AccumulationAccountScope.DeletedAccounts:
       AccumulationAccountScope.DeletedAccounts else: AccumulationAccountScope.CreatedAccounts # New preserves earlier ejection facts.
+  candidate.requestFacts = requests.value # Creation preserves the actual original code-request hash and length independently of later upgrades.
   candidate.created = captured.value # Enabled creation membership survives independently of legacy account-scope publication.
   candidate.nextService = next
   candidate.writeFacts = facts.value # Bind physical keys to the same immutable account successor.
@@ -1926,7 +2161,7 @@ proc recordAccumulationEject*(effects: AccumulationEffects, target: Accumulation
   if previous.accountScope != AccumulationAccountScope.Unsupported and uint64(
       previous.deletedLimit) != 0:
     candidate.accountScope = AccumulationAccountScope.DeletedAccounts # Successful bounded ejections alone certify foreign removals.
-    candidate.deleted = captured.value
+  candidate.deleted = captured.value # Enabled membership survives broader legacy scope gates.
   candidate.writeFacts = facts.value # Bind physical keys to the same immutable account successor.
   candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
@@ -2048,6 +2283,9 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
   let facts = prepareAccountWriteFacts(previous, target, writes)
   if facts.error != AccumulationEffectError.None:
     fail(facts.error) # All successful write facts fit before candidate account publication.
+  let requests = prepareRequestFact(previous, target, hash, length, request.value.key, false)
+  if requests.error != AccumulationEffectError.None:
+    fail(requests.error) # No newly retained identity or map escapes a request trace quota refusal.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -2063,6 +2301,7 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
     selfAccountData(previous, changed.value, keys)
   else:
     successorData(previous, changed.value) # Foreign execution awaits parallel modified-account selection.
+  candidate.requestFacts = requests.value # Bind original logical arguments to this exact successful history/map.
   candidate.writeFacts = facts.value # Bind physical keys to the same immutable account successor.
   candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
@@ -2129,6 +2368,7 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     replacement = unavailableHistory(history.restoredAt, RequestSlot(
         time)) # Retain latest availability and append current removal time.
   var writes: seq[StateWrite] = @[]
+  var requestKey = default(StateKey)
   if remove:
     let accountKey = chapterServiceKey(StateChapter(255), target)
     var metadata = selected.value
@@ -2141,6 +2381,7 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     let request = serviceRequestKey(target, hash, length, ByteLimit(32))
     if request.error != RequestError.None:
       fail(AccumulationEffectError.BackendFailure) # Stop on failed request derivation without more namespace work.
+    requestKey = request.value # Reuse the genuine request key; capture performs no extra namespace hash.
     writes.add(StateWrite(key: accountKey, kind: StateWriteKind.Put, value: encoded.value))
     writes.add(StateWrite(key: request.value, kind: StateWriteKind.Delete))
     if removePreimage:
@@ -2156,6 +2397,7 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
           3), maxBytes: ByteLimit(13))))
     if request.error != RequestError.None:
       fail(AccumulationEffectError.BackendFailure) # Failed canonical replacement has no request payload to publish.
+    requestKey = request.value.key # Replacement and deletion retain the same exact request identity contract.
     writes.add(StateWrite(key: request.value.key, kind: StateWriteKind.Put,
         value: request.value.value)) # Replacement changes no metadata or preimage.
   var keys = previous.accountKeys
@@ -2171,6 +2413,9 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
   let facts = prepareAccountWriteFacts(previous, target, writes)
   if facts.error != AccumulationEffectError.None:
     fail(facts.error) # All successful write facts fit before candidate account publication.
+  let requests = prepareRequestFact(previous, target, hash, length, requestKey, removePreimage)
+  if requests.error != AccumulationEffectError.None:
+    fail(requests.error) # Expired-preimage removal evidence is published only with all matching account writes.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -2186,6 +2431,7 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     selfAccountData(previous, changed.value, keys)
   else:
     successorData(previous, changed.value) # Foreign execution awaits parallel modified-account selection.
+  candidate.requestFacts = requests.value # Selected checkpoint ownership keeps request/preimage removal evidence paired with its map.
   candidate.writeFacts = facts.value # Bind physical keys to the same immutable account successor.
   candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
