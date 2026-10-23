@@ -60,6 +60,12 @@ func value*[T](outcome: TrieResult[T]): T {.inline,
   ## Extract only a successful revision or retained value under checked optimized builds.
   outcome.completed
 
+proc takeValue*[T](outcome: var TrieResult[T]): T {.inline, requires: outcome.status ==
+    TrieError.None.} =
+  ## Transfer a successful revision/value/export once without copying; consumed results retain only Uninitialized.
+  result = move(outcome.completed)
+  outcome = TrieResult[T](status: TrieError.Uninitialized)
+
 func compareKey(left, right: StateKey): int =
   ## Lexicographic byte order agrees with the protocol's MSB-first traversal.
   let a = array[31, byte](left)
@@ -391,23 +397,25 @@ proc exportSize(node, base: nil TrieNode, depth: int, limits: TrieExportLimits,
     return exportSize(node.right, baseChild(base, depth, true), depth+1, limits, count, bytes)
   TrieError.None
 
-proc exportNodes(node, base: nil TrieNode, depth: int, output: var seq[TrieRecord]) =
+proc exportNodes(node, base: nil TrieNode, depth: int, output: var seq[TrieRecord], next: var int) =
   ## Emit children before parents, deep-copying values and retaining no canonical graph aliases.
   if not omitted(node, base):
     assert node != nil # Preflight and omission establish a complete physical node.
     if node.leaf:
       var copied = newSeq[byte](node.payload.len)
       for i, octet in node.payload: copied[i] = octet # Published backing never escapes.
-      output.add(TrieRecord(kind: TrieRecordKind.Leaf, digest: node.digest,
-        key: node.key, payload: copied))
+      output[next] = TrieRecord(kind: TrieRecordKind.Leaf, digest: node.digest,
+        key: node.key, payload: copied)
+      inc next
     else:
-      exportNodes(node.left, baseChild(base, depth, false), depth+1, output)
-      exportNodes(node.right, baseChild(base, depth, true), depth+1, output)
+      exportNodes(node.left, baseChild(base, depth, false), depth+1, output, next)
+      exportNodes(node.right, baseChild(base, depth, true), depth+1, output, next)
       let left = node.left
       let right = node.right
-      output.add(TrieRecord(kind: TrieRecordKind.Branch, digest: node.digest,
+      output[next] = TrieRecord(kind: TrieRecordKind.Branch, digest: node.digest,
         left: (if left == nil: default(StateNodeHash) else: left.digest),
-        right: (if right == nil: default(StateNodeHash) else: right.digest)))
+        right: (if right == nil: default(StateNodeHash) else: right.digest))
+      inc next
 
 proc exportTrieChanges*(base, target: FullStateTrie,
     limits: TrieExportLimits): TrieResult[TrieExport] =
@@ -420,8 +428,10 @@ proc exportTrieChanges*(base, target: FullStateTrie,
   var bytes = 0'u64
   let checked = exportSize(selected.root, prior.root, 0, limits, count, bytes)
   if checked != TrieError.None: return TrieResult[TrieExport](status: checked)
-  var records: seq[TrieRecord] = @[]
-  exportNodes(selected.root, prior.root, 0, records) # Only preflighted detached extents are allocated.
+  var records = newSeq[TrieRecord](int(count))
+  var next = 0
+  exportNodes(selected.root, prior.root, 0, records, next) # Preflight proves every exact slot before allocation.
+  assert next == records.len # Child-before-parent emission must fill the complete bounded descriptor extent.
   let metadata = target.commitment
   TrieResult[TrieExport](status: TrieError.None, completed: TrieExport(base: base.commitment.root,
     root: metadata.root, entries: uint64(metadata.entries), nodes: metadata.nodes,
