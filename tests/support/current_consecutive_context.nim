@@ -28,11 +28,13 @@ proc transcript(domain: string, seed: array[32, byte]): seq[byte] =
   for index, octet in domain: result[index] = byte(octet)
   for index, octet in seed: result[domain.len+index] = octet
 
-proc currentBodyChild*(parent: BlockSnapshot, body: openArray[byte]): OwnedBlock =
-  ## Seal a complete authored body against the actual parent; this fixture deliberately stops before an epoch crossing.
+proc currentSameEpochBodyChild*(parent: BlockSnapshot, body: openArray[byte]): OwnedBlock =
+  ## Seal a body in the actual parent epoch under the maintained uniform scalar-one fallback roster.
   assert uint32(parent.slot) < high(uint32)
   let slot = uint32(parent.slot)+1
-  assert uint64(slot) < uint64(parent.epochSlots), "ordinary first-epoch fixture only"
+  assert uint64(parent.epochSlots) > 0
+  assert uint64(slot) div uint64(parent.epochSlots) == uint64(parent.slot) div uint64(
+      parent.epochSlots), "same-epoch fallback fixture only"
   let limits = currentConsecutiveLimits()
   let frame = limits.reporting.admission.frame
   let headerConfig = limits.reporting.reports.ancestors.header
@@ -69,6 +71,12 @@ proc currentBodyChild*(parent: BlockSnapshot, body: openArray[byte]): OwnedBlock
   let decoded = decodeBlock(wire, frame)
   assert decoded.error == FrameError.None and decoded.value.consumed == wire.len
   decoded.value.owner
+
+proc currentBodyChild*(parent: BlockSnapshot, body: openArray[byte]): OwnedBlock =
+  ## Existing callers retain their first-epoch-only contract; rotation fixtures opt into the explicit same-epoch helper.
+  assert uint32(parent.slot) < high(uint32)
+  assert uint64(uint32(parent.slot)+1) < uint64(parent.epochSlots), "ordinary first-epoch fixture only"
+  currentSameEpochBodyChild(parent, body)
 
 proc currentEmptyChild*(parent: BlockSnapshot): OwnedBlock =
   ## Preserve the original seven-zero empty-body witness through the same genuine first-epoch signing path.
