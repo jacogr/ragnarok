@@ -23,3 +23,5 @@ Actual write/checkpoint/trap execution qualifies the checkpoint-selected new nam
 A successful funded write followed by unaffordable host work qualifies only the selected rollback namespace. The application_supplied_outofgas_rollback native suite also rejects a complete-looking declaration for an omitted, stale or unselected effect, and crosses the exact-plan response against the prior root.
 
 Actual funded solicitation qualifies a new request marker with exact requested-state wire bytes. The application_supplied_request_addition native suite also rejects a complete-looking declaration for an omitted, stale or unselected effect, and crosses the exact-plan response against the prior root.
+
+Actual forget/restore execution qualifies the exact three-slot retained request history. The application_supplied_request_restoration native suite also rejects a complete-looking declaration for an omitted, stale or unselected effect, and crosses the exact-plan response against the prior root.
