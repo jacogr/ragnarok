@@ -19,6 +19,12 @@ confirmation and any managed maintenance ends; queued work is not retried/cancel
 network attempt after durable publication has begun. Close joins publication/preparation before
 retiring captured input, ancestry or callback owners and never adopts an uncollected prepared job.
 
+Queued current publication or managed maintenance advances only Services while its disk lease
+is active. This scalar gate precedes the legacy-handoff observation, which Services masks as
+Publishing during maintenance even when the legacy producer is idle. A later ordinary turn
+checks ownership and consumes current completion after collection; no callback/input alias is
+polled or retired during that native lease.
+
 RPC proof integration adds explicit exclusion before canonical configuration access, before callback
 polling and after Services.tick (which may admit a native proof). During active proof work the loop
 keeps its input/ancestry/callback aliases stable and performs only the permitted Services turn.

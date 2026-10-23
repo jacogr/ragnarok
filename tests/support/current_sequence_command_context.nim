@@ -23,6 +23,9 @@ proc exchangeCurrentSequence*(fixture: CurrentConsecutiveFixture, start, request
   assert requested >= 1 and requested <= 64
   let stopPath = prefix & "-stop"
   let countPath = prefix & "-count"
+  for name in [stopPath, countPath]:
+    var path = name
+    discard posix.unlink(path.toCString()) # A failed earlier witness cannot stop or supply evidence for this invocation.
   defer:
     for name in [stopPath, countPath]:
       var path = name
