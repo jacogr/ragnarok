@@ -11,3 +11,5 @@ omitted new key and authenticates its bytes under the selected actual posterior 
 response refuses the prior root. Retained declarations remain detached after caller mutation.
 
 Actual raw storage deletion qualifies only complete successor declarations and proves absence. The application_supplied_storage_deletion native suite also rejects a complete-looking declaration for an omitted, stale or unselected effect, and crosses the exact-plan response against the prior root.
+
+Actual block preimage provision qualifies added content and the exact updated request history. The application_supplied_preimage_provision native suite also rejects a complete-looking declaration for an omitted, stale or unselected effect, and crosses the exact-plan response against the prior root.
