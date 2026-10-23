@@ -24,6 +24,8 @@ export REOPEN_PAIR_REPORT ?=
 export REOPEN_PAIR_OUTPUT ?=
 export REOPEN_PAIR_CONFIG ?=
 export SUITE ?=
+# Select one independent E2E family; an empty value retains complete local verification.
+export E2E_GROUP ?=
 SUMMARY_OUTPUT ?= build/ci/summary.md
 # The pinned compiler supports Linux x86-64; Docker can emulate it on an ARM development host.
 DOCKER ?= docker

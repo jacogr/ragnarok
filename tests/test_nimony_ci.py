@@ -65,7 +65,7 @@ class NimonyCISafeguards(unittest.TestCase):
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
             self.assertEqual(text.count('run: make '+target+'\n'), 1)
-        self.assertEqual(text.count('needs:'), 2)
+        self.assertEqual(text.count('needs:'), 3)
         self.assertIn('needs: unit', text)
         self.assertNotIn('run: make check\n', text)
         self.assertNotIn('mkdir', text)
@@ -102,7 +102,8 @@ class NimonyCISafeguards(unittest.TestCase):
                                    "(inputs.suite == 'interop' || inputs.suite == 'full'))").replace("github.event.label.name == 'ci:full')",
                                    "(github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))")+' }}'),
                                ('unit-status', '${{ always() && ('+requested+') }}'),
-                               ('failures-status', '${{ always() && ('+full+') }}')]:
+                               ('failures-status', '${{ always() && ('+full+') }}'),
+                               ('e2e-status', '${{ always() && ('+e2e+') }}')]:
             # Gates retain the same selection as their matrix while still observing failed/cancelled jobs.
             with self.subTest(job=job):
                 section = re.search(r'^  '+job+r':\n(.*?)(?=^  [\w-]+:|\Z)',
@@ -162,6 +163,29 @@ class NimonyCISafeguards(unittest.TestCase):
             with self.subTest(result=result):
                 status = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
                 self.assertEqual(status == 0, result == 'success')
+
+    def test_ci_e2e_family_gate(self):
+        """Every declared E2E family runs independently and the stable gate refuses incomplete matrices."""
+        from e2e_checks import PLAN
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        section = text.split('  e2e:\n', 1)[1].split('  e2e-status:\n', 1)[0]
+        groups = re.findall(r'group: ([a-z_]+), name:', section)
+        self.assertEqual(tuple(groups), PLAN.groups())
+        self.assertIn('fail-fast: false', section)
+        self.assertIn('E2E_GROUP: ${{ matrix.family.group }}', section)
+        self.assertIn('name: E2E ${{ matrix.family.name }}', section)
+        self.assertIn('name: ${{ matrix.os }}-e2e-${{ matrix.family.group }}-${{ github.run_attempt }}', section)
+        self.assertNotIn('needs:', section)
+        gate = text.split('  e2e-status:\n', 1)[1].split('  pvm-reference:\n', 1)[0]
+        self.assertIn('name: E2E Networking', gate)
+        self.assertIn('needs: e2e', gate)
+        self.assertIn('SHARDS_RESULT: ${{ needs.e2e.result }}', gate)
+        command = re.search(r'        run: ([^\n]+)', gate).group(1)
+        for result in ('success', 'failure', 'cancelled', 'skipped'):
+            # Exercise the exact shell predicate rather than relying on matrix job names alone.
+            with self.subTest(result=result):
+                code = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
+                self.assertEqual(code == 0, result == 'success')
 
     # Every independent CI job must visibly reject incomplete inventories before provisioning its workload.
     def test_ci_inventory_preflight(self):

@@ -101,6 +101,9 @@ def summarize(report, kind):
         # Live networking keeps its own totals and resource evidence, separate from unit/corpus counts.
         lines = ['## End-to-end networking verification', '', '**Status: '+report['status']+'**', '',
                  'Entry-point selftests: '+str(len(report['suites']))+'.']
+        if report.get('e2e_group') is not None:
+            # A passing family report covers its declared scope, never the complete E2E plan.
+            lines += ['', 'Scope: **'+report['e2e_group']+'** (one E2E group).']
         if 'quic_peer' in report:
             # Keep authenticated exchanges distinct from pure corpora and failed-result contract probes.
             peer = report['quic_peer']
