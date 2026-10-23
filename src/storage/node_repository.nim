@@ -28,12 +28,14 @@ type
     of InvalidRecords: recordReason: RecordError
     of TrieFailure: trieReason: TrieError
     else: discard               # Default and ordinary refusals retain no graph owner.
-  StoredRecord = ref object ## Private immutable cell owns bytes once; revision tables share only this ARC owner.
-    kind: TrieRecordKind
+  StoredRecord = ref object ## Private immutable tagged cell owns only its physical form; tables share this ARC owner.
     digest: StateNodeHash
-    key: StateKey
-    payload: seq[byte]
-    left, right: StateNodeHash
+    case kind: TrieRecordKind
+    of Leaf:
+      key: StateKey              ## Leaf-only bytes never reserve space beside branch edges.
+      payload: seq[byte]
+    of Branch:
+      left, right: StateNodeHash ## Complete physical edges remain distinct from masked JAM hashing.
   ImageRecordStage = object ## Private provisional cells never escape failed encoded-image admission.
     records: seq[StoredRecord]
     limits: RepositoryLimits
@@ -66,12 +68,19 @@ type
     valueBytes: uint64
   RepositorySelection* = object ## Opaque bounded root union; old plans remain valid after publication/close.
     data: nil RepositorySelectionData
+  RootSlot = object ## Sorting borrowed identities with ordinals preserves first-occurrence output order.
+    root: StateRoot
+    position: int
   GraphCollection {.pure.} = enum ## Admission avoids collection; extraction and retention request exact positions.
-    None, Leaves, Records
+    None, Leaves, Records, Union
   GraphVisit = object ## Traversal scratch optionally collects reachable leaf or complete-record positions.
     seen: seq[uint64]
     leaves: seq[int]
     collect: GraphCollection
+    dirtyWords: seq[int]
+    retained: seq[uint64]
+    retainedCount: int
+    retainedBytes: uint64
   GraphCounts = object ## Explicitly initialized running totals bound untrusted graph traversal.
     entries, nodes, bytes: uint64
 
@@ -95,6 +104,11 @@ func value*[T](outcome: RepositoryResult[T]): T {.inline,
     requires: outcome.status == RepositoryError.None.} =
   ## Extract only a successful complete operation.
   outcome.completed
+proc takeValue*[T](outcome: var RepositoryResult[T]): T {.inline,
+    requires: outcome.status == RepositoryError.None.} =
+  ## Transfer one successful owner without copying; the consumed result retains no payload or authority.
+  result = move(outcome.completed)
+  outcome = RepositoryResult[T](status: RepositoryError.Uninitialized)
 func recordError*[T](outcome: RepositoryResult[T]): RecordError {.requires:
     outcome.status == RepositoryError.InvalidRecords.} =
   ## Inspect only a selected physical-record integrity refusal.
@@ -114,22 +128,36 @@ func compareHash(left, right: StateNodeHash): int =
 proc compareRecord(left, right: StoredRecord): int =
   ## Sort records without comparing or copying raw payloads in the comparator.
   compareHash(left.digest, right.digest)
+func payloadBytes(record: StoredRecord): int {.inline.} =
+  ## Mixed physical inventories count no value bytes for a branch and never read an inactive variant.
+  if record.kind == TrieRecordKind.Leaf: record.payload.len
+  else: 0
 func sameRecord(left: StoredRecord, right: TrieRecord): bool =
-  ## A digest collision must not silently replace different physical navigation or values.
-  left.kind == right.kind and compareHash(left.digest, right.digest) == 0 and
-    array[31, byte](left.key) == array[31, byte](right.key) and left.payload == right.payload and
+  ## Transport preflight has established canonical unused fields; compare every active physical field.
+  if left.kind != right.kind or compareHash(left.digest, right.digest) != 0: return false
+  if left.kind == TrieRecordKind.Leaf:
+    array[31, byte](left.key) == array[31, byte](right.key) and left.payload == right.payload
+  else:
     compareHash(left.left, right.left) == 0 and compareHash(left.right, right.right) == 0
 proc storeRecord(source: TrieRecord): StoredRecord =
-  ## Admit copied transport bytes into a private cell that no public API can mutate or expose.
-  var bytes = newSeq[byte](source.payload.len)
-  for index, octet in source.payload:
-    bytes[index] = octet # Borrowed transport must not become a mutable alias of an admitted record.
-  StoredRecord(kind: source.kind, digest: source.digest, key: source.key, payload: bytes,
-    left: source.left, right: source.right)
+  ## Only fully validated raw records enter this private constructor; mutable leaf payloads still copy.
+  if source.kind == TrieRecordKind.Leaf:
+    var bytes = newSeq[byte](source.payload.len)
+    for index, octet in source.payload:
+      bytes[index] = octet # Borrowed input cannot alias immutable admitted ownership.
+    result = StoredRecord(kind: TrieRecordKind.Leaf, digest: source.digest,
+      key: source.key, payload: bytes)
+  else:
+    result = StoredRecord(kind: TrieRecordKind.Branch, digest: source.digest,
+      left: source.left, right: source.right)
 proc storeDecodedRecord(source: var TrieRecord): StoredRecord =
-  ## Only the synchronous local decoder supplies this owned temporary; mutable raw callers still copy.
-  StoredRecord(kind: source.kind, digest: source.digest, key: source.key,
-    payload: move(source.payload), left: source.left, right: source.right)
+  ## Synchronous local decoding supplies canonical owned records; only leaf payload ownership transfers.
+  if source.kind == TrieRecordKind.Leaf:
+    result = StoredRecord(kind: TrieRecordKind.Leaf, digest: source.digest,
+      key: source.key, payload: move(source.payload))
+  else:
+    result = StoredRecord(kind: TrieRecordKind.Branch, digest: source.digest,
+      left: source.left, right: source.right)
 proc prepareImageRecords(stage: var ImageRecordStage, info: RecordCollectionInfo) =
   ## The codec has bounded this exact count; reserve private cell references without repeating input inspection.
   stage.records = newSeqOfCap[StoredRecord](int(info.records))
@@ -144,11 +172,16 @@ proc acceptImageRecord(stage: var ImageRecordStage, record: var TrieRecord): boo
   stage.records.add(storeDecodedRecord(record))
   true
 proc copyRecord(source: StoredRecord): TrieRecord =
-  ## Deep-copy only mutable byte storage; fixed addresses and keys copy by value.
-  var bytes = newSeq[byte](source.payload.len)
-  for i in 0..<source.payload.len: bytes[i] = source.payload[i]
-  TrieRecord(kind: source.kind, digest: source.digest, key: source.key, payload: bytes,
-    left: source.left, right: source.right)
+  ## Reconstruct canonical detached transport, initializing unused fields to zero/empty on both forms.
+  if source.kind == TrieRecordKind.Leaf:
+    var bytes = newSeq[byte](source.payload.len)
+    for index in 0..<source.payload.len:
+      bytes[index] = source.payload[index] # Returned mutable leaf values remain independent of their immutable cell.
+    result = TrieRecord(kind: TrieRecordKind.Leaf, digest: source.digest,
+      key: source.key, payload: bytes)
+  else:
+    result = TrieRecord(kind: TrieRecordKind.Branch, digest: source.digest,
+      left: source.left, right: source.right)
 proc position(records: seq[StoredRecord], digest: StateNodeHash): int =
   ## Binary search uses subtraction-based midpoints and full address equality.
   var first = 0
@@ -201,6 +234,15 @@ proc graph(table: RepositoryTable, digest: StateNodeHash, depth: int,
   if marked(visit.seen, index): return RepositoryError.InvalidGraph # Cycles and repeated logical subtrees cannot represent a full-key map.
   if counts.nodes >= uint64(limits.nodes): return RepositoryError.LimitExceeded
   inc counts.nodes
+  if visit.collect == GraphCollection.Union:
+    # Dirty words reset sparse roots without retaining a second per-record ordinal list.
+    let word = index div 64
+    if visit.seen[word] == 0: visit.dirtyWords.add(word)
+    if not marked(visit.retained, index):
+      # A source table bounds both the unique union cardinality and its aggregate owned value bytes.
+      mark(visit.retained, index)
+      inc visit.retainedCount
+      visit.retainedBytes += uint64(payloadBytes(table.records[index]))
   mark(visit.seen, index)
   if visit.collect == GraphCollection.Records:
     visit.leaves.add(index) # Retention needs branch and leaf addresses, each once per validated root.
@@ -237,10 +279,31 @@ proc graph(table: RepositoryTable, digest: StateNodeHash, depth: int,
   RepositoryError.None
 
 proc resetGraph(visit: var GraphVisit) =
-  ## Reuse union traversal scratch while clearing every record seen by the preceding complete root.
-  for index in visit.leaves:
-    unmark(visit.seen, index) # Records collection includes branches and leaves, including empty-root no-ops.
-  visit.leaves.setLen(0) # Retain bounded capacity; no previous root can authorize a repeated subtree.
+  ## Clear only preceding-root membership; retained union bits never authorize a later root's topology.
+  if visit.collect == GraphCollection.Union:
+    for word in visit.dirtyWords:
+      visit.seen[word] = 0 # Whole-word clearing is safe because each previously nonempty word was recorded once.
+    visit.dirtyWords.setLen(0)
+  else:
+    for index in visit.leaves:
+      unmark(visit.seen, index) # Existing complete-record admission keeps its per-record reset contract.
+    visit.leaves.setLen(0)
+
+proc freezeGraphUnion(visit: GraphVisit): seq[int] =
+  ## Scan only retained bitmap words into one exact, intrinsically ordered inventory without sorting or growth.
+  result = newSeq[int](visit.retainedCount)
+  var next = 0
+  for word, present in visit.retained:
+    var remaining = present
+    var bit = 0
+    while remaining != 0:
+      # Only a marked existing physical position can reach this output; unused final-word bits remain clear.
+      if (remaining and 1) != 0:
+        result[next] = word*64+bit
+        inc next
+      remaining = remaining shr 1
+      inc bit
+  assert next == result.len # Per-record union counting and canonical freezing must agree exactly.
 
 proc newNodeRepository*(limits: RepositoryLimits): NodeRepository =
   ## Open an initialized empty in-memory owner; allocation exhaustion keeps the fail-stop policy.
@@ -262,6 +325,11 @@ proc snapshot*(repository: NodeRepository): RepositoryResult[RepositoryView] =
 func initialized*(view: RepositoryView): bool =
   ## Test a read handle before another storage component accepts ownership of it.
   view.data != nil
+func matches*(view, other: RepositoryView): bool =
+  ## Compare initialized immutable owner identity in constant space/time; equal roots/generations grant no binding.
+  ## Default views never match, including each other; retained views remain comparable after source close.
+  view.data != nil and view.data == other.data
+
 proc commitment*(view: RepositoryView): StateTrieCommitment {.requires: view.data != nil.} =
   ## Return copied complete-map metadata, never mutable node storage.
   let data = view.data
@@ -511,7 +579,7 @@ func initialized*(selection: RepositorySelection): bool =
 func matches*(selection: RepositorySelection, view: RepositoryView): bool =
   ## Compare exact immutable source owners, never just a root or local generation.
   let data = selection.data
-  data != nil and data.source.data == view.data
+  data != nil and data.source.matches(view)
 proc retainedNodes*(selection: RepositorySelection): int {.requires: selection.initialized.} =
   ## Count unique physical records needed by the selected root union.
   let data = selection.data
@@ -543,6 +611,38 @@ proc retainedRoots*(selection: RepositorySelection): seq[
   for index in 0..<data.roots.len: roots[index] = data.roots[
       index] # No mutable alias to the accepted plan escapes.
   roots
+proc compareRoot(left, right: StateRoot): int =
+  ## Root inventories use the same complete lexical identity order as physical addresses.
+  compareHash(StateNodeHash(array[32, byte](left)), StateNodeHash(array[32, byte](right)))
+
+proc compareRootSlot(left, right: RootSlot): int =
+  ## Equal identities sort by caller position so only the earliest borrowed slot survives.
+  let order = compareRoot(left.root, right.root)
+  if order != 0: return order # Distinct complete commitments remain independent inventory entries.
+  if left.position < right.position: -1
+  elif left.position > right.position: 1
+  else: 0
+
+proc distinctRoots(roots: openArray[StateRoot]): seq[StateRoot] =
+  ## Deduplicate in O(r log r) comparisons without changing caller order or retaining sorting scratch.
+  var duplicates = newSeq[uint64](graphWords(roots.len))
+  var count = roots.len
+  block:
+    # The public caller proved this typed extent; retire all ordinal descriptors before output allocation.
+    var ordered = newSeq[RootSlot](roots.len)
+    for position, root in roots: ordered[position] = RootSlot(root: root, position: position)
+    ordered.sort(compareRootSlot)
+    for index in 1..<ordered.len:
+      if compareRoot(ordered[index-1].root, ordered[index].root) == 0:
+        mark(duplicates, ordered[index].position) # Later occurrences never choose output order.
+        dec count
+  result = newSeq[StateRoot](count)
+  var next = 0
+  for position, root in roots:
+    if not marked(duplicates, position):
+      result[next] = root # Copy the original first occurrence, with no alias to caller-mutated storage.
+      inc next
+
 proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
     limit: ElementLimit): RepositoryResult[RepositorySelection] =
   ## Validate an explicit bounded root union including current selection, without changing the source.
@@ -551,41 +651,35 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
       status: RepositoryError.Uninitialized)
   if roots.len == 0: return RepositoryResult[RepositorySelection](
       status: RepositoryError.RootMismatch)
-  if uint64(roots.len) > uint64(limit) or roots.len > high(int) div sizeof(StateRoot):
+  if uint64(roots.len) > uint64(limit) or roots.len > high(int) div sizeof(RootSlot):
     return RepositoryResult[RepositorySelection](status: RepositoryError.LimitExceeded)
+  let unique = distinctRoots(roots) # Count every borrowed slot before coalescing complete identities.
   var selected = false
-  var unique: seq[StateRoot] = @[]
-  for root in roots:
-    # Count every borrowed slot against the ceiling, then coalesce equal root identities.
-    if array[32, byte](root) == array[32, byte](source.commitment.root): selected = true
-    var duplicate = false
-    for prior in unique:
-      if array[32, byte](prior) == array[32, byte](root): duplicate = true
-    if not duplicate: unique.add(root)
+  for root in unique:
+    if array[32, byte](root) == array[32, byte](source.commitment.root):
+      selected = true # Required current-root membership still precedes every graph traversal.
   if not selected: return RepositoryResult[RepositorySelection](
       status: RepositoryError.RootMismatch)
-  var retained = newSeq[uint64](graphWords(source.table.records.len))
-  var indices: seq[int] = @[]
+  var exact: seq[int] = @[]
   var bytes = 0'u64
-  var visit = GraphVisit(seen: newSeq[uint64](graphWords(source.table.records.len)),
-      collect: GraphCollection.Records)
-  for root in unique:
-    # Reuse bounded storage, but reset membership and counters for independent per-root graph checks.
-    resetGraph(visit)
-    var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
-    let checked = graph(source.table, StateNodeHash(array[32, byte](root)), 0,
-      default(array[31, byte]), source.limits.codec.trie, visit, counts)
-    if checked != RepositoryError.None:
-      return RepositoryResult[RepositorySelection](status: checked)
-    for index in visit.leaves:
-      if not marked(retained, index):
-        mark(retained, index)
-        indices.add(index)
-        bytes += uint64(source.table.records[index].payload.len) # Unique source records are bounded by source.valueBytes.
-  indices.sort() # Canonicalize the immutable union once; repeated exports/clones can borrow this order.
+  block:
+    # Two bitmaps and at most one ordinal per dirty word replace growable whole-record inventories.
+    let words = graphWords(source.table.records.len)
+    var visit = GraphVisit(seen: newSeq[uint64](words), collect: GraphCollection.Union,
+      retained: newSeq[uint64](words), retainedCount: 0, retainedBytes: 0)
+    for root in unique:
+      # Independent per-root seen bits and graph counters retain cycle, route, duplicate and quota checks.
+      resetGraph(visit)
+      var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
+      let checked = graph(source.table, StateNodeHash(array[32, byte](root)), 0,
+        default(array[31, byte]), source.limits.codec.trie, visit, counts)
+      if checked != RepositoryError.None:
+        return RepositoryResult[RepositorySelection](status: checked)
+    exact = freezeGraphUnion(visit)
+    bytes = visit.retainedBytes # No traversal scratch or growable capacity survives in the accepted selection.
   RepositoryResult[RepositorySelection](status: RepositoryError.None,
     completed: RepositorySelection(data: RepositorySelectionData(source: view, roots: unique,
-      indices: indices, valueBytes: bytes)))
+      indices: move(exact), valueBytes: bytes)))
 
 proc commitment*(selection: RepositorySelection): StateTrieCommitment {.requires: selection.initialized.} =
   ## Copy the selected current complete commitment from this plan's immutable source.
@@ -615,9 +709,6 @@ proc exportRepositorySelection*(selection: RepositorySelection,
     records[index] = copyRecord(source.table.records[position]) # Never export shared mutable payload bytes.
   RepositoryResult[seq[TrieRecord]](status: RepositoryError.None, completed: records)
 
-proc compareRoot(left, right: StateRoot): int =
-  ## Canonical root inventories use the same fixed lexical byte order as physical addresses.
-  compareHash(StateNodeHash(array[32, byte](left)), StateNodeHash(array[32, byte](right)))
 proc exportRepositoryImage*(selection: RepositorySelection, limits: TrieExportLimits,
     roots: ElementLimit): RepositoryResult[RepositoryImage] =
   ## Bound and detach a validated union, preserving current metadata and ordering its unique root set.
@@ -776,13 +867,80 @@ proc measureRepositorySelection*(selection: RepositorySelection,
   for ordinal in 0..<data.indices.len:
     let index = data.indices[ordinal]
     let fixed = if source.table.records[index].kind == TrieRecordKind.Leaf: 72'u64 else: 97'u64
-    let payload = uint64(source.table.records[index].payload.len)
+    let payload = uint64(payloadBytes(source.table.records[index]))
     if payload > uint64(limits.trie.perValue) or fixed > maximum-size:
       return RepositoryResult[int](status: RepositoryError.LimitExceeded)
     size += fixed
     if payload > maximum-size: return RepositoryResult[int](status: RepositoryError.LimitExceeded)
     size += payload # Each addition is proved against the exact host-bounded output ceiling.
   RepositoryResult[int](status: RepositoryError.None, completed: int(size))
+
+proc putCollectionNumber(output: var seq[byte], offset: int, number: uint64) =
+  ## Exact collection extent preflight proves the eight little-endian bytes at this private offset.
+  for index in 0..<8: output[offset+index] = byte((number shr (index*8)) and 255)
+
+proc putCollectionHash(output: var seq[byte], offset: int, digest: StateNodeHash) =
+  ## Copy complete physical identities; branch edges must not use the masked JAM left-child form.
+  let raw = array[32, byte](digest)
+  for index in 0..<32: output[offset+index] = raw[index]
+
+proc encodeFramedRepositorySelection*(selection: RepositorySelection, limits: RecordLimits,
+    prefixBytes, suffixBytes: uint64, outputLimit: ByteLimit): RepositoryResult[seq[byte]] =
+  ## Serialize an opaque admitted union between caller-sized, zero-filled frame reservations in one allocation.
+  ## Full-width nonnegative extents and the independent whole-output ceiling are checked before narrowing.
+  ## Reservations grant no record/graph authority; callers own their framing, checksum and outer interpretation.
+  ## No raw records or validation flag are accepted; mutable collections still use the strict record codec.
+  ## Failure carries only Uninitialized/LimitExceeded; success owns bytes independent of every source owner.
+  let measured = measureRepositorySelection(selection, limits)
+  if measured.error != RepositoryError.None:
+    return RepositoryResult[seq[byte]](status: measured.error) # No failed extent authorizes output allocation.
+  let maximum = min(uint64(outputLimit), uint64(high(int)))
+  let bodyBytes = uint64(measured.value)
+  if prefixBytes > maximum or suffixBytes > maximum-prefixBytes:
+    return RepositoryResult[seq[byte]](status: RepositoryError.LimitExceeded)
+  let reserved = prefixBytes+suffixBytes
+  if bodyBytes > maximum-reserved:
+    return RepositoryResult[seq[byte]](status: RepositoryError.LimitExceeded)
+  let data = selection.data
+  assert data != nil # Exact measurement succeeded only for a private initialized immutable selection.
+  let source = data.source.data
+  assert source != nil # Selection construction retained its independently admitted source view.
+  const Magic = "RAGNAROK-RECORDS-V1\n"
+  var output = newSeq[byte](int(reserved+bodyBytes))
+  let prefix = int(prefixBytes)
+  for index, character in Magic: output[prefix+index] = byte(character)
+  var offset = prefix+Magic.len
+  putCollectionNumber(output, offset, uint64(data.indices.len))
+  offset += 8
+  for position in data.indices:
+    # These unique sorted physical cells passed local integrity and complete graph admission before publication.
+    let cell = source.table.records[position]
+    output[offset] = byte(ord(cell.kind))
+    inc offset
+    putCollectionHash(output, offset, cell.digest)
+    offset += 32
+    if cell.kind == TrieRecordKind.Leaf:
+      let key = array[31, byte](cell.key)
+      for index in 0..<31: output[offset+index] = key[index]
+      offset += 31
+      putCollectionNumber(output, offset, uint64(cell.payload.len))
+      offset += 8
+      for octet in cell.payload:
+        output[offset] = octet # Copy raw values directly from the stable private owner into the sole final buffer.
+        inc offset
+    else:
+      putCollectionHash(output, offset, cell.left)
+      offset += 32
+      putCollectionHash(output, offset, cell.right)
+      offset += 32 # Physical format retains both complete edges, including the left address's high bit.
+  assert offset == output.len-int(suffixBytes) # The writer must end exactly before the reserved suffix.
+  RepositoryResult[seq[byte]](status: RepositoryError.None, completed: output)
+
+
+proc encodeRepositorySelection*(selection: RepositorySelection,
+    limits: RecordLimits): RepositoryResult[seq[byte]] =
+  ## Preserve canonical body-only encoding, independent ownership and typed preflight failures without reservations.
+  encodeFramedRepositorySelection(selection, limits, 0, 0, limits.encoded)
 
 proc cloneRepositorySelection*(selection: RepositorySelection,
     limits: RepositoryLimits): RepositoryResult[NodeRepository] =

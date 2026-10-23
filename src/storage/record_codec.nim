@@ -4,7 +4,7 @@
 ## Strict versioned physical trie-record batches; validates shape/budgets before node hashes.
 ## Record validation is local integrity, not complete graph verification or chain authority.
 
-import std/algorithm
+import std/[algorithm, assertions]
 import ./node_records
 import ../codec/[state_trie, state_layout, bounded]
 
@@ -39,6 +39,13 @@ type
     batch: TrieExport
     count, header: int
     valueBytes: uint64
+    firstPrefix, lastPrefix: uint64
+  PrefixMode {.pure.} = enum ## Default plans conservatively check all full identities; only proved distinct prefixes omit them.
+    All, Unique, Selected
+  PrefixPlan = object ## Private repeated-prefix inventory bounds selected full-width checks without changing record integrity.
+    mode: PrefixMode
+    prefixes: seq[uint64]
+    records: int
   RecordResult*[T] = object ## Private alternatives require successful selection before extraction.
     case status: RecordError
     of None: completed: T
@@ -141,18 +148,80 @@ proc recordIntegrity(record: TrieRecord, limits: RecordLimits): RecordError =
       record.digest): return RecordError.HashMismatch
   RecordError.None
 
+func hashPrefix(digest: StateNodeHash): uint64 =
+  ## Pack all first-eight physical bytes bijectively; this scratch key never substitutes for a full address.
+  let bytes = array[32, byte](digest)
+  result = 0
+  for index in 0..<8: result = result or (uint64(bytes[index]) shl (index*8))
+
+proc planPrefixes(prefixes: var seq[uint64]): PrefixPlan =
+  ## Keep exact full comparisons only for sparse collision groups; dense collisions use the original whole check.
+  prefixes.sort()
+  let count = prefixes.len
+  var first = 0
+  var groups = 0
+  var records = 0
+  while first < count:
+    let prefix = prefixes[first]
+    var stop = first+1
+    while stop < count and prefixes[stop] == prefix: inc stop # Sorted equality defines one complete collision group.
+    if stop-first > 1:
+      prefixes[groups] = prefix # Compact only behind unread input; group order stays sorted and unique.
+      inc groups
+      records += stop-first # Disjoint groups bound the accumulated count by the already checked record extent.
+    first = stop
+  if groups == 0: return PrefixPlan(mode: PrefixMode.Unique)
+  if records > count div 4:
+    return PrefixPlan(mode: PrefixMode.All) # Retire compact scratch before the dense full-width fallback.
+  prefixes.setLen(groups)
+  PrefixPlan(mode: PrefixMode.Selected, prefixes: move(prefixes), records: records)
+
+func containsPrefix(plan: PrefixPlan, prefix: uint64): bool =
+  ## Selected collisions retain complete equality groups; binary membership cannot omit an equal full address.
+  var first = 0
+  var stop = plan.prefixes.len
+  while first < stop:
+    let middle = first+(stop-first) div 2
+    if plan.prefixes[middle] < prefix: first = middle+1
+    elif plan.prefixes[middle] > prefix: stop = middle
+    else: return true
+  false
+
+proc recordPrefixPlan(records: openArray[TrieRecord]): PrefixPlan =
+  ## Endpoint collisions need no compact allocation; other collisions are narrowed only by an exact whole-prefix scan.
+  if records.len < 2: return PrefixPlan(mode: PrefixMode.Unique)
+  if hashPrefix(records[0].digest) == hashPrefix(records[records.len-1].digest):
+    return PrefixPlan(mode: PrefixMode.All) # This is inconclusive, never an early duplicate error.
+  var prefixes = newSeq[uint64](records.len)
+  for index, record in records: prefixes[index] = hashPrefix(record.digest)
+  planPrefixes(prefixes)
+
+proc duplicateIdentities(identities: var seq[StateNodeHash]): RecordError =
+  ## Only complete physical address equality can reject a duplicate; no prefix supplies identity authority.
+  identities.sort(compareHash)
+  for index in 1..<identities.len:
+    if compareHash(identities[index-1], identities[index]) == 0: return RecordError.DuplicateNode
+  RecordError.None
+
 proc validateRecords(batch: TrieExport, records: openArray[TrieRecord], limits: RecordLimits,
     collection: bool, ordered = false): RecordError =
   ## Verify each physical node commitment; only the private decoder's strict first pass can supply order.
   let checked = extent(batch, records, limits, collection)
   if checked.error != RecordError.None: return checked.error
   if not ordered:
-    # General mutable records need independent duplicate scratch; ordered decoding already proved strict identities.
-    var identities = newSeq[StateNodeHash](records.len)
-    for i, record in records: identities[i] = record.digest # Fixed scratch has been preflighted.
-    identities.sort(compareHash)
-    for i in 1..<identities.len:
-      if compareHash(identities[i-1], identities[i]) == 0: return RecordError.DuplicateNode
+    let plan = recordPrefixPlan(records)
+    if plan.mode != PrefixMode.Unique:
+      # Other records have prefixes distinct from every collision group and therefore cannot duplicate any identity.
+      let count = if plan.mode == PrefixMode.All: records.len else: plan.records
+      var identities = newSeq[StateNodeHash](count)
+      var next = 0
+      for record in records:
+        if plan.mode == PrefixMode.All or plan.containsPrefix(hashPrefix(record.digest)):
+          identities[next] = record.digest
+          inc next
+      assert next == identities.len # Whole-prefix counting and stable raw input must select the same complete groups.
+      let duplicate = duplicateIdentities(identities)
+      if duplicate != RecordError.None: return duplicate
   for record in records:
     let checked = recordIntegrity(record, limits)
     if checked != RecordError.None: return checked # Preserve the first exact local integrity refusal.
@@ -174,17 +243,25 @@ func readHash(input: openArray[byte], offset: int): array[32, byte] =
   for i in 0..<32: result[i] = input[offset+i]
 
 proc encodeRecords(batch: TrieExport, records: openArray[TrieRecord], limits: RecordLimits,
-    collection: bool): RecordResult[seq[byte]] =
+    collection: bool, prefixBytes = 0'u64, suffixBytes = 0'u64,
+    outputLimit = ByteLimit(high(uint64))): RecordResult[seq[byte]] =
   ## Serialize only a locally verified batch; the borrowed source remains stable throughout.
   let checked = extent(batch, records, limits, collection)
   if checked.error != RecordError.None: return RecordResult[seq[byte]](status: checked.error)
+  let maximum = min(uint64(outputLimit), uint64(high(int)))
+  if prefixBytes > maximum or suffixBytes > maximum-prefixBytes:
+    return RecordResult[seq[byte]](status: RecordError.LimitExceeded)
+  let reserved = prefixBytes+suffixBytes
+  if uint64(checked.value) > maximum-reserved:
+    return RecordResult[seq[byte]](status: RecordError.LimitExceeded)
   let validated = validateRecords(batch, records, limits, collection)
   if validated != RecordError.None: return RecordResult[seq[byte]](status: validated)
-  var output = newSeq[byte](checked.value)
+  var output = newSeq[byte](int(reserved+uint64(checked.value)))
   var magic = RecordMagic
   if collection: magic = CollectionMagic
-  for i, character in magic: output[i] = byte(character) # Exact transport domain has no fallback.
-  var offset = magic.len
+  let prefix = int(prefixBytes)
+  for i, character in magic: output[prefix+i] = byte(character) # Exact transport domain has no fallback.
+  var offset = prefix+magic.len
   if not collection:
     putHash(output, offset, array[32, byte](batch.base)); offset += 32
     putHash(output, offset, array[32, byte](batch.root)); offset += 32
@@ -205,6 +282,7 @@ proc encodeRecords(batch: TrieExport, records: openArray[TrieRecord], limits: Re
     else:
       putHash(output, offset, array[32, byte](record.left)); offset += 32
       putHash(output, offset, array[32, byte](record.right)); offset += 32
+  assert offset == output.len-int(suffixBytes) # Strict bounded writer ends exactly at the reserved trailer.
   RecordResult[seq[byte]](status: RecordError.None, completed: output)
 
 proc scanRecords(input: openArray[byte], limits: RecordLimits, collection: bool,
@@ -238,10 +316,15 @@ proc scanRecords(input: openArray[byte], limits: RecordLimits, collection: bool,
   if checked != RecordError.None: return RecordResult[RecordScan](status: checked)
   var bytes = 0'u64
   var previous = default(StateNodeHash)
+  var firstPrefix = 0'u64
+  var lastPrefix = 0'u64
   for i in 0..<int(count):
     if input.len-offset < 33: return RecordResult[RecordScan](status: RecordError.InvalidFormat)
     if zero(StateNodeHash(readHash(input, offset+1))):
       return RecordResult[RecordScan](status: RecordError.NonCanonical) # Reserved empty addresses cannot own a physical record.
+    if not ordered:
+      if i == 0: firstPrefix = number(input, offset+1) # Existing complete digest bounds prove each endpoint read.
+      if i == int(count)-1: lastPrefix = number(input, offset+1)
     if ordered:
       # Prove canonical unique physical order from borrowed bytes before allocating any records or hash scratch.
       let digest = StateNodeHash(readHash(input, offset+1))
@@ -273,7 +356,8 @@ proc scanRecords(input: openArray[byte], limits: RecordLimits, collection: bool,
       return RecordResult[RecordScan](status: RecordError.NonCanonical)
   if offset != input.len: return RecordResult[RecordScan](status: RecordError.InvalidFormat)
   RecordResult[RecordScan](status: RecordError.None, completed: RecordScan(
-    batch: batch, count: int(count), header: header, valueBytes: bytes))
+    batch: batch, count: int(count), header: header, valueBytes: bytes,
+    firstPrefix: firstPrefix, lastPrefix: lastPrefix))
 
 proc readRecord(input: openArray[byte], offset: var int): TrieRecord =
   ## Decode one owned transport only after whole-input scan; the borrowed input stays stable during this call.
@@ -321,6 +405,13 @@ proc validateTrieExport*(batch: TrieExport, limits: RecordLimits): RecordError =
 proc encodeTrieExport*(batch: TrieExport, limits: RecordLimits): RecordResult[seq[byte]] =
   ## Preserve the existing single-target representation byte for byte.
   encodeRecords(batch, batch.records, limits, false)
+proc encodeFramedTrieExport*(batch: TrieExport, limits: RecordLimits,
+    prefixBytes, suffixBytes: uint64, outputLimit: ByteLimit): RecordResult[seq[byte]] =
+  ## Strictly validate borrowed mutable records, then encode into one owned buffer with zero-filled reservations.
+  ## Requested nonnegative extents and the independent whole-output ceiling are proved before allocation/hashing.
+  ## Body policy, duplicate rejection and every local hash remain mandatory; reservations grant no graph authority.
+  encodeRecords(batch, batch.records, limits, false, prefixBytes, suffixBytes, outputLimit)
+
 proc decodeTrieExport*(input: openArray[byte], limits: RecordLimits): RecordResult[TrieExport] =
   ## Decode only the existing target-bearing domain with no collection fallback.
   decodeRecords(input, limits, false)
@@ -352,13 +443,15 @@ proc decodeOrderedRecordCollection*(input: openArray[byte], limits: RecordLimits
   RecordResult[RecordCollection](status: RecordError.None,
     completed: RecordCollection(records: move(batch.records)))
 
-proc uniqueInputRecords(input: openArray[byte], shape: RecordScan): RecordError =
-  ## Unordered transports need only bounded address scratch, never a complete decoded descriptor batch.
-  var identities = newSeq[StateNodeHash](shape.count)
+proc inputPrefixPlan(input: openArray[byte], shape: RecordScan): PrefixPlan =
+  ## Bounded scan endpoints cheaply reject an inconclusive compact plan, without authorizing any identity or integrity.
+  if shape.count < 2: return PrefixPlan(mode: PrefixMode.Unique)
+  if shape.firstPrefix == shape.lastPrefix: return PrefixPlan(mode: PrefixMode.All)
+  var prefixes = newSeq[uint64](shape.count)
   var offset = shape.header
   for index in 0..<shape.count:
-    # Whole-input preflight already proved each exact field and size; the borrowed bytes stay stable.
-    identities[index] = StateNodeHash(readHash(input, offset+1))
+    # Whole-input preflight proved complete fields and widths; borrowed bytes remain stable through this call.
+    prefixes[index] = number(input, offset+1)
     let tag = input[offset]
     offset += 33
     if tag == 0:
@@ -366,12 +459,32 @@ proc uniqueInputRecords(input: openArray[byte], shape: RecordScan): RecordError 
       offset += 39
       offset += size
     else:
-      offset += 64 # The structural scan admitted only canonical branch tags here.
-  identities.sort(compareHash)
-  for index in 1..<identities.len:
-    if compareHash(identities[index-1], identities[index]) == 0:
-      return RecordError.DuplicateNode
-  RecordError.None
+      offset += 64
+  planPrefixes(prefixes)
+
+proc uniqueInputRecords(input: openArray[byte], shape: RecordScan): RecordError =
+  ## Exact prefix groups bound full-width scratch; shape-only inspection still conveys no local integrity/graph authority.
+  let plan = inputPrefixPlan(input, shape)
+  if plan.mode == PrefixMode.Unique: return RecordError.None
+  let count = if plan.mode == PrefixMode.All: shape.count else: plan.records
+  var identities = newSeq[StateNodeHash](count)
+  var next = 0
+  var offset = shape.header
+  for index in 0..<shape.count:
+    # Dense/endpoint fallback checks every address; sparse groups include every possible full-width duplicate.
+    if plan.mode == PrefixMode.All or plan.containsPrefix(number(input, offset+1)):
+      identities[next] = StateNodeHash(readHash(input, offset+1))
+      inc next
+    let tag = input[offset]
+    offset += 33
+    if tag == 0:
+      let size = int(number(input, offset+31))
+      offset += 39
+      offset += size
+    else:
+      offset += 64
+  assert next == identities.len # Validated stable input and complete prefix groups must agree exactly.
+  duplicateIdentities(identities)
 
 proc ignorePreparation[T](state: var T, info: RecordCollectionInfo) =
   ## Existing delivery calls need no capacity callback and retain their original observable behavior.

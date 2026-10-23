@@ -93,6 +93,45 @@
       "name": "full-state-trie-bytes-default",
       "diagnostic": "not view.owner == nil",
       "description": "Full state trie bytes default guard"
+    },
+    {
+      "identity": {
+        "member": "take",
+        "origin": "default"
+      },
+      "arguments": [
+        "take",
+        "default"
+      ],
+      "name": "full-state-trie-take-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Full state trie export transfer default guard"
+    },
+    {
+      "identity": {
+        "member": "take",
+        "origin": "failed"
+      },
+      "arguments": [
+        "take",
+        "failed"
+      ],
+      "name": "full-state-trie-take-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Full state trie export transfer failed guard"
+    },
+    {
+      "identity": {
+        "member": "take",
+        "origin": "moved"
+      },
+      "arguments": [
+        "take",
+        "moved"
+      ],
+      "name": "full-state-trie-take-moved",
+      "diagnostic": "outcome.status == None",
+      "description": "Full state trie export transfer moved guard"
     }
   ]
 }

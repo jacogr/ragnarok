@@ -29,15 +29,17 @@ type
       completed: T
     else:
       discard             # Refusals own their reason alone.
-  TrieNode = ref object ## Acyclic managed ownership; only unpublished nodes may receive cached hashes.
-    leaf: bool
-    key: StateKey
-    payload: seq[byte]
-    left, right: nil TrieNode
-    entries: int
-    nodes, valueBytes: uint64
-    hashed: bool
+  TrieNode = ref object         ## Acyclic private alternatives own only leaf data or branch children/aggregates.
     digest: StateNodeHash
+    hashed: bool                ## Only newly built unpublished nodes may receive cached hashes.
+    case leaf: bool
+    of true:
+      key: StateKey
+      payload: seq[byte]        ## Leaf totals derive from one entry/node and this owned length.
+    of false:
+      left, right: nil TrieNode
+      entries: int
+      nodes, valueBytes: uint64 ## Only branches need cached aggregate summaries.
   RevisionData = ref object ## A nonnil owner distinguishes an initialized empty trie from a default.
     root: nil TrieNode
     limits: FullStateTrieLimits
@@ -58,6 +60,12 @@ func value*[T](outcome: TrieResult[T]): T {.inline,
   ## Extract only a successful revision or retained value under checked optimized builds.
   outcome.completed
 
+proc takeValue*[T](outcome: var TrieResult[T]): T {.inline, requires: outcome.status ==
+    TrieError.None.} =
+  ## Transfer a successful revision/value/export once without copying; consumed results retain only Uninitialized.
+  result = move(outcome.completed)
+  outcome = TrieResult[T](status: TrieError.Uninitialized)
+
 func compareKey(left, right: StateKey): int =
   ## Lexicographic byte order agrees with the protocol's MSB-first traversal.
   let a = array[31, byte](left)
@@ -77,16 +85,22 @@ func one(key: StateKey, depth: int): bool =
   (raw[depth div 8] and byte(128 shr (depth mod 8))) != 0
 
 func entryCount(node: nil TrieNode): int =
-  ## Empty children contribute no mapping entries.
-  if node == nil: 0 else: node.entries
+  ## Empty children contribute zero; a leaf always contributes exactly one complete entry.
+  if node == nil: 0
+  elif node.leaf: 1
+  else: node.entries
 
 func nodeCount(node: nil TrieNode): uint64 =
-  ## Empty children contribute no nonempty committed nodes.
-  if node == nil: 0'u64 else: node.nodes
+  ## Leaf topology is exactly one node; only branch totals require a stored aggregate.
+  if node == nil: 0'u64
+  elif node.leaf: 1'u64
+  else: node.nodes
 
 func valueSize(node: nil TrieNode): uint64 =
-  ## Cached aggregate payload size excludes fixed keys and node metadata.
-  if node == nil: 0'u64 else: node.valueBytes
+  ## Leaf bytes derive from the immutable payload; branch caches sum complete descendant values.
+  if node == nil: 0'u64
+  elif node.leaf: uint64(node.payload.len)
+  else: node.valueBytes
 
 proc find(node: nil TrieNode, key: StateKey): nil TrieNode =
   ## Iterative bounded traversal never grants absence based on a partial map.
@@ -105,8 +119,7 @@ proc leaf(key: StateKey, bytes: openArray[byte]): TrieNode =
   ## Copy new caller values after payload preflight; no mutable source backing can escape.
   var owned = newSeq[byte](bytes.len)
   for i, octet in bytes: owned[i] = octet # Empty values remain initialized leaves.
-  TrieNode(leaf: true, key: key, payload: owned, entries: 1, nodes: 1,
-    valueBytes: uint64(bytes.len))
+  TrieNode(leaf: true, key: key, payload: owned)
 
 proc branch(left, right: nil TrieNode): nil TrieNode =
   ## Normalize empty/singleton subtrees while preserving protocol-required unary branches.
@@ -114,9 +127,33 @@ proc branch(left, right: nil TrieNode): nil TrieNode =
     if right == nil or right.leaf: return right # A singleton is a leaf at every depth.
   if right == nil and left != nil and left.leaf: return left # Collapse the last surviving leaf.
   # Preflight bounds entries by high(int) and uint64/249, and payload totals by uint64.
-  # Deletions precede insertions, so every intermediate mapping fits those proved extents.
-  TrieNode(left: left, right: right, entries: entryCount(left)+entryCount(right),
+  # Each copied/merged child is a final subtree; no cached sum includes both versions of one key.
+  TrieNode(leaf: false, left: left, right: right, entries: entryCount(left)+entryCount(right),
     nodes: 1+nodeCount(left)+nodeCount(right), valueBytes: valueSize(left)+valueSize(right))
+
+proc writeSplit(ordered: openArray[WriteIndex], first, stop, depth: int): int =
+  ## Sorted ranges share previous bits, so binary search finds the first one-bit key at this depth.
+  var lower = first
+  var upper = stop
+  while lower < upper:
+    let middle = lower+(upper-lower) div 2 # Difference-based arithmetic stays inside the bounded range.
+    if one(ordered[middle].key, depth): upper = middle # The first one-bit key is no later than middle.
+    else: lower = middle+1 # This zero-bit key and every earlier slot precede the partition.
+  lower
+
+proc buildInitial(ordered: openArray[WriteIndex], writes: openArray[TrieWrite],
+    first, stop, depth: int): nil TrieNode =
+  ## Build each final node once from a sorted unique range sharing the previous key bits.
+  if first == stop: return nil # An empty partition has the canonical empty identity.
+  if stop-first == 1:
+    let write = writes[ordered[first].position]
+    assert write.kind == TrieWriteKind.Put # Only the constructor selects this private build path.
+    return leaf(write.key, write.value) # Singleton leaves need no intervening unary branches.
+  assert depth < 248 # Distinct full keys must split before exhausting their serialized bits.
+  let split = writeSplit(ordered, first, stop, depth)
+  let left = buildInitial(ordered, writes, first, split, depth+1)
+  let right = buildInitial(ordered, writes, split, stop, depth+1)
+  branch(left, right) # Retain unary branches whenever their nonempty child contains multiple leaves.
 
 proc remove(node: nil TrieNode, key: StateKey, depth: int): nil TrieNode =
   ## Delete by path copying; absent keys reuse their exact previous subtree identities.
@@ -136,7 +173,7 @@ proc insert(node: nil TrieNode, added: TrieNode, depth: int): nil TrieNode =
   ## Copy the affected path, expanding a singleton through every shared-prefix bit.
   if node == nil: return added # Empty subtrees immediately become one leaf.
   if node.leaf:
-    if compareKey(node.key, added.key) == 0: return added # Construction also supports replacement.
+    if compareKey(node.key, added.key) == 0: return added # A replacement occupies only the final leaf position.
     if one(node.key, depth) == one(added.key, depth):
       let child = insert(node, added, depth+1)
       if one(added.key, depth): return branch(nil, child) # Preserve shared one-bit unary nodes.
@@ -146,6 +183,33 @@ proc insert(node: nil TrieNode, added: TrieNode, depth: int): nil TrieNode =
   if one(added.key, depth):
     return branch(node.left, insert(node.right, added, depth+1)) # Share the untouched left subtree.
   branch(insert(node.left, added, depth+1), node.right)
+
+proc mergeWrites(node: nil TrieNode, ordered: openArray[WriteIndex],
+    writes: openArray[TrieWrite], first, stop, depth: int): nil TrieNode =
+  ## Copy the union of affected paths once, sharing every complete subtree without a routed write.
+  if first == stop: return node # An untouched subtree retains its exact published owner identity.
+  if stop-first == 1:
+    let write = writes[ordered[first].position]
+    if write.kind == TrieWriteKind.Delete:
+      return remove(node, write.key, depth) # Absent deletion propagates the original identity unchanged.
+    return insert(node, leaf(write.key, write.value),
+        depth) # Replacement never retains both leaf versions in a cached sum.
+  assert depth < 248 # Unique routed write keys must partition before the complete key domain ends.
+  var left: nil TrieNode = nil
+  var right: nil TrieNode = nil
+  if node != nil:
+    if node.leaf:
+      if one(node.key, depth): right = node # Expand a singleton logically, allocating no temporary branch.
+      else: left = node
+    else:
+      left = node.left # Immutable children remain independently retained while both candidates are built.
+      right = node.right
+  let split = writeSplit(ordered, first, stop, depth)
+  let changedLeft = mergeWrites(left, ordered, writes, first, split, depth+1)
+  let changedRight = mergeWrites(right, ordered, writes, split, stop, depth+1)
+  if node != nil and not node.leaf and changedLeft == left and changedRight == right:
+    return node # A multi-key absent-delete batch must preserve revision and shared branch identities.
+  branch(changedLeft, changedRight) # Normalize only the final children after all routed deletions/replacements.
 
 proc hashCandidate(node: nil TrieNode, perValue: ByteLimit): TrieError =
   ## Fill private caches bottom-up; shared published nodes are already hashed and never written.
@@ -205,7 +269,8 @@ proc bytes*(view: TrieValue): seq[byte] {.requires: view.owner != nil.} =
   result = newSeq[byte](owner.payload.len)
   for i in 0..<owner.payload.len: result[i] = owner.payload[i] # Retain the owner throughout copying.
 
-proc apply*(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[FullStateTrie] =
+proc applyBatch(source: FullStateTrie, writes: openArray[TrieWrite],
+    construction: bool): TrieResult[FullStateTrie] =
   ## Preflight the complete batch, build a private topology, then hash and return one new revision.
   ## No operation changes source or any previously retained revision, including backend refusal.
   let data = source.data
@@ -239,7 +304,7 @@ proc apply*(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[Ful
     let old = find(data.root, index.key)
     if old != nil:
       dec count # Account for every overwritten/deleted leaf before counting any new value.
-      total -= old.valueBytes
+      total -= valueSize(old)
   for index in ordered:
     let write = writes[index.position]
     if write.kind == TrieWriteKind.Put:
@@ -252,13 +317,12 @@ proc apply*(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[Ful
         return TrieResult[FullStateTrie](status: TrieError.LimitExceeded) # Deleted bytes release budget before insertion.
       inc count
       total += size
-  var candidate = data.root
-  for index in ordered:
-    candidate = remove(candidate, index.key, 0) # Remove replacements first to bound every intermediate byte/count sum.
-  for index in ordered:
-    let write = writes[index.position]
-    if write.kind == TrieWriteKind.Put:
-      candidate = insert(candidate, leaf(write.key, write.value), 0) # New payloads have private owned backing.
+  var candidate: nil TrieNode = nil
+  if construction:
+    assert data.root == nil # Initial-map construction never replaces or shares an existing graph.
+    candidate = buildInitial(ordered, writes, 0, ordered.len, 0)
+  else:
+    candidate = mergeWrites(data.root, ordered, writes, 0, ordered.len, 0)
   if nodeCount(candidate) > uint64(limits.trie.nodes):
     return TrieResult[FullStateTrie](status: TrieError.LimitExceeded) # Exact final topology refuses before any hashing.
   let hashed = hashCandidate(candidate, limits.trie.perValue)
@@ -270,6 +334,10 @@ proc apply*(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[Ful
   TrieResult[FullStateTrie](status: TrieError.None,
     completed: FullStateTrie(data: RevisionData(root: candidate, limits: limits)))
 
+proc apply*(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[FullStateTrie] =
+  ## Atomically path-copy validated writes, preserving all previous revisions even on hash refusal.
+  applyBatch(source, writes, false)
+
 proc newFullStateTrie*(entries: openArray[StateEntry],
     limits: FullStateTrieLimits): TrieResult[FullStateTrie] =
   ## Build an owned complete revision without routing initial entries through mutation-batch ceilings.
@@ -277,7 +345,7 @@ proc newFullStateTrie*(entries: openArray[StateEntry],
     return TrieResult[FullStateTrie](status: TrieError.LimitExceeded) # Bound borrowed entry-derived scratch before allocation.
   if entries.len > high(int) div sizeof(TrieWrite) or entries.len > high(int) div sizeof(StateEntry):
     return TrieResult[FullStateTrie](status: TrieError.LengthOverflow) # Initial typed scratch must fit host addressing.
-  # Reuse exactly the batch validation/build path with construction-only count/byte allowances.
+  # Reuse batch validation/hash publication with construction-only count/byte allowances.
   var initial = limits
   initial.writes = ElementLimit(entries.len)
   initial.writeValueBytes = limits.trie.totalValueBytes
@@ -286,7 +354,7 @@ proc newFullStateTrie*(entries: openArray[StateEntry],
   for i, entry in entries:
     writes[i] = TrieWrite(key: entry.key, kind: TrieWriteKind.Put,
         value: entry.value) # Synchronous borrowed aliases are never published.
-  let built = empty.apply(writes)
+  let built = applyBatch(empty, writes, true)
   if built.error != TrieError.None: return built # No initialized revision escapes a failed constructor.
   let data = built.value.data
   assert data != nil # A successful construction owns an initialized revision.
@@ -329,23 +397,25 @@ proc exportSize(node, base: nil TrieNode, depth: int, limits: TrieExportLimits,
     return exportSize(node.right, baseChild(base, depth, true), depth+1, limits, count, bytes)
   TrieError.None
 
-proc exportNodes(node, base: nil TrieNode, depth: int, output: var seq[TrieRecord]) =
+proc exportNodes(node, base: nil TrieNode, depth: int, output: var seq[TrieRecord], next: var int) =
   ## Emit children before parents, deep-copying values and retaining no canonical graph aliases.
   if not omitted(node, base):
     assert node != nil # Preflight and omission establish a complete physical node.
     if node.leaf:
       var copied = newSeq[byte](node.payload.len)
       for i in 0..<node.payload.len: copied[i] = node.payload[i] # Published backing never escapes.
-      output.add(TrieRecord(kind: TrieRecordKind.Leaf, digest: node.digest,
-        key: node.key, payload: copied))
+      output[next] = TrieRecord(kind: TrieRecordKind.Leaf, digest: node.digest,
+        key: node.key, payload: copied)
+      inc next
     else:
-      exportNodes(node.left, baseChild(base, depth, false), depth+1, output)
-      exportNodes(node.right, baseChild(base, depth, true), depth+1, output)
+      exportNodes(node.left, baseChild(base, depth, false), depth+1, output, next)
+      exportNodes(node.right, baseChild(base, depth, true), depth+1, output, next)
       let left = node.left
       let right = node.right
-      output.add(TrieRecord(kind: TrieRecordKind.Branch, digest: node.digest,
+      output[next] = TrieRecord(kind: TrieRecordKind.Branch, digest: node.digest,
         left: (if left == nil: default(StateNodeHash) else: left.digest),
-        right: (if right == nil: default(StateNodeHash) else: right.digest)))
+        right: (if right == nil: default(StateNodeHash) else: right.digest))
+      inc next
 
 proc exportTrieChanges*(base, target: FullStateTrie,
     limits: TrieExportLimits): TrieResult[TrieExport] =
@@ -358,8 +428,10 @@ proc exportTrieChanges*(base, target: FullStateTrie,
   var bytes = 0'u64
   let checked = exportSize(selected.root, prior.root, 0, limits, count, bytes)
   if checked != TrieError.None: return TrieResult[TrieExport](status: checked)
-  var records: seq[TrieRecord] = @[]
-  exportNodes(selected.root, prior.root, 0, records) # Only preflighted detached extents are allocated.
+  var records = newSeq[TrieRecord](int(count))
+  var next = 0
+  exportNodes(selected.root, prior.root, 0, records, next) # Preflight proves every exact slot before allocation.
+  assert next == records.len # Child-before-parent emission must fill the complete bounded descriptor extent.
   let metadata = target.commitment
   TrieResult[TrieExport](status: TrieError.None, completed: TrieExport(base: base.commitment.root,
     root: metadata.root, entries: uint64(metadata.entries), nodes: metadata.nodes,

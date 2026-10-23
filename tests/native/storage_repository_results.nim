@@ -26,6 +26,12 @@ proc main() =
       echo fresh.snapshot.value.storedNodes
       discard fresh.close
     else: echo selected.value.storedNodes
+  elif member == "take":
+    var selected = if origin == "default": default(RepositoryResult[TrieRecord])
+      elif origin == "failed": active.lookupNode(default(StateNodeHash))
+      else: active.lookupNode(StateNodeHash(array[32, byte](active.commitment.root)))
+    if origin == "moved": discard selected.takeValue # Consumption must revoke authority before a second transfer.
+    echo selected.takeValue.payload.len # Default, failed and consumed results require the same checked success guard.
   elif member == "record":
     let empty = default(RepositoryResult[TrieRecord])
     let selected = if origin == "default": empty

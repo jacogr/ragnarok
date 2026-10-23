@@ -10,8 +10,9 @@ Authority: Gray Paper 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 An initialized `FullStateTrie` owns a complete serialized full-node mapping and explicit
 `FullStateTrieLimits`. A private revision owner distinguishes empty initialized state from a
 default handle. Nodes form an immutable acyclic ARC graph. Leaves own copied complete 31-byte
-keys/raw values; branches own nullable children. Every node caches its complete hash, entry
-count, nonempty node count and aggregate value bytes. Only newly built unpublished nodes may
+keys/raw values; branches own nullable children. Every node caches its complete hash; branches cache entry/
+nonempty-node counts and aggregate value bytes, while leaves derive one entry/node and their
+owned payload length. Only newly built unpublished nodes may
 receive hashes. Empty subtrees have the zero identity; shared-prefix unary branches remain
 real protocol nodes. A singleton is a leaf at every depth, including after deletion collapse.
 
@@ -40,19 +41,24 @@ policy; no recoverable OOM result is promised.
 2. Use original-tree lookups to subtract every replaced/deleted entry, then add all Put extents.
    Check exact final entry/value budgets with subtraction before addition. Check native entry
    addressing and a conservative 249-nodes-per-entry bound before node-count arithmetic.
-3. Path-copy deletions (including replaced keys), then insert owned Put leaves. This ordering keeps
-   intermediate entry/value totals within the proved source/final extents, regardless of caller
-   order. Branch construction collapses empty/singleton subtrees and caches exact summaries.
+3. Merge the sorted write ranges through affected source subtrees, returning untouched child owners
+   directly. A singleton write removes or inserts its final leaf; multiple writes partition by key
+   bit and copy shared paths once. Final children normalize together and cache exact summaries,
+   so complete swaps remain within proved final extents regardless of caller order.
 4. Check the exact final topology ceiling before any cryptographic call. Hash new nodes bottom-up,
    reuse previously committed nodes without mutation, and return a new revision only on complete
    success. Any backend refusal drops the private candidate, including partly filled caches.
 
 The complete node ceiling measures the entire revision, not just new hashes. Long values add their
 raw-value hash as required by B/L. Paths have at most 248 branches. Batch sorting uses O(w) fixed
-scratch; edits use O(w*248) node work/allocation before ARC releases superseded candidates, and
-copy new value bytes. Construction uses the same edit path for n initial entries. This first
-implementation makes two path-copy passes for replacements; no latency or measured speedup is
-claimed. Retaining more revisions retains more shared graph storage; these per-map/batch limits
+scratch; edits use bounded O(w*248) node work and copy new value bytes. Shared affected paths
+are constructed once rather than repeatedly allocated and retired. Construction shares batch validation and hash publication, but partitions
+sorted unique identities by key bit and builds each final physical node once. Empty partitions
+stay nil and singleton partitions become leaves immediately; multi-entry shared prefixes retain
+their unary branches. The private builder is bounded by 248 key bits and uses subtraction-based
+binary-search midpoints. No construction mode is exposed to callers. See the
+[direct construction evidence](storage-trie-bulk-build.md). Ordinary mutation uses the same key partition helper with retained source subtrees; see the
+[shared-path batch evidence](storage-trie-batch-merge.md). Retaining more revisions retains more shared graph storage; these per-map/batch limits
 are not a global history-memory cap.
 
 ## Completion verification

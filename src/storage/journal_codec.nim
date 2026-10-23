@@ -68,19 +68,17 @@ proc encodeFrame(generation: RepositoryGeneration, batch: TrieExport,
   let prefix = int(overhead-32)+context.len
   var bounded = limits
   bounded.encoded = ByteLimit(min(uint64(limits.encoded), maximum-overhead-uint64(context.len)))
-  var body = encodeTrieExport(batch, bounded)
+  var body = encodeFramedTrieExport(batch, bounded, uint64(prefix), 32, limit)
   if body.error == RecordError.LimitExceeded: return FrameResult[seq[byte]](
       status: FrameError.LimitExceeded)
   if body.error != RecordError.None:
     return FrameResult[seq[byte]](status: FrameError.InvalidRecords, recordReason: body.error)
-  let bytes = body.takeValue # The frame builder borrows this single owned body until copying it to output.
-  var output = newSeq[byte](bytes.len+prefix+32) # The narrowed inner ceiling proved the addition and allocation.
-  putNumber(output, 0, uint64(bytes.len+prefix-16))
+  var output = body.takeValue # Strict records already occupy final positions; metadata and checksum fill reservations.
+  putNumber(output, 0, uint64(output.len-48))
   putNumber(output, 8, uint64(generation))
   if contextual:
     putNumber(output, 16, uint64(context.len))
     for i, octet in context: output[24+i] = octet # Context bytes share the exact generation/root integrity boundary.
-  for i, octet in bytes: output[prefix+i] = octet
   let hashed = blake2b256(output.toOpenArray(0, output.len-33))
   if hashed.error != CryptoError.None: return FrameResult[seq[byte]](
       status: FrameError.BackendFailure)

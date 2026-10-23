@@ -97,10 +97,30 @@ Strict reopen validates the whole journal and refuses partial tails. Retained re
 valid after file close. All calls are synchronous storage work; run them outside networking
 callbacks. See the record contract for bounded IO, cooperative inode locking and uncertainty rules.
 
+Unordered record duplicate preflight first proves uniqueness with compact digest prefixes when
+possible; every collision falls back to the full32-byte identity check before any integrity hash.
+No prefix becomes a physical identity or graph authority. See the
+[duplicate preflight contract](../../spec/storage-duplicate-prefix-preflight.md).
+
+`encodeFramedTrieExport` strictly validates raw batches before writing them into one owned buffer
+with checked zero-filled frame reservations. Both journal formats fill metadata/context and their
+new checksum around that body without retaining another encoded body. See the
+[journal framing contract](../../spec/storage-journal-framing.md).
+
 `recoverFileRepository` is an explicit operator action for an interrupted final append. It
 requires the independently trusted generation and root of the complete prefix before truncating
 anything; complete corrupt frames and complete successor revisions are never discarded. Strict
 open remains unchanged. Real child-process short-write checks exercise recovery and resumed append.
+
+Physical trie full/delta/inverse exports provision exactly the preflighted record count. Their
+payloads remain detached mutable copies. `TrieResult.takeValue` transfers an owned export, revision
+or retained value once and leaves `Uninitialized`; the copying `.value` accessor remains available.
+See the [owning export contract](../../spec/storage-owned-trie-exports.md).
+
+`matches(view, otherView)` compares exact initialized immutable source owners without allocation,
+graph traversal or IO. Default views never match; equal roots/generations in a cloned owner do not
+authorize maintenance. Managed compaction uses this check before requested-root traversal; see the
+[compaction authority contract](../../spec/storage-compaction-authority.md).
 
 `revision_retention.nim` provides bounded explicit pins for immutable repository views. Catalog
 copies update independently; release/close never revoke held views. Tokens also retain their
@@ -125,6 +145,19 @@ not block/finality authority. Run `storage_retention_plan` for its ownership and
 `exportRepositorySelection` copies a plan's retained physical union under explicit record/value
 ceilings. The sorted detached result is maintenance transport, not an ordinary single-root batch.
 It performs no file replacement, generation reset, context rewrite or reclamation.
+
+Selection traversal uses independent per-root seen bits, a retained union bitmap and sparse dirty-word
+reset; the final exact inventory follows physical order without sorting selected indices. See the
+[bitmap construction contract](../../spec/storage-selection-bitmaps.md).
+
+`encodeRepositorySelection` serializes an opaque admitted union directly into owned canonical
+collection bytes. It avoids detached record/value copies and repeated hashes; raw mutable record
+encoders remain strict. Snapshot encoding uses this path and hashes its new outer frame once.
+`RepositoryResult.takeValue` transfers a successful owner and leaves the result uninitialized.
+See the [selection encoding contract and measurements](../../spec/storage-selection-encoding.md).
+`encodeFramedRepositorySelection` reserves checked zero-filled prefix/suffix space and writes the
+canonical body directly into its final buffer. Snapshot encoding fills those reservations without
+retaining a second whole-body buffer. See the [framing contract](../../spec/storage-snapshot-framing.md).
 
 Unchanged-root zero-record publications share their validated immutable physical table while
 creating a new exact view identity and generation. Ordinary changed-root admission, frame bytes
