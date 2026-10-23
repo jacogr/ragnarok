@@ -2,10 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine reserved-ID replacement fixtures share signed original namespaces across state and application qualification.
+import std/assertions
 import ./[current_namespace_transition_context, current_namespace_execution_context,
   accumulation_execution_context, accumulation_current_candidate_context,
   current_namespace_context, service_namespace_seed, pvm_accumulation_program]
-import ../../src/codec/[bounded, report_owned]
+import ../../src/codec/[bounded, report_owned, composite, state_accounts, state_composition,
+    state_requests, state_service_values]
+import ../../src/crypto/primitives
+import ../../src/app/candidate
 import ../../src/state/accumulation_current_update
 proc namespaceReplacementCode*(checkpoint = false, panic = false): seq[byte] =
   ## A genuine registrar ejects junior99, optionally checkpoints, then recreates the same reserved ID.
@@ -21,6 +25,16 @@ proc namespaceReplacementCode*(checkpoint = false, panic = false): seq[byte] =
   code.add(if panic: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(code, writable = payload): result.add(octet)
+proc toNamespaceExecutionFixture*(origin: CurrentNamespaceTransition): NamespaceExecutionFixture =
+  ## Retain complete original declarations for real command fixtures without adding their existing code preimages twice.
+  var seeds: seq[ServiceNamespaceSeed] = @[]
+  for service in origin.services:
+    # Complete source declarations already contain executable code; empty code slots avoid duplicating those preimages.
+    seeds.add(ServiceNamespaceSeed(service: service.service, storage: service.storage,
+      preimages: service.preimages, requests: service.requests))
+  NamespaceExecutionFixture(source: origin.source, seeds: seeds,
+    codes: [newSeq[byte](0), newSeq[byte](0)], parent: origin.update.currentUpdatePriorView,
+    update: origin.update)
 proc namespaceReplacementFixture*(base: OwnedReport): NamespaceExecutionFixture =
   ## Author an empty junior and real registrar before signing; declarations come from the already-qualified original parent.
   var options = executionFixtureConfig()
@@ -34,11 +48,36 @@ proc namespaceReplacementFixture*(base: OwnedReport): NamespaceExecutionFixture 
   options.signed.serviceNamespaces[1].preimages = @[]
   options.signed.serviceNamespaces[1].requests = @[]
   let origin = namespaceTransitionFixture(base, options, ElementLimit(4), currentCandidateLimits())
-  var seeds: seq[ServiceNamespaceSeed] = @[]
-  for service in origin.services:
-    # Complete source declarations already contain executable code; empty code slots avoid duplicating those preimages.
-    seeds.add(ServiceNamespaceSeed(service: service.service, storage: service.storage,
-      preimages: service.preimages, requests: service.requests))
-  NamespaceExecutionFixture(source: origin.source, seeds: seeds,
-    codes: [newSeq[byte](0), newSeq[byte](0)], parent: origin.update.currentUpdatePriorView,
-    update: origin.update)
+  origin.toNamespaceExecutionFixture
+proc namespaceSequentialReplacementFixture*(base: OwnedReport,
+    policy: CurrentCandidateLimits): CurrentNamespaceTransition =
+  ## The first invocation ejects and upgrades itself; the originally queued report later invokes its new creator code.
+  let newInstructions = @[@[51'u8, 7, 255], @[51'u8, 8, 99], @[51'u8, 9, 0],
+    @[51'u8, 10, 0, 0, 3], @[10'u8, 20], @[50'u8, 0]]
+  var nextCode = @[0'u8]
+  for octet in guestEnvelope(newInstructions, writable = @[0'u8]): nextCode.add(octet)
+  assert nextCode.len <= 65 # The explicit original seed stays within the maintained independent fixture policy.
+  let hash = ServicePreimageHash(array[32, byte](blake2b256(nextCode).value))
+  var payload: seq[byte] = @[]
+  for octet in array[32, byte](hash): payload.add(octet)
+  let firstInstructions = @[registerImmediate(7, 99), @[10'u8, 23],
+    registerImmediate(7, high(uint64)), registerImmediate(8, 196608),
+    registerImmediate(9, 0), registerImmediate(10, 0), @[10'u8, 21], @[50'u8, 0]]
+  var firstCode = @[0'u8]
+  for octet in guestEnvelope(firstInstructions, writable = payload): firstCode.add(octet)
+  var options = executionFixtureConfig()
+  options.firstProgram = firstCode
+  options.secondProgram = namespaceHaltCode()
+  options.second = ExecutionEnding.Missing
+  options.signed.withAvailable = true
+  options.signed.accumulationGas = 10000 # A real later new call needs an independently authored report budget.
+  options.registrar = 42
+  options.secondSupervisor = 42
+  options.signed.serviceNamespaces = namespaceSeeds()
+  options.signed.serviceNamespaces[1].storage = @[]
+  options.signed.serviceNamespaces[1].preimages = @[]
+  options.signed.serviceNamespaces[1].requests = @[]
+  options.signed.serviceNamespaces[0].preimages.add(StatePreimageItem(hash: hash, value: nextCode))
+  options.signed.serviceNamespaces[0].requests.add(StateRequestItem(hash: hash,
+    length: RequestLength(uint32(nextCode.len)), history: availableHistory(RequestSlot(1))))
+  namespaceTransitionFixture(base, options, ElementLimit(4), policy)

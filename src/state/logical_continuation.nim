@@ -203,8 +203,10 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
           let sameEntry = uint64(creation.entry) == uint64(deletion.entry)
           let sameInvocation = uint64(creation.outcome) == uint64(deletion.outcome)
           let removedFirst = uint64(deletion.fact.ordinal) < uint64(creation.fact.ordinal)
-          if not sameEntry or not sameInvocation or not removedFirst:
-            fail(LogicalContinuationError.UnsupportedChange) # Parallel positions never invent a host-call ordering.
+          let laterEntry = uint64(deletion.entry) < uint64(creation.entry)
+          let localOrder = sameEntry and sameInvocation and removedFirst
+          if not laterEntry and not localOrder:
+            fail(LogicalContinuationError.UnsupportedChange) # Successive entries use genuine selected predecessors; parallel invocation positions alone give no order.
         if roster[i].present: inc finalServices
   template serviceAt(i: int): InventoryServiceInfo =
     (if roster.len == 0: compact.inventoryServiceAt(InventoryServiceIndex(uint64(

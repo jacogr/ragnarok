@@ -14,8 +14,10 @@ import ../../support/pvm_accumulation_program
 import ../../../src/pvm/machine
 import ../../../src/app/[current_logical_startup, current_logical_download, current_download_policy,
     current_download_command, options, services, chain]
-import ../../../src/codec/[bounded, block_codec, report_owned, state_composition, state_accounts, state_service_values]
+import ../../../src/codec/[bounded, block_codec, report_owned, state_composition, state_accounts,
+    composite, state_service_values]
 import ../../../src/chain/[provider, genesis]
+import ../../support/accumulation_current_candidate_context
 import ../../../src/state/service_identity_history
 import ../../../src/state/[store, parent_logical, accumulation_current_update, block_admission, report_admission]
 import ../../../src/storage/managed_manifest
@@ -159,7 +161,8 @@ proc sourceChecks(fixture: NamespaceExecutionFixture) =
       CurrentLogicalStartupError.GlobalsFailure
 proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false, omitted = false,
     refuse = false, namespaces = false, refresh = false, partial = false,
-        unwritable = false, keyBytes = 0, replacement = false, omitMembership = false) {.raises.} =
+        unwritable = false, keyBytes = 0, replacement = false, omitMembership = false,
+            sequential = false) {.raises.} =
   ## Actual command sockets, worker collection and adoption use explicit files; strict disk restart reconstructs a fresh physical logical owner.
   let refused = refuse or omitMembership
   var chainPath = "pvm-logical-cli-chain"
@@ -184,6 +187,8 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     policy.candidate.completion.execution.initial.guests.copyBytes = MemoryByteLimit(8192)
     policy.candidate.completion.execution.execution.round.guests.copyBytes = MemoryByteLimit(
         8192) # Read the actual long zero-filled writable/heap span under explicit original policies.
+  if sequential: policy.candidate.round.blockGas = Gas(
+      200000) # Same original affordable-prefix policy as the signed fixture.
   if replacement:
     # Host capacities and selected history limits are separate original execution policies.
     policy.candidate.completion.execution.initial.guests.createdAccounts = ElementLimit(4)
@@ -289,7 +294,7 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
           updated # The exact maximum source key remains restartable.
     elif replacement:
       assert updated != text and "s=99\n" in updated
-      assert ("r=" & repeat('0', 64) & ":1\n") in updated, "new code request survives source export"
+      assert ("r=" & repeat('0', 64) & (if sequential: ":0\n" else: ":1\n")) in updated, "new code request survives source export"
     elif namespaces:
       assert updated != text and "k=07\n" in updated # Exported raw identity comes only from the actual qualified adopted source.
     else: assert updated == text # Strict identity preservation exports the same canonical declarations after actual adoption.
@@ -348,7 +353,16 @@ proc main() {.raises.} =
       CurrentLogicalSourceKeyBytes+1)
   sourceChecks(fixture)
   let replacement = namespaceReplacementFixture(decodeOwnedReport(bytes, 2).value)
+  var sequentialPolicy = currentCandidateLimits()
+  sequentialPolicy.round.blockGas = Gas(200000)
+  let sequential = namespaceSequentialReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    sequentialPolicy).toNamespaceExecutionFixture
+
   for layout in 0..2:
+    command(sequential, layout, namespaces = true, refresh = true, replacement = true,
+        sequential = true)
+    command(sequential, layout, namespaces = true, refresh = true, partial = true,
+        replacement = true, sequential = true)
     command(replacement, layout, namespaces = true, refresh = true, replacement = true)
     command(replacement, layout, namespaces = true, refresh = true, partial = true,
         replacement = true)
