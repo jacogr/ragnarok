@@ -103,24 +103,22 @@ evidence are retained under `build/tests/native/`. Inventory, pinned formatting 
 checks pass. These observations cover the standalone module and its tests; exact-head Linux CI
 remains separate and remote checks have not been requested.
 
-## Deferred integration: explicit maintainer gate
+## StateStore adoption and remaining boundaries
 
-The standalone storage and state/checkpoint workstreams continue in parallel. The storage
-workstream owns `src/storage/` and its dedicated trie verification/contract. State work continues
-with the existing `StateStore` and checkpoint implementation and must not modify or use this trie.
-The same no-adoption boundary applies to PVM and application code. Storage work must not change
-those consumers or prepare their integration either. These restrictions remain after merge.
+The original standalone isolation gate was superseded by the maintainer-authorized in-memory
+StateStore tranche, now complete. `src/state/store.nim` retains an immutable `FullStateTrie`
+revision beside its sorted mapping. Construction and updates use the trie for commitments;
+a single head assignment publishes the matching map and revision only after complete success.
+The public snapshot, retained-value, sorted enumeration and fork contracts remain unchanged.
+See [the integration contract](state-store-incremental.md) for independent root comparisons,
+atomic failure witnesses, checkpoint consumers and measured memory/hash-work tradeoffs.
 
-Integration is not an automatic next step for either agent. Only a separately scoped task explicitly
-authorized by the maintainer can open that boundary, with an agreed owner, current interface and
-snapshot contracts, and validation plan. Informational coordination grants no permission to add
-imports, adapters, alternate execution paths or anticipatory refactors across workstreams.
+The separately authorized [disk backend](disk-state-store.md) and
+[managed layout](managed-disk-integration.md) have their own publication, recovery and lifetime
+contracts. Standalone trie verification does not by itself establish those consumer properties;
+use their feature contracts and existing integration suites. The storage workstream continues
+to own its internals, with concrete ownership coordination for changes across that boundary.
 
-If and when authorized, that task can evaluate integrating the trie behind `StateStore` while
-preserving snapshot identity, sorted checkpoint enumeration, ceilings and atomic publication.
-Whole-map checkpoint restoration could then build the trie once; changed-node disk persistence
-would remain a separate decision. This records a possible future direction, not current work.
-
-This increment adds no store integration, disk format, worker, revision-reclamation policy or
-partial light-state API. M1 framing is complete; full state serialization and whole-block JAM
-parity remain open.
+Full/light separation remains mandatory: the trie represents complete full-node state, never a
+partial light-state mapping. M1 framing completion and these store integrations do not establish
+full state serialization or whole-block JAM parity.
