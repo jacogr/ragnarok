@@ -324,10 +324,8 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   if repository.poisoned: return ManagedResult[ManagedCompaction](
       status: FileError.RecoveryRequired)
   let selected = repository.memory.snapshot.value
-  let currentPlan = selectRepositoryRoots(selected, [selected.commitment.root], ElementLimit(1))
-  if currentPlan.error != RepositoryError.None:
-    return ManagedResult[ManagedCompaction](status: FileError.InvalidRetention)
-  if not currentPlan.value.matches(expected):
+  if not selected.matches(expected):
+    # Opaque current views already carry complete admission; stale authority needs no graph traversal or IO.
     return ManagedResult[ManagedCompaction](status: FileError.StaleView)
   if uint64(repository.epoch) == high(uint64):
     return ManagedResult[ManagedCompaction](status: FileError.EpochExhausted)

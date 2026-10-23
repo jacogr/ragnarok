@@ -325,6 +325,11 @@ proc snapshot*(repository: NodeRepository): RepositoryResult[RepositoryView] =
 func initialized*(view: RepositoryView): bool =
   ## Test a read handle before another storage component accepts ownership of it.
   view.data != nil
+func matches*(view, other: RepositoryView): bool =
+  ## Compare initialized immutable owner identity in constant space/time; equal roots/generations grant no binding.
+  ## Default views never match, including each other; retained views remain comparable after source close.
+  view.data != nil and view.data == other.data
+
 proc commitment*(view: RepositoryView): StateTrieCommitment {.requires: view.data != nil.} =
   ## Return copied complete-map metadata, never mutable node storage.
   let data = view.data
@@ -574,7 +579,7 @@ func initialized*(selection: RepositorySelection): bool =
 func matches*(selection: RepositorySelection, view: RepositoryView): bool =
   ## Compare exact immutable source owners, never just a root or local generation.
   let data = selection.data
-  data != nil and data.source.data == view.data
+  data != nil and data.source.matches(view)
 proc retainedNodes*(selection: RepositorySelection): int {.requires: selection.initialized.} =
   ## Count unique physical records needed by the selected root union.
   let data = selection.data
