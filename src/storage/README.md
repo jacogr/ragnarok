@@ -339,3 +339,8 @@ and partial-tail recovery remain separate work.
 sequence using a distinct `CURRENT` schema. A checksummed journal anchor binds that exact
 selection; old light-image and full-state formats have no fallback. See the
 [selection and anchor contract](../../spec/storage-light-journal-selection.md).
+
+`light_journal_replay.nim` strictly verifies a bounded selected checkpoint/anchor/frame stream
+before exposing its final immutable image. Separate explicit partial-tail plans bind only a
+fully authenticated prefix to all original journal bytes and selection; complete corruption
+never yields salvage authority. See [replay and tail planning](../../spec/storage-light-journal-replay.md).
