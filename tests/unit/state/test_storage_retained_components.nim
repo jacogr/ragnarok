@@ -135,6 +135,7 @@ proc panel(): string =
           assert observation.selection == selections[index]
           assert calibrated == payloads[index] and source.nodes == nodes
     assert payloads[0] == 0
+    assert selections[0] <= offsetHeap(nodes)+128 # One exact index buffer and bounded one-root metadata survive.
     for index in 0..<Sizes.len:
       assert selections[index] == selections[0] # Reachability indices depend on physical inventory, not value sizes.
       assert clones[index] == clones[0] # Table references/index cost depends on node count, not payload size.
