@@ -40,7 +40,8 @@ def main():
     started = time.monotonic()
     report = dict(status='failed', suites=[], environment=dict(system=platform.system(),
                   machine=platform.machine(), python=platform.python_version()))
-    checks = NativeChecks(BUILD)
+    # Sequential E2E builds reuse only matching source epochs, native bytes and checked LTO profiles.
+    checks = NativeChecks(BUILD, reuse_builds=True)
     try:
         # Preserve compiler/revision and native pin evidence independently of any other CI job.
         metadata = compiler.parent.parent/'NIGHTLY.txt'

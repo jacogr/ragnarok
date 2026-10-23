@@ -52,6 +52,30 @@ class E2EPlans(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'duplicate E2E task'):
             plan.workload(lifecycle)
 
+    def test_task_timings_include_setup_and_raised_failures(self):
+        """Setup and failing work retain separate costs without fabricating a successful verdict."""
+        from unittest.mock import patch
+        plan = E2EPlan()
+
+        @plan.setup
+        def prepare(context):
+            """Stand in for a prerequisite whose cost belongs to setup."""
+
+        @plan.workload
+        def failure(context):
+            """An unexpected workload failure must retain its duration and still propagate."""
+            raise ValueError('fixture failure')
+
+        context = SimpleNamespace(report=dict(suites=[]))
+        with patch('e2e_plan.time.monotonic', side_effect=(10, 12, 20, 25)):
+            with self.assertRaisesRegex(ValueError, 'fixture failure'):
+                plan.run(context)
+        self.assertEqual(context.report['task_timings'], {
+            'prepare': dict(kind='setup', elapsed_seconds=2),
+            'failure': dict(kind='workload', elapsed_seconds=5)})
+        self.assertNotIn('failure', context.report)
+        self.assertFalse(plan.passed(context.report))
+
     def test_invalid_or_aliased_verdicts(self):
         """Missing, untyped and differently named rows cannot satisfy a declared test."""
         for result in (None, {}, dict(passed=1), dict(name='replacement', passed=True)):

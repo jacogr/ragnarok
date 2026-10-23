@@ -287,3 +287,11 @@ after a successful update; package configuration retains its normal completion s
 Both stages save stdout/stderr in `build/ci/host-tools-{update,install}.log`, covered by the existing
 CI artifact globs even when compiler setup never starts. Provisioned and non-APT hosts skip this
 path. The workflow's overall job limits are unchanged.
+
+E2E builds opt into the same serial, source-epoch/native-ABI/profile-isolated compiler cache,
+retaining full LTO, runtime checks and separate production feature defines. Current-sequence,
+preimage, guarantee and rotation workloads share one freshly compiled responder; each still
+launches independent processes and state, checks fixture hashes and publishes its own required
+verdict. A failed shared build blocks every dependent workload from running stale binaries.
+The E2E report records setup, workload and selftest durations under `task_timings`, including
+tasks which raise, so build costs can be distinguished from live scenarios.

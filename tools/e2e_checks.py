@@ -225,6 +225,17 @@ def application_current_download(context):
     return observed
 
 
+@PLAN.setup
+def prepare_current_sequence_responder(context):
+    """Compile one witness for every current-sequence case; modes are selected at process startup."""
+    context.current_sequence_responder = ({'exit_code': 1}, None)
+    if context.current_download_peer[0]['exit_code'] == 0:
+        # Failed peer builds cannot launch stale witnesses; every consumer checks this same build result.
+        context.current_sequence_responder = context.checks.build(context.compiler,
+            ROOT/'tests/native/application_current_sequence.nim', 'application-current-sequence',
+            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+
+
 @PLAN.workload
 def application_current_sequence(context):
     """Verify explicit current command success, partial refusal and timeout through independent TLS/maps."""
@@ -236,9 +247,8 @@ def application_current_sequence(context):
     observed = dict(passed=False)
     if peer_build['exit_code'] == 0:
         # A failed current peer build must never execute a previous binary or build an unrelated witness.
-        compiled, responder = context.checks.build(context.compiler,
-            ROOT/'tests/native/application_current_sequence.nim', 'application-current-sequence',
-            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+        # Reuse compilation evidence, while each scenario still launches its own fresh processes and state.
+        compiled, responder = context.current_sequence_responder
         observed['build'] = compiled
         if compiled['exit_code'] == 0:
             _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
@@ -269,9 +279,8 @@ def application_current_preimages(context):
     observed = dict(passed=False)
     if peer_build['exit_code'] == 0:
         # A failed current peer build must never execute a previous binary or build an unrelated witness.
-        compiled, responder = context.checks.build(context.compiler,
-            ROOT/'tests/native/application_current_sequence.nim', 'application-current-preimages',
-            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+        # Reuse compilation evidence, while each scenario still launches its own fresh processes and state.
+        compiled, responder = context.current_sequence_responder
         observed['build'] = compiled
         if compiled['exit_code'] == 0:
             _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
@@ -302,9 +311,8 @@ def application_current_guarantees(context):
     observed = dict(passed=False)
     if peer_build['exit_code'] == 0:
         # A failed current peer build must never execute a previous binary or build an unrelated witness.
-        compiled, responder = context.checks.build(context.compiler,
-            ROOT/'tests/native/application_current_sequence.nim', 'application-current-guarantees',
-            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+        # Reuse compilation evidence, while each scenario still launches its own fresh processes and state.
+        compiled, responder = context.current_sequence_responder
         observed['build'] = compiled
         if compiled['exit_code'] == 0:
             _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
@@ -335,9 +343,8 @@ def application_current_rotated(context):
     observed = dict(passed=False)
     if peer_build['exit_code'] == 0:
         # A failed current peer build must never execute a previous binary or build an unrelated witness.
-        compiled, responder = context.checks.build(context.compiler,
-            ROOT/'tests/native/application_current_sequence.nim', 'application-current-rotated',
-            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+        # Reuse compilation evidence, while each scenario still launches its own fresh processes and state.
+        compiled, responder = context.current_sequence_responder
         observed['build'] = compiled
         if compiled['exit_code'] == 0:
             _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,

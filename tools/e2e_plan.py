@@ -7,6 +7,7 @@ Exposes E2EPlan; callable names supply both scheduling and required report ident
 """
 from functools import partial
 import re
+import time
 
 
 class E2EPlan:
@@ -54,7 +55,15 @@ class E2EPlan:
             # Existing owned output is a collision rather than permission to overwrite prior evidence.
             if name in report or any(row.get('name') == name for row in report['suites']):
                 raise ValueError('Duplicate E2E report: '+name)
-            observed = function(context)
+            started = time.monotonic()
+            print('E2E '+kind+' '+name, flush=True)
+            try:
+                observed = function(context)
+            finally:
+                # Retain setup and failed-task costs too; timing never substitutes for required verdicts.
+                elapsed = round(time.monotonic()-started, 6)
+                report.setdefault('task_timings', {})[name] = dict(kind=kind, elapsed_seconds=elapsed)
+                print(f'Completed E2E {name} in {elapsed:.2f}s', flush=True)
             if kind == 'setup':
                 # Prerequisite failures remain visible in dependent task verdicts; setup has no coverage row.
                 continue
