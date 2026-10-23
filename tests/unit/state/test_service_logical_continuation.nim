@@ -61,6 +61,20 @@ proc program(checkpoint = false, panic = false): seq[byte] =
   code.add(if panic: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(code, writable = payload): result.add(octet)
+proc replacementProgram(checkpoint = false, panic = false): seq[byte] =
+  ## A genuine registrar ejects junior99, optionally checkpoints, then recreates the same reserved ID.
+  var payload = newSeq[byte](60)
+  payload[32] = 1
+  var code = @[registerImmediate(7, 99), @[10'u8, 23]]
+  if checkpoint: code.add(@[10'u8, 19]) # This checkpoint precedes creation and retains only ejection.
+  code.add(registerImmediate(7, high(uint64)))
+  code.add(registerImmediate(8, 99))
+  code.add(registerImmediate(9, 0))
+  code.add(registerImmediate(10, 196608))
+  code.add(@[10'u8, 20])
+  code.add(if panic: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(code, writable = payload): result.add(octet)
 proc prepare(origin: CurrentNamespaceTransition, members = true): PreparedCurrentChainUpdate {.raises.} =
   ## Collection and joined shutdown release native graph borrowing before any immutable current evidence is inspected.
   var owner = initApplicationChain(origin.update.currentUpdatePriorView).value
@@ -69,13 +83,16 @@ proc prepare(origin: CurrentNamespaceTransition, members = true): PreparedCurren
   assert receipt.kind == PreparationCompletionKind.CurrentCompleted and
       receipt.currentValue.error == CurrentBlockInputError.None
   receipt.currentValue.value
-proc fixture(eject = false, checkpoint = false, panic = false): Fixture {.raises.} =
+proc fixture(eject = false, checkpoint = false, panic = false,
+    replace = false): Fixture {.raises.} =
   ## Author complete original namespaces and programs before roots/signatures, including a genuinely empty eligible ejection target.
   var options = executionFixtureConfig()
-  options.firstProgram = if eject: namespaceEjectCode() else: program(checkpoint, panic)
+  options.firstProgram = if replace: replacementProgram(checkpoint, panic)
+    elif eject: namespaceEjectCode() else: program(checkpoint, panic)
   options.secondProgram = namespaceHaltCode()
   options.signed.serviceNamespaces = namespaceSeeds()
-  if eject:
+  if replace: options.registrar = 42 # Authored authority enters the original signed state, never a completed update.
+  if eject or replace:
     options.second = ExecutionEnding.Missing
     options.secondSupervisor = 42
     options.signed.serviceNamespaces[1].storage = @[]
@@ -98,6 +115,30 @@ proc check(source: Fixture, count: int): CurrentLogicalState =
 proc main() {.raises.} =
   if getEnv("RAGNAROK_STATE_REPORT").len == 0:
     putEnv("RAGNAROK_STATE_REPORT", "tests/fixtures/state-report.bin") # Supported unit runs retain an explicit absolute fixture binding.
+  for checkpoint in [false, true]:
+    for panic in [false, true]:
+      # Terminal selection uses genuine producer owners: halt retains replacement, panic selects the old or ejected generation.
+      let source = fixture(checkpoint = checkpoint, panic = panic, replace = true)
+      let count = if panic and checkpoint: 1 else: 2
+      let logical = check(source, count)
+      let history = source.update.currentUpdateServiceIdentityHistory
+      assert history.serviceIdentityHistoryInfo.value.creations == (if panic: 0 else: 1)
+      assert history.serviceIdentityHistoryInfo.value.deletions == (if panic and
+          not checkpoint: 0 else: 1)
+      if not panic:
+        let services = copySuppliedServices(logical.currentLogicalInventory.value, policy().projection).value
+        var found = false
+        for service in services:
+          if uint32(service.service) == 99:
+            assert service.storage.len == 0 and service.preimages.len == 0 and
+                service.requests.len == 1
+            assert service.requests[0].history.state == RequestState.Requested
+            found = true
+        assert found, "the replacement carries its genuine new code request"
+        let created = history.serviceIdentityCreationAt(ServiceCreationIndex(0)).value
+        let deleted = history.serviceIdentityDeletionAt(ServiceDeletionIndex(0)).value
+        assert uint32(created.fact.service) == 99 and uint32(deleted.fact.service) == 99
+        assert uint64(created.fact.ordinal) > uint64(deleted.fact.ordinal)
   let grown = fixture()
   let continued = check(grown, 3)
   let created = grown.update.currentUpdateServiceIdentityHistory.serviceIdentityCreationAt(

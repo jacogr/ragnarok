@@ -179,7 +179,32 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
         if not roster[i].present and not roster[i].deleted:
           fail(LogicalContinuationError.UnsupportedChange) # Every disappeared original or created service needs actual selected ejection evidence.
         if i < info.services and roster[i].created:
-          fail(LogicalContinuationError.UnsupportedChange) # Unordered membership does not certify replacement generations at an original ID.
+          # An empty original has no namespace identities to carry across a certified local replacement.
+          let originalRow = roster[i].info
+          if originalRow.storage != 0 or originalRow.preimages != 0 or originalRow.requests != 0:
+            fail(LogicalContinuationError.UnsupportedChange)
+          var creation = default(ServiceCreationRow)
+          var deletion = default(ServiceDeletionRow)
+          var creations, deletions = 0
+          for j in 0..<extent.creations:
+            spend()
+            let row = members.serviceIdentityCreationAt(ServiceCreationIndex(uint64(j))).value
+            if uint32(row.fact.service) == uint32(originalRow.service):
+              creation = row
+              inc creations # Original capture limits bound each scan and native count.
+          for j in 0..<extent.deletions:
+            spend()
+            let row = members.serviceIdentityDeletionAt(ServiceDeletionIndex(uint64(j))).value
+            if uint32(row.fact.service) == uint32(originalRow.service):
+              deletion = row
+              inc deletions # Membership alone cannot select among multiple generations.
+          if creations != 1 or deletions != 1 or not roster[i].present:
+            fail(LogicalContinuationError.UnsupportedChange)
+          let sameEntry = uint64(creation.entry) == uint64(deletion.entry)
+          let sameInvocation = uint64(creation.outcome) == uint64(deletion.outcome)
+          let removedFirst = uint64(deletion.fact.ordinal) < uint64(creation.fact.ordinal)
+          if not sameEntry or not sameInvocation or not removedFirst:
+            fail(LogicalContinuationError.UnsupportedChange) # Parallel positions never invent a host-call ordering.
         if roster[i].present: inc finalServices
   template serviceAt(i: int): InventoryServiceInfo =
     (if roster.len == 0: compact.inventoryServiceAt(InventoryServiceIndex(uint64(

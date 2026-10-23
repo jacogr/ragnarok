@@ -80,9 +80,11 @@ type
     CreatedAccounts, ## Bounded creation proofs accompany supported self metadata/entries.
     DeletedAccounts, ## Bounded ejection proofs accompany supported self/created account changes.
     Unsupported      ## At least one broader mutation requires later publication support.
+  AccumulationServiceLifecycleIndex* = distinct uint64 ## Shared captured-operation order within one immutable invocation lineage; complete order requires both tracing policies.
   AccumulationDeletedAccountIndex* = distinct uint64 ## A deletion ordinal cannot substitute a service identity or ejection target.
   AccumulationDeletedAccount* = object ## Copied successful-ejection facts; final absence is checked in the producing context.
     service*: ServiceIndex ## Actual target whose balance was reclaimed by this invocation.
+    ordinal*: AccumulationServiceLifecycleIndex ## Shared position among captured successful creations and ejections.
   # Immutable fixed facts retain neither account values nor parent effect graphs.
   DeletedAccountsData = ref object
     values: seq[AccumulationDeletedAccount]
@@ -90,6 +92,7 @@ type
   AccumulationCreatedAccount* = object ## Copied creation facts remain tied to their producing effect context for final-value extraction.
     service*: ServiceIndex ## Actual reserved/automatic ID chosen by a genuine successful new call.
     requestKey*: StateKey  ## Canonical empty code-request key captured by that exact creation.
+    ordinal*: AccumulationServiceLifecycleIndex ## Shared position among captured successful creations and ejections.
   # Immutable creation membership contains fixed facts, never copied account values or parent effect versions.
   CreatedAccountsData = ref object
     values: seq[AccumulationCreatedAccount]
@@ -556,7 +559,10 @@ proc prepareCreatedAccount(previous: EffectData, service: ServiceIndex, requestK
   for index in 0..<previous.created.values.len:
     let value = previous.created.values[index]
     values[index] = value # Immutable fixed facts are copied without retaining parent effect chains.
-  values[count] = AccumulationCreatedAccount(service: service, requestKey: requestKey)
+  # Each retained length is at most high(int); their unsigned sum fits uint64 before the new fact is allocated.
+  let ordinal = uint64(previous.created.values.len)+uint64(previous.deleted.values.len)
+  values[count] = AccumulationCreatedAccount(service: service, requestKey: requestKey,
+    ordinal: AccumulationServiceLifecycleIndex(ordinal))
   AccumulationEffectResult[CreatedAccountsData](status: AccumulationEffectError.None,
     completed: CreatedAccountsData(values: values))
 
@@ -574,7 +580,10 @@ proc prepareDeletedAccount(previous: EffectData, service: ServiceIndex):
   for index in 0..<previous.deleted.values.len:
     let value = previous.deleted.values[index]
     values[index] = value # Fixed service identities do not retain a chain of old effect versions.
-  values[count] = AccumulationDeletedAccount(service: service)
+  # Immutable selected versions retain both counts, so rollback also restores their shared next ordinal.
+  let ordinal = uint64(previous.created.values.len)+uint64(previous.deleted.values.len)
+  values[count] = AccumulationDeletedAccount(service: service,
+    ordinal: AccumulationServiceLifecycleIndex(ordinal))
   AccumulationEffectResult[DeletedAccountsData](status: AccumulationEffectError.None,
     completed: DeletedAccountsData(values: values))
 
