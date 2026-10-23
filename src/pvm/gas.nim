@@ -220,6 +220,7 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
     return GasResult(status: GasError.InvalidStart)
   var rob = default(array[32, Entry])
   var count = 0
+  var busy = 0'u32 # A bit is set exactly while that active entry has nonzero remaining latency.
   var pc = uint64(start)
   var ended = false
   var cycles = 0'u64
@@ -264,6 +265,7 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
             rob[i].clobbers = rob[i].clobbers and not cost.destinations
           rob[count] = Entry(stage: Stage.Decoding, left: cost.cycles,
             dependencies: deps, clobbers: cost.destinations, units: cost.units)
+          if cost.cycles != 0: busy = busy or (1'u32 shl count) # The enclosing count<32 guard proves this shift.
           inc count
         ended = terminatesBlock(item.opcode)
         pc += 1 + uint64(item.skip)
@@ -273,11 +275,8 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
       var selected = -1
       for i in 0..<count:
         if rob[i].stage == Stage.Waiting and fits(rob[i].units, available):
-          var ready = true
-          for j in 0..<count:
-            if (rob[i].dependencies and (1'u32 shl j)) != 0 and rob[j].left != 0:
-              ready = false
-          if ready:
+          if (rob[i].dependencies and busy) == 0:
+            # One bounded mask intersection replaces rescanning every retained dependency on each issue attempt.
             selected = i
             break
       if selected >= 0:
@@ -312,6 +311,7 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
         if rob[i].left == 1:
           # Release resources on the transition to zero remaining latency.
           for j in 0..<5: available[j] += rob[i].units[j]
+          busy = busy and not (1'u32 shl i) # Readiness changes at the same one-to-zero latency transition, before the next issue cycle.
         if rob[i].left > 0:
           dec rob[i].left
         else:
@@ -322,4 +322,8 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
       for i in retired..<count:
         rob[i - retired] = rob[i]
         rob[i - retired].dependencies = rob[i].dependencies shr retired
+      if retired == 32:
+        busy = 0 # A complete buffer retirement must never shift by the word width.
+      else:
+        busy = busy shr retired # Active entry indices move by the same retired prefix as their dependency masks.
       count -= retired

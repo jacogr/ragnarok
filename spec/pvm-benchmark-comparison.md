@@ -655,3 +655,42 @@ identities and32/64 experiments remain under `build/pvm10/decoder-probe`,
 `decoder-slots32-paired`, `decoder-slots64-paired`, `decoder-final` and
 `decoder-final-paired`. Local macOS/no-isolation limits, compiled/fuzzing deferral
 and open full STF/JAM parity remain unchanged.
+
+
+## Pipeline dependency readiness, 2026-10-23
+
+After the decoder working-set change, a separate161-invocation sieve profile still
+ranks pipeline simulation prominently. Dependency-ready selection previously
+rescanned up to32 retained entries for each waiting candidate. The private busy
+mask replaces that inner scan with one intersection while preserving producer
+renaming, resources, simultaneous transitions, retirement and exact cycle limits.
+A pending-frontend-decode experiment is excluded after direct-corpus regression.
+
+Pricing is measured directly over the current1796 independently frozen blocks,
+including12 new complete/partial retirement and producer-renaming witnesses. Program
+capture, fixture parsing, result validation and output are outside process-CPU timing;
+every returned price is checked against its independent golden value afterward.
+Each comparison uses three warmups and ten measured samples per pass, reverses
+binary order, and checks assertion-failure controls before timing. Two confirmations
+use the same preserved parent binary and the final checked ARC/Clang ThinLTO binary:
+
+| Entire independent gas corpus | Parent CPU (ms) | Busy-mask CPU (ms) | Less CPU time |
+| --- | ---: | ---: | ---: |
+| First confirmation |10.141 |8.265 |18.5% |
+| Second confirmation |10.093 |8.108 |19.7% |
+
+The canonical corpus hash is
+`555c02cf0b14e692fc5e3f981c1550cf37b0076deb196145b37c7addc5a3b7c2`;
+the original1784 records retain their original payload hash. These final results
+use fresh canonical inputs rather than an earlier historical build-directory corpus.
+Raw samples, commands, identities and exact prices remain under
+`build/pvm10/pipeline-probe/gas-final-comparison.json` and associated logs.
+
+Sieve comparisons observe21.994→21.353ms and22.312→21.612ms, about3% less process
+CPU, with pinned interpreted PolkaVM around6.0ms. This small end-to-end difference
+does not establish a broad interpreter gain. Synthetic results and all warmups/
+outliers remain under `pipeline-final`, `pipeline-final-paired` and the isolated
+experiment directories. Only the repeated direct-kernel gain is claimed. Bounds,
+assertions, fee tables, public budgets and all pins remain unchanged; no Linux,
+compiled or whole-client result follows. Full STF/JAM parity remains open and
+fuzzing is still deferred.
