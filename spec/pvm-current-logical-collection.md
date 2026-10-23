@@ -244,8 +244,8 @@ Run `make unit SUITE=pvm_current_logical_download`, `make unit SUITE=pvm_current
 `make unit SUITE=pvm_current_download_native` and `make check-inventory`. Source-owned privacy
 fixtures also forbid replacing the captured policy and bypassing the logical result accessor.
 
-The command-line configuration continues to select its explicit raw-certificate path. Automatic
-logical startup declarations and policy-file provisioning are not inferred by this adapter API.
+The command-line configuration selects its explicit raw-certificate path unless the paired logical
+startup files described below are supplied. This adapter API never infers declarations or policy.
 Explicit session/dispatcher logical provisioning and rearming are supported below. No account-review
 funding policy, general producer mutation certificate, protocol rule or dependency pin changes.
 
@@ -293,8 +293,65 @@ supply missing logical authority.
 The native consumer witnesses cover host admission/refusal, repeated children, cancellation/join
 and memory/durable handoff. Explicit logical admission now runs in the production download adapter;
 authenticated session/dispatcher provisioning and rearming now carry complete logical sources.
-CLI declaration/policy-file provisioning, general producer mutation and exceptional/checkpoint
-propagation remain open.
+Explicit CLI declaration/policy-file provisioning is supported below. General producer mutation
+and exceptional/checkpoint propagation remain open.
 After the required plumbing is qualified, measure PVM performance against the pinned PolkaVM
 control with reproducible workloads and then add focused fuzzing for the implemented boundaries.
 These remain future work, with no weakened checks, pin changes or inferred parity claims.
+
+
+## Explicit logical command startup
+
+`download-current` accepts paired `--download-logical-source <file>` and
+`--download-logical-policy <file>` with `--with-state`. Other commands and incomplete pairs
+refuse the controls. The existing positional current-download policy remains mandatory.
+Syntax and file resource admission finish before Services, listeners or databases start;
+complete logical matching uses the actual selected Services head before outgoing child peers open.
+A lexical or actual-source refusal returns `InvalidLogicalSource`; a logical policy-file refusal
+returns `InvalidPolicy`. Neither grants a successful logical prefix.
+
+The identity file uses this exact line format (the hashes below are illustrative):
+
+```text
+ragnarok-current-logical-source-v1
+s=42
+k=
+k=0102
+p=0000000000000000000000000000000000000000000000000000000000000000
+r=0000000000000000000000000000000000000000000000000000000000000000:3
+```
+
+`s` selects the original uint32 service identity. Following `k`, `p` and `r` rows name original
+raw storage keys, 32-byte preimage hashes and request hash/length pairs for that service.
+`k=` preserves the empty raw key. Hexadecimal is lowercase; decimal has no leading zeros except
+literal zero. Request lengths are strictly below 2^32−2. Supply every existing identity exactly
+once: complete State manifest matching rejects omissions, extras and duplicate child identities.
+Metadata, storage/preimage payloads and request histories are read from the actual selected state;
+files cannot supply replacement values. No physical hashed key is inverted to invent a declaration.
+Whole comment lines beginning `#`, blank lines and an optional final LF are supported; whitespace
+aliases and CRLF are rejected. Files are capped at 65,536 bytes, with at most 4,096 declaration rows
+and 4,096 bytes per raw key, in addition to explicit source policy ceilings.
+
+The separate logical policy starts with `ragnarok-current-logical-policy-v1` and requires every
+reviewed unsigned scalar in
+[`current_logical_policy_fields.nim`](../src/app/current_logical_policy_fields.nim), as emitted by
+`encodeCurrentLogicalPolicy`. Missing, unknown, duplicate, noncanonical and overflowing fields
+refuse atomically. There are no inferred resource defaults; zero permits zero work. Projection
+services/facts/per-value/retained-byte limits, full parent profile/global limits, complete logical
+manifest limits and later download identity/request/reconstruction/logical limits remain independent.
+Projection charges decoded declarations, exact service/child descriptors and cached actual value
+extents before allocation or payload copying. Source files and scalar policy files have independent
+transport caps. Policy parsing performs no hashing or state lookup.
+
+Authenticated adoption advances the retained logical source through the existing dispatcher receipt.
+On strict journal/managed restart, the same identity file is matched anew to reopened payloads,
+metadata and histories, capturing a fresh physical parent with its actual full history, Parameters
+and finality. A previous process's logical owner is never reused as restored authority.
+
+`pvm_current_logical_startup` exercises strict policy/declaration parsing, resource admission,
+paired options, complete-source refusals and actual authenticated three-child adoption in memory,
+journal and managed layouts. Disk cases stop after one child, restart the real command for two more
+and strictly reopen all four maps. Malformed files refuse before database creation; omitted
+identities refuse before a child request; later identity-budget refusal receives one child but adopts
+none. Existing policy, options and current-command suites cover the shared lexical refactor and
+unchanged raw mode. Run `make unit SUITE=pvm_current_logical_startup` and `make check-inventory`.
