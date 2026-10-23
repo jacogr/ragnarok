@@ -126,6 +126,12 @@ not block/finality authority. Run `storage_retention_plan` for its ownership and
 ceilings. The sorted detached result is maintenance transport, not an ordinary single-root batch.
 It performs no file replacement, generation reset, context rewrite or reclamation.
 
+`encodeRepositorySelection` serializes an opaque admitted union directly into owned canonical
+collection bytes. It avoids detached record/value copies and repeated hashes; raw mutable record
+encoders remain strict. Snapshot encoding uses this path and hashes its new outer frame once.
+`RepositoryResult.takeValue` transfers a successful owner and leaves the result uninitialized.
+See the [selection encoding contract and measurements](../../spec/storage-selection-encoding.md).
+
 Unchanged-root zero-record publications share their validated immutable physical table while
 creating a new exact view identity and generation. Ordinary changed-root admission, frame bytes
 and durability barriers retain their contracts. See `storage_unchanged_publication` and the
