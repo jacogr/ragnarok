@@ -1,0 +1,8 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Only selected guarded delta accessors expose authenticated frame authority.
+# @@Verification={"group": "privacy", "expected": "proofReason"}
+import ../../../src/storage/light_delta
+let hidden = default(LightDeltaResult[PreparedLightDelta])
+discard hidden.proofReason
