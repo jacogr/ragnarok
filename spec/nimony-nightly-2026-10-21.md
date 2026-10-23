@@ -496,3 +496,39 @@ full E2E, Linux runtime or exhaustive fuzz-coverage claim is made. Raw evidence 
 `build/ci/nimony-pvm-logical-*`; the original campaign and artifact/replay logs remain under
 `build/tests/pvm-program-fuzz/`. Next remains a published nightly containing #2737, rechecking
 retained workaround probes, and drafting still-needed minimal reports for maintainer submission.
+
+
+## Storage layout, shared-path writes and final-buffer encoding
+
+Merge master `ca3433f672fff3b6e342279bacfc76c545317cfb` normally (merge `6d12114a`),
+covering 14 storage merges. Preserve private tagged leaf/branch alternatives, compact selection
+indexes, branch aggregates, sorted bulk trie construction, shared-path batch writes, retained-root
+inventory, direct final-buffer collection/snapshot/journal encoding, bitmap union freezing, stale
+compaction refusal, exact owning exports and bounded full-address duplicate preflight.
+Compiler/browser pin `8cb7a690a` and the #2737 sequence-element copy-hook hold remain unchanged.
+
+Resolve two merge overlaps by retaining master’s exact indexed output writes/counts and tagged
+record reconstruction while preserving checked indexed payload reads. Two additional loops in the
+new selection encoder hit the known retained-ref iteration restriction; use indexed selection and
+payload reads without changing order, quota admission, byte offsets or one-buffer ownership.
+All 58 other incoming files remain byte-identical to master. No branch/leaf field, record hash,
+complete physical edge, graph authority, format or publication rule is weakened. The original
+module/consumer failures named those two encoder loops; affected checks passed after adaptation.
+
+All 383 production modules, 256 affected Python tests and 37 selected native storage suites passed.
+The selection covers all 13 changed suites plus 24 admission, codec, ownership, repository,
+publication, file/managed/context, replay and repair consumers. The first trie/batch suites were
+reused unchanged across the encoder-only adjustment. All 21 strict runtime misuse probes in the
+two changed families passed with successful builds and exact assertion diagnostics. The strict
+fresh-reopen panel passed all four cases and its report passed independent validation. All 24
+selected actual current-download executable cases and the canonical checked ARC/Clang/ThinLTO
+integration/offload build passed. All six changed production modules passed Linux x86-64 semantic
+checks. Pinned formatting of 23 incoming Nim files, inventory and diff checks passed.
+
+This is local macOS ARM64 compatibility/runtime qualification and Linux semantic checking.
+The retained-layout/component/footprint tests preserve their exact map/lifetime/release assertions;
+this sync does not establish a new matched baseline/candidate timing, retained-memory or Linux
+resident-pressure comparison. Merged performance evidence keeps its original compiler/source/host
+scope. Raw evidence is under ignored `build/ci/nimony-storage-layout-*`. The nightly availability
+check follows this completed synchronization; pins and hold change only after a candidate is
+actually selected and qualified.

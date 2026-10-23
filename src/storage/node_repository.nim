@@ -912,7 +912,8 @@ proc encodeFramedRepositorySelection*(selection: RepositorySelection, limits: Re
   var offset = prefix+Magic.len
   putCollectionNumber(output, offset, uint64(data.indices.len))
   offset += 8
-  for position in data.indices:
+  for ordinal in 0..<data.indices.len:
+    let position = data.indices[ordinal]
     # These unique sorted physical cells passed local integrity and complete graph admission before publication.
     let cell = source.table.records[position]
     output[offset] = byte(ord(cell.kind))
@@ -925,8 +926,8 @@ proc encodeFramedRepositorySelection*(selection: RepositorySelection, limits: Re
       offset += 31
       putCollectionNumber(output, offset, uint64(cell.payload.len))
       offset += 8
-      for octet in cell.payload:
-        output[offset] = octet # Copy raw values directly from the stable private owner into the sole final buffer.
+      for index in 0..<cell.payload.len:
+        output[offset] = cell.payload[index] # Copy raw values directly from the stable private owner into the sole final buffer.
         inc offset
     else:
       putCollectionHash(output, offset, cell.left)
