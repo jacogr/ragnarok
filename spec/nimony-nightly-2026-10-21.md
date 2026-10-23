@@ -1,9 +1,10 @@
-# Nimony October 21/22 nightly upgrade audit
+# Nimony October 21–23 nightly upgrade audit
 
-Current candidate: October 22 `8cb7a690ae48363eb3ce65564aafb921ca5d23f3`. **Held** pending a
-published nightly containing the sequence-element copy-hook propagation fix `d53097d392`
-([#2737](https://github.com/nim-lang/nimony/issues/2737)). The chronological qualification below
-preserves the evidence and scope of the original candidate and master synchronizations.
+Current qualified candidate: October 23 `4724f66c2e01b17810c844f26575b2317995fda2`.
+The verified archive fixes sequence-element copy-hook propagation (#2737), so the ownership hold
+is lifted. The three remaining exercised limitations retain their adapters and standalone
+[report drafts](nimony-reports-2026-10-23/integer-generic.md). Historical holds and results below
+retain their original date/compiler/source scope; the final section records this qualification.
 
 ## Initial October 21 scope and pins
 
@@ -593,3 +594,60 @@ performance, exhaustive proof correctness or complete JAM/STF claim is made. The
 compiler/browser pin and sequence-element copy-hook hold for #2737 remain unchanged. Publishing
 this update also requests automatic Smoke; heavy CI remains opt-in. The next compiler increment
 still waits for a selected published nightly and rechecks the documented workaround probes.
+
+
+## October 23 archive: sequence ownership hold resolved
+
+Upgrade the official native compiler and matching browser source from `8cb7a690a` to
+`4724f66c2e01b17810c844f26575b2317995fda2` (0.6.3, October 23). Review the exact
+[24-commit delta](https://github.com/nim-lang/nimony/compare/8cb7a690ae48363eb3ce65564aafb921ca5d23f3...4724f66c2e01b17810c844f26575b2317995fda2)
+and [published archive](https://github.com/nim-lang/nimony-website/releases/tag/nightly-0.6.3-4724f66c2).
+The Linux amd64 archive SHA-256 is `659f4a80f31a8fd88b21c546237f03e09411a33195083b4d668adbdc58a3ca47`;
+macOS ARM64 is `0c361caae7351e7dd8a68d435179e8cf37744ad86b8c4df66b41a57eda71774b`.
+Both downloaded archives passed checksum and NIGHTLY.txt commit/date/platform verification.
+Matching compiler sources are pinned by SHA-256
+`d7cd0eca9ea6424d14163e5aefe0db31aeb050ff23b0b815cd2f9a7f524e3408`.
+Nimpretty 2.2.12 and nativenif `ec471df7e83d` remain unchanged; the matching pristine-source web
+bootstrap passed. The host banner now correctly says `macosx`. No compiler/runtime source is patched.
+
+| Included fix or addition | Observed project outcome |
+| --- | --- |
+| `d53097d392`, #2737 derived copy hooks | The actual archive rejects both sequence-of-copy-banned-element reproducers with the exact unavailable `=dup` diagnostic for `seq[SequenceOwner]`. Add separate copy-only/copy-plus-dup source-owned lowering guards and a successful explicit-move native control. The former ownership hold is resolved. |
+| `52c3fe5007` and related instance rendering | Sixteen nominal guards still rejected the intended calls but no longer matched their old abbreviated text. Require exact rendered domain/schema/element arguments, including `ReportHash[2]` versus `ReportHash[0]`, without weakening exit/call/position checks. All refreshed guards pass. |
+| #2743 refined concept resolution | The attempted SomeInteger formatter and separate signed/unsigned variants still fail. Keep concrete integer overloads. |
+| #2753 array indexing | A nonzero-based integer-indexed array control passes on both old/new archives. No local before/after improvement or removable workaround is inferred from that control. |
+| Native atomic instructions, channels, time-zone/math/NIF updates | Reviewed in the release delta; no further exercised project workaround was identified for removal. Preserve current worker, protocol, dependency and runtime boundaries. |
+
+All 392 production modules and the real integration/offload main pass both debug smoke and
+checked-release graph audits. The same whole graph and main pass Linux amd64 semantic checks.
+Full compiler rejection verification passes all 2,449 guards, including the new sequence cases
+and stronger instance diagnostics. Full Python discovery passes 908 tests with three skips.
+All 99 selected native state/storage/PVM/RPC/resource suites pass. All 139 strict runtime
+misuse probes in 16 selected families pass with successful checked native builds, exact assertion
+diagnostics and positive native controls. All 24 selected actual current-download executable cases
+pass. The canonical ARC/Clang/ThinLTO production build and real-browser/production-RPC check pass.
+
+The maintained strict fresh-reopen panel passes all four cases and independent report validation.
+The sanitized program fuzzer passes 10,000 inputs (246 coverage counters, 461 features), frozen
+seed replay, expected assertion failure, fresh artifact creation and independent artifact replay.
+Its documented default-allocator/fine-grained heap coverage limits remain unchanged. The relocated
+macOS archive passes dependency/runpath verification and all four unpacked smoke options.
+Actual private/shared NativeChecks cache controls both produce `7 -> 12 -> 12` in unchanged cache
+directories. Final pinned formatting passes 4,315 Nim inputs plus the Rust crate; inventory and
+diff checks pass. The source-epoch workaround stays retired.
+
+Three remaining failures reproduce on the actual archive: generic integer formatting (one line),
+nullable refinement across successive var-pointee calls (six lines), and sequence slicing (two
+lines). Each reproduces 5/5 times outside the repository in fresh directories; deleting any source
+line stops the intended failure. Tested alternatives compile and run. Related open/closed upstream
+issues were searched/read; the cases differ from the related triggers found. GitHub master matched
+this archive when checked; a separate source build was not performed. Keep the existing integer,
+explicit nonnull-binding and slice adapters. Drafts with exact final output and limitations are
+under `spec/nimony-reports-2026-10-23/` for maintainer submission; no issue was posted.
+
+This is local macOS ARM64 runtime qualification plus Linux archive/semantic validation. It does
+not claim Linux runtime, full E2E, exhaustive fuzz coverage, new performance comparisons or full
+JAM/STF parity. Raw scoped evidence is under ignored `build/ci/nimony-2026-10-23-*` and
+`build/ci/nimony-2026-10-23-report-evidence/`; maintained fuzz/reopen/package logs retain their
+standard build paths. Earlier compiler/source results above remain historical, not attributed
+to this archive. Publishing the updated PR automatically requests Smoke; heavy CI remains opt-in.

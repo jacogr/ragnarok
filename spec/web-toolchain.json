@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "nimony": {
-    "commit": "8cb7a690ae48363eb3ce65564aafb921ca5d23f3",
-    "url": "https://codeload.github.com/nim-lang/nimony/tar.gz/8cb7a690ae48363eb3ce65564aafb921ca5d23f3",
-    "sha256": "54f0de75c118b49ee5c3b6232aafe26631919e62b92d8250e06a92767bf41f24"
+    "commit": "4724f66c2e01b17810c844f26575b2317995fda2",
+    "url": "https://codeload.github.com/nim-lang/nimony/tar.gz/4724f66c2e01b17810c844f26575b2317995fda2",
+    "sha256": "d7cd0eca9ea6424d14163e5aefe0db31aeb050ff23b0b815cd2f9a7f524e3408"
   },
   "nativenif": {
     "commit": "ec471df7e83d6938bd482b4f4dd5c8d2ef210c1f",

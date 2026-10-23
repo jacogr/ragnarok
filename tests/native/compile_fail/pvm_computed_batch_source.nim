@@ -3,7 +3,7 @@
 
 ## Mutable raw guarantees cannot replace closed verified computed envelopes.
 
-# @@Verification={"group": "nominal", "expected": "openArray", "early": ["prepareComputedBatch(", "[1] expected: openArray but got: array"]}
+# @@Verification={"group": "nominal","expected": "openArray","early": ["prepareComputedBatch(","[1] expected: openArray[ComputedGuaranteeEnvelope] but got: array[0..0, Guarantee]"]}
 
 import ../../../src/state/computed_batch
 import ../../../src/codec/guarantees

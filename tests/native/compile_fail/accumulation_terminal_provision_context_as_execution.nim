@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# @@Verification={"group": "nominal", "expected": "AccumulationDispatchResult", "early": ["prepareTerminalAccumulationProvisions(", "[1] expected: openArray but got: array[0..0, AccumulationEffectContext]"]}
+# @@Verification={"group": "nominal","expected": "AccumulationDispatchResult","early": ["prepareTerminalAccumulationProvisions(","[1] expected: openArray[AccumulationDispatchResult] but got: array[0..0, AccumulationEffectContext]"]}
 
 ## Caller-selected effect contexts cannot stand in for completed execution provenance.
 

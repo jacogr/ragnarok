@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# @@Verification={"group": "nominal", "expected": "SkippedAccumulation", "early": ["prepareCompleteAccumulationBatch(", "[4] expected: openArray but got: array[0..0, PreparedAccumulationService]"]}
+# @@Verification={"group": "nominal","expected": "SkippedAccumulation","early": ["prepareCompleteAccumulationBatch(","[4] expected: openArray[SkippedAccumulation] but got: array[0..0, PreparedAccumulationService]"]}
 
 ## A resolved service alone cannot impersonate a certified non-executing outcome.
 

@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-# @@Verification={"group": "nominal", "expected": "[1] expected: CollectionUInt but got: CollectionUInt"}
+# @@Verification={"group": "nominal","expected": "[1] expected: CollectionUInt[2] but got: CollectionUInt[1]"}
 
 import ../../../src/codec/[collections, bounded]
 var owner: OwnedSet[CollectionUInt[1]] = default(OwnedSet[CollectionUInt[1]])
