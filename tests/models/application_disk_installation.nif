@@ -1,0 +1,44 @@
+(stmts#Copyright (c) 2026 Ragnarök contributors
+SPDX-License-Identifier: MIT OR Apache-2.0
+One admitted current publication, serialized host plus disk worker. Initial admission succeeds.
+phase 0 Idle, 1 Queued, 2 Executing, 3 Done, 4 collected/joined, 5 finished.
+io 0 absent, 1 confirmed exact publication, 2 refused/uncertain, 3 NotExecuted.
+Hypothesis: completion polling or uncertain IO permits installation or premature RPC resumption.
+Source: src/app/services.nim tick/finishCurrentDiskPublication/stopDiskPublication.
+Confirmation abstracts confirmsCurrentDiskPublication; bytes/root correctness remain native tests.#
+  (variables :phase.0. :io.0. :paused.0. :faulted.0. :installed.0. :stop.0.)
+  (assign Mut.0. 0)
+  (assign Witness.0. (false))
+  (def :Init.0.
+    (and (prime phase.0. 0) (prime io.0. 0) (prime paused.0. (false))
+         (prime faulted.0. (false)) (prime installed.0. (false)) (prime stop.0. (false))))
+  (def :Admit.0.#tick: staging retires host aliases; pause RPC before successful worker submission.#
+    (and (eq phase.0. 0) (not stop.0.) (prime phase.0. 1) (prime paused.0. (true))))
+  (def :Dispatch.0.#disk_worker.run: a queued request enters IO unless stop was already observed.#
+    (and (eq phase.0. 1) (not stop.0.) (prime phase.0. 2)))
+  (def :Complete.0.#disk_worker.run: actual IO outcome precedes Done publication.#
+    (and (eq phase.0. 2) (prime phase.0. 3)
+         (or (prime io.0. 1) (prime io.0. 2))))
+  (def :Close.0.#stopDiskPublication: request join; an executing request still completes normally.#
+    (and (not stop.0.) (prime stop.0. (true))))
+  (def :Retire.0.#collect/close: only Done or joined unstarted work ends the native lease.#
+    (and (or (eq phase.0. 3) (and stop.0. (eq phase.0. 1)))
+         (prime phase.0. 4) (prime io.0. (if (eq phase.0. 1) 3 io.0.))
+         (prime paused.0. (if (eq Mut.0. 3) (false) paused.0.))))
+  (def :Finish.0.#finishCurrentDiskPublication: install only confirmed IO, then resume RPC.#
+    (and (eq phase.0. 4) (prime phase.0. 5) (prime paused.0. (false))
+         (prime installed.0. (or (eq io.0. 1) (and (eq Mut.0. 2) (eq io.0. 2))))
+         (prime faulted.0. (eq io.0. 2))))
+  (def :EarlyInstall.0.#Mutant of tick: treating a scalar Done observation as native collection.#
+    (and (eq Mut.0. 1) (eq phase.0. 3) (eq io.0. 1) (prime installed.0. (true))))
+  (def :Next.0.
+    (or Admit.0. Dispatch.0. Complete.0. Close.0. Retire.0. Finish.0. EarlyInstall.0.))
+  (def :Safe.0.
+    (and (or (not installed.0.) (and (eq io.0. 1) (ge phase.0. 4)))
+         (or (eq phase.0. 0) (eq phase.0. 5) paused.0.)
+         (or (neq phase.0. 5) (neq io.0. 2) faulted.0.)))
+  (def :Reached.0.
+    (and stop.0. (eq phase.0. 5) (eq io.0. 2) faulted.0. (not installed.0.) (not paused.0.)))
+  (spec (always-stutter Init.0. Next.0.
+    (tuple phase.0. io.0. paused.0. faulted.0. installed.0. stop.0.)))
+  (check (if Witness.0. (not Reached.0.) Safe.0.)))
