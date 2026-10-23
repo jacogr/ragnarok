@@ -100,6 +100,11 @@ func value*[T](outcome: RepositoryResult[T]): T {.inline,
     requires: outcome.status == RepositoryError.None.} =
   ## Extract only a successful complete operation.
   outcome.completed
+proc takeValue*[T](outcome: var RepositoryResult[T]): T {.inline,
+    requires: outcome.status == RepositoryError.None.} =
+  ## Transfer one successful owner without copying; the consumed result retains no payload or authority.
+  result = move(outcome.completed)
+  outcome = RepositoryResult[T](status: RepositoryError.Uninitialized)
 func recordError*[T](outcome: RepositoryResult[T]): RecordError {.requires:
     outcome.status == RepositoryError.InvalidRecords.} =
   ## Inspect only a selected physical-record integrity refusal.
@@ -835,6 +840,57 @@ proc measureRepositorySelection*(selection: RepositorySelection,
     if payload > maximum-size: return RepositoryResult[int](status: RepositoryError.LimitExceeded)
     size += payload # Each addition is proved against the exact host-bounded output ceiling.
   RepositoryResult[int](status: RepositoryError.None, completed: int(size))
+
+proc putCollectionNumber(output: var seq[byte], offset: int, number: uint64) =
+  ## Exact collection extent preflight proves the eight little-endian bytes at this private offset.
+  for index in 0..<8: output[offset+index] = byte((number shr (index*8)) and 255)
+
+proc putCollectionHash(output: var seq[byte], offset: int, digest: StateNodeHash) =
+  ## Copy complete physical identities; branch edges must not use the masked JAM left-child form.
+  let raw = array[32, byte](digest)
+  for index in 0..<32: output[offset+index] = raw[index]
+
+proc encodeRepositorySelection*(selection: RepositorySelection,
+    limits: RecordLimits): RepositoryResult[seq[byte]] =
+  ## Serialize an opaque admitted immutable union without detached transport or repeated node hashes.
+  ## No raw records or validation flag are accepted; mutable collections still use the strict record codec.
+  ## Failure carries only Uninitialized/LimitExceeded; success owns bytes independent of every source owner.
+  let measured = measureRepositorySelection(selection, limits)
+  if measured.error != RepositoryError.None:
+    return RepositoryResult[seq[byte]](status: measured.error) # No failed extent authorizes output allocation.
+  let data = selection.data
+  assert data != nil # Exact measurement succeeded only for a private initialized immutable selection.
+  let source = data.source.data
+  assert source != nil # Selection construction retained its independently admitted source view.
+  const Magic = "RAGNAROK-RECORDS-V1\n"
+  var output = newSeq[byte](measured.value)
+  for index, character in Magic: output[index] = byte(character)
+  var offset = Magic.len
+  putCollectionNumber(output, offset, uint64(data.indices.len))
+  offset += 8
+  for position in data.indices:
+    # These unique sorted physical cells passed local integrity and complete graph admission before publication.
+    let cell = source.table.records[position]
+    output[offset] = byte(ord(cell.kind))
+    inc offset
+    putCollectionHash(output, offset, cell.digest)
+    offset += 32
+    if cell.kind == TrieRecordKind.Leaf:
+      let key = array[31, byte](cell.key)
+      for index in 0..<31: output[offset+index] = key[index]
+      offset += 31
+      putCollectionNumber(output, offset, uint64(cell.payload.len))
+      offset += 8
+      for octet in cell.payload:
+        output[offset] = octet # Copy raw values directly from the stable private owner into the sole body buffer.
+        inc offset
+    else:
+      putCollectionHash(output, offset, cell.left)
+      offset += 32
+      putCollectionHash(output, offset, cell.right)
+      offset += 32 # Physical format retains both complete edges, including the left address's high bit.
+  assert offset == output.len # The canonical writer and existing bounded extent calculator must agree exactly.
+  RepositoryResult[seq[byte]](status: RepositoryError.None, completed: output)
 
 proc cloneRepositorySelection*(selection: RepositorySelection,
     limits: RepositoryLimits): RepositoryResult[NodeRepository] =
