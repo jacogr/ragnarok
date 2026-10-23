@@ -127,3 +127,62 @@ The interpreter-only command passes locally with all five validated workloads,
 selected tooling/CI/summary checks pass. Raw checks confirm no compiler command ran;
 compiled rows carry no samples. Existing native code, workload inputs, pins and build
 profiles are unchanged. These local results do not imply an exact-head Linux result.
+
+
+## Invocation cursor optimization, 2026-10-23
+
+A fresh checked baseline at `3240ebba` used the unchanged five-workload fixture, pinned
+Nimony/Rust/PolkaVM, checked ARC/Clang LTO and the same Apple M1 Max host. macOS `sample`
+on repeated validated workloads found instruction-loop machine capture, opcode revalidation
+and ARC root retirement alongside decoding and memory copying. The candidate removes the
+per-instruction machine root while retaining successor validation and immutable observable exits;
+it changes no gas, protocol, memory or resource checks.
+
+Preserved baseline/candidate binaries were run twice in opposite orders. Each invocation retains
+the established three warmups and ten validated measured samples per guest. Median native times
+across the twenty measured samples per variant were:
+
+| Fixed guest | Before (µs) | Cursor (µs) | Less execution time |
+| --- | ---: | ---: | ---: |
+| Arithmetic, 10000 iterations | 1466.79 | 848.21 | 42.2% |
+| Memory aligned, 1000 iterations | 481.08 | 357.83 | 25.6% |
+| Memory crossing, 1000 iterations | 632.40 | 554.25 | 12.4% |
+| Host/memory aligned, 1000 iterations | 689.12 | 548.94 | 20.3% |
+| Host/memory crossing, 1000 iterations | 835.42 | 748.08 | 10.5% |
+
+The full existing comparison also passes with both active engines and explicit compiled deferral.
+Its candidate native/PolkaVM ratios remain roughly 7.5–18.2×; some reference/arithmetic samples
+are marked noisy by the existing report heuristics. These are bounded local microbenchmarks,
+without CPU isolation or deterministic instruction/cache counts; no whole-client throughput,
+Linux timing, compiled comparison or full parity claim follows. Input/output validation and all
+samples remain intact. Baseline/candidate reports, exact build/source metadata, native binaries,
+paired samples and sampling evidence are retained locally under `build/pvm8/perf-baseline` and
+`build/pvm8/perf-candidate`; reproduce with `make bench-pvm` on the compared revisions.
+Further profiling and focused fuzzing remain required work toward interpreter competitiveness.
+
+
+## Bounded decoder memo, 2026-10-23
+
+After the cursor change at `66726e17`, profiling still identified operand decoding on the hot loop.
+The invocation-local sixteen-slot memo reuses only genuine scalar decodes from the same immutable
+program, including host resumptions. A first form copied a full cached result to a temporary;
+paired measurement improved arithmetic but regressed memory by about 11%, so that form was rejected.
+Direct slot inspection with an inline helper removes that extra copy. No checks or fixtures changed.
+
+Preserved cursor/direct-memo binaries, run in two opposite orders with the same validated three
+warmups/ten measured samples per fixed guest, gave these native medians:
+
+| Fixed guest | Cursor (µs) | Direct memo (µs) | Less execution time |
+| --- | ---: | ---: | ---: |
+| Arithmetic, 10000 iterations | 864.56 | 536.15 | 38.0% |
+| Memory aligned, 1000 iterations | 362.90 | 318.54 | 12.2% |
+| Memory crossing, 1000 iterations | 533.75 | 501.48 | 6.0% |
+| Host/memory aligned, 1000 iterations | 557.10 | 499.27 | 10.4% |
+| Host/memory crossing, 1000 iterations | 728.44 | 678.62 | 6.8% |
+
+The full unchanged pinned PolkaVM interpreter comparison passes; its five native/reference ratios
+remain approximately 5.5–19.0×, so this is progress toward competitiveness, not parity. Sampling and
+raw validated comparisons are retained under `build/pvm8/cache-direct`; the rejected experiment
+is retained separately under `build/pvm8/cache-candidate`. The same local timing/no-isolation,
+no deterministic instruction-count, no compiled comparison and no full-client throughput limits
+apply. Compiler/toolchain/fixture/source identities and every raw sample remain in the reports.

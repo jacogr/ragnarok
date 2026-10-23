@@ -22,7 +22,8 @@ const
       "--state-checkpoint-bytes", "--state-storage", "--state-db", "--state-layout",
       "--state-migrate-from",
       "--state-compact-bytes", "--download-ancestor", "--download-blocks",
-      "--download-remote-ancestors", "--download-discover-ancestors"]
+      "--download-remote-ancestors", "--download-discover-ancestors",
+      "--download-logical-source", "--download-logical-policy"]
 
 type StateStorage* {.pure.} = enum ## Backend choice is independent of future full/light node modes.
   Memory, Disk
@@ -37,6 +38,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   downloadCount, remoteAncestors, discoverAncestors: int
   endpoint, chain, directory, managementPath: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
+  logicalSource, logicalPolicy: string
   backend: StateStorage
   layout: StateDiskLayout
   compactBytes: ByteLimit
@@ -75,6 +77,16 @@ func remoteDownloadAncestors*(options: Options): int =
 func discoverDownloadAncestors*(options: Options): int =
   ## Explicit whole-run on-demand header allowance; default/failed parses never enable acquisition.
   if options.parsed: options.discoverAncestors else: 0
+
+func logicalDownloadEnabled*(options: Options): bool =
+  ## Only a complete validated paired opt-in enables current logical CLI provisioning.
+  options.parsed and options.logicalSource.len > 0
+proc logicalDownloadSourcePath*(options: Options): string =
+  ## Copy only the explicit parsed declaration path; failed/default options expose no partial source.
+  if options.parsed: options.logicalSource else: ""
+proc logicalDownloadPolicyPath*(options: Options): string =
+  ## Complete separate resource-policy path is retained independently of the declaration file.
+  if options.parsed: options.logicalPolicy else: ""
 
 func downloadBlocks*(options: Options): int =
   ## Valid commands default to one child; failed/default parsing reports no requested work.
@@ -233,6 +245,12 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
         of "managed": candidate.layout = StateDiskLayout.Managed
         else: return false # Layout spelling is explicit; existing paths never select migration implicitly.
       of "--state-db": candidate.database = value
+      of "--download-logical-source", "--download-logical-policy":
+        for character in value:
+          if ord(character) < 32 or ord(character) ==
+              127: return false # Native startup paths cannot be truncated or contain control bytes.
+        if name == "--download-logical-source": candidate.logicalSource = value
+        else: candidate.logicalPolicy = value
       of "--download-blocks":
         var number = 0'u64
         if value[0] == '0' or not decimalLimit(value, number) or number == 0 or
@@ -327,6 +345,11 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       return false # Other commands must not silently ignore supplied download controls.
   if candidate.remoteAncestors > 0 and candidate.discoverAncestors > 0:
     return false # Up-front fixed acquisition and child-driven discovery are explicit alternative command modes.
+  if candidate.logicalSource.len > 0 or candidate.logicalPolicy.len > 0:
+    if candidate.logicalSource.len == 0 or candidate.logicalPolicy.len == 0 or
+        candidate.positional.len == 0 or candidate.positional[0] != "download-current" or
+            not candidate.state:
+      return false # Neither unpaired controls nor other commands can silently ignore a logical startup request.
   candidate.parsed = true
   options = candidate # Only a complete validated configuration replaces the cleared output.
   true

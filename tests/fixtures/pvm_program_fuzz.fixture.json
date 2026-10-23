@@ -1,0 +1,10 @@
+{
+  "environment": "RAGNAROK_PVM_PROGRAM_FUZZ",
+  "files": {
+    "pvm-program-fuzz/branch-loop.bin": "79314a5ac4fbba9674886635d8a2c2702e24accf73b8ad50c8564b4bb079ca85",
+    "pvm-program-fuzz/literal-jam.bin": "cf25a39350bbafe5d5a46276fbc525b9533942fc8dfddfe6b5eed813a28e1ed8",
+    "pvm-program-fuzz/minimal-paper.bin": "08be00847777a00163b50e18df329005f63461588c82487a10c5e8c7ee6cf108",
+    "pvm-program-fuzz/zero-width-table.bin": "a861f1982c86aeec19c6576bc14ef18676ad3497c43ea577cd2acf46fbe89aaa"
+  },
+  "target": "pvm-program-fuzz"
+}
