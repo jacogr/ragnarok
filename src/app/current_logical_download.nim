@@ -65,6 +65,15 @@ proc initCurrentLogicalDownloadPolicy*(prior: CurrentLogicalState,
   ## Reuse a genuinely completed logical owner under explicit bounded namespace continuation; no source-derived resource defaults are inferred.
   CurrentLogicalDownloadPolicy(origin: LogicalDownloadOrigin.Completed,
     mode: LogicalDownloadMode.ContinueNamespaces, prior: prior, continuation: limits)
+proc initCurrentLogicalDownloadPolicy*(source: CurrentLogicalDownloadPolicy,
+    limits: LogicalContinuationLimits): CurrentLogicalDownloadPolicy =
+  ## Explicitly select namespace continuation over an already retained configured/completed source without reopening or substituting its private provenance.
+  case source.origin
+  of LogicalDownloadOrigin.Configured: initCurrentLogicalDownloadPolicy(source.parent,
+      limits) # Keep the exact originally qualified configured owner.
+  of LogicalDownloadOrigin.Completed: initCurrentLogicalDownloadPolicy(source.prior,
+      limits) # Keep the exact prior completed owner.
+  else: default(CurrentLogicalDownloadPolicy) # An invalid source cannot become enabled by supplying budgets.
 proc continueCurrentLogicalDownloadPolicy*(policy: CurrentLogicalDownloadPolicy,
     prior: CurrentLogicalState): CurrentLogicalDownloadPolicy =
   ## Advance only the source under the exact previously captured budgets; invalid defaults cannot become enabled policies.

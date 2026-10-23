@@ -1,0 +1,34 @@
+{
+  "build_name": "current-namespace-policy-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "current_namespace_policy guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "current-namespace-policy-value"
+    },
+    {
+      "arguments": [
+        "field"
+      ],
+      "description": "Successful namespace policy has no failed field",
+      "diagnostic": "not outcome.status == None",
+      "identity": {
+        "reason": "field"
+      },
+      "name": "current-namespace-policy-field"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/current_namespace_policy_results.nim"
+}

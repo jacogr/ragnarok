@@ -6,13 +6,17 @@
 
 import std/[strutils, syncio]
 import ../quic/current_block_download_loop
-import ./current_logical_startup
+import ./[current_logical_startup, candidate]
+import ../codec/bounded
+import ../state/[logical_continuation, accumulation_effects, accumulation_storage_history,
+  request_identity_history, service_identity_history]
 
 const
   CurrentDownloadPolicyBytes* = 65536 ## Hard startup input cap, independent of block and state resource policies.
   PolicyValues = 389
   PolicyHeader = "ragnarok-current-download-policy-v1"
   LogicalPolicyHeader = "ragnarok-current-logical-policy-v1"
+  NamespacePolicyHeader = "ragnarok-current-namespace-policy-v1"
 
 type
   CurrentDownloadPolicyError* {.pure.} = enum ## Failure alternatives contain only a reason and bounded field diagnostic.
@@ -30,6 +34,19 @@ type
       policy: CurrentLogicalStartupLimits
     else:
       field: string
+  NamespaceHostLimits* = object ## Only new raw-storage/request identity retention policies supplement the existing full execution configuration.
+    storage*: AccumulationStorageFactLimits
+    requests*: ElementLimit
+  CurrentNamespacePolicy* = object ## Explicit continuation and producer capture are independent from startup source qualification and existing execution/store policies.
+    continuation*: LogicalContinuationLimits
+    initial*, round*: NamespaceHostLimits
+    storage*: StorageHistoryLimits
+    requests*: RequestIdentityHistoryLimits
+    services*: ServiceIdentityHistoryLimits
+  CurrentNamespacePolicyResult* = object ## Whole-schema failure exposes only the bounded offending field, never partial numeric policies.
+    case status: CurrentDownloadPolicyError
+    of None: policy: CurrentNamespacePolicy
+    else: field: string
   PolicyValue = object ## At most 389 bounded keys/numbers are retained before schema assignment.
     name: string
     number: uint64
@@ -41,6 +58,7 @@ type
 
 include ./current_download_policy_fields
 include ./current_logical_policy_fields
+include ./current_namespace_policy_fields
 
 func error*(outcome: CurrentDownloadPolicyResult): CurrentDownloadPolicyError =
   ## Defaults/refusals never authorize startup or policy extraction.
@@ -227,3 +245,54 @@ proc loadCurrentLogicalPolicy*(path: string): CurrentLogicalPolicyResult {.raise
   let reason = readPolicyFile(path, text)
   if reason != CurrentDownloadPolicyError.None: return logicalRefused(reason)
   decodeCurrentLogicalPolicy(text)
+
+func error*(outcome: CurrentNamespacePolicyResult): CurrentDownloadPolicyError =
+  ## Defaults/refusals never grant namespace capture or continuation policies.
+  outcome.status
+func value*(outcome: CurrentNamespacePolicyResult): CurrentNamespacePolicy {.inline,
+    requires: outcome.status == CurrentDownloadPolicyError.None.} =
+  ## Extract only the entire explicit reviewed resource schema.
+  outcome.policy
+func fieldName*(outcome: CurrentNamespacePolicyResult): string {.inline,
+    requires: outcome.status != CurrentDownloadPolicyError.None.} =
+  ## Expose only an actual bounded refusal diagnostic.
+  outcome.field
+proc namespaceRefused(reason: CurrentDownloadPolicyError,
+    field = ""): CurrentNamespacePolicyResult =
+  ## Construct no partial configuration on any failed parser branch.
+  CurrentNamespacePolicyResult(status: reason, field: field)
+proc encodeCurrentNamespacePolicy*(policy: CurrentNamespacePolicy): string =
+  ## Serialize every reviewed namespace leaf under one distinct explicit opt-in version.
+  result = NamespacePolicyHeader & "\n"
+  currentNamespacePolicyFields(policy, result, writeField)
+proc decodeCurrentNamespacePolicy*(text: string): CurrentNamespacePolicyResult =
+  ## Reuse canonical bounded lexical admission, require every leaf and refuse unknown/duplicate/overflow input before publication.
+  var input = scanPolicy(text, NamespacePolicyHeader)
+  if input.error != CurrentDownloadPolicyError.None: return namespaceRefused(input.error, input.field)
+  var policy = default(CurrentNamespacePolicy)
+  currentNamespacePolicyFields(policy, input, readField)
+  if input.error notin [CurrentDownloadPolicyError.None, CurrentDownloadPolicyError.MissingField]:
+    return namespaceRefused(input.error, input.field)
+  for entry in input.values:
+    if not entry.used: return namespaceRefused(CurrentDownloadPolicyError.UnknownField, entry.name)
+  if input.error != CurrentDownloadPolicyError.None: return namespaceRefused(input.error, input.field)
+  if uint64(policy.storage.entries) == 0 or uint64(policy.requests.entries) == 0:
+    return namespaceRefused(CurrentDownloadPolicyError.InvalidPolicy,
+        "storage.entries/requests.entries") # Namespace mode cannot ever qualify with its mandatory history owners disabled.
+  CurrentNamespacePolicyResult(status: CurrentDownloadPolicyError.None, policy: policy)
+proc loadCurrentNamespacePolicy*(path: string): CurrentNamespacePolicyResult {.raises.} =
+  ## Bounded independent policy-file capture precedes Services, databases and outgoing transport.
+  var text = ""
+  let reason = readPolicyFile(path, text)
+  if reason != CurrentDownloadPolicyError.None: return namespaceRefused(reason)
+  decodeCurrentNamespacePolicy(text)
+proc configureCurrentNamespaces*(candidate: var CurrentCandidateLimits,
+    policy: CurrentNamespacePolicy) =
+  ## Change only explicitly supplied namespace capture/retention fields; existing execution, account membership and store ceilings remain independently configured.
+  candidate.storage = policy.storage
+  candidate.requests = policy.requests
+  candidate.serviceIdentities = policy.services
+  candidate.completion.execution.initial.guests.storageFacts = policy.initial.storage
+  candidate.completion.execution.initial.guests.requestFacts = policy.initial.requests
+  candidate.completion.execution.execution.round.guests.storageFacts = policy.round.storage
+  candidate.completion.execution.execution.round.guests.requestFacts = policy.round.requests
