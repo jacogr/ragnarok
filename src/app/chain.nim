@@ -6,7 +6,7 @@
 
 import ../chain/[genesis, provider, parameters]
 import ../state/[store, accumulation_chain, accumulation_finalization, accumulation_completion,
-  accumulation_publication, accumulation_current_consensus, accumulation_current_update]
+  accumulation_publication, accumulation_current_consensus, accumulation_current_update, accumulation_storage_history]
 import ../codec/bounded
 import ../state/parent_profile
 import ../rpc/server as rpc_server
@@ -146,9 +146,10 @@ proc installPrepared*(chain: var ApplicationChain, rpc: var rpc_server.Server,
   rpc.installPreparedAccumulation(chain.state, chain.view, prepared, lease)
 
 proc prepareAccumulation*(chain: ApplicationChain, source: PreparedCurrentAccumulationConsensus,
-    headerBytes: ByteLimit): CurrentChainPreparationResult =
+    headerBytes: ByteLimit, storageLimits = default(
+        StorageHistoryLimits)): CurrentChainPreparationResult =
   ## Stage the genuine current composed child privately, preserving the exact canonical parent/view and complete parameter tuple.
-  prepareCurrentChainUpdate(chain.state, chain.view, source, headerBytes)
+  prepareCurrentChainUpdate(chain.state, chain.view, source, headerBytes, storageLimits)
 proc canInstallPrepared*(chain: ApplicationChain, prepared: PreparedCurrentChainUpdate): bool =
   ## Current candidates retain exact original state and complete history/finality before durability begins.
   canInstallCurrentChainUpdate(chain.state, chain.view, prepared)

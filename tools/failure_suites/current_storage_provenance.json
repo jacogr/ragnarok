@@ -1,0 +1,44 @@
+{
+  "build_name": "current-storage-provenance-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "current_storage_provenance guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "current-storage-provenance-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "current_storage_provenance selected reason",
+      "diagnostic": "outcome.status == StorageHistoryFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "current-storage-provenance-reason"
+    },
+    {
+      "arguments": [
+        "history"
+      ],
+      "description": "Default updates cannot expose optional producer history",
+      "diagnostic": "hasStorageHistory(prepared)",
+      "identity": {
+        "reason": "history"
+      },
+      "name": "current-storage-provenance-history"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/current_storage_provenance_results.nim"
+}
