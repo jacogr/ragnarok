@@ -11,6 +11,7 @@ import ../../support/[collected_native_context, collected_mutation_context,
   current_logical_proof_context, supplied_services_context, current_namespace_refresh_context]
 import ../../../src/app/[full_logical_proof, logical_proof, proof_query, collected_supplied_state,
   preparation_worker, current_block_input, logical_code]
+import ../../../src/state/supplied_proof_import
 import ../../../src/state/[current_identities, current_logical, current_state, current_globals,
   current_profile, supplied_logical_inventory, supplied_services, accumulation_current_update,
   store, planned_proof, proof_plan, proof_view, proof_state_import, trie_proof,
@@ -36,8 +37,9 @@ proc checkTransport(fixture: CollectedMutationFixture, present: bool, payload: s
   let wire = response.bytes(limits.query.wireBytes).value
   let view = decodePlannedProofs(wire, keys, root, limits.query.view, limits.query.proof,
       limits.query.aggregate, limits.query.wireBytes).value
-  let restored = importProofState(view, root, ProofStateImportLimits(lookups: ElementLimit(128),
-      copyBytes: ByteLimit(1048576), store: genesisStoreLimits())).value.snapshot.value
+  let restoreLimits = ProofStateImportLimits(lookups: ElementLimit(128),
+      copyBytes: ByteLimit(1048576), store: genesisStoreLimits())
+  let restored = importProofState(view, root, restoreLimits).value.snapshot.value
   assert not sameStateSnapshot(restored, source) and restored.commitment.entries ==
       source.commitment.entries
   for i in 0..<source.commitment.entries:
@@ -56,10 +58,12 @@ proc checkTransport(fixture: CollectedMutationFixture, present: bool, payload: s
       suppliedServicesTestLimits).value
   let policy = namespaceLogicalLimits()
   let profile = logical.currentLogicalSource.value.currentStateGlobals.value.qualifiedCurrentProfile.value.derivedStateProfile.value
-  let globals = validateGlobalState(restored, profile, policy.globals).value
-  let complete = validateStateManifest(globals, declarations,
-      policy.logical.inventory.manifest).value
-  let qualified = captureSuppliedLogicalInventory(complete, declarations, policy.logical).value
+  let qualified = importSuppliedProofState(view, root, profile, declarations,
+    SuppliedProofImportLimits(restoration: restoreLimits, globals: policy.globals,
+      logical: policy.logical)).value # Actual selected mutations and rollback pass the same atomic expected-root/schema/raw-key boundary as independent source fixtures.
+  let typedSource = qualified.suppliedInventory.value.inventorySource.value.manifestSource.value
+  assert not sameStateSnapshot(typedSource, source) and not sameStateSnapshot(typedSource, restored)
+  assert array[32, byte](typedSource.commitment.root) == array[32, byte](root)
   let codeLimits = CodeAvailabilityLimits(services: ElementLimit(2), visits: ElementLimit(128),
       descriptors: ByteLimit(65536), perCode: ByteLimit(65536), totalCodeBytes: ByteLimit(131072))
   let originalCodes = auditLogicalCodeAvailability(logical, codeLimits).value.logicalCodeTable
