@@ -10,8 +10,9 @@ Authority: Gray Paper 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 An initialized `FullStateTrie` owns a complete serialized full-node mapping and explicit
 `FullStateTrieLimits`. A private revision owner distinguishes empty initialized state from a
 default handle. Nodes form an immutable acyclic ARC graph. Leaves own copied complete 31-byte
-keys/raw values; branches own nullable children. Every node caches its complete hash, entry
-count, nonempty node count and aggregate value bytes. Only newly built unpublished nodes may
+keys/raw values; branches own nullable children. Every node caches its complete hash; branches cache entry/
+nonempty-node counts and aggregate value bytes, while leaves derive one entry/node and their
+owned payload length. Only newly built unpublished nodes may
 receive hashes. Empty subtrees have the zero identity; shared-prefix unary branches remain
 real protocol nodes. A singleton is a leaf at every depth, including after deletion collapse.
 

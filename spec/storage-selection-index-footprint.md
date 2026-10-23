@@ -3,7 +3,7 @@
 ## Authorized continuation and decision
 
 This continues native stack 1238 above tagged-cell head
-`0ed42cd2990ebbecb9bb5d9f058b8ee7be9a092b`, within the current 20-PR batch ceiling. The maintainer
+`0ed42cd2990ebbecb9bb5d9f058b8ee7be9a092b`, within the current 15-PR batch ceiling. The maintainer
 requested substantive feature PRs containing their tests and documentation. Component measurements
 and selection-index compaction therefore belong to the same feature layer.
 
