@@ -79,12 +79,12 @@ func decodedError(reason: LightSnapshotError): FileError =
   else: FileError.InvalidFrame
 proc readCurrent(data: FileOwner): LightFileResult[PreparedLightSnapshot] =
   ## Retain the exact fully verified selected image so later admission need not resubmit old evidence.
-  let loaded = readManagedFile(data.directory, ManagedFileKind.Current, ManagedEpoch(0),
+  var loaded = readManagedFile(data.directory, ManagedFileKind.Current, ManagedEpoch(0),
       data.config.limits.bytes)
   if loaded.error != FileError.None: return LightFileResult[PreparedLightSnapshot](
       status: loaded.error)
-  let restored = restoreLightSnapshot(loaded.value, data.config.chain, data.config.root,
-      data.config.limits)
+  var encoded = loaded.takeValue
+  let restored = takeLightSnapshot(encoded, data.config.chain, data.config.root, data.config.limits)
   let reason = decodedError(restored.error)
   if reason != FileError.None: return LightFileResult[PreparedLightSnapshot](status: reason)
   LightFileResult[PreparedLightSnapshot](status: FileError.None, completed: restored.value)
