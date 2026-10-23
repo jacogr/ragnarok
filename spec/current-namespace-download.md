@@ -1,0 +1,9 @@
+# Current namespace download qualification
+
+The explicit `initCurrentLogicalDownloadPolicy` overloads accepting `LogicalContinuationLimits` opt into source-bound namespace continuation. Existing overloads retain strict identity-preserving refresh. Both modes capture original configured or genuinely completed logical provenance and independent resource ceilings before native worker borrowing. Advancing a policy preserves its original mode and budgets; default policies remain disabled.
+
+After matching collection releases the preparation lease, qualification consumes only the update's own selected producer histories. A failed continuation carries the exact guarded State reason and exposes no successful prefix. No handoff is enqueued on failure. Success follows the existing deferred handoff, durability and adoption path; qualification alone grants no adoption authority. Service/RPC/proof lifetime rules and physical database formats are unchanged.
+
+Native completion witnesses extend the maintained logical-download matrix with storage addition/deletion under explicit producer policies, three subsequent signed children from genuine completed logical sources, detached policy edits, missing history and short continuation policies, stale configured sources, cancellation/join, all three backends, durable adoption and strict disk/managed reopen. Existing strict identity refusal cases remain in the same suite. Runtime/private-field probes cover the appended reason and frozen mode/budgets.
+
+This layer enables the programmatic download policy. CLI resource-policy exposure is a separate next integration step; no existing configuration silently enables producer capture. State's service and request-bound preimage continuation retain their independently verified complete-map qualification contracts. Full STF parity and the independent current-schema corpus remain separate gates.

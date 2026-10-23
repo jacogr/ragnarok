@@ -1,0 +1,22 @@
+{
+  "build_name": "current-namespace-download-results",
+  "cases": [
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Current namespace download selected continuation reason",
+      "diagnostic": "outcome.status == ContinuationFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "current-namespace-download-reason"
+    }
+  ],
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/current_namespace_download_results.nim"
+}
