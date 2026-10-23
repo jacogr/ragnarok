@@ -74,9 +74,31 @@ proc cycle() =
   assert single != nil
   assert single.root == left and hashCalls() == 0
   assert collapsed.commitment.nodes == 1 and source.commitment.nodes == 3
+  failAfter(1)
+  assert newFullStateTrie([StateEntry(key: key(0, 0)), StateEntry(key: key(128, 0))],
+    policy()).error == TrieError.BackendFailure # Retire a constructor graph after its first cached child.
   fail(0)
   assert array[32, byte](source.apply(changes).value.commitment.root) == array[32, byte](
       changed.commitment.root)
+
+proc constructorCycle() =
+  ## Every constructor hash prefix rolls back, including a long value and deepest unary path.
+  let entries = [StateEntry(key: key(0, 1), value: newSeq[byte](33)),
+    StateEntry(key: key(128, 0), value: @[7'u8]), StateEntry(key: key(0, 0))]
+  fail(0)
+  let source = newFullStateTrie(entries, policy()).value
+  let attempts = hashCalls()
+  assert attempts == 252 # 251 final physical nodes plus one long-value hash, no intermediate hashes.
+  let retained = source.lookup(key(128, 0)).value
+  for prefix in 0..<int(attempts):
+    failAfter(cint(prefix))
+    assert newFullStateTrie(entries, policy()).error == TrieError.BackendFailure
+    assert hashCalls() == cint(prefix+1)
+    assert source.commitment.nodes == 251 and retained.bytes == @[7'u8]
+  fail(0)
+  let recovered = newFullStateTrie(entries, policy()).value
+  assert hashCalls() == attempts
+  assert array[32, byte](source.commitment.root) == array[32, byte](recovered.commitment.root)
 
 proc preflight() =
   ## Final topology and all payload/count policies reject before touching the hash backend.
@@ -102,6 +124,28 @@ proc preflight() =
     assert source.apply([TrieWrite(key: key(128, 0), kind: TrieWriteKind.Put,
       value: @[2'u8, 3])]).error == TrieError.LimitExceeded
     assert hashCalls() == 0 and source.commitment.entries == 1
+  # Initial maps have independent mutation ceilings, but all complete-map policies remain binding.
+  let initial = [StateEntry(key: key(128, 0), value: newSeq[byte](33)),
+    StateEntry(key: key(0, 0), value: @[1'u8])]
+  var exact = policy(3)
+  exact.trie.items = ElementLimit(2)
+  exact.trie.totalValueBytes = ByteLimit(34)
+  exact.writes = ElementLimit(0)
+  exact.writeValueBytes = ByteLimit(0)
+  fail(0)
+  let readonly = newFullStateTrie(initial, exact).value
+  assert readonly.commitment.nodes == 3 and hashCalls() == 4
+  fail(1)
+  assert readonly.apply([TrieWrite(key: key(0, 0), kind: TrieWriteKind.Delete)]).error ==
+      TrieError.LimitExceeded
+  assert hashCalls() == 0 # Construction must restore the caller's zero mutation allowance.
+  for mode in 0..<4:
+    var short = exact
+    if mode == 0: short.trie.items = ElementLimit(1) # Entry scratch is refused before topology allocation.
+    elif mode == 1: short.trie.perValue = ByteLimit(32) # The long leaf remains subject to its own ceiling.
+    elif mode == 2: short.trie.totalValueBytes = ByteLimit(33) # Sum validation cannot borrow mutation allowance.
+    else: short.trie.nodes = TrieNodeLimit(2) # Exact physical topology must fit before any digest call.
+    assert newFullStateTrie(initial, short).error == TrieError.LimitExceeded and hashCalls() == 0
   fail(1)
   let entries = [StateEntry(key: key(0, 0)), StateEntry(key: key(0, 1))]
   assert newFullStateTrie(entries, policy(249)).error == TrieError.LimitExceeded
@@ -115,6 +159,9 @@ proc preflight() =
     assert hashCalls() == cint(prefix+1) # Constructor rollback includes both child and root failure.
   fail(0)
 
+let constructionBefore = getOccupiedMem()
+constructorCycle()
+assert getOccupiedMem() == constructionBefore
 preflight()
 # Warm the exact isolated workload before measuring success, failure and retained-owner retirement.
 for i in 0..<25: cycle()

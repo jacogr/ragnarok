@@ -60,6 +60,12 @@ proc topology() =
       let after = before.apply([TrieWrite(key: second.key, kind: TrieWriteKind.Put,
         value: second.value)]).value
       matches(after, @[first, second])
+      # Direct construction must agree with both the independent calculator and incremental insertion.
+      let built = newFullStateTrie([second, first], policy()).value
+      matches(built, @[first, second])
+      assert built.commitment.nodes == uint64(depth+3)
+      let reduced = built.apply([TrieWrite(key: first.key, kind: TrieWriteKind.Delete)]).value
+      matches(reduced, @[second]) # Constructed branches must also support ordinary collapse/sharing.
       assert after.commitment.nodes == uint64(depth+3)
       matches(before, @[first])
       let collapsed = after.apply([TrieWrite(key: first.key, kind: TrieWriteKind.Delete)]).value
@@ -179,6 +185,13 @@ proc sequence() =
     current = completed.value
     model = reference(model, writes)
     matches(current, model)
+    # Rebuild unsorted mixed-length maps through the constructor; no update-path cache is reused.
+    var reversed: seq[StateEntry] = @[]
+    for offset in 0..<model.len:
+      reversed.add(model[model.len-1-offset])
+    let rebuilt = newFullStateTrie(reversed, policy()).value
+    matches(rebuilt, model)
+    assert not sameTrieRevision(rebuilt, current)
     matches(previous, old)
     # A copied revision is an independent branch and cannot mutate either retained version.
     let forked = previous.apply([TrieWrite(key: key(200), kind: TrieWriteKind.Put)]).value

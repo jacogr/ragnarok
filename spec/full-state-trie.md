@@ -51,9 +51,13 @@ policy; no recoverable OOM result is promised.
 The complete node ceiling measures the entire revision, not just new hashes. Long values add their
 raw-value hash as required by B/L. Paths have at most 248 branches. Batch sorting uses O(w) fixed
 scratch; edits use O(w*248) node work/allocation before ARC releases superseded candidates, and
-copy new value bytes. Construction uses the same edit path for n initial entries. This first
-implementation makes two path-copy passes for replacements; no latency or measured speedup is
-claimed. Retaining more revisions retains more shared graph storage; these per-map/batch limits
+copy new value bytes. Construction shares batch validation and hash publication, but partitions
+sorted unique identities by key bit and builds each final physical node once. Empty partitions
+stay nil and singleton partitions become leaves immediately; multi-entry shared prefixes retain
+their unary branches. The private builder is bounded by 248 key bits and uses subtraction-based
+binary-search midpoints. No construction mode is exposed to callers. See the
+[direct construction evidence](storage-trie-bulk-build.md). Ordinary mutation still makes two
+path-copy passes for replacements. Retaining more revisions retains more shared graph storage; these per-map/batch limits
 are not a global history-memory cap.
 
 ## Completion verification
