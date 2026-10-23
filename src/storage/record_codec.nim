@@ -22,7 +22,11 @@ type
     encoded*: ByteLimit
   RecordError* {.pure.} = enum ## No default/refused operation exposes bytes or records.
     Uninitialized, None, InvalidFormat, NonCanonical, LimitExceeded, DuplicateNode,
-    HashMismatch, BackendFailure
+    HashMismatch, BackendFailure, ConsumerRefused
+  RecordCollectionInfo* = object ## Successful delivery summary; no retained records or graph authority.
+    records*, valueBytes*: uint64
+  RecordConsumer*[T] = proc(state: var T, record: var TrieRecord): bool {.nimcall.}
+    ## Required nonnil synchronous owner transfer; false stops delivery with ConsumerRefused.
   RecordScan = object ## Private exact-input structural preflight; retains no borrowed byte address.
     batch: TrieExport
     count, header: int
@@ -339,3 +343,24 @@ proc decodeOrderedRecordCollection*(input: openArray[byte], limits: RecordLimits
   var batch = decoded.takeValue # The collection owns the decoder's exact validated record buffer.
   RecordResult[RecordCollection](status: RecordError.None,
     completed: RecordCollection(records: move(batch.records)))
+
+proc visitOrderedRecordCollection*[T](input: openArray[byte], limits: RecordLimits,
+    state: var T, consume: RecordConsumer[T]): RecordResult[RecordCollectionInfo] =
+  ## Preflight the entire stable borrowed input before delivering one owned, locally hashed record at a time.
+  ## A visited prefix is provisional until success; callbacks must stage privately for transactional use.
+  ## The callback may move the record payload; no borrow into input or the local record survives this call.
+  let scanned = scanRecords(input, limits, true, true)
+  if scanned.error != RecordError.None:
+    return RecordResult[RecordCollectionInfo](status: scanned.error)
+  let shape = scanned.value
+  var offset = shape.header
+  for index in 0..<shape.count:
+    # The complete structural pass proved this record; stable input preserves its bounds through delivery.
+    var record = readRecord(input, offset)
+    let checked = recordIntegrity(record, limits)
+    if checked != RecordError.None:
+      return RecordResult[RecordCollectionInfo](status: checked)
+    if not consume(state, record):
+      return RecordResult[RecordCollectionInfo](status: RecordError.ConsumerRefused)
+  RecordResult[RecordCollectionInfo](status: RecordError.None,
+    completed: RecordCollectionInfo(records: uint64(shape.count), valueBytes: shape.valueBytes))
