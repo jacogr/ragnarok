@@ -97,6 +97,11 @@ Strict reopen validates the whole journal and refuses partial tails. Retained re
 valid after file close. All calls are synchronous storage work; run them outside networking
 callbacks. See the record contract for bounded IO, cooperative inode locking and uncertainty rules.
 
+`encodeFramedTrieExport` strictly validates raw batches before writing them into one owned buffer
+with checked zero-filled frame reservations. Both journal formats fill metadata/context and their
+new checksum around that body without retaining another encoded body. See the
+[journal framing contract](../../spec/storage-journal-framing.md).
+
 `recoverFileRepository` is an explicit operator action for an interrupted final append. It
 requires the independently trusted generation and root of the complete prefix before truncating
 anything; complete corrupt frames and complete successor revisions are never discarded. Strict
