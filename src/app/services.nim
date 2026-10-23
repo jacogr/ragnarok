@@ -13,6 +13,8 @@ import ./[handoff, current_handoff, current_block_input]
 import ./candidate
 import ./block_input
 import ./preparation_worker
+import ./logical_seed
+import ../codec/state_composition
 import ./current_logical as collected_logical
 import ../state/[parent_logical, current_logical]
 import ./[proof_query, proof_worker]
@@ -884,6 +886,12 @@ proc collectPreparation*(services: var Services, ticket: PreparationTicket): Pre
     services.preparing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # Stale/early collection cannot release another active lease.
+
+proc captureLogicalSeed*(services: Services, declarations: openArray[StateService],
+    limits: LogicalSeedLimits): LogicalSeedResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Select the actual physical canonical parent only while all managed native aliases are available.
+  logical_seed.captureLogicalSeed(services.canonical, declarations, limits)
 
 proc refreshCollectedLogical*(services: Services, completion: PreparationCompletion,
     source: SelectedLogicalParent, limits: CollectedLogicalLimits): CollectedLogicalResult {.requires:
