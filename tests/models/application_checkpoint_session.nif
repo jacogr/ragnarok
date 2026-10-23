@@ -1,0 +1,47 @@
+(stmts#Copyright (c) 2026 Ragnarök contributors
+SPDX-License-Identifier: MIT OR Apache-2.0
+One joined checkpoint shutdown journal and optional restart, with a serialized host.
+receipt/expected 0 absent, 1 Cancelled, 2 Completed, 3 Interrupted; retirement is independent.
+expected/expectedRet are history monitors cleared only by explicit acknowledgement.
+Hypothesis: repeated close, restart or a retirement-only error discards unacknowledged evidence.
+Source: src/app/checkpoint_session.nim close/start/shutdown/takeShutdown.
+Worker close outcomes are abstract API inputs; this model does not simulate filesystem IO.#
+  (variables :active.0. :pending.0. :receipt.0. :retirement.0.
+              :expected.0. :expectedRet.0. :used.0.)
+  (assign Mut.0. 0)
+  (assign Witness.0. (false))
+  (def :Init.0.
+    (and (prime active.0. (true)) (prime pending.0. (false)) (prime receipt.0. 0)
+         (prime retirement.0. (false)) (prime expected.0. 0)
+         (prime expectedRet.0. (false)) (prime used.0. (false))))
+  (def :Close.0.#close: join once and independently retain operation completion and retirement refusal.#
+    (and active.0. (not used.0.)
+         (exists :result.0 (set 0 1 2 3)
+           (exists :failed.0 (set (false) (true))
+             (and (prime active.0. (false)) (prime used.0. (true))
+                  (prime receipt.0. result.0) (prime expected.0. result.0)
+                  (prime retirement.0. failed.0) (prime expectedRet.0. failed.0)
+                  (prime pending.0.
+                    (or (neq result.0 0) (and (neq Mut.0. 3) failed.0))))))))
+  (def :CloseAgain.0.#close: an inactive session returns without replacing its retained journal.#
+    (and (not active.0.)
+         (prime receipt.0. (if (eq Mut.0. 1) 0 receipt.0.))))
+  (def :Observe.0.#shutdown: repeated observation is permitted only while the journal is pending.#
+    (and pending.0. (unchanged receipt.0.)))
+  (def :Acknowledge.0.#takeShutdown: exactly one explicit transfer releases the restart gate.#
+    (and pending.0. (prime pending.0. (false)) (prime receipt.0. 0)
+         (prime retirement.0. (false)) (prime expected.0. 0) (prime expectedRet.0. (false))))
+  (def :Restart.0.#start: live or unacknowledged shutdown state refuses admission.#
+    (and (not active.0.) (or (not pending.0.) (eq Mut.0. 2))
+         (prime active.0. (true))))
+  (def :Next.0.
+    (or Close.0. CloseAgain.0. Observe.0. Acknowledge.0. Restart.0.))
+  (def :Safe.0.
+    (and (eq receipt.0. expected.0.) (eq retirement.0. expectedRet.0.)
+         (eq pending.0. (or (neq expected.0. 0) expectedRet.0.))
+         (or (not pending.0.) (not active.0.))))
+  (def :Reached.0.
+    (and pending.0. (not active.0.) (eq receipt.0. 2) retirement.0.))
+  (spec (always-stutter Init.0. Next.0.
+    (tuple active.0. pending.0. receipt.0. retirement.0. expected.0. expectedRet.0. used.0.)))
+  (check (if Witness.0. (not Reached.0.) Safe.0.)))
