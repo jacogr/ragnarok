@@ -409,3 +409,29 @@ Full raw samples, noisy rows, hashes and preparation observations remain under
 compiled, deterministic-counter, random-access or full JAM performance follows.
 Fuzzing remains deferred. Rejected operand-dispatch experiments produced no reliable
 gain and were excluded from this production tree; the arithmetic issue remains open.
+
+
+## Bounded bit-count arithmetic, 2026-10-23
+
+Sampling the new mixed-bit guest located the inlined trailing-count loop at
+`executeBudget` offset 4040 in the preserved profile binary; emitted instructions
+confirm the repeated bit test/shift. Repeated successor/opcode lookups and decoder
+misses also remain substantial. Replace population/leading/trailing bit traversal
+with fixed unsigned word operations for all six 32/64-bit instructions. Explicit
+zero handling and low-word masking retain the existing mathematical contract.
+
+Two opposite-order preserved-binary comparisons confirm a mixed-bit improvement:
+152.81→128.42 µs (16.0% less time), then 146.81→127.00 µs (13.5%). The latter retains
+twenty validated samples per binary. Ordinary arithmetic measured 3.5% slower in the
+first comparison and 0.5% faster in confirmation; no consistent ordinary arithmetic
+change is established. Memory, host, sparse and short-call differences also vary
+within a few percent, so no broad execution improvement is claimed. All ten guests
+pass the full pinned interpreter comparison; its mixed-bit ratio is about 5.1×.
+
+Evidence lives under `build/pvm9/working-sets-profile`, `bit-counts`,
+`bit-counts-paired` and `bit-counts-confirm`. Profiles/word algorithms and new literal
+width/alias witnesses are part of the same feature. Checked ThinLTO and every normal
+contract remain enabled; no architecture-specific hook, pin change or fuzzing work
+is involved. Shared-host/local macOS limits, compiled deferral and open full JAM
+parity still apply. Next work should reduce measured decode/successor lookup costs
+without weakening invalid-successor or instruction-budget behavior.
