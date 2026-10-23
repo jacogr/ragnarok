@@ -3,7 +3,11 @@
 
 ## Opaque current updates stage fallible child capture before durable handoff and guarded installation.
 import std/assertions
-import ./[store, accumulation_current_chain, accumulation_current_consensus]
+import ./[store, accumulation_current_chain, accumulation_current_consensus,
+    accumulation_current_authorization, accumulation_current_preimages,
+    accumulation_current_activity, accumulation_current_validators, accumulation_current_recent,
+    accumulation_current_ready, accumulation_current_finalization, accumulation_current_accounts,
+    accumulation_current_statistics, accumulation_storage_history]
 import ../codec/bounded
 import ../chain/[genesis, provider]
 
@@ -13,17 +17,21 @@ type
     prior: ChainView
     state: StateStore
     view: ChainView
+    storageCaptured: bool
+    storage: StorageHistory
     successor: BlockSnapshot
   PreparedCurrentChainUpdate* = object ## Default owners hold no snapshot graph; copies retain one immutable complete preparation.
     data: nil CurrentUpdateData
   CurrentChainPreparationError* {.pure.} = enum ## Failed/default preparation exposes no successful candidate.
-    Uninitialized, None, ChainFailure
+    Uninitialized, None, ChainFailure, StorageHistoryFailure
   CurrentChainPreparationResult* = object ## Only success carries preparation; only a real failed coordinator carries its guarded child reason.
     case status: CurrentChainPreparationError
     of None:
       completed: PreparedCurrentChainUpdate
     of ChainFailure:
       reason: CurrentAccumulationChainResult
+    of StorageHistoryFailure:
+      storageReason: StorageHistoryError
     else:
       discard # No successful prefix survives a refused preparation.
 func ready*(prepared: PreparedCurrentChainUpdate): bool =
@@ -40,8 +48,29 @@ func chainFailure*(outcome: CurrentChainPreparationResult): CurrentAccumulationC
     requires: outcome.status == CurrentChainPreparationError.ChainFailure.} =
   ## Preserve only the actual failed current coordinator, never its successful prefix.
   outcome.reason
+func storageError*(outcome: CurrentChainPreparationResult): StorageHistoryError {.inline,
+    requires: outcome.status == CurrentChainPreparationError.StorageHistoryFailure.} =
+  ## Preserve the actual optional producer-history capture refusal without exposing its candidate chain.
+  outcome.storageReason
+func hasStorageHistory*(prepared: PreparedCurrentChainUpdate): bool =
+  ## Defaults and explicitly disabled capture grant no selected raw-storage evidence; enabled empty histories remain distinguishable.
+  let data = prepared.data
+  data != nil and data.storageCaptured
+proc currentUpdateStorageHistory*(prepared: PreparedCurrentChainUpdate): StorageHistory {.requires: prepared.hasStorageHistory.} =
+  ## Retain only history captured from this exact update's genuine composition source during private preparation.
+  let data = prepared.data
+  assert data != nil
+  data.storage
+proc sourceStorageHistory(source: PreparedCurrentAccumulationConsensus,
+    limits: StorageHistoryLimits): StorageHistoryResult[StorageHistory] =
+  ## Successful chain preparation already validated every composition owner; follow that authentic producer chain without rerunning a guest.
+  let activity = source.currentConsensusSource.value.currentAuthorizationSource.value.currentPreimagesSource.value
+  let finalization = activity.currentActivitySource.value.currentValidatorsSource.value.currentRecentSource.value.currentReadySource.value
+  let completed = finalization.currentFinalizationAccounts.value.currentAccountsSource.value.currentStatisticsSource.value
+  captureStorageHistory(completed, limits)
 proc prepareCurrentChainUpdate*(state: StateStore, view: ChainView,
-    source: PreparedCurrentAccumulationConsensus, headerBytes: ByteLimit): CurrentChainPreparationResult =
+    source: PreparedCurrentAccumulationConsensus, headerBytes: ByteLimit,
+    storageLimits = default(StorageHistoryLimits)): CurrentChainPreparationResult =
   ## Run current prepared-state/capture/append once on private handle copies; retain no mutable caller borrow.
   var working = state
   var history = view
@@ -49,9 +78,19 @@ proc prepareCurrentChainUpdate*(state: StateStore, view: ChainView,
   if applied.error != CurrentAccumulationChainError.None:
     return CurrentChainPreparationResult(status: CurrentChainPreparationError.ChainFailure,
       reason: applied) # Failed private stages retain no candidate owner or child.
+  let captured = uint64(storageLimits.entries) != 0
+  var storage = default(StorageHistory)
+  if captured:
+    # Opt-in retention freezes the actual original completed producer under independent history policies before any candidate escapes.
+    let history = sourceStorageHistory(source, storageLimits)
+    if history.error != StorageHistoryError.None:
+      return CurrentChainPreparationResult(status: CurrentChainPreparationError.StorageHistoryFailure,
+          storageReason: history.error) # Private state/view prefixes retire together; neither caller handle was changed.
+    storage = history.value
   CurrentChainPreparationResult(status: CurrentChainPreparationError.None,
     completed: PreparedCurrentChainUpdate(data: CurrentUpdateData(parent: state.snapshot.value,
-      prior: view, state: working, view: history, successor: applied.value)))
+      prior: view, state: working, view: history, successor: applied.value,
+      storageCaptured: captured, storage: storage)))
 proc currentUpdatePriorState*(prepared: PreparedCurrentChainUpdate): StateStoreSnapshot {.requires: prepared.data != nil.} =
   ## Retain the exact original parent; equal roots never substitute another physical owner.
   let data = prepared.data

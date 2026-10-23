@@ -9,7 +9,8 @@ import ../chain/[genesis, provider, parameters]
 import ../codec/[block_codec, header, bounded]
 import ../state/[store, block_transition, report_transition, report_admission, accumulation_queue,
   accumulation_round, accumulation_runner, accumulation_driver, accumulation_finalization,
-  accumulation_outputs, accumulation_completion, report_anchors, accumulation_current_completion, accumulation_current_update]
+  accumulation_outputs, accumulation_completion, report_anchors, accumulation_current_completion,
+  accumulation_current_update, accumulation_storage_history]
 
 type
   ApplicationCandidateLimits* = object ## Caller-owned bounded stage policies, including explicit trusted round gas configuration.
@@ -251,6 +252,7 @@ type
     queue*: AccumulationQueueConfig ## Existing original queue planning policy.
     round*: AccumulationRoundConfig ## Trusted initial gas configuration and local input ceilings.
     completion*: CurrentAccumulationCompletionLimits ## Current execution and complete state policies.
+    storage*: StorageHistoryLimits ## Explicit producer raw-storage history retention; zero entries disables capture.
     headerBytes*: ByteLimit         ## Exact sealed child capture ceiling.
   CurrentCandidateError* {.pure.} = enum ## Every refusal preserves only the selected actual stage cause.
     Uninitialized, None, StateChanged, PrefixFailure, ReportFailure, QueueFailure, RoundFailure,
@@ -358,7 +360,7 @@ ancestors: openArray[OwnedHeader]): CurrentCandidateResult =
   if composed.error != CurrentAccumulationCompletionError.None:
     return CurrentCandidateResult(status: CurrentCandidateError.CompletionFailure,
         completionReason: composed)
-  let update = chain.prepareAccumulation(composed.value, limits.headerBytes)
+  let update = chain.prepareAccumulation(composed.value, limits.headerBytes, limits.storage)
   if update.error != CurrentChainPreparationError.None:
     return CurrentCandidateResult(status: CurrentCandidateError.PreparationFailure,
         preparationReason: update)
