@@ -346,19 +346,22 @@ proc inspectLightJournalTail*(recovery: var LightJournalRecovery, path: string,
     else: return FileError.InvalidJournal
   recovery.data = RecoveryOwner(owner: data, plan: planned.value)
   FileError.None
-proc revalidateCheckpoint(data: JournalOwner): FileError =
-  ## Explicit destructive repair also rechecks the selected checkpoint bytes against the same trusted manifest before truncation.
+proc readCheckedCheckpoint(data: JournalOwner): LightJournalResult[PreparedLightSnapshot] =
+  ## Destructive operations recheck the selected checkpoint bytes, proof policy and exact trusted manifest checksum.
   var loaded = readManagedFile(data.directory, ManagedFileKind.Snapshot, data.selected.epoch,
       data.config.snapshot.bytes)
-  if loaded.error != FileError.None: return loaded.error
+  if loaded.error != FileError.None: return fail[PreparedLightSnapshot](loaded.error)
   var encoded = loaded.takeValue
   let restored = takeLightSnapshot(encoded, data.config.chain, data.config.root,
       data.config.snapshot)
   let reason = snapshotReason(restored.error)
-  if reason != FileError.None: return reason
+  if reason != FileError.None: return fail[PreparedLightSnapshot](reason)
   if array[32, byte](restored.value.checksum) != array[32, byte](data.selected.snapshotChecksum):
-    return FileError.RecoveryMismatch
-  FileError.None
+    return fail[PreparedLightSnapshot](FileError.RecoveryMismatch)
+  LightJournalResult[PreparedLightSnapshot](status: FileError.None, completed: restored.value)
+proc revalidateCheckpoint(data: JournalOwner): FileError =
+  ## Repair needs the same strict checkpoint admission without retaining an additional image after this check.
+  readCheckedCheckpoint(data).error
 proc repair*(recovery: var LightJournalRecovery, owner: var LightJournalCache): LightJournalResult[
     StorageDurability] =
   ## Revalidate current selection, held inode/extent and all original bytes, then truncate/sync exactly the authenticated prefix before transfer.
@@ -507,3 +510,90 @@ proc compact*(owner: var LightJournalCache, prepared: PreparedLightCompaction): 
   LightJournalResult[LightCompactionReceipt](status: FileError.None,
     completed: LightCompactionReceipt(previousEpoch: prior, epoch: plan.selected.epoch,
       sequence: data.sequence, retirement: retirement))
+
+proc validateSelectedHead(data: JournalOwner): FileError =
+  ## Before namespace deletion reauthenticate exact CURRENT, checkpoint and actual held journal against the owner's confirmed head.
+  let selected = readSelection(data)
+  if selected.error != FileError.None: return selected.error
+  if array[32, byte](selected.value.checksum) != array[32, byte](
+      data.selected.checksum): return FileError.RecoveryMismatch
+  let checkpoint = readCheckedCheckpoint(data)
+  if checkpoint.error != FileError.None: return checkpoint.error
+  var loaded = readHeldManagedJournal(data.journal, data.directory, data.selected.epoch)
+  if loaded.error != FileError.None: return loaded.error
+  var input = loaded.takeValue
+  let replayed = replayLightJournal(input, selected.value, checkpoint.value, data.config.journal)
+  let reason = replayReason(replayed)
+  if reason != FileError.None: return reason
+  if uint64(replayed.value.sequence) != uint64(data.sequence) or
+      replayed.value.frameCount != data.frames or
+      array[32, byte](replayed.value.snapshot.checksum) != array[32, byte](data.image.checksum):
+    return FileError.RecoveryMismatch
+  FileError.None
+proc cleanupRetiredEpoch*(owner: var LightJournalCache, epoch: ManagedEpoch): FileError =
+  ## Explicitly remove only an earlier canonical pair after selected-head revalidation; retries synchronize even already absent names.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return reason
+  assert data != nil
+  if uint64(epoch) == 0 or uint64(epoch) >= uint64(
+      data.selected.epoch): return FileError.InvalidRetention
+  let checked = validateSelectedHead(data)
+  if checked != FileError.None:
+    data.poisoned = true
+    return checked
+  let journal = removeManagedFile(data.directory, ManagedFileKind.Journal, epoch)
+  if journal != FileError.None: return journal
+  let checkpoint = removeManagedFile(data.directory, ManagedFileKind.Snapshot, epoch)
+  if checkpoint != FileError.None: return checkpoint
+  data.directory.synchronize # A prior last-unlink barrier failure cannot become a false durable success merely because both names are now absent.
+proc discardPending*(owner: var LightJournalCache): FileError =
+  ## Explicitly discard only fixed unselected CURRENT.next after exact selected-head revalidation, never adopting its payload.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return reason
+  assert data != nil
+  let checked = validateSelectedHead(data)
+  if checked != FileError.None:
+    data.poisoned = true
+    return checked
+  let removed = discardManagedPending(data.directory)
+  if removed != FileError.None: return removed
+  data.directory.synchronize
+proc discardUnselectedCompaction*(owner: var LightJournalCache,
+    prepared: PreparedLightCompaction): FileError =
+  ## Remove only the prepared immediate unselected epoch and matching partial staging after preflighting every possible candidate prefix.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return reason
+  assert data != nil
+  let plan = prepared.data
+  if plan == nil: return FileError.Uninitialized
+  if uint64(data.selected.epoch) == high(uint64): return FileError.EpochExhausted
+  if uint64(plan.selected.epoch) <= uint64(data.selected.epoch): return FileError.InvalidRetention
+  if uint64(plan.priorEpoch) != uint64(data.selected.epoch) or
+      uint64(plan.selected.epoch) != uint64(data.selected.epoch)+1 or
+      uint64(plan.sequence) > uint64(data.sequence) or
+      array[32, byte](plan.prior) != array[32, byte](
+          data.selected.checksum): return FileError.StaleView
+  let bound = binding(plan.image, data.config)
+  if bound != FileError.None: return bound
+  let checked = validateSelectedHead(data)
+  if checked != FileError.None:
+    data.poisoned = true
+    return checked
+  var candidate = validateManagedFilePrefix(data.directory, ManagedFileKind.Snapshot,
+    plan.selected.epoch, plan.image.encodedBytes, data.config.snapshot.bytes)
+  if candidate == FileError.None:
+    candidate = validateManagedFilePrefix(data.directory, ManagedFileKind.Journal,
+      plan.selected.epoch, plan.anchor, data.config.journal.bytes)
+  if candidate == FileError.None:
+    candidate = validateManagedPendingPrefix(data.directory, plan.selected.bytes, ByteLimit(LightJournalManifestBytes))
+  if candidate != FileError.None: return candidate # Unknown or malformed candidate content preserves all files and confirmed selected authority.
+  let pending = discardManagedPending(data.directory)
+  if pending != FileError.None: return pending
+  let journal = removeManagedFile(data.directory, ManagedFileKind.Journal, plan.selected.epoch)
+  if journal != FileError.None: return journal
+  let checkpoint = removeManagedFile(data.directory, ManagedFileKind.Snapshot, plan.selected.epoch)
+  if checkpoint != FileError.None: return checkpoint
+  data.directory.synchronize

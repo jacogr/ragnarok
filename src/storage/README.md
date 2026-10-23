@@ -359,3 +359,8 @@ Prepared light journal compaction binds an exact epoch/sequence/image, writes a 
 checkpoint and empty anchor, then atomically selects that epoch without advancing update sequence.
 A confirmed receipt reports old-handle retirement separately; old files remain untouched. See
 [atomic checkpoint compaction](../../spec/storage-light-journal-compaction.md).
+
+Explicit light journal reclamation revalidates the exact selected checkpoint and held journal
+before removing earlier canonical epochs or fixed staging. Prepared abandoned candidates must
+match every expected canonical prefix before any unlink; idempotent retries synchronize even
+already absent names. See [guarded reclamation](../../spec/storage-light-journal-reclamation.md).

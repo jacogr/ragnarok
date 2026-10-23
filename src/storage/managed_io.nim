@@ -511,3 +511,37 @@ proc readHeldManagedJournal*(journal: var ManagedJournal, directory: ManagedDire
     return ManagedIoResult[seq[byte]](status: (if after !=
         FileError.None: after else: FileError.RecoveryMismatch))
   loaded
+
+proc checkNamedPrefix(directory: ManagedDirectory, name: var string,
+    expected: openArray[byte], limit: ByteLimit): FileError =
+  ## Validate an optional exact owned candidate name as a bounded regular prefix; only ENOENT counts as absent.
+  if not directory.opened: return FileError.Uninitialized
+  if uint64(expected.len) > uint64(limit): return FileError.LimitExceeded
+  let descriptor = openAt(directory.nativeDescriptor, name.toCString(), O_RDONLY or O_CLOEXEC or
+      O_NONBLOCK or noFollow, 0)
+  if descriptor < 0:
+    if posix.errno() == missing: return FileError.None # Missing unselected candidates have no bytes to authenticate or adopt.
+    return FileError.IoFailure
+  var loaded = readAll(descriptor, ByteLimit(expected.len))
+  let retired = closeNative(descriptor)
+  if loaded.error != FileError.None: return loaded.error
+  if retired != 0: return FileError.IoFailure
+  var bytes = loaded.takeValue
+  for index in 0..<bytes.len:
+    # A possible interrupted write contains only the exact canonical bytes already trusted by the caller.
+    if bytes[index] != expected[index]: return FileError.RecoveryMismatch
+  FileError.None
+proc validateManagedFilePrefix*(directory: ManagedDirectory, kind: ManagedFileKind,
+    epoch: ManagedEpoch, expected: openArray[byte], limit: ByteLimit): FileError =
+  ## Check only an explicit unselected epoch child; matching a prefix alone grants no publication or deletion authority.
+  if not directory.opened: return FileError.Uninitialized
+  if kind notin {ManagedFileKind.Snapshot, ManagedFileKind.Journal}: return FileError.InvalidPath
+  let named = managedFileName(kind, epoch)
+  if named.error != FileError.None: return named.error
+  var name = named.value
+  checkNamedPrefix(directory, name, expected, limit)
+proc validateManagedPendingPrefix*(directory: ManagedDirectory,
+    expected: openArray[byte], limit: ByteLimit): FileError =
+  ## Check only fixed CURRENT.next without interpreting its partial transport as selected authority.
+  var name = "CURRENT.next"
+  checkNamedPrefix(directory, name, expected, limit)
