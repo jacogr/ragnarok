@@ -210,11 +210,51 @@ it cannot replace the original current review's profile, source or two-covered-s
 Successful undercoverage remains a bounded observation, never a new qualification or funding
 policy. Every later enqueue still consumes only the original genuine prepared successor.
 
+## Production download adapter admission
+
+`app/current_logical_download.nim` binds an explicit `SelectedLogicalParent` or previously
+completed `CurrentLogicalState` to copied, independent identity, request-key, reconstruction and
+full logical-refresh budgets. `CurrentBlockDownload.begin` accepts this optional policy before
+byte reception or worker submission. No map scan invents missing declarations, and no received
+successor supplies its own resource policy. The receiver retains the original policy untouched
+through running, cancellation, Done and ancestor suspension until matching collection or joined
+retirement releases the graph lease.
+
+Matching `collectPreparation` now runs the existing State qualification stages before enqueue
+when the generation opted in. A logical refusal retains only its actual failed stage under
+`CurrentBlockDownloadError.LogicalFailure`, retires the generation's source and leaves the
+canonical state and handoff unchanged. Successful qualification enqueues only the genuine
+prepared update. `logicalCompletion` is available on the idle receiver after successful enqueue;
+its result names that exact qualified successor, which remains pending until a later Services
+turn performs adoption. Consumers must wait for and consume adoption before starting the next
+child. A newly admitted generation retires the receiver's previous logical completion, so the
+host retains a completed logical source explicitly before continuing. All outer source/result
+aliases remain untouched during preparation, proof and disk leases, including Done.
+
+`pvm_current_logical_download` exercises this production adapter across memory, journal and
+managed layouts. Genuine guest writes overwrite existing key5 or create/delete physical storage
+identities; creation/deletion refuse before enqueue. Configured and completed sources qualify
+three actual signed children. Default/invalid/foreign/stale sources and independent policy
+budgets preserve exact typed refusals; edited caller budgets cannot replace the captured policy.
+Immediate and Done cancellation and joining expose no successful logical completion. Strict
+reopen retains only the adopted history and exact final map. The existing raw adapter and native
+session suites remain regression controls.
+
+Run `make unit SUITE=pvm_current_logical_download`, `make unit SUITE=pvm_current_block_download`,
+`make unit SUITE=pvm_current_download_native` and `make check-inventory`. Source-owned privacy
+fixtures also forbid replacing the captured policy and bypassing the logical result accessor.
+
+The existing QUIC session/CLI continues to select its explicit raw-certificate path. Automatic
+logical startup declarations, policy-file provisioning and session rearming with logical sources
+are not inferred by this adapter API and remain separate integration work. No account-review
+funding policy, general producer mutation certificate, protocol rule or dependency pin changes.
+
 ## Next work
 
 The native consumer witnesses cover host admission/refusal, repeated children, cancellation/join
-and memory/durable handoff. Integrating this qualification into the production download adapter
-remains open, as do general producer mutation and exceptional/checkpoint propagation.
+and memory/durable handoff. Explicit logical admission now runs in the production download adapter;
+full session/CLI logical provisioning and rearming remain open, as do general producer mutation and
+exceptional/checkpoint propagation.
 After the required plumbing is qualified, measure PVM performance against the pinned PolkaVM
 control with reproducible workloads and then add focused fuzzing for the implemented boundaries.
 These remain future work, with no weakened checks, pin changes or inferred parity claims.
