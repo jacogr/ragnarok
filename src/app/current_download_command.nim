@@ -307,8 +307,15 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
   if timeout == 0: return CurrentDownloadCommandResult.InvalidEndpoint
   let policy = loadCurrentDownloadPolicy(options.argument(8))
   if policy.error != CurrentDownloadPolicyError.None: return CurrentDownloadCommandResult.InvalidPolicy
-  let limits = policy.value
+  var limits = policy.value
   let qualifyLogical = options.logicalDownloadEnabled
+  let namespaceEnabled = options.namespaceDownloadPolicyPath.len > 0
+  var namespacePolicy = default(CurrentNamespacePolicy)
+  if namespaceEnabled:
+    let configured = loadCurrentNamespacePolicy(options.namespaceDownloadPolicyPath)
+    if configured.error != CurrentDownloadPolicyError.None: return CurrentDownloadCommandResult.InvalidPolicy
+    namespacePolicy = configured.value
+    configureCurrentNamespaces(limits.candidate, namespacePolicy) # Frozen explicit capture reaches actual native inputs before any Services or outgoing peer exists.
   var logicalLimits = default(CurrentLogicalStartupLimits)
   var declarations = default(CurrentLogicalDeclarations)
   if qualifyLogical:
@@ -361,7 +368,9 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
   if qualifyLogical:
     let captured = captureCurrentLogicalStartup(owner.chainView, declarations, logicalLimits)
     if captured.error != CurrentLogicalStartupError.None: return CurrentDownloadCommandResult.InvalidLogicalSource
-    logical = captured.value # Full actual selected map/history/Parameters qualification precedes outgoing child peers.
+    logical = if namespaceEnabled: initCurrentLogicalDownloadPolicy(captured.value,
+        namespacePolicy.continuation)
+      else: captured.value # Full actual original map/history/Parameters qualification precedes explicit mode selection and outgoing child peers.
   let started = getMonoTime()
   if options.localDownloadAncestors:
     # Capture before any worker lease; no complete view/map alias survives into receiveChildren.

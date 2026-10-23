@@ -4,8 +4,9 @@
 ## Complete explicit CLI logical files drive actual authenticated adoption and disk restart; malformed syntax and incomplete identities grant no source prefix.
 import std/[assertions, syncio, envvars, strutils, os]
 import std/posix/posix
-import ../../support/[current_logical_cli_context, current_namespace_execution_context,
-    current_application_context, current_consecutive_context, current_consecutive_download_context,
+import ../../support/[current_logical_cli_context, current_namespace_policy_context,
+    current_namespace_execution_context, current_application_context, current_consecutive_context,
+    current_consecutive_download_context,
     current_services_disk_samples, managed_storage_samples, current_namespace_transition_context,
     current_download_command_context, block_download_transport]
 import ../../../src/app/[current_logical_startup, current_logical_download, current_download_policy,
@@ -153,15 +154,16 @@ proc sourceChecks(fixture: NamespaceExecutionFixture) =
   assert captureCurrentLogicalStartup(fixture.parent, declarations, smaller).error ==
       CurrentLogicalStartupError.GlobalsFailure
 proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false, omitted = false,
-    refuse = false) {.raises.} =
+    refuse = false, namespaces = false) {.raises.} =
   ## Actual command sockets, worker collection and adoption use explicit files; strict disk restart reconstructs a fresh physical logical owner.
   var chainPath = "pvm-logical-cli-chain"
   var policyPath = "pvm-logical-cli-policy"
   var sourcePath = "pvm-logical-cli-source"
   var logicalPolicyPath = "pvm-logical-cli-limits"
   var database = "pvm-logical-cli-state-" & $layout
+  var namespacePath = "pvm-logical-cli-namespace-policy"
   defer:
-    for name in [chainPath, policyPath, sourcePath, logicalPolicyPath]:
+    for name in [chainPath, policyPath, sourcePath, logicalPolicyPath, namespacePath]:
       var path = name
       discard posix.unlink(path.toCString())
     if layout == 2 and not malformed: removeManagedSample(database, [ManagedEpoch(1)])
@@ -194,8 +196,14 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     children.add(child)
     heads.add(model.chainView.bestBlock.value)
   var extra: seq[string] = @[]
+  if namespaces:
+    var namespacePolicy = namespacePolicyTestLimits()
+    if refuse: namespacePolicy.continuation.scratchBytes = ByteLimit(
+        0) # Preserve a genuine local continuation refusal after real receipt without adoption.
+    writeFile(namespacePath, if malformed: "wrong\n" else: encodeCurrentNamespacePolicy(namespacePolicy))
+    extra = @["--download-namespace-policy", namespacePath]
   if layout != 0:
-    extra = @["--state-storage", "disk", "--state-db", database]
+    for argument in ["--state-storage", "disk", "--state-db", database]: extra.add(argument)
     if layout == 2:
       for arg in ["--state-layout", "managed", "--state-compact-bytes", "0"]: extra.add(arg)
   var requests: seq[array[42, byte]] = @[]
@@ -203,11 +211,12 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
   for i in 0..<3:
     requests.add(currentExpectedRequest(array[32, byte](heads[i].blockHash)))
     responses.add(currentConsecutiveResponse(children[i]))
-  let firstCount = if malformed or omitted or refuse or layout == 0: 3 else: 1
+  let firstCount = if malformed or omitted or refuse or namespaces or layout == 0: 3 else: 1
   let exchanged = logicalCommandExchange(chainPath, policyPath, sourcePath, logicalPolicyPath,
       requests, responses, firstCount, extra)
   if malformed or omitted:
-    assert exchanged.outcome.error == CurrentDownloadCommandResult.InvalidLogicalSource
+    assert exchanged.outcome.error == (if malformed and
+        namespaces: CurrentDownloadCommandResult.InvalidPolicy else: CurrentDownloadCommandResult.InvalidLogicalSource)
     assert exchanged.outcome.adoptedBlocks == 0 and exchanged.secondRequests == 0
   elif refuse:
     assert exchanged.outcome.error == CurrentDownloadCommandResult.Exhausted
@@ -219,7 +228,7 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     assert not fileExists(database) and not dirExists(
         database) # Lexical refusal precedes Services or database startup.
   elif layout != 0:
-    if not omitted and not refuse:
+    if not omitted and not refuse and not namespaces:
       var nextRequests: seq[array[42, byte]] = @[]
       var nextResponses: seq[seq[byte]] = @[]
       for i in 1..<3:
@@ -246,12 +255,17 @@ proc main() {.raises.} =
   for i in 0..<raw.len: bytes[i] = byte(raw[i])
   let fixture = namespaceExecutionFixture(decodeOwnedReport(bytes, 2).value, namespaceHaltCode(),
       namespaceHaltCode())
+  let mutated = namespaceExecutionFixture(decodeOwnedReport(bytes, 2).value, namespaceHaltCode(),
+      namespaceStorageCode(@[9'u8, 8]))
   sourceChecks(fixture)
   for layout in 0..2:
     command(fixture, layout)
     command(fixture, layout, true)
     command(fixture, layout, false, true)
     command(fixture, layout, false, false, true)
+    command(mutated, layout, namespaces = true)
+    command(mutated, layout, namespaces = true, refuse = true)
+    command(mutated, layout, namespaces = true, malformed = true)
   echo "PVM current logical startup passed"
 try: main()
 except: quit(2) # Parser, source matching, command adoption and every native cleanup path are mandatory evidence.
