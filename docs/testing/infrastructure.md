@@ -307,3 +307,13 @@ native dependencies, fresh fixtures, reports and uniquely named evidence artifac
 complete serial plan. Reports and summaries explicitly identify partial group scope and require
 all that group's declared verdicts. The stable **E2E Networking** aggregate requires every
 matrix job to succeed, including refusal of skipped/cancelled groups. Job timeouts are unchanged.
+
+`E2E_GROUP=<group> make bench-e2e-lto` is an opt-in full-LTO/ThinLTO comparison.
+The manual CI scope `e2e-lto` runs the existing family matrix; each family compares full,
+thin, thin and full on the same VM. Shared native bridges are warmed before measurement,
+and each trial uses a fresh output root/compiler cache while retaining complete workload,
+selftest, fixture and provenance checks. Reports retain every actual compiler build event,
+so compilation/linking time is separated from remaining setup and live workload time.
+Mismatched sources/compiler identity, substituted scope/mode, failed builds or incomplete
+verdicts fail the comparison. Normal E2E and production builds retain full LTO; ordinary
+units/corpora retain non-LTO. Benchmark artifacts contain diagnostic logs and JSON only.

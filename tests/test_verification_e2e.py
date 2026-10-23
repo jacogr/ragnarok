@@ -121,8 +121,13 @@ class VerificationE2E(unittest.TestCase):
                 (wires/f'{index}.bin').write_bytes(bytes([index]))
             for group in (None, *PLAN.groups()):
                 arguments = ['test_e2e.py', '--compiler', str(folder/'compiler/nimony')]
+                output = folder/'e2e'
                 if group is not None:
                     arguments += ['--group', group]
+                if group == 'offload':
+                    # A selected ThinLTO trial must retain its explicit mode and private output root.
+                    output = folder/'thin-e2e'
+                    arguments += ['--lto', 'thin', '--build-dir', str(output)]
                 with self.subTest(group=group), patch('sys.argv', arguments), patch.dict(
                         os.environ, E2E_GROUP=''), patch('test_e2e.ROOT', folder), patch(
                         'test_e2e.BUILD', folder/'e2e'), patch(
@@ -138,8 +143,9 @@ class VerificationE2E(unittest.TestCase):
                         test_e2e.main()
                     self.assertEqual(result.exception.code, 0)
                     self.assertEqual(run.call_args.kwargs['group'], group)
-                    report = json.loads((folder/'e2e/results.json').read_text())
+                    report = json.loads((output/'results.json').read_text())
                     self.assertEqual(report['e2e_group'], group)
+                    self.assertEqual(report['e2e_lto'], 'thin' if group == 'offload' else 'full')
                     self.assertTrue(test_e2e.passed(report))
                     if group in (None, 'transport'):
                         corpus.assert_called_once()

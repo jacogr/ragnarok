@@ -57,7 +57,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, storage-diagnostics, storage-pressure, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [unit, e2e, e2e-lto, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, storage-diagnostics, storage-pressure, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         self.assertNotIn('synchronize', triggers)
         self.assertNotIn('opened', triggers)
@@ -84,7 +84,7 @@ class NimonyCISafeguards(unittest.TestCase):
                 "inputs.suite == 'full') || (github.event_name == 'pull_request' && "
                 "github.event.label.name == 'ci:full')")
         e2e = ("github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && "
-               "(inputs.suite == 'e2e' || inputs.suite == 'full')) || "
+               "(inputs.suite == 'e2e' || inputs.suite == 'e2e-lto' || inputs.suite == 'full')) || "
                "(github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || "
                "github.event.label.name == 'ci:full'))")
         self.assertIn('if: &requested ${{ '+requested+' }}', text)
@@ -186,6 +186,18 @@ class NimonyCISafeguards(unittest.TestCase):
             with self.subTest(result=result):
                 code = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
                 self.assertEqual(code == 0, result == 'success')
+
+    def test_e2e_lto_comparison_is_manual_and_separate_from_normal_verification(self):
+        """Manual comparison runs paired full workloads; ordinary E2E requests retain their full-LTO path."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        section = text.split('  e2e:\n', 1)[1].split('  e2e-status:\n', 1)[0]
+        self.assertIn("if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'e2e-lto' }}\n"
+                      '        run: make bench-e2e-lto', section)
+        self.assertIn("if: ${{ inputs.suite != 'e2e-lto' }}\n        run: make check-e2e", section)
+        self.assertIn("if: ${{ always() && inputs.suite != 'e2e-lto' }}", section)
+        self.assertIn('build/tests/e2e-lto/**/results.json', section)
+        self.assertIn('build/tests/e2e-lto/summary.json', section)
+        self.assertNotIn('LTO: thin', section)
 
     # Every independent CI job must visibly reject incomplete inventories before provisioning its workload.
     def test_ci_inventory_preflight(self):

@@ -43,16 +43,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compiler', type=Path, required=True)
     parser.add_argument('--group', choices=PLAN.groups(), default=os.environ.get('E2E_GROUP') or None)
+    parser.add_argument('--lto', choices=('full', 'thin'), default='full')
+    parser.add_argument('--build-dir', type=Path, default=BUILD)
     arguments = parser.parse_args()
     plan = PLAN.select(arguments.group)
     compiler = arguments.compiler.resolve()
-    BUILD.mkdir(parents=True, exist_ok=True)
-    (BUILD/'results.json').unlink(missing_ok=True)
+    build = arguments.build_dir.resolve()
+    build.mkdir(parents=True, exist_ok=True)
+    (build/'results.json').unlink(missing_ok=True)
     started = time.monotonic()
-    report = dict(status='failed', suites=[], e2e_group=arguments.group, environment=dict(system=platform.system(),
+    report = dict(status='failed', suites=[], e2e_group=arguments.group, e2e_lto=arguments.lto, environment=dict(system=platform.system(),
                   machine=platform.machine(), python=platform.python_version()))
     # Sequential E2E builds reuse only matching source epochs, native bytes and checked LTO profiles.
-    checks = NativeChecks(BUILD, reuse_builds=True)
+    checks = NativeChecks(build, reuse_builds=True, lto=True if arguments.lto == 'full' else 'thin')
     try:
         # Preserve compiler/revision and native pin evidence independently of any other CI job.
         metadata = compiler.parent.parent/'NIGHTLY.txt'
@@ -67,8 +70,8 @@ def main():
         from nimony_crypto import prepare as prepare_crypto
         from bandersnatch_native import prepare as prepare_bandersnatch
         from nimony_quic import prepare as prepare_quic
-        crypto, _, report['crypto_native'] = prepare_crypto(BUILD)
-        bs, _, report['bandersnatch_native'] = prepare_bandersnatch(BUILD)
+        crypto, _, report['crypto_native'] = prepare_crypto(build)
+        bs, _, report['bandersnatch_native'] = prepare_bandersnatch(build)
         quic, certificates, report['quic_native'] = prepare_quic()
         wires = None
         if 'prepare_integrated_peer' in plan.names('setup'):
@@ -85,10 +88,11 @@ def main():
         report['failure'] = repr(error)
     finally:
         # Interrupted/failed preparation cannot leave a previous successful report current.
+        report['builds'] = checks.builds
         report['elapsed_seconds'] = round(time.monotonic()-started, 6)
-        (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
+        (build/'results.json').write_text(json.dumps(report, indent=2)+'\n')
     announce('E2E networking verification', report['status'] == 'checks-passed')
-    print('Evidence: '+str(BUILD.relative_to(ROOT)/'results.json'))
+    print('Evidence: '+str(build.relative_to(ROOT.resolve())/'results.json'))
     raise SystemExit(0 if report['status'] == 'checks-passed' else 1)
 
 

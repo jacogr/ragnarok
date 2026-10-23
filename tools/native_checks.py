@@ -27,7 +27,10 @@ class NativeChecks:
     def __init__(self, folder, reuse_builds=False, lto=True):
         self.folder = Path(folder)
         self.reuse_builds = reuse_builds
+        if lto not in (False, True, 'thin'):
+            raise ValueError('Native LTO must be disabled, full or thin')
         self.lto = lto
+        self.builds = []
 
     # Retain exact arguments, elapsed time, exit status and diagnostics, including expected failures.
     def command(self, arguments, name, environment=None, cwd=ROOT, timeout=180):
@@ -62,7 +65,8 @@ class NativeChecks:
                  '--boundchecks:on']
         if self.lto:
             # Units/contracts may opt out of link-time optimization without disabling runtime checks.
-            flags += ['--passC:-flto', '--passL:-flto']
+            option = '-flto=thin' if self.lto == 'thin' else '-flto'
+            flags += ['--passC:'+option, '--passL:'+option]
         if platform.system() == 'Linux':
             # Preserve the established Linux LLD linker choice on that host.
             flags += ['--passL:-fuse-ld=lld']
@@ -109,6 +113,7 @@ class NativeChecks:
                                    f'--out:{binary}', source], name+'-build')
             if self.reuse_builds:
                 print(f'Completed build {name} in {result["elapsed_seconds"]:.2f}s', flush=True)
+        self.builds.append(result)
         return result, binary
 
 

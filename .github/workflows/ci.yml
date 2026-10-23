@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, storage-diagnostics, storage-pressure, full]
+        options: [unit, e2e, e2e-lto, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, storage-diagnostics, storage-pressure, full]
         default: full
         required: true
 
@@ -269,7 +269,7 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   e2e:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'e2e-lto' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full')) }}
     name: E2E ${{ matrix.family.name }}
     timeout-minutes: 60
     strategy:
@@ -290,8 +290,14 @@ jobs:
       - *python
       - *inventory
       - name: E2E Networking
+        if: ${{ inputs.suite != 'e2e-lto' }}
         run: make check-e2e
-      - *summary
+      - name: Compare full LTO and ThinLTO
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'e2e-lto' }}
+        run: make bench-e2e-lto
+      - name: Show verification coverage
+        if: ${{ always() && inputs.suite != 'e2e-lto' }}
+        run: make summary-e2e SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
         if: always()
@@ -302,6 +308,9 @@ jobs:
           if-no-files-found: ignore
           path: |
             build/ci/*.log
+            build/tests/e2e-lto/**/*.log
+            build/tests/e2e-lto/**/results.json
+            build/tests/e2e-lto/summary.json
             build/tests/e2e/*.log
             build/tests/e2e/results.json
             build/tests/e2e/telemetry*/*.log
@@ -333,7 +342,7 @@ jobs:
   e2e-status:
     name: E2E Networking
     needs: e2e
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'e2e-lto' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:

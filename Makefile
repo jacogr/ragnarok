@@ -171,6 +171,12 @@ check-python: check-inventory sources
 check-e2e: setup browser-tools
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_e2e.py --compiler "$$NIMONY" 2>&1 | tee build/ci/e2e.log
 
+# Explicit manual comparison runs both link profiles on one family, preserving normal E2E defaults.
+.PHONY: bench-e2e-lto
+bench-e2e-lto: setup browser-tools
+	. ./build/toolchain/env.sh; $(PYTHON) tools/bench_e2e_lto.py --compiler "$$NIMONY" 2>&1 | tee build/ci/e2e-lto.log
+
+
 # CI builds the pristine gitlink with the shared Rust pin and keeps Cargo output under build/.
 telemetry-interop-collector: host-tools rust-tools
 	mkdir -p build/ci
