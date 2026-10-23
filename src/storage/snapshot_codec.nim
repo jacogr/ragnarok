@@ -3,7 +3,7 @@
 
 ## Exact managed snapshot bytes bind a complete retained root union and context to chain/schema/generation.
 ## Encoding consumes opaque validated selections; decoding admits every complete graph before success.
-import std/assertions
+import std/[algorithm, assertions]
 import ./[node_repository, node_records, record_codec, database_identity]
 import ../codec/[bounded, state_trie]
 import ../crypto/primitives
@@ -73,10 +73,19 @@ proc physicalLimits(limits: SnapshotLimits, bytes: ByteLimit): RecordLimits =
   result.records = TrieExportLimits(records: TrieNodeLimit(uint64(limits.repository.records)),
     valueBytes: limits.repository.valueBytes)
   result.encoded = bytes
+proc compareSnapshotRoot(left, right: StateRoot): int =
+  ## Detached root identities retain the canonical complete-byte order of the existing snapshot domain.
+  let a = array[32, byte](left)
+  let b = array[32, byte](right)
+  for index in 0..<32:
+    if a[index] < b[index]: return -1 # Later octets cannot change the first differing identity byte.
+    if a[index] > b[index]: return 1
+  0
+
 proc encodeRepositorySnapshot*(selection: RepositorySelection, chain: StorageChainId,
     schema: StorageSchema, context: openArray[byte], limits: SnapshotLimits): SnapshotResult[
         SnapshotEncoding] =
-  ## Bound all metadata and collection extents before copying/hashing the opaque admitted union.
+  ## Bound metadata/body extents, serialize the opaque admitted union, then hash the outer frame once.
   if not selection.initialized: return default(SnapshotResult[SnapshotEncoding])
   if schema notin {StorageSchema.FullNodesV1, StorageSchema.FullStateV1} or
       (schema == StorageSchema.FullNodesV1 and context.len != 0):
@@ -106,30 +115,29 @@ proc encodeRepositorySnapshot*(selection: RepositorySelection, chain: StorageCha
   if measured.error != RepositoryError.None:
     return SnapshotResult[SnapshotEncoding](status: SnapshotError.RepositoryFailure,
         repositoryReason: measured.error)
-  let image = exportRepositoryImage(selection, codec.records, limits.roots)
-  if image.error != RepositoryError.None:
+  var roots = selection.retainedRoots
+  roots.sort(compareSnapshotRoot) # Preserve exact snapshot order without materializing detached physical records.
+  let generation = selection.generation
+  let commitment = selection.commitment
+  var body = encodeRepositorySelection(selection, codec)
+  if body.error != RepositoryError.None:
     return SnapshotResult[SnapshotEncoding](status: SnapshotError.RepositoryFailure,
-        repositoryReason: image.error)
-  let data = image.value
-  var body = encodeRecordCollection(data.collection, codec)
-  if body.error != RecordError.None:
-    return SnapshotResult[SnapshotEncoding](status: SnapshotError.RecordFailure,
-        recordReason: body.error)
+        repositoryReason: body.error)
   let bytes = body.takeValue # Framing borrows one owned encoded body without duplicating its bytes.
   var output = newSeq[byte](Overhead+rootBytes+context.len+bytes.len)
   for index, character in Magic: output[index] = byte(character)
   let base = Magic.len
   putHash(output, base, array[32, byte](chain))
   output[base+32] = byte(ord(schema))
-  putNumber(output, base+33, uint64(data.generation))
-  putHash(output, base+41, array[32, byte](data.commitment.root))
-  putNumber(output, base+73, uint64(data.commitment.entries))
-  putNumber(output, base+81, data.commitment.nodes)
-  putNumber(output, base+89, uint64(data.roots.len))
+  putNumber(output, base+33, uint64(generation))
+  putHash(output, base+41, array[32, byte](commitment.root))
+  putNumber(output, base+73, uint64(commitment.entries))
+  putNumber(output, base+81, commitment.nodes)
+  putNumber(output, base+89, uint64(roots.len))
   putNumber(output, base+97, uint64(context.len))
   putNumber(output, base+105, uint64(bytes.len))
   var offset = HeaderBytes
-  for root in data.roots:
+  for root in roots:
     putHash(output, offset, array[32, byte](root))
     offset += 32 # Root-count preflight proved the complete variable inventory.
   for octet in context:
