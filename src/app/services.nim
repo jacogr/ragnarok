@@ -14,6 +14,8 @@ import ./candidate
 import ./block_input
 import ./preparation_worker
 import ./[collected_supplied_plan, collected_supplied_state]
+import ./logical_review
+import ../state/account_review_plan
 import ./logical_checkpoint
 import ./logical_seed
 import ../codec/state_composition
@@ -905,6 +907,12 @@ proc captureLogicalCheckpoint*(services: Services, source: CurrentLogicalState,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Explicit retained logical sources may share canonical ARC graphs; checkpoint copying requires the managed host gate open.
   logical_checkpoint.captureLogicalCheckpoint(source, limit)
+
+proc reviewLogicalState*(services: Services, source: CurrentLogicalState,
+    limits: AccountReviewPlanLimits): LogicalReviewResult[ReviewedLogicalState] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Explicit immutable logical sources may alias canonical state; original-current review runs only outside all managed graph leases.
+  logical_review.reviewLogicalState(source, limits)
 
 proc captureLogicalSeed*(services: Services, declarations: openArray[StateService],
     limits: LogicalSeedLimits): LogicalSeedResult {.requires:

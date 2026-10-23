@@ -25,3 +25,9 @@ A successful funded write followed by unaffordable host work qualifies only the 
 Actual funded solicitation qualifies a new request marker with exact requested-state wire bytes. The application_supplied_request_addition native suite also rejects a complete-looking declaration for an omitted, stale or unselected effect, and crosses the exact-plan response against the prior root.
 
 Actual forget/restore execution qualifies the exact three-slot retained request history. The application_supplied_request_restoration native suite also rejects a complete-looking declaration for an omitted, stale or unselected effect, and crosses the exact-plan response against the prior root.
+
+The identity-continuation native witness first qualifies a genuine new-storage identity set from
+complete supplied declarations, adopts that exact result, and advances three later real worker
+children through the existing identity-preserving path. Original physical/full-view provenance,
+raw key7 and actual slot3/4/5 metadata remain bound. All-chapter mixed proofs then authenticate the
+actual final source. Source replacement occurs only between actual worker leases.
