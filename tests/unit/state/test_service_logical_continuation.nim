@@ -7,6 +7,7 @@
 import std/[assertions, syncio, envvars]
 import ../../support/[collected_native_context, collected_logical_context,
   current_namespace_transition_context, current_namespace_execution_context,
+  current_service_replacement_context,
   current_namespace_context, current_namespace_refresh_context,
   accumulation_execution_context, accumulation_current_candidate_context,
   current_identity_context, application_download_chain, pvm_accumulation_program, arc_evidence]
@@ -61,20 +62,6 @@ proc program(checkpoint = false, panic = false): seq[byte] =
   code.add(if panic: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(code, writable = payload): result.add(octet)
-proc replacementProgram(checkpoint = false, panic = false): seq[byte] =
-  ## A genuine registrar ejects junior99, optionally checkpoints, then recreates the same reserved ID.
-  var payload = newSeq[byte](60)
-  payload[32] = 1
-  var code = @[registerImmediate(7, 99), @[10'u8, 23]]
-  if checkpoint: code.add(@[10'u8, 19]) # This checkpoint precedes creation and retains only ejection.
-  code.add(registerImmediate(7, high(uint64)))
-  code.add(registerImmediate(8, 99))
-  code.add(registerImmediate(9, 0))
-  code.add(registerImmediate(10, 196608))
-  code.add(@[10'u8, 20])
-  code.add(if panic: @[0'u8] else: @[50'u8, 0])
-  result = @[0'u8]
-  for octet in guestEnvelope(code, writable = payload): result.add(octet)
 proc prepare(origin: CurrentNamespaceTransition, members = true): PreparedCurrentChainUpdate {.raises.} =
   ## Collection and joined shutdown release native graph borrowing before any immutable current evidence is inspected.
   var owner = initApplicationChain(origin.update.currentUpdatePriorView).value
@@ -87,7 +74,7 @@ proc fixture(eject = false, checkpoint = false, panic = false,
     replace = false): Fixture {.raises.} =
   ## Author complete original namespaces and programs before roots/signatures, including a genuinely empty eligible ejection target.
   var options = executionFixtureConfig()
-  options.firstProgram = if replace: replacementProgram(checkpoint, panic)
+  options.firstProgram = if replace: namespaceReplacementCode(checkpoint, panic)
     elif eject: namespaceEjectCode() else: program(checkpoint, panic)
   options.secondProgram = namespaceHaltCode()
   options.signed.serviceNamespaces = namespaceSeeds()
