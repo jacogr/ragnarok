@@ -203,10 +203,11 @@ proc tick*(dispatcher: var CurrentDownloadLoop, now: CurrentDownloadLoopTick): C
   let borrowed = dispatcher.owner
   if borrowed == nil: return CurrentDownloadLoopError.Uninitialized
   let owner: ptr Services = borrowed
-  if owner[].stateProofActive:
+  if owner[].stateProofActive or (dispatcher.status == CurrentDownloadLoopStage.Queued and
+      owner[].diskPublicationActive):
     dispatcher.lastTick = uint64(now)
     owner[].tick(uint32(dispatcher.catalog.readyPeers.len))
-    return CurrentDownloadLoopError.None # Keep native callbacks/input aliases stable until proof collection or joined close.
+    return CurrentDownloadLoopError.None # Owned publication/maintenance and proof leases end before foreign-handoff checks or callback/input alias access.
   if owner[].accumulationStage != AccumulationHandoffStage.Idle:
     return CurrentDownloadLoopError.ServicesBusy # Current scheduling never consumes a legacy producer's handoff.
   if dispatcher.status in [CurrentDownloadLoopStage.Preparing,

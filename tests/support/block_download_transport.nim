@@ -111,7 +111,7 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
   let server = cast[ptr DownloadServer](user)
   case event
   of 0:
-    assert server.stream == NativeStream(nil)
+    assert server.stream == NativeStream(nil), "independent responder still owns previous stream"
     server.received = 0
     server.offset = 0
     server.requestFin = false
@@ -137,7 +137,7 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
         server.expected = server.expectedSeries[server.requests]
         server.response = server.responseSeries[server.requests]
         server.mode = server.modeSeries[server.requests] # Select bytes/behavior only after the actual request ordinal is known.
-      assert server.received == 42 and server.request == server.expected
+      assert server.received == 42 and server.request == server.expected, "independent responder exact request identity/width"
       server.requestFin = true
       inc server.requests # Observe completed independent requests per authenticated server identity.
       readDone(stream)
@@ -149,7 +149,7 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
       else:
         wantWrite(stream, 1) # Response emission follows the complete request and its clean half-close.
     else:
-      assert count <= int64(42 - server.received)
+      assert count <= int64(42 - server.received), "independent responder request buffer extent"
       for index in 0..<int(count): server.request[server.received + index] = buffer[
           index] # Bound the independent fixed request buffer.
       server.received += int(count)
