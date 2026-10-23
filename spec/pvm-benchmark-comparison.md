@@ -435,3 +435,34 @@ contract remain enabled; no architecture-specific hook, pin change or fuzzing wo
 is involved. Shared-host/local macOS limits, compiled deferral and open full JAM
 parity still apply. Next work should reduce measured decode/successor lookup costs
 without weakening invalid-successor or instruction-budget behavior.
+
+
+## Retained decoded validation and paired instruction memo, 2026-10-23
+
+Successful decoded instructions now carry a private fallthrough fact established
+by the immutable owner's complete validation. Nonterminating execution reuses it
+instead of looking up the same sequential opcode again; arbitrary control targets
+retain their complete checks. The same fixed sixteen decoder results now have
+paired alternatives, retaining colliding hot PCs without increasing capacity.
+Natural address-modulo-sixteen hits remain first; a miss checks the paired slot.
+Only successful new decodes fill/replace entries, with eight bounded replacement
+flags and full-address tags. No program/page/callback owners enter the memo.
+
+The initial address-comparison form produced only small differences. A fixed-first
+bucket form improved mixed bits but cost several percent in host/memory guests;
+the accepted natural-slot-first form preserves ordinary hits. Two opposite-order
+preserved-binary comparisons of the grouped feature confirm mixed-bit savings:
+131.04→112.52 µs (14.1%) and 127.50→107.54 µs (15.7%). Ordinary arithmetic was
+0.8–3.3% slower, and aligned hosts about 1.5–1.7% slower across these comparisons;
+these small observed costs are retained explicitly, with no broad speedup claim.
+Other guest differences vary within a few percent. Sub-microsecond short-call
+observations remain especially sensitive to timer granularity and scheduling.
+
+The complete pinned ten-guest comparison passes, with the mixed-bit gap now roughly
+4.2×. Every raw sample/noise flag remains under `build/pvm9/fallthrough-preferred`,
+`fallthrough-preferred-paired` and `fallthrough-preferred-confirm`; earlier measured
+forms remain in the other fallthrough directories. Literal two/three-way collisions,
+capacity pressure, nested owners, sealed metadata, failed/default access and final
+conditional gas/budget ordering join the existing full CPU/page/reference controls.
+Checked ARC/Clang ThinLTO, pins and assertions/bounds remain unchanged. Local macOS
+limits, compiled deferral, deferred fuzzing and open full STF/JAM parity still apply.

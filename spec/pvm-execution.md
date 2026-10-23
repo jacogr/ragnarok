@@ -148,11 +148,13 @@ access. Local benchmark evidence and limits are recorded in the
 
 ## Invocation-scoped decoded instructions
 
-Bounded execution retains sixteen scalar decoder results in a fixed direct-slot memo. The complete
-instruction address tags every hit. A collision replaces only that slot after a genuine successful
-`instruction` decode; failed/default results never populate or evict successful entries. No input
-owner, callback, memory page, mutable register or partial state is retained by the memo.
-Direct slot inspection and an inline helper avoid an extra full-result copy on the hot path.
+Bounded execution retains sixteen scalar decoder results in eight paired sets. The natural
+address-modulo-sixteen slot is checked first, preserving ordinary direct hits; toggling index bit
+three selects its alternative. Complete instruction addresses tag both ways. A successful miss
+fills a free natural/paired entry, or alternates replacement between two occupied residents.
+Failed/default results never populate, evict or advance replacement. Hits do not reorder/copy the
+other way. No input owner, callback, memory page, mutable register or partial state is retained.
+The inline helper retains the same fixed sixteen-result capacity and eight bounded replacement flags.
 
 The program and decode profile remain fixed through one `execute` or `executeWithHost` invocation.
 Host continuations retain this invocation's memo; nested executions and new calls always start with
@@ -214,3 +216,23 @@ also cross two activation epochs around a callback that retains its snapshot and
 replaces memory/registers. These cases join the existing 1000-cycle ARC group.
 Measured memory gains and the arithmetic tradeoff are recorded in the interpreter
 benchmark contract; this is scoped execution plumbing, not full JAM parity.
+
+
+## Retained instruction validation, 2026-10-23
+
+Cached genuine decoded results now retain their owner's sealed fallthrough fact.
+Every admitted nonterminator advances sequentially, except scalar faults retaining
+the already decoded causing PC. The evaluator can use that fact instead of another
+program opcode lookup after each arithmetic/load/store/no-op/host instruction.
+Other control successors retain the complete executable-location check, and control
+mutation still validates both conditional targets before selecting one. Gas shortage,
+capability refusal and local budgets retain their original ordering and payload rules.
+
+The paired memo and validation facts form one invocation-scoped decoded-instruction
+feature. Two colliding PCs and a literal three-way PC0/16/32 loop with distinct
+mutations/control verify exact full-address tags and replacement under pressure.
+Existing over-capacity traces, reused PCs in different programs, nested callbacks,
+shared budgets and 1000 ownership cycles remain controls. Final Paper conditionals
+preserve Panic for either chosen path when the other successor is absent; unpaid
+execution still returns OutOfGas first. Timing evidence and remaining gaps are in
+the interpreter comparison contract; no unchecked execution mode is introduced.

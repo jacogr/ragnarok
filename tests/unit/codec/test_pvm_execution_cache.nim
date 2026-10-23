@@ -85,6 +85,23 @@ proc collisions() =
   same(machineInfo(completed.value.machine).value, compareSteps(crowded, 70))
   assert uint64(machineInfo(completed.value.machine).value.registers[0]) == 0
   assert uint64(machineInfo(completed.value.machine).value.registers[1]) == 63
+proc threeWayPressure() =
+  ## PCs0/16/32 share one bucket but have different mutations/control; rotating replacements must retain exact address tags.
+  var decrement = @[149'u8, 0, 255, 255, 255, 255]
+  var increment = @[149'u8, 17, 7]
+  while decrement.len < 16: decrement.add(0)
+  while increment.len < 16: increment.add(0) # Padding belongs only to each literal instruction's ignored operand suffix.
+  let owner = code([decrement, increment, @[82'u8, 16, 0, 224], @[0'u8]])
+  let source = input(owner, 5)
+  let run = execute(source, ExecutionStepLimit(16), GasCycleLimit(10000))
+  assert run.error == StepError.None and run.value.exit == StepExit.Panic
+  same(machineInfo(run.value.machine).value, compareSteps(source, 16))
+  assert uint64(machineInfo(run.value.machine).value.registers[0]) == 0
+  assert uint64(machineInfo(run.value.machine).value.registers[1]) == 35
+  assert uint64(machineInfo(source).value.registers[0]) == 5
+  assert execute(source, ExecutionStepLimit(15), GasCycleLimit(10000)).error ==
+      StepError.StepLimitExceeded
+
 proc respond(context: var Context, stopped: StepOutcome): HostResponse {.raises: [].} =
   ## Nested execution uses different operands at the outer continuation PC; it must never overwrite that invocation's cached instruction.
   assert stopped.exit == StepExit.Host and context.calls < 2
@@ -135,11 +152,50 @@ proc hosts() =
     let run = execute(fresh, ExecutionStepLimit(2), GasCycleLimit(0))
     assert run.error == StepError.None and uint64(machineInfo(run.value.machine).value.registers[
         0]) == uint64(literal)
+proc finalFallthrough() =
+  ## Paper permits a final conditional; both branches retain the specified panic when either control successor is absent.
+  var owner = code([@[82'u8, 16, 0, 0]])
+  let final = instruction(owner, CodeAddress(0))
+  assert final.error == ProgramError.None and not instructionHasFallthrough(final)
+  var extracted = final.value
+  extracted.address = CodeAddress(99)
+  extracted.skip = 0
+  extracted.opcode = 0 # Mutable public operand copies cannot modify or rebind the sealed chain fact.
+  assert not instructionHasFallthrough(final)
+  for count in [0'u64, 1]:
+    let source = input(owner, count, true)
+    let once = stepOnce(source, GasCycleLimit(0))
+    let run = execute(source, ExecutionStepLimit(1), GasCycleLimit(0))
+    assert once.error == StepError.None and once.value.exit == StepExit.Panic, "final conditional single step"
+    assert run.error == StepError.None and run.value.exit == StepExit.Panic, "final conditional execute"
+    same(machineInfo(once.value.machine).value, machineInfo(run.value.machine).value)
+    assert execute(source, ExecutionStepLimit(0), GasCycleLimit(0)).error ==
+        StepError.StepLimitExceeded
+    assert uint64(machineInfo(source).value.registers[0]) == count
+    var unpaid = machineInfo(source).value
+    unpaid.gas = MachineGas(0)
+    unpaid.blockCharged = false
+    let empty = captureMachine(owner, memoryOf(source).value, unpaid).value
+    let shortage = execute(empty, ExecutionStepLimit(1), GasCycleLimit(100))
+    assert shortage.error == StepError.None and shortage.value.exit == StepExit.OutOfGas
+    same(machineInfo(shortage.value.machine).value,
+        unpaid) # Unaffordability precedes any missing-successor refusal.
+  let ordinary = code([@[51'u8, 0, 7], @[0'u8]])
+  let first = instruction(ordinary, CodeAddress(0))
+  let retained = first
+  assert instructionHasFallthrough(first)
+  owner = default(Program)
+  assert not instructionHasFallthrough(final) and instructionHasFallthrough(retained)
+
 collisions()
+threeWayPressure()
 hosts()
+finalFallthrough()
 let before = getOccupiedMem()
 for cycle in 0..<1000:
   collisions()
+  threeWayPressure()
+  finalFallthrough()
   hosts() # Both bounded memos and all observable/nested snapshot owners retire after each complete invocation group.
 let after = getOccupiedMem()
 assert before == after
