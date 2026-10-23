@@ -269,6 +269,15 @@ block budgets_and_defaults:
   assert prepare(broader, unsupported, execute(broader, 1)).error ==
       AccumulationBatchError.UnsupportedAccountEffects,
     "eject cannot relabel an earlier unsupported self mutation"
+  let independent = normalizeAccumulationOutcome(unsupported).value.outcomeContext.value
+  assert independent.effectDeletedAccountCount.error == AccumulationEffectError.InvalidState
+  assert independent.effectDeletedAccountFactCount.value == 1
+  assert uint32(independent.effectDeletedAccountFactAt(AccumulationDeletedAccountIndex(
+      0)).value.service) == 77
+  assert normalizeAccumulationOutcome(disabled).value.outcomeContext.value.effectDeletedAccountFactCount.error ==
+      AccumulationEffectError.DeletedAccountsDisabled
+  assert independent.effectDeletedAccountFactAt(AccumulationDeletedAccountIndex(high(
+      uint64))).error == AccumulationEffectError.InvalidIndex
   let foreign = setup(envelope(repeat = true), two = true)
   assert prepare(fixture, execute(foreign), second).error == AccumulationBatchError.SourceMismatch, "foreign equal-content proofs cannot replace exact input/prior owners"
   assert default(AccumulationEffectContext).effectDeletedAccountCount.error ==

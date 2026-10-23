@@ -1,0 +1,77 @@
+{
+  "build_name": "current-service-provenance-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "current_service_provenance guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "current-service-provenance-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "current_service_provenance selected reason",
+      "diagnostic": "outcome.status == ServiceHistoryFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "current-service-provenance-reason"
+    },
+    {
+      "arguments": [
+        "history"
+      ],
+      "description": "Guarded selected service membership history",
+      "diagnostic": "hasServiceIdentityHistory(prepared)",
+      "identity": {
+        "reason": "history"
+      },
+      "name": "current-service-provenance-history"
+    },
+    {
+      "arguments": [
+        "capture"
+      ],
+      "description": "Guarded selected service membership capture",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "capture"
+      },
+      "name": "current-service-provenance-capture"
+    },
+    {
+      "arguments": [
+        "effect-count"
+      ],
+      "description": "Guarded independent deletion fact effect-count",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "effect-count"
+      },
+      "name": "current-service-provenance-effect-count"
+    },
+    {
+      "arguments": [
+        "effect-fact"
+      ],
+      "description": "Guarded independent deletion fact effect-fact",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "effect-fact"
+      },
+      "name": "current-service-provenance-effect-fact"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/current_service_provenance_results.nim"
+}
