@@ -431,3 +431,21 @@ Raw evidence is under ignored `build/ci/nimony-state-host-*`, with preservation,
 formatting, per-suite, exact-refusal and executable reports. The next compiler task remains a
 published nightly containing #2737, followed by the retained workaround probes and any still-needed
 minimal report drafts for maintainer submission.
+
+
+## State formatting and CI archive synchronization
+
+Merge master `06cf5b76` normally (merge `bfab6d43`). The state styling PR supplies exactly the
+eight import-wrap formatting changes already present here; the merge introduces no native source
+or native test changes. All production source, unit/native/support tests, compiler/browser pins
+and native build/check/unit helpers are byte-identical to checked head `5c9b8e2b`. Reuse that
+head's native, compiler-guard, runtime and executable evidence with this explicit equality scope.
+
+The accompanying CI grouping/archive PR is preserved. All 55 affected CI, binary-package and
+Make harness tests passed. `make package-binary` rebuilt the checked ARC/Clang/ThinLTO peer and
+created a macOS ARM64 relocatable archive. Its independently unpacked copy passed dependency/
+runpath validation and `--version`, `--help`, `--selftest` and `--integration-selftest` without
+loader environment overrides. Inventory and diff checks passed. This is local macOS packaging
+qualification, not Linux packaging/runtime execution or an uploaded release. No remote CI run
+was requested. Raw evidence is under ignored `build/ci/nimony-state-style-*`; the package's own
+relocation/smoke log is `build/ci/binary-package.log`. Nightly pin and #2737 hold remain unchanged.
