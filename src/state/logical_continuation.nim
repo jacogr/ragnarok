@@ -486,6 +486,14 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
       if metadata.error != ServiceMetadataError.None:
         return LogicalContinuationResult(status: LogicalContinuationError.MetadataFailure,
             metadataReason: metadata.error)
+      if i < info.services and uint32(metadata.value.metadata.created) != uint32(
+          row.metadata.created):
+        # An unchanged numeric ID cannot hide a new incarnation when selected lifecycle evidence is disabled.
+        when kind == ContinuationKind.StorageOnly:
+          fail(LogicalContinuationError.UnsupportedChange)
+        else:
+          if roster.len == 0 or not roster[i].created:
+            fail(LogicalContinuationError.UnsupportedChange)
       var storage = 0
       for j in 0..<used:
         if rows[j].owner == i and rows[j].present: inc storage # Fixed scratch identities count the exact selected storage array.

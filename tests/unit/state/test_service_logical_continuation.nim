@@ -126,6 +126,9 @@ proc main() {.raises.} =
       assert history.serviceIdentityHistoryInfo.value.deletions == (if panic and
           not checkpoint: 0 else: 1)
       if not panic:
+        let missing = prepare(source.origin, members = false)
+        assert continueCurrentNamespaces(source.origin.parent, missing, policy()).error ==
+          LogicalContinuationError.UnsupportedChange, "unchanged ID still needs lifecycle evidence for a new incarnation"
         let services = copySuppliedServices(logical.currentLogicalInventory.value, policy().projection).value
         var found = false
         for service in services:
