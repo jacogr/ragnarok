@@ -24,9 +24,10 @@ contract as existing record/snapshot transfer APIs.
 
 Snapshots retain existing schema, policy, root-count, context and total-size preflight. They copy
 and canonically sort only root identities, obtain scalar generation/commitment, take the encoded
-body, frame it and hash the new outer checksum once. They no longer hold detached descriptors and
-copied leaf values beside the body and final frame. Body and frame buffers still overlap; this
-is not streaming IO or a claim of bounded working-set storage.
+body, frame it and hash the new outer checksum once. This layer removed detached descriptors and
+copied leaf values beside the body and final frame. Its measured implementation still held both
+body and frame buffers. The [single-buffer successor](storage-snapshot-framing.md) removes that
+overlap; neither layer is streaming IO or a claim of bounded working-set storage.
 
 Raw mutable collection/export encoders still validate shape, budgets, duplicates and every local
 hash. Decoders still verify outer checksums and every local record hash, then complete graph,

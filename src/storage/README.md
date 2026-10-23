@@ -131,6 +131,9 @@ collection bytes. It avoids detached record/value copies and repeated hashes; ra
 encoders remain strict. Snapshot encoding uses this path and hashes its new outer frame once.
 `RepositoryResult.takeValue` transfers a successful owner and leaves the result uninitialized.
 See the [selection encoding contract and measurements](../../spec/storage-selection-encoding.md).
+`encodeFramedRepositorySelection` reserves checked zero-filled prefix/suffix space and writes the
+canonical body directly into its final buffer. Snapshot encoding fills those reservations without
+retaining a second whole-body buffer. See the [framing contract](../../spec/storage-snapshot-framing.md).
 
 Unchanged-root zero-record publications share their validated immutable physical table while
 creating a new exact view identity and generation. Ordinary changed-root admission, frame bytes

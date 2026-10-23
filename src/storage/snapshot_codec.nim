@@ -119,12 +119,12 @@ proc encodeRepositorySnapshot*(selection: RepositorySelection, chain: StorageCha
   roots.sort(compareSnapshotRoot) # Preserve exact snapshot order without materializing detached physical records.
   let generation = selection.generation
   let commitment = selection.commitment
-  var body = encodeRepositorySelection(selection, codec)
-  if body.error != RepositoryError.None:
+  let prefixBytes = HeaderBytes+rootBytes+context.len
+  var framed = encodeFramedRepositorySelection(selection, codec, uint64(prefixBytes), 32, limits.bytes)
+  if framed.error != RepositoryError.None:
     return SnapshotResult[SnapshotEncoding](status: SnapshotError.RepositoryFailure,
-        repositoryReason: body.error)
-  let bytes = body.takeValue # Framing borrows one owned encoded body without duplicating its bytes.
-  var output = newSeq[byte](Overhead+rootBytes+context.len+bytes.len)
+        repositoryReason: framed.error)
+  var output = framed.takeValue # Records already occupy their final frame positions; only metadata/checksum remain.
   for index, character in Magic: output[index] = byte(character)
   let base = Magic.len
   putHash(output, base, array[32, byte](chain))
@@ -135,7 +135,7 @@ proc encodeRepositorySnapshot*(selection: RepositorySelection, chain: StorageCha
   putNumber(output, base+81, commitment.nodes)
   putNumber(output, base+89, uint64(roots.len))
   putNumber(output, base+97, uint64(context.len))
-  putNumber(output, base+105, uint64(bytes.len))
+  putNumber(output, base+105, uint64(measured.value))
   var offset = HeaderBytes
   for root in roots:
     putHash(output, offset, array[32, byte](root))
@@ -143,9 +143,7 @@ proc encodeRepositorySnapshot*(selection: RepositorySelection, chain: StorageCha
   for octet in context:
     output[offset] = octet
     inc offset # Context retains exact application bytes without interpreting their authority.
-  for octet in bytes:
-    output[offset] = octet
-    inc offset
+  assert offset == prefixBytes # Metadata ends at the already-serialized collection, without another body copy.
   let hashed = blake2b256(output.toOpenArray(0, output.len-33))
   if hashed.error != CryptoError.None: return SnapshotResult[SnapshotEncoding](
       status: SnapshotError.BackendFailure)

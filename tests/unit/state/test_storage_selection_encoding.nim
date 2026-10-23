@@ -62,6 +62,56 @@ proc exercise(source: SnapshotFixture) =
       source.limits.repository.codec).error == RecordError.HashMismatch
   assert encodeRepositorySelection(source.selection, source.limits.repository.codec).value == expected
 
+proc framing(source: SnapshotFixture) =
+  ## Reserved metadata/checksum space never changes canonical bodies or promotes mutable bytes to graph authority.
+  let codec = source.limits.repository.codec
+  let expected = encodeRepositorySelection(source.selection, codec).value
+  reset(1)
+  for prefix in [0, 1, 31, 1024]:
+    # Odd and empty reservations exercise both boundaries independently of the snapshot's fixed header shape.
+    for suffix in [0, 1, 32, 1024]:
+      let size = prefix+expected.len+suffix
+      var encoded = encodeFramedRepositorySelection(source.selection, codec,
+        uint64(prefix), uint64(suffix), ByteLimit(size))
+      assert encoded.error == RepositoryError.None and calls() == 0
+      var bytes = encoded.takeValue
+      assert bytes.len == size and encoded.error == RepositoryError.Uninitialized
+      for index in 0..<prefix: assert bytes[index] == 0
+      for index in 0..<expected.len: assert bytes[prefix+index] == expected[index]
+      for index in prefix+expected.len..<size: assert bytes[index] == 0
+      assert encodeFramedRepositorySelection(source.selection, codec, uint64(prefix),
+        uint64(suffix), ByteLimit(size-1)).error == RepositoryError.LimitExceeded
+      bytes[0] = bytes[0] xor 255 # Detached output mutation cannot affect a later encoding from the admitted owner.
+      assert encodeRepositorySelection(source.selection, codec).value == expected
+  let before = getOccupiedMem()
+  for extent in [uint64(high(int)), uint64(high(int))+1, high(uint64)]:
+    # Full-width oversized metadata refuses before narrowing, addition, allocation or any backend call.
+    assert encodeFramedRepositorySelection(source.selection, codec, extent, 0,
+      ByteLimit(high(uint64))).error == RepositoryError.LimitExceeded
+    assert encodeFramedRepositorySelection(source.selection, codec, 0, extent,
+      ByteLimit(high(uint64))).error == RepositoryError.LimitExceeded
+    assert encodeFramedRepositorySelection(source.selection, codec, extent, extent,
+      ByteLimit(high(uint64))).error == RepositoryError.LimitExceeded
+  assert calls() == 0 and getOccupiedMem() == before
+  var short = codec
+  short.encoded = ByteLimit(expected.len-1)
+  assert encodeFramedRepositorySelection(source.selection, short, 1, 32,
+    ByteLimit(high(uint64))).error == RepositoryError.LimitExceeded
+  reset(0)
+  let frame = encodeRepositorySnapshot(source.selection, default(StorageChainId),
+    StorageSchema.FullStateV1, [1'u8, 2], source.limits).value
+  var exact = source.limits
+  exact.bytes = ByteLimit(frame.bytes.len)
+  reset(0)
+  assert encodeRepositorySnapshot(source.selection, default(StorageChainId),
+    StorageSchema.FullStateV1, [1'u8, 2], exact).value.bytes == frame.bytes
+  assert calls() == 1
+  exact.bytes = ByteLimit(frame.bytes.len-1)
+  reset(0)
+  assert encodeRepositorySnapshot(source.selection, default(StorageChainId),
+    StorageSchema.FullStateV1, [1'u8, 2], exact).error != SnapshotError.None
+  assert calls() == 0 # Whole-frame refusal precedes its sole checksum and exposes no partial output.
+
 proc union() =
   ## Empty and disjoint historical roots retain canonical collection order independent of caller root order/duplicates.
   let source = rootFixture(65)
@@ -96,10 +146,21 @@ proc largeBody() =
     assert bytes.len == measureRepositorySelection(source.selection,
         source.limits.repository.codec).value
   assert getOccupiedMem() == before
+  block:
+    var framed = encodeFramedRepositorySelection(source.selection, source.limits.repository.codec,
+      133, 32, source.limits.bytes)
+    let bytes = framed.takeValue
+    let retained = getOccupiedMem()-before
+    assert retained > 0 and retained <= bytes.len+bytes.len div 8+4096
+  assert getOccupiedMem() == before
 
 let policy = snapshotPolicy()
 let uninitialized = encodeRepositorySelection(default(RepositorySelection), policy.repository.codec)
 assert uninitialized.error == RepositoryError.Uninitialized
+let emptyFrame = encodeFramedRepositorySelection(default(RepositorySelection),
+  policy.repository.codec, high(uint64), high(uint64), ByteLimit(0))
+assert emptyFrame.error == RepositoryError.Uninitialized
+framing(snapshotFixture(2, 1))
 exercise(snapshotFixture(2, 1)) # Warm provider/report-free ownership paths before exact release observations.
 largeBody()
 union()
