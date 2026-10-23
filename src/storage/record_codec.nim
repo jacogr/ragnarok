@@ -28,8 +28,13 @@ type
     entries*, nodes*, records*, valueBytes*: uint64
   RecordCollectionInfo* = object ## Successful delivery summary; no retained records or graph authority.
     records*, valueBytes*: uint64
+  RecordPreparation*[T] = proc(state: var T, info: RecordCollectionInfo) {.nimcall.}
+    ## Required nonnil capacity preparation after structural/duplicate preflight; conveys no integrity authority.
   RecordConsumer*[T] = proc(state: var T, record: var TrieRecord): bool {.nimcall.}
     ## Required nonnil synchronous owner transfer; false stops delivery with ConsumerRefused.
+  RecordDeliveryCallbacks[T] = object ## Fixed callback fields prevent generic call-site name rebinding.
+    before: RecordPreparation[T]
+    record: RecordConsumer[T]
   RecordScan = object ## Private exact-input structural preflight; retains no borrowed byte address.
     batch: TrieExport
     count, header: int
@@ -368,8 +373,12 @@ proc uniqueInputRecords(input: openArray[byte], shape: RecordScan): RecordError 
       return RecordError.DuplicateNode
   RecordError.None
 
+proc ignorePreparation[T](state: var T, info: RecordCollectionInfo) =
+  ## Existing delivery calls need no capacity callback and retain their original observable behavior.
+  discard
+
 proc deliverRecords[T](input: openArray[byte], limits: RecordLimits, collection, ordered: bool,
-    state: var T, consume: RecordConsumer[T]): RecordResult[RecordScan] =
+    state: var T, consume: RecordConsumer[T], prepare: RecordPreparation[T]): RecordResult[RecordScan] =
   ## Local structural/duplicate checks precede all crypto and callbacks; each delivered owner stays detached.
   let scanned = scanRecords(input, limits, collection, ordered)
   if scanned.error != RecordError.None: return RecordResult[RecordScan](status: scanned.error)
@@ -377,13 +386,16 @@ proc deliverRecords[T](input: openArray[byte], limits: RecordLimits, collection,
   if not ordered:
     let unique = uniqueInputRecords(input, shape)
     if unique != RecordError.None: return RecordResult[RecordScan](status: unique)
+  let callbacks = RecordDeliveryCallbacks[T](before: prepare, record: consume)
+  callbacks.before(state, RecordCollectionInfo(records: uint64(shape.count),
+      valueBytes: shape.valueBytes))
   var offset = shape.header
   for index in 0..<shape.count:
     # Stable input preserves the complete scan's bounds through each synchronous callback.
     var record = readRecord(input, offset)
     let checked = recordIntegrity(record, limits)
     if checked != RecordError.None: return RecordResult[RecordScan](status: checked)
-    if not consume(state, record): return RecordResult[RecordScan](
+    if not callbacks.record(state, record): return RecordResult[RecordScan](
         status: RecordError.ConsumerRefused)
   RecordResult[RecordScan](status: RecordError.None, completed: shape)
 
@@ -392,7 +404,8 @@ proc visitOrderedRecordCollection*[T](input: openArray[byte], limits: RecordLimi
   ## Preflight stable borrowed input, then deliver one owned locally hashed record at a time.
   ## Visited prefixes remain provisional until success; callbacks must stage privately for transactional use.
   ## The callback may move the payload; no borrow into input or the local record may escape.
-  let delivered = deliverRecords(input, limits, true, true, state, consume)
+  let prepare: RecordPreparation[T] = ignorePreparation[T]
+  let delivered = deliverRecords(input, limits, true, true, state, consume, prepare)
   if delivered.error != RecordError.None:
     return RecordResult[RecordCollectionInfo](status: delivered.error)
   let shape = delivered.value
@@ -403,7 +416,8 @@ proc visitTrieExport*[T](input: openArray[byte], limits: RecordLimits,
     state: var T, consume: RecordConsumer[T]): RecordResult[RecordBatchInfo] =
   ## Deliver target-bearing records in serialized order after whole-input shape/budget/duplicate preflight.
   ## Stable bytes are borrowed synchronously; callbacks own one record and must treat prefixes as provisional.
-  let delivered = deliverRecords(input, limits, false, false, state, consume)
+  let prepare: RecordPreparation[T] = ignorePreparation[T]
+  let delivered = deliverRecords(input, limits, false, false, state, consume, prepare)
   if delivered.error != RecordError.None: return RecordResult[RecordBatchInfo](
       status: delivered.error)
   let shape = delivered.value
@@ -431,6 +445,31 @@ proc inspectTrieExport*(input: openArray[byte], limits: RecordLimits): RecordRes
   let shape = scanned.value
   let unique = uniqueInputRecords(input, shape)
   if unique != RecordError.None: return RecordResult[RecordBatchInfo](status: unique)
+  RecordResult[RecordBatchInfo](status: RecordError.None, completed: RecordBatchInfo(
+    base: shape.batch.base, root: shape.batch.root, entries: shape.batch.entries,
+    nodes: shape.batch.nodes, records: uint64(shape.count), valueBytes: shape.valueBytes))
+
+proc visitOrderedRecordCollection*[T](input: openArray[byte], limits: RecordLimits,
+    state: var T, prepare: RecordPreparation[T], consume: RecordConsumer[T]): RecordResult[
+    RecordCollectionInfo] =
+  ## Reserve exact private capacity once after structural preflight and before any local integrity hashing.
+  ## Preparation and visited prefixes remain provisional; stable input and independent graph admission are required.
+  let delivered = deliverRecords(input, limits, true, true, state, consume, prepare)
+  if delivered.error != RecordError.None:
+    return RecordResult[RecordCollectionInfo](status: delivered.error)
+  let shape = delivered.value
+  RecordResult[RecordCollectionInfo](status: RecordError.None,
+    completed: RecordCollectionInfo(records: uint64(shape.count), valueBytes: shape.valueBytes))
+
+proc visitTrieExport*[T](input: openArray[byte], limits: RecordLimits,
+    state: var T, prepare: RecordPreparation[T], consume: RecordConsumer[T]): RecordResult[
+        RecordBatchInfo] =
+  ## Preflight unordered extents/duplicates once, prepare private capacity, then hash and transfer one record at a time.
+  ## Metadata is not integrity authority; callers must stage every preparation/record effect until complete success.
+  let delivered = deliverRecords(input, limits, false, false, state, consume, prepare)
+  if delivered.error != RecordError.None: return RecordResult[RecordBatchInfo](
+      status: delivered.error)
+  let shape = delivered.value
   RecordResult[RecordBatchInfo](status: RecordError.None, completed: RecordBatchInfo(
     base: shape.batch.base, root: shape.batch.root, entries: shape.batch.entries,
     nodes: shape.batch.nodes, records: uint64(shape.count), valueBytes: shape.valueBytes))
