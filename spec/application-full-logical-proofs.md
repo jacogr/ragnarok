@@ -27,3 +27,14 @@ content/availability comparison. Matching/wrong/cancelled ticket and
 joined-close paths preserve leases; detached bytes remain usable after shutdown. Result/privacy and
 all managed selector exclusions accompany this feature. Local checked execution is not independent
 current-schema upstream golden parity, adopted Thin VRF or general producer mutation provenance.
+
+## Selected mutation and rollback corpus
+
+One related native corpus follows actual storage addition/deletion, preimage provision, request
+addition/restoration, service ejection and checkpoint/panic/out-of-gas selection through full proof
+transport, checked complete import and typed declaration/code requalification. Every serialized
+entry is compared, not just the touched key. Removed identities remain `MissingWitness` in the
+partial view because full-present-key selection requests no deleted keys; only the subsequently
+recomputed complete expected-root match authorizes complete-map `MissingKey` observations. These
+are actual supplied successor observations, not a producer mutation event certificate or upstream
+STF golden. The cases remain supporting coverage in the complete transport PR.
