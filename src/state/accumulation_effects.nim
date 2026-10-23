@@ -47,20 +47,25 @@ type
   # Immutable fixed facts retain no account payloads or parent-effect owners.
   AccountWriteFactsData = ref object
     values: seq[AccumulationAccountWriteFact]
+  AccumulationLifecyclePhase* = distinct uint64 ## Captured lifecycle-event count before this identity's latest successful touch; complete order requires both tracing policies.
   AccumulationStorageFactLimits* = object ## Opt-in first-touch storage identities have independent descriptor, per-key and aggregate raw-byte ceilings.
     items*: ElementLimit
     perKey*, totalKeyBytes*: ByteLimit
   AccumulationStorageFactIndex* = distinct uint64 ## Storage fact ordinals are neither services nor physical account-write indices.
-  StorageFactData = ref object ## Immutable raw identities retain no parent effect graph or account payload.
+  StorageIdentityData = ref object ## Immutable raw identities retain no parent effect graph or account payload.
     service: ServiceIndex
     key: StateKey
     raw: seq[byte]
-  AccumulationStorageFact* = object ## Only genuine successful storage operations create this immutable raw-key owner.
+  StorageFactData = ref object ## A bounded immutable observation shares its raw identity across lifecycle phases.
+    identity: StorageIdentityData
+    phase: AccumulationLifecyclePhase
+  AccumulationStorageFact* = object ## Only genuine successful storage operations create this immutable raw identity owner and selected phase observation.
     data: nil StorageFactData
   AccumulationStorageFactInfo* = object ## Fixed copied observations remain distinct from the retained raw-key owner and final value.
     service*: ServiceIndex
     key*: StateKey
     rawBytes*: int
+    phase*: AccumulationLifecyclePhase ## Latest touch preserves one unique identity and independently retained earlier observations.
   StorageFactsData = ref object ## First-touch ordering and exact raw-byte accounting follow immutable implication selection.
     values: seq[AccumulationStorageFact]
     bytes: uint64
@@ -71,6 +76,7 @@ type
     length*: RequestLength
     key*: StateKey
     removedPreimage*: bool ## At least one actual expired forget on this selected lineage removed the associated preimage.
+    phase*: AccumulationLifecyclePhase ## Latest successful touch, without increasing the unique request count.
   RequestFactsData = ref object ## Immutable fixed descriptors retain no payloads or parent effect graph.
     values: seq[AccumulationRequestFact]
   AccumulationAccountScope* {.pure.} = enum ## Conservative mutation provenance since the credited initial context; equal bytes never reset it.
@@ -246,6 +252,9 @@ proc prepareRequestFact(previous: EffectData, service: ServiceIndex,
   if uint64(previous.requestFactLimit) == 0:
     return AccumulationEffectResult[RequestFactsData](status: AccumulationEffectError.None,
         completed: retained)
+  # Two nonnegative native lengths have an unsigned sum below2^64; no event-index addition is needed.
+  let phase = AccumulationLifecyclePhase(uint64(previous.created.values.len)+uint64(
+      previous.deleted.values.len))
   var found = -1
   for i in 0..<retained.values.len:
     let fact = retained.values[i] # Read each immutable fact while retaining its original owner.
@@ -254,7 +263,7 @@ proc prepareRequestFact(previous: EffectData, service: ServiceIndex,
       if array[32, byte](fact.hash) != array[32, byte](hash) or uint32(fact.length) != uint32(length):
         return AccumulationEffectResult[RequestFactsData](
             status: AccumulationEffectError.InvalidState)
-      if fact.removedPreimage or not removedPreimage:
+      if uint64(fact.phase) == uint64(phase) and (fact.removedPreimage or not removedPreimage):
         return AccumulationEffectResult[RequestFactsData](status: AccumulationEffectError.None,
             completed: retained)
       found = i # Expired-forget provenance is sticky on this immutable selected lineage.
@@ -272,9 +281,11 @@ proc prepareRequestFact(previous: EffectData, service: ServiceIndex,
       i] # Older context/checkpoint facts remain immutable and independently retained.
   if found < 0:
     values[count] = AccumulationRequestFact(service: service, hash: hash, length: length,
-        key: key, removedPreimage: removedPreimage)
+        key: key, removedPreimage: removedPreimage, phase: phase)
   else:
-    values[found].removedPreimage = true # Publish the new observation only with the matching successful account successor.
+    values[found].phase = phase
+    values[found].removedPreimage = values[found].removedPreimage or
+        removedPreimage # Publish the new observation only with the matching successful account successor.
   AccumulationEffectResult[RequestFactsData](status: AccumulationEffectError.None,
       completed: RequestFactsData(values: values))
 
@@ -310,21 +321,37 @@ proc prepareStorageFact(previous: EffectData, service: ServiceIndex, key: StateK
   if uint64(limits.items) == 0:
     return AccumulationEffectResult[StorageFactsData](status: AccumulationEffectError.None,
         completed: retained)
+  # A phase refresh changes fixed metadata only; raw bytes and descriptor/item ledgers stay unchanged.
+  let phase = AccumulationLifecyclePhase(uint64(previous.created.values.len)+uint64(
+      previous.deleted.values.len))
   for factIndex in 0..<retained.values.len:
-    let fact = retained.values[factIndex] # Preserve shared immutable identity ownership with checked indexed reads.
- # Repeated writes and deletions retain one first-touch identity without recopying its raw bytes.
+    # Repeated touches retain one identity and share its raw bytes through checked indexed reads.
+    let fact = retained.values[factIndex]
     let data = fact.data
     assert data != nil
-    if uint32(data.service) == uint32(service) and array[31, byte](data.key) == array[31, byte](key):
-      if data.raw.len != raw.len:
+    if uint32(data.identity.service) == uint32(service) and array[31, byte](data.identity.key) ==
+        array[31, byte](key):
+      if data.identity.raw.len != raw.len:
         return AccumulationEffectResult[StorageFactsData](
             status: AccumulationEffectError.InvalidState)
       for i in 0..<raw.len:
-        if data.raw[i] != raw[i]:
+        if data.identity.raw[i] != raw[i]:
           return AccumulationEffectResult[StorageFactsData](
               status: AccumulationEffectError.InvalidState) # Never let a physical collision replace original raw provenance.
+      if uint64(data.phase) == uint64(phase):
+        return AccumulationEffectResult[StorageFactsData](status: AccumulationEffectError.None,
+          completed: retained) # Repeated touches in the same phase share the original owner.
+      let count = retained.values.len
+      if count > high(int) div sizeof(AccumulationStorageFact):
+        return AccumulationEffectResult[StorageFactsData](
+            status: AccumulationEffectError.LimitExceeded)
+      var refreshed = newSeq[AccumulationStorageFact](count)
+      for i in 0..<count: refreshed[i] = retained.values[
+          i] # Retained versions keep their original immutable phase owner.
+      refreshed[factIndex] = AccumulationStorageFact(data: StorageFactData(identity: data.identity,
+          phase: phase)) # Share the exact immutable raw identity owner without copying bytes or allocating another raw identity.
       return AccumulationEffectResult[StorageFactsData](status: AccumulationEffectError.None,
-          completed: retained)
+        completed: StorageFactsData(values: refreshed, bytes: retained.bytes))
   let count = retained.values.len
   let budget = min(uint64(limits.totalKeyBytes), uint64(high(int)))
   if uint64(count) >= uint64(limits.items) or count >= high(int) div sizeof(AccumulationStorageFact):
@@ -339,7 +366,8 @@ proc prepareStorageFact(previous: EffectData, service: ServiceIndex, key: StateK
   var values = newSeq[AccumulationStorageFact](count+1)
   for i in 0..<retained.values.len: values[i] = retained.values[
       i] # Share immutable independent facts, never older effect versions.
-  values[count] = AccumulationStorageFact(data: StorageFactData(service: service, key: key, raw: copied))
+  values[count] = AccumulationStorageFact(data: StorageFactData(identity: StorageIdentityData(
+      service: service, key: key, raw: copied), phase: phase))
   AccumulationEffectResult[StorageFactsData](status: AccumulationEffectError.None,
       completed: StorageFactsData(values: values, bytes: retained.bytes+uint64(raw.len)))
 
@@ -375,8 +403,8 @@ proc storageFactInfo*(fact: AccumulationStorageFact): AccumulationEffectResult[
     return AccumulationEffectResult[AccumulationStorageFactInfo](
         status: AccumulationEffectError.Uninitialized)
   AccumulationEffectResult[AccumulationStorageFactInfo](status: AccumulationEffectError.None,
-      completed: AccumulationStorageFactInfo(service: data.service, key: data.key,
-          rawBytes: data.raw.len))
+      completed: AccumulationStorageFactInfo(service: data.identity.service, key: data.identity.key,
+          rawBytes: data.identity.raw.len, phase: data.phase))
 
 proc copyStorageFactKey*(fact: AccumulationStorageFact,
     limit: ByteLimit): AccumulationEffectResult[seq[byte]] =
@@ -384,10 +412,10 @@ proc copyStorageFactKey*(fact: AccumulationStorageFact,
   let data = fact.data
   if data == nil:
     return AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.Uninitialized)
-  if uint64(data.raw.len) > uint64(limit):
+  if uint64(data.identity.raw.len) > uint64(limit):
     return AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.LimitExceeded)
-  var copied = newSeq[byte](data.raw.len)
-  for i in 0..<data.raw.len: copied[i] = data.raw[
+  var copied = newSeq[byte](data.identity.raw.len)
+  for i in 0..<data.identity.raw.len: copied[i] = data.identity.raw[
       i] # Mutating detached output cannot alter this fact or future checkpoints.
   AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.None, completed: copied)
 

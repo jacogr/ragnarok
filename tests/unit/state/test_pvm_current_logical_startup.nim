@@ -19,7 +19,8 @@ import ../../../src/codec/[bounded, block_codec, report_owned, state_composition
 import ../../../src/chain/[provider, genesis]
 import ../../support/accumulation_current_candidate_context
 import ../../../src/state/service_identity_history
-import ../../../src/state/[store, parent_logical, accumulation_current_update, block_admission, report_admission]
+import ../../../src/state/[accumulation_effects, store, parent_logical, accumulation_current_update,
+    block_admission, report_admission]
 import ../../../src/storage/managed_manifest
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Canonical lexical failures must perform no primitive work.
@@ -163,7 +164,8 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     refuse = false, namespaces = false, refresh = false, partial = false,
         unwritable = false, keyBytes = 0, replacement = false, omitMembership = false,
             sequential = false, retired = false, unsupported = false,
-        replacementLength = 1, replacementHash = default(array[32, byte])) {.raises.} =
+        replacementLength = 1, replacementHash = default(array[32, byte]),
+            postBirth = false) {.raises.} =
   ## Actual command sockets, worker collection and adoption use explicit files; strict disk restart reconstructs a fresh physical logical owner.
   let refused = refuse or omitMembership or unsupported
   var chainPath = "pvm-logical-cli-chain"
@@ -194,6 +196,18 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     # Original cleanup touches metadata, two storage keys, three requests and three preimages before retirement.
     policy.candidate.completion.execution.initial.guests.accountWriteFacts = ElementLimit(16)
     policy.candidate.completion.execution.initial.accounts.writes.writes = ElementLimit(16)
+  if postBirth:
+    # Actual same-invocation provide is independently bounded in guest retention and selected provision publication.
+    policy.candidate.completion.execution.execution.round.guests.provisions = AccumulationProvisionLimits(
+      items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+    policy.candidate.completion.execution.execution.round.provisions.values = PreimageLimits(
+      items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+    policy.candidate.completion.execution.execution.round.provisions.encodedBytes = ByteLimit(128)
+    policy.candidate.completion.execution.initial.guests.provisions = AccumulationProvisionLimits(
+      items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+    policy.candidate.completion.execution.initial.provisions.values = PreimageLimits(
+      items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+    policy.candidate.completion.execution.initial.provisions.encodedBytes = ByteLimit(128)
   if replacement:
     # Host capacities and selected history limits are separate original execution policies.
     policy.candidate.completion.execution.initial.guests.createdAccounts = ElementLimit(4)
@@ -304,6 +318,7 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
       let length = if sequential: 0 else: replacementLength
       let expected = "r=" & logicalHex(replacementHash) & ":" & $length & "\n"
       assert expected in updated, "new-generation code request survives source export"
+      if postBirth: assert "k=05\n" in updated # Only a producer touch after creation certifies the old raw name.
     elif namespaces:
       assert updated != text and "k=07\n" in updated # Exported raw identity comes only from the actual qualified adopted source.
     else: assert updated == text # Strict identity preservation exports the same canonical declarations after actual adoption.
@@ -379,7 +394,21 @@ proc main() {.raises.} =
   let oldLength = int(uint32(reusedOrigin.services[1].requests[^1].length))
   let orphan = namespaceRetiredReplacementFixture(decodeOwnedReport(bytes, 2).value,
     retirementPolicy, orphan = true).toNamespaceExecutionFixture
+  var postBirthPolicy = retirementPolicy
+  postBirthPolicy.completion.execution.execution.round.guests.provisions = AccumulationProvisionLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  postBirthPolicy.completion.execution.execution.round.provisions.values = PreimageLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  postBirthPolicy.completion.execution.execution.round.provisions.encodedBytes = ByteLimit(128)
+  let postBirth = namespaceRetiredReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    postBirthPolicy, postBirth = true).toNamespaceExecutionFixture
   for layout in 0..2:
+    command(postBirth, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0)
+    command(postBirth, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0, partial = true)
+    command(postBirth, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0, omitMembership = true)
     command(retired, layout, namespaces = true, refresh = true, replacement = true,
       retired = true, replacementLength = 0)
     command(reused, layout, namespaces = true, refresh = true, replacement = true,

@@ -44,6 +44,7 @@ type
     retired: StateStoreSnapshot
     birthEntry: CurrentSequenceEntryIndex
     birthOutcome: AccumulationAnnulmentIndex
+    birthOrdinal: AccumulationServiceLifecycleIndex
     seed: StateKey
   RequestIdentityRow = object ## Admitted private request planning retains exact logical identity and final presence for this actual target.
     owner: int
@@ -221,6 +222,7 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
             roster[i].hasRetired = true
             roster[i].birthEntry = creation.entry
             roster[i].birthOutcome = creation.outcome
+            roster[i].birthOrdinal = creation.fact.ordinal
             roster[i].seed = creation.fact.requestKey
 
         if roster[i].present: inc finalServices
@@ -347,8 +349,12 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
     if owner < 0: fail(LogicalContinuationError.UnsupportedChange) # No new service identity can come from an unexplained map difference.
     var currentGeneration = true
     if wasRetired(owner):
-      # Only a later entry can execute this newly created foreign service's own storage code.
-      currentGeneration = uint64(observation.entry) > uint64(roster[owner].birthEntry)
+      # A creator may perform authorized foreign writes after new; parallel outcomes never share its local event counter.
+      let later = uint64(observation.entry) > uint64(roster[owner].birthEntry)
+      let sameEntry = uint64(observation.entry) == uint64(roster[owner].birthEntry)
+      let sameOutcome = uint64(observation.outcome) == uint64(roster[owner].birthOutcome)
+      let touchedAfter = uint64(details.phase) > uint64(roster[owner].birthOrdinal)
+      currentGeneration = later or (sameEntry and sameOutcome and touchedAfter)
     let key = fact.copyStorageFactKey(limits.projection.perValue).value
     var selected = -1
     for j in 0..<used:
@@ -379,12 +385,13 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
       if owner < 0: fail(LogicalContinuationError.UnsupportedChange) # New request owners require genuine selected creation membership.
       var currentGeneration = true
       if wasRetired(owner):
-        # The creator's exact seed key is the only same-invocation identity certified by this fixed birth fact.
+        # The canonical seed precedes its creation fact; other identities need a successful later touch in that same invocation.
         let later = uint64(observation.entry) > uint64(roster[owner].birthEntry)
         let sameEntry = uint64(observation.entry) == uint64(roster[owner].birthEntry)
         let sameOutcome = uint64(observation.outcome) == uint64(roster[owner].birthOutcome)
         let seedKey = array[31, byte](fact.key) == array[31, byte](roster[owner].seed)
-        currentGeneration = later or (sameEntry and sameOutcome and seedKey)
+        let touchedAfter = uint64(fact.phase) > uint64(roster[owner].birthOrdinal)
+        currentGeneration = later or (sameEntry and sameOutcome and (seedKey or touchedAfter))
 
       var selected = -1
       for j in 0..<requestUsed:

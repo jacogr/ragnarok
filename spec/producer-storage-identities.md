@@ -32,3 +32,5 @@ immutable host operations, detached ownership, checkpoint selection, quota/backe
 1,000 ARC retirement cycles; existing write/effect/outcome and guest consumers plus strict guards,
 privacy rejection, inventory and both formatting gates. M1 framing is complete; independent full
 current-schema STF and crypto/privilege gates remain separate.
+
+The unique facts also retain [latest-touch lifecycle phases](service-post-birth-evidence.md), without changing identity counts or first-touch order. Phase refreshes preserve retained original/checkpoint owners; phase metadata is not a total operation log or cross-invocation ordering authority.

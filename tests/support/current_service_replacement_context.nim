@@ -128,24 +128,40 @@ proc retirementDriver(next: seq[byte], eject: bool, forward: uint64): seq[byte] 
   result = @[0'u8]
   for octet in guestEnvelope(code, writable = payload): result.add(octet)
 proc namespaceRetiredReplacementFixture*(base: OwnedReport,
-    policy: CurrentCandidateLimits, reuse = false, orphan = false): CurrentNamespaceTransition =
+    policy: CurrentCandidateLimits, reuse = false, orphan = false,
+    postBirth = false): CurrentNamespaceTransition =
   ## All code, histories, budgets and Parameters precede source roots/signatures; selected producer history is never rewritten.
   var seeds = namespaceSeeds()
   let hashes = [seeds[1].preimages[0].hash, seeds[1].preimages[1].hash]
   let sizing = retiringCode(0, hashes)
   let cleanup = retiringCode(uint64(sizing.len), hashes)
   assert cleanup.len == sizing.len # Fixed-width immediates make the independently authored self-length exact.
-  var payload = newSeq[byte](60)
+  var payload = newSeq[byte](if postBirth: 128 else: 60)
   if reuse:
     # Recreate the exact original code request after its proven absence, rather than choosing a new unrelated hash.
     let hash = array[32, byte](blake2b256(cleanup).value)
     for i, octet in hash: payload[i] = octet
     for i in 0..<4: payload[32+i] = byte((uint32(cleanup.len) shr (8*i)) and 255)
   var creator = @[0'u8]
-  let instructions = @[retirementImmediate(7, high(uint64)), retirementImmediate(8, 99),
-    retirementImmediate(9, 0), retirementImmediate(10, 196608), @[10'u8, 20], @[50'u8, 0]]
+  var instructions = @[retirementImmediate(7, high(uint64)), retirementImmediate(8, 99),
+    retirementImmediate(9, 0), retirementImmediate(10, 196608), @[10'u8, 20]]
+  if postBirth:
+    # The new supervisor writes, solicits and provides original identities only AFTER the successful creation call.
+    payload[60] = 5
+    payload[61] = 8
+    payload[62] = 77
+    for i, octet in array[32, byte](hashes[1]): payload[64+i] = octet
+    for instruction in [retirementImmediate(7, 99), retirementImmediate(8, 196668),
+      retirementImmediate(9, 1), retirementImmediate(10, 196669), retirementImmediate(11, 1), @[
+          10'u8, 5],
+      retirementImmediate(7, 99), retirementImmediate(8, 196672), retirementImmediate(9, 1), @[
+          10'u8, 25],
+      retirementImmediate(7, 99), retirementImmediate(8, 196670), retirementImmediate(9, 1), @[
+          10'u8, 28]]:
+      instructions.add(instruction) # Every host result overwrites r7, so each next target is restored explicitly.
+  instructions.add(@[50'u8, 0])
   for octet in guestEnvelope(instructions, writable = payload): creator.add(octet)
-  let bridge = retirementDriver(creator, true, 10000)
+  let bridge = retirementDriver(creator, true, if postBirth: 20000'u64 else: 10000'u64)
   let first = retirementDriver(bridge, false, 50000)
   for code in [bridge, creator]:
     # Both future programs are present and requested in the original complete namespace before self-upgrade.
