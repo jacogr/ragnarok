@@ -131,6 +131,18 @@ propagation remains separate producer-contract work.
 
 Run `make unit SUITE=pvm_current_logical_mutations`.
 
+## Collected request-history refresh
+
+`pvm_current_logical_history` runs real funded service99 forget and forget/restore guest hosts
+through Services preparation, matching collection, complete logical refresh and explicit adoption.
+Original `Available(1)` history becomes literal `Unavailable(1,2)` or `Reavailable(1,2,2)` with
+exact 9/13-byte request values; the original five-byte owner remains unchanged. The original
+request hash/length and retained preimage payload stay fixed, so both transitions preserve
+physical namespace identities while refreshing actual histories. No posterior declaration is
+manufactured by the caller.
+
+Run `make unit SUITE=pvm_current_logical_history`.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
