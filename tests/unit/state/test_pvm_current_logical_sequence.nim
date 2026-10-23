@@ -1,0 +1,89 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Repeated real Services children continue complete logical provenance after a guest overwrites an existing service99 storage identity.
+import std/[assertions, envvars, syncio]
+import std/posix/posix
+import ../../support/[current_namespace_execution_context, current_application_context,
+    current_logical_collection_context, current_consecutive_context,
+    accumulation_current_candidate_context, parent_profile_context, parent_globals_context,
+    supplied_logical_context, current_identity_context, current_logical_proof_context,
+    pvm_accumulation_program]
+import ../../../src/app/[services, options, current_block_input, current_handoff]
+import ../../../src/chain/[provider, genesis]
+import ../../../src/codec/[bounded, block_codec, report_owned, state_layout, state_accounts, state_service_values]
+import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_identities,
+    current_logical, accumulation_current_update, store, block_admission, report_admission]
+proc overwriteCode(): seq[byte] =
+  ## Actual write host targets the existing raw key5 of funded service99; the original present-empty value grows without creating a namespace identity.
+  let instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 196608),
+      registerImmediate(9, 1), registerImmediate(10, 196609), registerImmediate(11, 3),
+      @[10'u8, 5], @[50'u8, 0]]
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, @[5'u8, 17, 18, 19]): result.add(octet)
+proc scenario(fixture: NamespaceExecutionFixture) {.raises.} =
+  ## Each matching native collection precedes logical continuation; each explicit adoption precedes signing/preparing the following child.
+  var path = "pvm-current-logical-sequence-chain"
+  writeFile(path, fixture.parent.bestBlock.value.currentApplicationText)
+  defer: discard posix.unlink(path.toCString())
+  var options = default(Options)
+  assert parseOptions(@["server", "--with-state", "--chain", path], options)
+  var input = default(CurrentBlockInput)
+  var owner = default(Services)
+  defer: owner.close()
+  assert owner.start(options, "current logical sequence")
+  let profile = captureParentProfile(owner.chainView, parentProfileTestLimits).value
+  let globals = qualifyParentGlobals(profile, parentGlobalsTestLimits).value
+  let original = owner.stateSnapshot.value
+  let declarations = fixture.executableNamespaceServices(original)
+  let parent = captureLogicalParent(globals, declarations, suppliedLogicalTestLimits).value
+  let key = serviceStorageKey(ServiceIndex(99), @[5'u8], ByteLimit(1)).value
+  assert original.lookup(key).value.bytes.len == 0
+  var logical = default(CurrentLogicalState)
+  var first = default(CurrentLogicalState)
+  var policies = currentCandidateLimits()
+  policies.completion.composition.validators.services = ElementLimit(2)
+  for index in 0..<3:
+    # The first child is the genuinely admitted namespace guest; later children are sealed against the actual adopted posterior, with no replayed report.
+    let before = owner.stateSnapshot.value
+    let child = if index == 0:
+        fixture.source.round.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value.value.admitted.admittedBlock
+      else: currentEmptyChild(owner.chainView.bestBlock.value)
+    let update = owner.collectLogicalChild(input, child, policies)
+    let identities = if index == 0:
+        preserveCurrentIdentities(parent, update, currentIdentityTestLimits)
+      else: preserveCurrentIdentities(logical, update, currentIdentityTestLimits)
+    assert identities.error == CurrentIdentityError.None
+    if index == 2:
+      assert preserveCurrentIdentities(first, update, currentIdentityTestLimits).error ==
+          CurrentIdentityError.ParentMismatch
+    logical = refreshCollectedIdentities(identities.value)
+    if index == 0: first = logical
+    assert sameStateSnapshot(logical.logicalProducer.currentUpdateState, update.currentUpdateState)
+    assert update.currentUpdateState.lookup(key).value.bytes == @[17'u8, 18, 19]
+    assert uint32(update.currentUpdateChildContext.slot) == uint32(index+2)
+    assert sameStateSnapshot(before, owner.stateSnapshot.value)
+    assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
+    assert owner.enqueueCurrentAccumulation(update) == CurrentHandoffAdmission.None
+    owner.tick(0)
+    assert owner.currentAccumulationPhase == CurrentHandoffPhase.Finished
+    assert owner.takeCurrentAccumulation().error == CurrentHandoffError.None
+    assert sameStateSnapshot(owner.stateSnapshot.value, logical.logicalProducer.currentUpdateState)
+    assert owner.chainView.retainedCount == index+2
+    assert owner.chainView.finalizedBlock.error != GenesisError.None
+    assert owner.preparationAvailable and owner.stateProofAvailable
+  assert original.lookup(key).value.bytes.len == 0 # Original physical aliases remain immutable across every real adoption.
+  assert first.logicalProducer.currentUpdateState.lookup(key).value.bytes == @[17'u8, 18, 19]
+proc main() {.raises.} =
+  ## Complete original code namespaces and actual funded overwrite feed three independent native preparation/adoption lifetimes.
+  let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
+  var bytes = newSeq[byte](raw.len)
+  for i in 0..<raw.len: bytes[i] = byte(raw[i])
+  let fixture = namespaceExecutionFixture(decodeOwnedReport(bytes, 2).value, namespaceHaltCode(),
+      overwriteCode())
+  scenario(fixture)
+  echo "PVM current logical sequence passed"
+try:
+  main()
+except:
+  quit(2) # A namespace, provenance, execution or later installation failure cannot count as successful continuation.

@@ -34,6 +34,18 @@ request-key, reconstruction-descriptor and retained-logical budgets refuse at th
 stages. Every refusal leaves canonical ownership unchanged and the handoff idle. The original
 successful policies still qualify and install the genuine successor afterward.
 
+## Repeated collected successors
+
+`pvm_current_logical_sequence` executes funded service99's real write host on its existing raw
+key5, growing its present-empty value to authored bytes `11 12 13`. It refreshes the configured
+logical source on the collected successor, adopts it, then signs and prepares two actual empty
+children against successive Services heads. Each later refresh consumes the previous completed
+logical result. Reusing the first completed source for the third child refuses physical parent
+mismatch. All four retained physical states remain immutable; installation preserves absent
+finality and the exact corresponding logical successor. This is an authored guest witness.
+
+Run `make unit SUITE=pvm_current_logical_sequence`.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
