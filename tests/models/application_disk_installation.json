@@ -1,0 +1,42 @@
+{
+  "cases": [
+    {
+      "name": "base",
+      "role": "base",
+      "assignments": {},
+      "expected": "pass"
+    },
+    {
+      "name": "install-before-collection",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "1"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "uncertain-io-installs",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "2"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "resume-before-installation",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "3"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "reachable-uncertain-close-refusal",
+      "role": "witness",
+      "assignments": {
+        "Witness": "(true)"
+      },
+      "expected": "violated"
+    }
+  ]
+}

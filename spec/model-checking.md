@@ -72,3 +72,24 @@ The new `src/app/proof_worker.nim` uses the same lock/condition/phase/stop trans
 `collect` and joined `close` retire that owner. The same six-variable model checks its lease
 retention and join ordering. Query move semantics, exact proof outcomes and ticket identity
 remain covered by the native `application_proof_worker` suite and compiler ownership probe.
+
+## Disk publication and host installation
+
+`application_disk_worker.nif` checks one admitted publication/maintenance against
+`src/app/disk_worker.nim` (`submit`, `run`, `collect`, `close`). Locked dispatch,
+unlocked I/O, activation retirement, locked Done publication, stop observation and joined
+retirement are distinct transitions. Success and uncertain failure are abstract receipt tags;
+queued shutdown returns NotExecuted. The graph lease must survive until collection/join,
+and an actual returned I/O receipt must survive shutdown unchanged. Mutants release before
+join, drop the joined receipt or fabricate queued success. The witness retains an uncertain
+receipt through joined close. This does not model disk contents, process crashes or recovery.
+
+`application_disk_installation.nif` separately maps `Services.tick`,
+`stopDiskPublication` and `finishCurrentDiskPublication`. It checks that observing Done does
+not authorize installation before collection/join, only an exact confirmed publication may
+install, and RPC remains paused through installation/refusal. Uncertain outcomes fault the
+backend without installation. Mutants install before retirement, accept uncertain I/O, or
+resume RPC before the host finishes. The witness reaches joined uncertain refusal with RPC
+resumed and no installation. Exact receipt/context validation, canonical/RPC history and
+operation-specific maintenance payloads remain native checks; the model treats their
+confirmation result as an abstract success/refusal input. Host completion steps are serialized.
