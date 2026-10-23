@@ -6,7 +6,8 @@
 ##
 ## Exposes Program snapshots and nominal address/index/limit types, decodeProgram/decodeJamProgram,
 ## instruction/opcode/jump lookup, raw instruction-byte lookup with zero padding, and block-boundary
-## and containing-block queries.
+## and containing-block queries. Genuine instruction results additionally expose success-guarded
+## instructionHasFallthrough without publishing mutable validation metadata.
 
 import ../codec/natural
 
@@ -54,6 +55,7 @@ type
     shape*: OperandShape
     skip*: range[0..24]
     a*, b*, d*: RegisterIndex
+    fallthroughPresent: bool # Only the owner decoder grants this immutable v_blob-chain fact; copied operands cannot forge a tagged result.
     x*, y*: Immediate
     displacement*: int64
 
@@ -63,6 +65,12 @@ func error*[T](r: ProgramResult[T]): ProgramError =
 func value*[T](r: ProgramResult[T]): T {.inline, requires: r.status == ProgramError.None.} =
   ## Extract a copied value only after establishing complete success.
   r.completed
+
+func instructionHasFallthrough*(decoded: ProgramResult[Instruction]): bool {.inline,
+    requires: decoded.status == ProgramError.None.} =
+  ## A genuine successful decode proves whether its sequential successor is executable in the same immutable program.
+  ## Default/failed results grant no fact. Extracted mutable operand copies cannot change or rebind this capability.
+  decoded.completed.fallthroughPresent
 
 func validOpcode*(opcode: byte): bool =
   ## Exact set U from the 0.8.0 instruction tables, including unlikely (2).
@@ -254,9 +262,13 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
   let opcode = codeByte(data, pc)
   let skip = distance(data.bytes, data.maskOffset, data.codeLength, int(pc))
   let first = int(codeByte(data, pc + 1))
+  # v_blob traversed every marked opcode with this same capped skip. Within the owner extent,
+  # the next sequential position is therefore already a validated marked opcode, not an arbitrary byte.
+  # pc<codeLength proves both subtractions below; no speculative successor addition can wrap.
   var item = Instruction(address: address, opcode: opcode, skip: skip,
     shape: OperandShape.NoArguments, a: RegisterIndex(0), b: RegisterIndex(0),
-    d: RegisterIndex(0), x: Immediate(0), y: Immediate(0), displacement: 0)
+    d: RegisterIndex(0), x: Immediate(0), y: Immediate(0), displacement: 0,
+    fallthroughPresent: uint64(skip) < uint64(data.codeLength)-pc-1)
   # Each branch corresponds to one complete operand shape in the pinned instruction tables.
   case opcode
   of 0..2:

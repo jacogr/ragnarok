@@ -43,6 +43,11 @@ proc ins(code: openArray[byte], starts: openArray[int], pc = 0'u64): Instruction
   assert decoded.error == ProgramError.None
   let item = instruction(decoded.value, CodeAddress(pc))
   assert item.error == ProgramError.None
+  var later = false
+  for start in starts:
+    # Independent literal marker positions define whether this instruction has a sequential successor.
+    if uint64(start) > pc: later = true
+  assert instructionHasFallthrough(item) == later
   item.value
 
 # Default handles/results cannot fabricate a valid empty program or payload.

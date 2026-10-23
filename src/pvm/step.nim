@@ -15,7 +15,9 @@ type
     valid: bool
     start: CodeAddress
     charge: BlockGas
-  InstructionCache = array[16, ProgramResult[Instruction]] ## Fixed-size scalar-only decoder memo belongs to one program invocation, including its host resumptions.
+  InstructionCache = object ## Sixteen genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
+    entries: array[16, ProgramResult[Instruction]]
+    replaceUpper: array[8, bool]
   HostCallId* = distinct uint64 ## Host identifiers occupy a register-width domain distinct from gas, addresses and step budgets.
   ExecutionStepLimit* = distinct uint64 ## Local scheduling policy bounds attempted instructions; it is not guest gas or a guest exit.
   HostCallLimit* = distinct uint64 ## Local dispatch budget, independent of attempted guest instructions and guest gas.
@@ -553,9 +555,14 @@ proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Wo
   else:
     # This path is reachable only for explicitly supported control/no-op instructions.
     outcome = controlMutation(program, item, info)
-  if outcome notin {StepExit.Panic, StepExit.Halt} and
-      instructionOpcode(program, info.pc).error != ProgramError.None:
-    return InstructionEvaluation(status: StepError.InvalidMachine) # Preserve executable-successor validation before the next attempt, including final-slot host calls.
+  if outcome notin {StepExit.Panic, StepExit.Halt}:
+    if not terminatesBlock(item.opcode):
+      # Every admitted nonterminator advances by the decoded skip, except a failed scalar access retaining its genuine causing PC.
+      if outcome != StepExit.Fault and not instructionHasFallthrough(decoded):
+        return InstructionEvaluation(status: StepError.InvalidMachine)
+    elif instructionOpcode(program, info.pc).error != ProgramError.None:
+      # Every control successor keeps the complete executable-location check before the next attempt or budget refusal.
+      return InstructionEvaluation(status: StepError.InvalidMachine)
   # The workspace owns staged writes; published source/exit snapshots never expose its mutable storage.
   if outcome == StepExit.Fault:
     return InstructionEvaluation(status: StepError.None,
@@ -643,13 +650,27 @@ proc stepOnce*(source: Machine, limit: GasCycleLimit): StepResult =
 
 proc cachedInstruction(program: Program, address: CodeAddress,
     cache: var InstructionCache): ProgramResult[Instruction] {.inline.} =
-  ## A full-address tag prevents direct-slot collisions; only genuine successful scalar decoder results populate this invocation's memo.
-  let slot = int(uint64(address) mod uint64(cache.len)) # The fixed positive slot count proves native conversion and indexing bounds.
-  if cache[slot].error == ProgramError.None and uint64(cache[slot].value.address) == uint64(address):
-    return cache[slot] # Program and decode profile remain immutable throughout the enclosing invocation.
+  ## Preserve the natural direct-slot hit first, then inspect its paired way within the same sixteen-result budget.
+  let slot = int(uint64(address) mod uint64(cache.entries.len)) # Fixed positive capacity proves the native index.
+  if cache.entries[slot].error == ProgramError.None and uint64(cache.entries[slot].value.address) ==
+      uint64(address):
+    return cache.entries[slot] # Most existing working sets keep their original single-comparison hit path.
+  let alternative = slot xor 8 # Toggling one of four bounded index bits stays within 0..15.
+  if cache.entries[alternative].error == ProgramError.None and uint64(cache.entries[
+      alternative].value.address) == uint64(address):
+    return cache.entries[alternative]
   result = instruction(program, address)
   if result.error == ProgramError.None:
-    cache[slot] = result # Invalid entries never populate, evict a valid instruction or authorize a successful fallback.
+    var destination = slot
+    if cache.entries[slot].error == ProgramError.None:
+      if cache.entries[alternative].error != ProgramError.None:
+        destination = alternative # Fill a free paired way without disturbing the natural resident.
+      else:
+        # A third successful colliding decode alternates the two residents; failures never replace or advance this bit.
+        let bucket = slot mod cache.replaceUpper.len
+        destination = if cache.replaceUpper[bucket]: bucket+8 else: bucket
+        cache.replaceUpper[bucket] = not cache.replaceUpper[bucket]
+    cache.entries[destination] = result
 
 # Evaluate recursive Psi iteratively over an already validated program and captured machine.
 # The shared remaining budget counts attempted instructions, including the exiting instruction.
