@@ -13,6 +13,33 @@ proc main() =
     items: ElementLimit(8), proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(256))))
   let complete = prepareLightSnapshot(default(StorageChainId), default(StateRoot), [], policy)
   assert complete.error == LightSnapshotError.None
+  if member == "cursor-finished" or member == "cursor-root":
+    # Default traversal handles have neither a meaningful terminal position nor root binding.
+    let selected = if origin == "default": default(
+        LightProofCursor) else: complete.value.proofCursor.value
+    if member == "cursor-finished": echo selected.finished
+    else: echo array[32, byte](selected.root)[0]
+    return
+  if member == "page-len" or member == "page-proofs" or member == "page-next":
+    # Only a completed page grants evidence or an image-bound continuation, including a terminal empty page.
+    let valid = complete.value.proofCursor.value.readPage(default(LightProofPageLimits)).value
+    let selected = if origin == "default": default(LightProofPage) else: valid
+    if member == "page-len": echo selected.len
+    elif member == "page-proofs": echo selected.proofs.len
+    else: echo selected.nextCursor.finished
+    return
+  if member == "cursor-result":
+    let selected = if origin == "default": default(LightSnapshotResult[LightProofCursor])
+      elif origin == "failed": default(PreparedLightSnapshot).proofCursor
+      else: complete.value.proofCursor
+    echo selected.value.finished
+    return
+  if member == "page-result":
+    let selected = if origin == "default": default(LightSnapshotResult[LightProofPage])
+      elif origin == "failed": default(LightProofCursor).readPage(default(LightProofPageLimits))
+      else: complete.value.proofCursor.value.readPage(default(LightProofPageLimits))
+    echo selected.value.len
+    return
   if member == "batch" or member == "batch-reason":
     # Dynamic batch outcomes require a guarded complete sequence and a separately selected proof reason.
     let key = default(StateKey)
