@@ -5,7 +5,9 @@
 import statistics
 import re
 
-ENGINES=('ragnarok','ragnarok_planned','polkavm_interpreter')
+from pvm_benchmark_report import ACTIVE_ENGINES
+
+ENGINES=ACTIVE_ENGINES
 LIMITS=(1000,100000)
 SAMPLES=13
 
@@ -42,10 +44,20 @@ def validate_preparation(item):
         raise ValueError('Invalid gas-plan resource/preparation identity')
 
 
+def validate_memo_preparation(item):
+    """Validate bounded lazy initialization and complete final occupancy; zero CPU initialization may be below clock resolution."""
+    keys={'cpu_ns','wall_ns','code_bytes','payload_bytes','cycle_limit','priced_blocks'}
+    if (not isinstance(item,dict) or set(item)!=keys or any(type(v) is not int for v in item.values())
+            or item['cpu_ns']<0 or item['wall_ns']<=0 or max(item['cpu_ns'],item['wall_ns'])>=(1<<63)
+            or not 0<item['priced_blocks']<=item['code_bytes']
+            or item['payload_bytes']!=item['code_bytes']*8 or not 0<item['payload_bytes']<=8*1024*1024
+            or item['cycle_limit']!=1000000):
+        raise ValueError('Invalid gas-memo resource/occupancy identity')
+
+
 def parse_process_output(output,engine,limit):
-    """Require an explicit bounded preparation record only for planned native execution."""
-    preparation=None
-    lines=output.splitlines()
+    """Require complete policy-specific initialization/occupancy framing in addition to every measured execution."""
+    preparation=None;lines=output.splitlines()
     if engine=='ragnarok_planned':
         fields=lines.pop(0).split(',') if lines else []
         if len(fields)!=7 or fields[0]!='GAS_PLAN' or any(re.fullmatch(r'[1-9][0-9]{0,18}',v) is None for v in fields[1:]):
@@ -54,54 +66,84 @@ def parse_process_output(output,engine,limit):
         preparation=dict(cpu_ns=cpu,wall_ns=wall,code_bytes=code,block_count=blocks,
                          payload_bytes=payload,cycle_limit=cycles)
         validate_preparation(preparation)
+    elif engine=='ragnarok_memo':
+        # A final occupancy record proves the reusable memo survived the complete cold/warm process.
+        fields=lines.pop(0).split(',') if lines else []
+        tail=lines.pop().split(',') if lines else []
+        if (len(fields)!=6 or fields[0]!='GAS_MEMO'
+                or any(re.fullmatch(r'(0|[1-9][0-9]{0,18})',v) is None for v in fields[1:])
+                or len(tail)!=2 or tail[0]!='GAS_MEMO_END' or re.fullmatch(r'[1-9][0-9]{0,18}',tail[1]) is None):
+            raise ValueError('Missing or malformed gas-memo initialization/occupancy')
+        cpu,wall,code,payload,cycles=map(int,fields[1:])
+        preparation=dict(cpu_ns=cpu,wall_ns=wall,code_bytes=code,payload_bytes=payload,
+                         cycle_limit=cycles,priced_blocks=int(tail[1]))
+        validate_memo_preparation(preparation)
     return dict(samples=parse_output('\n'.join(lines),engine,limit),preparation=preparation)
 
 
+def validate_samples(rows):
+    """Cold-cost claims must validate sample zero as strictly as the warmed execution distribution."""
+    if (len(rows)!=SAMPLES or any(set(row)!={'sample','wall_ns','cpu_ns'} for row in rows)
+            or any(type(row[key]) is not int for row in rows for key in row)
+            or [row['sample'] for row in rows]!=list(range(SAMPLES))
+            or any(not 0<row[key]<(1<<63) for row in rows for key in ('wall_ns','cpu_ns'))):
+        raise ValueError('Invalid complete sieve observations')
+
+
 def summarize(report):
-    """Render complete observations, separate plan preparation and retain every noisy sample."""
+    """Show warmed runtime plus initialization/first-cold costs without hiding lazy work in discarded warmups."""
     if report['status']!='checks-passed':
         return 'Sieve comparison: '+report['status']+'. '+report.get('error','')+'\n'
-    identities=[(item['limit'],item['engine'],item['pass_index']) for item in report['passes']]
-    if len(identities)!=len(set(identities)) or set(identities)!={(limit,engine,p) for limit in LIMITS for engine in ENGINES for p in range(2)}:
+    identities=[(p['limit'],p['engine'],p['pass_index']) for p in report['passes']]
+    if (any(type(p['limit']) is not int or type(p['pass_index']) is not int for p in report['passes'])
+            or len(identities)!=len(set(identities)) or set(identities)!={(limit,engine,p) for limit in LIMITS for engine in ENGINES for p in range(2)}):
         raise ValueError('Missing or duplicate sieve report pass')
     lines=['Sieve interpreter comparison (process CPU medians; all samples retained).','',
-           '| Limit | Dynamic ms | Planned ms | PolkaVM ms | Dynamic/ref | Planned/ref | Plan prep ms | Payload MiB | Quality |',
+           '| Limit | Dynamic ms | Immutable plan ms | Lazy memo ms | PolkaVM ms | Dynamic/ref | Plan/ref | Memo/ref | Quality |',
            '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |']
-    if any(p.get('preparation') is not None for p in report['passes'] if p['engine']!='ragnarok_planned'):
-        raise ValueError('Unplanned engine supplied plan metadata')
-    resources=set()
-    amortization=[]
+    if any(p.get('preparation') is not None for p in report['passes'] if p['engine'] not in ('ragnarok_planned','ragnarok_memo')):
+        raise ValueError('Unplanned engine supplied pricing metadata')
+    resources=set();plan_counts=set();amortization=[];cold=[]
     for limit in LIMITS:
         medians={};noisy=False
         for engine in ENGINES:
-            # Every measured process has three warmups followed by ten validated observations.
-            passes=[[row['cpu_ns'] for row in item['samples'][3:]] for item in report['passes']
-                    if item['limit']==limit and item['engine']==engine]
-            if len(passes)!=2 or any(len(values)!=10 for values in passes):
-                raise ValueError('Incomplete sieve report')
-            values=sorted(sum(passes,[]));centers=[statistics.median(p) for p in passes]
+            observed=[p for p in report['passes'] if p['limit']==limit and p['engine']==engine]
+            for item in observed:validate_samples(item['samples'])
+            groups=[[s['cpu_ns'] for s in p['samples'][3:]] for p in observed]
+            values=sorted(sum(groups,[]));centers=[statistics.median(g) for g in groups]
             medians[engine]=statistics.median(values)
             noisy|=max(centers)>1.25*min(centers) or values[17]>2*values[2]
-        planned=[p.get('preparation') for p in report['passes'] if p['limit']==limit and p['engine']=='ragnarok_planned']
-        if len(planned)!=2 or any(not isinstance(p,dict) for p in planned):
-            raise ValueError('Incomplete gas-plan preparation evidence')
-        for p in planned:
-            validate_preparation(p)
-            # The same immutable linked program has identical resource usage for both input limits and process orders.
-            resources.add(tuple(p[key] for key in ('code_bytes','block_count','payload_bytes','cycle_limit')))
-        if len(resources)!=1:raise ValueError('Inconsistent gas-plan resource identity')
-        dynamic,prepared,reference=(medians[e] for e in ENGINES)
-        prep=statistics.median(p['cpu_ns'] for p in planned)
-        payload=planned[0]['payload_bytes']
-        lines.append(f'| {limit} | {dynamic/1e6:.3f} | {prepared/1e6:.3f} | {reference/1e6:.3f} | {dynamic/reference:.2f}x | {prepared/reference:.2f}x | {prep/1e6:.3f} | {payload/(1024*1024):.2f} | '+
+            if engine=='ragnarok':
+                first=statistics.median(p['samples'][0]['cpu_ns'] for p in observed)
+                cold.append(f'| {limit} | Dynamic | — | {first/1e6:.3f} | {first/1e6:.3f} | — | — |')
+            if engine in ('ragnarok_planned','ragnarok_memo'):
+                # Occupancy depends on this input; immutable complete plans have one source-wide block count.
+                preparations=[p.get('preparation') for p in observed]
+                for item in preparations:
+                    (validate_preparation if engine=='ragnarok_planned' else validate_memo_preparation)(item)
+                    resources.add(tuple(item[k] for k in ('code_bytes','payload_bytes','cycle_limit')))
+                count_key='block_count' if engine=='ragnarok_planned' else 'priced_blocks'
+                counts={item[count_key] for item in preparations}
+                if len(counts)!=1:raise ValueError('Inconsistent per-input pricing occupancy')
+                if engine=='ragnarok_planned':plan_counts.update(counts)
+                init=statistics.median(p['cpu_ns'] for p in preparations)
+                first=statistics.median(p['samples'][0]['cpu_ns'] for p in observed)
+                cold.append(f"| {limit} | "+('Immutable plan' if engine=='ragnarok_planned' else 'Lazy memo')+
+                    f" | {init/1e6:.3f} | {first/1e6:.3f} | {(init+first)/1e6:.3f} | {preparations[0]['payload_bytes']/(1024*1024):.2f} | {next(iter(counts))} |")
+                if engine=='ragnarok_planned' and medians['ragnarok']>medians[engine]:
+                    amortization.append(f"{limit}: about {init/(medians['ragnarok']-medians[engine]):.2f} executions")
+        dynamic,planned,memo,reference=(medians[e] for e in ENGINES)
+        lines.append(f'| {limit} | {dynamic/1e6:.3f} | {planned/1e6:.3f} | {memo/1e6:.3f} | {reference/1e6:.3f} | {dynamic/reference:.2f}x | {planned/reference:.2f}x | {memo/reference:.2f}x | '+
                      ('noisy; inspect raw samples' if noisy else 'within dispersion guard')+' |')
-        saving=dynamic-prepared
-        if saving>0:
-            amortization.append(f'{limit}: about {prep/saving:.2f} executions')
-    if amortization:lines+=['','Additional plan preparation amortization from current medians: '+ '; '.join(amortization)+'.']
-    lines.extend(['','Execution only; complete state validation occurs outside timing.',
-                  'Planned mode additionally prepares an immutable price table once; its CPU cost and payload are shown separately.',
-                  'A single cold execution also pays preparation; reuse is needed to amortize that cost.',
-                  'Checked release ARC/Clang ThinLTO; PolkaVM Interpreter JamV1 Sync/Full/L2Hit.',
-                  'These two guests do not establish general interpreter or full JAM performance.'])
+    if len(resources)!=1 or len(plan_counts)!=1:raise ValueError('Inconsistent source/policy resource identity')
+    lines+=['','Additional native initialization and first execution (two observations per cell).','',
+            '| Limit | Policy | Init CPU ms | First exec CPU ms | Init + first ms | Payload MiB | Priced blocks |',
+            '| --- | --- | ---: | ---: | ---: | ---: | ---: |',*cold]
+    if amortization:lines+=['','Additional immutable-plan preparation amortization from current medians: '+ '; '.join(amortization)+'.']
+    lines+=['','Warmed execution has twenty measured observations; every cold/warmup sample remains in the raw data.',
+            'Lazy memo pricing work occurs in the first execution: include initialization plus that cold sample when assessing reuse.',
+            'Initialization CPU below clock resolution may be zero; positive wall duration remains recorded.',
+            'Common source capture/reset and full result validation are outside execution timing.',
+            'Checked release ARC/Clang ThinLTO; PolkaVM Interpreter JamV1 Sync/Full/L2Hit.',
+            'These two guests do not establish general interpreter or full JAM performance.']
     return '\n'.join(lines)+'\n'

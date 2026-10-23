@@ -4,6 +4,7 @@
 
 """Run opt-in correctness-validated PVM speed baselines with explicit backend availability."""
 import csv
+from pvm_benchmark_report import native_pricing_mode
 import hashlib
 import json
 import os
@@ -106,19 +107,32 @@ def run():
         save()
         native_folder=ROOT/'build/pvm-benchmark';native_folder.mkdir(exist_ok=True)
         build,binary=NativeChecks(native_folder).build(compiler,ROOT/'tests/performance/pvm_workload.nim','native')
-        build.pop('output',None);report['checks'].append(build);save()
-        if build['exit_code']!=0:raise RuntimeError('Native benchmark build failed: '+build['log'])
+        build_output=build.pop('output','');report['checks'].append(build);save()
+        if build['exit_code']!=0 or 'Error:' in build_output or 'FAILURE' in build_output:
+            raise RuntimeError('Native benchmark build failed: '+build['log'])
+        memo_build,memo_binary=NativeChecks(native_folder).build(compiler,ROOT/'tests/performance/pvm_workload.nim','native-memo',defines=('pvmBenchmarkMemo',))
+        memo_output=memo_build.pop('output','');report['checks'].append(memo_build);save()
+        if memo_build['exit_code']!=0 or 'Error:' in memo_output or 'FAILURE' in memo_output:
+            raise RuntimeError('Native memo benchmark build failed: '+memo_build['log'])
         checked(['rustup','run',rust,'cargo','build','--release','--locked','--offline',
             '--manifest-path',CRATE/'Cargo.toml','--target-dir',TARGET],'rust-build')
-        arguments={'ragnarok':[binary],'ragnarok_planned':[binary],
+        report['binaries']={str(p.relative_to(ROOT)):digest(p) for p in (binary,memo_binary,TARGET/'release/ragnarok-pvm-benchmark')}
+        arguments={'ragnarok':[binary],'ragnarok_planned':[binary],'ragnarok_memo':[memo_binary],
                    'polkavm_interpreter':[TARGET/'release/ragnarok-pvm-benchmark',fixture,'interpreter']}
+        for probe_binary,mode,sentinel in ((binary,'memo','legacy'),(memo_binary,'dynamic','memo')):
+            # Separate instantiations must reject wrong labels before emitting any measurement.
+            probe=NativeChecks(BUILD).command([probe_binary],'mode-control-'+sentinel,
+                environment=dict(os.environ,RAGNAROK_PVM_BENCHMARK=str(fixture),RAGNAROK_PVM_PRICING=mode))
+            output=probe.pop('output','');report['checks'].append(probe);save()
+            if probe['exit_code']==0 or 'pvm benchmark '+sentinel+' mode mismatch' not in output:
+                raise RuntimeError('Native benchmark mode control did not fail')
         os.environ['RAGNAROK_PVM_BENCHMARK']=str(fixture)
         for pass_index,order in enumerate((ACTIVE_ENGINES,tuple(reversed(ACTIVE_ENGINES)))):
             # Reversing engine order limits simple first/last bias; it does not claim host isolation.
             # Deferral is policy metadata, never a backend probe or substituted interpreter sample.
             observations={'polkavm_compiler':[dict(samples=[],reason=DEFERRED_COMPILER,deferred=True) for _ in NAMES]}
             for engine in order:
-                mode=dict(os.environ,RAGNAROK_PVM_BENCHMARK=str(fixture),RAGNAROK_PVM_PRICING='planned' if engine=='ragnarok_planned' else 'dynamic')
+                mode=dict(os.environ,RAGNAROK_PVM_BENCHMARK=str(fixture),RAGNAROK_PVM_PRICING=native_pricing_mode(engine))
                 output=checked(arguments[engine],f'pass{pass_index}-{engine}',timeout=300,environment=mode)
                 observations[engine]=parse_output(output,engine)
             report['passes'].append(observations);save()

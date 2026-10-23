@@ -3,7 +3,7 @@
 
 ## Execute the exact linked upstream sieve supplied to PolkaVM; compare complete reference outputs.
 import std/[assertions, syncio, monotimes, envvars]
-import ../../src/pvm/[program, machine, gas, gas_plan]
+import ../../src/pvm/[program, machine, gas, gas_plan, gas_memo]
 import ../../src/pvm/step as reference
 
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
@@ -97,9 +97,11 @@ assert captured.error == MachineError.None
 let memory = captured.value
 let source = captureMachine(owner, memory, info).value
 let pricing = getEnv("RAGNAROK_PVM_PRICING")
-assert pricing in ["", "dynamic", "planned"]
+assert pricing in ["", "dynamic", "planned", "memo"]
 let plannedMode = pricing == "planned"
+let memoMode = pricing == "memo"
 var plan = default(GasPlan)
+var memo = default(GasMemo)
 if plannedMode:
   # Only additional immutable-price preparation is bracketed here; common program/memory capture stays outside execution.
   let prepareWall = getMonoTime().ticks
@@ -113,7 +115,21 @@ if plannedMode:
   let info = gasPlanInfo(plan).value
   echo "GAS_PLAN,", prepareCpuNs, ",", prepareWallNs, ",", info.codeBytes, ",",
     info.blockCount, ",", info.payloadBytes, ",", uint64(info.cycleLimit)
-let engine = if plannedMode: "ragnarok_planned" else: "ragnarok"
+if memoMode:
+  # Initialization allocates only bounded empty facts; sample zero retains the actual first-cold pricing work.
+  let prepareWall = getMonoTime().ticks
+  let prepareCpu = cpuNanoseconds()
+  let created = newGasMemo(owner, GasMemoLimits(bytes: GasMemoByteLimit(8*1024*1024),
+      cycles: GasCycleLimit(1000000)))
+  let prepareCpuNs = cpuNanoseconds()-prepareCpu
+  let prepareWallNs = getMonoTime().ticks-prepareWall
+  assert created.error == GasMemoError.None
+  memo = created.value
+  let info = gasMemoInfo(memo).value
+  assert info.pricedBlocks == 0
+  echo "GAS_MEMO,", prepareCpuNs, ",", prepareWallNs, ",", info.codeBytes, ",", info.payloadBytes,
+      ",", uint64(info.cycleLimit)
+let engine = if memoMode: "ragnarok_memo" elif plannedMode: "ragnarok_planned" else: "ragnarok"
 let requestedSamples = getEnv("RAGNAROK_PVM_SIEVE_SAMPLES")
 assert requestedSamples in ["1", "13"]
 let samples = if requestedSamples == "1": 1 else: 13
@@ -121,7 +137,8 @@ for sample in 0..<samples:
   # Program/memory/ABI setup is outside execution timing in both interpreters.
   let wallStart = getMonoTime().ticks
   let cpuStart = cpuNanoseconds()
-  let done = if plannedMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), plan)
+  let done = if memoMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), memo)
+    elif plannedMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), plan)
     else: reference.execute(source, reference.ExecutionStepLimit(1000000000), GasCycleLimit(1000000))
   let cpuElapsed = cpuNanoseconds() - cpuStart
   let elapsed = getMonoTime().ticks - wallStart
@@ -134,3 +151,7 @@ for sample in 0..<samples:
   assert uint64(original.pc) == entry and uint64(original.gas) == uint64(info.gas)
   assert not original.blockCharged
   for i in 0..<13: assert uint64(original.registers[i]) == uint64(info.registers[i])
+
+if memoMode:
+  # Final bounded occupancy is observed outside execution timing and must accompany every complete memo pass.
+  echo "GAS_MEMO_END,", gasMemoInfo(memo).value.pricedBlocks

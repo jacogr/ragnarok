@@ -7,6 +7,7 @@
 Make owns provisioning. No guest compiler is installed and no compiled backend is started.
 """
 import csv
+from pvm_benchmark_report import native_pricing_mode
 import hashlib
 import json
 import os
@@ -119,11 +120,11 @@ def run():
             immutable={path:digest(path) for path in (data,expected)}
             environment=dict(os.environ,RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0',RAGNAROK_PVM_SIEVE_INPUT=str(data),
                              RAGNAROK_PVM_SIEVE_EXPECTED=str(expected),RAGNAROK_PVM_SIEVE_SAMPLES='13')
-            arguments={'ragnarok':[binary],'ragnarok_planned':[binary],'polkavm_interpreter':
+            arguments={'ragnarok':[binary],'ragnarok_planned':[binary],'ragnarok_memo':[binary],'polkavm_interpreter':
                        [reference,'--sieve',FIXTURE/'sieve.polkavm',folder,limit,13]}
             for engine in ENGINES:
                 # Release assertions must remain live in both executables.
-                probe=dict(environment,RAGNAROK_PVM_SIEVE_ASSERT_PROBE='1',RAGNAROK_PVM_PRICING='planned' if engine=='ragnarok_planned' else 'dynamic')
+                probe=dict(environment,RAGNAROK_PVM_SIEVE_ASSERT_PROBE='1',RAGNAROK_PVM_PRICING=native_pricing_mode(engine))
                 sentinel='pvm sieve '+('reference' if engine=='polkavm_interpreter' else 'native')+' assertion control'
                 command(arguments[engine],f'assert-{limit}-{engine}',probe,sentinel)
             for name,path,changed in (('truncated',data,data.read_bytes()[:-1]),
@@ -133,14 +134,14 @@ def run():
                     path.write_bytes(changed)
                     for engine in ENGINES:
                         # Both measured runners must reject bad data rather than regenerate expected bytes.
-                        command(arguments[engine],f'{name}-{limit}-{engine}',dict(environment,RAGNAROK_PVM_PRICING='planned' if engine=='ragnarok_planned' else 'dynamic'),'')
+                        command(arguments[engine],f'{name}-{limit}-{engine}',dict(environment,RAGNAROK_PVM_PRICING=native_pricing_mode(engine)),'')
                 finally:
                     path.write_bytes(original)
             for pass_index,order in enumerate((ENGINES,tuple(reversed(ENGINES)))):
                 for engine in order:
                     for path,identity in immutable.items():
                         if digest(path)!=identity:raise ValueError('Changed prepared sieve input')
-                    mode=dict(environment,RAGNAROK_PVM_PRICING='planned' if engine=='ragnarok_planned' else 'dynamic')
+                    mode=dict(environment,RAGNAROK_PVM_PRICING=native_pricing_mode(engine))
                     observed=parse_process_output(command(arguments[engine],f'pass{pass_index}-{limit}-{engine}',mode),engine,limit)
                     for path,identity in immutable.items():
                         if digest(path)!=identity:raise ValueError('Sieve runner changed frozen data')

@@ -23,7 +23,7 @@ def report():
     """Construct every required engine/pass/limit identity with explicit plan preparation."""
     return dict(status='checks-passed',passes=[dict(limit=limit,engine=engine,pass_index=p,
         samples=parse_output(output(engine,limit),engine,limit),
-        preparation=dict(cpu_ns=1000,wall_ns=2000,code_bytes=16,block_count=1,payload_bytes=128,cycle_limit=1000000) if engine=='ragnarok_planned' else None)
+        preparation=dict(cpu_ns=1000,wall_ns=2000,code_bytes=16,block_count=1,payload_bytes=128,cycle_limit=1000000) if engine=='ragnarok_planned' else (dict(cpu_ns=100,wall_ns=200,code_bytes=16,payload_bytes=128,cycle_limit=1000000,priced_blocks=1 if limit==1000 else 2) if engine=='ragnarok_memo' else None))
         for limit in LIMITS for engine in ENGINES for p in range(2)])
 
 
@@ -76,6 +76,20 @@ class SieveBenchmarkTests(unittest.TestCase):
             if p['engine']=='ragnarok_planned':p['preparation']['cpu_ns']=0
         with self.assertRaises(ValueError):summarize(data)
 
+    def test_memo_protocol_and_visible_cold_cost(self):
+        """Initialization, every execution and final occupancy are required; learning cannot be hidden in warmups."""
+        good='GAS_MEMO,100,200,16,128,1000000\n'+output('ragnarok_memo')+'\nGAS_MEMO_END,1'
+        self.assertEqual(parse_process_output(good,'ragnarok_memo',1000)['preparation']['priced_blocks'],1)
+        parse_process_output(good.replace('GAS_MEMO,100,','GAS_MEMO,0,'),'ragnarok_memo',1000)
+        for bad in (good.rsplit('\n',1)[0],good+'\nGAS_MEMO_END,1',good.replace('GAS_MEMO_END,1','GAS_MEMO_END,0'),
+                    good.replace('GAS_MEMO_END,1','GAS_MEMO_END,17'),good.replace(',16,128,',',16,127,')):
+            with self.subTest(tail=bad[-50:]),self.assertRaises(ValueError):parse_process_output(bad,'ragnarok_memo',1000)
+        with self.assertRaises(ValueError):parse_process_output(good,'ragnarok',1000)
+        data=report();self.assertIn('Init + first ms',summarize(data))
+        for p in data['passes']:
+            if p['engine']=='ragnarok_memo':p['samples'][0]['cpu_ns']=0
+        with self.assertRaises(ValueError):summarize(data)
+
     def test_complete_protocol(self):
         """Both clocks and every sample survive parsing in original process order."""
         rows=parse_output(output(),'ragnarok',1000)
@@ -111,7 +125,9 @@ class SieveBenchmarkTests(unittest.TestCase):
         data=report();before=summarize(data)
         for item in data['passes']:
             for row in item['samples'][:3]:row['cpu_ns']=10**12
-        self.assertEqual(summarize(data),before)
+        after=summarize(data)
+        self.assertEqual(after.split('Additional native initialization')[0],before.split('Additional native initialization')[0])
+        self.assertNotEqual(after,before) # Cold sample zero is now an explicit cost observation, not a hidden warmup.
         self.assertEqual(len(data['passes'][0]['samples']),13)
 
     def test_failed_rerun_retires_stale_success(self):
