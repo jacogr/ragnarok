@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Separate bounded fixture producers from fresh light-file reopen consumers and exact ARC/hash witnesses.
-import std/[assertions, cmdline, syncio]
+import std/[assertions, cmdline, syncio, monotimes]
 import std/posix/posix
 import ../../tests/support/storage_io
 import ../../src/storage/[managed_io, managed_manifest]
@@ -153,6 +153,77 @@ proc publish(source, target: string, size: int, expected: StateRoot) =
   assert released == baseline, "publication ARC release: " & $baseline & " -> " & $released
   echo "publication\t", size, "\t", observed.writes, "\t", observed.syncs, "\t", observed.renames,
       "\t", observed.before, "\t", observed.after
+type
+  ChurnObservation = object ## Scalar witnesses separate durable update work, strict reopen and retained ownership.
+    imageBytes, writtenBytes, writes, syncs, renames: uint64
+    updateHashes, reopenHashes: cint
+    updateNs, reopenNs: int64
+    before, after: int
+proc churnCycle(source, target: string, size: int, expected: StateRoot): ChurnObservation =
+  ## Eight single-key forget/admit pairs change only knowledge at one complete root and perform real durable publications.
+  let prepared = load(source, size, expected)
+  let proof = LightStateProof(key: key(0), proof: prepared.prove(key(0), LightProofReadLimits(
+    entries: ElementLimit(1), proof: policy(size).cache.proof)).value)
+  let config = LightFileConfig(root: expected, limits: policy(size))
+  var file = default(LightFileCache)
+  assert initializeLightFileCache(file, target, config, prepared).value ==
+      StorageDurability.FileAndDirectorySynced
+  let retained = file.snapshot.value
+  let imageBytes = uint64(prepared.byteLength)
+  let omittedBytes = imageBytes-uint64(41+17*64+size)
+  resetIo()
+  resetHash(0)
+  let before = getOccupiedMem()
+  var written = 0'u64
+  let started = getMonoTime().ticks
+  for cycle in 0..<8:
+    # Each successful one-write replacement supplies its exact complete encoded extent, not physical device traffic.
+    assert file.forget([key(0)]).value == StorageDurability.FileAndDirectorySynced
+    assert file.snapshot.value.lookup(key(0)).error == LightCacheError.UnknownKey
+    assert uint64(file.preparedSnapshot.value.byteLength) == omittedBytes
+    written += omittedBytes
+    assert file.admit([proof]).value == StorageDurability.FileAndDirectorySynced
+    assert uint64(file.preparedSnapshot.value.byteLength) == imageBytes
+    written += imageBytes
+  let elapsed = getMonoTime().ticks-started
+  let after = getOccupiedMem()
+  let writes = ioCalls(writeIo)
+  let syncs = ioCalls(syncIo)
+  let renames = ioCalls(renameIo)
+  let hashes = calls()
+  assert writes == 16 and syncs == 32 and renames == 16 and hashes == 160
+  assert written == 8*(imageBytes+omittedBytes) and elapsed >= 0
+  assert file.close == FileError.None
+  resetHash(0)
+  let reopenStarted = getMonoTime().ticks
+  assert openLightFileCache(file, target, config) == FileError.None
+  let reopenElapsed = getMonoTime().ticks-reopenStarted
+  let reopenHashes = calls()
+  assert reopenHashes == Count*18+1 and reopenElapsed >= 0
+  let final = file.preparedSnapshot.value
+  assert final.encodedBytes == prepared.encodedBytes
+  for index in 0..<Count:
+    # Independent fixture bytes and a retained pre-edit reader survive every publication and strict reopen.
+    let value = file.snapshot.value.lookup(key(index)).value.bytes
+    assert value.len == size and value[0] == byte(index and 255)
+    assert value[size-1] == byte((index+size-1) and 255)
+  assert retained.len == Count and retained.lookup(key(0)).value.bytes.len == size
+  assert file.close == FileError.None
+  ChurnObservation(imageBytes: imageBytes, writtenBytes: written, writes: writes, syncs: syncs,
+    renames: renames, updateHashes: hashes, reopenHashes: reopenHashes, updateNs: elapsed,
+    reopenNs: reopenElapsed, before: before, after: after)
+proc churn(source, target: string, size: int, expected: StateRoot) =
+  ## Final ARC retirement is sampled after every result, proof, retained image and native owner leaves scope.
+  let baseline = getOccupiedMem()
+  let observed = churnCycle(source, target, size, expected)
+  let retired = getOccupiedMem()
+  assert retired == baseline
+  echo "churn\t", size, "\t8\t", observed.imageBytes, "\t", observed.writtenBytes, "\t",
+      observed.writes,
+    "\t", observed.syncs, "\t", observed.renames, "\t", observed.updateHashes, "\t",
+        observed.reopenHashes,
+    "\t", observed.updateNs, "\t", observed.reopenNs, "\t", baseline, "\t", observed.before,
+    "\t", observed.after, "\t", retired
 proc main() =
   ## Fixed fixture extents and explicit independent roots keep producer, reopen and publication modes distinct.
   assert paramCount() in [3, 4, 5]
@@ -168,6 +239,7 @@ proc main() =
     assert paramCount() == 4
     consume(path, size, root(paramStr(4)))
   else:
-    assert mode == "publish" and paramCount() == 5
-    publish(path, paramStr(5), size, root(paramStr(4)))
+    assert mode in ["publish", "churn"] and paramCount() == 5
+    if mode == "publish": publish(path, paramStr(5), size, root(paramStr(4)))
+    else: churn(path, paramStr(5), size, root(paramStr(4)))
 main()

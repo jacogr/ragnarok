@@ -323,3 +323,8 @@ remain independent copies. See [publication memory and IO evidence](../../spec/s
 Prepared images and file owners expose `update(proofs, forgottenKeys)` for atomic
 combined changes. This replaces evidence at exact capacity in one publication, with
 no visible eviction prefix. See [atomic evidence batches](../../spec/storage-light-atomic-batches.md).
+
+The [light churn baseline](../../spec/storage-light-churn.md) measures real one-key evidence
+forget/admit publication, strict reopen, completed write extents, durability calls and ARC
+retirement with producer memory excluded. It motivates bounded incremental light persistence;
+its local timings do not establish cold-cache or physical-device behavior.
