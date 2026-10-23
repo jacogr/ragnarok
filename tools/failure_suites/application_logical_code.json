@@ -1,0 +1,56 @@
+{
+  "build_name": "application-logical-code-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "application_logical_code guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "application-logical-code-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "application_logical_code selected reason",
+      "diagnostic": "outcome.status == CodeFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "application-logical-code-reason"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Logical code owner source",
+      "diagnostic": "source.initialized",
+      "identity": {
+        "reason": "source"
+      },
+      "name": "application-logical-code-source"
+    },
+    {
+      "arguments": [
+        "table"
+      ],
+      "description": "Logical code owner table",
+      "diagnostic": "source.initialized",
+      "identity": {
+        "reason": "table"
+      },
+      "name": "application-logical-code-table"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_logical_code_results.nim"
+}

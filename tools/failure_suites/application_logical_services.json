@@ -594,6 +594,39 @@
         "reason": "publication-logical-checkpoint-import"
       },
       "name": "application-logical-services-publication-logical-checkpoint-import"
+    },
+    {
+      "arguments": [
+        "preparation-logical-code"
+      ],
+      "description": "Managed host exclusion preparation-logical-code",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-code"
+      },
+      "name": "application-logical-services-preparation-logical-code"
+    },
+    {
+      "arguments": [
+        "proof-logical-code"
+      ],
+      "description": "Managed host exclusion proof-logical-code",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-code"
+      },
+      "name": "application-logical-services-proof-logical-code"
+    },
+    {
+      "arguments": [
+        "publication-logical-code"
+      ],
+      "description": "Managed host exclusion publication-logical-code",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-code"
+      },
+      "name": "application-logical-services-publication-logical-code"
     }
   ],
   "crypto_library": "observer",
