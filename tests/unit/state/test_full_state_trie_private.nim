@@ -81,6 +81,38 @@ proc cycle() =
   assert array[32, byte](source.apply(changes).value.commitment.root) == array[32, byte](
       changed.commitment.root)
 
+proc wideBatch() =
+  ## Shared-prefix edits use final quotas and discard every partially hashed merged candidate.
+  var limits = policy()
+  limits.writes = ElementLimit(8)
+  let source = newFullStateTrie([StateEntry(key: key(0, 0), value: @[1'u8]),
+    StateEntry(key: key(64, 0), value: @[2'u8]), StateEntry(key: key(128, 0), value: @[3'u8]),
+    StateEntry(key: key(192, 0), value: @[4'u8])], limits).value
+  let held = source.lookup(key(0, 0)).value
+  let changes = [TrieWrite(key: key(0, 0), kind: TrieWriteKind.Delete),
+    TrieWrite(key: key(32, 0), kind: TrieWriteKind.Put, value: newSeq[byte](33)),
+    TrieWrite(key: key(128, 0), kind: TrieWriteKind.Put, value: @[9'u8]),
+    TrieWrite(key: key(192, 0), kind: TrieWriteKind.Delete),
+    TrieWrite(key: key(224, 0), kind: TrieWriteKind.Delete),
+    TrieWrite(key: key(160, 0), kind: TrieWriteKind.Put)]
+  fail(0)
+  let changed = source.apply(changes).value
+  let attempts = hashCalls()
+  assert attempts == 8 # Three new leaves, four final branches and one long-value digest; leaf64 is reused.
+  assert changed.commitment.entries == 4 and changed.commitment.nodes == 8
+  for prefix in 0..<int(attempts):
+    failAfter(cint(prefix))
+    assert source.apply(changes).error == TrieError.BackendFailure
+    assert hashCalls() == cint(prefix+1)
+    assert held.bytes == @[1'u8] and source.lookup(key(192, 0)).value.bytes == @[4'u8]
+    assert source.lookup(key(160, 0)).error == TrieError.MissingKey
+  fail(1)
+  let absent = [TrieWrite(key: key(16, 0), kind: TrieWriteKind.Delete),
+    TrieWrite(key: key(48, 0), kind: TrieWriteKind.Delete),
+    TrieWrite(key: key(224, 0), kind: TrieWriteKind.Delete)]
+  assert sameTrieRevision(source, source.apply(absent).value) and hashCalls() == 0
+  fail(0)
+
 proc constructorCycle() =
   ## Every constructor hash prefix rolls back, including a long value and deepest unary path.
   let entries = [StateEntry(key: key(0, 1), value: newSeq[byte](33)),
@@ -160,6 +192,7 @@ proc preflight() =
   fail(0)
 
 let constructionBefore = getOccupiedMem()
+wideBatch()
 constructorCycle()
 assert getOccupiedMem() == constructionBefore
 preflight()

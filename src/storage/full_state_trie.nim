@@ -121,9 +121,19 @@ proc branch(left, right: nil TrieNode): nil TrieNode =
     if right == nil or right.leaf: return right # A singleton is a leaf at every depth.
   if right == nil and left != nil and left.leaf: return left # Collapse the last surviving leaf.
   # Preflight bounds entries by high(int) and uint64/249, and payload totals by uint64.
-  # Deletions precede insertions, so every intermediate mapping fits those proved extents.
+  # Each copied/merged child is a final subtree; no cached sum includes both versions of one key.
   TrieNode(leaf: false, left: left, right: right, entries: entryCount(left)+entryCount(right),
     nodes: 1+nodeCount(left)+nodeCount(right), valueBytes: valueSize(left)+valueSize(right))
+
+proc writeSplit(ordered: openArray[WriteIndex], first, stop, depth: int): int =
+  ## Sorted ranges share previous bits, so binary search finds the first one-bit key at this depth.
+  var lower = first
+  var upper = stop
+  while lower < upper:
+    let middle = lower+(upper-lower) div 2 # Difference-based arithmetic stays inside the bounded range.
+    if one(ordered[middle].key, depth): upper = middle # The first one-bit key is no later than middle.
+    else: lower = middle+1 # This zero-bit key and every earlier slot precede the partition.
+  lower
 
 proc buildInitial(ordered: openArray[WriteIndex], writes: openArray[TrieWrite],
     first, stop, depth: int): nil TrieNode =
@@ -134,15 +144,9 @@ proc buildInitial(ordered: openArray[WriteIndex], writes: openArray[TrieWrite],
     assert write.kind == TrieWriteKind.Put # Only the constructor selects this private build path.
     return leaf(write.key, write.value) # Singleton leaves need no intervening unary branches.
   assert depth < 248 # Distinct full keys must split before exhausting their serialized bits.
-  var lower = first
-  var upper = stop
-  while lower < upper:
-    # Lexicographic order and the shared prefix make the current zero/one boundary monotonic.
-    let middle = lower+(upper-lower) div 2
-    if one(ordered[middle].key, depth): upper = middle # Keep the first possible one-bit key.
-    else: lower = middle+1 # This zero-bit key and all earlier identities precede the split.
-  let left = buildInitial(ordered, writes, first, lower, depth+1)
-  let right = buildInitial(ordered, writes, lower, stop, depth+1)
+  let split = writeSplit(ordered, first, stop, depth)
+  let left = buildInitial(ordered, writes, first, split, depth+1)
+  let right = buildInitial(ordered, writes, split, stop, depth+1)
   branch(left, right) # Retain unary branches whenever their nonempty child contains multiple leaves.
 
 proc remove(node: nil TrieNode, key: StateKey, depth: int): nil TrieNode =
@@ -163,7 +167,7 @@ proc insert(node: nil TrieNode, added: TrieNode, depth: int): nil TrieNode =
   ## Copy the affected path, expanding a singleton through every shared-prefix bit.
   if node == nil: return added # Empty subtrees immediately become one leaf.
   if node.leaf:
-    if compareKey(node.key, added.key) == 0: return added # Construction also supports replacement.
+    if compareKey(node.key, added.key) == 0: return added # A replacement occupies only the final leaf position.
     if one(node.key, depth) == one(added.key, depth):
       let child = insert(node, added, depth+1)
       if one(added.key, depth): return branch(nil, child) # Preserve shared one-bit unary nodes.
@@ -173,6 +177,33 @@ proc insert(node: nil TrieNode, added: TrieNode, depth: int): nil TrieNode =
   if one(added.key, depth):
     return branch(node.left, insert(node.right, added, depth+1)) # Share the untouched left subtree.
   branch(insert(node.left, added, depth+1), node.right)
+
+proc mergeWrites(node: nil TrieNode, ordered: openArray[WriteIndex],
+    writes: openArray[TrieWrite], first, stop, depth: int): nil TrieNode =
+  ## Copy the union of affected paths once, sharing every complete subtree without a routed write.
+  if first == stop: return node # An untouched subtree retains its exact published owner identity.
+  if stop-first == 1:
+    let write = writes[ordered[first].position]
+    if write.kind == TrieWriteKind.Delete:
+      return remove(node, write.key, depth) # Absent deletion propagates the original identity unchanged.
+    return insert(node, leaf(write.key, write.value),
+        depth) # Replacement never retains both leaf versions in a cached sum.
+  assert depth < 248 # Unique routed write keys must partition before the complete key domain ends.
+  var left: nil TrieNode = nil
+  var right: nil TrieNode = nil
+  if node != nil:
+    if node.leaf:
+      if one(node.key, depth): right = node # Expand a singleton logically, allocating no temporary branch.
+      else: left = node
+    else:
+      left = node.left # Immutable children remain independently retained while both candidates are built.
+      right = node.right
+  let split = writeSplit(ordered, first, stop, depth)
+  let changedLeft = mergeWrites(left, ordered, writes, first, split, depth+1)
+  let changedRight = mergeWrites(right, ordered, writes, split, stop, depth+1)
+  if node != nil and not node.leaf and changedLeft == left and changedRight == right:
+    return node # A multi-key absent-delete batch must preserve revision and shared branch identities.
+  branch(changedLeft, changedRight) # Normalize only the final children after all routed deletions/replacements.
 
 proc hashCandidate(node: nil TrieNode, perValue: ByteLimit): TrieError =
   ## Fill private caches bottom-up; shared published nodes are already hashed and never written.
@@ -285,13 +316,7 @@ proc applyBatch(source: FullStateTrie, writes: openArray[TrieWrite],
     assert data.root == nil # Initial-map construction never replaces or shares an existing graph.
     candidate = buildInitial(ordered, writes, 0, ordered.len, 0)
   else:
-    candidate = data.root # Ordinary updates preserve path copying and unchanged subtree identities.
-    for index in ordered:
-      candidate = remove(candidate, index.key, 0) # Remove replacements before any insertion.
-    for index in ordered:
-      let write = writes[index.position]
-      if write.kind == TrieWriteKind.Put:
-        candidate = insert(candidate, leaf(write.key, write.value), 0) # New payloads have owned backing.
+    candidate = mergeWrites(data.root, ordered, writes, 0, ordered.len, 0)
   if nodeCount(candidate) > uint64(limits.trie.nodes):
     return TrieResult[FullStateTrie](status: TrieError.LimitExceeded) # Exact final topology refuses before any hashing.
   let hashed = hashCandidate(candidate, limits.trie.perValue)
