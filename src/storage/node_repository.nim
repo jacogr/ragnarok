@@ -28,12 +28,14 @@ type
     of InvalidRecords: recordReason: RecordError
     of TrieFailure: trieReason: TrieError
     else: discard               # Default and ordinary refusals retain no graph owner.
-  StoredRecord = ref object ## Private immutable cell owns bytes once; revision tables share only this ARC owner.
-    kind: TrieRecordKind
+  StoredRecord = ref object ## Private immutable tagged cell owns only its physical form; tables share this ARC owner.
     digest: StateNodeHash
-    key: StateKey
-    payload: seq[byte]
-    left, right: StateNodeHash
+    case kind: TrieRecordKind
+    of Leaf:
+      key: StateKey              ## Leaf-only bytes never reserve space beside branch edges.
+      payload: seq[byte]
+    of Branch:
+      left, right: StateNodeHash ## Complete physical edges remain distinct from masked JAM hashing.
   ImageRecordStage = object ## Private provisional cells never escape failed encoded-image admission.
     records: seq[StoredRecord]
     limits: RepositoryLimits
@@ -114,22 +116,36 @@ func compareHash(left, right: StateNodeHash): int =
 proc compareRecord(left, right: StoredRecord): int =
   ## Sort records without comparing or copying raw payloads in the comparator.
   compareHash(left.digest, right.digest)
+func payloadBytes(record: StoredRecord): int {.inline.} =
+  ## Mixed physical inventories count no value bytes for a branch and never read an inactive variant.
+  if record.kind == TrieRecordKind.Leaf: record.payload.len
+  else: 0
 func sameRecord(left: StoredRecord, right: TrieRecord): bool =
-  ## A digest collision must not silently replace different physical navigation or values.
-  left.kind == right.kind and compareHash(left.digest, right.digest) == 0 and
-    array[31, byte](left.key) == array[31, byte](right.key) and left.payload == right.payload and
+  ## Transport preflight has established canonical unused fields; compare every active physical field.
+  if left.kind != right.kind or compareHash(left.digest, right.digest) != 0: return false
+  if left.kind == TrieRecordKind.Leaf:
+    array[31, byte](left.key) == array[31, byte](right.key) and left.payload == right.payload
+  else:
     compareHash(left.left, right.left) == 0 and compareHash(left.right, right.right) == 0
 proc storeRecord(source: TrieRecord): StoredRecord =
-  ## Admit copied transport bytes into a private cell that no public API can mutate or expose.
-  var bytes = newSeq[byte](source.payload.len)
-  for index, octet in source.payload:
-    bytes[index] = octet # Borrowed transport must not become a mutable alias of an admitted record.
-  StoredRecord(kind: source.kind, digest: source.digest, key: source.key, payload: bytes,
-    left: source.left, right: source.right)
+  ## Only fully validated raw records enter this private constructor; mutable leaf payloads still copy.
+  if source.kind == TrieRecordKind.Leaf:
+    var bytes = newSeq[byte](source.payload.len)
+    for index, octet in source.payload:
+      bytes[index] = octet # Borrowed input cannot alias immutable admitted ownership.
+    result = StoredRecord(kind: TrieRecordKind.Leaf, digest: source.digest,
+      key: source.key, payload: bytes)
+  else:
+    result = StoredRecord(kind: TrieRecordKind.Branch, digest: source.digest,
+      left: source.left, right: source.right)
 proc storeDecodedRecord(source: var TrieRecord): StoredRecord =
-  ## Only the synchronous local decoder supplies this owned temporary; mutable raw callers still copy.
-  StoredRecord(kind: source.kind, digest: source.digest, key: source.key,
-    payload: move(source.payload), left: source.left, right: source.right)
+  ## Synchronous local decoding supplies canonical owned records; only leaf payload ownership transfers.
+  if source.kind == TrieRecordKind.Leaf:
+    result = StoredRecord(kind: TrieRecordKind.Leaf, digest: source.digest,
+      key: source.key, payload: move(source.payload))
+  else:
+    result = StoredRecord(kind: TrieRecordKind.Branch, digest: source.digest,
+      left: source.left, right: source.right)
 proc prepareImageRecords(stage: var ImageRecordStage, info: RecordCollectionInfo) =
   ## The codec has bounded this exact count; reserve private cell references without repeating input inspection.
   stage.records = newSeqOfCap[StoredRecord](int(info.records))
@@ -144,11 +160,16 @@ proc acceptImageRecord(stage: var ImageRecordStage, record: var TrieRecord): boo
   stage.records.add(storeDecodedRecord(record))
   true
 proc copyRecord(source: StoredRecord): TrieRecord =
-  ## Deep-copy only mutable byte storage; fixed addresses and keys copy by value.
-  var bytes = newSeq[byte](source.payload.len)
-  for i, octet in source.payload: bytes[i] = octet
-  TrieRecord(kind: source.kind, digest: source.digest, key: source.key, payload: bytes,
-    left: source.left, right: source.right)
+  ## Reconstruct canonical detached transport, initializing unused fields to zero/empty on both forms.
+  if source.kind == TrieRecordKind.Leaf:
+    var bytes = newSeq[byte](source.payload.len)
+    for index, octet in source.payload:
+      bytes[index] = octet # Returned mutable leaf values remain independent of their immutable cell.
+    result = TrieRecord(kind: TrieRecordKind.Leaf, digest: source.digest,
+      key: source.key, payload: bytes)
+  else:
+    result = TrieRecord(kind: TrieRecordKind.Branch, digest: source.digest,
+      left: source.left, right: source.right)
 proc position(records: seq[StoredRecord], digest: StateNodeHash): int =
   ## Binary search uses subtraction-based midpoints and full address equality.
   var first = 0
@@ -580,7 +601,8 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
       if not marked(retained, index):
         mark(retained, index)
         indices.add(index)
-        bytes += uint64(source.table.records[index].payload.len) # Unique source records are bounded by source.valueBytes.
+        bytes += uint64(payloadBytes(source.table.records[
+            index])) # Unique source records are bounded by source.valueBytes.
   indices.sort() # Canonicalize the immutable union once; repeated exports/clones can borrow this order.
   RepositoryResult[RepositorySelection](status: RepositoryError.None,
     completed: RepositorySelection(data: RepositorySelectionData(source: view, roots: unique,
@@ -773,7 +795,7 @@ proc measureRepositorySelection*(selection: RepositorySelection,
   assert source != nil
   for index in data.indices:
     let fixed = if source.table.records[index].kind == TrieRecordKind.Leaf: 72'u64 else: 97'u64
-    let payload = uint64(source.table.records[index].payload.len)
+    let payload = uint64(payloadBytes(source.table.records[index]))
     if payload > uint64(limits.trie.perValue) or fixed > maximum-size:
       return RepositoryResult[int](status: RepositoryError.LimitExceeded)
     size += fixed

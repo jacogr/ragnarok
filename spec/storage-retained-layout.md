@@ -72,3 +72,108 @@ Baseline checks: `make unit SUITE=storage_retained_layout` and `make check-inven
 Native measurement assertions use the repository's checked pinned Nimony profile. The outer
 report-release observation warms the stdlib's persistent process-environment cache first;
 that cache is not repository-owned storage. Each graph observation separately checks exact release.
+
+## Tagged-cell candidate
+
+The candidate keeps the common physical digest and a private immutable discriminator, storing
+leaf key/payload and branch child hashes in alternatives. Constructors run only after existing
+raw or encoded validation. Raw mutable values still deep-copy; freshly decoder-owned leaf values
+still transfer once. Export reconstructs a complete canonical `TrieRecord` with unused fields
+zero/empty. Duplicate/conflict comparison checks every active field, including complete physical
+branch edges. Mixed inventories explicitly count zero payload bytes for branches.
+
+The pinned generated C body is 104 bytes, alignment 8; its ARC owner is 112 bytes. The body
+reduction is 40 bytes. Actual live allocator savings are 48 bytes per physical cell in all six
+panel cases, which includes allocator rounding rather than attributing 48 bytes to C fields.
+Reference arrays, index directory widths and sharing across revisions are unchanged.
+
+| Entries | Bytes/value | Baseline retained | Candidate retained | Saved bytes |
+| --- | --- | --- | --- | --- |
+| 32 | 0 | 13,136 | 9,584 | 3,552 |
+| 32 | 32 | 14,160 | 10,608 | 3,552 |
+| 32 | 257 | 21,840 | 18,288 | 3,552 |
+| 512 | 0 | 179,712 | 130,272 | 49,440 |
+| 512 | 32 | 196,096 | 146,656 | 49,440 |
+| 512 | 257 | 318,976 | 269,536 | 49,440 |
+
+These are retained live Nim bytes for the same complete graph; the percentage improvement
+varies with value size. Both orders preserve exact complete maps after owner close and return
+to the same allocator baseline. The test's fixed ceilings and deterministic fixtures remain
+unchanged between binaries. This does not establish an RSS or timing improvement by itself.
+
+## Functional verification
+
+The unchanged checked native suites pass: `storage_repository`, `storage_encoded_publication`,
+`storage_image`, `storage_image_decode`, `storage_admission_precedence`,
+`storage_admission_backend_failures`, `storage_admission_ownership`,
+`storage_admission_graph_authority`, `storage_image_staging_failures`,
+`storage_image_admission_limits`, `storage_retention_plan`, `storage_historical_roots`,
+`storage_managed_repository`, `storage_context_repository`, `storage_managed_compaction`,
+`storage_admission_file_corruption` and `storage_record_owners`. Existing ARC suites retain
+1,000 cycles and exact release. The retained-layout panel also passes with the candidate.
+
+Eight selected compiler controls reject the private decoded-record factory, image/publication
+stages, codec scan, repository head, result payload/reason and view data with their expected
+module/field privacy diagnostics. This is scoped local evidence, not a full Linux unit/Python/
+interop or resident-pressure CI verdict. Original compiler and provider inputs remain pinned.
+
+## Paired strict-reopen qualification
+
+Clean baseline measurement head: `0860f1b107073f6d37d0182d3fc4f0ac1bd2dccf`.
+Clean candidate measurement head: `52e65c457f7f5ba8f311e4ba8f88826a61f16e5a`.
+The subsequent qualification commit changes this feature record only. The 455 captured measurement
+inputs remain identical to the candidate; only `src/storage/node_repository.nim` differs between
+baseline and candidate. Compiler, checked ARC/Clang LTO flags, providers, interpreter, native
+workload, observer, same-host identity and selected namespace bytes match.
+
+The maintained paired driver completes eight producer invocations and sixteen fresh consumers:
+two reversed case/binary orders, both producer directions, journal/managed backends and
+32,768/131,072-entry fixtures. Every consumer checks its independently supplied exact root,
+complete map before and after close, unchanged selected file bytes and complete allocator release.
+Read-only validation reparses all receipts without executing imported command vectors.
+
+Host: Apple M1 Max, Darwin 27.0.0, ARM64, 16,384-byte pages. Both observations per table cell round
+to the same displayed tenth of a MiB:
+
+| Backend | Entries | Baseline RSS MiB | Candidate RSS MiB | Baseline live Nim MiB | Candidate live Nim MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Journal | 32,768 | 43.3 | 40.1 | 18.7 | 15.6 |
+| Journal | 131,072 | 165.9 | 153.5 | 74.2 | 62.2 |
+| Managed | 32,768 | 43.3 | 40.1 | 18.7 | 15.6 |
+| Managed | 131,072 | 172.6 | 153.4 | 74.2 | 62.2 |
+
+At 131,072 entries the inventory contains 262,750 physical cells; the retained allocator saving
+is exactly 12,612,000 bytes (48 per cell). Whole-child RSS includes temporary admission/IO work,
+allocator reservation and native providers, so its larger managed reduction is not assigned to
+specific allocations. This is no speed, cold-cache, paging or deployment-ceiling qualification.
+Prior Linux pressure results describe their recorded earlier binary; this candidate has no new
+Linux resident-pressure verdict, and large no-swap cases remain unqualified.
+
+Local reproducibility/evidence:
+
+- `build/storage-db10-layout-baseline.tsv` and `build/storage-db10-layout-candidate.tsv`.
+- `build/storage-db10-cell-layouts.json`: exact generated-C hashes and Clang record layouts.
+- `build/storage-db10-baseline/` and `build/storage-db10-candidate/`: frozen local native binaries,
+  clean source/build identities and complete individual reports.
+- `build/storage-db10-pair-config.json`: explicit local report/binary selection and one approved
+  production source difference.
+- `build/storage-db10-paired/results.json` and `summary.md`: complete paired receipts.
+- `build/storage-db10-selected-checks.json` and `build/storage-db10-private-guards.json`.
+
+Use `make inspect-storage-reopen-pair REOPEN_PAIR_CONFIG=build/storage-db10-pair-config.json`
+for read-only admission, `make bench-storage-reopen-pair` with the same config and
+`REOPEN_PAIR_OUTPUT` for explicitly authorized local execution, and
+`make summary-storage-reopen-pair REOPEN_PAIR_REPORT=build/storage-db10-paired/results.json`
+for read-only receipt validation. Rebuild fresh clean reports when captured inputs change;
+never edit historical source identities to relabel a dirty or different binary as comparable.
+
+## Completion and next bounded decision
+
+The retained-layout measurement and private tagged-cell increment are complete within their
+local qualified scope. Stop here rather than expanding routine performance/CI workloads.
+The remaining large-fixture live graph is about 62.2 MiB. Further representation work should
+first measure payload allocation slack and reference/index contribution on the same complete-map,
+root and lifetime workload before increasing sharing/reclamation complexity. No further packing
+benefit is assumed. A separately specified bounded working set and on-disk graph authority is
+still required for a database larger than RAM. Existing M1 framing/implemented-scope migration
+completion remains distinct from full JAM state serialization and client parity.
