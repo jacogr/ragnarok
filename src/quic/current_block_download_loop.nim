@@ -6,10 +6,10 @@
 
 import ./[current_block_download_peers, current_block_download_session, current_block_download_stream]
 import ../app/[services, handoff, current_handoff, chain, candidate, current_block_input,
-    current_block_download, download_schedule, preparation_worker]
+    current_block_download, download_schedule, preparation_worker, current_logical_download]
 import ../codec/[bounded, header]
 import ../chain/genesis
-import ../state/[accumulation_current_update, store, report_anchors]
+import ../state/[accumulation_current_update, store, report_anchors, current_logical]
 
 type
   CurrentDownloadLoopTick* = distinct uint64 ## Monotonic host milliseconds shared by all dispatcher deadlines.
@@ -39,6 +39,9 @@ type
     requested, hasCompletion: bool
     completion: CurrentHandoffResult
     refusal: CurrentDownloadSessionFailure
+    qualifyLogical: bool
+    logicalPolicy: CurrentLogicalDownloadPolicy
+    logicalResult: CurrentDownloadSessionResult[CurrentLogicalState]
 
 proc `=copy`*(destination: var CurrentDownloadLoop, source: CurrentDownloadLoop) {.
     error: "CurrentDownloadLoop owns stable native callbacks and exclusive adoption".}
@@ -61,6 +64,8 @@ proc `=destroy`*(dispatcher: CurrentDownloadLoop) =
   `=destroy`(dispatcher.current)
   `=destroy`(dispatcher.completion)
   `=destroy`(dispatcher.refusal)
+  `=destroy`(dispatcher.logicalPolicy)
+  `=destroy`(dispatcher.logicalResult)
 
 func stage*(dispatcher: CurrentDownloadLoop): CurrentDownloadLoopStage =
   ## Inspect progress without exposing native owners or mutable session state.
@@ -78,6 +83,11 @@ func adoption*(dispatcher: CurrentDownloadLoop): CurrentHandoffResult {.
         CurrentDownloadLoopStage.Preparing, CurrentDownloadLoopStage.Cancelling].} =
   ## Copy only a real consumed Services result; its own success/failure guards remain authoritative.
   dispatcher.completion
+func logicalAdoption*(dispatcher: CurrentDownloadLoop): CurrentDownloadSessionResult[
+    CurrentLogicalState] {.
+    requires: dispatcher.status == CurrentDownloadLoopStage.Adopted.} =
+  ## Only actual consumed successful adoption exposes the logical continuation; raw dispatchers retain an uninitialized result.
+  dispatcher.logicalResult
 proc readyPeers*(dispatcher: CurrentDownloadLoop): seq[DownloadPeerId] =
   ## Return copied authenticated identities without granting native callback access.
   dispatcher.catalog.readyPeers
@@ -119,12 +129,26 @@ proc configure*(dispatcher: var CurrentDownloadLoop, owner: var Services,
   dispatcher.status = CurrentDownloadLoopStage.Waiting
   CurrentDownloadLoopError.None
 
+proc configure*(dispatcher: var CurrentDownloadLoop, owner: var Services,
+    peers: openArray[DownloadPeerId], ancestors: openArray[OwnedHeader],
+    limits: CurrentDownloadLoopLimits, now: CurrentDownloadLoopTick,
+    logical: CurrentLogicalDownloadPolicy): CurrentDownloadLoopError =
+  ## Opt in atomically after all ordinary configuration gates; every retry uses this original immutable logical policy.
+  let admitted = dispatcher.configure(owner, peers, ancestors, limits, now)
+  if admitted == CurrentDownloadLoopError.None:
+    dispatcher.qualifyLogical = true
+    dispatcher.logicalPolicy = logical # No endpoint or native graph borrow exists at successful configuration.
+  admitted
+
 proc nextChild*(dispatcher: var CurrentDownloadLoop, ancestors: openArray[OwnedHeader],
     now: CurrentDownloadLoopTick): CurrentDownloadLoopError =
   ## Rearm only after an actual consumed adoption and retired stream/worker lease; retain stable authenticated endpoints.
   if dispatcher.status != CurrentDownloadLoopStage.Adopted or not dispatcher.hasCompletion or
       dispatcher.completion.error != CurrentHandoffError.None or dispatcher.current != nil:
     return CurrentDownloadLoopError.Busy # Waiting, failed or fabricated producer status cannot create another import turn.
+  if dispatcher.qualifyLogical and dispatcher.logicalResult.error !=
+      CurrentDownloadSessionError.None:
+    return CurrentDownloadLoopError.SessionFailure # A raw or missing logical receipt cannot silently downgrade an enabled session during rearming.
   if uint64(now) < dispatcher.lastTick: return CurrentDownloadLoopError.ClockRegression
   let borrowed = dispatcher.owner
   if borrowed == nil: return CurrentDownloadLoopError.Uninitialized
@@ -146,6 +170,10 @@ proc nextChild*(dispatcher: var CurrentDownloadLoop, ancestors: openArray[OwnedH
   if dispatcher.session.configure(dispatcher.peers, dispatcher.limits.schedule,
       DownloadScheduleTick(uint64(now))) != DownloadScheduleError.None:
     return CurrentDownloadLoopError.InvalidPolicy # Keep all native endpoints and the consumed adoption diagnostic on refusal.
+  if dispatcher.qualifyLogical:
+    dispatcher.logicalPolicy = continueCurrentLogicalDownloadPolicy(dispatcher.logicalPolicy,
+        dispatcher.logicalResult.value) # Actual successful adoption bound this source; all refusal gates above preserve the original receipt and policy.
+    dispatcher.logicalResult = default(CurrentDownloadSessionResult[CurrentLogicalState])
   dispatcher.ancestors = retained
   dispatcher.completion = default(CurrentHandoffResult)
   dispatcher.refusal = default(CurrentDownloadSessionFailure)
@@ -228,12 +256,23 @@ proc tick*(dispatcher: var CurrentDownloadLoop, now: CurrentDownloadLoopTick): C
   owner[].tick(uint32(dispatcher.catalog.readyPeers.len)) # At most sixteen authenticated endpoints; no narrowing overflow.
   if owner[].stateProofActive: return CurrentDownloadLoopError.None # RPC dispatch may have granted a new native proof lease in this turn.
   if dispatcher.status == CurrentDownloadLoopStage.Queued:
+    let token = dispatcher.current
+    if token == nil:
+      dispatcher.status = CurrentDownloadLoopStage.Failed
+      return CurrentDownloadLoopError.SessionFailure # A missing exact attempt cannot authorize consumption of a canonical receipt.
     if owner[].currentAccumulationPhase != CurrentHandoffPhase.Finished:
       return CurrentDownloadLoopError.None # Durable publication may span multiple nonblocking service ticks.
     dispatcher.completion = owner[].takeCurrentAccumulation()
     dispatcher.hasCompletion = true
     let outcome = if dispatcher.completion.error == CurrentHandoffError.None:
         DownloadAttemptOutcome.Adopted else: DownloadAttemptOutcome.Retry
+    if dispatcher.qualifyLogical and outcome == DownloadAttemptOutcome.Adopted:
+      let logical = dispatcher.session.logicalCompletion(token)
+      if logical.error != CurrentDownloadSessionError.None:
+        dispatcher.refusal = logical.failure
+        dispatcher.status = CurrentDownloadLoopStage.Failed
+        return CurrentDownloadLoopError.SessionFailure # Preserve the consumed canonical receipt without inventing logical success.
+      dispatcher.logicalResult = logical # Publication's managed lease has ended before any logical alias is copied.
     return dispatcher.finish(outcome, now) # Actual refusal keeps the bounded retry plan alive.
   if dispatcher.status in [CurrentDownloadLoopStage.DrainingAncestors,
       CurrentDownloadLoopStage.AwaitingAncestors]:
@@ -278,10 +317,14 @@ proc tick*(dispatcher: var CurrentDownloadLoop, now: CurrentDownloadLoopTick): C
   discard dispatcher.catalog.poll() # Native callbacks only copy/route input; all preparation below follows their return.
   let token = dispatcher.current
   if token == nil:
-    let selected = dispatcher.session.begin(owner[], dispatcher.ancestors, dispatcher.limits.input,
-      dispatcher.limits.candidate, DownloadScheduleTick(uint64(now)))
+    let selected = if dispatcher.qualifyLogical:
+        dispatcher.session.begin(owner[], dispatcher.ancestors, dispatcher.limits.input,
+            dispatcher.limits.candidate, DownloadScheduleTick(uint64(now)),
+                dispatcher.logicalPolicy)
+      else: dispatcher.session.begin(owner[], dispatcher.ancestors, dispatcher.limits.input,
+          dispatcher.limits.candidate, DownloadScheduleTick(uint64(
+              now))) # Existing raw mode never invents complete logical declarations.
     if selected.error != CurrentDownloadSessionError.None:
-      dispatcher.refusal = selected.failure
       if selected.error == CurrentDownloadSessionError.ScheduleFailure:
         case selected.failure.scheduleError
         of DownloadScheduleError.Waiting: return CurrentDownloadLoopError.None # Preserve cooldown without sleeping or spinning.
@@ -289,6 +332,7 @@ proc tick*(dispatcher: var CurrentDownloadLoop, now: CurrentDownloadLoopTick): C
           dispatcher.status = CurrentDownloadLoopStage.Exhausted
           return CurrentDownloadLoopError.None # Exhaustion cannot be mistaken for an adopted successor.
         else: discard # Other scheduler failures indicate unusable configuration/invariants.
+      dispatcher.refusal = selected.failure # Ordinary cooldown/exhaustion above preserves the actual preceding reception/preparation refusal.
       dispatcher.status = CurrentDownloadLoopStage.Failed
       return CurrentDownloadLoopError.SessionFailure
     dispatcher.current = selected.value
@@ -344,6 +388,9 @@ proc close*(dispatcher: var CurrentDownloadLoop) =
   if token != nil:
     discard dispatcher.session.discardInput(token) # Queued/terminal private ownership retires with the closed aggregate.
   dispatcher.session = default(CurrentDownloadSession) # Native close above makes private receiver/lease retirement safe.
+  dispatcher.logicalPolicy = default(CurrentLogicalDownloadPolicy)
+  dispatcher.logicalResult = default(CurrentDownloadSessionResult[CurrentLogicalState])
+  dispatcher.qualifyLogical = false # Joined close above precedes retirement of every retained logical graph alias.
   dispatcher.ancestors = @[]
   dispatcher.peers = @[]
   dispatcher.owner = nil

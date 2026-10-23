@@ -244,17 +244,57 @@ Run `make unit SUITE=pvm_current_logical_download`, `make unit SUITE=pvm_current
 `make unit SUITE=pvm_current_download_native` and `make check-inventory`. Source-owned privacy
 fixtures also forbid replacing the captured policy and bypassing the logical result accessor.
 
-The existing QUIC session/CLI continues to select its explicit raw-certificate path. Automatic
-logical startup declarations, policy-file provisioning and session rearming with logical sources
-are not inferred by this adapter API and remain separate integration work. No account-review
+The command-line configuration continues to select its explicit raw-certificate path. Automatic
+logical startup declarations and policy-file provisioning are not inferred by this adapter API.
+Explicit session/dispatcher logical provisioning and rearming are supported below. No account-review
 funding policy, general producer mutation certificate, protocol rule or dependency pin changes.
+
+## Authenticated logical sessions and rearming
+
+`CurrentDownloadSession.begin` and `CurrentDownloadLoop.configure` accept the explicit logical
+policy before endpoint opening or reception. The session exposes logical completion only for
+its exact queued attempt after native close and worker collection; foreign, stale, unprepared
+and raw-only tokens cannot expose successful logical state. The dispatcher exposes
+`logicalAdoption` only after consuming an actual successful canonical adoption. Queueing alone
+cannot authorize another child or expose an adopted logical result.
+
+All native retries retain the original complete logical source and captured budgets. Ordinary
+scheduler cooldown/exhaustion preserves the actual preceding reception/preparation refusal,
+including the nested logical State stage. `nextChild` keeps the confirmed canonical and logical
+receipt intact through clock, native/worker exclusion and whole replacement-ancestor validation.
+Only successful rearming advances the policy to the actually adopted logical successor, retaining
+the original independent budgets. A failed logical receipt cannot downgrade an enabled session
+to the raw path. Rearming itself performs no network IO, guest execution or publication.
+
+Joined dispatcher close precedes retirement of the session receiver and the dispatcher's own
+logical policy/result aliases. Hosts that need a logical source after close retain it explicitly
+on the open graph gate before closing. Preparing/Done and queued shutdown cannot publish an
+unadopted logical prefix. Proof and disk exclusion continue to guard all shared graph aliases.
+
+`pvm_current_logical_session` uses real authenticated persistent-peer transfers across memory,
+journal and managed layouts. A real empty-response retry precedes three exact signed children;
+actual adoption supplies each later logical source. Refused rearms preserve the receipt and
+request count; detached caller-budget mutation changes neither admission nor continuation.
+Real guest identity creation and explicit identity-budget refusal remain typed through scheduler
+exhaustion without enqueue. Done preparation and queued shutdown retain only the original durable
+prefix. Strict reopen compares every adopted retained map against the authored complete-map
+controls. These are consumer fixtures, not independent full-STF goldens.
+
+Run `make unit SUITE=pvm_current_logical_session`; regressions are
+`pvm_current_consecutive_rearm`, `pvm_current_download_native` and `pvm_current_download_loop`.
+Source-owned privacy fixtures protect the dispatcher's logical policy/result; existing session
+and dispatcher copy guards must still fail during actual ownership lowering. Canonical formatting
+and `make check-inventory` remain required. CLI file-based complete declarations and logical
+policy provisioning remain a separate explicit startup boundary; no map inversion or defaults
+supply missing logical authority.
 
 ## Next work
 
 The native consumer witnesses cover host admission/refusal, repeated children, cancellation/join
 and memory/durable handoff. Explicit logical admission now runs in the production download adapter;
-full session/CLI logical provisioning and rearming remain open, as do general producer mutation and
-exceptional/checkpoint propagation.
+authenticated session/dispatcher provisioning and rearming now carry complete logical sources.
+CLI declaration/policy-file provisioning, general producer mutation and exceptional/checkpoint
+propagation remain open.
 After the required plumbing is qualified, measure PVM performance against the pinned PolkaVM
 control with reproducible workloads and then add focused fuzzing for the implemented boundaries.
 These remain future work, with no weakened checks, pin changes or inferred parity claims.

@@ -5,9 +5,10 @@
 ## Explicit producer/host acknowledgement remains outside native callbacks and never infers adoption.
 
 import ./[transport, current_block_download_stream]
-import ../app/[download_schedule, current_block_download, current_block_input, candidate, services, preparation_worker]
+import ../app/[download_schedule, current_block_download, current_block_input, candidate, services,
+    preparation_worker, current_logical_download]
 import ../codec/[bounded, header]
-import ../state/[report_anchors, accumulation_current_update]
+import ../state/[report_anchors, accumulation_current_update, current_logical]
 
 type
   CurrentDownloadSessionError* {.pure.} = enum ## Defaults and failed alternatives contain no usable attempt or execution prefix.
@@ -104,9 +105,10 @@ proc configure*(session: var CurrentDownloadSession, peers: openArray[DownloadPe
   if session.busy: return DownloadScheduleError.Busy # Reconfiguration cannot orphan the current attempt.
   session.schedule.configure(peers, limits, now)
 
-proc begin*(session: var CurrentDownloadSession, owner: Services,
+proc beginSession(session: var CurrentDownloadSession, owner: Services,
     ancestors: openArray[OwnedHeader], resources: CurrentBlockInputLimits,
-    policies: CurrentCandidateLimits, now: DownloadScheduleTick): CurrentDownloadSessionResult[
+    policies: CurrentCandidateLimits, now: DownloadScheduleTick, qualifyLogical: bool,
+    logical: CurrentLogicalDownloadPolicy): CurrentDownloadSessionResult[
         CurrentDownloadSessionAttempt] =
   ## Reserve and admit once; no native stream is opened by this application-context operation.
   if session.busy: return refused[CurrentDownloadSessionAttempt](plain(
@@ -115,7 +117,10 @@ proc begin*(session: var CurrentDownloadSession, owner: Services,
   if chosen.error != DownloadScheduleError.None:
     return refused[CurrentDownloadSessionAttempt](CurrentDownloadSessionFailure(
       status: CurrentDownloadSessionError.ScheduleFailure, scheduleReason: chosen.error))
-  let admitted = session.download.begin(owner, ancestors, resources, policies)
+  let admitted = if qualifyLogical:
+      session.download.begin(owner, ancestors, resources, policies, logical)
+    else: session.download.begin(owner, ancestors, resources,
+        policies) # Raw callers preserve their explicit original admission path.
   if admitted.error != CurrentBlockDownloadError.None:
     discard session.schedule.finish(chosen.value, DownloadAttemptOutcome.Retry,
         now) # No native binding exists; exact selection/tick makes retirement infallible.
@@ -127,6 +132,33 @@ proc begin*(session: var CurrentDownloadSession, owner: Services,
   session.lease = chosen.value
   session.queued = false
   CurrentDownloadSessionResult[CurrentDownloadSessionAttempt](successful: true, completed: attempt)
+
+proc begin*(session: var CurrentDownloadSession, owner: Services,
+    ancestors: openArray[OwnedHeader], resources: CurrentBlockInputLimits,
+    policies: CurrentCandidateLimits, now: DownloadScheduleTick): CurrentDownloadSessionResult[
+        CurrentDownloadSessionAttempt] =
+  ## Raw sessions retain the existing scheduler/native-close and deferred-adoption contract.
+  session.beginSession(owner, ancestors, resources, policies, now, false, default(CurrentLogicalDownloadPolicy))
+proc begin*(session: var CurrentDownloadSession, owner: Services,
+    ancestors: openArray[OwnedHeader], resources: CurrentBlockInputLimits,
+    policies: CurrentCandidateLimits, now: DownloadScheduleTick,
+    logical: CurrentLogicalDownloadPolicy): CurrentDownloadSessionResult[
+        CurrentDownloadSessionAttempt] =
+  ## Retain the explicit logical source and frozen budgets before any stream or worker can borrow the receiver.
+  session.beginSession(owner, ancestors, resources, policies, now, true, logical)
+proc logicalCompletion*(session: CurrentDownloadSession,
+    attempt: CurrentDownloadSessionAttempt): CurrentDownloadSessionResult[CurrentLogicalState] =
+  ## Exact queued attempt and retired native/worker leases precede logical result extraction; this is still not an adoption receipt.
+  if not session.matches(attempt): return refused[CurrentLogicalState](plain(
+      CurrentDownloadSessionError.StaleAttempt))
+  if session.streamActive: return refused[CurrentLogicalState](plain(
+      CurrentDownloadSessionError.AwaitingClose))
+  if not session.queued or session.stage != CurrentBlockDownloadStage.Idle:
+    return refused[CurrentLogicalState](plain(CurrentDownloadSessionError.NotReady)) # Running, failed and unprepared attempts cannot expose a successful prefix.
+  let logical = session.download.logicalCompletion
+  if logical.error != CurrentLogicalDownloadError.None:
+    return refused[CurrentLogicalState](plain(CurrentDownloadSessionError.NotReady)) # A raw queued certificate does not imply complete logical qualification.
+  CurrentDownloadSessionResult[CurrentLogicalState](successful: true, completed: logical.value)
 
 proc request*(session: CurrentDownloadSession,
     attempt: CurrentDownloadSessionAttempt): CurrentDownloadSessionResult[array[42, byte]] =
