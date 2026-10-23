@@ -52,6 +52,43 @@ proc ownershipCycle() =
       MachineError.InvalidWidth
   expect(snapshotMemory(alias).value, 511, 8, 0x9876543210abcdef'u64)
 
+proc scalarReadMatrix() =
+  ## Independent byte equations check zero extension and endian order through both chunk/page crossings and immutable writer epochs.
+  for width in [8, 1, 4, 2]:
+    for start in [0, 1, 3, 7, 503, 504, 505, 506, 507, 508, 509, 510, 511,
+        512, 513, 1023, 2047, 3583, 4088, 4089, 4090, 4091, 4092, 4093, 4094, 4095]:
+      var wanted = 0'u64
+      for index in 0..<width: wanted = wanted or (uint64(originalByte(start+index)) shl (8*index))
+      let address = MemoryAddress(uint64(65536+start))
+      let access = AccessWidth(byte(width))
+      let original = initial()
+      let alias = original
+      let writer = newScalarMemoryWriter(original).value
+      assert uint64(load(original, address, access).value) == wanted
+      assert uint64(load(writer, address, access).value) == wanted
+      let replacement = 0xfedcba9876543210'u64
+      let mask = high(uint64) shr (64-8*width)
+      assert store(writer, address, access, RegisterValue(replacement)).value
+      assert uint64(load(writer, address, access).value) == (replacement and mask)
+      let frozen = snapshotMemory(writer).value
+      assert uint64(load(frozen, address, access).value) == (replacement and mask)
+      assert store(writer, address, access, RegisterValue(not replacement)).value
+      assert uint64(load(writer, address, access).value) == ((not replacement) and mask)
+      assert uint64(load(frozen, address, access).value) == (replacement and mask)
+      assert uint64(load(alias, address, access).value) == wanted
+
+proc temporaryReadCycle() =
+  ## Constructor-only owners survive each complete scalar read and release afterward; no copied chunk address or machine owner escapes.
+  for start in [511, 4093]:
+    var wanted = 0'u64
+    for index in 0..<8: wanted = wanted or (uint64(originalByte(start+index)) shl (8*index))
+    let address = MemoryAddress(uint64(65536+start))
+    let ordinary = load(initial(), address, AccessWidth(8))
+    let staged = load(newScalarMemoryWriter(initial()).value, address, AccessWidth(8))
+    assert uint64(ordinary.value) == wanted and uint64(staged.value) == wanted
+  let narrow = load(initial(), MemoryAddress(65537), AccessWidth(1))
+  assert uint64(narrow.value) == uint64(originalByte(1))
+
 let missing: nil ScalarMemoryWriter = nil
 assert load(missing, MemoryAddress(0), AccessWidth(0)).error == MachineError.InvalidOwner
 assert store(missing, MemoryAddress(0), AccessWidth(0), RegisterValue(0)).error ==
@@ -84,8 +121,11 @@ let empty = newScalarMemoryWriter(captureMemory([], PageLimit(0)).value).value
 assert load(empty, MemoryAddress(65536), AccessWidth(1)).error == MachineError.Fault
 assert pageImage(snapshotMemory(empty).value, PageIndex(16)).value.access == PageAccess.Inaccessible
 ownershipCycle()
+scalarReadMatrix()
+temporaryReadCycle()
 let before = getOccupiedMem()
 for cycle in 0..<1000:
+  temporaryReadCycle() # Temporary argument roots retire only after copied scalar results are complete.
   ownershipCycle() # Builder aliases, epoch snapshots and transferred vectors release without cycles or double retirement.
 let after = getOccupiedMem()
 assert before == after

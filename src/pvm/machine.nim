@@ -116,6 +116,26 @@ func pageByte(page: PageData, offset: int): byte {.inline.} =
   ## Read one proven page offset without returning a mutable chunk or retaining a transient reference.
   page.chunks[offset div 512].bytes[offset mod 512]
 
+func pageScalar(page: PageData, offset, count: int): uint64 {.inline,
+    requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 8 and count <=
+        4096-offset.} =
+  ## Copy a proven scalar span from one immutable chunk into a private initialized word; no borrowed address escapes.
+  result = 0
+  if count == 1: return uint64(pageByte(page, offset))
+  let chunk = offset div 512
+  let within = offset mod 512
+  if within <= 512-count:
+    # Disjoint stack and immutable heap storage permit an unaligned-safe copy only after proving the entire source extent.
+    var endian = 1'u16
+    var tag = default(array[2, byte])
+    copyMem(addr tag[0], addr endian, 2)
+    if tag[0] == 1:
+      copyMem(addr result, unsafeAddr page.chunks[chunk].bytes[within], count)
+      return # Little-endian hosts now hold the exact zero-extended guest word.
+  for index in 0..<count:
+    # Big-endian hosts and chunk-crossing spans retain the portable byte-wise equation.
+    result = result or (uint64(pageByte(page, offset+index)) shl (8*index))
+
 proc imageFromPage(page: PageData): PageImage =
   ## Materialize the public copied image; chunk sharing never escapes through observation.
   result = PageImage(index: page.index, access: page.access, bytes: default(array[4096, byte]))
@@ -375,13 +395,11 @@ proc load*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineR
   if memory.data == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
   let data = memory.data
   let span = checked.value
-  var value = 0'u64
-  for i in 0..<span.firstCount:
-    # Preflight proved this slot/offset readable; no page lookup repeats for individual bytes.
-    value = value or (uint64(pageByte(data.pages[span.first], span.offset+i)) shl (8*i))
-  for i in span.firstCount..<span.count:
-    # A crossing scalar resumes at offset zero of its second resolved page.
-    value = value or (uint64(pageByte(data.pages[span.last], i-span.firstCount)) shl (8*i))
+  var value = pageScalar(data.pages[span.first], span.offset, span.firstCount)
+  if span.firstCount < span.count:
+    # A remaining suffix proves the prefix is below eight bytes, keeping this shift below64.
+    value = value or (pageScalar(data.pages[span.last], 0, span.count-span.firstCount) shl (
+        8*span.firstCount))
   MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(value))
 
 proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
@@ -530,11 +548,11 @@ proc prepareWriterSpan(writer: ScalarMemoryWriter, slot, offset, count: int) =
       writer.pages[slot].chunks[chunk] = PageChunk(bytes: writer.pages[slot].chunks[chunk].bytes)
       writer.dirty[slot] = writer.dirty[slot] or mask
 
-func writerByte(writer: ScalarMemoryWriter, source: MemoryData, slot,
-    offset: int): byte {.inline.} =
-  ## Observe the current private epoch or its immutable base without copying a vector or exporting a page reference.
-  if writer.active: pageByte(writer.pages[slot], offset)
-  else: pageByte(source.pages[slot], offset)
+func writerScalar(writer: ScalarMemoryWriter, source: MemoryData, slot, offset,
+    count: int): uint64 {.inline.} =
+  ## Read the latest epoch's selected page, or the unchanged immutable base before activation.
+  if writer.active: pageScalar(writer.pages[slot], offset, count)
+  else: pageScalar(source.pages[slot], offset, count)
 
 proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
     width: AccessWidth): MachineResult[RegisterValue] =
@@ -545,11 +563,11 @@ proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
   let checked = scalarSpan(writer.base, address, width, false)
   if checked.error != MachineError.None: return failure[RegisterValue, ScalarSpan](checked)
   let span = checked.value
-  var value = 0'u64
-  for index in 0..<span.firstCount:
-    value = value or (uint64(writerByte(writer, source, span.first, span.offset+index)) shl (8*index))
-  for index in span.firstCount..<span.count:
-    value = value or (uint64(writerByte(writer, source, span.last, index-span.firstCount)) shl (8*index))
+  var value = writerScalar(writer, source, span.first, span.offset, span.firstCount)
+  if span.firstCount < span.count:
+    # Full preflight precedes both reads; the remaining suffix proves a bounded sub-word shift.
+    value = value or (writerScalar(writer, source, span.last, 0, span.count-span.firstCount) shl (
+        8*span.firstCount))
   MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(value))
 
 proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: AccessWidth,

@@ -694,3 +694,37 @@ experiment directories. Only the repeated direct-kernel gain is claimed. Bounds,
 assertions, fee tables, public budgets and all pins remain unchanged; no Linux,
 compiled or whole-client result follows. Full STF/JAM parity remains open and
 fuzzing is still deferred.
+
+
+## Chunk-aware scalar gathering, 2026-10-23
+
+Generated C and the current profile identify memory read/preflight overhead. Explicit
+root-borrow annotations remove ARC operations but do not establish a useful execution
+gain, so production keeps its existing ownership. The accepted change instead gathers
+an admitted scalar from one immutable chunk into a zero-initialized private word,
+with full preflight, checked extents and portable chunk-crossing/host-order fallback.
+
+Two matched eleven-guest comparisons on the same checked ARC/Clang ThinLTO profile
+show the following execution-time reductions, with every raw sample retained:
+
+| Memory guest,1000 iterations | First comparison | Production confirmation |
+| --- | ---: | ---: |
+| Aligned |10.4% |8.3% |
+| Crossing |5.8% |6.7% |
+| Sparse aligned |10.8% |13.8% |
+| Sparse crossing |6.9% |7.8% |
+
+Other rows vary: hosts range from small regressions to a large provisional gain,
+and arithmetic/bits/alternating blocks move in both directions by a few percent.
+No broad host or CPU-only gain is claimed; short-call observations remain sensitive
+to timer granularity and load. The full pinned eleven-guest comparison passes with
+unchanged fixture bytes. Sieve observations21.713→20.845ms and21.895→21.147ms are
+only about3–4% less CPU; no broad real-guest speedup follows from those small differences.
+Pinned interpreted PolkaVM remains around6.1ms on that exact linked guest/input.
+
+The accepted source and binary identities, full-state checks, rejected borrow variant,
+sanitizer output and all samples remain under `build/pvm10/memory-probe`,
+`memory-gather-paired`, `memory-final` and `memory-final-paired`. Native results retain
+complete registers/gas/memory/permissions, source aliases and assertion controls.
+No affinity/frequency isolation or hardware-counter claim is added. Full STF/JAM
+parity remains open; compiled comparison and fuzzing stay deferred.
