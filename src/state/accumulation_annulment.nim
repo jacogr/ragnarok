@@ -19,7 +19,7 @@ type
     annulled*: bool ## True only for the two original modified-set conflict with a different supervisor.
   AccumulationAnnulmentError* {.pure.} = enum ## Refused/default alternatives carry no source, state or decision payload.
     Uninitialized, None, InvalidInputs, InvalidState, InvalidOutcome, SourceMismatch,
-    DuplicateService, MalformedState, LimitExceeded, InvalidIndex, NoInvocationSlot
+    DuplicateService, MalformedState, LimitExceeded, InvalidIndex, NoInvocationSlot, StorageFactsDisabled
   OutcomeRow = object # Immutable rows retain only genuine original outcomes and their calculated decision.
     outcome: AccumulationOutcome
     decision: AccumulationAnnulmentDecision
@@ -269,3 +269,32 @@ proc annulmentSlot*(plan: PreparedAccumulationAnnulment): AccumulationAnnulmentR
       status: AccumulationAnnulmentError.NoInvocationSlot) # A later skip-only adapter must bind its own real slots.
   AccumulationAnnulmentResult[HeaderSlot](status: AccumulationAnnulmentError.None,
       completed: data.slot)
+
+proc annulmentSelectedStorageFactCountAt*(plan: PreparedAccumulationAnnulment,
+    index: AccumulationAnnulmentIndex): AccumulationAnnulmentResult[int] =
+  ## Annulled executions contribute a proven empty selected trace; surviving executions require explicit enabled raw identity capture.
+  let row = selectedRow(plan, index)
+  if row.error != AccumulationAnnulmentError.None:
+    return AccumulationAnnulmentResult[int](status: row.error)
+  if row.value.decision.annulled:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: 0)
+  let count = row.value.outcome.outcomeContext.value.effectStorageFactCount
+  if count.error == AccumulationEffectError.StorageWriteFactsDisabled:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.StorageFactsDisabled)
+  if count.error != AccumulationEffectError.None:
+    return AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.InvalidOutcome)
+  AccumulationAnnulmentResult[int](status: AccumulationAnnulmentError.None, completed: count.value)
+
+proc annulmentSelectedStorageFactAt*(plan: PreparedAccumulationAnnulment,
+    index: AccumulationAnnulmentIndex, fact: AccumulationStorageFactIndex): AccumulationAnnulmentResult[
+        AccumulationStorageFact] =
+  ## No original fact may escape through an annulled selection; default/disabled/bounds failures remain distinct.
+  let count = plan.annulmentSelectedStorageFactCountAt(index)
+  if count.error != AccumulationAnnulmentError.None:
+    return AccumulationAnnulmentResult[AccumulationStorageFact](status: count.error)
+  if uint64(fact) >= uint64(count.value):
+    return AccumulationAnnulmentResult[AccumulationStorageFact](
+        status: AccumulationAnnulmentError.InvalidIndex)
+  let row = selectedRow(plan, index).value
+  AccumulationAnnulmentResult[AccumulationStorageFact](status: AccumulationAnnulmentError.None,
+      completed: row.outcome.outcomeContext.value.effectStorageFactAt(fact).value)

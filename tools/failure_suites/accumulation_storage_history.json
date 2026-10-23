@@ -1,0 +1,22 @@
+{
+  "build_name": "accumulation-storage-history-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "accumulation_storage_history guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "accumulation-storage-history-value"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/accumulation_storage_history_results.nim"
+}
