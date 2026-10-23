@@ -102,6 +102,11 @@ requires the independently trusted generation and root of the complete prefix be
 anything; complete corrupt frames and complete successor revisions are never discarded. Strict
 open remains unchanged. Real child-process short-write checks exercise recovery and resumed append.
 
+`matches(view, otherView)` compares exact initialized immutable source owners without allocation,
+graph traversal or IO. Default views never match; equal roots/generations in a cloned owner do not
+authorize maintenance. Managed compaction uses this check before requested-root traversal; see the
+[compaction authority contract](../../spec/storage-compaction-authority.md).
+
 `revision_retention.nim` provides bounded explicit pins for immutable repository views. Catalog
 copies update independently; release/close never revoke held views. Tokens also retain their
 selected view until dropped. The pin catalog itself provides no automatic eviction, finality
