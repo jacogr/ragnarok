@@ -23,7 +23,10 @@ reclamation are described in the [managed operator guide](../../docs/managed-sto
 
 ## Complete-state revisions
 
-`newFullStateTrie(entries, limits)` copies serialized 31-byte keys and raw values into an
+`newFullStateTrie(entries, limits)` borrows entries directly during construction, copying serialized
+31-byte keys and raw values only into final immutable leaves. The
+[constructor memory evidence](../../spec/storage-trie-construction-memory.md) records checked
+peak-memory reductions and unchanged retained graphs. It publishes an
 immutable, acyclic ARC-owned trie. Each initialized `FullStateTrie` represents a complete
 full-node mapping. Copying a revision retains its identity; `revision.apply(writes)` returns
 an independently retained revision. Source revisions and lookup values survive subsequent
@@ -55,6 +58,62 @@ are identical. Delete requires an empty payload; deleting an absent key is a no-
 batch is validated before hashing. Updates copy affected paths and share unchanged immutable
 subtrees; cached complete hashes keep root work on newly created paths. Failure exposes only a
 reason and leaves all retained revisions unchanged.
+
+## Root-bound lookup proofs
+
+`FullStateTrie.prove(key, limits)` copies a bounded detached path directly from a retained complete
+revision, preflighting exact node/value extents before allocation or hashing. Cached branches need
+no hashing; a terminal long leaf needs one raw-value hash. `state_proof.nim` verifies these
+root-to-terminal node paths for one serialized key against
+an independently trusted complete-state root. Successful `VerifiedStateLookup` values retain
+the exact root/key binding and distinguish Present from Absent; incomplete local evidence is a
+failure rather than absence. Present-byte extraction copies private immutable storage. The
+[light proof/trust contract](../../spec/storage-light-state-proofs.md) defines the canonical path,
+left-edge 255-bit comparison, resource ceilings and trust requirements. This is a local storage
+primitive; light startup, trusted heads, database identity/schema, cache policy and network formats
+remain separate work. It never hashes a partial mapping into a complete state root.
+
+## Authenticated light lookup retention
+
+`light_state_cache.nim` retains bounded verified key lookups at one caller-trusted complete root.
+Atomic `admit` batches verify all proofs before returning a new immutable cache; `forget` drops
+local evidence without changing retained views. Missing entries return UnknownKey, distinct from
+a stored authenticated Absent result and a present empty value. A different root requires a new
+empty cache. Counts, batch work and logical raw-value bytes have separate inherited limits.
+The [cache contract](../../spec/storage-light-cache.md) records ownership, refusal ordering and
+local evidence. This in-memory partial cache supplies no full-state API, database schema, startup
+mode or consensus/trusted-head selection.
+
+## Light proof-cache snapshots
+
+`light_snapshot.nim` prepares opaque immutable canonical images and restores cache state only
+against independently expected chain/root arguments. Its distinct V1 format stores proof evidence,
+not trusted lookup results; every restored proof is verified after bounded shape/checksum checks.
+Read-only mutation policy can be restored independently of complete-snapshot entry count.
+The [snapshot contract](../../spec/storage-light-snapshots.md) records exact widths, trust/refusal
+ordering, golden bytes and lifetime coverage. Checksums do not select trusted roots or authorize
+full/light schema conversion. File publication and application trust selection remain separate work.
+
+Retained canonical evidence can be read with `PreparedLightSnapshot.prove` under explicit
+entry-scan and proof-output budgets. Missing evidence remains `UnknownKey`; retained absence
+returns a successful proof. `LightFileCache.preparedSnapshot` retains the selected immutable
+image independently of the native lease, refusing fresh access after IO uncertainty.
+See the [retrieval contract](../../spec/storage-light-proof-retrieval.md) for ownership,
+resource bounds and recovery coverage.
+
+Batch `prove(keys, LightProofBatchLimits)` scans canonical headers once and returns detached
+proofs in request order. It bounds query scratch, traversal, individual proofs and aggregate
+output, refusing the whole batch for unknown/duplicate evidence or exceeded limits.
+See the [batch retrieval contract](../../spec/storage-light-proof-batches.md).
+
+`proofCursor` and `readPage` enumerate canonical retained evidence under page-sized item/path/value
+limits. Immutable continuations retain the original image, support deterministic retry and survive
+writer retirement. See the [pagination contract](../../spec/storage-light-proof-pagination.md).
+
+`select(keys, limits, entries)` exports exactly retained queries as a separately validated canonical
+image under explicit output limits. It preserves the original chain/complete root, revalidates
+selected proofs and leaves omitted evidence unknown. See the
+[selective export contract](../../spec/storage-light-selected-exports.md).
 
 ## Boundaries and ownership
 
@@ -230,3 +289,37 @@ Bounded read metadata controls capacity only. Actual short reads, EOF and the ex
 remain authoritative, and strict format admission still runs after loading. For matched peak-RSS
 observations, the checked comparison rules and Linux qualification, see the
 [read-memory record](../../spec/storage-read-memory-qualification.md).
+
+## Light proof-cache files
+
+`light_file_cache.nim` owns an explicitly selected separate directory and stable lock.
+It publishes opaque light images through synchronized atomic `CURRENT` replacement and
+reopens only after bounded proof verification against independently supplied chain/root.
+Immutable readers survive publication and close; uncertain IO requires explicit close
+and validated reopen. Pending cleanup revalidates the selected image before removal.
+See [the lifecycle and durability contract](../../spec/storage-light-files.md).
+Application startup and consensus root selection remain separately scoped work.
+
+Prepared light images support bounded `admit` and `forget` edits at the same independently
+selected root. File owners retain verified proof evidence after reopen and expose the same
+operations through synchronized atomic publication. Exact final image quotas precede hashing;
+unchanged proofs are retained without rehashing. See [incremental light evidence](../../spec/storage-light-updates.md).
+
+Light-file reopening transfers its owned read buffer into the validated prepared image.
+The public `takeLightSnapshot` consumes only on success; failed validation preserves
+the caller buffer, and borrowed restoration retains its copying contract. See the
+[ownership and measured memory record](../../spec/storage-light-restore-memory.md).
+
+Light snapshot decoding preflights the complete image and checksum, then verifies one
+proof at a time through a synchronous canonical reader into a private final cache.
+The reader is never retained and a failed suffix exposes no partial cache. See the
+[streaming verification and memory contract](../../spec/storage-light-streaming.md).
+
+Light file initialization and replacement borrow `encodedBytes` for the existing
+synchronous writer, avoiding a temporary full-image copy. This owner-bound read-only
+view rejects mutation and escaping a local owner; mutable extraction and `.bytes`
+remain independent copies. See [publication memory and IO evidence](../../spec/storage-light-publication-memory.md).
+
+Prepared images and file owners expose `update(proofs, forgottenKeys)` for atomic
+combined changes. This replaces evidence at exact capacity in one publication, with
+no visible eviction prefix. See [atomic evidence batches](../../spec/storage-light-atomic-batches.md).

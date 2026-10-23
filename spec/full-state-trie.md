@@ -52,8 +52,11 @@ policy; no recoverable OOM result is promised.
 The complete node ceiling measures the entire revision, not just new hashes. Long values add their
 raw-value hash as required by B/L. Paths have at most 248 branches. Batch sorting uses O(w) fixed
 scratch; edits use bounded O(w*248) node work and copy new value bytes. Shared affected paths
-are constructed once rather than repeatedly allocated and retired. Construction shares batch validation and hash publication, but partitions
-sorted unique identities by key bit and builds each final physical node once. Empty partitions
+are constructed once rather than repeatedly allocated and retired. Construction validates the original borrowed entries directly, then partitions
+sorted unique identities by key bit and builds each final physical node once. It copies payloads
+only into final immutable leaves, without an intermediate owning mutation array. The constructor
+preserves payload-before-duplicate and node-before-hash refusal ordering, and retains the original
+caller mutation policy. See the [constructor memory evidence](storage-trie-construction-memory.md). Empty partitions
 stay nil and singleton partitions become leaves immediately; multi-entry shared prefixes retain
 their unary branches. The private builder is bounded by 248 key bits and uses subtraction-based
 binary-search midpoints. No construction mode is exposed to callers. See the

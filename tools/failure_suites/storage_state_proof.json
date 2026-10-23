@@ -1,0 +1,98 @@
+{
+  "source": "tests/native/storage_state_proof_results.nim",
+  "build_name": "storage-state-proof-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-state-proof-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Root-bound state proof result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-state-proof-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Root-bound state proof result failed guard"
+    },
+    {
+      "identity": {
+        "member": "root",
+        "origin": "default"
+      },
+      "arguments": [
+        "root",
+        "default"
+      ],
+      "name": "storage-state-proof-root-default",
+      "diagnostic": "not lookup.owner == nil",
+      "description": "Root-bound state proof root default guard"
+    },
+    {
+      "identity": {
+        "member": "key",
+        "origin": "default"
+      },
+      "arguments": [
+        "key",
+        "default"
+      ],
+      "name": "storage-state-proof-key-default",
+      "diagnostic": "not lookup.owner == nil",
+      "description": "Root-bound state proof key default guard"
+    },
+    {
+      "identity": {
+        "member": "kind",
+        "origin": "default"
+      },
+      "arguments": [
+        "kind",
+        "default"
+      ],
+      "name": "storage-state-proof-kind-default",
+      "diagnostic": "not lookup.owner == nil",
+      "description": "Root-bound state proof kind default guard"
+    },
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "default"
+      },
+      "arguments": [
+        "bytes",
+        "default"
+      ],
+      "name": "storage-state-proof-bytes-default",
+      "diagnostic": "not lookup.owner == nil",
+      "description": "Root-bound state proof bytes default guard"
+    },
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "absent"
+      },
+      "arguments": [
+        "bytes",
+        "absent"
+      ],
+      "name": "storage-state-proof-bytes-absent",
+      "diagnostic": "lookup.owner.kind == Present",
+      "description": "Root-bound state proof bytes absent guard"
+    }
+  ]
+}
