@@ -1,0 +1,34 @@
+{
+  "build_name": "application-frozen-supplied-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "application_frozen_supplied guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "application-frozen-supplied-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "application_frozen_supplied selected reason",
+      "diagnostic": "outcome.status == QualificationFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "application-frozen-supplied-reason"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_frozen_supplied_results.nim"
+}

@@ -297,6 +297,72 @@
         "reason": "publication-logical-review-execution"
       },
       "name": "application-logical-services-publication-logical-review-execution"
+    },
+    {
+      "arguments": [
+        "preparation-frozen-supplied-capture"
+      ],
+      "description": "Managed host exclusion preparation-frozen-supplied-capture",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-frozen-supplied-capture"
+      },
+      "name": "application-logical-services-preparation-frozen-supplied-capture"
+    },
+    {
+      "arguments": [
+        "preparation-frozen-supplied-execution"
+      ],
+      "description": "Managed host exclusion preparation-frozen-supplied-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-frozen-supplied-execution"
+      },
+      "name": "application-logical-services-preparation-frozen-supplied-execution"
+    },
+    {
+      "arguments": [
+        "proof-frozen-supplied-capture"
+      ],
+      "description": "Managed host exclusion proof-frozen-supplied-capture",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-frozen-supplied-capture"
+      },
+      "name": "application-logical-services-proof-frozen-supplied-capture"
+    },
+    {
+      "arguments": [
+        "proof-frozen-supplied-execution"
+      ],
+      "description": "Managed host exclusion proof-frozen-supplied-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-frozen-supplied-execution"
+      },
+      "name": "application-logical-services-proof-frozen-supplied-execution"
+    },
+    {
+      "arguments": [
+        "publication-frozen-supplied-capture"
+      ],
+      "description": "Managed host exclusion publication-frozen-supplied-capture",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-frozen-supplied-capture"
+      },
+      "name": "application-logical-services-publication-frozen-supplied-capture"
+    },
+    {
+      "arguments": [
+        "publication-frozen-supplied-execution"
+      ],
+      "description": "Managed host exclusion publication-frozen-supplied-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-frozen-supplied-execution"
+      },
+      "name": "application-logical-services-publication-frozen-supplied-execution"
     }
   ],
   "crypto_library": "observer",

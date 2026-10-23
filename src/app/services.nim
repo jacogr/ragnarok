@@ -18,6 +18,8 @@ import ./logical_review
 import ./logical_proof
 import ../state/account_review_plan
 import ./logical_checkpoint
+import ./frozen_supplied
+import ../state/supplied_services
 import ./logical_seed
 import ../codec/state_composition
 import ./current_logical as collected_logical
@@ -1260,3 +1262,15 @@ proc stageCheckpointVerification*(services: var Services, expected: ApplicationC
     limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointAdmission =
   ## Independent fixed trust and explicit decode budgets require no canonical alias, so verification may run during preparation leases.
   services.checkpointExport.stageVerification(expected, limits, limit)
+
+proc freezeCollectedSupplied*(services: Services, plan: CollectedSuppliedPlan,
+    declarations: openArray[StateService], limits: SuppliedServicesLimits): FrozenSuppliedResult[
+        FrozenSuppliedInput] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Capture source aliases only after every managed native graph lease has ended.
+  frozen_supplied.freezeCollectedSupplied(services.canonical, plan, declarations, limits)
+proc executeFrozenSupplied*(services: Services, source: FrozenSuppliedInput): FrozenSuppliedResult[
+    CurrentLogicalState] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Frozen input does not bypass canonical staleness or native exclusion checks.
+  frozen_supplied.executeFrozenSupplied(services.canonical, source)
