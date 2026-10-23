@@ -4,6 +4,7 @@
 ## Host-side complete logical qualification of genuine collected current preparation.
 ## The caller keeps every canonical ARC alias stable and touches this API only outside worker leases.
 import ./[chain, preparation_worker, current_block_input]
+import ./collected_update
 import ../state/[parent_logical, current_logical, current_identities, current_request_keys,
     current_refresh_plan, current_logical_refresh, accumulation_current_update]
 type
@@ -64,17 +65,14 @@ func refreshFailure*(outcome: CollectedLogicalResult): LogicalRefreshResult {.in
 proc collectedUpdate(chain: ApplicationChain, completion: PreparationCompletion):
     CollectedLogicalError =
   ## Reject non-current receipts before extraction and stale updates before full logical traversal.
-  case completion.kind
-  of PreparationCompletionKind.Uninitialized: return CollectedLogicalError.NoCompletion
-  of PreparationCompletionKind.Cancelled: return CollectedLogicalError.Cancelled
-  of PreparationCompletionKind.Completed: return CollectedLogicalError.WrongOperation
-  of PreparationCompletionKind.CurrentCompleted:
-    let prepared = completion.currentValue
-    if prepared.error != CurrentBlockInputError.None:
-      return CollectedLogicalError.PreparationFailure # The public caller retains this exact typed failed receiver result.
-    if not chain.canInstallPrepared(prepared.value):
-      return CollectedLogicalError.StaleUpdate # Exact state, whole view, Parameters and finality bind the original canonical parent.
-  CollectedLogicalError.None
+  case captureCollectedUpdate(chain, completion).error
+  of CollectedUpdateError.Uninitialized: CollectedLogicalError.Uninitialized
+  of CollectedUpdateError.None: CollectedLogicalError.None
+  of CollectedUpdateError.NoCompletion: CollectedLogicalError.NoCompletion
+  of CollectedUpdateError.Cancelled: CollectedLogicalError.Cancelled
+  of CollectedUpdateError.WrongOperation: CollectedLogicalError.WrongOperation
+  of CollectedUpdateError.PreparationFailure: CollectedLogicalError.PreparationFailure
+  of CollectedUpdateError.StaleUpdate: CollectedLogicalError.StaleUpdate
 proc refreshIdentities(binding: CurrentIdentityResult[PreservedCurrentIdentities],
     limits: CollectedLogicalLimits): CollectedLogicalResult =
   ## Execute one acyclic bounded chain; each failed stage retires its local successful predecessors.
