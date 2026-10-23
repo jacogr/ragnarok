@@ -29,12 +29,17 @@ proc logicalServicesText*(fixture: CurrentRepeatedLogicalFixture): string =
   $jsonObject([("protocol_parameters", json(hexBytes(parent.chainParameters.encodeParameters))),
     ("genesis_header", json(hexBytes(headerBytes))), ("genesis_state", json(entries))])
 proc startLogicalServices*(owner: var Services, fixture: CurrentRepeatedLogicalFixture,
-    path: string): SelectedLogicalParent {.raises.} =
+    path: string, database = "", managed = false): SelectedLogicalParent {.raises.} =
   ## Reparse actual configured state, then validate supplied declarations against that exact new physical Services owner.
   writeFile(path, logicalServicesText(fixture))
   var options = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", path, "--state-writes", "1000",
-    "--state-write-bytes", "1000000"], options)
+  var args = @["server", "--with-state", "--chain", path, "--state-writes", "1000",
+    "--state-write-bytes", "1000000"]
+  if database.len > 0:
+    for argument in ["--state-storage", "disk", "--state-db", database]: args.add(argument)
+    if managed:
+      for argument in ["--state-layout", "managed", "--state-compact-bytes", "0"]: args.add(argument)
+  assert parseOptions(args, options)
   assert owner.start(options, "collected logical state")
   let profile = captureParentProfile(owner.chainView, parentProfileTestLimits).value
   let globals = qualifyParentGlobals(profile, parentGlobalsTestLimits).value

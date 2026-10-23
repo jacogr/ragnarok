@@ -122,6 +122,35 @@ See [selected parent profiles](../spec/state-parent-profile.md),
 [proof integration](../spec/state-current-logical-proofs.md) and
 [worker leases](../spec/state-current-logical-worker-lease.md).
 
+## Consume an actual preparation completion on the host
+
+`app/current_logical.refreshCollectedLogical` connects the bounded stages above to the actual
+preparation worker receipt. Its Services overloads accept the configured `SelectedLogicalParent`
+or completed `CurrentLogicalState`, the opaque `PreparationCompletion` and explicit
+`CollectedLogicalLimits`. Capture the configured source against the physical Services-owned view
+after startup; an independently reparsed equal-root source cannot replace it.
+
+Keep retained sources and receipts completely untouched while preparation, proof or publication
+owns its graph lease. Call `Services.collectPreparation` with the actual ticket first. An
+`Uninitialized` receipt leaves the lease closed. Done and cancellation alone grant no host access.
+After matching collection reopens access, call `Services.refreshCollectedLogical`; its existing
+canonical guards enforce all three managed exclusions. The adapter checks current-vs-legacy
+completion, original typed preparation success and the exact still-selected canonical parent before
+running identity preservation, request-key capture, reconstruction planning and full qualification.
+
+Inspect `CollectedLogicalError` and use only its selected nested reason accessor. A successful
+result is the existing `CurrentLogicalState`; no map constructor or installation authority is added.
+Qualification is an optional bounded observation: its resource refusal does not invalidate an
+otherwise successful prepared candidate. Enqueue/adopt that original prepared update separately
+through existing host APIs. Reusing its receipt after adoption returns `StaleUpdate`. Before another
+worker starts, finish any source replacement and let temporary canonical aliases retire. General
+producer mutation propagation still requires the separate contract below.
+
+The [collected qualification contract](../spec/application-current-logical.md) records genuine
+worker, managed Services, detached proof and durable-publication witnesses. Their expected roots
+are explicitly selected actual posterior commitments, independently of the child's prior-state
+header root; they are not published upstream current-schema golden vectors.
+
 ## Remaining producer contract and parity gates
 
 PVM and state agreed to defer a public delta API until a jointly designed producer contract has a

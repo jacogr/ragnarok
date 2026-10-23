@@ -38,3 +38,27 @@ qualifies, explicitly adopts and continues from the completed logical predecesso
 mixed proofs under the independently selected actual posterior root after the second adoption.
 Proof response bytes remain usable after Services closes. Retained logical/current receipts remain
 untouched throughout each preparation and proof lease. No RPC method/schema or storage format changes.
+
+## Durable publication and local qualification
+
+The `application_logical_publication` native suite repeats actual preparation, collected refresh
+and confirmed adoption across two children in each existing journal and managed layout. It keeps
+all current/logical sources untouched while the disk worker owns the graph, including Done, and
+checks that stale preparation collection cannot release publication exclusion. Equal-root sources
+from an independently constructed physical parent refuse. Only actual disk receipt collection
+installs a successor; logical qualification itself leaves canonical and durable state unchanged.
+Strict probes exercise both source overloads during publication Done as well as cancelled Done
+preparation and proof leases. No worker transition, disk API or storage format changes.
+
+Qualification remains opt-in host observation under explicit supplied complete declarations and
+independent resource policies. Refusal does not invalidate a successfully prepared candidate.
+The current CLI/download flow has no supplied logical seed input, and does not enable this path
+implicitly. General mutation support still needs a concrete jointly owned producer provenance
+contract; physical diffs cannot supply untouched raw keys or selected rollback history.
+
+Observed local qualification on macOS ARM64 with pinned Nimony, ARC/Clang release and runtime
+assertions/bounds preserved: all three new native suites passed; the collected adapter held live
+allocation at 311,040 bytes across 1,000 cycles; thirteen strict runtime guards and eight compiler
+privacy rejections passed with positive controls. The production LTO build, pinned formatting,
+verification inventory and changed-document local links passed. This is local evidence, not
+exact-head Linux CI, independent current-schema upstream goldens or full JAM parity.

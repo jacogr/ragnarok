@@ -3,8 +3,11 @@
 
 ## Actual managed preparation and proof leases reject both logical source alternatives before canonical access.
 import std/[assertions, cmdline, syncio, strutils, monotimes, times]
-import ../../src/app/[services, current_logical, preparation_worker, current_block_input, proof_worker]
-import ../../src/state/[parent_logical, current_logical, proof_plan]
+import std/posix/posix
+import ../../src/app/[services, current_logical, preparation_worker, current_block_input,
+    proof_worker, current_handoff, disk_worker]
+import ../../src/state/[parent_logical, current_logical, proof_plan, accumulation_current_update,
+    accumulation_round, accumulation_queue, report_admission, block_transition, block_admission]
 import ../../src/codec/[bounded, report_owned, state_layout]
 import ../../src/chain/[provider, genesis]
 import ../support/[current_repeated_logical_context, collected_logical_context,
@@ -20,14 +23,34 @@ proc main() {.raises.} =
   let fixture = repeatedLogicalFixture(decodeOwnedReport(bytes, 2).value)
   var owner = default(Services)
   var input = default(CurrentBlockInput)
-  let source = startLogicalServices(owner, fixture, "build/application-logical-guard-chain.json")
+  var database = ""
+  if mode.startsWith("publication"):
+    database = "build/application-logical-guard-state-" & mode
+    discard posix.unlink(database.toCString()) # Retire only this strict probe's exact previous test-owned journal before startup.
+  let source = startLogicalServices(owner, fixture, "build/application-logical-guard-chain.json", database)
   defer: owner.close() # Positive joined cleanup retires either native borrower before source/input aliases.
   if mode == "control":
     let receipt = default(PreparationCompletion)
     assert owner.refreshCollectedLogical(receipt, source, collectedLogicalTestLimits()).error ==
         CollectedLogicalError.NoCompletion
     return
-  if mode.startsWith("preparation"):
+  if mode.startsWith("publication"):
+    let bound = fixture.first.source.round.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value.value.admitted
+    let wire = currentWire(bound.admittedBlock)
+    let ticket = beginManagedCurrent(owner, input, wire, fixture.first.source.older,
+        currentCandidateLimits())
+    owner.waitManagedPreparation()
+    let receipt = owner.collectPreparation(ticket)
+    assert owner.enqueueCurrentAccumulation(receipt.currentValue.value) ==
+        CurrentHandoffAdmission.None
+    owner.tick(0)
+    assert owner.diskPublicationActive
+    let start = getMonoTime()
+    while owner.diskPublicationPhase != DiskWorkerPhase.Done:
+      assert (getMonoTime()-start).inSeconds < 20
+      discard pauseMicros(1000)
+    assert owner.diskPublicationActive # Durable Done still borrows all canonical aliases until actual collection.
+  elif mode.startsWith("preparation"):
     let ticket = beginManagedCurrent(owner, input, [255'u8], [], currentCandidateLimits())
     owner.waitManagedPreparation()
     assert owner.cancelPreparation(ticket)

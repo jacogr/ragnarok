@@ -44,6 +44,28 @@
         "reason": "proof-current"
       },
       "name": "application-logical-services-proof-current"
+    },
+    {
+      "arguments": [
+        "publication-selected"
+      ],
+      "description": "Managed logical exclusion publication-selected",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-selected"
+      },
+      "name": "application-logical-services-publication-selected"
+    },
+    {
+      "arguments": [
+        "publication-current"
+      ],
+      "description": "Managed logical exclusion publication-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-current"
+      },
+      "name": "application-logical-services-publication-current"
     }
   ],
   "crypto_library": "observer",
