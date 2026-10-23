@@ -1,0 +1,34 @@
+# Collected current successor logical qualification
+
+## Scope and authority
+
+Pinned Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` remains primary.
+This witness consumes existing current candidate execution and the merged State logical APIs;
+it changes no protocol, storage, root, RPC or finality policy. M1 framing is complete within its
+contract; complete independent current-schema STF serialization and full JAM parity remain open.
+
+## First boundary
+
+`pvm_current_logical_collection` starts actual Services from a complete signed parent containing
+both service namespaces, including raw empty storage keys, present-empty values, code preimages
+and request histories. It seeds `SelectedLogicalParent` from the actual configured Services view,
+then runs genuine native preparation. Done and stale collection retain the lease. Only matching
+collection reopens the host/RPC gate. All retained graph owners remain untouched while leased.
+
+Before enqueue, the real collected update passes identity preservation, request-key capture,
+reconstruction admission, full logical admission and execution. The logical result retains the
+same physical successor. Qualification leaves the canonical parent and handoff idle; explicit
+enqueue and a later Services tick install that exact successor. The separately executed fixture
+provides an authored complete-map control, not an independent STF golden or mutation certificate.
+
+Run `make unit SUITE=pvm_current_logical_collection` and `make check-inventory`.
+The shared chainspec helper also accepts an original `BlockSnapshot`; existing fixture callers
+forward to that serializer without changing output.
+
+## Next work
+
+Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
+handoff. General producer mutation and exceptional/checkpoint propagation remain separate.
+After the required plumbing is qualified, measure PVM performance against the pinned PolkaVM
+control with reproducible workloads and then add focused fuzzing for the implemented boundaries.
+These remain future work, with no weakened checks, pin changes or inferred parity claims.

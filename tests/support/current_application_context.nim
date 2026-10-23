@@ -12,9 +12,8 @@ proc hexBytes(value: openArray[byte]): string =
   ## Test-owned canonical lowercase hexadecimal does not reuse the production configuration decoder.
   result = ""
   for octet in value: result.add(toHex(int(octet), 2).toLowerAscii())
-proc currentApplicationText*(context: CurrentChainFixture): string =
+proc currentApplicationText*(parent: BlockSnapshot): string =
   ## Emit every original complete-map entry and its exact sealed header/parameter tuple, never a partial-state root.
-  let parent = context.parent.value
   let state = parent.stateSnapshot
   var header = newSeq[byte](parent.header.headerInfo.value.consumed)
   assert parent.header.encodeOwnedHeader(header).error == HeaderError.None
@@ -25,3 +24,6 @@ proc currentApplicationText*(context: CurrentChainFixture): string =
     entries.add(hexBytes(array[31, byte](key)), json(hexBytes(value)))
   $jsonObject([("protocol_parameters", json(hexBytes(parent.chainParameters.encodeParameters))),
     ("genesis_header", json(hexBytes(header))), ("genesis_state", json(entries))])
+proc currentApplicationText*(context: CurrentChainFixture): string =
+  ## Preserve existing signed fixture callers through the same exact original snapshot serializer.
+  currentApplicationText(context.parent.value)
