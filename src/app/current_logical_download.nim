@@ -49,6 +49,12 @@ proc initCurrentLogicalDownloadPolicy*(prior: CurrentLogicalState,
   ## Continue from the actual previous completed logical owner after its deferred adoption has been consumed.
   CurrentLogicalDownloadPolicy(origin: LogicalDownloadOrigin.Completed, prior: prior,
       limits: limits)
+proc continueCurrentLogicalDownloadPolicy*(policy: CurrentLogicalDownloadPolicy,
+    prior: CurrentLogicalState): CurrentLogicalDownloadPolicy =
+  ## Advance only the source under the exact previously captured budgets; invalid defaults cannot become enabled policies.
+  if policy.origin == LogicalDownloadOrigin.Uninitialized:
+    return default(CurrentLogicalDownloadPolicy) # A caller must provision the initial explicit policy independently.
+  initCurrentLogicalDownloadPolicy(prior, policy.limits)
 func error*(outcome: CurrentLogicalDownloadResult): CurrentLogicalDownloadError =
   ## Observe only the immutable selected stage.
   outcome.status
