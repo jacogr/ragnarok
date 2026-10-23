@@ -143,6 +143,14 @@ manufactured by the caller.
 
 Run `make unit SUITE=pvm_current_logical_history`.
 
+## Durable collected histories
+
+Both real forget/restore branches run through journal and managed native publication in addition
+to memory. Qualified logical owners remain untouched through disk Done until matching collection.
+Strict startup recovers the original five-byte request map and the actual nine/thirteen-byte
+successor map, with exact child/parent/slot identity and absent finality. Stored root equality is
+used for content verification only, without treating restored owners as original logical provenance.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
