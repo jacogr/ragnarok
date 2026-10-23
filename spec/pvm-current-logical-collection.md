@@ -56,6 +56,16 @@ identities. Actual prepared/current logical provenance remains tied to the origi
 owners; reopening proves durability without asserting those old owners can authorize new work.
 Automatic managed compaction is explicitly disabled for this publication witness.
 
+## Reseed after durable restart
+
+After strict reopen, the old completed logical source refuses the next genuine collected child
+with `ParentMismatch`: the restored state has equal content but a different physical owner.
+Detached complete declarations copied from the last qualified logical result are explicitly
+matched against the actual reopened full view to create a new configured source. That source
+qualifies the next real native preparation, publication and adoption. A second strict restart
+checks all five retained maps and exact block/hash/parent/slot identities, with absent finality.
+No restored-root equality is promoted to retained provenance or producer-owned mutation evidence.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable

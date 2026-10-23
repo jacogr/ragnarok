@@ -8,12 +8,12 @@ import ../../support/[current_namespace_execution_context, current_application_c
     current_logical_collection_context, current_consecutive_context,
     accumulation_current_candidate_context, parent_profile_context, parent_globals_context,
     supplied_logical_context, current_identity_context, current_logical_proof_context,
-    pvm_accumulation_program, current_services_disk_samples, managed_storage_samples]
+    pvm_accumulation_program, current_services_disk_samples, managed_storage_samples, current_namespace_refresh_context]
 import ../../../src/app/[services, options, current_block_input, current_handoff, disk_worker]
 import ../../../src/chain/[provider, genesis]
 import ../../../src/codec/[bounded, block_codec, report_owned, state_layout, state_accounts, state_service_values]
 import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_identities,
-    current_logical, accumulation_current_update, store, block_admission, report_admission]
+    current_logical, accumulation_current_update, store, block_admission, report_admission, supplied_services]
 import ../../../src/storage/managed_manifest
 proc overwriteCode(): seq[byte] =
   ## Actual write host targets the existing raw key5 of funded service99; the original present-empty value grows without creating a namespace identity.
@@ -107,6 +107,44 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int) {.raises.} =
       equalCurrentDiskMap(actual.stateSnapshot, expected.stateSnapshot)
     assert view.finalizedBlock.error != GenesisError.None
     equalCurrentDiskMap(owner.stateSnapshot.value, logical.logicalProducer.currentUpdateState)
+    # Reopening creates new physical graph owners, so copy declarations on the open host gate and match them to the actual recovered full view before another native job.
+    let copied = copySuppliedServices(logical.currentLogicalInventory.value,
+        namespaceRefreshLimits.projection)
+    assert copied.error == SuppliedServicesError.None
+    let resumedProfile = captureParentProfile(owner.chainView, parentProfileTestLimits).value
+    let resumedGlobals = qualifyParentGlobals(resumedProfile, parentGlobalsTestLimits).value
+    let resumedParent = captureLogicalParent(resumedGlobals, copied.value, suppliedLogicalTestLimits)
+    assert resumedParent.error == ParentLogicalError.None
+    let resumed = owner.collectLogicalChild(input, currentEmptyChild(
+        owner.chainView.bestBlock.value), policies)
+    assert preserveCurrentIdentities(logical, resumed, currentIdentityTestLimits).error ==
+        CurrentIdentityError.ParentMismatch
+    let resumedIdentities = preserveCurrentIdentities(resumedParent.value, resumed, currentIdentityTestLimits)
+    assert resumedIdentities.error == CurrentIdentityError.None
+    logical = refreshCollectedIdentities(resumedIdentities.value)
+    assert logical.logicalProducer.currentUpdateState.lookup(key).value.bytes == @[17'u8, 18, 19]
+    heads.add(resumed.currentUpdateChild)
+    assert owner.enqueueCurrentAccumulation(resumed) == CurrentHandoffAdmission.None
+    owner.tick(0)
+    assert owner.diskPublicationActive
+    owner.waitCurrentDiskDone()
+    assert owner.diskPublicationActive
+    owner.tick(0)
+    assert not owner.diskPublicationActive and owner.currentAccumulationPhase ==
+        CurrentHandoffPhase.Finished
+    assert owner.takeCurrentAccumulation().error == CurrentHandoffError.None
+    assert sameStateSnapshot(owner.stateSnapshot.value, logical.logicalProducer.currentUpdateState)
+    owner.close()
+    assert owner.start(options, "strict resumed logical restart")
+    assert owner.chainView.retainedCount == heads.len and heads.len == 5
+    for index in 0..<heads.len:
+      # Confirm the newly continued child and every earlier durable state after a second independent open.
+      let actual = owner.chainView.retainedBlockAt(RetainedBlockIndex(uint64(index))).value
+      assert array[32, byte](actual.blockHash) == array[32, byte](heads[index].blockHash)
+      assert array[32, byte](actual.parentHash) == array[32, byte](heads[index].parentHash)
+      assert actual.slot == heads[index].slot
+      equalCurrentDiskMap(actual.stateSnapshot, heads[index].stateSnapshot)
+    assert owner.chainView.finalizedBlock.error != GenesisError.None
     owner.close()
 proc main() {.raises.} =
   ## Complete original code namespaces and actual funded overwrite feed three independent native preparation/adoption lifetimes.
