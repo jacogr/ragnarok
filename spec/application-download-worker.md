@@ -188,3 +188,23 @@ idle threads one). Evidence is `build/running-download-e2e/results.json` and the
 `build/running-download-*`. Five adapter/resource tests, including rejection of the old transcript
 without the Running marker, plus four E2E-plan tests, formatting, inventory and whitespace checks
 pass. No remote CI was requested; Linux CI remains separate from this selected local run.
+
+## Running witness after PVM speedups
+
+The master run [39975655075](https://github.com/jacogr/ragnarok/actions/runs/39975655075/job/120489419979)
+failed the Running-after-reset assertion after native reset delivery. With the faster bounded
+PVM implementation, the original 40000000-credit guest can finish during the fixture's native
+pacing window. The same timing race reproduced locally before the deadline was applied, at
+`loop still running before deadline`; neither failure establishes a transport or cancellation defect.
+
+The current test-only guest credit is 400000000, with the same finite execution, gas-accounting
+and wall-clock limits. Reset polling now stops at the real reset callback instead of waiting out
+all eight polling turns before checking Running. Both Running assertions, managed graph exclusion,
+exact cancellation, unchanged parent, genuine adoption and near-full-credit C(13) verification
+remain required. Production scheduling, PVM behavior, pins, cancellation semantics and resource
+budgets are unchanged; this remains an observed overlap witness, not a hard latency guarantee.
+
+Pinned checked ARC/Clang/ThinLTO verification on macOS ARM64 passed four consecutive full workload
+runs, including the Running transcript, all 32 completed-output cancellations, final adoption and
+all 33 joined resource observations per run. The 11 focused E2E adapter, resource and plan tests
+also pass. Evidence is under `build/ci1-download-reset/`; E2E CI was not requested.
