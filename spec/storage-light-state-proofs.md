@@ -40,6 +40,33 @@ nodes are not ignored. Default/failure results expose only reasons. A successful
 distinguishes Present/Absent; absent lookups cannot expose bytes. Real primitive refusal is typed
 BackendFailure and never becomes absence.
 
+## Complete-revision proof production
+
+`FullStateTrie.prove(key, limits)` produces the same detached `StateProof` directly from an
+initialized immutable complete revision. It follows only the selected key path, with no full
+record export, global sorting or reconstruction of unrelated subtrees. A first walk preflights
+the exact node extent and, for a matching leaf, copied raw-value bytes. Only then does a second
+walk allocate one exact node buffer and one matching-value buffer. Empty roots produce empty
+proofs; a selected empty child or a different-key leaf produces absence evidence with no raw value.
+The original revision and all retained forks remain unchanged on every outcome.
+
+Generation reuses cached full child hashes to encode branches without hashing them. Encoding an
+inline leaf is also hash-free. A terminal long leaf requires exactly one real raw-value hash to
+reconstruct its canonical encoded node, including when that different-key leaf proves absence.
+The absence proof omits the raw value, so its `valueBytes` limit may be zero; encoding the terminal
+node still uses the source revision's already validated per-value policy. Provider refusal exposes
+BackendFailure and retires any partially filled private output. Node/value quota refusals occur
+before output allocation or hashing. Default revisions return Uninitialized rather than empty-root
+evidence. The result supports the existing `TrieResult.takeValue` owning transfer without copying;
+the copying `value` accessor remains available.
+
+The producer makes no claim about the root's chain/finality authority. Callers pair the proof with
+an independently trusted complete root and the exact query when invoking `verifyStateProof`.
+Maximum output is 249 fixed nodes (15,936 node bytes) plus caller-bounded matching raw value bytes;
+allocator rounding and descriptor storage are separate from these logical byte extents. Generation
+walks at most 498 nodes and makes at most one hash attempt. These are algorithmic bounds, not a
+measured latency claim or a global memory cap across retained proofs.
+
 ## Completion verification
 
 `make unit SUITE=storage_state_proof` uses independent complete-map roots and a detached
@@ -63,3 +90,20 @@ success controls. Full logs and source/compiler/library identities remain under 
 
 M1 framing is complete. Complete state serialization, whole-block JAM parity, light database/cache
 policy and trusted-head selection remain open. This primitive is not a deployable light node.
+
+
+Producer verification uses `make unit SUITE=storage_proof_production` for independent full-map
+roots, unsorted maps, both polarities, matching and different-key singleton terminals, selected
+empty children, empty/32/33/256-byte values, 248/249-node ceilings, present-value ceilings and
+zero-byte absence allowance at a long terminal. Exact public allocator calibration checks held
+proof storage against one exact node buffer plus its copied payload; owning result transfer
+allocates no additional storage. Mutation of proof bytes cannot change the source revision or
+verified retained lookup. Detached proofs survive all source owners, and old/new fork proofs
+remain bound to their respective roots. A 1,000-cycle workload includes successful generation,
+partial-output provider refusal and recovery, with exact occupied ARC retirement.
+
+`full_state_trie_replay` additionally verifies generated proofs for every present entry in the
+seven pinned published pre/post mapping pairs and authenticated deletion proofs at the published
+post-state roots, across forward/reordered/inverse retained revisions. Existing trie/privacy,
+owned export and proof-verifier suites cover the unchanged consumers. Local evidence stays under
+`build/storage-db25-*`; exact-head heavy Linux verification remains separate.

@@ -61,7 +61,10 @@ reason and leaves all retained revisions unchanged.
 
 ## Root-bound lookup proofs
 
-`state_proof.nim` verifies bounded root-to-terminal node paths for one serialized key against
+`FullStateTrie.prove(key, limits)` copies a bounded detached path directly from a retained complete
+revision, preflighting exact node/value extents before allocation or hashing. Cached branches need
+no hashing; a terminal long leaf needs one raw-value hash. `state_proof.nim` verifies these
+root-to-terminal node paths for one serialized key against
 an independently trusted complete-state root. Successful `VerifiedStateLookup` values retain
 the exact root/key binding and distinguish Present from Absent; incomplete local evidence is a
 failure rather than absence. Present-byte extraction copies private immutable storage. The

@@ -6,7 +6,7 @@
 ## Exposes complete revisions, retained lookup values, explicit limits and guarded results.
 
 import std/[algorithm, assertions]
-import ./node_records
+import ./[node_records, state_proof]
 import ../codec/[state_trie, state_layout, bounded]
 
 type
@@ -365,6 +365,57 @@ proc newFullStateTrie*(entries: openArray[StateEntry],
     return TrieResult[FullStateTrie](status: hashed) # Failed unpublished nodes retire with their private copied payloads.
   TrieResult[FullStateTrie](status: TrieError.None,
     completed: FullStateTrie(data: RevisionData(root: candidate, limits: limits)))
+
+
+proc prove*(trie: FullStateTrie, key: StateKey,
+    limits: StateProofLimits): TrieResult[StateProof] =
+  ## Copy one bounded canonical root-to-terminal path from an immutable complete revision.
+  ## Output grants no root trust; verification still requires the independently trusted complete root.
+  let data = trie.data
+  if data == nil: return TrieResult[StateProof](status: TrieError.Uninitialized) # Defaults cannot prove an empty mapping.
+  var current = data.root
+  var count = 0
+  # Walk the immutable selected path before allocating output or hashing a terminal long value.
+  while current != nil:
+    if count >= 249 or uint64(count) >= uint64(limits.nodes):
+      return TrieResult[StateProof](status: TrieError.LimitExceeded) # Tight caller budgets cannot expose partial paths.
+    inc count
+    if current.leaf:
+      if compareKey(current.key, key) == 0 and uint64(current.payload.len) > uint64(
+          limits.valueBytes):
+        return TrieResult[StateProof](status: TrieError.LimitExceeded) # Only present raw bytes consume the output-value ceiling.
+      break # A matching or different-key singleton is terminal evidence.
+    assert count <= 248 # Complete private graphs have at most 248 branch levels.
+    current = if one(key, count-1): current.right else: current.left
+  var nodes = newSeq[EncodedStateNode](count)
+  var payload: seq[byte] = @[]
+  current = data.root
+  var next = 0
+  # The retained immutable owner keeps both walks identical, including selected empty children.
+  while current != nil:
+    assert next < nodes.len # The first walk proved this exact descriptor extent.
+    if current.leaf:
+      let encoded = encodeStateLeaf(current.key, current.payload, data.limits.trie.perValue)
+      if encoded.error != StateLayoutError.None:
+        return TrieResult[StateProof](status: TrieError.BackendFailure) # Long-value hash refusal retires the private partial output.
+      nodes[next] = encoded.value
+      inc next
+      if compareKey(current.key, key) == 0:
+        payload = newSeq[byte](current.payload.len)
+        for index, octet in current.payload: payload[
+            index] = octet # Detached bytes never share mutable backing with a leaf.
+      break # Absence leaves intentionally omit their raw value, including long values.
+    let left = current.left
+    let right = current.right
+    nodes[next] = encodeStateBranch(
+      (if left == nil: default(StateNodeHash) else: left.digest),
+      (if right == nil: default(StateNodeHash) else: right.digest))
+    inc next
+    assert next <= 248 # Bound the next MSB-first key-bit lookup before access.
+    current = if one(key, next-1): right else: left
+  assert next == nodes.len # Empty roots/children and terminal leaves fill the complete bounded path exactly.
+  TrieResult[StateProof](status: TrieError.None, completed: StateProof(nodes: nodes,
+      value: payload))
 
 proc omitted(node, base: nil TrieNode): bool =
   ## Equal complete commitments reuse an existing physical subtree; leaves may move after collapse.
