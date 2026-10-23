@@ -85,3 +85,25 @@ arm64 with the repository-pinned compiler and providers; exact-head Linux CI rem
 The next substantial unit is a locked durable light journal owner with strict open and sparse
 append. Held-file repair, process-crash qualification, compaction and reclamation remain explicit
 follow-up work. Existing M1 framing completion is distinct from complete state serialization.
+
+## Partial-field completion bounds
+
+Partial planning checks whether available local fields can still have a bounded canonical
+completion. Available count bytes must fit the frame's minimum edit extent and native proof/key
+array capacities. Available little-endian body bytes must admit an integer between the required
+fixed metadata and the permitted aggregate node/raw payload. Missing high bytes cannot excuse
+a known low-byte residue that is impossible within those bounds. Node payloads contribute
+64-byte units; raw-byte allowances determine the gaps between representable payload sizes.
+
+Each available admit header must leave an exactly representable payload for its remaining
+edits. Available key bytes must permit a strictly ordered completion with enough distinct
+successors for every declared edit. These are local format checks; incomplete proof material
+still receives no authenticated successor authority. Arithmetic is bounded before products,
+rounding, offsets and conversions, with checked runtime contracts retained.
+
+The `storage_light_partial_frames` native suite independently enumerates small count, node
+and raw-byte combinations against partial count/body and admit fields, checks every proper
+prefix of structurally possible multi-edit frames including their footer, and rejects exhausted
+key space. Four saved native witnesses separately confirm refusal of impossible count capacity,
+zero-edit body, partial body residue and raw-length metadata. The existing replay suite retains
+its genuine proof transitions, provider failures and one-thousand-cycle ARC evidence.
