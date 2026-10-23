@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current activity fixtures share exact signed inputs with legacy witnesses and retain real current completion.
+import ./service_namespace_seed
 import ../../src/codec/[bounded, header, composite, report_owned, state_authorization, state_trie]
 import ../../src/state/[accumulation_current_activity, accumulation_current_validators,
   accumulation_current_recent, accumulation_current_ready, accumulation_current_finalization,
@@ -19,7 +20,7 @@ proc currentActivityFixture*(base: OwnedReport, available = false, guarantees = 
     hugeRefinement = false, executed = false, provided = false, parentPools: seq[AuthorizerRow] = @[],
     authorizationQueue: seq[byte] = @[], omitAuthorizationQueue = false,
     withDispute = false, withTicket = false, shiftPending = false,
-    storeWrites = 1000'u64, completeState = false): CurrentActivityFixture =
+    storeWrites = 1000'u64, completeState = false, serviceNamespaces: seq[ServiceNamespaceSeed] = @[]): CurrentActivityFixture =
   ## All signatures, current guests/selection, statistics, timestamps, queues and recent history remain genuine prerequisites.
   let fixture = executionFixture(base, activityOptions(available = available,
       guarantees = guarantees, blobs = blobs, requested = requested, missingLast = missingLast,
@@ -27,7 +28,7 @@ proc currentActivityFixture*(base: OwnedReport, available = false, guarantees = 
       provided = provided, parentPools = parentPools, authorizationQueue = authorizationQueue,
       omitAuthorizationQueue = omitAuthorizationQueue, withDispute = withDispute,
       withTicket = withTicket, shiftPending = shiftPending, storeWrites = storeWrites,
-      completeState = completeState))
+      completeState = completeState, serviceNamespaces = serviceNamespaces))
   var limits = currentSequenceDriverLimits()
   if provided:
     limits.initial.guests.provisions = provisionPolicy(items = 2, perBlob = 1, total = 2)

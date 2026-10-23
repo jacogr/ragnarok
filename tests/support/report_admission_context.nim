@@ -17,7 +17,7 @@ import ../../src/codec/[block_codec, header, bounded, guarantees, assurances, st
   composite, work_digest]
 import ../../src/crypto/[primitives, extrinsic_commitment, assurance_context]
 import ../../src/bandersnatch/bandersnatch
-import ./report_context
+import ./[report_context, service_namespace_seed]
 from ../../src/codec/disputes import Disputes, Culprit, DisputeSignature, DisputeConfig,
     encodeDisputes, DisputeError
 
@@ -162,6 +162,7 @@ type SignedBlockFixtureConfig* = object ## Authored signed-parent/block data is 
   refinement*: seq[RefineLoad]     ## Optional per-digest refinement observations.
   parentPools*: seq[AuthorizerRow] ## Explicit canonical original authorizer pools.
   storeWrites*: uint64             ## Inherited store mutation-count ceiling.
+  serviceNamespaces*: seq[ServiceNamespaceSeed] ## Opt-in complete original namespaces, authored before all signatures.
   completeState*: bool ## New authored complete-map mode uses empty C16 instead of the rollback-only C250 sentinel.
 
 proc signedBlockFixtureConfig*(): SignedBlockFixtureConfig =
@@ -170,7 +171,7 @@ proc signedBlockFixtureConfig*(): SignedBlockFixtureConfig =
       withAvailable: false, extra: @[], accountCode: @[], ready: @[], preimageWire: @[],
       poolCopies: 1, refinementGas: high(uint64), historyPeaks: @[], targetSlot: 0'u32,
       withTicket: false, shiftPending: false, guaranteeSlot: 0'u32, refinement: @[], parentPools: @[],
-      storeWrites: 1000'u64, completeState: false)
+      storeWrites: 1000'u64, completeState: false, serviceNamespaces: @[])
 
 proc authored*(base: OwnedReport, options = signedBlockFixtureConfig()): Context =
   ## Author a signed advancing block (slot 2 by default), then run real disputes/Safrole/assurance processing.
@@ -296,6 +297,9 @@ proc authored*(base: OwnedReport, options = signedBlockFixtureConfig()): Context
       2])) # Existing scoped fixtures preserve the opaque rollback sentinel by default.
   # Extra chapters enter the parent root committed by the signed candidate and report guarantees.
   for entry in options.extra: entries.add(entry)
+  if options.serviceNamespaces.len > 0:
+    assert options.completeState # Scoped rollback sentinels never enter complete logical fixtures.
+    seedServiceNamespaces(entries, options.serviceNamespaces)
   var bounds = limits()
   bounds.writeValueBytes = ByteLimit(options.maxWriteBytes)
   bounds.writes = ElementLimit(options.storeWrites) # Optional inherited batch limits enter the original store before any stage.
