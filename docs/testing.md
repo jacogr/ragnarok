@@ -27,7 +27,8 @@ builds the pinned JAM Tart collector and verifies interoperability, including fa
 and restart/replay behavior; see [telemetry verification](../spec/telemetry.md).
 
 The additional `check-docker` job builds and smoke-tests the [container image](containers.md)
-on master pushes, full requests and explicit manual `docker` requests, retaining logs without publishing an image.
+on master pushes, full requests and manual `build`/`docker` requests, retaining logs without publishing an image.
+The Build group also checks [downloadable binary archives](binaries.md) on Linux x86-64 and macOS ARM64.
 
 Each group writes `results.json` and diagnostic logs in its evidence directory. Use
 `make summary-unit`, `make summary-failures`, `make summary-guards`, `make summary-python`,
@@ -64,7 +65,7 @@ not claim the deferred groups passed. Master pushes/merges always request full v
 newer master runs supersede older ones.
 
 For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
-choose `unit`, `e2e`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `bench-storage`, `bench-storage-growth` or `full`
+choose `unit`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `bench-storage`, `bench-storage-growth` or `full`
 (the default). `interop` runs all Interop jobs; `perf` runs all Perf jobs. The existing
 `ref-pvm` and `bench-pvm` selections remain available for individual PVM jobs.
 **Perf PVM** also runs automatically on master pushes. Its validated interpreted

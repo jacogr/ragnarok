@@ -303,5 +303,5 @@ owning group. Network/resource scenarios remain sequential inside each VM, with 
 native dependencies, fresh fixtures, reports and uniquely named evidence artifacts.
 `E2E_GROUP=<group> make check-e2e` runs one complete family; plain `make check-e2e` retains the
 complete serial plan. Reports and summaries explicitly identify partial group scope and require
-all that group's declared verdicts. The stable **E2E Networking** aggregate requires every
+all that group's declared verdicts. The stable **E2E** aggregate requires every
 matrix job to succeed, including refusal of skipped/cancelled groups. Job timeouts are unchanged.
