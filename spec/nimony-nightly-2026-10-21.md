@@ -394,3 +394,40 @@ The merged storage measurements retain their original compiler, source and host 
 paired collection was not rerun against unlike compiler captures. Raw evidence is under ignored
 `build/ci/nimony-storage-admission-*`. The next compiler task remains a published nightly with
 #2737 followed by the retained workaround probes and any still-needed minimal report drafts.
+
+
+## Host logical state and ThinLTO synchronization on the October 22 pin
+
+Merge master `f431127730f702f455fc535474bb5d94e78f30d2` normally (merge `79b16cba`),
+covering 20 state, CI and workflow merges. Preserve collected logical qualification, configured
+seeds, managed retained proofs/checkpoints/review, frozen supplied/review inputs, retry plans,
+complete service-proof namespaces, bounded declaration exports and authenticated detached
+checkpoint imports. All 17 incoming production modules remain byte-identical to master.
+Compiler/browser pin `8cb7a690a` and the #2737 sequence-element copy-hook hold remain unchanged.
+
+Keep master’s twelve unit shards, family-partitioned E2E plan, shared current-sequence responder
+and ThinLTO flags. The earlier cache-epoch removal remains in force in the merged native helpers,
+harness controls and infrastructure documentation; no source epoch is reintroduced. The only
+new source edits are pinned-format import wrapping in eight incoming supplied-mutation tests.
+Whitespace-token comparison against master confirms no semantic change, and all eight formatted
+files passed focused semantic checks before their native runs. Of 302 incoming files, 290 remain
+byte-identical to master; the other four differences are the pre-existing upgrade adaptations in
+`docs/testing/infrastructure.md`, `tests/test_native_units_harness.py`, `tools/native_checks.py`
+and `tools/native_tests.py`.
+
+All 380 production modules, 162 affected Python harness tests, all 37 incoming native suites and
+all 86 incoming compiler rejection fixtures passed. All 101 strict runtime refusal probes across
+ten new families passed with actual successful ThinLTO builds and their exact assertion
+predicates; the native suites retain successful contract controls. The four source-owned executable
+current workloads passed all 24 cases through the newly shared responder setup. Both the actual
+integration/offload executable and the canonical Make production build passed checked
+ARC/Clang/ThinLTO. All 17 changed production modules passed Linux x86-64 semantic checks with
+ThinLTO flags. Inventory, pinned formatting of all 157 incoming Nim inputs and diff checks passed.
+
+This is compatibility and selected runtime qualification on macOS ARM64, plus Linux semantic
+checking. It makes no full E2E, Linux runtime, CI execution-time, performance or complete JAM/STF
+claim. Earlier measurements and broad checks retain their recorded source/compiler scopes.
+Raw evidence is under ignored `build/ci/nimony-state-host-*`, with preservation, whitespace-only
+formatting, per-suite, exact-refusal and executable reports. The next compiler task remains a
+published nightly containing #2737, followed by the retained workaround probes and any still-needed
+minimal report drafts for maintainer submission.
