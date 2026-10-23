@@ -213,7 +213,10 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
   if admitted.error != CurrentBlockDownloadError.None: return CurrentDownloadCommandResult.AdmissionFailure
   discard preflight.cancel(admitted.value) # Exact raw admission is checked before any outgoing TLS engine opens.
   var dispatcher = default(CurrentDownloadLoop)
-  defer: dispatcher.close() # Every native input/execution/disk borrower joins before outer canonical inspection or alias retirement.
+  defer:
+    let settled = dispatcher.closeAndCaptureLogical() # Join and consume this dispatcher's own durable receipt before any logical alias replacement.
+    if options.updateLogicalDownloadSource and settled.error == CurrentDownloadSessionError.None:
+      lastLogical = settled.value # A child confirmed only during shutdown now has the same exact logical companion as an ordinary adoption tick.
   let configured = if qualifyLogical:
       dispatcher.configure(owner, peers, older, limits, CurrentDownloadLoopTick(0), logical)
     else: dispatcher.configure(owner, peers, older, limits, CurrentDownloadLoopTick(0))
