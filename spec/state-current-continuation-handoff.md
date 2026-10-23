@@ -41,6 +41,13 @@ probe identities remain in ignored `build/`; prior tranche outcomes are not reus
 
 ## Remaining ordered work
 
+The subsequent [collected host integration](application-current-logical.md) implements bounded
+consumption through actual preparation receipts and Services, with explicit host qualification,
+separate adoption and preparation/proof/publication exclusion. The original follow-up below is
+retained as historical tranche context; general mutation provenance and independent parity gates
+remain open.
+
+
 After merge, consume the new bounded state APIs from the actual PVM preparation/state successor
 boundary. Capture host-side expectations and retire temporary canonical aliases only before enqueue
 or after actual collection/join. Cancellation and Done do not release either worker's lease. Preserve
