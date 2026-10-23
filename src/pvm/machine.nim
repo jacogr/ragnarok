@@ -268,96 +268,94 @@ proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 
-# Resolve a guest scalar byte cyclically without overflowing a 64-bit input address.
-func byteAddress(address: MemoryAddress, offset: int): uint32 =
-  uint32(((uint64(address) and 0xffffffff'u64) + uint64(offset)) and 0xffffffff'u64)
+type ScalarSpan = object
+  ## Private validated slots and byte extents belong only to the immutable memory inspected in this call.
+  first, last, offset, firstCount, count: int
 
-# Preflight every touched byte before a load or write. Gas/execution ordering is not performed here.
-proc inspect(memory: Memory, address: MemoryAddress, width: AccessWidth,
-    writing: bool): MachineResult[bool] =
-  # Owner/width errors are local API failures, not fabricated PVM exits.
-  if memory.data == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+proc scalarSpan(memory: Memory, address: MemoryAddress, width: AccessWidth,
+    writing: bool): MachineResult[ScalarSpan] =
+  ## Resolve each touched page once, preserving overflow, protected-memory and presence-before-permission precedence.
+  if memory.data == nil: return MachineResult[ScalarSpan](status: MachineError.InvalidOwner)
   if byte(width) notin [1'u8, 2'u8, 4'u8, 8'u8]:
-    # Invalid scalar widths cannot accidentally become unbounded scans or shifts.
-    return MachineResult[bool](status: MachineError.InvalidWidth)
+    # Only the four supported widths may enter arithmetic or payload loops.
+    return MachineResult[ScalarSpan](status: MachineError.InvalidWidth)
   let data = memory.data
   let start = uint64(address) and 0xffffffff'u64
-  # PolkaVM DynamicMemory checks the exclusive end in u32, including an access ending exactly at2^32.
-  # start plus at most eight fits u64; prove the u32 overflow without performing a wrapping addition.
   if start > uint64(high(uint32)) - uint64(byte(width)):
+    # Exclusive-end overflow retains the approved final-page presence rule before permissions.
     let at = lowerBound(data, 0xfffff'u32)
-    # A retained inaccessible image represents an absent runtime page, not a present mapping.
     if at < data.pages.len and uint32(data.pages[at].image.index) == 0xfffff'u32 and
         data.pages[at].image.access != PageAccess.Inaccessible:
-      return MachineResult[bool](status: MachineError.Panic) # Present final pages trap before write-protection checks, matching PolkaVM.
-    return MachineResult[bool](status: MachineError.Fault, failedPage: PageAddress(0xfffff000'u32))
-  # GP-PVM-008: for a nonprotected cross-page store, missing mappings precede read-only faults.
-  # The exclusive-end proof above bounds the inclusive end; scalar widths touch at most two pages.
-  if writing and start >= 0x10000'u64:
-    let firstPage = uint32(start div 4096)
-    let lastPage = uint32((start + uint64(byte(width)) - 1) div 4096)
-    if firstPage != lastPage:
-      # Check presence before writability without cloning pages or publishing any partial write.
-      for index in firstPage..lastPage:
-        let at = lowerBound(data, index)
-        if at >= data.pages.len or uint32(data.pages[at].image.index) != index or
-            data.pages[at].image.access == PageAccess.Inaccessible:
-          return MachineResult[bool](status: MachineError.Fault,
-            failedPage: PageAddress(index * 4096'u32))
-  # After presence priority, at most eight byte checks select the first remaining access failure.
-  for i in 0..<int(byte(width)):
-    let physical = byteAddress(address, i)
-    if physical < 0x10000'u32:
-      return MachineResult[bool](status: MachineError.Panic) # Low memory stays protected even when supplied as accessible page images.
-    let index = physical div 4096
-    let at = lowerBound(data, index)
-    var access = PageAccess.Inaccessible
-    if at < data.pages.len and uint32(data.pages[at].image.index) == index:
-      access = data.pages[at].image.access # Missing sparse pages retain inaccessible permissions.
-    if access == PageAccess.Inaccessible or (writing and access != PageAccess.ReadWrite):
-      return MachineResult[bool](status: MachineError.Fault,
-        failedPage: PageAddress(physical and 0xfffff000'u32)) # Atomic preflight publishes no bytes or cloned pages on failure.
-  MachineResult[bool](status: MachineError.None, completed: true)
+      return MachineResult[ScalarSpan](status: MachineError.Panic)
+    return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(0xfffff000'u32))
+  if start < 0x10000'u64:
+    # A nonwrapping access starting in the protected prefix panics before any page inspection.
+    return MachineResult[ScalarSpan](status: MachineError.Panic)
+  let firstPage = uint32(start div 4096)
+  let lastPage = uint32((start + uint64(byte(width)) - 1) div 4096)
+  let first = lowerBound(data, firstPage)
+  var last = first
+  var firstAccess = PageAccess.Inaccessible
+  if first < data.pages.len and uint32(data.pages[first].image.index) == firstPage:
+    firstAccess = data.pages[first].image.access # Missing sparse slots never grant byte access.
+  var lastAccess = firstAccess
+  if firstPage != lastPage:
+    # Supported scalar widths reach at most two pages; retain both resolved slots for the payload operation.
+    last = lowerBound(data, lastPage)
+    lastAccess = PageAccess.Inaccessible
+    if last < data.pages.len and uint32(data.pages[last].image.index) == lastPage:
+      lastAccess = data.pages[last].image.access
+  if firstAccess == PageAccess.Inaccessible:
+    return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(firstPage * 4096'u32))
+  if writing and lastAccess == PageAccess.Inaccessible:
+    # A missing second page precedes a read-only first page for cross-page stores (GP-PVM-008).
+    return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(lastPage * 4096'u32))
+  if writing and firstAccess != PageAccess.ReadWrite:
+    return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(firstPage * 4096'u32))
+  if lastAccess == PageAccess.Inaccessible or (writing and lastAccess != PageAccess.ReadWrite):
+    return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(lastPage * 4096'u32))
+  let offset = int(start mod 4096)
+  let count = int(byte(width))
+  MachineResult[ScalarSpan](status: MachineError.None, completed: ScalarSpan(first: first,
+    last: last, offset: offset, firstCount: min(count, 4096-offset), count: count))
 
 proc load*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineResult[
     RegisterValue] =
-  ## Load a little-endian unsigned scalar; sign extension belongs to the eventual instruction executor.
-  let checked = inspect(memory, address, width, false)
-  # A failed preflight exposes no partially read value.
-  if checked.error != MachineError.None: return failure[RegisterValue, bool](checked)
-  # Reestablish ownership for the compiler's supported non-nil analysis.
+  ## Load a complete little-endian scalar from preflighted page spans; instruction sign extension remains separate.
+  let checked = scalarSpan(memory, address, width, false)
+  if checked.error != MachineError.None: return failure[RegisterValue, ScalarSpan](checked)
   if memory.data == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
   let data = memory.data
+  let span = checked.value
   var value = 0'u64
-  # Successful preflight proved every physical page is present and readable.
-  for i in 0..<int(byte(width)):
-    let physical = byteAddress(address, i)
-    let at = lowerBound(data, physical div 4096)
-    value = value or (uint64(data.pages[at].image.bytes[int(physical mod 4096)]) shl (8 * i))
+  for i in 0..<span.firstCount:
+    # Preflight proved this slot/offset readable; no page lookup repeats for individual bytes.
+    value = value or (uint64(data.pages[span.first].image.bytes[span.offset+i]) shl (8*i))
+  for i in span.firstCount..<span.count:
+    # A crossing scalar resumes at offset zero of its second resolved page.
+    value = value or (uint64(data.pages[span.last].image.bytes[i-span.firstCount]) shl (8*i))
   MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(value))
 
 proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
     value: RegisterValue): MachineResult[Memory] =
-  ## Store the low width bytes atomically into a new owner; no source snapshot can change on failure.
-  let checked = inspect(memory, address, width, true)
-  # Validate the entire access before cloning or changing even the first touched page.
-  if checked.error != MachineError.None: return failure[Memory, bool](checked)
-  # A separate owner check establishes non-nil storage for subsequent compiler analysis.
+  ## Preflight once, then clone only touched pages and publish an independent atomic snapshot.
+  let checked = scalarSpan(memory, address, width, true)
+  if checked.error != MachineError.None: return failure[Memory, ScalarSpan](checked)
   if memory.data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   let data = memory.data
+  let span = checked.value
   var pages = newSeqOfCap[PageData](data.pages.len)
-  # The new reference vector initially shares only immutable pages with the old owner.
-  for i in 0..<data.pages.len: pages.add(data.pages[i])
-  var previous = -1
-  # At most two contiguous pages are copied; byte writes cannot reach shared page objects.
-  for i in 0..<int(byte(width)):
-    let physical = byteAddress(address, i)
-    let at = lowerBound(data, physical div 4096)
-    # Clone on first entry to each page, preserving earlier bytes written to that clone.
-    if at != previous:
-      pages[at] = PageData(image: data.pages[at].image)
-      previous = at
-    pages[at].image.bytes[int(physical mod 4096)] = byte((uint64(value) shr (8 * i)) and 255)
+  for page in data.pages:
+    pages.add(page) # Untouched immutable page owners remain shared with the source.
+  pages[span.first] = PageData(image: data.pages[span.first].image)
+  for i in 0..<span.firstCount:
+    # Each byte targets only the first private clone, with a bounded shift below 64.
+    pages[span.first].image.bytes[span.offset+i] = byte((uint64(value) shr (8*i)) and 255)
+  if span.firstCount < span.count:
+    # A second clone exists only for an actual crossing, after complete permission preflight.
+    pages[span.last] = PageData(image: data.pages[span.last].image)
+    for i in span.firstCount..<span.count:
+      pages[span.last].image.bytes[i-span.firstCount] = byte((uint64(value) shr (8*i)) and 255)
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
 

@@ -57,14 +57,14 @@ Read-write implies readable. Missing/inaccessible pages fault on either access;
 read-only pages fault on writes. A fault reports the aligned physical byte address
 of the first inaccessible page in the original increasing access sequence.
 
-Every touched byte is checked before reading a value or allocating changed pages.
+All touched page permissions are checked before reading a value or allocating changed pages.
 Failed cross-page stores therefore cannot alter their first page. Successful stores
 publish a new owner; old aliases remain unchanged. Machine stores replace only
 memory and preserve every register, PC, gas and charged flag. `withRegister` and
 `withMemory` are explicit state-building operations, not instruction stepping.
 
-Permission lookup is logarithmic in stored pages; an access checks at most eight
-bytes. Snapshot updates currently copy O(stored pages) references. This correctness
+Permission lookup is logarithmic in stored pages; a scalar resolves at most two
+page slots and reuses those validated slots for its at most eight payload bytes. Snapshot updates currently copy O(stored pages) references. This correctness
 baseline has no performance or gas-proportional execution claim. Allocation is
 bounded by the page limit; allocation failure itself is not mapped to a VM exit.
 
@@ -138,3 +138,21 @@ and host dispatch have separate contracts; concrete host functions and complete 
 
 Terminal host balances now carry canonical gas credit/deficit; see
 [host gas accounting](pvm-host-gas.md). Negative snapshots cannot resume execution.
+
+
+## Scalar page spans, 2026-10-23
+
+The private scalar preflight retains resolved sparse page slots, first-page offset and
+bounded byte counts. Loads and stores reuse these slots rather than searching the
+page vector for every byte. It preserves owner/width validation, low-32 address
+selection, exclusive-end overflow, protected-prefix panic, cross-page store presence
+priority and failure atomicity. No unchecked pointer or mutable backing storage is
+exposed; successful stores still clone the vector and touched page images.
+
+The native machine suite adds 64 neighboring page pairs separated by holes, checking
+unaligned eight-byte loads/stores, every output byte, exact hole faults and retained
+aliases across the full sparse vector. The existing independent 4050-case scalar
+reference, pinned boundary reference and memory-instruction suite pass; machine and
+memory-step owners return to their ARC baselines after 1000 cycles. A compiler guard
+keeps the resolved-span helper private. Measurement and remaining copying costs are
+recorded in [the interpreter comparison](pvm-benchmark-comparison.md).
