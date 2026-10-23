@@ -30,7 +30,7 @@ class MemoryBenchmarkTests(unittest.TestCase):
         """Retain both clocks and every sample in the actual native process order."""
         for reverse in (False,True):
             rows=benchmark.parse_output(output(reverse),reverse)
-            self.assertEqual(len(rows),78);self.assertEqual(rows[-1]['sample'],12)
+            self.assertEqual(len(rows),len(benchmark.CASES)*13);self.assertEqual(rows[-1]['sample'],12)
             self.assertEqual((rows[0]['wall_ns'],rows[0]['cpu_ns']),(10000,9000))
         with self.assertRaises(ValueError):benchmark.parse_output(output(True))
 
@@ -40,7 +40,7 @@ class MemoryBenchmarkTests(unittest.TestCase):
         for bad in ('','\n'.join(lines[:-1]),good+'\n'+lines[0], '\n'.join(reversed(lines)),
                     good.replace('read,512','write,512',1),good.replace(',10000,9000',',0,9000',1),
                     good.replace(',10000,9000',',10000,-1',1),good.replace(',10000,9000',',01,9000',1),
-                    good.replace(',10000,9000',',10000,9223372036854775808',1),good+'\nwarning'):
+                    good.replace(',10000,9000',',10000,9223372036854775808',1),good+'\nwarning',good.replace('capture,4096','capture,512',1),good.replace('image,4096','capture,4096',1)):
             with self.subTest(tail=bad[-50:]),self.assertRaises(ValueError):benchmark.parse_output(bad)
 
     def test_incomplete_passes(self):

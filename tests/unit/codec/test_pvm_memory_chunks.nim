@@ -61,10 +61,59 @@ proc snapshotCycle() =
   images[0].bytes[0] = 0
   assert pageImage(original, PageIndex(16)).value.bytes[0] == byteAt(0)
 
+proc captureCycle() =
+  ## Observe all chunks and permission alternatives independently of caller and returned-image mutations.
+  var images = [PageImage(index: PageIndex(0), access: PageAccess.Inaccessible,
+    bytes: default(array[4096, byte])), PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+    bytes: default(array[4096, byte])), PageImage(index: PageIndex(0xfffff),
+        access: PageAccess.ReadWrite,
+    bytes: default(array[4096, byte]))]
+  for side in 0..<3:
+    for index in 0..<4096: images[side].bytes[index] = byteAt(side*4096+index)
+  assert captureMemory(images, PageLimit(2)).error == MachineError.LimitExceeded
+  let captured = captureMemory(images, PageLimit(3)).value
+  for side in 0..<3:
+    let ordinal = images[side].index
+    let access = images[side].access
+    for index in 0..<4096: images[side].bytes[index] = 0
+    var copied = pageImage(captured, ordinal).value
+    assert uint32(copied.index) == uint32(ordinal) and copied.access == access
+    for index in 0..<4096: assert copied.bytes[index] == byteAt(side*4096+index)
+    copied.index = PageIndex(7)
+    copied.access = PageAccess.Inaccessible
+    for index in 0..<4096: copied.bytes[index] = 255
+    let again = pageImage(captured, ordinal).value
+    assert uint32(again.index) == uint32(ordinal) and again.access == access
+    for index in 0..<4096: assert again.bytes[index] == byteAt(side*4096+index)
+  # Replacement must capture the complete caller image without modifying any predecessor or hidden bytes.
+  let replacement = withPage(captured, images[1]).value
+  for side in 0..<3:
+    let prior = pageImage(captured, images[side].index).value
+    let next = pageImage(replacement, images[side].index).value
+    for index in 0..<4096:
+      assert prior.bytes[index] == byteAt(side*4096+index)
+      assert next.bytes[index] == (if side == 1: 0'u8 else: byteAt(side*4096+index))
+proc temporaryImage(): PageImage =
+  ## A copied observation remains valid after the temporary source image and final memory owner both retire.
+  var image = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+    bytes: default(array[4096, byte]))
+  for index in 0..<4096: image.bytes[index] = byteAt(index)
+  let owner = captureMemory([image], PageLimit(1)).value
+  pageImage(owner, PageIndex(16)).value
+proc observationCycle() =
+  ## Exercise returned copied storage after its parent lifetime, including both end chunks.
+  let observed = temporaryImage()
+  assert uint32(observed.index) == 16 and observed.access == PageAccess.ReadOnly
+  for index in 0..<4096: assert observed.bytes[index] == byteAt(index)
+
 snapshotCycle()
+captureCycle()
+observationCycle()
 let before = getOccupiedMem()
 for cycle in 0..<1000:
   snapshotCycle() # Private chunk/header owners and every retained generation must retire without cycles.
+  captureCycle()
+  observationCycle()
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("pvm_memory_chunks", 1000, before, after)

@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Measure bounded native host byte-range calls with exact full-state validation outside timing."""
+"""Measure bounded native memory APIs with exact full-state validation outside timing."""
 import csv
 import json
 import os
@@ -16,7 +16,7 @@ from setup_nimony import installed
 from pvm_benchmark import cpu_model,digest
 
 BUILD=ROOT/'build/tests/pvm-memory'
-CASES=tuple((kind,size) for size in (512,4096,65536) for kind in ('read','write'))
+CASES=tuple((kind,size) for size in (512,4096,65536) for kind in ('read','write'))+(('capture',4096),('capture',65536),('image',4096))
 
 
 def parse_output(output,reverse=False):
@@ -40,7 +40,7 @@ def summarize(report):
     """Retain raw warmups/outliers and flag dispersion without claiming an interpreter comparison."""
     if report['status']!='checks-passed':return 'Native memory ranges: '+report['status']+'. '+report.get('error','')+'\n'
     if [p['pass_index'] for p in report['passes']]!=[0,1]:raise ValueError('Incomplete memory range passes')
-    lines=['Native host byte-range API CPU medians (128 independent calls per sample).','',
+    lines=['Native host memory API CPU medians (128 independent calls per sample).','',
            '| Operation | Bytes/call | CPU ms/batch | Quality |','| --- | ---: | ---: | --- |']
     for kind,size in CASES:
         groups=[[r['cpu_ns'] for r in p['samples'] if r['kind']==kind and r['size']==size and r['sample']>=3] for p in report['passes']]
