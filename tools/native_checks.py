@@ -57,7 +57,7 @@ class NativeChecks:
 
 
     # Keep ARC, Clang and checks fixed; production-like callers retain ThinLTO by default.
-    def build(self, compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=()):
+    def build(self, compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=(), link_flags=(), environment=None):
         flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
                  '--boundchecks:on']
         if self.lto:
@@ -81,6 +81,7 @@ class NativeChecks:
                 flags += [f'--passL:{library}', f'--passL:-Wl,-rpath,{library.parent}']
         flags += ['-d:'+name for name in defines]
         flags += ['--passC:'+flag for flag in cflags]
+        flags += ['--passL:'+flag for flag in link_flags]  # Explicit sanitizer/driver flags preserve ordinary callers' unchanged default profile.
         binary = self.folder/name
         # The pinned compiler can retain old generic call bodies after an imported helper changes arity.
         # Reuse only within this exact owned source epoch, including non-shared benchmark caches.
@@ -106,7 +107,8 @@ class NativeChecks:
                 print('BUILD '+name, flush=True)
             result = self.command([compiler, 'c', *flags,
                                    f'--nimcache:{cache_directory(compiler, self.folder, cache_name)}',
-                                   f'--out:{binary}', source], name+'-build')
+                                   f'--out:{binary}', source], name+'-build',
+                                  **({'environment': environment} if environment is not None else {}))
             if self.reuse_builds:
                 print(f'Completed build {name} in {result["elapsed_seconds"]:.2f}s', flush=True)
         return result, binary

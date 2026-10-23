@@ -114,3 +114,7 @@ byte for paper, or its low nibble for the accepted implementation profile. The
 private owner stores that choice through capture and execution. Original bytes and
 other operand equations remain unchanged; outer/inner JAM preparation already
 selects the compatibility owner.
+
+
+Coverage-guided decoder testing, bounded input/replay commands and instrumentation
+limits are recorded in [pvm-program-fuzzing.md](pvm-program-fuzzing.md).
