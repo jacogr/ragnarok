@@ -250,3 +250,21 @@ rejected/accepted/confirmation evidence lives under `build/pvm9/writes`,
 noise, no-isolation, no deterministic-counter, no Linux/compiled/full-client claim
 limits remain. Arithmetic witnesses, dependent chains, execution and guarded-result
 controls are recorded in [the register contract](pvm-registers.md#scalar-write-evaluation-2026-10-23).
+
+
+## Causing-PC cursor, 2026-10-23
+
+After scalar register writes, the execution loop still copied a complete CPU file
+and retained an extra memory owner before each instruction. The evaluator already
+guarantees that OutOfGas/Fault/Host leave registers and memory untouched; only Host
+needs its causing PC restored. Keeping that PC alone removes unnecessary copies and
+ARC traffic while retaining all charged-state and terminal-mutation rules.
+
+Two opposite-order preserved-binary comparisons showed arithmetic medians of
+492.00→471.40 µs (4.2% less time) and 498.04→468.92 µs (5.8%). The other four guests
+showed no consistent change beyond a few percent. Every sample validates complete
+state. The full pinned interpreter comparison passes and still shows roughly
+4.9–15.3× ratios. Evidence is retained under `build/pvm9/exits`,
+`build/pvm9/exits-confirm` and the preceding fresh `build/pvm9/writes-profile`.
+The same checked ThinLTO, fixed inputs, local noise/no-isolation and no Linux,
+compiled, deterministic-counter or full-client performance claim limits apply.

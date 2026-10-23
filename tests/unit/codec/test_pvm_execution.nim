@@ -48,6 +48,7 @@ proc same(actual, expected: MachineInfo) =
   assert uint64(actual.pc) == uint64(expected.pc)
   assert uint64(actual.gas) == uint64(expected.gas)
   assert actual.blockCharged == expected.blockCharged
+  assert uint64(actual.gasDeficit) == uint64(expected.gasDeficit)
   for i in 0..<13:
     # All thirteen values participate even when the witness only intentionally changes one.
     assert uint64(actual.registers[i]) == uint64(expected.registers[i])
@@ -290,12 +291,46 @@ proc cursorSnapshotCycle() =
   assert uint64(load(memoryOf(host.value.machine).value, MemoryAddress(65536), AccessWidth(
       8)).value) == 9
 
+proc prefixExitCycle(registers: RegisterFile) =
+  ## Compare all stopped CPU/page fields against retained public steps after a committed register/store prefix.
+  for faulting in [true, false]:
+    let ending = if faulting: @[55'u8, 1, 0, 16, 1, 0] else: @[10'u8, 5]
+    let program = owner([@[51'u8, 0, 7], @[62'u8, 0, 0, 0, 1, 0], ending, @[0'u8]])
+    let input = source(program, memoryOwner(PageAccess.ReadWrite), registers, 0, high(uint64), false)
+    let first = stepOnce(input, GasCycleLimit(1000)).value
+    let second = stepOnce(first.machine, GasCycleLimit(1000)).value
+    let once = stepOnce(second.machine, GasCycleLimit(1000)).value
+    let run = execute(input, ExecutionStepLimit(3), GasCycleLimit(1000)).value
+    assert run.exit == (if faulting: StepExit.Fault else: StepExit.Host)
+    assert once.exit == run.exit
+    var expected = machineInfo(once.machine).value
+    expected.pc = machineInfo(second.machine).value.pc # Recursive host normalization retains the causing PC.
+    same(machineInfo(run.machine).value, expected)
+    if faulting:
+      assert uint32(run.faultPage) == 69632 and uint32(once.faultPage) == 69632
+    else:
+      assert uint64(run.hostCall) == 5 and uint64(once.hostCall) == 5
+    let actualPage = pageImage(memoryOf(run.machine).value, PageIndex(16)).value
+    assert actualPage.access == PageAccess.ReadWrite
+    for index in 0..<4096:
+      # The complete prefix page has only the stored low byte; failed loads/host exits change no neighbors.
+      assert actualPage.bytes[index] == (if index == 0: 7'u8 else: 0'u8)
+    same(machineInfo(input).value, machineInfo(source(program, memoryOf(input).value,
+      registers, 0, high(uint64), false)).value)
+    assert uint64(load(memoryOf(input).value, MemoryAddress(65536), AccessWidth(8)).value) == 0
+    assert uint64(load(memoryOf(first.machine).value, MemoryAddress(65536), AccessWidth(
+        8)).value) == 0
+    assert uint64(load(memoryOf(second.machine).value, MemoryAddress(65536), AccessWidth(
+        8)).value) == 7
+
 executionCycle()
 cursorSnapshotCycle()
+prefixExitCycle(registers)
 let before = getOccupiedMem()
 # Retained intermediate roots form no cycles; repeated complete invocation lifetimes release all owners.
 for iteration in 0..<1000:
   executionCycle()
+  prefixExitCycle(registers)
   cursorSnapshotCycle() # Every retained root and temporary cursor must return to the same warm ARC baseline.
 let after = getOccupiedMem()
 assert before == after
