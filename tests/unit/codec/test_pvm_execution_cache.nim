@@ -225,6 +225,36 @@ proc hosts() =
     let run = execute(fresh, ExecutionStepLimit(2), GasCycleLimit(0))
     assert run.error == StepError.None and uint64(machineInfo(run.value.machine).value.registers[
         0]) == uint64(literal)
+proc staticConditions() =
+  ## Every conditional family must reject a bad destination even when its predicate would select the valid successor.
+  for opcode in [81'u8, 82, 83, 84, 85, 86, 87, 88, 89, 90, 170, 171, 172, 173, 174, 175]:
+    for count in [0'u64, 1, high(uint64)]:
+      let descriptor = if opcode >= 170: 16'u8 else: 0'u8
+      let owner = code([@[opcode, descriptor, 1, 0, 0, 0], @[
+          0'u8]]) # PC1 is an unmarked operand, while the fallthrough is a valid block.
+      let source = input(owner, count, true)
+      let once = stepOnce(source, GasCycleLimit(0))
+      let run = execute(source, ExecutionStepLimit(1), GasCycleLimit(0))
+      assert once.error == StepError.None and once.value.exit == StepExit.Panic
+      assert run.error == StepError.None and run.value.exit == StepExit.Panic
+      same(machineInfo(once.value.machine).value, machineInfo(run.value.machine).value)
+      assert uint64(machineInfo(source).value.registers[0]) == count
+      var unpaid = machineInfo(source).value
+      unpaid.blockCharged = false
+      unpaid.gas = MachineGas(0)
+      let empty = captureMachine(owner, memoryOf(source).value, unpaid).value
+      let shortage = execute(empty, ExecutionStepLimit(1), GasCycleLimit(1000))
+      assert shortage.error == StepError.None and shortage.value.exit == StepExit.OutOfGas
+      same(machineInfo(shortage.value.machine).value,
+          unpaid) # Static facts never move invalid-target panic ahead of affordability.
+  # A static load-and-jump still commits its explicit register mutation when the target panics.
+  let owner = code([@[80'u8, 0, 1, 0, 0, 0], @[0'u8]])
+  let source = input(owner, 99, true)
+  let run = execute(source, ExecutionStepLimit(1), GasCycleLimit(0))
+  assert run.error == StepError.None and run.value.exit == StepExit.Panic
+  assert uint64(machineInfo(run.value.machine).value.registers[0]) == 0
+  assert uint64(machineInfo(source).value.registers[0]) == 99
+
 proc finalFallthrough() =
   ## Paper permits a final conditional; both branches retain the specified panic when either control successor is absent.
   var owner = code([@[82'u8, 16, 0, 0]])
@@ -264,6 +294,7 @@ collisions()
 threeWayPressure()
 alternatingPrices()
 pricePressure()
+staticConditions()
 hosts()
 finalFallthrough()
 let before = getOccupiedMem()

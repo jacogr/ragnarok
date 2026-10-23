@@ -145,3 +145,28 @@ separate failed/default runtime probes and a genuine positive control check sele
 Cached execution tests retain results through operand-copy mutation/owner release,
 check both final conditional paths and verify gas/step ordering. This adds validation
 metadata, with no protocol encoding, pin, resource default or public mutable backing.
+
+
+## Genuine static control targets, 2026-10-23
+
+`instructionTargetStartsBlock(decoded)` queries a successful genuine
+`ProgramResult[Instruction]`. Its private scalar fact binds the decoded operands to
+static destination membership in the same immutable owner. Opcode1 uses its present
+fallthrough; opcodes40,80–90 and170–175 use their signed displacement. Dynamic jumps
+and noncontrol instructions report false. Failed/default results grant no query;
+mutating an extracted operand copy or releasing the source handle cannot change the
+original result. No owner back-reference or allocation is added.
+
+A negative displacement is checked against the PC before subtraction. Captured PCs
+fit host int and positive displacements fit signed32, proving the uint64 sum cannot
+wrap. Destination extent and marker checks precede narrowing and access. A shared
+private predecessor scan examines at most25 bytes and uses only the nearest marked
+predecessor to establish a block boundary. Public `basicBlockStart` retains its
+existing owner/address errors. Invalid mathematical targets still decode successfully
+with a false fact, preserving execution's gas-first Panic ordering.
+
+Literal tests cover all eighteen offset-bearing static opcodes, negative/self/end/
+operand/interior/block targets, maximum positive displacement, and unmarked opcode
+bytes. Terminating fallthrough covers all0–24 padding lengths and an absent successor.
+Operand-copy/owner-release controls, three failed/default runtime controls, a genuine
+positive control and a compiler rejection guard protect the result boundary.

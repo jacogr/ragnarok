@@ -48,6 +48,8 @@ proc ins(code: openArray[byte], starts: openArray[int], pc = 0'u64): Instruction
     # Independent literal marker positions define whether this instruction has a sequential successor.
     if uint64(start) > pc: later = true
   assert instructionHasFallthrough(item) == later
+  if item.value.opcode notin {1'u8, 40'u8, 80'u8..90'u8, 170'u8..175'u8}:
+    assert not instructionTargetStartsBlock(item) # Dynamic/noncontrol instructions never grant a static destination fact.
   item.value
 
 # Default handles/results cannot fabricate a valid empty program or payload.
@@ -272,5 +274,48 @@ for iteration in 0..<10000:
     # Any accepted blob must expose its validated first instruction and positive code extent.
     assert codeLength(parsed.value).value > 0
     assert instruction(parsed.value, CodeAddress(0)).error == ProgramError.None
+
+# Literal marker/target matrices independently check all static control families, not the production target predicate.
+for opcode in [40'u8, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 170, 171, 172, 173, 174, 175]:
+  let width = if opcode == 40: 5 else: 6
+  let next = 3+width
+  let targets = [-1'i64, 0, 1, 3, int64(next), int64(next+3), int64(next+4), 2147483650'i64]
+  for selection in 0..<targets.len:
+    let displacement = targets[selection]-3
+    let encoded = if displacement < 0: (1'u64 shl 32)-uint64(-displacement) else: uint64(displacement)
+    var bytes = @[51'u8, 2, 0, opcode] # The unmarked immediate zero must never create a block boundary.
+    if opcode != 40: bytes.add(if opcode >= 170: 16'u8 else: 0'u8)
+    for offset in 0..<4: bytes.add(byte((encoded shr (8*offset)) and 255))
+    for value in [51'u8, 1, 0, 0]: bytes.add(value)
+    let markers = [0, 3, next, next+3]
+    var owner = read(blob(bytes, markers), 3).value
+    let sealed = instruction(owner, CodeAddress(3))
+    assert sealed.error == ProgramError.None and sealed.value.displacement == displacement
+    let expected = selection == 1 or selection == 4 # Only program start and the successor after this terminator are block starts.
+    assert instructionTargetStartsBlock(sealed) == expected
+    for address in 0..<bytes.len:
+      # Shared scan extraction must preserve public invalid-location errors and marked-but-interior false results.
+      let member = basicBlockStart(owner, CodeAddress(uint64(address)))
+      if address in markers:
+        assert member.error == ProgramError.None and member.value == (address == 0 or address == next)
+      else:
+        assert member.error == ProgramError.InvalidInstruction
+    var extracted = sealed.value
+    extracted.address = CodeAddress(0)
+    extracted.displacement = 0 # Operand-copy edits cannot rebind the original tagged validation fact.
+    owner = default(Program)
+    assert instructionTargetStartsBlock(sealed) == expected
+    assert sealed.value.displacement == displacement
+
+# Terminating fallthrough derives its block destination from the validated chain, including the maximum skip.
+for padding in 0..24:
+  var bytes = @[1'u8]
+  for offset in 0..<padding: bytes.add(255)
+  let next = bytes.len
+  bytes.add(0)
+  let owner = read(blob(bytes, [0, next])).value
+  assert instructionTargetStartsBlock(instruction(owner, CodeAddress(0)))
+let absentFallthrough = read(blob([1'u8], [0])).value
+assert not instructionTargetStartsBlock(instruction(absentFallthrough, CodeAddress(0)))
 
 echo "PVM program decoding passed"

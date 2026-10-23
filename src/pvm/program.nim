@@ -7,7 +7,7 @@
 ## Exposes Program snapshots and nominal address/index/limit types, decodeProgram/decodeJamProgram,
 ## instruction/opcode/jump lookup, raw instruction-byte lookup with zero padding, and block-boundary
 ## and containing-block queries. Genuine instruction results additionally expose success-guarded
-## instructionHasFallthrough without publishing mutable validation metadata.
+## instructionHasFallthrough/TargetStartsBlock without publishing mutable validation metadata.
 
 import ../codec/natural
 
@@ -56,6 +56,7 @@ type
     skip*: range[0..24]
     a*, b*, d*: RegisterIndex
     fallthroughPresent: bool # Only the owner decoder grants this immutable v_blob-chain fact; copied operands cannot forge a tagged result.
+    targetStartsBlock: bool # Owner-bound static control membership is never writable through extracted operands.
     x*, y*: Immediate
     displacement*: int64
 
@@ -71,6 +72,12 @@ func instructionHasFallthrough*(decoded: ProgramResult[Instruction]): bool {.inl
   ## A genuine successful decode proves whether its sequential successor is executable in the same immutable program.
   ## Default/failed results grant no fact. Extracted mutable operand copies cannot change or rebind this capability.
   decoded.completed.fallthroughPresent
+
+func instructionTargetStartsBlock*(decoded: ProgramResult[Instruction]): bool {.inline,
+    requires: decoded.status == ProgramError.None.} =
+  ## Report valid static control destination membership in the same immutable program; dynamic/noncontrol instructions report false.
+  ## Invalid mathematical targets remain successful decodes with a false fact, preserving gas-first guest panic ordering.
+  decoded.completed.targetStartsBlock
 
 func validOpcode*(opcode: byte): bool =
   ## Exact set U from the 0.8.0 instruction tables, including unlikely (2).
@@ -247,6 +254,24 @@ func offsetOperand(data: ProgramData, start: uint64, width: int): int64 =
   if width > 0 and (raw and (1'u64 shl (width * 8 - 1))) != 0:
     result -= 1'i64 shl (width * 8)
 
+func startsBlock(data: ProgramData, pc: int): bool {.requires: pc >= 0 and pc < data.codeLength.} =
+  ## The caller proved a marked in-range PC; its closest marked predecessor alone decides membership, with at most25 byte checks.
+  if pc == 0: return true # The validated first instruction always begins a block.
+  var previous = pc-1
+  while previous >= max(0, pc-25):
+    # Only the immediately preceding marked instruction can establish this boundary; operand bytes do not count.
+    if marked(data.bytes, data.maskOffset, previous):
+      return terminatesBlock(data.bytes[data.codeOffset+previous])
+    dec previous
+  false
+
+func validStaticTarget(data: ProgramData, target: uint64): bool =
+  ## Reject absent/unmarked targets before narrowing; owner capture bounds every marker/code access below.
+  if target >= uint64(data.codeLength): return false
+  let pc = int(target)
+  if not marked(data.bytes, data.maskOffset, pc): return false
+  startsBlock(data, pc)
+
 proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruction] =
   ## Copy a decoded instruction; invalid addresses and default handles never yield operands.
   # A default handle has no validated storage to inspect.
@@ -268,7 +293,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
   var item = Instruction(address: address, opcode: opcode, skip: skip,
     shape: OperandShape.NoArguments, a: RegisterIndex(0), b: RegisterIndex(0),
     d: RegisterIndex(0), x: Immediate(0), y: Immediate(0), displacement: 0,
-    fallthroughPresent: uint64(skip) < uint64(data.codeLength)-pc-1)
+    fallthroughPresent: uint64(skip) < uint64(data.codeLength)-pc-1, targetStartsBlock: false)
   # Each branch corresponds to one complete operand shape in the pinned instruction tables.
   case opcode
   of 0..2:
@@ -349,6 +374,17 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
   else:
     # A valid owner cannot contain another marked opcode; retain an explicit failure alternative.
     return ProgramResult[Instruction](status: ProgramError.InvalidInstruction)
+  if opcode == 1:
+    # A present successor after a terminating fallthrough is necessarily a block boundary in the validated chain.
+    item.targetStartsBlock = item.fallthroughPresent
+  elif opcode in {40'u8, 80'u8..90'u8, 170'u8..175'u8}:
+    # Decoded offsets fit signed32; negating their magnitude is safe, while mathematical negative PCs remain invalid.
+    if item.displacement < 0:
+      let magnitude = uint64(-item.displacement)
+      if magnitude <= pc: item.targetStartsBlock = validStaticTarget(data, pc-magnitude)
+    else:
+      # Captured PCs fit host int and nonnegative offsets fit signed32, so this uint64 sum cannot wrap.
+      item.targetStartsBlock = validStaticTarget(data, pc+uint64(item.displacement))
   ProgramResult[Instruction](status: ProgramError.None, completed: item)
 
 proc instructionOpcode*(program: Program, address: CodeAddress): ProgramResult[byte] =
@@ -377,19 +413,8 @@ proc basicBlockStart*(program: Program, address: CodeAddress): ProgramResult[boo
   let decoded = instructionOpcode(program, address)
   # Preserve address failures instead of treating invalid positions as ordinary block members.
   if decoded.error != ProgramError.None: return ProgramResult[bool](status: decoded.error)
-  let pc = int(uint64(address))
-  # The validated first instruction always begins a basic block.
-  if pc == 0: return ProgramResult[bool](status: ProgramError.None, completed: true)
   let data = program.data
-  var previous = pc - 1
-  # The closest marked predecessor is the only instruction that could end at this boundary.
-  while previous >= max(0, pc - 25):
-    # A terminator immediately preceding this instruction creates the next basic block.
-    if marked(data.bytes, data.maskOffset, previous):
-      return ProgramResult[bool](status: ProgramError.None,
-        completed: terminatesBlock(data.bytes[data.codeOffset + previous]))
-    dec previous
-  ProgramResult[bool](status: ProgramError.None, completed: false)
+  ProgramResult[bool](status: ProgramError.None, completed: startsBlock(data, int(uint64(address))))
 
 proc instructionByte*(program: Program, address: CodeAddress): ProgramResult[byte] =
   ## Inspect the raw instruction byte sequence with its normative infinite zero suffix.
