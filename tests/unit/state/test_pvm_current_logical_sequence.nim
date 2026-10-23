@@ -98,6 +98,9 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone: bo
     assert owner.chainView.finalizedBlock.error != GenesisError.None
     assert owner.preparationAvailable and owner.stateProofAvailable
     owner.proveLogicalCurrent(logical) # Installed current provenance survives a real canonical proof lease before the next preparation.
+    if index == 1:
+      for afterDone in [false, true]: owner.retireLogicalProof(logical, afterDone)
+      owner.proveLogicalCurrent(logical) # Capacity is truly reusable after both cancellations, with the same original logical owner/root.
   assert original.lookup(key).value.bytes.len == 0 # Original physical aliases remain immutable across every real adoption.
   assert first.logicalProducer.currentUpdateState.lookup(key).value.bytes == @[17'u8, 18, 19]
   let uncollected = currentEmptyChild(owner.chainView.bestBlock.value)

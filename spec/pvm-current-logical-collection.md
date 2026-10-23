@@ -94,6 +94,14 @@ sixteen actual chapter values, the literal grown service99 payload and independe
 absence of service123456 under that original root. The unchanged physical logical successor
 continues to authorize the next real preparation. No partial proof view becomes complete state.
 
+## Cancelled logical proof consumers
+
+At the second adopted logical successor, all layouts cancel actual Services proof jobs both
+immediately and after Done. Stale collection retains capacity and graph/RPC exclusion; exact
+collection yields only `Cancelled`. The unchanged physical logical owner remains valid afterward,
+and a new full authenticated proof succeeds before later native preparation. These observations
+never inspect, copy or retire logical aliases during the proof lease.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable

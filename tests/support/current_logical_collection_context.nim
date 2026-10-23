@@ -128,3 +128,29 @@ proc proveLogicalCurrent*(owner: var Services, logical: CurrentLogicalState) {.r
   assert not view.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(123456))).value.present
   assert sameStateSnapshot(owner.stateSnapshot.value, update.currentUpdateState)
   assert owner.preparationAvailable and owner.stateProofAvailable
+proc retireLogicalProof*(owner: var Services, logical: CurrentLogicalState,
+    afterDone: bool) {.raises.} =
+  ## Real Services proof work borrows the canonical graph shared with this retained logical source; cancellation and joined stop grant no successful response prefix.
+  let update = logical.logicalProducer
+  let selected = update.currentUpdateChildContext.hash
+  let plan = logicalProofPlan()
+  let limits = logicalProofLimits()
+  let ticket = owner.beginStateProof(selected, plan, limits)
+  assert ticket.error == StateProofAdmissionError.None
+  if not afterDone:
+    assert owner.cancelStateProof(ticket.value) # Immediate cancellation can skip execution but cannot release the graph lease.
+  let started = getMonoTime()
+  while owner.stateProofPhase != ProofWorkerPhase.Done:
+    assert (getMonoTime()-started).inSeconds < 20
+    yieldCurrentDiskThread()
+  if afterDone:
+    assert owner.cancelStateProof(ticket.value) # This branch discards a genuinely completed proof after observing Done.
+  assert owner.stateProofActive and owner.rpc.chainPaused
+  assert not owner.preparationAvailable and not owner.stateProofAvailable
+  assert owner.collectStateProof(default(ProofWorkerTicket)).kind ==
+      ProofWorkerCompletionKind.Uninitialized
+  assert owner.stateProofActive and owner.stateProofPhase == ProofWorkerPhase.Done
+  assert owner.collectStateProof(ticket.value).kind == ProofWorkerCompletionKind.Cancelled
+  assert not owner.stateProofActive and not owner.rpc.chainPaused
+  assert sameStateSnapshot(owner.stateSnapshot.value, update.currentUpdateState)
+  assert owner.preparationAvailable and owner.stateProofAvailable
