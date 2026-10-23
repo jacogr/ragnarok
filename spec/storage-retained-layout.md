@@ -116,3 +116,64 @@ Eight selected compiler controls reject the private decoded-record factory, imag
 stages, codec scan, repository head, result payload/reason and view data with their expected
 module/field privacy diagnostics. This is scoped local evidence, not a full Linux unit/Python/
 interop or resident-pressure CI verdict. Original compiler and provider inputs remain pinned.
+
+## Paired strict-reopen qualification
+
+Clean baseline measurement head: `0860f1b107073f6d37d0182d3fc4f0ac1bd2dccf`.
+Clean candidate measurement head: `52e65c457f7f5ba8f311e4ba8f88826a61f16e5a`.
+The subsequent qualification commit changes this feature record only. The 455 captured measurement
+inputs remain identical to the candidate; only `src/storage/node_repository.nim` differs between
+baseline and candidate. Compiler, checked ARC/Clang LTO flags, providers, interpreter, native
+workload, observer, same-host identity and selected namespace bytes match.
+
+The maintained paired driver completes eight producer invocations and sixteen fresh consumers:
+two reversed case/binary orders, both producer directions, journal/managed backends and
+32,768/131,072-entry fixtures. Every consumer checks its independently supplied exact root,
+complete map before and after close, unchanged selected file bytes and complete allocator release.
+Read-only validation reparses all receipts without executing imported command vectors.
+
+Host: Apple M1 Max, Darwin 27.0.0, ARM64, 16,384-byte pages. Both observations per table cell round
+to the same displayed tenth of a MiB:
+
+| Backend | Entries | Baseline RSS MiB | Candidate RSS MiB | Baseline live Nim MiB | Candidate live Nim MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Journal | 32,768 | 43.3 | 40.1 | 18.7 | 15.6 |
+| Journal | 131,072 | 165.9 | 153.5 | 74.2 | 62.2 |
+| Managed | 32,768 | 43.3 | 40.1 | 18.7 | 15.6 |
+| Managed | 131,072 | 172.6 | 153.4 | 74.2 | 62.2 |
+
+At 131,072 entries the inventory contains 262,750 physical cells; the retained allocator saving
+is exactly 12,612,000 bytes (48 per cell). Whole-child RSS includes temporary admission/IO work,
+allocator reservation and native providers, so its larger managed reduction is not assigned to
+specific allocations. This is no speed, cold-cache, paging or deployment-ceiling qualification.
+Prior Linux pressure results describe their recorded earlier binary; this candidate has no new
+Linux resident-pressure verdict, and large no-swap cases remain unqualified.
+
+Local reproducibility/evidence:
+
+- `build/storage-db10-layout-baseline.tsv` and `build/storage-db10-layout-candidate.tsv`.
+- `build/storage-db10-cell-layouts.json`: exact generated-C hashes and Clang record layouts.
+- `build/storage-db10-baseline/` and `build/storage-db10-candidate/`: frozen local native binaries,
+  clean source/build identities and complete individual reports.
+- `build/storage-db10-pair-config.json`: explicit local report/binary selection and one approved
+  production source difference.
+- `build/storage-db10-paired/results.json` and `summary.md`: complete paired receipts.
+- `build/storage-db10-selected-checks.json` and `build/storage-db10-private-guards.json`.
+
+Use `make inspect-storage-reopen-pair REOPEN_PAIR_CONFIG=build/storage-db10-pair-config.json`
+for read-only admission, `make bench-storage-reopen-pair` with the same config and
+`REOPEN_PAIR_OUTPUT` for explicitly authorized local execution, and
+`make summary-storage-reopen-pair REOPEN_PAIR_REPORT=build/storage-db10-paired/results.json`
+for read-only receipt validation. Rebuild fresh clean reports when captured inputs change;
+never edit historical source identities to relabel a dirty or different binary as comparable.
+
+## Completion and next bounded decision
+
+The retained-layout measurement and private tagged-cell increment are complete within their
+local qualified scope. Stop here rather than expanding routine performance/CI workloads.
+The remaining large-fixture live graph is about 62.2 MiB. Further representation work should
+first measure payload allocation slack and reference/index contribution on the same complete-map,
+root and lifetime workload before increasing sharing/reclamation complexity. No further packing
+benefit is assumed. A separately specified bounded working set and on-disk graph authority is
+still required for a database larger than RAM. Existing M1 framing/implemented-scope migration
+completion remains distinct from full JAM state serialization and client parity.
