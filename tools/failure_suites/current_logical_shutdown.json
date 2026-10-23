@@ -1,0 +1,22 @@
+{
+  "build_name": "current-logical-shutdown-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "Joined close grants no default logical payload",
+      "diagnostic": "outcome.successful",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "current-logical-shutdown-value"
+    }
+  ],
+  "crypto_library": "crypto",
+  "native_libraries": [
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/current_logical_shutdown_results.nim"
+}
