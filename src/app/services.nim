@@ -7,6 +7,7 @@
 ## After starting preparation, explicitly close to join before any borrowed input or shared alias retires.
 
 import std/[syncio, strutils, base64, assertions]
+import ../state/storage_logical_continuation
 import ./options
 import ./[checkpoint_recovery, checkpoint_trust]
 import ./[handoff, current_handoff, current_block_input]
@@ -1361,3 +1362,14 @@ proc executeLogicalSourceExport*(services: Services,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Frozen declaration aliases and raw keys remain outside every active managed graph lease.
   logical_source_export.executeLogicalSourceExport(plan)
+
+proc continueCurrentStorage*(services: Services, parent: SelectedLogicalParent,
+    update: PreparedCurrentChainUpdate, limits: StorageContinuationLimits): StorageContinuationResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Keep original parent, producer history and copied declarations outside every managed graph lease until actual collection/join.
+  storage_logical_continuation.continueCurrentStorage(parent, update, limits)
+proc continueCurrentStorage*(services: Services, prior: CurrentLogicalState,
+    update: PreparedCurrentChainUpdate, limits: StorageContinuationLimits): StorageContinuationResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Continue only on the stable owner after matching collection or joined shutdown retires all native graph borrowing.
+  storage_logical_continuation.continueCurrentStorage(prior, update, limits)

@@ -220,3 +220,21 @@ source or policy; a backend failure can be retried on the same plan after recove
 all managed graph leases to have ended by actual collection/join. The returned pair retains the
 original current inventory for predicate joins, separately from the raw-key companion. See the
 [frozen review contract](../spec/application-logical-review-plans.md).
+
+
+## Continue producer-proven storage identities
+
+`Services.continueCurrentStorage` accepts the original selected logical parent or prior completed
+logical source and the actual collected update. Preparation must have explicitly enabled both raw
+storage facts in the guest policies and bounded selected history on the candidate. It preserves exact
+original state/view/full Parameters checks, retains untouched raw identities and uses only that
+update's selected producer facts to introduce keys or authorize storage removals. Actual successor
+presence/values, canonical metadata/histories, all globals and complete current/raw-key matching
+must all succeed. Failed/default observations grant no usable prefix.
+
+The [storage continuation contract](../spec/storage-logical-continuation.md) records independent
+scratch, planning, output and qualification budgets, actual growth/deletion and selected rollback
+witnesses, repeated real children, and all three native graph lease guards. Existing strict identity
+preservation remains available. Service creation/ejection, preimage/request identity changes and
+non-guest additions are refused until their producer contracts are implemented. This is bounded
+storage continuation, not a complete operation log, a generic supplied-delta API or adoption policy.

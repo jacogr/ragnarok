@@ -792,6 +792,72 @@
         "reason": "publication-source-export"
       },
       "name": "application-logical-services-publication-source-export"
+    },
+    {
+      "arguments": [
+        "preparation-storage-parent"
+      ],
+      "description": "Managed host exclusion preparation-storage-parent",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-storage-parent"
+      },
+      "name": "application-logical-services-preparation-storage-parent"
+    },
+    {
+      "arguments": [
+        "preparation-storage-current"
+      ],
+      "description": "Managed host exclusion preparation-storage-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-storage-current"
+      },
+      "name": "application-logical-services-preparation-storage-current"
+    },
+    {
+      "arguments": [
+        "proof-storage-parent"
+      ],
+      "description": "Managed host exclusion proof-storage-parent",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-storage-parent"
+      },
+      "name": "application-logical-services-proof-storage-parent"
+    },
+    {
+      "arguments": [
+        "proof-storage-current"
+      ],
+      "description": "Managed host exclusion proof-storage-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-storage-current"
+      },
+      "name": "application-logical-services-proof-storage-current"
+    },
+    {
+      "arguments": [
+        "publication-storage-parent"
+      ],
+      "description": "Managed host exclusion publication-storage-parent",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-storage-parent"
+      },
+      "name": "application-logical-services-publication-storage-parent"
+    },
+    {
+      "arguments": [
+        "publication-storage-current"
+      ],
+      "description": "Managed host exclusion publication-storage-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-storage-current"
+      },
+      "name": "application-logical-services-publication-storage-current"
     }
   ],
   "crypto_library": "observer",
