@@ -13,9 +13,10 @@ Original request identities seed bounded planning. Selected producer full servic
 facts introduce identities or authorize removed original request rows; duplicate physical keys must
 agree on exact logical identities. Presence and histories come only from the actual successor and
 pass existing exact codecs. Untouched raw storage, request and preimage identities survive.
-Request restoration and repeated create/remove touches retain actual selected outcomes. Unknown
-services, new preimage identities and removed preimages remain refused pending their producer
-composition; an expired-forget observation alone does not bypass complete preimage coverage.
+Request restoration and repeated create/remove touches retain actual selected outcomes. The request-only layer retains strict service and preimage coverage. Complete namespace
+continuation now composes [selected service lifecycle evidence](service-logical-continuation.md)
+and [request-bound preimage evidence](preimage-logical-continuation.md); an expired-forget
+observation alone still cannot bypass complete preimage coverage.
 
 The common implementation shares original binding and complete qualification through closed static
 storage-only/storage-plus-request variants. `logical_continuation` owns the core; the previous

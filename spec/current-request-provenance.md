@@ -28,7 +28,9 @@ writes and actual native collection, checks original-vs-annulled membership, exa
 correct selected state, disabled/empty/short policies, late whole-candidate refusal, detached copies,
 hash-free exact/one-short retention, full-width ordinals and 1,000 ARC capture/retire cycles.
 Existing storage provenance, parallel annulment and native current preparation consumers plus
-strict guards/privacy, inventory and both formatting gates remain required. Logical request
-continuation is the next consumer; complete namespace propagation is not claimed here.
+strict guards/privacy, inventory and both formatting gates remain required. The [logical request
+consumer](request-logical-continuation.md) is implemented, with [service lifecycle](service-logical-continuation.md)
+and [request-bound preimage](preimage-logical-continuation.md) composition under their own
+complete-map qualification contracts. This producer layer alone grants no complete namespace authority.
 M1 framing is complete; independent full current-schema STF, current Thin VRF and ambiguous
 privilege gates remain separate.
