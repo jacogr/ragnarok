@@ -305,3 +305,36 @@ preparation-speed change or cross-runtime preparation comparison. Steady-state
 execution gains do not imply lower setup cost, whole-client throughput, Linux or
 compiled performance. Checked ARC/Clang ThinLTO and all normal assertions/bounds
 checks remain enabled. Fuzzing remains deferred.
+
+
+## Private host-response continuation, 2026-10-23
+
+Sampling after chunked pages identified host response application and resumed-machine
+capture. Both host APIs now retain a validated private continuation across responses,
+while still publishing every actual immutable callback/terminal observation. Public
+response application keeps its complete validation and owned-result contract.
+Separate by-reference loop forms improved hosts but regressed ordinary guests by
+roughly 8–12%; those forms were rejected. One original transition loop with a private
+continuation seed at entry preserves the ordinary optimized CPU layout.
+
+The accepted form was measured in two opposite-order preserved-binary comparisons.
+Final confirmation medians across twenty validated samples per binary were:
+
+| Fixed guest | Chunked pages (µs) | Host cursor (µs) | Less execution time |
+| --- | ---: | ---: | ---: |
+| Arithmetic, 10000 iterations | 471.35 | 469.58 | No established change |
+| Memory aligned, 1000 iterations | 148.02 | 147.54 | No established change |
+| Memory crossing, 1000 iterations | 183.58 | 183.94 | No established change |
+| Host/memory aligned, 1000 iterations | 284.10 | 220.12 | 22.5% |
+| Host/memory crossing, 1000 iterations | 319.69 | 256.19 | 19.9% |
+
+The preliminary accepted comparison showed 16.6% and 19.9% host savings, with ordinary
+guests within a few percent. The full pinned interpreted comparison passes; the
+remaining local ratios are about 3.5–8.8×. Evidence lives under
+`build/pvm9/chunks-profile`, `build/pvm9/host-cursor-seeded` and
+`build/pvm9/host-cursor-final`. Rejected forms are retained separately under the
+other host-cursor experiment directories. The same fixed inputs, checked ThinLTO,
+all-state validation and local noise/no-isolation limits apply; no Linux, compiled,
+deterministic-counter or whole-client throughput claim follows. Fuzzing remains
+deferred. Further work should address profiled allocation/copying costs and broader
+representative instruction/memory working sets.
