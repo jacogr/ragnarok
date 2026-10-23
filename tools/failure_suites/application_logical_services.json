@@ -858,6 +858,72 @@
         "reason": "publication-storage-current"
       },
       "name": "application-logical-services-publication-storage-current"
+    },
+    {
+      "arguments": [
+        "preparation-namespace-parent"
+      ],
+      "description": "Managed host exclusion preparation-namespace-parent",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-namespace-parent"
+      },
+      "name": "application-logical-services-preparation-namespace-parent"
+    },
+    {
+      "arguments": [
+        "preparation-namespace-current"
+      ],
+      "description": "Managed host exclusion preparation-namespace-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-namespace-current"
+      },
+      "name": "application-logical-services-preparation-namespace-current"
+    },
+    {
+      "arguments": [
+        "proof-namespace-parent"
+      ],
+      "description": "Managed host exclusion proof-namespace-parent",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-namespace-parent"
+      },
+      "name": "application-logical-services-proof-namespace-parent"
+    },
+    {
+      "arguments": [
+        "proof-namespace-current"
+      ],
+      "description": "Managed host exclusion proof-namespace-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-namespace-current"
+      },
+      "name": "application-logical-services-proof-namespace-current"
+    },
+    {
+      "arguments": [
+        "publication-namespace-parent"
+      ],
+      "description": "Managed host exclusion publication-namespace-parent",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-namespace-parent"
+      },
+      "name": "application-logical-services-publication-namespace-parent"
+    },
+    {
+      "arguments": [
+        "publication-namespace-current"
+      ],
+      "description": "Managed host exclusion publication-namespace-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-namespace-current"
+      },
+      "name": "application-logical-services-publication-namespace-current"
     }
   ],
   "crypto_library": "observer",
