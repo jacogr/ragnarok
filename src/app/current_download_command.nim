@@ -7,7 +7,8 @@
 import std/[syncio, monotimes, times]
 import std/posix/posix
 import ./[options, services, chain, current_handoff, current_download_policy,
-    current_block_download, ancestor_inputs, ancestor_response]
+    current_block_download, ancestor_inputs, ancestor_response, current_logical_download,
+    current_logical_startup]
 import ./download_schedule
 import ../codec/[bounded, header]
 import ../state/report_anchors
@@ -18,7 +19,7 @@ import ../quic/[current_block_download_loop, current_block_download_session,
 type CurrentDownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
   Uninitialized, Adopted, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,
   InvalidAncestors, StartupFailure, AdmissionFailure, TransportFailure, DispatchFailure, Exhausted,
-    Timeout, StorageMaintenanceFailure
+    Timeout, StorageMaintenanceFailure, InvalidLogicalSource
 
 type CurrentDownloadCommandOutcome* = object ## Immutable scalar diagnostics describe confirmed installed progress, never execution authority.
   status: CurrentDownloadCommandResult
@@ -193,7 +194,8 @@ type ObservedDownloadHead = object ## Fixed metadata survives joined shutdown wi
 proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadPeerId],
     ports: array[16, uint16], keys: array[16, CurrentDownloadPeerKey], ancestors: seq[OwnedHeader],
     limits: CurrentDownloadLoopLimits, started: MonoTime, timeout: uint64, requested: int,
-    adopted: var int, observed: var ObservedDownloadHead): CurrentDownloadCommandResult {.raises.} =
+    adopted: var int, observed: var ObservedDownloadHead, qualifyLogical: bool,
+    logical: CurrentLogicalDownloadPolicy): CurrentDownloadCommandResult {.raises.} =
   ## Stable endpoints outlive every retired child session; joined teardown precedes caller reconciliation on all exits.
   let initial = owner.chainView.bestBlock
   if initial.error != GenesisError.None: return CurrentDownloadCommandResult.AdmissionFailure
@@ -210,8 +212,10 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
   discard preflight.cancel(admitted.value) # Exact raw admission is checked before any outgoing TLS engine opens.
   var dispatcher = default(CurrentDownloadLoop)
   defer: dispatcher.close() # Every native input/execution/disk borrower joins before outer canonical inspection or alias retirement.
-  if dispatcher.configure(owner, peers, older, limits, CurrentDownloadLoopTick(0)) !=
-      CurrentDownloadLoopError.None: return CurrentDownloadCommandResult.InvalidPolicy
+  let configured = if qualifyLogical:
+      dispatcher.configure(owner, peers, older, limits, CurrentDownloadLoopTick(0), logical)
+    else: dispatcher.configure(owner, peers, older, limits, CurrentDownloadLoopTick(0))
+  if configured != CurrentDownloadLoopError.None: return CurrentDownloadCommandResult.InvalidPolicy
   for index in 0..<peers.len:
     if dispatcher.openPeer(peers[index], keys[index], ports[index], options.argument(3),
         options.argument(4), options.argument(6)) != CurrentDownloadPeerError.None:
@@ -304,6 +308,17 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
   let policy = loadCurrentDownloadPolicy(options.argument(8))
   if policy.error != CurrentDownloadPolicyError.None: return CurrentDownloadCommandResult.InvalidPolicy
   let limits = policy.value
+  let qualifyLogical = options.logicalDownloadEnabled
+  var logicalLimits = default(CurrentLogicalStartupLimits)
+  var declarations = default(CurrentLogicalDeclarations)
+  if qualifyLogical:
+    let configured = loadCurrentLogicalPolicy(options.logicalDownloadPolicyPath)
+    if configured.error != CurrentDownloadPolicyError.None: return CurrentDownloadCommandResult.InvalidPolicy
+    logicalLimits = configured.value
+    let decoded = loadCurrentLogicalDeclarations(options.logicalDownloadSourcePath,
+        logicalLimits.projection)
+    if decoded.error != CurrentLogicalStartupError.None: return CurrentDownloadCommandResult.InvalidLogicalSource
+    declarations = decoded.value # Full syntax/resource preflight precedes Services, listeners, databases and outgoing peers.
   if limits.input.discoverAncestors != (options.discoverDownloadAncestors > 0):
     return CurrentDownloadCommandResult.InvalidPolicy # Both explicit current policy and requested acquisition mode must agree.
   let count = 1 + (options.argumentCount - 8) div 2
@@ -342,6 +357,11 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
   var owner = default(Services)
   defer: owner.close() # Dispatcher teardown below must end every Services borrow first.
   if not owner.start(options, "download-current"): return CurrentDownloadCommandResult.StartupFailure
+  var logical = default(CurrentLogicalDownloadPolicy)
+  if qualifyLogical:
+    let captured = captureCurrentLogicalStartup(owner.chainView, declarations, logicalLimits)
+    if captured.error != CurrentLogicalStartupError.None: return CurrentDownloadCommandResult.InvalidLogicalSource
+    logical = captured.value # Full actual selected map/history/Parameters qualification precedes outgoing child peers.
   let started = getMonoTime()
   if options.localDownloadAncestors:
     # Capture before any worker lease; no complete view/map alias survives into receiveChildren.
@@ -361,7 +381,7 @@ proc performDownloads(options: Options, adopted: var int): CurrentDownloadComman
     ancestors = acquired.captured
   var observed = default(ObservedDownloadHead)
   let terminal = receiveChildren(owner, options, peers, ports, keys, ancestors, limits,
-    started, timeout, requested, adopted, observed)
+    started, timeout, requested, adopted, observed, qualifyLogical, logical)
   if observed.initialized:
     let settled = owner.chainView.bestBlock # Joined shutdown may confirm an IO receipt after the command reached its deadline.
     if settled.error != GenesisError.None: return CurrentDownloadCommandResult.DispatchFailure

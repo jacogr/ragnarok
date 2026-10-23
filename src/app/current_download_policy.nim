@@ -6,11 +6,13 @@
 
 import std/[strutils, syncio]
 import ../quic/current_block_download_loop
+import ./current_logical_startup
 
 const
   CurrentDownloadPolicyBytes* = 65536 ## Hard startup input cap, independent of block and state resource policies.
   PolicyValues = 389
   PolicyHeader = "ragnarok-current-download-policy-v1"
+  LogicalPolicyHeader = "ragnarok-current-logical-policy-v1"
 
 type
   CurrentDownloadPolicyError* {.pure.} = enum ## Failure alternatives contain only a reason and bounded field diagnostic.
@@ -22,6 +24,12 @@ type
       policy: CurrentDownloadLoopLimits
     else:
       field: string # A failed field name is diagnostic text, never a successful child policy.
+  CurrentLogicalPolicyResult* = object ## Complete explicit logical resource policy is extracted only after strict whole-schema parsing.
+    case status: CurrentDownloadPolicyError
+    of None:
+      policy: CurrentLogicalStartupLimits
+    else:
+      field: string
   PolicyValue = object ## At most 389 bounded keys/numbers are retained before schema assignment.
     name: string
     number: uint64
@@ -32,6 +40,7 @@ type
     field: string
 
 include ./current_download_policy_fields
+include ./current_logical_policy_fields
 
 func error*(outcome: CurrentDownloadPolicyResult): CurrentDownloadPolicyError =
   ## Defaults/refusals never authorize startup or policy extraction.
@@ -99,9 +108,10 @@ proc encodeCurrentDownloadPolicy*(policy: CurrentDownloadLoopLimits): string =
   result = PolicyHeader & "\n"
   currentPolicyFields(policy, result, writeField)
 
-proc decodeCurrentDownloadPolicy*(text: string): CurrentDownloadPolicyResult =
+proc scanPolicy(text, header: string): PolicyInput =
   ## Bounded lexical preflight precedes private typed assignment; no failed parse publishes a prefix.
-  if text.len > CurrentDownloadPolicyBytes: return refused(CurrentDownloadPolicyError.LimitExceeded)
+  if text.len > CurrentDownloadPolicyBytes: return PolicyInput(
+      error: CurrentDownloadPolicyError.LimitExceeded)
   var input = PolicyInput(error: CurrentDownloadPolicyError.None, values: @[])
   var position, line = 0
   while position < text.len:
@@ -109,32 +119,40 @@ proc decodeCurrentDownloadPolicy*(text: string): CurrentDownloadPolicyResult =
     while position < text.len and text[position] != '\n': inc position # Input cap bounds the complete scan.
     let extent = position - first
     if line == 0:
-      if extent != PolicyHeader.len or text.substr(first, position - 1) !=
-          PolicyHeader: return refused(CurrentDownloadPolicyError.WrongVersion)
+      if extent != header.len or text.substr(first, position - 1) !=
+          header: return PolicyInput(error: CurrentDownloadPolicyError.WrongVersion)
     elif extent > 0 and text[first] != '#':
-      if extent > 214: return refused(CurrentDownloadPolicyError.LimitExceeded) # Key <=192, '=', decimal <=20, all before copying.
+      if extent > 214: return PolicyInput(error: CurrentDownloadPolicyError.LimitExceeded) # Key <=192, '=', decimal <=20, all before copying.
       var separator = -1
       for index in first..<position:
         let character = text[index]
         if character == '=':
-          if separator >= 0: return refused(CurrentDownloadPolicyError.InvalidLine)
+          if separator >= 0: return PolicyInput(error: CurrentDownloadPolicyError.InvalidLine)
           separator = index
         elif separator < 0 and character notin {'a'..'z', 'A'..'Z', '0'..'9', '.'}:
-          return refused(CurrentDownloadPolicyError.InvalidLine) # Exact ASCII keys have no escapes or whitespace aliases.
-      if separator <= first or separator - first > 192: return refused(
-          CurrentDownloadPolicyError.InvalidLine)
+          return PolicyInput(error: CurrentDownloadPolicyError.InvalidLine) # Exact ASCII keys have no escapes or whitespace aliases.
+      if separator <= first or separator - first > 192: return PolicyInput(error:
+        CurrentDownloadPolicyError.InvalidLine)
       let name = text.substr(first, separator - 1)
       var number = 0'u64
       if separator + 1 == position or not decimal(text.substr(separator + 1, position - 1), number):
-        return refused(CurrentDownloadPolicyError.InvalidNumber, name)
+        return PolicyInput(error: CurrentDownloadPolicyError.InvalidNumber, field: name)
       for previous in input.values:
-        if previous.name == name: return refused(CurrentDownloadPolicyError.DuplicateField,
-            name) # Bound duplicate work before appending.
-      if input.values.len == PolicyValues: return refused(CurrentDownloadPolicyError.LimitExceeded)
+        if previous.name == name:
+          let reason = CurrentDownloadPolicyError.DuplicateField
+          return PolicyInput(error: reason, field: name) # Duplicate preflight precedes retaining another scalar row.
+      if input.values.len == PolicyValues: return PolicyInput(
+          error: CurrentDownloadPolicyError.LimitExceeded)
       input.values.add(PolicyValue(name: name, number: number, used: false))
     inc line
     if position < text.len: inc position # Skip only a proven present LF; final newline is optional.
-  if line == 0: return refused(CurrentDownloadPolicyError.WrongVersion)
+  if line == 0: return PolicyInput(error: CurrentDownloadPolicyError.WrongVersion)
+  input
+
+proc decodeCurrentDownloadPolicy*(text: string): CurrentDownloadPolicyResult =
+  ## Shared strict lexical parsing precedes the original complete v1 schema and outer policy validation.
+  var input = scanPolicy(text, PolicyHeader)
+  if input.error != CurrentDownloadPolicyError.None: return refused(input.error, input.field)
   var policy = default(CurrentDownloadLoopLimits)
   currentPolicyFields(policy, input, readField)
   if input.error notin [CurrentDownloadPolicyError.None, CurrentDownloadPolicyError.MissingField]:
@@ -153,17 +171,59 @@ proc decodeCurrentDownloadPolicy*(text: string): CurrentDownloadPolicyResult =
     return refused(CurrentDownloadPolicyError.InvalidPolicy) # Reject unusable outer dispatcher bounds before any startup/native work.
   CurrentDownloadPolicyResult(status: CurrentDownloadPolicyError.None, policy: policy)
 
-proc loadCurrentDownloadPolicy*(path: string): CurrentDownloadPolicyResult {.raises.} =
+proc readPolicyFile(path: string, text: var string): CurrentDownloadPolicyError {.raises.} =
   ## Read at most cap+1 bytes through public string bulk-write APIs, including files that grow during the read.
   var file: File = nil
-  if path.len == 0 or not open(file, path, fmRead): return refused(
-      CurrentDownloadPolicyError.FileFailure)
+  if path.len == 0 or not open(file, path, fmRead): return CurrentDownloadPolicyError.FileFailure
   defer: close(file) # Every parse/size/I/O return ends the native file borrow.
-  var text = newString(CurrentDownloadPolicyBytes + 1)
+  text = newString(CurrentDownloadPolicyBytes + 1)
   let buffer = text.beginStore(text.len)
   let count = readBuffer(file, cast[pointer](buffer), text.len)
   text.endStore()
-  if count < 0: return refused(CurrentDownloadPolicyError.FileFailure)
-  if count > CurrentDownloadPolicyBytes: return refused(CurrentDownloadPolicyError.LimitExceeded)
+  if count < 0: return CurrentDownloadPolicyError.FileFailure
+  if count > CurrentDownloadPolicyBytes: return CurrentDownloadPolicyError.LimitExceeded
   text.setLen(count)
+  CurrentDownloadPolicyError.None
+
+proc loadCurrentDownloadPolicy*(path: string): CurrentDownloadPolicyResult {.raises.} =
+  ## Reuse the exact bounded transport reader; a failed file never reaches schema assignment.
+  var text = ""
+  let reason = readPolicyFile(path, text)
+  if reason != CurrentDownloadPolicyError.None: return refused(reason)
   decodeCurrentDownloadPolicy(text)
+func error*(outcome: CurrentLogicalPolicyResult): CurrentDownloadPolicyError =
+  ## Default and failed logical policy results have no usable budgets.
+  outcome.status
+func value*(outcome: CurrentLogicalPolicyResult): CurrentLogicalStartupLimits {.inline,
+    requires: outcome.status == CurrentDownloadPolicyError.None.} =
+  ## Return only a complete explicit policy snapshot; startup and State stages still enforce each budget.
+  outcome.policy
+func fieldName*(outcome: CurrentLogicalPolicyResult): string {.inline,
+    requires: outcome.status != CurrentDownloadPolicyError.None.} =
+  ## Inspect the bounded actual failed field without exposing a successful prefix.
+  outcome.field
+proc logicalRefused(reason: CurrentDownloadPolicyError, field = ""): CurrentLogicalPolicyResult =
+  ## Construct only the failed alternative of the logical policy result.
+  CurrentLogicalPolicyResult(status: reason, field: field)
+proc encodeCurrentLogicalPolicy*(policy: CurrentLogicalStartupLimits): string =
+  ## Emit every required logical resource leaf without selecting any resource defaults.
+  result = LogicalPolicyHeader & "\n"
+  currentLogicalPolicyFields(policy, result, writeField)
+proc decodeCurrentLogicalPolicy*(text: string): CurrentLogicalPolicyResult =
+  ## Reuse the original canonical lexical scanner, then require the entire independent logical schema.
+  var input = scanPolicy(text, LogicalPolicyHeader)
+  if input.error != CurrentDownloadPolicyError.None: return logicalRefused(input.error, input.field)
+  var policy = default(CurrentLogicalStartupLimits)
+  currentLogicalPolicyFields(policy, input, readField)
+  if input.error notin [CurrentDownloadPolicyError.None, CurrentDownloadPolicyError.MissingField]:
+    return logicalRefused(input.error, input.field)
+  for entry in input.values:
+    if not entry.used: return logicalRefused(CurrentDownloadPolicyError.UnknownField, entry.name)
+  if input.error != CurrentDownloadPolicyError.None: return logicalRefused(input.error, input.field)
+  CurrentLogicalPolicyResult(status: CurrentDownloadPolicyError.None, policy: policy)
+proc loadCurrentLogicalPolicy*(path: string): CurrentLogicalPolicyResult {.raises.} =
+  ## Complete bounded file snapshot is decoded atomically; extra/growing input refuses before startup.
+  var text = ""
+  let reason = readPolicyFile(path, text)
+  if reason != CurrentDownloadPolicyError.None: return logicalRefused(reason)
+  decodeCurrentLogicalPolicy(text)
