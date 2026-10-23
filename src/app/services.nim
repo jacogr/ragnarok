@@ -1274,3 +1274,19 @@ proc executeFrozenSupplied*(services: Services, source: FrozenSuppliedInput): Fr
     not (services.proofing or services.preparing or services.publishing).} =
   ## Frozen input does not bypass canonical staleness or native exclusion checks.
   frozen_supplied.executeFrozenSupplied(services.canonical, source)
+
+proc planCollectedLogical*(services: Services, completion: PreparationCompletion,
+    source: SelectedLogicalParent, limits: CollectedLogicalLimits): CollectedLogicalPlanResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Retaining prepared source graphs requires every existing native lease to have ended.
+  collected_logical.planCollectedLogical(services.canonical, completion, source, limits)
+
+proc planCollectedLogical*(services: Services, completion: PreparationCompletion,
+    source: CurrentLogicalState, limits: CollectedLogicalLimits): CollectedLogicalPlanResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Retaining prepared source graphs requires every existing native lease to have ended.
+  collected_logical.planCollectedLogical(services.canonical, completion, source, limits)
+proc executeCollectedLogical*(services: Services, plan: CollectedLogicalPlan): CollectedLogicalResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Retry cannot bypass native exclusion or the frozen update's exact canonical-parent check.
+  collected_logical.executeCollectedLogical(services.canonical, plan)

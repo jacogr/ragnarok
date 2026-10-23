@@ -363,6 +363,105 @@
         "reason": "publication-frozen-supplied-execution"
       },
       "name": "application-logical-services-publication-frozen-supplied-execution"
+    },
+    {
+      "arguments": [
+        "preparation-collected-plan-selected"
+      ],
+      "description": "Managed host exclusion preparation-collected-plan-selected",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-collected-plan-selected"
+      },
+      "name": "application-logical-services-preparation-collected-plan-selected"
+    },
+    {
+      "arguments": [
+        "preparation-collected-plan-current"
+      ],
+      "description": "Managed host exclusion preparation-collected-plan-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-collected-plan-current"
+      },
+      "name": "application-logical-services-preparation-collected-plan-current"
+    },
+    {
+      "arguments": [
+        "preparation-collected-plan-execution"
+      ],
+      "description": "Managed host exclusion preparation-collected-plan-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-collected-plan-execution"
+      },
+      "name": "application-logical-services-preparation-collected-plan-execution"
+    },
+    {
+      "arguments": [
+        "proof-collected-plan-selected"
+      ],
+      "description": "Managed host exclusion proof-collected-plan-selected",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-collected-plan-selected"
+      },
+      "name": "application-logical-services-proof-collected-plan-selected"
+    },
+    {
+      "arguments": [
+        "proof-collected-plan-current"
+      ],
+      "description": "Managed host exclusion proof-collected-plan-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-collected-plan-current"
+      },
+      "name": "application-logical-services-proof-collected-plan-current"
+    },
+    {
+      "arguments": [
+        "proof-collected-plan-execution"
+      ],
+      "description": "Managed host exclusion proof-collected-plan-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-collected-plan-execution"
+      },
+      "name": "application-logical-services-proof-collected-plan-execution"
+    },
+    {
+      "arguments": [
+        "publication-collected-plan-selected"
+      ],
+      "description": "Managed host exclusion publication-collected-plan-selected",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-collected-plan-selected"
+      },
+      "name": "application-logical-services-publication-collected-plan-selected"
+    },
+    {
+      "arguments": [
+        "publication-collected-plan-current"
+      ],
+      "description": "Managed host exclusion publication-collected-plan-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-collected-plan-current"
+      },
+      "name": "application-logical-services-publication-collected-plan-current"
+    },
+    {
+      "arguments": [
+        "publication-collected-plan-execution"
+      ],
+      "description": "Managed host exclusion publication-collected-plan-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-collected-plan-execution"
+      },
+      "name": "application-logical-services-publication-collected-plan-execution"
     }
   ],
   "crypto_library": "observer",

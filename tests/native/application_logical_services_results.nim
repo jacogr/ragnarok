@@ -4,6 +4,7 @@
 ## Actual managed preparation and proof leases reject both logical source alternatives before canonical access.
 import std/[assertions, cmdline, syncio, strutils, monotimes, times]
 import std/posix/posix
+import ../../src/app/current_logical
 import ../../src/state/supplied_services
 import ../../src/app/frozen_supplied
 import ../../src/app/[logical_seed, collected_supplied_plan, collected_supplied_state,
@@ -72,7 +73,13 @@ proc main() {.raises.} =
     assert owner.stateProofActive # Proof Done plus cancellation keeps the same canonical exclusion.
   let receipt = default(PreparationCompletion)
   let logical = default(CurrentLogicalState)
-  if mode.endsWith("-frozen-supplied-capture"):
+  if mode.endsWith("-collected-plan-selected"):
+    discard owner.planCollectedLogical(receipt, default(SelectedLogicalParent), default(CollectedLogicalLimits))
+  elif mode.endsWith("-collected-plan-current"):
+    discard owner.planCollectedLogical(receipt, logical, default(CollectedLogicalLimits))
+  elif mode.endsWith("-collected-plan-execution"):
+    discard owner.executeCollectedLogical(default(CollectedLogicalPlan))
+  elif mode.endsWith("-frozen-supplied-capture"):
     let plan = default(CollectedSuppliedPlan)
     discard owner.freezeCollectedSupplied(plan, [], default(SuppliedServicesLimits))
   elif mode.endsWith("-frozen-supplied-execution"):
