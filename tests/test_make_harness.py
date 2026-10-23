@@ -232,6 +232,9 @@ if name == 'check_inventory.py' and os.environ.get('FAIL_INVENTORY'):
 if name == 'setup_nimony.py':
     Path('build/toolchain').mkdir(parents=True, exist_ok=True)
     Path('build/toolchain/env.sh').write_text('export NIMONY=/fixture/nimony\\n')
+# Smoke must stop before compilation on bad formatting and propagate a failed compiler through tee.
+if (name == 'format.py' and os.environ.get('FAIL_FORMAT')) or (name == 'test_modules.py' and '--smoke' in sys.argv and os.environ.get('FAIL_SMOKE')):
+    sys.exit(7)
 # A failing model check must retain its status through the independent Make gate.
 if name == 'test_models.py' and os.environ.get('FAIL_MODELS'):
     sys.exit(7)
@@ -303,6 +306,21 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                                     env={**environment, 'FAIL_INVENTORY': '1'}, capture_output=True)
             self.assertNotEqual(failed.returncode, 0)
             self.assertEqual((folder/'calls').read_text().splitlines(), ['check_inventory.py'])
+            for failure in ('FAIL_FORMAT', 'FAIL_SMOKE'):
+                # Smoke checks neither fetch fixture sources nor prepare native runtimes; every failure stays red.
+                (folder/'calls').write_text('')
+                failed = subprocess.run(arguments+['check-smoke'], cwd=folder,
+                    env={**environment, failure: '1'}, capture_output=True)
+                self.assertNotEqual(failed.returncode, 0)
+                smoke_calls = (folder/'calls').read_text().splitlines()
+                self.assertNotIn('setup_submodules.py', smoke_calls)
+                self.assertNotIn('setup_tlanif.py', smoke_calls)
+                if failure == 'FAIL_FORMAT':
+                    self.assertNotIn('test_modules.py', smoke_calls)
+                    self.assertNotIn('build_ui.py', smoke_calls)
+                else:
+                    self.assertIn('test_modules.py', smoke_calls)
+                    self.assertTrue((folder/'build/ci/smoke.log').is_file())
             # CI provisions the minifier before embedding; an explicit local opt-in takes the same path.
             for selection in ({'CI': 'true'}, {'UI_MINIFY': '1'}):
                 (folder/'calls').write_text('')

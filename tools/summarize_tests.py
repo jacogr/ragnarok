@@ -20,7 +20,8 @@ def summarize(report, kind):
             raise ValueError('Module report has no checked sources')
         lines = ['## Source module compilation', '',
                  f'**{sum(row["passed"] for row in rows)}/{len(rows)} modules pass semantic checking.**', '',
-                 'This check covers every `src/**/*.nim` file and fails for any failed or timed-out module.',
+                 'This check covers every `src/**/*.nim` file; the import graph and peer-main compilations must both pass.',
+                 'Rows share the complete compilation verdict; a failed or timed-out compilation blocks the group.',
                  'It does not establish linking, runtime parity or full M1/M2/M3 coverage.', '',
                  '| Module | Semantic check |', '| --- | --- |']
         # List every module so a new failure or a newly ported module is visible in the PR.
