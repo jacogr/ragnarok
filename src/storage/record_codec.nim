@@ -4,7 +4,7 @@
 ## Strict versioned physical trie-record batches; validates shape/budgets before node hashes.
 ## Record validation is local integrity, not complete graph verification or chain authority.
 
-import std/algorithm
+import std/[algorithm, assertions]
 import ./node_records
 import ../codec/[state_trie, state_layout, bounded]
 
@@ -174,17 +174,25 @@ func readHash(input: openArray[byte], offset: int): array[32, byte] =
   for i in 0..<32: result[i] = input[offset+i]
 
 proc encodeRecords(batch: TrieExport, records: openArray[TrieRecord], limits: RecordLimits,
-    collection: bool): RecordResult[seq[byte]] =
+    collection: bool, prefixBytes = 0'u64, suffixBytes = 0'u64,
+    outputLimit = ByteLimit(high(uint64))): RecordResult[seq[byte]] =
   ## Serialize only a locally verified batch; the borrowed source remains stable throughout.
   let checked = extent(batch, records, limits, collection)
   if checked.error != RecordError.None: return RecordResult[seq[byte]](status: checked.error)
+  let maximum = min(uint64(outputLimit), uint64(high(int)))
+  if prefixBytes > maximum or suffixBytes > maximum-prefixBytes:
+    return RecordResult[seq[byte]](status: RecordError.LimitExceeded)
+  let reserved = prefixBytes+suffixBytes
+  if uint64(checked.value) > maximum-reserved:
+    return RecordResult[seq[byte]](status: RecordError.LimitExceeded)
   let validated = validateRecords(batch, records, limits, collection)
   if validated != RecordError.None: return RecordResult[seq[byte]](status: validated)
-  var output = newSeq[byte](checked.value)
+  var output = newSeq[byte](int(reserved+uint64(checked.value)))
   var magic = RecordMagic
   if collection: magic = CollectionMagic
-  for i, character in magic: output[i] = byte(character) # Exact transport domain has no fallback.
-  var offset = magic.len
+  let prefix = int(prefixBytes)
+  for i, character in magic: output[prefix+i] = byte(character) # Exact transport domain has no fallback.
+  var offset = prefix+magic.len
   if not collection:
     putHash(output, offset, array[32, byte](batch.base)); offset += 32
     putHash(output, offset, array[32, byte](batch.root)); offset += 32
@@ -205,6 +213,7 @@ proc encodeRecords(batch: TrieExport, records: openArray[TrieRecord], limits: Re
     else:
       putHash(output, offset, array[32, byte](record.left)); offset += 32
       putHash(output, offset, array[32, byte](record.right)); offset += 32
+  assert offset == output.len-int(suffixBytes) # Strict bounded writer ends exactly at the reserved trailer.
   RecordResult[seq[byte]](status: RecordError.None, completed: output)
 
 proc scanRecords(input: openArray[byte], limits: RecordLimits, collection: bool,
@@ -321,6 +330,13 @@ proc validateTrieExport*(batch: TrieExport, limits: RecordLimits): RecordError =
 proc encodeTrieExport*(batch: TrieExport, limits: RecordLimits): RecordResult[seq[byte]] =
   ## Preserve the existing single-target representation byte for byte.
   encodeRecords(batch, batch.records, limits, false)
+proc encodeFramedTrieExport*(batch: TrieExport, limits: RecordLimits,
+    prefixBytes, suffixBytes: uint64, outputLimit: ByteLimit): RecordResult[seq[byte]] =
+  ## Strictly validate borrowed mutable records, then encode into one owned buffer with zero-filled reservations.
+  ## Requested nonnegative extents and the independent whole-output ceiling are proved before allocation/hashing.
+  ## Body policy, duplicate rejection and every local hash remain mandatory; reservations grant no graph authority.
+  encodeRecords(batch, batch.records, limits, false, prefixBytes, suffixBytes, outputLimit)
+
 proc decodeTrieExport*(input: openArray[byte], limits: RecordLimits): RecordResult[TrieExport] =
   ## Decode only the existing target-bearing domain with no collection fallback.
   decodeRecords(input, limits, false)
