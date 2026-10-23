@@ -91,7 +91,7 @@ proc runDecode(f: Fixture, rounds: int, cpu: var RegisterFile) {.noinline.} =
     for pc in f.pcs: apply(instruction(f.owner, pc), cpu)
 
 proc runCache(f: Fixture, rounds: int, cpu: var RegisterFile) {.noinline.} =
-  ## Match the production memo's 16 direct-mapped full-PC-tagged slots and invocation lifetime.
+  ## Retain the original direct-mapped model; current production now pairs its sixteen slots.
   var entries = default(array[16, ProgramResult[Instruction]])
   var valid = default(array[16, bool])
   for repeat in 0..<rounds:

@@ -14,8 +14,9 @@ alternative complete PVM engine or a reported production speedup.
 Four engines run the same mixed-width signed-immediate bytecode and register inputs:
 
 - `decode`: call the public decoder and production register evaluator every time.
-- `cache16`: a 16-entry direct-mapped PC-tagged decoder cache, with the same lifetime
-  and indexing strategy as the current execution cache, then the same evaluator.
+- `cache16`: the original 16-entry direct-mapped PC-tagged decoder-cache model, then
+  the same evaluator. Current production uses paired slots; this historical kernel
+  model is not its current cache implementation.
 - `prepared`: decode the entire sequence once; retain the same production evaluator.
 - `compact-ir`: decode into scalar operation records and interpret two operations.
   This changes both representation and evaluator; its gain cannot be attributed solely
@@ -103,7 +104,8 @@ scalar memory operations; other widths, fallible callbacks and Linux remain gate
 
 ## Upstream sieve comparison
 
-The [sieve results](SIEVE_RESULTS.md) compare **PolkaVM interpreted**, a frozen master
+The [merged-master sieve results](SIEVE_MERGED_RESULTS.md) refresh the earlier
+[sieve results](SIEVE_RESULTS.md). They compare **PolkaVM interpreted**, a frozen master
 interpreter and the prepared-table experiment on identical linked guest bytes. This
 uses PolkaVM's actual `bench-prime-sieve` Rust implementation, rather than a hand-written
 subset of PVM instructions. Its upstream README credits PrimeRust `solution_1`.
@@ -128,8 +130,9 @@ lockfiles, refuses registry versions/checksums outside those lockfiles, and buil
 `--locked --offline`. All copied/generated sources, lockfiles and targets stay under
 `build/pvm-ir-experiment/sieve/`. Existing tools and upstream sources are not patched.
 
-Master defaults to commit `b723f0c1aeaa3b807f062af69004f1fd76352ea5`, frozen from
-`origin/master` for the recorded run. Set `PVM_SIEVE_MASTER` to another local Git ref to
+Master defaults to commit `cdc9dc7a73f61768c09286ac98828240d5e1f9f7`, frozen from
+`origin/master` after the PVM and October 23 Nimony updates. The earlier result page
+retains its original baseline and toolchain identities. Set `PVM_SIEVE_MASTER` to another local Git ref to
 compare a different baseline explicitly. The driver archives its actual sources and
 builds a separate baseline binary, checking that its Nimony pin matches the candidate.
 `make sieve-build` and `make sieve-measure` expose the same two stages separately;

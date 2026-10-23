@@ -20,7 +20,7 @@ from prepare_shared import generate_shared
 from run import BUILD, HERE, ROOT, digest
 
 OUT = BUILD / 'sieve'
-MASTER = 'b723f0c1aeaa3b807f062af69004f1fd76352ea5'
+MASTER = 'cdc9dc7a73f61768c09286ac98828240d5e1f9f7'
 LIMITS = [1000, 10000, 100000, 10000000]
 
 
@@ -105,8 +105,8 @@ def build():
     guest_toolchain = tomllib.loads((upstream / 'guest-programs/rust-toolchain.toml').read_text())['toolchain']['channel']
     host_toolchain = json.loads((ROOT / 'spec/bandersnatch-pins.json').read_text())['rust']
     # Provision exact pins only; neither rustup default nor project pins are changed.
-    command(['rustup', 'toolchain', 'install', guest_toolchain, '--profile', 'minimal', '--component', 'rust-src'], 'guest-toolchain')
-    command(['rustup', 'toolchain', 'install', host_toolchain, '--profile', 'minimal'], 'host-toolchain')
+    command(['rustup', 'toolchain', 'install', guest_toolchain, '--profile', 'minimal', '--component', 'rust-src', '--no-self-update'], 'guest-toolchain')
+    command(['rustup', 'toolchain', 'install', host_toolchain, '--profile', 'minimal', '--no-self-update'], 'host-toolchain')
     guest = OUT / 'guest'
     (guest / 'src').mkdir(parents=True, exist_ok=True)
     original_guest = upstream / 'guest-programs/bench-prime-sieve'

@@ -18,5 +18,6 @@ proc executeSieve*(invocation: SieveInvocation, stepLimit: ExecutionStepLimit,
     gasLimit: GasCycleLimit): StepResult =
   ## Preserve the original execution body with a read-only bound source/program pair.
   var remaining = uint64(stepLimit)
-  var prices = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
-  executeBudget(invocation.source, remaining, gasLimit, prices, invocation.cache)
+  var prices = initBlockChargeCache()
+  var unusedCursor = default(ExecutionCursor) # Preserve the ordinary fresh-invocation validation path.
+  executeBudget(invocation.source, remaining, gasLimit, prices, invocation.cache, unusedCursor, false)

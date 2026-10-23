@@ -71,5 +71,6 @@ proc executeShared*(plan: PreparedProgram, memory: Memory, info: MachineInfo,
   let captured = captureTerminalMachine(table.owner, memory, info)
   if captured.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
   var remaining = uint64(stepLimit)
-  var prices = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
-  executeBudget(captured.value, remaining, gasLimit, prices, plan.cache)
+  var prices = initBlockChargeCache()
+  var unusedCursor = default(ExecutionCursor) # Preserve the ordinary fresh-invocation validation path.
+  executeBudget(captured.value, remaining, gasLimit, prices, plan.cache, unusedCursor, false)

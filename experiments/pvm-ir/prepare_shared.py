@@ -9,16 +9,15 @@ from pathlib import Path
 def generate_shared(root: Path, build: Path):
     """Keep semantic bodies intact, replace cache storage/lookup, and add program-bound entry points."""
     original = (root / 'src/pvm/step.nim').read_text()
-    lines = original.splitlines(keepends=True)
-    matches = [i for i, line in enumerate(lines) if 'InstructionCache = array[16,' in line]
-    assert len(matches) == 1
-    lines[matches[0]] = '''  CacheData = ref object ## Private immutable decoded records and bounded byte-PC index.
+    start = original.index('  InstructionCache = object')
+    end = original.index('  HostCallId*', start)
+    # Replace the complete current cache object, retaining every adjacent semantic type.
+    generated = original[:start] + """  CacheData = ref object ## Private immutable decoded records and bounded byte-PC index.
     owner: Program
     entries: seq[ProgramResult[Instruction]]
     lookup: seq[uint16]
   InstructionCache = nil CacheData ## Default execution paths retain the original decoder fallback.
-'''
-    generated = ''.join(lines)
+""" + original[end:]
     old_import = 'import ./[program, machine, registers, gas]'
     assert generated.count(old_import) == 1
     generated = generated.replace(old_import, 'import std/assertions\nimport ../../src/pvm/[program, machine, registers, gas]')
@@ -37,7 +36,7 @@ def generate_shared(root: Path, build: Path):
 
 ''' + generated[end:]
     # Neither the execution scheduler nor its decoder may mutate a prepared program table.
-    assert generated.count('instructions: var InstructionCache') == 2
+    assert generated.count('instructions: var InstructionCache') == 3
     generated = generated.replace('instructions: var InstructionCache', 'instructions: InstructionCache')
     generated += '\n' + (root / 'experiments/pvm-ir/shared_api.nim.inc').read_text()
     # Copy the response-only host scheduler verbatim, substituting only source/cache binding.

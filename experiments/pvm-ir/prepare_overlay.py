@@ -10,9 +10,9 @@ def generate(root: Path, build: Path):
     """Require exact edit anchors and save the complete generated diff for review."""
     source = root / 'src/pvm/step.nim'
     original = source.read_text()
-    old_type = 'InstructionCache = array[16, ProgramResult[Instruction]]'
-    assert original.count(old_type) == 1
-    generated = original.replace(old_type, 'InstructionCache = seq[ProgramResult[Instruction]]')
+    start = original.index('  InstructionCache = object')
+    end = original.index('  HostCallId*', start)
+    generated = original[:start] + '  InstructionCache = seq[ProgramResult[Instruction]] ## Experiment-only dense immutable byte-PC table.\n' + original[end:]
     old_import = 'import ./[program, machine, registers, gas]'
     assert generated.count(old_import) == 1
     generated = generated.replace(old_import, 'import std/assertions\nimport ../../src/pvm/[program, machine, registers, gas]')
@@ -61,8 +61,9 @@ proc executePrepared*(plan: PreparedExecution, stepLimit: ExecutionStepLimit,
     gasLimit: GasCycleLimit): StepResult =
   ## Reuse the unchanged production execution body, price memo and publication boundary.
   var remaining = uint64(stepLimit)
-  var prices = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
-  executeBudget(plan.source, remaining, gasLimit, prices, plan.instructions)
+  var prices = initBlockChargeCache()
+  var unusedCursor = default(ExecutionCursor) # Keep current master's ordinary source-validation path.
+  executeBudget(plan.source, remaining, gasLimit, prices, plan.instructions, unusedCursor, false)
 
 proc preparedBytes*(plan: PreparedExecution): int =
   ## Dense PC lookup is intentionally simple; operand bytes consume empty slots in this probe.
