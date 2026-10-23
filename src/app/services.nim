@@ -26,6 +26,7 @@ import ./logical_checkpoint_import
 import ./logical_code
 import ../state/code_availability
 import ./full_logical_proof
+import ./paged_logical_proof
 import ./logical_seed
 import ../codec/[state_composition, composite]
 import ./current_logical as collected_logical
@@ -1333,3 +1334,10 @@ proc planFullLogicalProof*(services: Services, source: CurrentLogicalState,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Whole-map enumeration and selector ownership remain excluded until actual managed collection/join.
   full_logical_proof.planFullLogicalProof(source, limits)
+
+proc planLogicalProofPages*(services: Services, source: CurrentLogicalState,
+    fullLimits: FullLogicalProofLimits, pageLimits: LogicalProofPageLimits): LogicalProofPageResult[
+        LogicalProofPages] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Complete original-source traversal and all retained page-plan aliases remain outside managed native graph leases until matching collection/join.
+  paged_logical_proof.planLogicalProofPages(source, fullLimits, pageLimits)

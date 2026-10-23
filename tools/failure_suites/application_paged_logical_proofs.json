@@ -1,0 +1,56 @@
+{
+  "build_name": "application-paged-logical-proofs-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "application_paged_logical_proofs guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "application-paged-logical-proofs-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "application_paged_logical_proofs selected reason",
+      "diagnostic": "outcome.status == QueryFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "application-paged-logical-proofs-reason"
+    },
+    {
+      "arguments": [
+        "full"
+      ],
+      "description": "Selected page full refusal",
+      "diagnostic": "outcome.status == FullFailure",
+      "identity": {
+        "reason": "full"
+      },
+      "name": "application-paged-logical-proofs-full"
+    },
+    {
+      "arguments": [
+        "plan"
+      ],
+      "description": "Selected page plan refusal",
+      "diagnostic": "outcome.status == PlanFailure",
+      "identity": {
+        "reason": "plan"
+      },
+      "name": "application-paged-logical-proofs-plan"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_paged_logical_proofs_results.nim"
+}
