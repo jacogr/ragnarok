@@ -1,0 +1,46 @@
+{
+  "source": "tests/native/storage_light_file_results.nim",
+  "build_name": "storage-light-file-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-light-file-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light file result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-light-file-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light file result failed guard"
+    },
+    {
+      "identity": {
+        "member": "retire",
+        "origin": "unclosed"
+      },
+      "arguments": [
+        "retire",
+        "unclosed"
+      ],
+      "name": "storage-light-file-retire-unclosed",
+      "diagnostic": "owner.data == nil",
+      "description": "Light file retire unclosed guard"
+    }
+  ]
+}
