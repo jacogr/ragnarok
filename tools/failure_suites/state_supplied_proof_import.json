@@ -1,0 +1,63 @@
+{
+  "build_name": "state-supplied-proof-import-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "state_supplied_proof_import guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "state-supplied-proof-import-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "state_supplied_proof_import selected reason",
+      "diagnostic": "outcome.status == RestorationFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-supplied-proof-import-reason"
+    },
+    {
+      "arguments": [
+        "global"
+      ],
+      "description": "Selected supplied proof global refusal",
+      "diagnostic": "outcome.status == GlobalFailure",
+      "identity": {
+        "reason": "global"
+      },
+      "name": "state-supplied-proof-import-global"
+    },
+    {
+      "arguments": [
+        "manifest"
+      ],
+      "description": "Selected supplied proof manifest refusal",
+      "diagnostic": "outcome.status == ManifestFailure",
+      "identity": {
+        "reason": "manifest"
+      },
+      "name": "state-supplied-proof-import-manifest"
+    },
+    {
+      "arguments": [
+        "logical"
+      ],
+      "description": "Selected supplied proof logical refusal",
+      "diagnostic": "outcome.status == LogicalFailure",
+      "identity": {
+        "reason": "logical"
+      },
+      "name": "state-supplied-proof-import-logical"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [],
+  "source": "tests/native/state_supplied_proof_import_results.nim"
+}
