@@ -13,6 +13,7 @@ import ./[handoff, current_handoff, current_block_input]
 import ./candidate
 import ./block_input
 import ./preparation_worker
+import ./[collected_supplied_plan, collected_supplied_state]
 import ./logical_seed
 import ../codec/state_composition
 import ./current_logical as collected_logical
@@ -886,6 +887,17 @@ proc collectPreparation*(services: var Services, ticket: PreparationTicket): Pre
     services.preparing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # Stale/early collection cannot release another active lease.
+
+proc planCollectedSupplied*(services: Services, receipt: PreparationCompletion,
+    limits: CollectedSuppliedLimits): CollectedSuppliedPlanResult[CollectedSuppliedPlan] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Freeze only the genuine collected target while the actual canonical host gate is open.
+  collected_supplied_plan.planCollectedSupplied(services.canonical, receipt, limits)
+proc executeCollectedSupplied*(services: Services, plan: CollectedSuppliedPlan,
+    declarations: openArray[StateService]): CollectedSuppliedResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Recheck frozen prior provenance and complete borrowed successor declarations outside every managed native lease.
+  collected_supplied_state.executeCollectedSupplied(services.canonical, plan, declarations)
 
 proc captureLogicalSeed*(services: Services, declarations: openArray[StateService],
     limits: LogicalSeedLimits): LogicalSeedResult {.requires:
