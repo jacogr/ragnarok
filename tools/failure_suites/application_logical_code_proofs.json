@@ -1,0 +1,78 @@
+{
+  "build_name": "application-logical-code-proofs-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "application_logical_code_proofs guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "application-logical-code-proofs-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "application_logical_code_proofs selected reason",
+      "diagnostic": "outcome.status == QueryFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "application-logical-code-proofs-reason"
+    },
+    {
+      "arguments": [
+        "code"
+      ],
+      "description": "Selected code proof code refusal",
+      "diagnostic": "outcome.status == CodeFailure",
+      "identity": {
+        "reason": "code"
+      },
+      "name": "application-logical-code-proofs-code"
+    },
+    {
+      "arguments": [
+        "key"
+      ],
+      "description": "Selected code proof key refusal",
+      "diagnostic": "outcome.status == KeyFailure",
+      "identity": {
+        "reason": "key"
+      },
+      "name": "application-logical-code-proofs-key"
+    },
+    {
+      "arguments": [
+        "plan"
+      ],
+      "description": "Selected code proof plan refusal",
+      "diagnostic": "outcome.status == PlanFailure",
+      "identity": {
+        "reason": "plan"
+      },
+      "name": "application-logical-code-proofs-plan"
+    },
+    {
+      "arguments": [
+        "preimage"
+      ],
+      "description": "Selected preimage key refusal",
+      "diagnostic": "outcome.status == PreimageKeyFailure",
+      "identity": {
+        "reason": "preimage"
+      },
+      "name": "application-logical-code-proofs-preimage"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_logical_code_proofs_results.nim"
+}

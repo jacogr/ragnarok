@@ -693,6 +693,39 @@
         "reason": "publication-page-plan"
       },
       "name": "application-logical-services-publication-page-plan"
+    },
+    {
+      "arguments": [
+        "preparation-code-proof"
+      ],
+      "description": "Managed host exclusion preparation-code-proof",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-code-proof"
+      },
+      "name": "application-logical-services-preparation-code-proof"
+    },
+    {
+      "arguments": [
+        "proof-code-proof"
+      ],
+      "description": "Managed host exclusion proof-code-proof",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-code-proof"
+      },
+      "name": "application-logical-services-proof-code-proof"
+    },
+    {
+      "arguments": [
+        "publication-code-proof"
+      ],
+      "description": "Managed host exclusion publication-code-proof",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-code-proof"
+      },
+      "name": "application-logical-services-publication-code-proof"
     }
   ],
   "crypto_library": "observer",

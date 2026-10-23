@@ -24,6 +24,7 @@ import ./logical_service_proof
 import ./logical_export
 import ./logical_checkpoint_import
 import ./logical_code
+import ./logical_code_proof
 import ../state/code_availability
 import ./full_logical_proof
 import ./paged_logical_proof
@@ -1341,3 +1342,9 @@ proc planLogicalProofPages*(services: Services, source: CurrentLogicalState,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Complete original-source traversal and all retained page-plan aliases remain outside managed native graph leases until matching collection/join.
   paged_logical_proof.planLogicalProofPages(source, fullLimits, pageLimits)
+
+proc planLogicalCodeProof*(services: Services, source: CurrentLogicalState, service: ServiceIndex,
+    limits: LogicalCodeProofLimits): LogicalCodeProofResult[LogicalCodeProof] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Original current inventory/content and selector aliases remain excluded until actual matching native collection or joined close.
+  logical_code_proof.planLogicalCodeProof(source, service, limits)
