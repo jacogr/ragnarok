@@ -49,6 +49,12 @@ type
     generation: RepositoryGeneration
     valueBytes: uint64
     limits: RepositoryLimits
+  PublicationStage = object ## Privately staged cells preserve codec-before-policy and quota-before-conflict precedence.
+    head: RepositoryData
+    added, touched: seq[StoredRecord]
+    count: int
+    bytes: uint64
+    quotaExceeded, conflict: bool
   RepositoryView* = object ## Owner-bound immutable physical read view with copied scalar metadata.
     data: nil RepositoryData
   NodeRepository* = object ## Copies are independent updateable handles sharing immutable prior data only.
@@ -336,9 +342,34 @@ proc admitPublication[T](repository: var NodeRepository, head: RepositoryData,
   RepositoryResult[RepositoryView](status: RepositoryError.None, completed: RepositoryView(data: data))
 
 
+func storedDigest(record: StoredRecord): StateNodeHash =
+  ## The private staged-publication path exposes only an immutable cell's fixed physical identity.
+  record.digest
+proc acceptPublicationRecord(stage: var PublicationStage, record: var TrieRecord): bool =
+  ## Continue codec hashing after repository refusal; base/generation and quota precedence resolve afterward.
+  let limits = stage.head.limits
+  let old = position(stage.head.table.records, record.digest)
+  if old < 0:
+    if not stage.quotaExceeded:
+      let maximum = high(int) div sizeof(TrieRecord)
+      let full = uint64(stage.count) >= uint64(limits.records) or stage.count >= maximum
+      let payload = uint64(record.payload.len)
+      if full or payload > uint64(limits.valueBytes)-stage.bytes:
+        stage.quotaExceeded = true
+      else:
+        inc stage.count
+        stage.bytes += uint64(record.payload.len) # A successful subtraction check bounded this aggregate.
+  elif not sameRecord(stage.head.table.records[old], record):
+    stage.conflict = true
+  if stage.quotaExceeded or stage.conflict: return true
+  let cell = if old >= 0: stage.head.table.records[old] else: storeDecodedRecord(record)
+  if old < 0:
+    stage.added.add(cell) # Only new decoded owners enter the private merge inventory.
+  stage.touched.add(cell)
+  true
 proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
-    batch: TrieExport, decoded: bool): RepositoryResult[RepositoryView] =
-  ## Private admission always validates the complete graph; only an exact local decoder may supply integrity.
+    batch: TrieExport): RepositoryResult[RepositoryView] =
+  ## Raw mutable transports always require independent integrity and complete graph admission.
   let head = repository.head
   if head == nil: return RepositoryResult[RepositoryView](status: RepositoryError.Uninitialized)
   if expected.data == nil or expected.data != head:
@@ -360,12 +391,10 @@ proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
         return RepositoryResult[RepositoryView](status: RepositoryError.LimitExceeded)
       inc count
       bytes += uint64(record.payload.len) # Subtraction proved aggregate retained bytes fit.
-  if not decoded:
-    # Mutable caller transports never inherit an earlier decode's integrity authority.
-    let validated = validateTrieExport(batch, limits.codec)
-    if validated != RecordError.None:
-      return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
-          recordReason: validated)
+  let validated = validateTrieExport(batch, limits.codec)
+  if validated != RecordError.None:
+    return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
+      recordReason: validated)
   var added = newSeqOfCap[StoredRecord](count-head.table.records.len)
   for record in batch.records:
     let old = position(head.table.records, record.digest)
@@ -381,7 +410,7 @@ proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
 proc publish*(repository: var NodeRepository, expected: RepositoryView,
     batch: TrieExport): RepositoryResult[RepositoryView] =
   ## Verify every mutable raw record and complete target before atomic publication.
-  publishBatch(repository, expected, batch, false)
+  publishBatch(repository, expected, batch)
 
 proc publishEncoded*(repository: var NodeRepository, expected: RepositoryView,
     input: openArray[byte]): RepositoryResult[RepositoryView] =
@@ -391,11 +420,27 @@ proc publishEncoded*(repository: var NodeRepository, expected: RepositoryView,
   if head == nil: return RepositoryResult[RepositoryView](status: RepositoryError.Uninitialized)
   if expected.data == nil or expected.data != head:
     return RepositoryResult[RepositoryView](status: RepositoryError.StaleView)
-  var decoded = decodeTrieExport(input, head.limits.codec)
-  if decoded.error != RecordError.None:
+  let inspected = inspectTrieExport(input, head.limits.codec)
+  if inspected.error != RecordError.None:
     return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
-      recordReason: decoded.error)
-  publishBatch(repository, expected, decoded.takeValue, true)
+      recordReason: inspected.error)
+  let capacity = int(inspected.value.records)
+  var stage = PublicationStage(head: head, added: newSeqOfCap[StoredRecord](capacity),
+    touched: newSeqOfCap[StoredRecord](capacity), count: head.table.records.len,
+    bytes: head.valueBytes, quotaExceeded: false, conflict: false)
+  let delivered = visitTrieExport(input, head.limits.codec, stage, acceptPublicationRecord)
+  if delivered.error != RecordError.None:
+    return RepositoryResult[RepositoryView](status: RepositoryError.InvalidRecords,
+      recordReason: delivered.error)
+  let info = delivered.value
+  if array[32, byte](info.base) != array[32, byte](head.commitment.root):
+    return RepositoryResult[RepositoryView](status: RepositoryError.BaseMismatch)
+  if uint64(head.generation) == high(uint64):
+    return RepositoryResult[RepositoryView](status: RepositoryError.GenerationExhausted)
+  if stage.quotaExceeded: return RepositoryResult[RepositoryView](
+      status: RepositoryError.LimitExceeded)
+  if stage.conflict: return RepositoryResult[RepositoryView](status: RepositoryError.RecordConflict)
+  admitPublication(repository, head, info, stage.count, stage.bytes, stage.added, stage.touched, storedDigest)
 
 proc collectStateEntries(view: RepositoryView, expected: StateRoot,
     limits: StateTrieLimits, selected: bool): RepositoryResult[seq[StateEntry]] =
