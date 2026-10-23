@@ -134,10 +134,51 @@ proc realControl() =
   reset(0)
   assert decodeTrieExport(encoded, limits).error == RecordError.None and calls() == 3
 
+proc selectedIntegrity() =
+  ## Sparse duplicate groups may narrow identity comparison, never integrity checks on the remaining records.
+  var entries = newSeq[StateEntry](32)
+  for index in 0..<entries.len:
+    var key = default(array[31, byte])
+    key[0] = byte(index)
+    entries[index] = StateEntry(key: StateKey(key))
+  let trie = newFullStateTrie(entries, FullStateTrieLimits(trie: policy().trie)).value
+  let source = exportFullTrie(trie, policy().records).value
+  var input = source
+  let selected = input.records.len div 2
+  let first = array[32, byte](input.records[0].digest)
+  var changed = array[32, byte](input.records[selected].digest)
+  for octet in 0..<8: changed[octet] = first[octet]
+  assert changed != first # Distinct full hashes must not be rejected merely because their compact keys collide.
+  input.records[selected].digest = StateNodeHash(changed)
+  var pairs = 0
+  for index in 0..<input.records.len:
+    for prior in 0..<index:
+      let a = array[32, byte](input.records[index].digest)
+      let b = array[32, byte](input.records[prior].digest)
+      var equal = true
+      for octet in 0..<8:
+        if a[octet] != b[octet]: equal = false
+      if equal: inc pairs
+  assert pairs == 1 and selected > 2 # This fixed real fixture necessarily chooses one sparse two-record group.
+  var encoded = encodeTrieExport(source, policy()).value
+  var offset = TrieExportHeaderBytes
+  for index in 0..<selected:
+    offset += (if source.records[index].kind == TrieRecordKind.Leaf: 72 else: 97)
+  for octet in 0..<8: encoded[offset+1+octet] = first[octet]
+  reset(1)
+  assert inspectTrieExport(encoded, policy()).error == RecordError.None and calls() == 0
+  reset(0)
+  assert encodeTrieExport(input, policy()).error == RecordError.HashMismatch
+  assert calls() == selected+1 # Every valid nonselected record before the altered identity must still be hashed.
+  reset(0)
+  assert decodeTrieExport(encoded, policy()).error == RecordError.HashMismatch
+  assert calls() == selected+1
+
 for mode in 0..<6:
   for count in [0, 1, 2, 15, 16, 17, 63, 64, 65, 127, 128, 129, 257]:
     for duplicate in [false, true]: exercise(count, mode, duplicate)
 realControl()
+selectedIntegrity()
 for warmup in 0..<10: exercise(3, 2, true)
 let before = getOccupiedMem()
 for iteration in 0..<1000:
