@@ -293,3 +293,8 @@ Light snapshot decoding preflights the complete image and checksum, then verifie
 proof at a time through a synchronous canonical reader into a private final cache.
 The reader is never retained and a failed suffix exposes no partial cache. See the
 [streaming verification and memory contract](../../spec/storage-light-streaming.md).
+
+Light file initialization and replacement borrow `encodedBytes` for the existing
+synchronous writer, avoiding a temporary full-image copy. This owner-bound read-only
+view rejects mutation and escaping a local owner; mutable extraction and `.bytes`
+remain independent copies. See [publication memory and IO evidence](../../spec/storage-light-publication-memory.md).

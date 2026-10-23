@@ -33,6 +33,7 @@ proc main() =
     of "limits": echo uint64(selected.limits.bytes)
     of "cache": echo selected.cache.len
     of "checksum": echo array[32, byte](selected.checksum)[0]
+    of "borrowed": echo selected.encodedBytes[0]
     of "bytes": echo selected.bytes.len
     of "length": echo selected.byteLength
     else: assert false, "unknown light snapshot probe"
