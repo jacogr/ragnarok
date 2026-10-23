@@ -80,6 +80,12 @@ type
     memory: Memory
     info: MachineInfo
 
+  WorkingMemory = object ## Short segments use immutable stores; longer private runs stage scalar writes until the next observation.
+    current: Memory
+    writer: nil ScalarMemoryWriter
+    stores: byte
+    buffered: bool
+
 type
   HostResultKind* {.pure.} = enum ## Callback selection is independent of the caller's enum: no numeric reason implies success.
     Uninitialized, Response, Failure
@@ -244,9 +250,49 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
 func memoryOpcode(opcode: byte): bool =
   opcode in {30'u8..33'u8, 52'u8..62'u8, 70'u8..73'u8, 120'u8..130'u8}
 
+func initWorkingMemory(memory: Memory, buffered: bool): WorkingMemory =
+  ## No mutable builder or vector allocates before enough successful stores justify a private epoch.
+  WorkingMemory(current: memory, writer: nil, stores: 0, buffered: buffered)
+
+proc loadWorking(memory: WorkingMemory, address: MemoryAddress, width: AccessWidth): MachineResult[
+    RegisterValue] {.inline.} =
+  ## Loads observe the latest staged bytes when active, otherwise the current immutable snapshot.
+  if memory.writer != nil: load(memory.writer, address, width)
+  else: load(memory.current, address, width)
+
+proc storeWorking(memory: var WorkingMemory, address: MemoryAddress, width: AccessWidth,
+    value: RegisterValue, failedPage: var PageAddress): MachineError =
+  ## Retain the direct path for the first three stores; staging begins on the fourth successful write in this segment.
+  if memory.writer != nil:
+    let written = store(memory.writer, address, width, value)
+    if written.error == MachineError.Fault: failedPage = written.faultPage
+    return written.error
+  if memory.buffered and memory.stores == 3:
+    let created = newScalarMemoryWriter(memory.current)
+    if created.error != MachineError.None: return created.error
+    let written = store(created.value, address, width, value)
+    if written.error == MachineError.Fault: failedPage = written.faultPage
+    if written.error == MachineError.None:
+      memory.writer = created.value # A refused activation keeps the last immutable successful prefix untouched.
+    return written.error
+  let written = store(memory.current, address, width, value)
+  if written.error == MachineError.Fault: failedPage = written.faultPage
+  if written.error == MachineError.None:
+    memory.current = written.value
+    if memory.stores < 3: inc memory.stores # Saturation is bounded; no guest-length counter can wrap.
+  written.error
+
+proc finishWorking(memory: var WorkingMemory): MachineError =
+  ## Observable exits seal the active epoch once; local refusals discard it without publishing private progress.
+  if memory.writer != nil:
+    let frozen = snapshotMemory(memory.writer)
+    if frozen.error != MachineError.None: return frozen.error
+    memory.current = frozen.value
+  MachineError.None
+
 # Apply one memory instruction to tentative copied state only after gas affordability is established.
 # Failed preflight leaves registers and memory untouched; faultPage is meaningful only on Fault.
-proc memoryMutation(item: Instruction, info: var MachineInfo, memory: var Memory,
+proc memoryMutation(item: Instruction, info: var MachineInfo, memory: var WorkingMemory,
     failedPage: var PageAddress): MachineError =
   let op = item.opcode
   let loading = op in {52'u8..58'u8, 124'u8..130'u8}
@@ -283,7 +329,7 @@ proc memoryMutation(item: Instruction, info: var MachineInfo, memory: var Memory
   let address = MemoryAddress((base and 0xffffffff'u64) + (offset and 0xffffffff'u64))
   if loading:
     # Preflight includes all bytes before a value or destination-register mutation becomes visible.
-    let read = load(memory, address, AccessWidth(byte(width)))
+    let read = loadWorking(memory, address, AccessWidth(byte(width)))
     if read.error == MachineError.Fault:
       # Propagate the physical page reason without selecting a failed value.
       failedPage = read.faultPage
@@ -297,13 +343,9 @@ proc memoryMutation(item: Instruction, info: var MachineInfo, memory: var Memory
         value = value or (high(uint64) shl bits)
     info.registers[int(byte(item.a))] = RegisterValue(value)
   else:
-    # The scalar store preflights the entire access and publishes an independent immutable owner.
-    let written = store(memory, address, AccessWidth(byte(width)), RegisterValue(stored))
-    if written.error == MachineError.Fault:
-      # A failed cross-page store carries only its first failing page; no prefix bytes escape.
-      failedPage = written.faultPage
-    if written.error != MachineError.None: return written.error
-    memory = written.value
+    # Scalar stores preflight the complete access before changing direct snapshots or private staged bytes.
+    let written = storeWorking(memory, address, AccessWidth(byte(width)), RegisterValue(stored), failedPage)
+    if written != MachineError.None: return written # Complete scalar preflight preserves prior staged writes on every refusal.
   # All memory instructions are nonterminating; validated blobs guarantee a following instruction.
   info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
   MachineError.None
@@ -423,8 +465,8 @@ proc controlMutation(program: Program, item: Instruction,
     info.blockCharged = false
   outcome
 
-# Mutate only invocation-owned CPU values and an immutable memory handle; no per-instruction machine root is allocated.
-proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Memory,
+# Mutate only invocation-owned CPU values and a checked private memory workspace; observable exits publish immutable roots.
+proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var WorkingMemory,
     limit: GasCycleLimit, control, memoryAccess, hostCalls: bool, cache: var BlockChargeCache,
     decoded: ProgramResult[Instruction]): InstructionEvaluation =
   if uint64(info.gasDeficit) != 0:
@@ -477,7 +519,6 @@ proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Me
       # A captured valid PC must have a valid containing block.
       return InstructionEvaluation(status: StepError.InvalidMachine)
   var outcome = StepExit.Continued
-  var changedMemory = memory
   var failedPage = PageAddress(0)
   if registerOnlyOpcode(item.opcode):
     # Register-only execution retains its existing scope and copied-register semantics.
@@ -489,7 +530,7 @@ proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Me
     info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
   elif memoryOpcode(item.opcode):
     # Memory exceptions retain the charged gas/flag but never publish partial CPU or memory writes.
-    case memoryMutation(item, info, changedMemory, failedPage)
+    case memoryMutation(item, info, memory, failedPage)
     of MachineError.None:
       # A complete load/store has already updated only its specified state fields.
       discard
@@ -515,7 +556,7 @@ proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Me
   if outcome notin {StepExit.Panic, StepExit.Halt} and
       instructionOpcode(program, info.pc).error != ProgramError.None:
     return InstructionEvaluation(status: StepError.InvalidMachine) # Preserve executable-successor validation before the next attempt, including final-slot host calls.
-  memory = changedMemory # Only immutable page owners pass between private iterations; published source memory never mutates.
+  # The workspace owns staged writes; published source/exit snapshots never expose its mutable storage.
   if outcome == StepExit.Fault:
     return InstructionEvaluation(status: StepError.None,
         effect: InstructionEffect(kind: StepExit.Fault, failedPage: failedPage))
@@ -545,6 +586,12 @@ proc publishInstruction(program: Program, memory: Memory, info: MachineInfo,
     return StepResult(status: StepError.None,
         completed: StepOutcome(kind: effect.kind, machine: updated.value)) # Ordinary outcomes never inherit metadata from a prior instruction.
 
+proc publishInstruction(program: Program, memory: var WorkingMemory, info: MachineInfo,
+    effect: InstructionEffect, terminal: bool): StepResult =
+  ## Freeze only actual observations; the immutable publisher still validates program/memory/CPU construction.
+  if finishWorking(memory) != MachineError.None: return StepResult(status: StepError.InvalidMachine)
+  publishInstruction(program, memory.current, info, effect, terminal)
+
 proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
     hostCalls: bool, cache: var BlockChargeCache, decoded: ProgramResult[Instruction]): StepResult =
   ## Single-step APIs retain their exact immutable-snapshot boundary and capability/refusal semantics.
@@ -554,7 +601,7 @@ proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
   if captured.error != MachineError.None or owner.error != MachineError.None or
       originalMemory.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
   var info = captured.value
-  var memory = originalMemory.value
+  var memory = initWorkingMemory(originalMemory.value, false)
   let evaluated = evaluateInstruction(owner.value, info, memory, limit, control, memoryAccess,
       hostCalls, cache, decoded)
   if evaluated.status != StepError.None: return StepResult(status: evaluated.status)
@@ -612,12 +659,12 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
         cursor: var ExecutionCursor, resumed: bool): StepResult =
   var program = default(Program)
   var info = default(MachineInfo)
-  var memory = default(Memory)
+  var memory = initWorkingMemory(default(Memory), true)
   if resumed:
     # Only this invocation's validated host cursor can seed a continuation; no public mode exposes mutable state.
     program = cursor.program
     info = cursor.info
-    memory = cursor.memory
+    memory.current = cursor.memory
   else:
     let original = machineInfo(source)
     let owner = programOf(source)
@@ -631,7 +678,7 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
       return StepResult(status: StepError.InvalidMachine)
     program = owner.value
     info = original.value
-    memory = originalMemory.value
+    memory.current = originalMemory.value
   # CPU values are local to this invocation; immutable memory updates cannot mutate retained source snapshots.
   while remaining > 0:
     dec remaining # Each attempted instruction consumes exactly one local step, including invalid entry and every exit.
@@ -652,10 +699,11 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
         # OutOfGas exits before mutation, failed memory preflight writes nothing, and Host changes only PC.
         # Preserve posterior gas/charged state without copying or rolling back the complete register file.
         info.pc = causingPc
-      if resumed and effect.kind == StepExit.Host:
+      let published = publishInstruction(program, memory, info, effect, true)
+      if resumed and effect.kind == StepExit.Host and published.error == StepError.None:
         cursor.info = info
-        cursor.memory = memory # Publish a callback snapshot below, while retaining CPU values for its checked response.
-      return publishInstruction(program, memory, info, effect, true)
+        cursor.memory = memory.current # The checked response resumes from the actual frozen callback memory.
+      return published
   StepResult(status: StepError.StepLimitExceeded) # Bounded exhaustion grants no machine or resumable prefix.
 
 proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycleLimit): StepResult =

@@ -338,3 +338,36 @@ all-state validation and local noise/no-isolation limits apply; no Linux, compil
 deterministic-counter or whole-client throughput claim follows. Fuzzing remains
 deferred. Further work should address profiled allocation/copying costs and broader
 representative instruction/memory working sets.
+
+
+## Adaptive scalar working memory, 2026-10-23
+
+Repeated scalar stores previously cloned a page-vector/header/chunk successor on
+every instruction. Bounded execution now activates private write epochs after three
+successful direct stores, clones each touched chunk once, and freezes only actual
+observable exits. Public snapshots and callback-retained roots remain immutable.
+A sampled allocation/copying hotspot motivated this change; no checks, input bytes,
+expected results or compiler flags were weakened.
+
+Opposite-order preserved-binary comparisons retain twenty validated samples per
+variant. Final confirmation against the published host cursor gives:
+
+| Fixed guest | Host cursor (µs) | Working memory (µs) | Less execution time |
+| --- | ---: | ---: | ---: |
+| Arithmetic, 10000 iterations | 488.96 | 519.92 | 6.3% slower |
+| Memory aligned, 1000 iterations | 155.94 | 105.62 | 32.3% |
+| Memory crossing, 1000 iterations | 192.52 | 110.92 | 42.4% |
+| Host/memory aligned, 1000 iterations | 232.69 | 235.81 | No established change |
+| Host/memory crossing, 1000 iterations | 268.81 | 264.08 | No established change |
+
+The preliminary comparison showed 31.3–40.7% memory savings, arithmetic 3.7% slower
+and host differences within a few percent. Arithmetic regression is an explicit
+tradeoff of this integrated form, not an arithmetic speedup. Further register and
+instruction work must address it. The full pinned interpreted comparison validates
+all five guests, with provisional ratios roughly 2.6–6.0× on this run. Several rows
+are marked noisy; every outlier remains in the report. Evidence is retained under
+`build/pvm9/working-memory`, `working-memory-final` and `working-memory-confirm`.
+The same local macOS shared-host/no-isolation limits apply. Preparation remains
+outside execution timing. No deterministic-counter, Linux, compiled or whole-client
+throughput claim follows, and fuzzing remains deferred. M1 framing completion and
+remaining full STF/JAM parity are unchanged.

@@ -60,6 +60,11 @@ type
     limit: PageLimit
   Memory* = object ## A default handle is invalid; captureMemory([], ...) creates valid empty memory.
     data: nil MemoryData
+  ScalarMemoryWriter* = ref object ## Mutable scalar-write identity; copied handles share progress, while snapshotMemory publishes immutable epochs.
+    base: Memory
+    pages: seq[PageData]
+    dirty: seq[byte]
+    active: bool
   MachineInfo* = object ## Copied CPU state has no pointer into registers or mutable backing storage.
     pc*: CodeAddress
     gas*: MachineGas
@@ -505,6 +510,86 @@ proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
     copied += count
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+
+proc newScalarMemoryWriter*(memory: Memory): MachineResult[ScalarMemoryWriter] =
+  ## Retain a genuine immutable base; working vectors/chunks allocate only after a complete successful scalar preflight.
+  if memory.data == nil: return MachineResult[ScalarMemoryWriter](status: MachineError.InvalidOwner)
+  MachineResult[ScalarMemoryWriter](status: MachineError.None, completed:
+    ScalarMemoryWriter(base: memory, pages: @[], dirty: @[], active: false))
+
+proc prepareWriterSpan(writer: ScalarMemoryWriter, slot, offset, count: int) =
+  ## The validated nonempty page interval clones each header/chunk only on its first write in this private epoch.
+  let first = offset div 512
+  let last = (offset+count-1) div 512
+  for chunk in first..last:
+    let mask = 1'u8 shl chunk
+    if (writer.dirty[slot] and mask) == 0:
+      if writer.dirty[slot] == 0:
+        writer.pages[slot] = pageWithAccess(writer.pages[slot], writer.pages[
+            slot].access) # Shared headers stay immutable.
+      writer.pages[slot].chunks[chunk] = PageChunk(bytes: writer.pages[slot].chunks[chunk].bytes)
+      writer.dirty[slot] = writer.dirty[slot] or mask
+
+func writerByte(writer: ScalarMemoryWriter, source: MemoryData, slot,
+    offset: int): byte {.inline.} =
+  ## Observe the current private epoch or its immutable base without copying a vector or exporting a page reference.
+  if writer.active: pageByte(writer.pages[slot], offset)
+  else: pageByte(source.pages[slot], offset)
+
+proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
+    width: AccessWidth): MachineResult[RegisterValue] =
+  ## Read the writer's latest scalar state; nil/default-invalid builders never imply a zero-filled address space.
+  if writer == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
+  let source = writer.base.data
+  if source == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
+  let checked = scalarSpan(writer.base, address, width, false)
+  if checked.error != MachineError.None: return failure[RegisterValue, ScalarSpan](checked)
+  let span = checked.value
+  var value = 0'u64
+  for index in 0..<span.firstCount:
+    value = value or (uint64(writerByte(writer, source, span.first, span.offset+index)) shl (8*index))
+  for index in span.firstCount..<span.count:
+    value = value or (uint64(writerByte(writer, source, span.last, index-span.firstCount)) shl (8*index))
+  MachineResult[RegisterValue](status: MachineError.None, completed: RegisterValue(value))
+
+proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: AccessWidth,
+    value: RegisterValue): MachineResult[bool] =
+  ## Commit one atomic private scalar write; failures preserve all previous successful writes and expose only their reason.
+  if writer == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+  let source = writer.base.data
+  if source == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+  let checked = scalarSpan(writer.base, address, width, true)
+  if checked.error != MachineError.None: return failure[bool, ScalarSpan](checked)
+  if not writer.active:
+    # Page count and vector extent already belong to the admitted base; no write can insert pages or change permissions.
+    writer.pages = newSeqOfCap[PageData](source.pages.len)
+    writer.dirty = newSeq[byte](source.pages.len)
+    for page in source.pages: writer.pages.add(page)
+    writer.active = true
+  let span = checked.value
+  prepareWriterSpan(writer, span.first, span.offset, span.firstCount)
+  if span.firstCount < span.count:
+    prepareWriterSpan(writer, span.last, 0, span.count-span.firstCount)
+  for index in 0..<span.firstCount:
+    setPageByte(writer.pages[span.first], span.offset+index, byte((uint64(value) shr (8*index)) and 255))
+  for index in span.firstCount..<span.count:
+    setPageByte(writer.pages[span.last], index-span.firstCount, byte((uint64(value) shr (
+        8*index)) and 255))
+  MachineResult[bool](status: MachineError.None, completed: true)
+
+proc snapshotMemory*(writer: nil ScalarMemoryWriter): MachineResult[Memory] =
+  ## Seal the current epoch by transferring its private vector; all writer aliases resume from this immutable owner on later writes.
+  if writer == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+  let source = writer.base.data
+  if source == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
+  if not writer.active:
+    return MachineResult[Memory](status: MachineError.None,
+        completed: writer.base) # No new write means no new snapshot allocation.
+  let frozen = Memory(data: MemoryData(pages: move(writer.pages), limit: source.limit))
+  writer.base = frozen
+  writer.dirty = @[]
+  writer.active = false # No mutable chunk/vector alias survives the transfer; future stores clone a new epoch.
+  MachineResult[Memory](status: MachineError.None, completed: frozen)
 
 proc captureMachine*(program: Program, memory: Memory, info: MachineInfo): MachineResult[Machine] =
   ## Capture a validated entry location and copied CPU values; this is not standard JAM initialization.

@@ -184,3 +184,26 @@ heap mapping, initialization and execution/host suites pass with their ARC evide
 Compiler probes keep chunk cloning and byte mutation private. The
 [benchmark record](pvm-benchmark-comparison.md) reports broad execution improvements,
 preparation boundaries and remaining interpreted performance gaps.
+
+
+## Scalar write epochs, 2026-10-23
+
+`newScalarMemoryWriter` creates an explicitly mutable reference identity from a valid
+immutable memory owner. Copied writer handles share progress. Checked scalar `load`
+and `store` preserve the existing width/address/permission/fault precedence rules;
+a failed store preserves all previous successful writes. Page mappings, permissions
+and page budgets remain fixed throughout an epoch. Missing/nil owners return
+`InvalidOwner`, and failed/default results expose only their reason.
+
+The first successful write allocates a private page vector and one dirty byte per
+admitted page. Each touched header and 512-byte chunk clones only once in that epoch.
+`snapshotMemory` transfers the private vector into an immutable memory owner, retires
+the dirty map and resets all writer aliases to that immutable base. Later writes
+start a fresh copy-on-write epoch. An unchanged epoch returns its existing owner.
+No page/chunk/vector reference escapes, and the ownership graph remains acyclic.
+The builder is mutable caller state and requires exclusive access during calls.
+
+The scalar-writer suite checks all scalar widths across chunk/page boundaries,
+retained source and multiple published generations, shared writer identity,
+refused cross-page writes and invalid owners. A thousand complete ownership cycles
+return to baseline. Compiler probes keep mutation helpers and page storage private.
