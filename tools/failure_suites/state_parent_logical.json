@@ -1,0 +1,77 @@
+{
+  "build_name": "state-parent-logical-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard parent logical default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-parent-logical-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard parent logical invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-parent-logical-invalid"
+    },
+    {
+      "arguments": [
+        "manifest"
+      ],
+      "description": "Guard parent logical manifest",
+      "diagnostic": "outcome.status == ManifestFailure",
+      "identity": {
+        "reason": "manifest"
+      },
+      "name": "state-parent-logical-manifest"
+    },
+    {
+      "arguments": [
+        "logical"
+      ],
+      "description": "Guard parent logical logical",
+      "diagnostic": "outcome.status == LogicalFailure",
+      "identity": {
+        "reason": "logical"
+      },
+      "name": "state-parent-logical-logical"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Guard parent logical source",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source"
+      },
+      "name": "state-parent-logical-source"
+    },
+    {
+      "arguments": [
+        "inventory"
+      ],
+      "description": "Guard parent logical inventory",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "inventory"
+      },
+      "name": "state-parent-logical-inventory"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_parent_logical_results.nim"
+}
