@@ -23,3 +23,13 @@ supplied target exactly matches actual execution. No mutation provenance or pare
 asserted. Stale, malformed, resource and backend refusals expose no successful prefix. Qualification
 never installs the candidate. Native tests cover source binding, caller tampering, limits, backend
 failure and 1,000 ARC cycles.
+
+## Managed host consumption
+
+Services exposes both frozen planning and supplied execution under the same preparation/proof/
+publication exclusion used by canonical getters. Actual receipt collection precedes either call.
+The frozen source must still be installable at execution, so adoption between plan and execution
+returns StaleUpdate. Retained logical state and detached declaration copies survive joined Services
+shutdown; qualification itself never publishes. The managed native suite verifies actual physical
+startup, collection, full supplied matching, separate adoption, stale planning/execution and detached
+copies after shutdown. CLI activation and producer-owned logical exports are separate contracts.
