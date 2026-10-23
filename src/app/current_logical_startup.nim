@@ -12,6 +12,7 @@ import ../state/[parent_profile, parent_globals, parent_logical, global_snapshot
 
 const CurrentLogicalSourceBytes* = 65536 ## Startup transport cap is independent of retained declarations and decoded payload policies.
 const CurrentLogicalSourceHeader* = "ragnarok-current-logical-source-v1" ## Shared existing v1 identity-only transport header; export and parser accept one representation.
+const CurrentLogicalSourceKeyBytes* = 4096 ## Shared v1 raw-identity syntax ceiling also bounds canonical export.
 const CurrentLogicalSourceLines* = 4096 ## Fixed syntax cap bounds duplicate-service preflight and native ordinal conversions.
 type
   CurrentLogicalStartupLimits* = object ## Every actual-source projection, full parent qualification and later continuation policy is explicit.
@@ -171,8 +172,8 @@ proc decodeCurrentLogicalDeclarations*(text: string,
         if kind == 'p' and digits != 64: return fail[Output](CurrentLogicalStartupError.InvalidHex)
         if digits mod 2 != 0: return fail[Output](CurrentLogicalStartupError.InvalidHex)
         let bytes = digits div 2
-        if bytes > 4096 or uint64(bytes) > uint64(limits.perValue): return fail[Output](
-            CurrentLogicalStartupError.LimitExceeded)
+        if bytes > CurrentLogicalSourceKeyBytes or uint64(bytes) > uint64(
+            limits.perValue): return fail[Output](CurrentLogicalStartupError.LimitExceeded)
         var hash = default(array[32, byte])
         if kind == 'k':
           if uint64(bytes) > remaining: return fail[Output](
@@ -303,7 +304,7 @@ proc captureCurrentLogicalStartup*(view: ChainView, declarations: CurrentLogical
           case child.kind
           of DeclarationKind.Storage, DeclarationKind.Preimage:
             let derived = if child.kind == DeclarationKind.Storage: serviceStorageKey(row.service,
-                child.key, ByteLimit(4096))
+                child.key, ByteLimit(CurrentLogicalSourceKeyBytes))
               else: servicePreimageKey(row.service, child.hash, ByteLimit(32))
             if derived.error != ServiceValueError.None:
               return CurrentLogicalStartupResult[Output](
