@@ -93,3 +93,33 @@ resume RPC before the host finishes. The witness reaches joined uncertain refusa
 resumed and no installation. Exact receipt/context validation, canonical/RPC history and
 operation-specific maintenance payloads remain native checks; the model treats their
 confirmation result as an abstract success/refusal input. Host completion steps are serialized.
+
+## Checkpoint dispatch, retry and shutdown journal
+
+`application_checkpoint_lifecycle.nif` maps `ApplicationCheckpointWorker.stage`,
+`stageVerification`, `begin`, `cancel`, `run`, `collect` and `close`. Staged work owns
+capacity but has not dispatched; Running may enter I/O; Executing must retire before Done.
+Unlike preparation cancellation, checkpoint cancellation is staged-only. Completed Publish
+and Verify receipts preserve both operation kind and actual success/failure through collection
+or joined close. Mutants cancel after dispatch, erase joined completion or report verification
+as publication. The witness reaches a failed verification retained through joined close. The
+state checkpoint worker shares the dispatch/cancellation/join pattern, but its extra operations
+and retry semantics are not inferred from the application worker. Native file error/crash tests
+cover actual filesystem behavior; the model assumes the synchronous operation returns.
+
+`state_checkpoint_retry.nif` focuses on `CheckpointWorker.retry`, `begin`, `peek`,
+`matches` and `collect`, assuming a valid Advance request, ready expected head and available
+generation. Only an exact StaleHead refusal permits the sole retained buffer to be restaged;
+success and uncertain I/O require collection/reconciliation. Retry grants fresh ticket authority
+and still requires explicit dispatch. Mutants retry uncertainty, retry success or let an old
+ticket collect the retried slot. The witness reaches explicit retry followed by successful
+collection. Generation tags represent two distinct nonwrapping admissions, not uint64 exhaustion;
+wrong-owner tickets, other request kinds and real head validation remain native checks.
+
+`application_checkpoint_session.nif` checks the host-only journal around worker close.
+`ApplicationCheckpointSession.close` retains operation completion independently of retirement
+refusal; repeated close and observation preserve the journal. `start` refuses unacknowledged
+shutdown state and `takeShutdown` explicitly releases the gate. Mutants erase repeated-close
+evidence, restart before acknowledgement or forget retirement-only errors. The witness retains
+both a completed operation and a retirement error. Worker shutdown outcomes are abstract inputs
+here, including Interrupted; the model does not manufacture a process-failure execution path.
