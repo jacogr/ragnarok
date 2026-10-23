@@ -19,7 +19,7 @@ import signal
 import time
 from native_checks import NativeChecks, ROOT
 from native_fixture_contracts import FIXTURE_CONTRACTS
-from native_source_identity import source_identity
+from runtime_provenance import discover_project_sources
 from setup_nimony import installed
 
 BUILD = ROOT/'build/tests/pvm-program-fuzz'
@@ -27,6 +27,13 @@ SOURCE = ROOT/'tests/fuzz/pvm_program_fuzzer.nim'
 DRIVER = ROOT/'tests/fuzz/fuzz_driver.c'
 HEADER = ROOT/'tests/fuzz/fuzz_driver.h'
 MAX_INPUT = 1024
+
+
+
+def source_hashes():
+    """Retain current project input bytes as evidence without changing the compiler cache profile."""
+    return {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(discover_project_sources(ROOT))}
 
 
 def run_count(value):
@@ -135,10 +142,11 @@ def run():
         environment.update(ASAN_OPTIONS='abort_on_error=1:detect_leaks=0', UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1')
         # No useMalloc/private runtime hook is available on the pinned native allocator; retain its checks and document sanitizer granularity honestly.
         instrumentation = ('-g', '-fno-omit-frame-pointer', '-fno-sanitize-recover=all', '-fsanitize=fuzzer-no-link,address,undefined', '-I'+str(HEADER.parent))
-        sources = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in [SOURCE, DRIVER, HEADER, ROOT/'tests/fuzz/pvm_program_target.nim', Path(__file__).resolve(), ROOT/'tools/native_checks.py']}
-        identity = dict(source=source_identity(ROOT, SOURCE), files=sources, compiler=str(compiler), clang=str(clang), clang_version=version,
-                        runtime=str(runtime), runtime_sha256=hashlib.sha256(runtime.read_bytes()).hexdigest(), flags=instrumentation)
-        epoch = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:16]
+        profile = dict(compiler=str(compiler), clang=str(clang), clang_version=version,
+                       runtime=str(runtime), runtime_sha256=hashlib.sha256(runtime.read_bytes()).hexdigest(), flags=instrumentation)
+        identity = dict(files=source_hashes(), **profile)
+        # Keep source provenance separate; the pinned compiler invalidates imports in this stable tool/flag profile.
+        epoch = hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()[:16]
         folder = BUILD/('build-'+epoch)
         folder.mkdir(exist_ok=True)
         checks = NativeChecks(folder, lto=False)

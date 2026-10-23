@@ -449,3 +449,50 @@ loader environment overrides. Inventory and diff checks passed. This is local ma
 qualification, not Linux packaging/runtime execution or an uploaded release. No remote CI run
 was requested. Raw evidence is under ignored `build/ci/nimony-state-style-*`; the package's own
 relocation/smoke log is `build/ci/binary-package.log`. Nightly pin and #2737 hold remain unchanged.
+
+
+## Logical PVM downloads, invocation caches and decoder fuzzing
+
+Merge master `9eb56ba732605831ff6b87a343d62cc6b61330c9` normally (merge `91d3a131`),
+covering eight PVM merges. Preserve explicit logical startup policy/source files, authenticated
+session retention and admission before enqueue, plus private invocation cursors and bounded decoded
+instruction caches. The new interpreter implementation remains byte-identical to master. Keep
+compiler/browser pin `8cb7a690a` and the sequence-element copy-hook hold for #2737 unchanged.
+
+The new startup declaration owner hits the known retained-ref iteration restriction in two loops.
+Use indexed traversal for both, preserving order, row values, independent quotas and typed refusals.
+This is the only new production compatibility adaptation. It resolves four affected module
+failures; all modules and the nine exact compiler rejections were then checked successfully.
+Of 72 incoming files, 68 remain byte-identical to master. Differences are this startup adaptation,
+the fuzz tool/test below and the earlier native cache-epoch removal merged with the new explicit
+fuzzer link flags/compiler environment arguments.
+
+The new fuzz tool imported the retired `native_source_identity` helper. Replace that dependency
+with existing project-input discovery and fresh per-file hashes for evidence. Keep these hashes
+separate from the stable tool/runtime/flag build profile, relying on the pinned compiler's normal
+source invalidation rather than restoring whole-source cache epochs. A focused test verifies that
+source mutations update the provenance map. Frozen seed checksums, coverage completion, fatal
+assertions, fresh artifacts, independent replay, subprocess retirement and sanitizer limits remain
+unchanged. No compiler/runtime patch or relaxed fuzz property is introduced.
+
+All 383 production modules, 103 affected Python tooling/cache/Make/CI tests, nine incoming compiler
+rejections and 22 selected native suites passed. The native selection covers all 11 changed suites,
+affected step/memory/host/inner/computed/assured/continuation execution, command/loop consumers,
+and separate app-options/current-policy controls. It includes actual logical startup across memory,
+journal and managed layouts, repeated children, strict restart, identity/permission refusals and
+retained-owner checks. All ten changed production modules passed Linux x86-64 semantic checks.
+Pinned formatting of 36 incoming Nim inputs, inventory and diff checks passed.
+
+The maintained checked ARC/Clang address/undefined/coverage fuzz target completed 10,000 inputs,
+with 246 coverage counters and 461 features. Its assertion control failed as required, created a
+fresh exact artifact and passed independent ordinary replay; frozen seeds also replayed correctly.
+Use the existing sanitizer scope: default Nimony allocation is preserved, so fine-grained Nim heap
+chunk/leak coverage is not claimed. The result receipt is copied under this increment's evidence.
+All 24 selected actual current-download executable cases and the complete canonical checked
+ARC/Clang/ThinLTO integration/offload build passed.
+
+Runtime results apply to macOS ARM64; Linux checks are semantic only. No new PVM timing comparison,
+full E2E, Linux runtime or exhaustive fuzz-coverage claim is made. Raw evidence is under ignored
+`build/ci/nimony-pvm-logical-*`; the original campaign and artifact/replay logs remain under
+`build/tests/pvm-program-fuzz/`. Next remains a published nightly containing #2737, rechecking
+retained workaround probes, and drafting still-needed minimal reports for maintainer submission.
