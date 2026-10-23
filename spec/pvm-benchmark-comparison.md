@@ -159,3 +159,30 @@ samples remain intact. Baseline/candidate reports, exact build/source metadata, 
 paired samples and sampling evidence are retained locally under `build/pvm8/perf-baseline` and
 `build/pvm8/perf-candidate`; reproduce with `make bench-pvm` on the compared revisions.
 Further profiling and focused fuzzing remain required work toward interpreter competitiveness.
+
+
+## Bounded decoder memo, 2026-10-23
+
+After the cursor change at `66726e17`, profiling still identified operand decoding on the hot loop.
+The invocation-local sixteen-slot memo reuses only genuine scalar decodes from the same immutable
+program, including host resumptions. A first form copied a full cached result to a temporary;
+paired measurement improved arithmetic but regressed memory by about 11%, so that form was rejected.
+Direct slot inspection with an inline helper removes that extra copy. No checks or fixtures changed.
+
+Preserved cursor/direct-memo binaries, run in two opposite orders with the same validated three
+warmups/ten measured samples per fixed guest, gave these native medians:
+
+| Fixed guest | Cursor (µs) | Direct memo (µs) | Less execution time |
+| --- | ---: | ---: | ---: |
+| Arithmetic, 10000 iterations | 864.56 | 536.15 | 38.0% |
+| Memory aligned, 1000 iterations | 362.90 | 318.54 | 12.2% |
+| Memory crossing, 1000 iterations | 533.75 | 501.48 | 6.0% |
+| Host/memory aligned, 1000 iterations | 557.10 | 499.27 | 10.4% |
+| Host/memory crossing, 1000 iterations | 728.44 | 678.62 | 6.8% |
+
+The full unchanged pinned PolkaVM interpreter comparison passes; its five native/reference ratios
+remain approximately 5.5–19.0×, so this is progress toward competitiveness, not parity. Sampling and
+raw validated comparisons are retained under `build/pvm8/cache-direct`; the rejected experiment
+is retained separately under `build/pvm8/cache-candidate`. The same local timing/no-isolation,
+no deterministic instruction-count, no compiled comparison and no full-client throughput limits
+apply. Compiler/toolchain/fixture/source identities and every raw sample remain in the reports.
