@@ -298,3 +298,7 @@ Light file initialization and replacement borrow `encodedBytes` for the existing
 synchronous writer, avoiding a temporary full-image copy. This owner-bound read-only
 view rejects mutation and escaping a local owner; mutable extraction and `.bytes`
 remain independent copies. See [publication memory and IO evidence](../../spec/storage-light-publication-memory.md).
+
+Prepared images and file owners expose `update(proofs, forgottenKeys)` for atomic
+combined changes. This replaces evidence at exact capacity in one publication, with
+no visible eviction prefix. See [atomic evidence batches](../../spec/storage-light-atomic-batches.md).
