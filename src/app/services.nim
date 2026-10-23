@@ -22,6 +22,7 @@ import ./frozen_supplied
 import ../state/supplied_services
 import ./logical_service_proof
 import ./logical_export
+import ./logical_checkpoint_import
 import ./logical_seed
 import ../codec/[state_composition, composite]
 import ./current_logical as collected_logical
@@ -1310,3 +1311,10 @@ proc executeLogicalExport*(services: Services, plan: LogicalExportPlan): Logical
     not (services.proofing or services.preparing or services.publishing).} =
   ## Detached copying remains excluded through actual collection/join of every native graph borrower.
   logical_export.executeLogicalExport(plan)
+
+proc importLogicalCheckpoint*(services: Services, source: CurrentLogicalState,
+    wire: openArray[byte], limits: StateStoreLimits,
+    wireLimit: ByteLimit): LogicalCheckpointImportResult[ImportedLogicalCheckpoint] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Original logical/root aliases remain outside every managed native lease until actual collection or join.
+  logical_checkpoint_import.importLogicalCheckpoint(source, wire, limits, wireLimit)

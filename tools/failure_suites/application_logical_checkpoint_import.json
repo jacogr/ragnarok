@@ -1,0 +1,34 @@
+{
+  "build_name": "application-logical-checkpoint-import-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "application_logical_checkpoint_import guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "application-logical-checkpoint-import-value"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "application_logical_checkpoint_import selected reason",
+      "diagnostic": "outcome.status == CheckpointFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "application-logical-checkpoint-import-reason"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_logical_checkpoint_import_results.nim"
+}
