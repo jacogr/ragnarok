@@ -23,6 +23,10 @@ type
   RecordError* {.pure.} = enum ## No default/refused operation exposes bytes or records.
     Uninitialized, None, InvalidFormat, NonCanonical, LimitExceeded, DuplicateNode,
     HashMismatch, BackendFailure
+  RecordScan = object ## Private exact-input structural preflight; retains no borrowed byte address.
+    batch: TrieExport
+    count, header: int
+    valueBytes: uint64
   RecordResult*[T] = object ## Private alternatives require successful selection before extraction.
     case status: RecordError
     of None: completed: T
@@ -185,20 +189,20 @@ proc encodeRecords(batch: TrieExport, records: openArray[TrieRecord], limits: Re
       putHash(output, offset, array[32, byte](record.right)); offset += 32
   RecordResult[seq[byte]](status: RecordError.None, completed: output)
 
-proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: bool,
-    ordered = false): RecordResult[TrieExport] =
-  ## Bound and scan the entire borrowed input before allocating records or invoking crypto.
-  if uint64(input.len) > uint64(limits.encoded): return RecordResult[TrieExport](
+proc scanRecords(input: openArray[byte], limits: RecordLimits, collection: bool,
+    ordered: bool): RecordResult[RecordScan] =
+  ## Prove every serialized extent, count, canonical field and aggregate limit before allocation or crypto.
+  if uint64(input.len) > uint64(limits.encoded): return RecordResult[RecordScan](
       status: RecordError.LimitExceeded)
   var header = RecordHeaderBytes
   var magic = RecordMagic
   if collection:
     header = CollectionHeaderBytes
     magic = CollectionMagic
-  if input.len < header: return RecordResult[TrieExport](
+  if input.len < header: return RecordResult[RecordScan](
       status: RecordError.InvalidFormat)
   for i, character in magic:
-    if input[i] != byte(character): return RecordResult[TrieExport](
+    if input[i] != byte(character): return RecordResult[RecordScan](
         status: RecordError.InvalidFormat)
   var offset = magic.len
   var batch = default(TrieExport)
@@ -210,46 +214,60 @@ proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: boo
     offset += 80 # Only target-bearing batches carry complete-root claims.
   let count = number(input, offset)
   offset = header
-  if count > uint64((input.len-offset) div 72): return RecordResult[TrieExport](
+  if count > uint64((input.len-offset) div 72): return RecordResult[RecordScan](
       status: RecordError.InvalidFormat)
   let checked = checkMetadata(batch, count, limits, collection)
-  if checked != RecordError.None: return RecordResult[TrieExport](status: checked)
+  if checked != RecordError.None: return RecordResult[RecordScan](status: checked)
   var bytes = 0'u64
   var previous = default(StateNodeHash)
   for i in 0..<int(count):
-    if input.len-offset < 33: return RecordResult[TrieExport](status: RecordError.InvalidFormat)
+    if input.len-offset < 33: return RecordResult[RecordScan](status: RecordError.InvalidFormat)
     if zero(StateNodeHash(readHash(input, offset+1))):
-      return RecordResult[TrieExport](status: RecordError.NonCanonical) # Reserved empty addresses cannot own a physical record.
+      return RecordResult[RecordScan](status: RecordError.NonCanonical) # Reserved empty addresses cannot own a physical record.
     if ordered:
       # Prove canonical unique physical order from borrowed bytes before allocating any records or hash scratch.
       let digest = StateNodeHash(readHash(input, offset+1))
       if i > 0:
         let order = compareHash(previous, digest)
-        if order == 0: return RecordResult[TrieExport](status: RecordError.DuplicateNode)
-        if order > 0: return RecordResult[TrieExport](status: RecordError.NonCanonical)
+        if order == 0: return RecordResult[RecordScan](status: RecordError.DuplicateNode)
+        if order > 0: return RecordResult[RecordScan](status: RecordError.NonCanonical)
       previous = digest
     let tag = input[offset]
     offset += 33 # Both record forms begin with a tag and complete digest.
     if tag == 0:
-      if input.len-offset < 39: return RecordResult[TrieExport](status: RecordError.InvalidFormat)
+      if input.len-offset < 39: return RecordResult[RecordScan](status: RecordError.InvalidFormat)
       let size = number(input, offset+31)
       offset += 39
-      if size > uint64(input.len-offset): return RecordResult[TrieExport](
+      if size > uint64(input.len-offset): return RecordResult[RecordScan](
           status: RecordError.InvalidFormat)
       let bound = payloadBudget(limits, collection)
       if size > uint64(limits.trie.perValue) or size > bound-bytes:
-        return RecordResult[TrieExport](status: RecordError.LimitExceeded)
+        return RecordResult[RecordScan](status: RecordError.LimitExceeded)
       bytes += size
       offset += int(size) # Remaining-input proof makes narrowing and addition safe.
     elif tag == 1:
-      if input.len-offset < 64: return RecordResult[TrieExport](status: RecordError.InvalidFormat)
+      if input.len-offset < 64: return RecordResult[RecordScan](status: RecordError.InvalidFormat)
       if zero(StateNodeHash(readHash(input, offset))) and
           zero(StateNodeHash(readHash(input, offset+32))):
-        return RecordResult[TrieExport](status: RecordError.NonCanonical) # No raw record allocation is needed to reject an empty branch.
+        return RecordResult[RecordScan](status: RecordError.NonCanonical) # No raw record allocation is needed to reject an empty branch.
       offset += 64 # Physical branches retain both complete child identities.
     else:
-      return RecordResult[TrieExport](status: RecordError.NonCanonical)
-  if offset != input.len: return RecordResult[TrieExport](status: RecordError.InvalidFormat)
+      return RecordResult[RecordScan](status: RecordError.NonCanonical)
+  if offset != input.len: return RecordResult[RecordScan](status: RecordError.InvalidFormat)
+  RecordResult[RecordScan](status: RecordError.None, completed: RecordScan(
+    batch: batch, count: int(count), header: header, valueBytes: bytes))
+
+proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: bool,
+    ordered = false): RecordResult[TrieExport] =
+  ## Detached decoding shares the exact structural preflight with bounded admission consumers.
+  let scanned = scanRecords(input, limits, collection, ordered)
+  if scanned.error != RecordError.None:
+    return RecordResult[TrieExport](status: scanned.error)
+  let shape = scanned.value
+  var batch = shape.batch
+  let count = shape.count
+  let header = shape.header
+  var offset = header
   batch.records = newSeq[TrieRecord](int(count))
   offset = header
   for i in 0..<int(count):
