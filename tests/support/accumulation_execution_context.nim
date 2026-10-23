@@ -73,6 +73,7 @@ type ExecutionFixtureConfig* = object ## PVM guest choices own execution data an
   authorizationQueue*: seq[byte]    ## Optional exact C(2), including malformed-state witnesses.
   omitAuthorizationQueue*: bool     ## Omit original C(2) for missing-state witnesses.
   manager*: uint32                  ## Original manager service.
+  registrar*: uint32                ## Original reserved-service allocation authority.
   delegator*: uint32                ## Original validator-staging authority.
   signed*: SignedBlockFixtureConfig ## Same state-owned configuration used by signed block witnesses.
 
@@ -84,7 +85,7 @@ proc executionFixtureConfig*(): ExecutionFixtureConfig =
       firstProgram: @[], secondProgram: @[], allowanceGas: 100000'u64, secondBalance: 0'u64,
           secondSupervisor: 0'u32,
       assigner: 0'u32, authorizationQueue: @[], omitAuthorizationQueue: false, manager: 0'u32,
-      delegator: 0'u32, signed: signed)
+      registrar: 0'u32, delegator: 0'u32, signed: signed)
 
 proc executionFixture*(base: OwnedReport, options = executionFixtureConfig()): ExecutionFixture =
   ## Recompute parent commitments and real signatures after selecting code, optional complete preimages and free allowances.
@@ -103,7 +104,8 @@ proc executionFixture*(base: OwnedReport, options = executionFixtureConfig()): E
   for index in 0..<assigners.len: assigners[index] = ServiceIndex(
       options.assigner) # Optional authority enters the signed parent before real assign calls.
   let privileges = privilegeStateEntry(PrivilegeState(manager: ServiceIndex(options.manager),
-      delegator: ServiceIndex(options.delegator), assigners: assigners,
+      delegator: ServiceIndex(options.delegator), registrar: ServiceIndex(options.registrar),
+          assigners: assigners,
     always: allowances), executionRoundConfig().privileges).value
   var entries = @[privileges]
   if not options.omitAuthorizationQueue:
