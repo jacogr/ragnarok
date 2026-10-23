@@ -1,0 +1,1 @@
+PASS light journal batches: bounded preparation, one barrier, immutable readers, stale positions and exact complete-prefix recovery

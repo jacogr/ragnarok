@@ -18,6 +18,7 @@ from setup_nimony import installed
 from storage_limit_receipts import validate_limit
 
 MODES = ('churn', 'journal')
+BATCH_MODES = MODES+('journal-batch',)
 
 
 def valid_digest(value):
@@ -31,12 +32,13 @@ def parse(raw, size, mode):
         return baseline.parse(raw, size)
     lines = raw.splitlines()
     fields = lines[0].split('\t') if len(lines) == 1 else []
-    if (mode != 'journal' or size not in baseline.SIZES or len(fields) != 1+len(baseline.FIELDS)
+    if (mode not in ('journal', 'journal-batch') or size not in baseline.SIZES or len(fields) != 1+len(baseline.FIELDS)
             or fields[0] != mode or any(re.fullmatch(r'0|[1-9][0-9]{0,18}', v) is None for v in fields[1:])):
         raise ValueError('Invalid matched journal output')
     row = dict(zip(baseline.FIELDS, map(int, fields[1:])))
     expected = dict(size=size, cycles=8, image_bytes=128+4096*(1129+size),
-                    written_bytes=8*(500+1088+size), writes=16, syncs=16, renames=0,
+                    written_bytes=8*(500+1088+size), writes=1 if mode == 'journal-batch' else 16,
+                    syncs=1 if mode == 'journal-batch' else 16, renames=0,
                     update_hashes=176, reopen_hashes=73907)
     if (any(row[k] != v for k, v in expected.items()) or any(v >= 1<<63 for v in row.values())
             or row['retired'] != row['baseline'] or row['retained_before'] <= row['baseline']
@@ -62,34 +64,38 @@ def admit(raw, size, mode, receipt, image_digest, expected_digest):
     return parse(raw, size, mode)
 
 
-def cases(samples):
+def cases(samples, modes=MODES):
     """Alternate both backend and value-size order across independent fresh-process rounds."""
+    if not isinstance(modes, (tuple, list)) or tuple(modes) not in (MODES, BATCH_MODES):
+        raise ValueError('Invalid matched backend set')
+    modes = tuple(modes)
     return [(sample, size, mode) for sample in range(samples)
             for size in (baseline.SIZES if sample%2 == 0 else tuple(reversed(baseline.SIZES)))
-            for mode in (MODES if sample%2 == 0 else tuple(reversed(MODES)))]
+            for mode in (modes if sample%2 == 0 else tuple(reversed(modes)))]
 
 
 def summarize(report):
     """Re-admit the complete paired panel before reporting observed medians or deterministic write reductions."""
     if report.get('status') != 'checks-passed' or report.get('samples') not in (3, 5, 10):
         raise ValueError('Incomplete matched panel')
-    if [(r['sample'], r['size'], r['mode']) for r in report['runs']] != cases(report['samples']):
+    modes = report.get('modes', MODES)
+    if [(r['sample'], r['size'], r['mode']) for r in report['runs']] != cases(report['samples'], modes):
         raise ValueError('Missing or duplicate matched consumer')
     for row in report['runs']:
         expected = report['fixtures'][str(row['size'])]['sha256']
         if admit(row['raw'], row['size'], row['mode'], row['receipt'], row['image_sha256'], expected) != row['observed']:
             raise ValueError('Derived observations differ from raw evidence')
-        expected_length = row['observed']['written_bytes']+98 if row['mode'] == 'journal' else 0
+        expected_length = row['observed']['written_bytes']+98 if row['mode'] != 'churn' else 0
         if (type(row['journal_bytes']) is not int or row['journal_bytes'] != expected_length
                 or not valid_digest(row['current_sha256'])
-                or (row['mode'] == 'journal' and not valid_digest(row['journal_sha256']))):
+                or (row['mode'] != 'churn' and not valid_digest(row['journal_sha256']))):
             raise ValueError('Selected namespace extent or identity mismatch')
     lines = ['# Matched light evidence churn', '',
              'Identical 4,096-query fixtures; eight one-key forget/admit pairs per fresh consumer.', '',
              '| Value bytes | Backend | Completed write bytes | Syncs | Renames | Update ms median (min–max) | Reopen ms median | Peak RSS MiB median |',
              '| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |']
     for size in baseline.SIZES:
-        for mode in MODES:
+        for mode in modes:
             rows = [r for r in report['runs'] if r['size'] == size and r['mode'] == mode]
             updates = [r['observed']['update_ns']/1e6 for r in rows]
             reopen = [r['observed']['reopen_ns']/1e6 for r in rows]
@@ -111,7 +117,7 @@ def identities():
     return result
 
 
-def run(folder, samples):
+def run(folder, samples, include_batch=False):
     """One checked binary and two separate producers supply serial paired consumers with fresh resource observers."""
     folder = Path(folder).resolve()
     if samples not in (3, 5, 10) or not folder.is_relative_to(ROOT/'build'):
@@ -119,7 +125,8 @@ def run(folder, samples):
     folder.mkdir(parents=True, exist_ok=False)
     compiler, _ = installed()
     source_ids = identities()
-    report = dict(status='running', sources=source_ids, samples=samples, runs=[], checks=[], fixtures={},
+    modes = BATCH_MODES if include_batch else MODES
+    report = dict(status='running', sources=source_ids, samples=samples, modes=modes, runs=[], checks=[], fixtures={},
                   platform=platform.platform(), machine=platform.machine(), compiler=str(compiler),
                   compiler_sha256=baseline.digest(compiler), python=sys.version,
                   head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip())
@@ -152,7 +159,7 @@ def run(folder, samples):
                 raise ValueError('Invalid fixture extent/root')
             fixtures[size] = (source, root)
             report['fixtures'][str(size)] = dict(root=root, bytes=int(extent), sha256=baseline.digest(source/'CURRENT')); save()
-        for sample, size, mode in cases(samples):
+        for sample, size, mode in cases(samples, modes):
             # Every backend/size/round receives one new namespace and one independently accounted native child.
             source, root = fixtures[size]
             label = f'{mode}-{size}-{sample}'
@@ -169,8 +176,8 @@ def run(folder, samples):
             journal = target/'journal-0000000000000001.wal'
             report['runs'].append(dict(sample=sample, size=size, mode=mode, raw=child['output'], observed=observed,
                 receipt=receipt, image_sha256=baseline.digest(image), current_sha256=baseline.digest(target/'CURRENT'),
-                journal_sha256=baseline.digest(journal) if mode == 'journal' else None,
-                journal_bytes=journal.stat().st_size if mode == 'journal' else 0)); save()
+                journal_sha256=baseline.digest(journal) if mode != 'churn' else None,
+                journal_bytes=journal.stat().st_size if mode != 'churn' else 0)); save()
             for name in (['CURRENT', 'LOCK'] if mode == 'churn' else
                          ['CURRENT', 'LOCK', 'snapshot-0000000000000001.bin', 'journal-0000000000000001.wal']):
                 (target/name).unlink()  # Exact owned retired fixture files only; failed runs retain all artifacts.
@@ -194,5 +201,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True)
     parser.add_argument('--samples', type=int, choices=(3, 5, 10), default=5)
+    parser.add_argument('--include-batch', action='store_true', help='Also compare one-barrier prepared journal updates')
     options = parser.parse_args()
-    run(options.output, options.samples)
+    run(options.output, options.samples, options.include_batch)
