@@ -117,4 +117,44 @@ for target in [0, 1, 2, 3, 4, 8, 9, 100]:
     assert uint64(machineInfo(source).value.registers[7]) == 99
     assert uint64(load(memory, MemoryAddress(196608), AccessWidth(1)).value) == 11
 
+proc saturatedPipeline(repetitions: int): Program =
+  ## Frame an original mixed-resource block independently; all counts stay below4096 code bytes.
+  var bytes: seq[byte] = @[]
+  var starts: seq[int] = @[]
+  let group = [@[10'u8], @[2'u8], @[52'u8, 1], @[59'u8, 1], @[202'u8, 33, 3],
+    @[203'u8, 33, 4], @[197'u8, 33, 5], @[218'u8, 33, 6], @[200'u8, 33, 7], @[100'u8, 115]]
+  for repeat in 0..<repetitions:
+    for part in group:
+      # Host/unlikely reach100/40 cycles; load/store/multiply/divide contend with ALU and rename consumers.
+      starts.add(bytes.len)
+      for octet in part: bytes.add(octet)
+  starts.add(bytes.len)
+  bytes.add(0)
+  assert bytes.len > 0 and bytes.len < 4096
+  var wire = @[0'u8, 0]
+  if bytes.len < 128:
+    wire.add(byte(bytes.len)) # Canonical one-byte size covers the smallest resource witness.
+  else:
+    wire.add(byte(128+(bytes.len shr 8))) # Larger blocks use exactly the two-byte natural encoding.
+    wire.add(byte(bytes.len and 255))
+  for octet in bytes: wire.add(octet)
+  var mask = newSeq[byte]((bytes.len+7) div 8)
+  for start in starts: mask[start div 8] = mask[start div 8] or (1'u8 shl (start mod 8))
+  for octet in mask: wire.add(octet)
+  let captured = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(8192), JumpCountLimit(0))
+  assert captured.error == ProgramError.None
+  captured.value
+
+for witness in [(repetitions: 1, price: 100'u64, cycles: 103'u64),
+    (repetitions: 4, price: 276'u64, cycles: 279'u64),
+    (repetitions: 32, price: 1956'u64, cycles: 1959'u64),
+    (repetitions: 33, price: 2016'u64, cycles: 2019'u64),
+    (repetitions: 65, price: 3936'u64, cycles: 3939'u64)]:
+  # Literal simultaneous-transition reference prices protect saturation, full-buffer pressure and repeated resource release.
+  let program = saturatedPipeline(witness.repetitions)
+  let completed = blockGas(program, CodeAddress(0), GasCycleLimit(witness.cycles))
+  assert completed.error == GasError.None and uint64(completed.value) == witness.price
+  assert blockGas(program, CodeAddress(0), GasCycleLimit(witness.cycles-1)).error ==
+      GasError.CycleLimitExceeded
+
 echo "PVM gas tests passed"
