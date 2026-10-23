@@ -627,6 +627,39 @@
         "reason": "publication-logical-code"
       },
       "name": "application-logical-services-publication-logical-code"
+    },
+    {
+      "arguments": [
+        "preparation-full-logical-proof-plan"
+      ],
+      "description": "Managed host exclusion preparation-full-logical-proof-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-full-logical-proof-plan"
+      },
+      "name": "application-logical-services-preparation-full-logical-proof-plan"
+    },
+    {
+      "arguments": [
+        "proof-full-logical-proof-plan"
+      ],
+      "description": "Managed host exclusion proof-full-logical-proof-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-full-logical-proof-plan"
+      },
+      "name": "application-logical-services-proof-full-logical-proof-plan"
+    },
+    {
+      "arguments": [
+        "publication-full-logical-proof-plan"
+      ],
+      "description": "Managed host exclusion publication-full-logical-proof-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-full-logical-proof-plan"
+      },
+      "name": "application-logical-services-publication-full-logical-proof-plan"
     }
   ],
   "crypto_library": "observer",
