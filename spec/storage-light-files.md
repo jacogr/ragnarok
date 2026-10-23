@@ -53,3 +53,9 @@ rename and directory sync, including old/new restart selection. Three runtime
 guards, two positive controls, three privacy rejections and an actual lowering
 rejection for resource-owner duplication pass. Formatting and inventory pass.
 These local results do not claim exact-head Linux CI or complete client integration.
+
+Incremental `admit` and `forget` are specified in
+[light evidence updates](storage-light-updates.md). Opening retains the bounded canonical
+image as well as its immutable cache, allowing later edits without caller retransmission
+of retained proofs. Successful file operations, including empty or unknown-only edits,
+still run publication barriers before returning a fresh synchronization receipt.

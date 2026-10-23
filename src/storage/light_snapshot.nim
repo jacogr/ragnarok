@@ -265,3 +265,154 @@ proc decodeLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId,
     return LightSnapshotResult[LightStateCache](status: LightSnapshotError.ProofFailure,
         proofReason: admitted.error)
   LightSnapshotResult[LightStateCache](status: LightSnapshotError.None, completed: admitted.value)
+
+proc restoreLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId,
+    expectedRoot: StateRoot, limits: LightSnapshotLimits): LightSnapshotResult[
+        PreparedLightSnapshot] =
+  ## Validate untrusted bytes fully before retaining canonical proof evidence for later bounded edits.
+  let decoded = decodeLightSnapshot(input, expectedChain, expectedRoot, limits)
+  if decoded.error == LightSnapshotError.ProofFailure:
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.ProofFailure,
+        proofReason: decoded.proofError)
+  if decoded.error != LightSnapshotError.None:
+    return LightSnapshotResult[PreparedLightSnapshot](status: decoded.error)
+  var encoded = newSeq[byte](input.len)
+  for index, octet in input: encoded[index] = octet
+  var checksum = default(array[32, byte])
+  for index in 0..<32: checksum[index] = input[input.len-32+index]
+  LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.None,
+    completed: PreparedLightSnapshot(owner: SnapshotData(chain: expectedChain, root: expectedRoot,
+      limits: limits, encoded: encoded, cache: decoded.value, checksum: StorageChecksum(checksum))))
+
+type
+  EntrySource = object ## A merge cursor borrows either a trusted encoded entry or an incoming transport index.
+    offset, index: int
+    extent, valueBytes: uint64
+proc nextSource(encoded: openArray[byte], ordered: openArray[KeyIndex], remove: bool,
+    old: var int, fresh: var int, source: var EntrySource): bool =
+  ## Scan canonical evidence and unique sorted edits, skipping only explicitly forgotten query identities.
+  let stop = encoded.len-32
+  while old < stop or fresh < ordered.len:
+    # Existing private image validity proves each old entry, while incoming descriptors were bounded before sorting.
+    let comparison = if old == stop: 1 elif fresh == ordered.len: -1
+      else: compareKey(readKey(encoded, old), ordered[fresh].key)
+    if comparison > 0:
+      source = EntrySource(offset: -1, index: ordered[fresh].index)
+      inc fresh
+      if not remove: return true # New query evidence is emitted; forgetting an unknown query is a no-op.
+    else:
+      assert stop-old >= EntryBytes
+      let nodes = number(encoded, old+31, 2)
+      let size = number(encoded, old+33)
+      assert nodes <= 249 and nodes*64 <= uint64(stop-old-EntryBytes)
+      let fixed = uint64(EntryBytes)+nodes*64
+      assert size <= uint64(stop-old)-fixed
+      let extent = fixed+size
+      source = EntrySource(offset: old, index: -1, extent: extent, valueBytes: size)
+      old += int(extent) # Complete owned-image invariants prove this native cursor advance.
+      if comparison < 0: return true
+      source = EntrySource(offset: -1, index: ordered[fresh].index)
+      inc fresh
+      if not remove: return true # Equal-key admission replaces the prior serialized evidence atomically.
+  false
+proc edit(snapshot: PreparedLightSnapshot, updates: openArray[LightStateProof],
+    keys: openArray[StateKey], remove: bool): LightSnapshotResult[PreparedLightSnapshot] =
+  ## Preflight the final canonical set before proof hashing or output allocation; old proof bytes need no revalidation.
+  let owner = snapshot.owner
+  if owner == nil: return LightSnapshotResult[PreparedLightSnapshot](
+      status: LightSnapshotError.Uninitialized)
+  let count = if remove: keys.len else: updates.len
+  let policy = owner.limits
+  if uint64(count) > uint64(policy.cache.writes):
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.LimitExceeded)
+  if count > high(int) div sizeof(KeyIndex):
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.LengthOverflow)
+  if count == 0: return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.None,
+      completed: snapshot)
+  if not remove:
+    for update in updates:
+      # Untrusted incoming extents are bounded before sorting, final-set traversal, native narrowing or hashing.
+      let nodes = uint64(update.proof.nodes.len)
+      let raw = uint64(update.proof.value.len)
+      if nodes > 249 or nodes > uint64(policy.cache.proof.nodes) or raw > uint64(
+          policy.cache.proof.valueBytes):
+        return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.LimitExceeded)
+  var ordered = newSeq[KeyIndex](count)
+  for index in 0..<count:
+    ordered[index] = KeyIndex(key: (if remove: keys[index] else: updates[index].key), index: index)
+  ordered.sort(compareIndex)
+  for index in 1..<count:
+    if compareKey(ordered[index-1].key, ordered[index].key) == 0:
+      return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.ProofFailure,
+        proofReason: LightCacheError.DuplicateKey)
+  var size = uint64(Overhead)
+  var values = 0'u64
+  var entries = 0'u64
+  var old = HeaderBytes
+  var fresh = 0
+  var source = default(EntrySource)
+  let maximum = min(uint64(policy.bytes), uint64(high(int)))
+  # A complete merged-set first pass releases replacements before counting the selected final quotas.
+  while nextSource(owner.encoded, ordered, remove, old, fresh, source):
+    var extent = source.extent
+    var raw = source.valueBytes
+    if source.offset < 0:
+      let proof = updates[source.index].proof
+      raw = uint64(proof.value.len)
+      extent = uint64(EntryBytes)+uint64(proof.nodes.len)*64+raw # Hard node and native input bounds prove uint64 arithmetic.
+    let valuesFit = grow(values, raw, uint64(policy.cache.valueBytes))
+    let bytesFit = grow(size, extent, maximum)
+    if entries >= uint64(policy.cache.items) or not valuesFit or not bytesFit:
+      return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.LimitExceeded)
+    inc entries # File byte bounds already bound the number of nonempty fixed descriptors.
+  if remove and entries == uint64(owner.cache.len):
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.None,
+        completed: snapshot)
+  let admitted = if remove: owner.cache.forget(keys) else: owner.cache.admit(updates)
+  if admitted.error == LightCacheError.BackendFailure:
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.BackendFailure)
+  if admitted.error != LightCacheError.None:
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.ProofFailure,
+        proofReason: admitted.error)
+  var output = newSeq[byte](int(size))
+  for index in 0..<HeaderBytes: output[index] = owner.encoded[index]
+  putNumber(output, Magic.len+64, entries)
+  var cursor = HeaderBytes
+  old = HeaderBytes
+  fresh = 0
+  # The same stable inputs fill exactly the preflighted image; retained canonical evidence is copied as a byte span.
+  while nextSource(owner.encoded, ordered, remove, old, fresh, source):
+    if source.offset >= 0:
+      for index in 0..<int(source.extent): output[cursor+index] = owner.encoded[source.offset+index]
+      cursor += int(source.extent)
+    else:
+      let update = updates[source.index]
+      let key = array[31, byte](update.key)
+      for index in 0..<31: output[cursor+index] = key[index]
+      putNumber(output, cursor+31, uint64(update.proof.nodes.len), 2)
+      putNumber(output, cursor+33, uint64(update.proof.value.len))
+      cursor += EntryBytes
+      for node in update.proof.nodes:
+        let raw = array[64, byte](node)
+        for index in 0..<64: output[cursor+index] = raw[index]
+        cursor += 64
+      for octet in update.proof.value:
+        output[cursor] = octet
+        inc cursor
+  assert cursor == output.len-32
+  let hashed = blake2b256(output.toOpenArray(0, cursor-1))
+  if hashed.error != CryptoError.None:
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.BackendFailure)
+  let checksum = array[32, byte](hashed.value)
+  for index in 0..<32: output[cursor+index] = checksum[index]
+  LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.None,
+    completed: PreparedLightSnapshot(owner: SnapshotData(chain: owner.chain, root: owner.root,
+      limits: policy, encoded: output, cache: admitted.value, checksum: StorageChecksum(checksum))))
+proc admit*(snapshot: PreparedLightSnapshot, updates: openArray[
+    LightStateProof]): LightSnapshotResult[PreparedLightSnapshot] =
+  ## Retain old evidence and authenticate only the incoming unique-key batch at the original complete root.
+  edit(snapshot, updates, [], false)
+proc forget*(snapshot: PreparedLightSnapshot, keys: openArray[StateKey]): LightSnapshotResult[
+    PreparedLightSnapshot] =
+  ## Forget local evidence without inventing authenticated absence or discarding the independently expected root.
+  edit(snapshot, [], keys, true)
