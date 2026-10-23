@@ -4,6 +4,9 @@
 ## Test-owned real Services preparation/collection and independently bounded State logical refresh for actual host consumers.
 import std/[assertions, monotimes, times]
 import std/posix/posix
+import ./current_logical_review_context
+import ../../src/state/[current_state, current_review, current_globals, current_profile,
+    supplied_logical_inventory, inventory, manifest, account_review, economic_profile]
 import ./[accumulation_current_chain_context, parent_profile_context, parent_globals_context, supplied_logical_context]
 import ../../src/chain/[provider, genesis, parameters]
 import ../../src/codec/state_composition
@@ -209,3 +212,24 @@ proc checkShortLogicalSeed*(owner: Services, update: PreparedCurrentChainUpdate,
   assert sameStateSnapshot(profile.parentContext.value.state, update.currentUpdatePriorState)
   assert preserveCurrentIdentities(parent.value, update, currentIdentityTestLimits).error ==
       CurrentIdentityError.ViewMismatch
+proc checkCollectedReview*(logical: CurrentLogicalState) =
+  ## Existing targeted review consumes only the actual logical producer's original compact capture and full Parameters; temporary review owners retire before enqueue.
+  let pair = composeLogicalReview(logical)
+  let source = logical.currentLogicalSource.value
+  let first = source.currentStateInventory.value
+  let second = logical.currentLogicalInventory.value.suppliedInventory.value
+  assert not sameStateInventory(first, second)
+  assert sameStateSnapshot(first.inventorySource.value.manifestSource.value,
+      second.inventorySource.value.manifestSource.value)
+  let reviewed = pair.reviewed.currentAccountReview.value
+  assert sameStateInventory(reviewed.reviewInventory.value, first)
+  assert not sameStateInventory(reviewed.reviewInventory.value, second)
+  let original = source.currentStateGlobals.value.qualifiedCurrentProfile.value.derivedParameters.value
+  assert sameEconomicProfile(reviewed.reviewEconomicProfile.value, captureEconomicProfile(
+      original).value)
+  let retained = pair.reviewed.reviewedCurrentSource.value.currentStateGlobals.value.qualifiedCurrentProfile.value.derivedUpdate.value
+  assert sameStateSnapshot(retained.currentUpdateState, logical.logicalProducer.currentUpdateState)
+  assert sameChainView(retained.currentUpdateView, logical.logicalProducer.currentUpdateView)
+  let info = reviewed.accountReviewInfo.value
+  assert info.invariants.content.preimages == 6 and info.invariants.footprints.services == 2
+  assert info.economics.covered == 2 and info.economics.uncovered == 0

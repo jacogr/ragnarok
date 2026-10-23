@@ -102,6 +102,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone,
       assert preserveCurrentIdentities(first, update, currentIdentityTestLimits).error ==
           CurrentIdentityError.ParentMismatch
     logical = refreshCollectedIdentities(identities.value)
+    checkCollectedReview(logical)
     if index == 0: first = logical
     assert sameStateSnapshot(logical.logicalProducer.currentUpdateState, update.currentUpdateState)
     assert update.currentUpdateState.lookup(key).value.bytes == @[17'u8, 18, 19]

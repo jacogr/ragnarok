@@ -191,6 +191,16 @@ retained the full original ordered history. Successful source undercoverage is n
 qualification. The genuine completed logical source still qualifies afterward across every layout,
 RPC mode and joined-preparation timing.
 
+## Existing account review before logical enqueue
+
+Every actual collected logical successor also feeds the existing targeted current account review
+before enqueue. Review consumes the original current compact inventory (compact1), not the
+independent raw-key companion (compact2), while both captures name the same physical map. It
+retains the genuine producer's whole view and full original economic Parameters. Exact footprint
+certification covers both actual services and content checking covers six original preimages;
+the explicit zero-deposit fixture profile reports two covered services. Review temporaries retire
+on the open host gate before native publication; no new validation/funding rule is introduced.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
