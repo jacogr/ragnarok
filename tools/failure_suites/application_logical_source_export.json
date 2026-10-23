@@ -1,0 +1,23 @@
+{
+  "build_name": "application-logical-source-export-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "application_logical_source_export guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "application-logical-source-export-value"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_logical_source_export_results.nim"
+}

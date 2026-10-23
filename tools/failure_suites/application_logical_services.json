@@ -726,6 +726,72 @@
         "reason": "publication-code-proof"
       },
       "name": "application-logical-services-publication-code-proof"
+    },
+    {
+      "arguments": [
+        "preparation-source-export-plan"
+      ],
+      "description": "Managed host exclusion preparation-source-export-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-source-export-plan"
+      },
+      "name": "application-logical-services-preparation-source-export-plan"
+    },
+    {
+      "arguments": [
+        "preparation-source-export"
+      ],
+      "description": "Managed host exclusion preparation-source-export",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-source-export"
+      },
+      "name": "application-logical-services-preparation-source-export"
+    },
+    {
+      "arguments": [
+        "proof-source-export-plan"
+      ],
+      "description": "Managed host exclusion proof-source-export-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-source-export-plan"
+      },
+      "name": "application-logical-services-proof-source-export-plan"
+    },
+    {
+      "arguments": [
+        "proof-source-export"
+      ],
+      "description": "Managed host exclusion proof-source-export",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-source-export"
+      },
+      "name": "application-logical-services-proof-source-export"
+    },
+    {
+      "arguments": [
+        "publication-source-export-plan"
+      ],
+      "description": "Managed host exclusion publication-source-export-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-source-export-plan"
+      },
+      "name": "application-logical-services-publication-source-export-plan"
+    },
+    {
+      "arguments": [
+        "publication-source-export"
+      ],
+      "description": "Managed host exclusion publication-source-export",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-source-export"
+      },
+      "name": "application-logical-services-publication-source-export"
     }
   ],
   "crypto_library": "observer",

@@ -22,6 +22,7 @@ import ./frozen_supplied
 import ../state/supplied_services
 import ./logical_service_proof
 import ./logical_export
+import ./logical_source_export
 import ./logical_checkpoint_import
 import ./logical_code
 import ./logical_code_proof
@@ -1348,3 +1349,15 @@ proc planLogicalCodeProof*(services: Services, source: CurrentLogicalState, serv
     not (services.proofing or services.preparing or services.publishing).} =
   ## Original current inventory/content and selector aliases remain excluded until actual matching native collection or joined close.
   logical_code_proof.planLogicalCodeProof(source, service, limits)
+
+proc planLogicalSourceExport*(services: Services, source: CurrentLogicalState,
+    limits: LogicalSourceExportLimits): LogicalSourceExportResult[
+        LogicalSourceExportPlan] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Original raw-key graph traversal remains excluded until actual matching native collection or joined shutdown.
+  logical_source_export.planLogicalSourceExport(source, limits)
+proc executeLogicalSourceExport*(services: Services,
+    plan: LogicalSourceExportPlan): LogicalSourceExportResult[string] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Frozen declaration aliases and raw keys remain outside every active managed graph lease.
+  logical_source_export.executeLogicalSourceExport(plan)
