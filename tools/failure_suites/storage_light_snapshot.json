@@ -1,0 +1,150 @@
+{
+  "source": "tests/native/storage_light_snapshot_results.nim",
+  "build_name": "storage-light-snapshot-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-light-snapshot-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light snapshot result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-light-snapshot-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light snapshot result failed guard"
+    },
+    {
+      "identity": {
+        "member": "reason",
+        "origin": "default"
+      },
+      "arguments": [
+        "reason",
+        "default"
+      ],
+      "name": "storage-light-snapshot-reason-default",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Light snapshot reason default guard"
+    },
+    {
+      "identity": {
+        "member": "reason",
+        "origin": "success"
+      },
+      "arguments": [
+        "reason",
+        "success"
+      ],
+      "name": "storage-light-snapshot-reason-success",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Light snapshot reason success guard"
+    },
+    {
+      "identity": {
+        "member": "chain",
+        "origin": "default"
+      },
+      "arguments": [
+        "chain",
+        "default"
+      ],
+      "name": "storage-light-snapshot-chain-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot chain default guard"
+    },
+    {
+      "identity": {
+        "member": "root",
+        "origin": "default"
+      },
+      "arguments": [
+        "root",
+        "default"
+      ],
+      "name": "storage-light-snapshot-root-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot root default guard"
+    },
+    {
+      "identity": {
+        "member": "limits",
+        "origin": "default"
+      },
+      "arguments": [
+        "limits",
+        "default"
+      ],
+      "name": "storage-light-snapshot-limits-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot limits default guard"
+    },
+    {
+      "identity": {
+        "member": "cache",
+        "origin": "default"
+      },
+      "arguments": [
+        "cache",
+        "default"
+      ],
+      "name": "storage-light-snapshot-cache-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot cache default guard"
+    },
+    {
+      "identity": {
+        "member": "checksum",
+        "origin": "default"
+      },
+      "arguments": [
+        "checksum",
+        "default"
+      ],
+      "name": "storage-light-snapshot-checksum-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot checksum default guard"
+    },
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "default"
+      },
+      "arguments": [
+        "bytes",
+        "default"
+      ],
+      "name": "storage-light-snapshot-bytes-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot bytes default guard"
+    },
+    {
+      "identity": {
+        "member": "length",
+        "origin": "default"
+      },
+      "arguments": [
+        "length",
+        "default"
+      ],
+      "name": "storage-light-snapshot-length-default",
+      "diagnostic": "not snapshot.owner == nil",
+      "description": "Light snapshot length default guard"
+    }
+  ]
+}

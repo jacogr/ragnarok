@@ -84,6 +84,16 @@ The [cache contract](../../spec/storage-light-cache.md) records ownership, refus
 local evidence. This in-memory partial cache supplies no full-state API, database schema, startup
 mode or consensus/trusted-head selection.
 
+## Light proof-cache snapshots
+
+`light_snapshot.nim` prepares opaque immutable canonical images and restores cache state only
+against independently expected chain/root arguments. Its distinct V1 format stores proof evidence,
+not trusted lookup results; every restored proof is verified after bounded shape/checksum checks.
+Read-only mutation policy can be restored independently of complete-snapshot entry count.
+The [snapshot contract](../../spec/storage-light-snapshots.md) records exact widths, trust/refusal
+ordering, golden bytes and lifetime coverage. Checksums do not select trusted roots or authorize
+full/light schema conversion. File publication and application trust selection remain separate work.
+
 ## Boundaries and ownership
 
 The trie reuses GP 0.8.0 key/node encodings and crypto primitives. The existing complete-map
