@@ -1,6 +1,12 @@
-# Small PVM IR experiment
+# PVM preparation experiments
 
-Scope: compare operand preparation for `add_imm_64` (149) and `xor_imm` (133), using
+Opt-in experiments progress from arithmetic kernels to real guest loops, shared
+program tables with memory/host effects, and the upstream sieve comparison below.
+Production modules remain unchanged. Each stage has its own runner and recorded results.
+
+## Initial arithmetic kernel
+
+Initial scope: compare operand preparation for `add_imm_64` (149) and `xor_imm` (133), using
 this checkout's actual JAM program validation, operand decoder and register evaluator.
 Production modules remain unchanged. This is an opt-in arithmetic kernel, not an
 alternative complete PVM engine or a reported production speedup.
@@ -94,3 +100,49 @@ storage excluded). Exact maximum-size execution and owner lifetime are checked.
 as a production API. Semantic execution bodies and ordinary build/test configuration
 remain unchanged. Current coverage includes response-only host callbacks and 64-bit
 scalar memory operations; other widths, fallible callbacks and Linux remain gates.
+
+## Upstream sieve comparison
+
+The [sieve results](SIEVE_RESULTS.md) compare **PolkaVM interpreted**, a frozen master
+interpreter and the prepared-table experiment on identical linked guest bytes. This
+uses PolkaVM's actual `bench-prime-sieve` Rust implementation, rather than a hand-written
+subset of PVM instructions. Its upstream README credits PrimeRust `solution_1`.
+A project-owned export runs the sieve at a requested size, counts primes and checks
+the count. Counting is additional work relative to upstream's stock `benchmark_run`;
+these results cannot be compared directly with its published benchmark numbers.
+
+With Python 3.12+, Rustup, Clang and the repository-pinned Nimony available:
+
+```sh
+NIMONY=/absolute/path/to/pinned/nimony \
+POLKAVM_SOURCE=/absolute/path/to/pristine/pinned/polkavm \
+make -C experiments/pvm-ir sieve
+```
+
+`POLKAVM_SOURCE` defaults to this checkout's `vendor/polkavm`; initialize that submodule
+with the repository's setup workflow or reuse an existing pinned checkout read-only.
+The driver verifies its commit, tracked cleanliness and recorded source hashes. It
+provisions exact Rust toolchains: the upstream guest nightly with `rust-src`, and the
+repository-pinned host Rust. Cargo resolves smaller isolated workspaces from upstream
+lockfiles, refuses registry versions/checksums outside those lockfiles, and builds with
+`--locked --offline`. All copied/generated sources, lockfiles and targets stay under
+`build/pvm-ir-experiment/sieve/`. Existing tools and upstream sources are not patched.
+
+Master defaults to commit `b723f0c1aeaa3b807f062af69004f1fd76352ea5`, frozen from
+`origin/master` for the recorded run. Set `PVM_SIEVE_MASTER` to another local Git ref to
+compare a different baseline explicitly. The driver archives its actual sources and
+builds a separate baseline binary, checking that its Nimony pin matches the candidate.
+`make sieve-build` and `make sieve-measure` expose the same two stages separately;
+measurement refuses changed sources or binaries. Commands, diagnostics, assertion
+controls, linked artifacts, opcode inventory, fixtures, raw samples and identities
+remain in the ignored build directory. `results.json` is written only after all checks
+pass; `partial.json` records completed groups if execution is interrupted.
+
+The generated sieve variant raises only the earlier shared table's caps to 1 MiB of
+code and 65,535 decoded records. The uint16 one-based index remains representable;
+its maximum logical payload is just below 6 MiB. The earlier 4,096-byte / 256-record
+experiment stays intact. An opaque benchmark binding captures program/CPU/memory
+before timing, matching the other engines' invocation setup boundary. Execution uses
+the existing semantic bodies; every opcode needed by this guest is available through
+them. This is prepared interpretation, with no new native backend or specialized sieve
+instructions.
