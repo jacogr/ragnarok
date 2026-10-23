@@ -12,7 +12,8 @@ import ../../../src/codec/[report_owned, header]
 import ../../../src/crypto/primitives
 import ../../../src/state/[store, block_admission, report_admission, accumulation_current_consensus]
 import ../../../src/storage/managed_manifest
-import ../../support/[current_consecutive_context, current_consecutive_download_context,
+import ../../support/[current_consecutive_context, current_rotated_sequence_context,
+  current_consecutive_download_context,
   accumulation_current_chain_context,
   current_download_command_context,
   current_application_context, current_services_disk_samples,
@@ -39,7 +40,7 @@ proc request(rpc: var Server, peer: cint, pending: var string,
     text: string): string =
   ## Default local Server ticks do no IO; the real parent command pumps the remote listener independently.
   sendText(peer, text)
-  readPacket(rpc, peer, pending)
+  readPacket(rpc, peer, pending, description = text, attempts = 2000)
 
 proc observeRpc(context: CurrentConsecutiveFixture, port: uint16) {.raises.} =
   ## Subscribe before the first response; exact roots/headers and proof-method refusal must finish before the final empty response is released.
@@ -58,7 +59,8 @@ proc observeRpc(context: CurrentConsecutiveFixture, port: uint16) {.raises.} =
     """{"jsonrpc":"2.0","method":"subscribeBestBlock","params":[],"id":1}""")
   assert "\"result\":1" in subscribed
   for index in 0..2:
-    let notification = readPacket(rpc, peer, pending)
+    let notification = readPacket(rpc, peer, pending, description = "notification " & $index &
+        " slot " & $slots[index], attempts = 2000)
     assert base64.encode(hashes[index]) in notification
     assert "\"slot\":" & $slots[index] in notification
     if index == 0: writeFile(ReadyPath, "ready") # Only the actual original-parent notification releases the signed current child.
@@ -97,6 +99,9 @@ proc check(context: CurrentConsecutiveFixture, disk, managed: bool) {.raises.} =
         StopPath, CountPath]:
       var path = name
       discard posix.unlink(path.toCString()) # All coordination files remain owned by this isolated native suite.
+  for name in [StartPath, ReadyPath, DonePath, StopPath, CountPath]:
+    var control = name
+    discard posix.unlink(control.toCString()) # A failed previous observer cannot stop or release this invocation's independent responder.
   writeFile(ChainPath, context.seed.currentApplicationText)
   writeFile(PolicyPath, encodeCurrentDownloadPolicy(currentConsecutivePolicy()))
   let reserved = reservation()
@@ -147,7 +152,7 @@ proc check(context: CurrentConsecutiveFixture, disk, managed: bool) {.raises.} =
     observeRpc(context, reserved.port)
     posix.exitnow(0)
   var extra = @["--with-rpc", "--rpc-port", $reserved.port]
-  var database = "pvm-current-consecutive-rpc-state"
+  var database = "pvm-current-consecutive-rpc-state-" & $getMonoTime().ticks
   defer:
     if disk:
       if managed: removeManagedSample(database, [ManagedEpoch(1)])
@@ -167,16 +172,17 @@ proc check(context: CurrentConsecutiveFixture, disk, managed: bool) {.raises.} =
       extra), selected)
   let outcome = runCurrentDownloads(selected)
   assert outcome.error == CurrentDownloadCommandResult.Exhausted and
-      outcome.adoptedBlocks == 2 and outcome.requestedBlocks == 3
+      outcome.adoptedBlocks == 2 and outcome.requestedBlocks == 3, "RPC command " & $outcome.error &
+          " adopted " & $outcome.adoptedBlocks & " first slot " & $uint32(context.heads[1].slot)
   writeFile(StopPath, "stop")
   var state = 0.cint
   assert posix.waitpid(responder, state, 0) == responder
   responderReaped = true
-  assert WIFEXITED(state) and WEXITSTATUS(state) == 0
+  assert WIFEXITED(state) and WEXITSTATUS(state) == 0, "TLS responder joined"
   state = 0
   assert posix.waitpid(observer, state, 0) == observer
   observerReaped = true
-  assert WIFEXITED(state) and WEXITSTATUS(state) == 0
+  assert WIFEXITED(state) and WEXITSTATUS(state) == 0, "RPC observer joined"
   assert readFile(CountPath) == "3" and fileExists(DonePath)
   assertPortReleased(reserved.port)
   if disk:
@@ -195,10 +201,12 @@ proc main() {.raises.} =
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var wire = newSeq[byte](raw.len)
   for index, octet in raw: wire[index] = byte(octet)
-  let context = currentConsecutiveFixture(decodeOwnedReport(wire, 2).value, 2)
-  check(context, false, false)
-  check(context, true, false)
-  check(context, true, true)
+  # Exercise the same real transport/lifecycle assertions before and after the signed slot12 rotation.
+  for context in [currentConsecutiveFixture(decodeOwnedReport(wire, 2).value, 2),
+      currentRotatedSequenceFixture(decodeOwnedReport(wire, 2).value, 2)]:
+    check(context, false, false)
+    check(context, true, false)
+    check(context, true, true)
 
 try:
   main() # RPC/native/process failures cannot count as success.

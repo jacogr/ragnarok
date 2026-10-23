@@ -64,9 +64,11 @@ proc sendText*(peer: cint, text: string, masked = true) =
     for index, octet in text: packet.add(char(ord(octet) xor ord("abcd"[index mod 4])))
   assert sendBytes(peer, packet.toCString(), csize_t(packet.len), 0) == packet.len
 
-proc readPacket*(rpc: var Server, peer: cint, pending: var string, upgrade = false): string =
+proc readPacket*(rpc: var Server, peer: cint, pending: var string, upgrade = false,
+    description = "", attempts = 200): string =
   ## Independently decode a complete bounded server frame; retain coalesced suffixes across dispatcher turns.
-  for attempt in 0..<200:
+  assert attempts > 0 and attempts <= 10000 # Test-owned waits remain finite; default callers keep the original short budget.
+  for attempt in 0..<attempts:
     if upgrade:
       let ending = pending.find("\r\n\r\n")
       if ending >= 0:
@@ -96,7 +98,7 @@ proc readPacket*(rpc: var Server, peer: cint, pending: var string, upgrade = fal
     else:
       assert count < 0 # Unexpected EOF is a test failure, never an empty successful frame.
       discard pauseMicros(1000) # Bound local transport scheduling without an unbounded blocking receive.
-  assert false, "RPC packet did not arrive"
+  assert false, "RPC packet did not arrive: " & description
   ""
 
 proc reservation*(): tuple[fd: cint, port: uint16] =
