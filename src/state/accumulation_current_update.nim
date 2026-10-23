@@ -52,6 +52,26 @@ proc prepareCurrentChainUpdate*(state: StateStore, view: ChainView,
   CurrentChainPreparationResult(status: CurrentChainPreparationError.None,
     completed: PreparedCurrentChainUpdate(data: CurrentUpdateData(parent: state.snapshot.value,
       prior: view, state: working, view: history, successor: applied.value)))
+proc currentUpdatePriorState*(prepared: PreparedCurrentChainUpdate): StateStoreSnapshot {.requires: prepared.data != nil.} =
+  ## Retain the exact original parent; equal roots never substitute another physical owner.
+  let data = prepared.data
+  assert data != nil # Public readiness and stable retained ownership discharge nullable access.
+  data.parent
+proc currentUpdatePriorView*(prepared: PreparedCurrentChainUpdate): ChainView {.requires: prepared.data != nil.} =
+  ## Copy original ordered history/full Parameters/finality only after caller retention admission.
+  let data = prepared.data
+  assert data != nil # Stable ownership protects the whole original selected view.
+  data.prior
+proc currentUpdatePriorViewInfo*(prepared: PreparedCurrentChainUpdate): ChainViewRetentionInfo {.requires: prepared.data != nil.} =
+  ## Allocation-free original retention facts let bounded consumers admit before copying view indexes.
+  let data = prepared.data
+  assert data != nil # No view or block descriptor is copied while inspecting private arrays.
+  data.prior.viewRetentionInfo
+proc currentUpdateViewInfo*(prepared: PreparedCurrentChainUpdate): ChainViewRetentionInfo {.requires: prepared.data != nil.} =
+  ## Allocation-free posterior retention facts precede any heavy current view/child extraction.
+  let data = prepared.data
+  assert data != nil # Read direct private view structure through one stable immutable owner.
+  data.view.viewRetentionInfo
 proc currentUpdateState*(prepared: PreparedCurrentChainUpdate): StateStoreSnapshot {.requires: prepared.data != nil.} =
   ## Retain the exact candidate map for durable export, never a writable target handle.
   let data = prepared.data
@@ -62,6 +82,11 @@ proc currentUpdateView*(prepared: PreparedCurrentChainUpdate): ChainView {.requi
   let data = prepared.data
   assert data != nil # Capture one stable immutable owner for the nullable proof.
   data.view
+proc currentUpdateChildContext*(prepared: PreparedCurrentChainUpdate): BlockSnapshotContext {.requires: prepared.data != nil.} =
+  ## Copy fixed actual child facts without allocating/copying RPC key/service indexes; safe bounded consumers need no heavy child getter.
+  let data = prepared.data
+  assert data != nil # Genuine private preparation appends its exact successor as this selected posterior head.
+  data.view.bestBlockContext
 proc currentUpdateChild*(prepared: PreparedCurrentChainUpdate): BlockSnapshot {.requires: prepared.data != nil.} =
   ## Retain the exact captured child without recapture or hashing.
   let data = prepared.data

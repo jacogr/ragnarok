@@ -1,0 +1,66 @@
+{
+  "build_name": "state-current-refresh-plan-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard current refresh plan default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-current-refresh-plan-default"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard current refresh plan reason",
+      "diagnostic": "outcome.status == LimitExceeded",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-current-refresh-plan-reason"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Guard current refresh plan source",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source"
+      },
+      "name": "state-current-refresh-plan-source"
+    },
+    {
+      "arguments": [
+        "limits"
+      ],
+      "description": "Guard current refresh plan limits",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "limits"
+      },
+      "name": "state-current-refresh-plan-limits"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Guard current refresh plan info",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "info"
+      },
+      "name": "state-current-refresh-plan-info"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_refresh_plan_results.nim"
+}

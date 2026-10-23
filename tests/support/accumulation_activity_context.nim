@@ -4,6 +4,7 @@
 ## Signed report-only activity fixtures retain original full-map entries and actual stopped accumulation provenance.
 
 import std/assertions
+import ./service_namespace_seed
 import ../../src/state/[accumulation_validators, validator_projection, accumulation_times,
   accumulation_statistics, accumulation_recent, accumulation_ready, accumulation_history,
   accumulation_finalization, accumulation_outputs, accumulation_continuation_execution,
@@ -56,7 +57,7 @@ proc activityOptions*(available = false, guarantees = 0, blobs = false,
     hugeRefinement = false, executed = false, provided = false, parentPools: seq[AuthorizerRow] = @[],
     authorizationQueue: seq[byte] = @[], omitAuthorizationQueue = false,
     withDispute = false, withTicket = false, shiftPending = false,
-    storeWrites = 1000'u64, completeState = false): ExecutionFixtureConfig =
+    storeWrites = 1000'u64, completeState = false, serviceNamespaces: seq[ServiceNamespaceSeed] = @[]): ExecutionFixtureConfig =
   ## Actual parent commitments, signatures, availability, skipped executions and C(3/14/15/16)/timestamps precede activity.
   var entries = @[activityParentEntry()]
   var body: seq[byte] = @[]
@@ -100,6 +101,7 @@ proc activityOptions*(available = false, guarantees = 0, blobs = false,
   executionOptions0.signed.shiftPending = shiftPending
   executionOptions0.signed.storeWrites = storeWrites
   executionOptions0.signed.completeState = completeState
+  executionOptions0.signed.serviceNamespaces = serviceNamespaces
   executionOptions0
 
 proc activityFixture*(base: OwnedReport, available = false, guarantees = 0, blobs = false,

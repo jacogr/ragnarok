@@ -1,0 +1,33 @@
+{
+  "build_name": "state-current-identity-prior-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard completed current identity default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-current-identity-prior-default"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Guard completed current identity source",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source"
+      },
+      "name": "state-current-identity-prior-source"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_identity_prior_results.nim"
+}

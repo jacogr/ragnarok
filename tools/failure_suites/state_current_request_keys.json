@@ -1,0 +1,66 @@
+{
+  "build_name": "state-current-request-keys-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard current request keys default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-current-request-keys-default"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard current request keys reason",
+      "diagnostic": "outcome.status == RequestFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-current-request-keys-reason"
+    },
+    {
+      "arguments": [
+        "source"
+      ],
+      "description": "Guard current request keys source",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source"
+      },
+      "name": "state-current-request-keys-source"
+    },
+    {
+      "arguments": [
+        "key"
+      ],
+      "description": "Guard current request keys key",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "key"
+      },
+      "name": "state-current-request-keys-key"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Guard current request keys info",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "info"
+      },
+      "name": "state-current-request-keys-info"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_request_keys_results.nim"
+}

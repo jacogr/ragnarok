@@ -71,6 +71,25 @@ func bestBlock*(view: ChainView): BlockSnapshotResult =
     return unavailableGenesis() # Default views have no implicit head.
   view.snapshot[^1]
 
+type ChainViewRetentionInfo* = object ## Fixed copied accounting bounds explicit whole-view/index copies, including a separately selected finalized owner.
+  history*, owners*: int
+  finalized*: bool
+  bytes*: uint64
+func viewRetentionInfo*(view: ChainView): ChainViewRetentionInfo =
+  ## Inspect private slots directly, avoiding temporary copies of each snapshot's key/service indexes.
+  var bytes = uint64(sizeof(ChainView)) + uint64(view.snapshot.len) * uint64(sizeof(BlockSnapshotResult))
+  for index in 0..<view.snapshot.len:
+    bytes += blockSnapshotRetention(view.snapshot[
+        index]).indexBytes # At most eight original 16384-entry indexes bound all additions.
+  let finalized = view.finalized.error == GenesisError.None
+  if finalized:
+    bytes += blockSnapshotRetention(view.finalized).indexBytes # The fixed finalized wrapper is already charged by sizeof(ChainView).
+  ChainViewRetentionInfo(history: view.snapshot.len, owners: view.snapshot.len + (
+      if finalized: 1 else: 0), finalized: finalized, bytes: bytes)
+func bestBlockContext*(view: ChainView): BlockSnapshotContext {.requires: view.snapshot.len > 0.} =
+  ## Return fixed original head facts and shared immutable handles without copying any private indexes.
+  blockSnapshotContext(view.snapshot[^1])
+
 func blockAt*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
   ## Resolve an exact full-header identity in at most nine comparisons, including the finalized owner.
   for saved in view.snapshot:

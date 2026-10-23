@@ -1,0 +1,55 @@
+{
+  "build_name": "state-current-prior-results",
+  "cases": [
+    {
+      "arguments": [
+        "state"
+      ],
+      "description": "Guard default current update state",
+      "diagnostic": "not prepared.data == nil",
+      "identity": {
+        "reason": "state"
+      },
+      "name": "state-current-prior-state"
+    },
+    {
+      "arguments": [
+        "view"
+      ],
+      "description": "Guard default current update view",
+      "diagnostic": "not prepared.data == nil",
+      "identity": {
+        "reason": "view"
+      },
+      "name": "state-current-prior-view"
+    },
+    {
+      "arguments": [
+        "prior-info"
+      ],
+      "description": "Guard default current update prior-info",
+      "diagnostic": "not prepared.data == nil",
+      "identity": {
+        "reason": "prior-info"
+      },
+      "name": "state-current-prior-prior-info"
+    },
+    {
+      "arguments": [
+        "view-info"
+      ],
+      "description": "Guard default current update view-info",
+      "diagnostic": "not prepared.data == nil",
+      "identity": {
+        "reason": "view-info"
+      },
+      "name": "state-current-prior-view-info"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_prior_results.nim"
+}

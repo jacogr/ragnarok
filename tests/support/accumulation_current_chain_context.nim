@@ -3,6 +3,7 @@
 
 ## Genuine current composed fixtures and exact source parameters support state/view and durable-publication witnesses.
 import std/assertions
+import ./service_namespace_seed
 import ../../src/chain/[parameters, genesis, provider]
 import ../../src/codec/[bounded, header, composite, report_owned, state_trie]
 import ../../src/state/[accumulation_current_consensus, accumulation_consensus,
@@ -37,12 +38,13 @@ proc currentChainParent*(source: PreparedCurrentAccumulationConsensus): StateSto
   source.currentConsensusSource.value.currentAuthorizationSource.value.currentPreimagesSource.value.currentActivityPreimages.value.preimagePrior.value
 proc currentChainFixture*(base: OwnedReport, uses = 0, available = false, blobs = false,
     disputed = false, ticket = false, rotated = false, writes = 1000'u64,
-        completeState = false): CurrentChainFixture =
+        completeState = false, serviceNamespaces: seq[ServiceNamespaceSeed] = @[]): CurrentChainFixture =
   ## Every signature, current guest/phase, statistic and private map comes from real production constructors.
   let authored = currentActivityFixture(base, guarantees = uses, available = available,
     blobs = blobs,
     provided = blobs, withDispute = disputed, withTicket = ticket, shiftPending = rotated,
-    slot = (if rotated: 12'u32 else: 2'u32), storeWrites = writes, completeState = completeState)
+    slot = (if rotated: 12'u32 else: 2'u32), storeWrites = writes, completeState = completeState,
+        serviceNamespaces = serviceNamespaces)
   let activity = prepareCurrentAccumulationActivity(authored.source, AccumulationActivityConfig(
     componentBytes: ByteLimit(1024), preimages: PreimageLimits(items: ElementLimit(3),
       perBlob: ByteLimit(3), totalBlobBytes: ByteLimit(4)), incoming: ElementLimit(2),

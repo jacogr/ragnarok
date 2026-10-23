@@ -5,7 +5,7 @@
 ## Bounded exact C9 decoding never falls back to the current population or substitutes an equal-root map.
 import ./[accumulation_current_update, store]
 import ../chain/[genesis, parameters]
-import ../codec/[bounded, state_layout, state_safrole, state_composition, assurances]
+import ../codec/[bounded, state_layout, state_safrole, state_composition, assurances, header]
 type
   CurrentProfileLimits* = object ## Previous-roster bytes/items are preflighted independently of later whole-global validation.
     validators*: ElementLimit
@@ -42,7 +42,8 @@ proc captureCurrentProfile*(source: PreparedCurrentChainUpdate,
   ## Read only the stable host-owned update before enqueue or after collection/join, including alias retirement.
   if not source.ready:
     return CurrentProfileResult[DerivedCurrentProfile](status: CurrentProfileError.InvalidUpdate)
-  let child = source.currentUpdateChild
+  let child = source.currentUpdateChildContext
+  let cores = CoreCount(child.parameters.get(coreCount))
   let previous = source.currentUpdateState.lookup(chapterKey(StateChapter(9)))
   if previous.error == StateStoreError.MissingKey:
     return CurrentProfileResult[DerivedCurrentProfile](status: CurrentProfileError.MissingPrevious)
@@ -52,7 +53,7 @@ proc captureCurrentProfile*(source: PreparedCurrentChainUpdate,
     return CurrentProfileResult[DerivedCurrentProfile](
         status: CurrentProfileError.LimitExceeded) # Cached extent refuses before value copy or typed roster allocation.
   let input = previous.value.bytes
-  let decoded = decodeStateValidators(input, ValidatorStateConfig(cores: child.cores,
+  let decoded = decodeStateValidators(input, ValidatorStateConfig(cores: cores,
     validators: limits.validators, maxBytes: limits.bytes))
   if decoded.error != StateComponentError.None:
     return CurrentProfileResult[DerivedCurrentProfile](status: CurrentProfileError.PreviousFailure,
@@ -66,13 +67,13 @@ proc captureCurrentProfile*(source: PreparedCurrentChainUpdate,
   if count.value < 0:
     return CurrentProfileResult[DerivedCurrentProfile](
         status: CurrentProfileError.InvalidProfile) # Prove signed-to-unsigned conversion before construction.
-  let profile = StateProfile(cores: child.cores, current: child.activeValidators,
-    previous: ValidatorCount(uint64(count.value)), epochSlots: child.epochSlots)
+  let profile = StateProfile(cores: cores, current: child.validators,
+    previous: ValidatorCount(uint64(count.value)), epochSlots: EpochSlots(child.parameters.get(epochPeriod)))
   if not profile.valid:
     return CurrentProfileResult[DerivedCurrentProfile](status: CurrentProfileError.InvalidProfile)
   CurrentProfileResult[DerivedCurrentProfile](status: CurrentProfileError.None,
     completed: DerivedCurrentProfile(initialized: true, source: source, profile: profile,
-        parameters: child.chainParameters))
+        parameters: child.parameters))
 proc derivedStateProfile*(captured: DerivedCurrentProfile): CurrentProfileResult[StateProfile] =
   ## Copy structural cardinalities only from an initialized same-source projection.
   if not captured.initialized:
