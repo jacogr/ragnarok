@@ -37,6 +37,11 @@ def passed(report):
                and all(row['passed'] for row in report[key]) for key, count in COUNTS.items())
 
 
+def private_module_member(output, member):
+    """Require the exact named module-privacy error; hints, other names and unrelated failures cannot pass."""
+    return "Error: undeclared identifier in module: '"+member+"'" in output
+
+
 # Each worker serializes a private cache; successful initialization enables normal import reuse.
 def compile_rejections(compiler, expectations):
     """Check every main afresh while reusing imports through the pinned compiler's public cache API."""
@@ -121,14 +126,15 @@ def run(compiler, bs_library, report):
             rejected = "undeclared identifier: 'put'" in result['output']
         elif name.startswith('session_'):
             # Moving the implementation into a module must not export raw owners or callback/buffer helpers.
-            rejected = ("undeclared identifier in module: '"+member+"'") in result['output']
+            rejected = private_module_member(result['output'], member)
         elif name == 'wrong_owner_pool':
             # The second argument must be an index, never a replacement source buffer.
             rejected = 'Type mismatch' in result['output'] and '[2] expected: int64 but got: array' in result['output']
         else:
             # Every raw-state bypass must fail for its private/read-only member.
             rejected = ('undeclared field' in result['output'] or 'cannot assign' in result['output']
-                        or 'cannot be assigned' in result['output'])
+                        or 'cannot be assigned' in result['output']
+                        or private_module_member(result['output'], member))
         passed = result['exit_code'] != 0 and member in result['output'] and rejected
         report['privacy'].append(dict(name=name, passed=passed, check=result))
         announce(name, passed)
