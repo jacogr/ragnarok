@@ -158,7 +158,7 @@ runtime: check-unit
 check-unit: setup format-check
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" 2>&1 | tee build/ci/runtime.log
 
-# Fast PR gate checks all formatting and the production peer's semantic import graph, without native linking.
+# Fast PR gate checks all formatting and every production source with an unoptimized semantic profile.
 .PHONY: check-smoke
 check-smoke: check-inventory format-check ui-assets build-info
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" --smoke --output build/tests/smoke 2>&1 | tee build/ci/smoke.log
@@ -337,7 +337,7 @@ summary-e2e:
 help:
 	@printf '%s\n' 'make / make build  Provision dependencies and build build/ragnarok' \
 	  'make setup         Provision pinned toolchains, submodules and Cargo dependencies' \
-	  'make check-smoke   Check all formatting and semantically compile the production peer entry point' \
+	  'make check-smoke   Check all formatting and semantically compile every production module' \
 	  'make package-binary  Build and smoke-test a relocatable native archive in build/dist/' \
 	  'make docker-build  Build the Linux amd64 runtime image (DOCKER_IMAGE=ragnarok:local)' \
 	  'make check-docker  Build and smoke-test the image locally; never publish it' \

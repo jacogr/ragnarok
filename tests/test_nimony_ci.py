@@ -557,30 +557,43 @@ class NimonyCISafeguards(unittest.TestCase):
                 extract(data.getvalue(), temporary)
             self.assertEqual(list(temporary.iterdir()), [])
 
-    def test_peer_smoke_keeps_feature_flags_scope_and_failed_verdicts(self):
-        """One real entry point gets the production defines; failed compilation cannot claim an audit pass."""
+    def test_all_source_profiles_and_failed_compilations(self):
+        """Every discovered module is imported, debug skips optimization, and either compiler failure stays red."""
         with temporary_folder() as root:
             (root/'src').mkdir()
-            entry = root/'src/ragnarok.nim'
-            entry.write_text('discard')
-            (root/'src/unimported.nim').write_text('discard')
-            for code in (0, 7):
-                with self.subTest(code=code), patch.object(modules, 'ROOT', root), patch.object(
-                        modules.subprocess, 'check_output', return_value='fixture'), patch.object(
-                        modules.subprocess, 'run', return_value=subprocess.CompletedProcess([], code, '', 'diagnostic')) as command, patch('sys.stdout'):
-                    report = modules.audit(root/'compiler', root/'evidence', smoke=True)
-                self.assertEqual([row['source'] for row in report['modules']], ['src/ragnarok.nim'])
-                self.assertEqual(report['jobs'], 1)
-                self.assertIn('not an all-module audit', report['scope'])
-                self.assertEqual(report['status'] == 'compile-checks-passed', code == 0)
-                arguments = command.call_args.args[0]
-                for flag in ('check', '--isMain', '--mm:arc', '--boundchecks:on', '-d:release',
-                             '--opt:speed', '-d:integration', '-d:offload'):
-                    self.assertIn(flag, arguments)
-            entry.unlink()
-            with patch.object(modules, 'ROOT', root), patch.object(
-                    modules.subprocess, 'check_output', return_value='fixture'):
-                with self.assertRaisesRegex(ValueError, 'requested Nim modules'):
+            for name in ('ragnarok.nim', 'unimported.nim'):
+                (root/'src'/name).write_text('discard')
+            caches = []
+            for smoke in (True, False):
+                for codes in ((0, 0), (7, 0), (0, 7)):
+                    outputs = [subprocess.CompletedProcess([], code, '', 'diagnostic') for code in codes]
+                    with self.subTest(smoke=smoke, codes=codes), patch.object(modules, 'ROOT', root), patch.object(
+                            modules.subprocess, 'check_output', return_value='fixture'), patch.object(
+                            modules.subprocess, 'run', side_effect=outputs) as command, patch('sys.stdout'):
+                        report = modules.audit(root/'compiler', root/'evidence', smoke=smoke)
+                    self.assertEqual([row['source'] for row in report['modules']], ['src/ragnarok.nim', 'src/unimported.nim'])
+                    self.assertEqual(report['jobs'], 1)
+                    self.assertEqual(report['profile'], 'debug-unoptimized' if smoke else 'checked-release')
+                    self.assertEqual(report['status'] == 'compile-checks-passed', codes == (0, 0))
+                    self.assertEqual(command.call_count, 2)
+                    imports = (root/'evidence/all_sources.nim').read_text()
+                    self.assertIn(str(root/'src/unimported.nim'), imports)
+                    self.assertEqual(len([line for line in imports.splitlines() if line.startswith('import ')]), 2)
+                    for call in command.call_args_list:
+                        arguments = call.args[0]
+                        for flag in ('check', '--mm:arc', '--boundchecks:on'):
+                            self.assertIn(flag, arguments)
+                        self.assertEqual('--opt:none' in arguments, smoke)
+                        self.assertEqual('-d:release' in arguments, not smoke)
+                        self.assertEqual('--passC:-flto=thin' in arguments, not smoke)
+                        caches.append(next(value for value in arguments if value.startswith('--nimcache:')))
+                    main = command.call_args_list[-1].args[0]
+                    for flag in ('--isMain', '-d:integration', '-d:offload'):
+                        self.assertIn(flag, main)
+            self.assertEqual(len(set(caches)), len(caches))
+            (root/'src/ragnarok.nim').unlink()
+            with patch.object(modules, 'ROOT', root):
+                with self.assertRaisesRegex(ValueError, 'peer entry point'):
                     modules.audit(root/'compiler', root/'evidence', smoke=True)
             self.assertFalse((root/'evidence/results.json').exists())
 
@@ -617,26 +630,27 @@ class NimonyCISafeguards(unittest.TestCase):
                         with self.assertRaises(failure):
                             verify_version(Path('/fixture/nimony'), '0.6.3')
 
-    # Inventory discovery must include a newly added module and keep a failed module red while checking later files.
     def test_inventory_failure_and_new_module(self):
+        """A newly added, otherwise unused source enters the shared graph and cannot bypass its verdict."""
         with temporary_folder() as root:
             (root/'src').mkdir()
-            # The third file represents new code that must not rely on a manually updated allowlist.
-            for name in ('a.nim', 'b.nim', 'new.nim'):
+            for name in ('a.nim', 'b.nim', 'new.nim', 'ragnarok.nim'):
                 (root/'src'/name).write_text('discard\n')
-            ready = threading.Barrier(2)
-            # Require overlapping checks while retaining one genuine failure and a later new source.
-            def check(compiler, source, folder):
-                if source.name != 'new.nim':
-                    # The first two modules must overlap without depending on host scheduling speed.
-                    ready.wait(timeout=5)
-                return dict(source=str(source.relative_to(root)), passed=source.name != 'b.nim')
-            with patch.dict('os.environ', {'COMPILE_CHECK_JOBS': '2'}), patch.object(modules, 'ROOT', root), patch.object(modules, 'check_module', side_effect=check), patch.object(modules.subprocess, 'check_output', return_value='fixture'), patch('sys.stdout', new=io.StringIO()):
+            def check(compiler, source, folder, **options):
+                """The graph's failed verdict must dominate a successful peer-main check."""
+                if source.name == 'all_sources.nim':
+                    text = source.read_text()
+                    for path in sorted((root/'src').glob('*.nim')):
+                        self.assertIn(str(path), text)
+                return dict(source=str(source.relative_to(root)), passed=source.name != 'all_sources.nim')
+            with patch.object(modules, 'ROOT', root), patch.object(modules, 'check_module', side_effect=check) as command, patch.object(
+                    modules.subprocess, 'check_output', return_value='fixture'), patch('sys.stdout'):
                 report = modules.audit(root/'nimony', root/'evidence')
             self.assertEqual(report['status'], 'compile-checks-failed')
-            self.assertEqual(report['jobs'], 2)
-            self.assertEqual(len(report['modules']), 3)
-            self.assertEqual([row['source'] for row in report['modules']], ['src/a.nim', 'src/b.nim', 'src/new.nim'])
+            self.assertEqual(command.call_count, 2)
+            self.assertEqual([row['source'] for row in report['modules']],
+                             ['src/a.nim', 'src/b.nim', 'src/new.nim', 'src/ragnarok.nim'])
+            self.assertFalse(any(row['passed'] for row in report['modules']))
             self.assertTrue((root/'evidence/results.json').is_file())
 
     # A stalled compiler cannot be counted as a pass or silently disappear from the inventory.

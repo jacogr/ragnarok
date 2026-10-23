@@ -96,7 +96,7 @@ wait between queries and do not watch/poll unless requested. PR creation must be
 attaching its URL to the calling task.
 
 PR creation and updates automatically request the lightweight Smoke check (formatting and
-production entry-point semantic compilation). Heavy verification remains opt-in for PRs. Keep
+unoptimized all-source semantic compilation). Heavy verification remains opt-in for PRs. Keep
 local verification appropriate to the diff; request additional remote checks only when asked
 or when the maintainer has authorized that verification.
 Use `ci:unit` for native units/corpora, Python tooling and source compilation, `ci:e2e` for

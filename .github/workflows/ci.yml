@@ -42,7 +42,7 @@ env:
 
 # Independent groups run concurrently on separate VMs; no job requires another job's artifacts.
 jobs:
-  # One semantic entry-point check plus complete formatting, without native linking or fixture setup.
+  # Complete source import graph plus peer main and read-only formatting; no native linking or fixture setup.
   smoke:
     if: ${{ (github.event_name == 'pull_request' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke') }}
     name: Smoke
@@ -59,7 +59,7 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Check formatting and smoke-compile production peer
+      - name: Check all formatting and smoke-compile all production modules
         run: make check-smoke
       - name: Retain smoke diagnostics
         if: always()

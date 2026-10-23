@@ -309,10 +309,19 @@ complete serial plan. Reports and summaries explicitly identify partial group sc
 all that group's declared verdicts. The stable **E2E** aggregate requires every
 matrix job to succeed, including refusal of skipped/cancelled groups. Job timeouts are unchanged.
 
-The automatic PR **Smoke** gate runs `make check-smoke`: complete pinned Nim/Rust formatting,
-real UI asset generation and one checked semantic compilation of `src/ragnarok.nim` with the
-production integration/offload defines and main-module flag. It requires no fixture submodules,
-Cargo dependency builds, native bridges or link step. Its reports explicitly identify the partial
-entry-point scope; every-source audits remain in `check-modules`. Compiler/formatter setup is
-separate from native C/linker package provisioning; UI bootstrap provisions a C compiler only if
-the host lacks one. New PR updates supersede only older smoke runs, leaving labeled heavy CI alone.
+The automatic PR **Smoke** gate runs `make check-smoke`: complete read-only pinned Nim/Rust
+formatting, real UI asset generation and an unoptimized (`--opt:none`, no release/LTO) semantic
+compilation of every discovered `src/**/*.nim` module. A generated import-only module visits all
+sources, including modules not currently reachable from the peer. Unique import aliases avoid
+namespace collisions. The real peer entry point is also checked with integration/offload and
+main-module semantics. Both compiler operations must pass; reports show the complete inventory
+and shared compilation verdict, not independently measured per-module results.
+
+`check-modules` uses this same complete-graph scheduling with its checked-release profile.
+Neither path repeats the import graph in hundreds of separate fresh compiler processes. Each
+invocation uses fresh private compiler caches; the two operations retain their distinct cache
+profiles. No fixture submodules, Cargo dependency builds, native bridges or link step are needed.
+Compiler/formatter setup is separate from native C/linker package provisioning; UI bootstrap
+provisions a C compiler only if the host lacks one. New PR updates supersede only older smoke
+runs, leaving labeled heavy CI alone. Formatting checks exactly the same whole source set as
+full CI and never edits source files.
