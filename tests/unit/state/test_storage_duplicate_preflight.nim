@@ -26,13 +26,20 @@ proc records(count, mode: int, duplicate: bool): seq[TrieRecord] =
     digest[0] = 128
     for octet in 0..<8:
       digest[24+octet] = byte((uint64(index+1) shr (octet*8)) and 255)
-    if mode == 0:
+    if mode == 0 or mode == 4 or mode == 5:
       for octet in 0..<8: digest[octet] = byte((uint64(index+1) shr (octet*8)) and 255)
     elif mode == 2: digest[0] = byte(index mod 17+1)
     elif mode == 3:
       for octet in 8..<31: digest[octet] = 255
       digest[31] = byte((index+1) and 255) # Above256 entries intentionally collide; the full-width oracle decides.
     result[index] = TrieRecord(kind: TrieRecordKind.Leaf, digest: StateNodeHash(digest))
+  if (mode == 4 or mode == 5) and result.len > 2:
+    var middle = array[32, byte](result[result.len div 2].digest)
+    let first = array[32, byte](result[0].digest)
+    let bytes = if mode == 4: 8 else: 32
+    for octet in 0..<bytes: middle[octet] = first[octet]
+    result[result.len div 2].digest = StateNodeHash(
+        middle) # Sparse prefix collisions and interior full duplicates.
   if duplicate and result.len > 0:
     let first = result[0]
     result.add(first) # Duplicate the whole physical address, not merely its compact scratch key.
@@ -127,7 +134,7 @@ proc realControl() =
   reset(0)
   assert decodeTrieExport(encoded, limits).error == RecordError.None and calls() == 3
 
-for mode in 0..<4:
+for mode in 0..<6:
   for count in [0, 1, 2, 15, 16, 17, 63, 64, 65, 127, 128, 129, 257]:
     for duplicate in [false, true]: exercise(count, mode, duplicate)
 realControl()
@@ -137,6 +144,8 @@ for iteration in 0..<1000:
   exercise(3, 0, false)
   exercise(3, 1, false)
   exercise(3, 2, true)
+  exercise(17, 4, false)
+  exercise(17, 5, false)
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("storage_duplicate_preflight", 1000, before, after)
