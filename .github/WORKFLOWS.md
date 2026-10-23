@@ -24,3 +24,8 @@ The workflow also supports manual dispatch with a selected scope.
 
 Jobs publish summaries and retain diagnostic logs and reports from `build/`. See
 [requesting CI](../docs/testing.md#requesting-ci) for label scopes, reruns and revision semantics.
+
+Complete group requests expose concise aggregate checks: **Compile**, **Unit**, **Contract**,
+**E2E**, **Interop** and **Perf**. Each aggregate requires every child in its group to succeed,
+including rejecting unexpected skips and cancellations. Standalone manual workload scopes
+(such as `ref-pvm` or `bench-storage`) run only that workload and omit the complete-group gate.
