@@ -9,9 +9,11 @@ import ../../support/[current_logical_cli_context, current_namespace_policy_cont
     current_consecutive_download_context,
     current_services_disk_samples, managed_storage_samples, current_namespace_transition_context,
     current_download_command_context, block_download_transport]
+import ../../support/pvm_accumulation_program
+import ../../../src/pvm/machine
 import ../../../src/app/[current_logical_startup, current_logical_download, current_download_policy,
     current_download_command, options, services, chain]
-import ../../../src/codec/[bounded, block_codec, report_owned, state_composition]
+import ../../../src/codec/[bounded, block_codec, report_owned, state_composition, state_accounts, state_service_values]
 import ../../../src/chain/[provider, genesis]
 import ../../../src/state/[store, parent_logical, accumulation_current_update, block_admission, report_admission]
 import ../../../src/storage/managed_manifest
@@ -155,7 +157,7 @@ proc sourceChecks(fixture: NamespaceExecutionFixture) =
       CurrentLogicalStartupError.GlobalsFailure
 proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false, omitted = false,
     refuse = false, namespaces = false, refresh = false, partial = false,
-        unwritable = false) {.raises.} =
+        unwritable = false, keyBytes = 0) {.raises.} =
   ## Actual command sockets, worker collection and adoption use explicit files; strict disk restart reconstructs a fresh physical logical owner.
   var chainPath = "pvm-logical-cli-chain"
   var policyPath = "pvm-logical-cli-policy"
@@ -174,9 +176,16 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     if layout == 2 and not malformed: removeManagedSample(database, [ManagedEpoch(1)])
     elif layout == 1: discard posix.unlink(database.toCString())
   writeFile(chainPath, fixture.parent.bestBlock.value.currentApplicationText)
-  let policy = currentConsecutivePolicy()
+  var policy = currentConsecutivePolicy()
+  if keyBytes > 0:
+    policy.candidate.completion.execution.initial.guests.copyBytes = MemoryByteLimit(8192)
+    policy.candidate.completion.execution.execution.round.guests.copyBytes = MemoryByteLimit(
+        8192) # Read the actual long zero-filled writable/heap span under explicit original policies.
   writeFile(policyPath, encodeCurrentDownloadPolicy(policy))
   var limits = logicalStartupTestLimits()
+  if keyBytes > 0:
+    limits.logical.inventory.manifest.storageKeyBytes = ByteLimit(8192)
+    limits.logical.rawKeyBytes = ByteLimit(8192) # The actual logical state is valid independently of the narrower v1 source syntax.
   if refuse: limits.download.identities.keys = ElementLimit(0)
   writeFile(logicalPolicyPath, encodeCurrentLogicalPolicy(limits))
   var text = logicalDeclarationText(fixture.executableNamespaceServices(
@@ -201,7 +210,7 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
   var children = @[first]
   for index in 0..<2:
     let child = currentEmptyChild(model.chainView.bestBlock.value)
-    let update = phaseCurrentUpdate(model, child, [], currentConsecutiveLimits())
+    let update = phaseCurrentUpdate(model, child, [], policy.candidate)
     model.installPrepared(update)
     children.add(child)
     heads.add(model.chainView.bestBlock.value)
@@ -209,6 +218,13 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
   if refresh: extra.add("--download-update-logical-source") # Only explicit opt-in may replace the previously qualified input file.
   if namespaces:
     var namespacePolicy = namespacePolicyTestLimits()
+    if keyBytes > 0:
+      namespacePolicy.initial.storage.perKey = ByteLimit(8192)
+      namespacePolicy.initial.storage.totalKeyBytes = ByteLimit(8192)
+      namespacePolicy.round = namespacePolicy.initial
+      namespacePolicy.continuation.logical.inventory.manifest.storageKeyBytes = ByteLimit(8192)
+      namespacePolicy.continuation.logical.rawKeyBytes = ByteLimit(
+          8192) # Genuine oversized identities reach completed logical qualification before export refuses them.
     if refuse: namespacePolicy.continuation.scratchBytes = ByteLimit(
         0) # Preserve a genuine local continuation refusal after real receipt without adoption.
     writeFile(namespacePath, if malformed: "wrong\n" else: encodeCurrentNamespacePolicy(namespacePolicy))
@@ -224,14 +240,18 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     requests.add(currentExpectedRequest(array[32, byte](heads[i].blockHash)))
     responses.add(currentConsecutiveResponse(children[i]))
   if partial: responses[1] = @[0'u8, 0, 0, 0] # The second authenticated response is genuinely empty; one attempt must exhaust after the first adopted child.
-  let firstCount = if unwritable: 1 elif malformed or omitted or refuse or partial or (
-      namespaces and not refresh) or layout == 0: 3 else: 1
+  let firstCount = if unwritable or keyBytes > CurrentLogicalSourceKeyBytes: 1 elif malformed or
+      omitted or refuse or partial or (namespaces and not refresh) or layout == 0: 3 else: 1
   let exchanged = logicalCommandExchange(chainPath, policyPath, sourcePath, logicalPolicyPath,
       requests, responses, firstCount, extra)
   if malformed or omitted:
     assert exchanged.outcome.error == (if malformed and
         namespaces: CurrentDownloadCommandResult.InvalidPolicy else: CurrentDownloadCommandResult.InvalidLogicalSource)
     assert exchanged.outcome.adoptedBlocks == 0 and exchanged.secondRequests == 0
+  elif keyBytes > CurrentLogicalSourceKeyBytes:
+    assert exchanged.outcome.error == CurrentDownloadCommandResult.LogicalSourceExportFailure
+    assert exchanged.outcome.adoptedBlocks == 1 and exchanged.secondRequests == 1
+    assert readFile(actualSourcePath) == text # A key outside the accepted source syntax never replaces the previous file with an unreadable successful export.
   elif unwritable:
     assert exchanged.outcome.error == CurrentDownloadCommandResult.LogicalSourcePublicationFailure
     assert exchanged.outcome.adoptedBlocks == 1 and exchanged.secondRequests == 1
@@ -245,16 +265,22 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
   else:
     assert exchanged.outcome.error == CurrentDownloadCommandResult.Adopted
     assert exchanged.outcome.adoptedBlocks == firstCount and exchanged.secondRequests == firstCount
-  if refresh and not malformed and not omitted and not refuse and not unwritable:
+  if refresh and not malformed and not omitted and not refuse and not unwritable and keyBytes <= CurrentLogicalSourceKeyBytes:
     let updated = readFile(actualSourcePath)
-    if namespaces:
+    if keyBytes > 0:
+      var key = newSeq[byte](keyBytes)
+      key[0] = 9
+      assert updated != text and ("k=" & logicalHex(key) & "\n") in
+          updated # The exact maximum source key remains restartable.
+    elif namespaces:
       assert updated != text and "k=07\n" in updated # Exported raw identity comes only from the actual qualified adopted source.
     else: assert updated == text # Strict identity preservation exports the same canonical declarations after actual adoption.
   if malformed:
     assert not fileExists(database) and not dirExists(
         database) # Lexical refusal precedes Services or database startup.
   elif layout != 0:
-    if not omitted and not refuse and not unwritable and (not namespaces or refresh):
+    if not omitted and not refuse and not unwritable and keyBytes <=
+        CurrentLogicalSourceKeyBytes and (not namespaces or refresh):
       var nextRequests: seq[array[42, byte]] = @[]
       var nextResponses: seq[seq[byte]] = @[]
       for i in 1..<3:
@@ -266,11 +292,27 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     var owner = default(Services)
     let options = currentDiskOptions(chainPath, database, layout == 2, 0)
     assert owner.start(options, "strict CLI logical final reopen")
-    assert owner.chainView.retainedCount == (if omitted or refuse: 1 elif unwritable: 2 else: 4)
+    assert owner.chainView.retainedCount == (if omitted or refuse: 1 elif unwritable or keyBytes >
+        CurrentLogicalSourceKeyBytes: 2 else: 4)
     for i in 0..<owner.chainView.retainedCount:
       equalCurrentDiskMap(owner.chainView.retainedBlockAt(RetainedBlockIndex(uint64(
           i))).value.stateSnapshot, heads[i].stateSnapshot)
     owner.close()
+proc longKeyFixture(base: OwnedReport, length: int): NamespaceExecutionFixture =
+  ## A real host reads a long initialized-zero writable/heap span; the compact program and original signed profile remain unchanged.
+  var code = @[0'u8]
+  for octet in guestEnvelope([registerImmediate(7, high(uint64)), registerImmediate(8, 196608),
+      registerImmediate(9, uint64(length)), registerImmediate(10, 196608), registerImmediate(11, 1),
+      @[10'u8, 5], @[50'u8, 0]], writable = @[9'u8]): code.add(octet)
+  var policy = currentConsecutiveLimits()
+  policy.completion.execution.initial.guests.copyBytes = MemoryByteLimit(8192)
+  policy.completion.execution.execution.round.guests.copyBytes = MemoryByteLimit(8192)
+  result = namespaceExecutionFixture(base, namespaceHaltCode(), code, policies = policy)
+  var key = newSeq[byte](length)
+  key[0] = 9
+  let physical = serviceStorageKey(ServiceIndex(99), key, ByteLimit(8192)).value
+  assert result.update.currentUpdateState.lookup(physical).value.bytes == @[
+      9'u8] # Actual PVM execution must create the claimed long identity before any export witness runs.
 proc main() {.raises.} =
   ## Source preflight is independent of primitive availability; actual command witnesses then bind complete signed namespaces and durable histories.
   parser()
@@ -283,6 +325,9 @@ proc main() {.raises.} =
       namespaceHaltCode())
   let mutated = namespaceExecutionFixture(decodeOwnedReport(bytes, 2).value, namespaceHaltCode(),
       namespaceStorageCode(@[9'u8, 8]))
+  let exactKey = longKeyFixture(decodeOwnedReport(bytes, 2).value, CurrentLogicalSourceKeyBytes)
+  let oversizedKey = longKeyFixture(decodeOwnedReport(bytes, 2).value,
+      CurrentLogicalSourceKeyBytes+1)
   sourceChecks(fixture)
   for layout in 0..2:
     command(fixture, layout)
@@ -296,6 +341,10 @@ proc main() {.raises.} =
     command(mutated, layout, namespaces = true, refresh = true)
     command(mutated, layout, namespaces = true, refresh = true, partial = true)
     command(mutated, layout, namespaces = true, refresh = true, unwritable = true)
+    command(exactKey, layout, namespaces = true, refresh = true,
+        keyBytes = CurrentLogicalSourceKeyBytes)
+    command(oversizedKey, layout, namespaces = true, refresh = true,
+        keyBytes = CurrentLogicalSourceKeyBytes+1)
   echo "PVM current logical startup passed"
 try: main()
 except: quit(2) # Parser, source matching, command adoption and every native cleanup path are mandatory evidence.
