@@ -73,6 +73,17 @@ left-edge 255-bit comparison, resource ceilings and trust requirements. This is 
 primitive; light startup, trusted heads, database identity/schema, cache policy and network formats
 remain separate work. It never hashes a partial mapping into a complete state root.
 
+## Authenticated light lookup retention
+
+`light_state_cache.nim` retains bounded verified key lookups at one caller-trusted complete root.
+Atomic `admit` batches verify all proofs before returning a new immutable cache; `forget` drops
+local evidence without changing retained views. Missing entries return UnknownKey, distinct from
+a stored authenticated Absent result and a present empty value. A different root requires a new
+empty cache. Counts, batch work and logical raw-value bytes have separate inherited limits.
+The [cache contract](../../spec/storage-light-cache.md) records ownership, refusal ordering and
+local evidence. This in-memory partial cache supplies no full-state API, database schema, startup
+mode or consensus/trusted-head selection.
+
 ## Boundaries and ownership
 
 The trie reuses GP 0.8.0 key/node encodings and crypto primitives. The existing complete-map
