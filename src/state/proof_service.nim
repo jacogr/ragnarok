@@ -4,6 +4,7 @@
 ## Typed service reads consume authenticated partial evidence without claiming a complete account map.
 ## Missing witnesses, proven absence and malformed present bytes remain separate outcomes.
 import ./proof_plan
+import ./preimage_history
 import ./[proof_view, trie_proof]
 import ../crypto/primitives
 import ../codec/[bounded, state_accounts, state_layout, state_service_values, state_requests, state_trie]
@@ -132,20 +133,6 @@ proc proofPreimageRequested*(view: ProofView, service: ServiceIndex, hash: Servi
   ServiceProofResult[bool](status: ServiceProofError.None,
     completed: history.value.state == RequestState.Requested)
 
-func availableAt(history: RequestHistory, slot: RequestSlot): bool =
-  ## Apply the pinned four-shape availability equation without adding chronological constraints.
-  let time = uint32(slot)
-  case history.state
-  of RequestState.Requested:
-    false # No supply interval exists for an outstanding request.
-  of RequestState.Available:
-    uint32(history.since) <= time
-  of RequestState.Unavailable:
-    uint32(history.availableFrom) <= time and time < uint32(history.unavailableFrom)
-  of RequestState.Reavailable:
-    (uint32(history.originalFrom) <= time and time < uint32(history.removedAt)) or
-      uint32(history.restoredAt) <= time
-
 proc readProofHistoricalPreimage*(view: ProofView, service: ServiceIndex,
     hash: ServicePreimageHash, slot: RequestSlot, limit: ByteLimit): ServiceProofResult[
         VerifiedStateLookup] =
@@ -161,7 +148,7 @@ proc readProofHistoricalPreimage*(view: ProofView, service: ServiceIndex,
     return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.InvalidValue)
   if history.error != ServiceProofError.None:
     return ServiceProofResult[VerifiedStateLookup](status: history.error)
-  if not availableAt(history.value, slot):
+  if not requestAvailableAt(history.value, slot):
     return ServiceProofResult[VerifiedStateLookup](status: ServiceProofError.AbsentValue)
   preimage
 

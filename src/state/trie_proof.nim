@@ -12,7 +12,8 @@ type
     valueBytes*: ByteLimit
   StateProofError* {.pure.} = enum ## Failure alternatives never expose a proof prefix or lookup payload.
     Uninitialized, None, LimitExceeded, InvalidProof, InvalidIndex, RootMismatch,
-    KeyMismatch, BackendFailure, MissingValue, StoreFailure, Truncated, NonCanonical, DuplicateKey, LengthOverflow
+    KeyMismatch, BackendFailure, MissingValue, StoreFailure, Truncated, NonCanonical, DuplicateKey,
+      LengthOverflow, InvalidRange
   ProofData = ref object ## Private acyclic ownership freezes copied canonical nodes and supplied bytes.
     nodes: seq[EncodedStateNode]
     value: seq[byte]
@@ -106,6 +107,42 @@ func key*(lookup: VerifiedStateLookup): StateKey {.requires: lookup.valid.} =
 proc bytes*(lookup: VerifiedStateLookup): seq[byte] {.requires: lookup.valid and lookup.present.} =
   ## Return detached authenticated bytes only for a present value.
   lookup.proof.suppliedValue.value
+proc copySlice*(lookup: VerifiedStateLookup, offset, length: uint64,
+    limit: ByteLimit): StateProofResult[seq[byte]] =
+  ## Copy only an admitted authenticated interval without materializing the whole value; default, proven absence, range and local byte refusal remain distinct.
+  if not lookup.valid:
+    return StateProofResult[seq[byte]](status: StateProofError.Uninitialized)
+  if not lookup.found:
+    return StateProofResult[seq[byte]](status: StateProofError.MissingValue) # Even an empty requested slice cannot turn absence into a present-empty value.
+  let data = lookup.proof.data
+  assert data != nil # Bind the already validated immutable owner before payload access.
+  let size = uint64(data.value.len)
+  if offset > size or length > size-offset:
+    return StateProofResult[seq[byte]](status: StateProofError.InvalidRange) # Subtraction rejects overflowing full-width coordinates before narrowing or allocation.
+  if length > uint64(limit):
+    return StateProofResult[seq[byte]](status: StateProofError.LimitExceeded)
+  var copied = newSeq[byte](int(length))
+  for i in 0..<copied.len:
+    copied[i] = data.value[int(offset)+i] # Admitted coordinates fit the original native value; no mutable source storage escapes.
+  StateProofResult[seq[byte]](status: StateProofError.None, completed: copied)
+proc sameVerifiedLookup*(left, right: VerifiedStateLookup): StateProofResult[bool] =
+  ## Compare exact authenticated root/key/presence/value facts without copying payloads, hashing or requiring identical raw witnesses.
+  if not left.valid or not right.valid:
+    return StateProofResult[bool](status: StateProofError.Uninitialized)
+  if array[32, byte](left.rootIdentity) != array[32, byte](right.rootIdentity) or array[31, byte](
+      left.keyIdentity) != array[31, byte](right.keyIdentity) or left.found != right.found:
+    return StateProofResult[bool](status: StateProofError.None, completed: false)
+  if left.found:
+    let a = left.proof.data
+    let b = right.proof.data
+    assert a != nil and b != nil # Genuine verified lookups retain both immutable witnesses.
+    if a.value.len != b.value.len:
+      return StateProofResult[bool](status: StateProofError.None, completed: false)
+    for i in 0..<a.value.len:
+      if a.value[i] != b.value[i]:
+        return StateProofResult[bool](status: StateProofError.None,
+            completed: false) # Different payloads never coalesce merely because their length agrees.
+  StateProofResult[bool](status: StateProofError.None, completed: true)
 func bit(key: StateKey, depth: int): bool =
   ## Internal callers prove 0..247 before selecting an MSB-first key bit.
   let bytes = array[31, byte](key)

@@ -1,0 +1,18 @@
+{
+  "build_name": "state-proof-value-slices-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "state_proof_value_slices guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "state-proof-value-slices-value"
+    }
+  ],
+  "crypto_library": "observer",
+  "source": "tests/native/state_proof_value_slices_results.nim"
+}

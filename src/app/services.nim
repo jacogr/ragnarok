@@ -22,7 +22,13 @@ import ./frozen_supplied
 import ../state/supplied_services
 import ./logical_service_proof
 import ./logical_export
+import ./logical_source_export
 import ./logical_checkpoint_import
+import ./logical_code
+import ./logical_code_proof
+import ../state/code_availability
+import ./full_logical_proof
+import ./paged_logical_proof
 import ./logical_seed
 import ../codec/[state_composition, composite]
 import ./current_logical as collected_logical
@@ -1318,3 +1324,40 @@ proc importLogicalCheckpoint*(services: Services, source: CurrentLogicalState,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Original logical/root aliases remain outside every managed native lease until actual collection or join.
   logical_checkpoint_import.importLogicalCheckpoint(source, wire, limits, wireLimit)
+
+proc auditLogicalCodeAvailability*(services: Services, source: CurrentLogicalState,
+    limits: CodeAvailabilityLimits): LogicalCodeResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Original logical/current payload aliases remain excluded until actual matching collection or joined shutdown.
+  logical_code.auditLogicalCodeAvailability(source, limits)
+
+proc planFullLogicalProof*(services: Services, source: CurrentLogicalState,
+    limits: FullLogicalProofLimits): FullLogicalProofResult[FullLogicalProofPlan] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Whole-map enumeration and selector ownership remain excluded until actual managed collection/join.
+  full_logical_proof.planFullLogicalProof(source, limits)
+
+proc planLogicalProofPages*(services: Services, source: CurrentLogicalState,
+    fullLimits: FullLogicalProofLimits, pageLimits: LogicalProofPageLimits): LogicalProofPageResult[
+        LogicalProofPages] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Complete original-source traversal and all retained page-plan aliases remain outside managed native graph leases until matching collection/join.
+  paged_logical_proof.planLogicalProofPages(source, fullLimits, pageLimits)
+
+proc planLogicalCodeProof*(services: Services, source: CurrentLogicalState, service: ServiceIndex,
+    limits: LogicalCodeProofLimits): LogicalCodeProofResult[LogicalCodeProof] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Original current inventory/content and selector aliases remain excluded until actual matching native collection or joined close.
+  logical_code_proof.planLogicalCodeProof(source, service, limits)
+
+proc planLogicalSourceExport*(services: Services, source: CurrentLogicalState,
+    limits: LogicalSourceExportLimits): LogicalSourceExportResult[
+        LogicalSourceExportPlan] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Original raw-key graph traversal remains excluded until actual matching native collection or joined shutdown.
+  logical_source_export.planLogicalSourceExport(source, limits)
+proc executeLogicalSourceExport*(services: Services,
+    plan: LogicalSourceExportPlan): LogicalSourceExportResult[string] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Frozen declaration aliases and raw keys remain outside every active managed graph lease.
+  logical_source_export.executeLogicalSourceExport(plan)

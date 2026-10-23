@@ -1,0 +1,33 @@
+{
+  "build_name": "state-code-availability-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "state_code_availability guarded value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "state-code-availability-value"
+    },
+    {
+      "arguments": [
+        "offender"
+      ],
+      "description": "Selected code failure service",
+      "diagnostic": "contains({MissingRequest, HashMismatch, BackendFailure}, outcome.status)",
+      "identity": {
+        "reason": "offender"
+      },
+      "name": "state-code-availability-offender"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_code_availability_results.nim"
+}
