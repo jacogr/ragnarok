@@ -368,3 +368,7 @@ already absent names. See [guarded reclamation](../../spec/storage-light-journal
 Grouped [replacement process-crash qualification](../../spec/storage-light-replacement-crashes.md)
 checks every observed compaction and cleanup boundary, exact old/new selection, forensic bytes,
 lease release and explicit synchronized cleanup/retry before the next authenticated append.
+
+The maintained [matched light churn panel](../../spec/storage-light-journal-churn.md) compares
+full-image publication and journal append on identical query/proof workloads, including actual
+write/barrier work, strict reopen, retained-reader lifetime and fresh-process peak memory.
