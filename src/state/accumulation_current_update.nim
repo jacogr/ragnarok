@@ -82,6 +82,11 @@ proc currentUpdateView*(prepared: PreparedCurrentChainUpdate): ChainView {.requi
   let data = prepared.data
   assert data != nil # Capture one stable immutable owner for the nullable proof.
   data.view
+proc currentUpdateChildContext*(prepared: PreparedCurrentChainUpdate): BlockSnapshotContext {.requires: prepared.data != nil.} =
+  ## Copy fixed actual child facts without allocating/copying RPC key/service indexes; safe bounded consumers need no heavy child getter.
+  let data = prepared.data
+  assert data != nil # Genuine private preparation appends its exact successor as this selected posterior head.
+  data.view.bestBlockContext
 proc currentUpdateChild*(prepared: PreparedCurrentChainUpdate): BlockSnapshot {.requires: prepared.data != nil.} =
   ## Retain the exact captured child without recapture or hashing.
   let data = prepared.data

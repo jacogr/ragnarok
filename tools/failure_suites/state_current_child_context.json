@@ -1,0 +1,22 @@
+{
+  "build_name": "state-current-child-context-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard default current fixed child",
+      "diagnostic": "not prepared.data == nil",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-current-child-context-default"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_child_context_results.nim"
+}
