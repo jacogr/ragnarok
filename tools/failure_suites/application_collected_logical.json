@@ -1,0 +1,88 @@
+{
+  "build_name": "application-collected-logical-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "Collected logical guard value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "application-collected-logical-value"
+    },
+    {
+      "arguments": [
+        "preparationFailure"
+      ],
+      "description": "Collected logical guard preparationFailure",
+      "diagnostic": "outcome.status == PreparationFailure",
+      "identity": {
+        "reason": "preparationFailure"
+      },
+      "name": "application-collected-logical-preparationfailure"
+    },
+    {
+      "arguments": [
+        "identityFailure"
+      ],
+      "description": "Collected logical guard identityFailure",
+      "diagnostic": "outcome.status == IdentityFailure",
+      "identity": {
+        "reason": "identityFailure"
+      },
+      "name": "application-collected-logical-identityfailure"
+    },
+    {
+      "arguments": [
+        "requestFailure"
+      ],
+      "description": "Collected logical guard requestFailure",
+      "diagnostic": "outcome.status == RequestFailure",
+      "identity": {
+        "reason": "requestFailure"
+      },
+      "name": "application-collected-logical-requestfailure"
+    },
+    {
+      "arguments": [
+        "reconstructionFailure"
+      ],
+      "description": "Collected logical guard reconstructionFailure",
+      "diagnostic": "outcome.status == ReconstructionFailure",
+      "identity": {
+        "reason": "reconstructionFailure"
+      },
+      "name": "application-collected-logical-reconstructionfailure"
+    },
+    {
+      "arguments": [
+        "qualificationFailure"
+      ],
+      "description": "Collected logical guard qualificationFailure",
+      "diagnostic": "outcome.status == QualificationFailure",
+      "identity": {
+        "reason": "qualificationFailure"
+      },
+      "name": "application-collected-logical-qualificationfailure"
+    },
+    {
+      "arguments": [
+        "refreshFailure"
+      ],
+      "description": "Collected logical guard refreshFailure",
+      "diagnostic": "outcome.status == RefreshFailure",
+      "identity": {
+        "reason": "refreshFailure"
+      },
+      "name": "application-collected-logical-refreshfailure"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/application_collected_logical_results.nim"
+}
