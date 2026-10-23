@@ -7,7 +7,7 @@ import ./[store, accumulation_current_chain, accumulation_current_consensus,
     accumulation_current_authorization, accumulation_current_preimages,
     accumulation_current_activity, accumulation_current_validators, accumulation_current_recent,
     accumulation_current_ready, accumulation_current_finalization, accumulation_current_accounts,
-    accumulation_current_statistics, accumulation_storage_history]
+    accumulation_current_statistics, accumulation_storage_history, request_identity_history, accumulation_current_driver]
 import ../codec/bounded
 import ../chain/[genesis, provider]
 
@@ -17,13 +17,15 @@ type
     prior: ChainView
     state: StateStore
     view: ChainView
+    requestCaptured: bool
+    requests: RequestIdentityHistory
     storageCaptured: bool
     storage: StorageHistory
     successor: BlockSnapshot
   PreparedCurrentChainUpdate* = object ## Default owners hold no snapshot graph; copies retain one immutable complete preparation.
     data: nil CurrentUpdateData
   CurrentChainPreparationError* {.pure.} = enum ## Failed/default preparation exposes no successful candidate.
-    Uninitialized, None, ChainFailure, StorageHistoryFailure
+    Uninitialized, None, ChainFailure, StorageHistoryFailure, RequestHistoryFailure
   CurrentChainPreparationResult* = object ## Only success carries preparation; only a real failed coordinator carries its guarded child reason.
     case status: CurrentChainPreparationError
     of None:
@@ -32,6 +34,8 @@ type
       reason: CurrentAccumulationChainResult
     of StorageHistoryFailure:
       storageReason: StorageHistoryError
+    of RequestHistoryFailure:
+      requestReason: RequestIdentityHistoryError
     else:
       discard # No successful prefix survives a refused preparation.
 func ready*(prepared: PreparedCurrentChainUpdate): bool =
@@ -61,16 +65,33 @@ proc currentUpdateStorageHistory*(prepared: PreparedCurrentChainUpdate): Storage
   let data = prepared.data
   assert data != nil
   data.storage
-proc sourceStorageHistory(source: PreparedCurrentAccumulationConsensus,
-    limits: StorageHistoryLimits): StorageHistoryResult[StorageHistory] =
+proc sourceCompletedSequence(source: PreparedCurrentAccumulationConsensus): CompletedCurrentAccumulationSequence =
   ## Successful chain preparation already validated every composition owner; follow that authentic producer chain without rerunning a guest.
   let activity = source.currentConsensusSource.value.currentAuthorizationSource.value.currentPreimagesSource.value
   let finalization = activity.currentActivitySource.value.currentValidatorsSource.value.currentRecentSource.value.currentReadySource.value
   let completed = finalization.currentFinalizationAccounts.value.currentAccountsSource.value.currentStatisticsSource.value
-  captureStorageHistory(completed, limits)
+  completed
+proc sourceStorageHistory(source: PreparedCurrentAccumulationConsensus,
+    limits: StorageHistoryLimits): StorageHistoryResult[StorageHistory] =
+  ## Storage and request projections share the same authentic completed producer boundary.
+  captureStorageHistory(sourceCompletedSequence(source), limits)
+func requestHistoryError*(outcome: CurrentChainPreparationResult): RequestIdentityHistoryError {.inline,
+    requires: outcome.status == CurrentChainPreparationError.RequestHistoryFailure.} =
+  ## Preserve the exact selected request retention refusal without exposing a candidate chain.
+  outcome.requestReason
+func hasRequestHistory*(prepared: PreparedCurrentChainUpdate): bool =
+  ## Default/disabled updates grant no request evidence, independently of an enabled empty selected trace.
+  let data = prepared.data
+  data != nil and data.requestCaptured
+proc currentUpdateRequestHistory*(prepared: PreparedCurrentChainUpdate): RequestIdentityHistory {.requires: prepared.hasRequestHistory.} =
+  ## Retain only history frozen from this update's own original consensus/composition source during private preparation.
+  let data = prepared.data
+  assert data != nil
+  data.requests
 proc prepareCurrentChainUpdate*(state: StateStore, view: ChainView,
     source: PreparedCurrentAccumulationConsensus, headerBytes: ByteLimit,
-    storageLimits = default(StorageHistoryLimits)): CurrentChainPreparationResult =
+    storageLimits = default(StorageHistoryLimits),
+    requestLimits = default(RequestIdentityHistoryLimits)): CurrentChainPreparationResult =
   ## Run current prepared-state/capture/append once on private handle copies; retain no mutable caller borrow.
   var working = state
   var history = view
@@ -87,10 +108,20 @@ proc prepareCurrentChainUpdate*(state: StateStore, view: ChainView,
       return CurrentChainPreparationResult(status: CurrentChainPreparationError.StorageHistoryFailure,
           storageReason: history.error) # Private state/view prefixes retire together; neither caller handle was changed.
     storage = history.value
+  let capturedRequests = uint64(requestLimits.entries) != 0
+  var requests = default(RequestIdentityHistory)
+  if capturedRequests:
+    # Request retention is independently admitted before any successful private candidate can escape.
+    let projected = captureRequestIdentityHistory(sourceCompletedSequence(source), requestLimits)
+    if projected.error != RequestIdentityHistoryError.None:
+      return CurrentChainPreparationResult(status: CurrentChainPreparationError.RequestHistoryFailure,
+          requestReason: projected.error)
+    requests = projected.value
   CurrentChainPreparationResult(status: CurrentChainPreparationError.None,
     completed: PreparedCurrentChainUpdate(data: CurrentUpdateData(parent: state.snapshot.value,
       prior: view, state: working, view: history, successor: applied.value,
-      storageCaptured: captured, storage: storage)))
+      storageCaptured: captured, storage: storage, requestCaptured: capturedRequests,
+      requests: requests)))
 proc currentUpdatePriorState*(prepared: PreparedCurrentChainUpdate): StateStoreSnapshot {.requires: prepared.data != nil.} =
   ## Retain the exact original parent; equal roots never substitute another physical owner.
   let data = prepared.data
