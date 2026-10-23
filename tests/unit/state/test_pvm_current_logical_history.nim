@@ -4,6 +4,7 @@
 ## Actual Services native forget/restore execution refreshes complete logical request histories before host enqueue.
 import std/[assertions, envvars, syncio]
 import std/posix/posix
+import ../../support/current_consecutive_context
 import ../../support/[current_services_disk_samples, managed_storage_samples]
 import ../../../src/app/disk_worker
 import ../../../src/storage/managed_manifest
@@ -15,7 +16,7 @@ import ../../../src/app/[services, options, current_block_input, current_handoff
 import ../../../src/chain/[provider, genesis]
 import ../../../src/codec/[bounded, report_owned, state_accounts, state_requests]
 import ../../../src/state/[parent_profile, parent_globals, parent_logical, current_identities,
-    accumulation_current_update, store, block_admission, report_admission]
+    accumulation_current_update, store, block_admission, report_admission, current_logical]
 proc publishHistory(owner: var Services, update: PreparedCurrentChainUpdate, disk: bool) =
   ## All retained logical/current owners remain stable from enqueue through native disk Done and matching publication collection.
   assert owner.enqueueCurrentAccumulation(update) == CurrentHandoffAdmission.None
@@ -55,31 +56,51 @@ proc scenario(fixture: NamespaceExecutionFixture, restore: bool, layout: int) {.
   let declarations = fixture.executableNamespaceServices(before)
   let parent = captureLogicalParent(globals, declarations, suppliedLogicalTestLimits).value
   let child = fixture.source.round.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value.value.admitted.admittedBlock
-  let update = owner.collectLogicalChild(input, child, currentCandidateLimits())
+  var heads = @[owner.chainView.bestBlock.value]
+  var policies = currentCandidateLimits()
+  policies.completion.composition.validators.services = ElementLimit(
+      2) # Later actual parents carry both completed service statistics.
+  let update = owner.collectLogicalChild(input, child, policies)
   let identities = preserveCurrentIdentities(parent, update, currentIdentityTestLimits)
   assert identities.error == CurrentIdentityError.None
-  let logical = refreshCollectedIdentities(identities.value)
+  var logical = refreshCollectedIdentities(identities.value)
   logical.checkCollectedHistory(hash, restore)
   assert sameStateSnapshot(logical.logicalProducer.currentUpdateState, update.currentUpdateState)
   assert sameStateSnapshot(before, owner.stateSnapshot.value)
   assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
+  heads.add(update.currentUpdateChild)
   owner.publishHistory(update, layout != 0)
   assert sameStateSnapshot(owner.stateSnapshot.value, logical.logicalProducer.currentUpdateState)
   assert before.lookup(key).value.byteLength == 5 # The original configured owner remains unchanged after actual logical history adoption.
+  for i in 0..<2:
+    # Each next child is genuinely sealed against the actual adopted Services head; the completed logical result, not the configured startup seed, authorizes continuation.
+    let next = owner.collectLogicalChild(input, currentEmptyChild(owner.chainView.bestBlock.value), policies)
+    let continued = preserveCurrentIdentities(logical, next, currentIdentityTestLimits)
+    assert continued.error == CurrentIdentityError.None
+    logical = refreshCollectedIdentities(continued.value)
+    logical.checkCollectedHistory(hash, restore)
+    assert sameStateSnapshot(logical.logicalProducer.currentUpdateState, next.currentUpdateState)
+    heads.add(next.currentUpdateChild)
+    owner.publishHistory(next, layout != 0)
+    assert sameStateSnapshot(owner.stateSnapshot.value, logical.logicalProducer.currentUpdateState)
+    assert uint32(owner.chainView.bestBlock.value.slot) == uint32(i+3)
+  assert before.lookup(key).value.byteLength == 5
   owner.close()
   if layout != 0:
     assert owner.start(options, "strict logical history restart")
     let view = owner.chainView
-    assert view.retainedCount == 2 and view.finalizedBlock.error != GenesisError.None
-    let prior = view.retainedBlockAt(RetainedBlockIndex(0)).value
-    let current = view.retainedBlockAt(RetainedBlockIndex(1)).value
-    equalCurrentDiskMap(prior.stateSnapshot, before)
-    equalCurrentDiskMap(current.stateSnapshot, logical.logicalProducer.currentUpdateState)
-    assert array[32, byte](current.blockHash) == array[32, byte](
-        update.currentUpdateChildContext.hash)
-    assert array[32, byte](current.parentHash) == array[32, byte](prior.blockHash)
-    assert uint32(current.slot) == 2
-    assert current.stateSnapshot.lookup(key).value.byteLength == (if restore: 13 else: 9)
+    assert view.retainedCount == heads.len and heads.len == 4
+    assert view.finalizedBlock.error != GenesisError.None
+    for index in 0..<heads.len:
+      # Every confirmed logical history transition must survive strict reopen with the same complete map and exact linear history identities.
+      let actual = view.retainedBlockAt(RetainedBlockIndex(uint64(index))).value
+      let expected = heads[index]
+      equalCurrentDiskMap(actual.stateSnapshot, expected.stateSnapshot)
+      assert array[32, byte](actual.blockHash) == array[32, byte](expected.blockHash)
+      assert array[32, byte](actual.parentHash) == array[32, byte](expected.parentHash)
+      assert actual.slot == expected.slot
+    equalCurrentDiskMap(owner.stateSnapshot.value, logical.logicalProducer.currentUpdateState)
+    assert owner.stateSnapshot.value.lookup(key).value.byteLength == (if restore: 13 else: 9)
     owner.close()
 proc main() {.raises.} =
   ## Available(1) becomes Unavailable(1,2) or Reavailable(1,2,2) through real native guest hosts, never caller-authored posterior histories.

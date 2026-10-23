@@ -151,6 +151,15 @@ Strict startup recovers the original five-byte request map and the actual nine/t
 successor map, with exact child/parent/slot identity and absent finality. Stored root equality is
 used for content verification only, without treating restored owners as original logical provenance.
 
+## Repeated logical history continuation
+
+After each actual forget/restore adoption, the host signs and prepares two further children
+against successive canonical heads. Each refresh consumes the preceding completed logical
+source. The literal two/three-slot history and retained preimage remain unchanged throughout
+these bounded early-slot successors while actual current metadata/globals advance. Both durable
+layouts strictly reopen all four confirmed maps and exact block/hash/parent/slot identities.
+Original five-byte configured request storage remains immutable across the full flow.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
