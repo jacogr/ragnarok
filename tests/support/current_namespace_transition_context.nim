@@ -34,8 +34,8 @@ proc namespaceEjectCode*(): seq[byte] =
   result = @[0'u8]
   for octet in guestEnvelope([registerImmediate(7, 99), @[10'u8, 23], @[50'u8, 0]]): result.add(octet)
 proc namespaceTransitionFixture*(base: OwnedReport, options: ExecutionFixtureConfig,
-    deleted = ElementLimit(0)): CurrentNamespaceTransition =
-  ## Complete original namespaces/code requests enter roots and signatures before actual candidate execution under explicit deletion policy.
+    deleted = ElementLimit(0), policy = currentCandidateLimits()): CurrentNamespaceTransition =
+  ## Complete original namespaces/code requests enter roots and signatures before actual execution under explicit deletion and composition policies.
   var config = options
   assert config.signed.extra.len == 0 and config.signed.serviceNamespaces.len == 2
   let codes = [config.firstProgram, config.secondProgram]
@@ -68,7 +68,7 @@ proc namespaceTransitionFixture*(base: OwnedReport, options: ExecutionFixtureCon
   let parent = captureLogicalParent(globals, services, suppliedLogicalTestLimits).value
   let admission = source.round.roundBlockQueue.value.accumulationAdmission.value
   let bound = admission.reportBlockStage.value.value.admitted
-  var limits = currentCandidateLimits()
+  var limits = policy
   limits.completion.execution.initial.guests.deletedAccounts = deleted
   limits.completion.execution.execution.round.guests.deletedAccounts = deleted
   let application = initApplicationChain(view).value

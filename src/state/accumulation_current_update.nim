@@ -7,7 +7,8 @@ import ./[store, accumulation_current_chain, accumulation_current_consensus,
     accumulation_current_authorization, accumulation_current_preimages,
     accumulation_current_activity, accumulation_current_validators, accumulation_current_recent,
     accumulation_current_ready, accumulation_current_finalization, accumulation_current_accounts,
-    accumulation_current_statistics, accumulation_storage_history, request_identity_history, accumulation_current_driver]
+    accumulation_current_statistics, accumulation_storage_history, service_identity_history,
+    request_identity_history, accumulation_current_driver]
 import ../codec/bounded
 import ../chain/[genesis, provider]
 
@@ -17,6 +18,8 @@ type
     prior: ChainView
     state: StateStore
     view: ChainView
+    serviceCaptured: bool
+    services: ServiceIdentityHistory
     requestCaptured: bool
     requests: RequestIdentityHistory
     storageCaptured: bool
@@ -25,7 +28,7 @@ type
   PreparedCurrentChainUpdate* = object ## Default owners hold no snapshot graph; copies retain one immutable complete preparation.
     data: nil CurrentUpdateData
   CurrentChainPreparationError* {.pure.} = enum ## Failed/default preparation exposes no successful candidate.
-    Uninitialized, None, ChainFailure, StorageHistoryFailure, RequestHistoryFailure
+    Uninitialized, None, ChainFailure, StorageHistoryFailure, RequestHistoryFailure, ServiceHistoryFailure
   CurrentChainPreparationResult* = object ## Only success carries preparation; only a real failed coordinator carries its guarded child reason.
     case status: CurrentChainPreparationError
     of None:
@@ -34,6 +37,8 @@ type
       reason: CurrentAccumulationChainResult
     of StorageHistoryFailure:
       storageReason: StorageHistoryError
+    of ServiceHistoryFailure:
+      serviceReason: ServiceIdentityHistoryError
     of RequestHistoryFailure:
       requestReason: RequestIdentityHistoryError
     else:
@@ -88,10 +93,24 @@ proc currentUpdateRequestHistory*(prepared: PreparedCurrentChainUpdate): Request
   let data = prepared.data
   assert data != nil
   data.requests
+func serviceHistoryError*(outcome: CurrentChainPreparationResult): ServiceIdentityHistoryError {.inline,
+    requires: outcome.status == CurrentChainPreparationError.ServiceHistoryFailure.} =
+  ## Preserve only the actual selected membership retention refusal.
+  outcome.serviceReason
+func hasServiceIdentityHistory*(prepared: PreparedCurrentChainUpdate): bool =
+  ## Default and disabled updates grant no service identity evidence; enabled empty histories remain distinct.
+  let data = prepared.data
+  data != nil and data.serviceCaptured
+proc currentUpdateServiceIdentityHistory*(prepared: PreparedCurrentChainUpdate): ServiceIdentityHistory {.requires: prepared.hasServiceIdentityHistory.} =
+  ## Retain only membership frozen from this exact update's original completed producer.
+  let data = prepared.data
+  assert data != nil
+  data.services
 proc prepareCurrentChainUpdate*(state: StateStore, view: ChainView,
     source: PreparedCurrentAccumulationConsensus, headerBytes: ByteLimit,
     storageLimits = default(StorageHistoryLimits),
-    requestLimits = default(RequestIdentityHistoryLimits)): CurrentChainPreparationResult =
+    requestLimits = default(RequestIdentityHistoryLimits),
+    serviceLimits = default(ServiceIdentityHistoryLimits)): CurrentChainPreparationResult =
   ## Run current prepared-state/capture/append once on private handle copies; retain no mutable caller borrow.
   var working = state
   var history = view
@@ -117,11 +136,20 @@ proc prepareCurrentChainUpdate*(state: StateStore, view: ChainView,
       return CurrentChainPreparationResult(status: CurrentChainPreparationError.RequestHistoryFailure,
           requestReason: projected.error)
     requests = projected.value
+  let capturedServices = uint64(serviceLimits.entries) != 0
+  var services = default(ServiceIdentityHistory)
+  if capturedServices:
+    # Admission failure retires every private map/view prefix; neither caller handle has changed.
+    let projected = captureServiceIdentityHistory(sourceCompletedSequence(source), serviceLimits)
+    if projected.error != ServiceIdentityHistoryError.None:
+      return CurrentChainPreparationResult(status: CurrentChainPreparationError.ServiceHistoryFailure,
+        serviceReason: projected.error)
+    services = projected.value
   CurrentChainPreparationResult(status: CurrentChainPreparationError.None,
     completed: PreparedCurrentChainUpdate(data: CurrentUpdateData(parent: state.snapshot.value,
       prior: view, state: working, view: history, successor: applied.value,
       storageCaptured: captured, storage: storage, requestCaptured: capturedRequests,
-      requests: requests)))
+      requests: requests, serviceCaptured: capturedServices, services: services)))
 proc currentUpdatePriorState*(prepared: PreparedCurrentChainUpdate): StateStoreSnapshot {.requires: prepared.data != nil.} =
   ## Retain the exact original parent; equal roots never substitute another physical owner.
   let data = prepared.data

@@ -10,7 +10,7 @@ import ../codec/[block_codec, header, bounded]
 import ../state/[store, block_transition, report_transition, report_admission, accumulation_queue,
   accumulation_round, accumulation_runner, accumulation_driver, accumulation_finalization,
   accumulation_outputs, accumulation_completion, report_anchors, accumulation_current_completion,
-  accumulation_current_update, accumulation_storage_history, request_identity_history]
+  accumulation_current_update, accumulation_storage_history, service_identity_history, request_identity_history]
 
 type
   ApplicationCandidateLimits* = object ## Caller-owned bounded stage policies, including explicit trusted round gas configuration.
@@ -252,6 +252,7 @@ type
     queue*: AccumulationQueueConfig ## Existing original queue planning policy.
     round*: AccumulationRoundConfig ## Trusted initial gas configuration and local input ceilings.
     completion*: CurrentAccumulationCompletionLimits ## Current execution and complete state policies.
+    serviceIdentities*: ServiceIdentityHistoryLimits ## Explicit selected creation/ejection retention; zero entries disables capture.
     requests*: RequestIdentityHistoryLimits ## Explicit selected producer request history; zero entries disables capture.
     storage*: StorageHistoryLimits ## Explicit producer raw-storage history retention; zero entries disables capture.
     headerBytes*: ByteLimit         ## Exact sealed child capture ceiling.
@@ -362,7 +363,7 @@ ancestors: openArray[OwnedHeader]): CurrentCandidateResult =
     return CurrentCandidateResult(status: CurrentCandidateError.CompletionFailure,
         completionReason: composed)
   let update = chain.prepareAccumulation(composed.value, limits.headerBytes, limits.storage,
-      limits.requests)
+      limits.requests, limits.serviceIdentities)
   if update.error != CurrentChainPreparationError.None:
     return CurrentCandidateResult(status: CurrentCandidateError.PreparationFailure,
         preparationReason: update)

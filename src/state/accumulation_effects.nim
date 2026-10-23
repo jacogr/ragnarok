@@ -34,7 +34,8 @@ type
       CreatedAccountsDisabled,   ## Explicit creation facts require enabled bounded tracing.
       AccountWriteFactsDisabled, ## The caller did not enable bounded physical account-write facts.
       StorageWriteFactsDisabled, ## Raw storage identity capture was not enabled for this invocation.
-      RequestFactsDisabled       ## The caller did not enable bounded original request identity capture.
+      RequestFactsDisabled,      ## The caller did not enable bounded original request identity capture.
+      DeletedAccountsDisabled    ## The caller did not enable bounded ejection membership capture.
   AccumulationModifiedAccountIndex* = distinct uint64 ## Modification ordinal is distinct from a protocol service identity.
   # Immutable unique membership facts contain only fixed identities and no parent-effect owners.
   ModifiedAccountsData = ref object
@@ -554,8 +555,7 @@ proc prepareCreatedAccount(previous: EffectData, service: ServiceIndex, requestK
 # Bound successful-ejection membership before allocating proof storage or hashing the candidate map.
 proc prepareDeletedAccount(previous: EffectData, service: ServiceIndex):
     AccumulationEffectResult[DeletedAccountsData] =
-  if previous.accountScope == AccumulationAccountScope.Unsupported or uint64(
-      previous.deletedLimit) == 0:
+  if uint64(previous.deletedLimit) == 0:
     return AccumulationEffectResult[DeletedAccountsData](status: AccumulationEffectError.None,
       completed: previous.deleted) # Disabled tracing retains the earlier local ejection behavior.
   let count = previous.deleted.values.len
@@ -713,6 +713,32 @@ proc effectCreatedAccountFactAt*(context: AccumulationEffectContext,
   assert data != nil # The successful count validated this exact immutable owner.
   AccumulationEffectResult[AccumulationCreatedAccount](status: AccumulationEffectError.None,
     completed: data.created.values[int(uint64(index))])
+
+proc effectDeletedAccountFactCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
+  ## Read complete enabled ejection membership independently of legacy account publication scope.
+  ## Every successful eject call captures its fact before hashing, even after an unrelated unsupported mutation.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.Uninitialized) # Default is not enabled empty tracing.
+  if uint64(data.deletedLimit) == 0:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.DeletedAccountsDisabled) # Explicitly distinguish disabled history from zero ejections.
+  AccumulationEffectResult[int](status: AccumulationEffectError.None,
+      completed: data.deleted.values.len)
+
+proc effectDeletedAccountFactAt*(context: AccumulationEffectContext,
+    index: AccumulationDeletedAccountIndex): AccumulationEffectResult[AccumulationDeletedAccount] =
+  ## Copy genuine fixed ejection provenance through the same enabled owner; account values remain in effectAccounts.
+  let count = context.effectDeletedAccountFactCount
+  if count.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[AccumulationDeletedAccount](
+        status: count.error) # No partial or disabled proof extraction.
+  if uint64(index) >= uint64(count.value):
+    return AccumulationEffectResult[AccumulationDeletedAccount](
+        status: AccumulationEffectError.InvalidIndex) # Check upper bits before native narrowing.
+  let data = context.data
+  assert data != nil # The successful count validated this exact immutable owner.
+  AccumulationEffectResult[AccumulationDeletedAccount](status: AccumulationEffectError.None,
+    completed: data.deleted.values[int(uint64(index))])
 
 proc effectCreatedAccountCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
   ## Count this selected context's genuine creations; unsupported lineages expose no partial membership proof.
@@ -2124,7 +2150,7 @@ proc recordAccumulationEject*(effects: AccumulationEffects, target: Accumulation
   if previous.accountScope != AccumulationAccountScope.Unsupported and uint64(
       previous.deletedLimit) != 0:
     candidate.accountScope = AccumulationAccountScope.DeletedAccounts # Successful bounded ejections alone certify foreign removals.
-    candidate.deleted = captured.value
+  candidate.deleted = captured.value # Enabled membership survives broader legacy scope gates.
   candidate.writeFacts = facts.value # Bind physical keys to the same immutable account successor.
   candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
