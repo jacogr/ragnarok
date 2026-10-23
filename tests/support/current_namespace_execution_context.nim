@@ -67,8 +67,10 @@ proc executableNamespaceServices*(fixture: NamespaceExecutionFixture,
   result = currentNamespaceServices(snapshot, fixture.seeds)
   let limits = ByteLimit(32)
   for i in 0..<2:
-    let hash = ServicePreimageHash(array[32, byte](blake2b256(fixture.codes[i]).value))
-    let key = servicePreimageKey(result[i].service, hash, limits).value
-    let raw = snapshot.lookup(key).value.bytes
-    assert raw == fixture.codes[i]
-    result[i].preimages.add(StatePreimageItem(hash: hash, value: raw))
+    if fixture.codes[i].len > 0:
+      # Only executable slots add code preimages; prequalified complete declarations leave slots empty.
+      let hash = ServicePreimageHash(array[32, byte](blake2b256(fixture.codes[i]).value))
+      let key = servicePreimageKey(result[i].service, hash, limits).value
+      let raw = snapshot.lookup(key).value.bytes
+      assert raw == fixture.codes[i]
+      result[i].preimages.add(StatePreimageItem(hash: hash, value: raw))
