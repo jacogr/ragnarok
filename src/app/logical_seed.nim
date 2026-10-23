@@ -41,7 +41,7 @@ func logicalFailure*(outcome: LogicalSeedResult): ParentLogicalResult[
 proc captureLogicalSeed*(chain: ApplicationChain, services: openArray[StateService],
     limits: LogicalSeedLimits): LogicalSeedResult =
   ## Match stable borrowed declarations against the original whole selected view; host execution must be outside every native graph lease.
-  let profile = captureParentProfile(chain.chainView, limits.profile)
+  let profile = captureParentProfile(chain, limits.profile)
   if profile.error != ParentProfileError.None:
     return LogicalSeedResult(status: LogicalSeedError.ProfileFailure, profileReason: profile)
   let globals = qualifyParentGlobals(profile.value, limits.globals)

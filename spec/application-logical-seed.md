@@ -10,3 +10,9 @@ refusals never grant a prefix. No producer manifest, root trust, finality or ins
 The application_logical_seed native suite checks actual reparsed Services ownership, caller key
 mutation, all admission stages and absent chain selection. Existing pinned current-schema codecs
 and full/light separation apply unchanged.
+
+Application-chain profile capture borrows the original private view directly into the existing
+bounded profile routine. The unbounded whole-view getter must not run before retention admission;
+its lowered implementation duplicates the view and private indexes. Zero block and zero byte
+policies therefore refuse before that copy, preserving the existing profile failure reason and
+original selected source. Direct application-chain and Services captures use the same bounded path.

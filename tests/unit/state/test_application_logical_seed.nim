@@ -40,6 +40,14 @@ proc main() {.raises.} =
   assert owner.captureLogicalSeed(fixture.first.services, short).profileFailure.error ==
       ParentProfileError.LimitExceeded
   short = limits
+  short.profile.viewBytes = ByteLimit(0)
+  assert owner.captureLogicalSeed(fixture.first.services, short).profileFailure.error ==
+      ParentProfileError.LimitExceeded
+  let direct = initApplicationChain(owner.chainView).value
+  let profile = direct.captureParentProfile(limits.profile).value
+  assert sameStateSnapshot(profile.parentContext.value.state, owner.stateSnapshot.value)
+  assert direct.captureParentProfile(short.profile).error == ParentProfileError.LimitExceeded
+  short = limits
   short.globals.totalBytes = ByteLimit(0)
   assert owner.captureLogicalSeed(fixture.first.services,
       short).globalsFailure.globalFailure.error == GlobalStateError.LimitExceeded
