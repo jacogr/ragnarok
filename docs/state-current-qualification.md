@@ -175,3 +175,28 @@ verification separately from adopted current Thin VRF parity. Conflicting bless 
 `AmbiguousPrivileges` under the [existing integration contract](../spec/pvm-accumulation-integration.md).
 No pins, compatibility fallback, RPC root/schema policy or storage API/format are changed. M1 framing
 and current request namespace completion do not imply complete state serialization/STF or JAM parity.
+
+## Explicit supplied successors and retained consumers
+
+When actual execution changes physical identities, identity-preserving refresh continues to refuse.
+A caller with complete explicitly supplied successor declarations may instead use
+`planCollectedSupplied` then `executeCollectedSupplied` after actual collection. The frozen plan
+binds the genuine target and independent policies; execution rechecks the canonical prior and
+matches the entire actual map before retaining raw keys. This is supplied post-state evidence,
+not a producer mutation relation or provenance certificate. See
+[collected supplied qualification](../spec/application-collected-supplied.md).
+
+`captureLogicalSeed` captures the actual configured host source under independent selected-view,
+global and logical policies. Fixed `currentLogicalUpdate`, `currentLogicalContext` and
+`currentLogicalViewInfo` observations preserve original provenance before heavy copy admission.
+Retained-source consumers include [checkpoint capture](../spec/application-logical-checkpoint.md),
+[bounded proof queries](../spec/application-logical-proof.md) and
+[original-current review](../spec/application-logical-review.md). Services guards seed, supplied
+planning/execution, checkpoint and review against all three managed native graph leases. Review
+never joins raw-key companion compact predicates into original-current reports. Bounded failures
+remain optional observations, separate from valid candidate acceptance and actual adoption.
+
+The [durable composition](../spec/application-logical-durable-consumers.md) exercises real new-key
+creation, three consecutive children, both disk layouts, retained consumers through actual native
+collection and detached bytes after shutdown. Broader producer-owned operation/rollback/untouched-key
+provenance and independent current-pin parity gates remain open.
