@@ -72,3 +72,47 @@ Baseline checks: `make unit SUITE=storage_retained_layout` and `make check-inven
 Native measurement assertions use the repository's checked pinned Nimony profile. The outer
 report-release observation warms the stdlib's persistent process-environment cache first;
 that cache is not repository-owned storage. Each graph observation separately checks exact release.
+
+## Tagged-cell candidate
+
+The candidate keeps the common physical digest and a private immutable discriminator, storing
+leaf key/payload and branch child hashes in alternatives. Constructors run only after existing
+raw or encoded validation. Raw mutable values still deep-copy; freshly decoder-owned leaf values
+still transfer once. Export reconstructs a complete canonical `TrieRecord` with unused fields
+zero/empty. Duplicate/conflict comparison checks every active field, including complete physical
+branch edges. Mixed inventories explicitly count zero payload bytes for branches.
+
+The pinned generated C body is 104 bytes, alignment 8; its ARC owner is 112 bytes. The body
+reduction is 40 bytes. Actual live allocator savings are 48 bytes per physical cell in all six
+panel cases, which includes allocator rounding rather than attributing 48 bytes to C fields.
+Reference arrays, index directory widths and sharing across revisions are unchanged.
+
+| Entries | Bytes/value | Baseline retained | Candidate retained | Saved bytes |
+| --- | --- | --- | --- | --- |
+| 32 | 0 | 13,136 | 9,584 | 3,552 |
+| 32 | 32 | 14,160 | 10,608 | 3,552 |
+| 32 | 257 | 21,840 | 18,288 | 3,552 |
+| 512 | 0 | 179,712 | 130,272 | 49,440 |
+| 512 | 32 | 196,096 | 146,656 | 49,440 |
+| 512 | 257 | 318,976 | 269,536 | 49,440 |
+
+These are retained live Nim bytes for the same complete graph; the percentage improvement
+varies with value size. Both orders preserve exact complete maps after owner close and return
+to the same allocator baseline. The test's fixed ceilings and deterministic fixtures remain
+unchanged between binaries. This does not establish an RSS or timing improvement by itself.
+
+## Functional verification
+
+The unchanged checked native suites pass: `storage_repository`, `storage_encoded_publication`,
+`storage_image`, `storage_image_decode`, `storage_admission_precedence`,
+`storage_admission_backend_failures`, `storage_admission_ownership`,
+`storage_admission_graph_authority`, `storage_image_staging_failures`,
+`storage_image_admission_limits`, `storage_retention_plan`, `storage_historical_roots`,
+`storage_managed_repository`, `storage_context_repository`, `storage_managed_compaction`,
+`storage_admission_file_corruption` and `storage_record_owners`. Existing ARC suites retain
+1,000 cycles and exact release. The retained-layout panel also passes with the candidate.
+
+Eight selected compiler controls reject the private decoded-record factory, image/publication
+stages, codec scan, repository head, result payload/reason and view data with their expected
+module/field privacy diagnostics. This is scoped local evidence, not a full Linux unit/Python/
+interop or resident-pressure CI verdict. Original compiler and provider inputs remain pinned.
