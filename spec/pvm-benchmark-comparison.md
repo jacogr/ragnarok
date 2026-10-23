@@ -186,3 +186,34 @@ raw validated comparisons are retained under `build/pvm8/cache-direct`; the reje
 is retained separately under `build/pvm8/cache-candidate`. The same local timing/no-isolation,
 no deterministic instruction-count, no compiled comparison and no full-client throughput limits
 apply. Compiler/toolchain/fixture/source identities and every raw sample remain in the reports.
+
+
+## Scalar page-span resolution, 2026-10-23
+
+A new baseline from merged master `9eb56ba7` uses the current checked ARC/Clang
+ThinLTO profile, unchanged five guests and pinned PolkaVM interpreter. Fresh macOS
+sampling of repeated validated workloads identified scalar preflight, page copying
+and allocation in the memory paths. This change resolves at most two page slots
+once per scalar access and reuses them through permission checking and byte transfer.
+All fault precedence and immutable snapshot contracts remain intact.
+
+Preserved binaries ran in two opposite orders with three validated warmups and ten
+measured samples per guest in each pass. Native medians across twenty samples were:
+
+| Fixed guest | Before (µs) | Page spans (µs) | Less execution time |
+| --- | ---: | ---: | ---: |
+| Arithmetic, 10000 iterations | 578.98 | 587.94 | No established change |
+| Memory aligned, 1000 iterations | 332.00 | 271.69 | 18.2% |
+| Memory crossing, 1000 iterations | 511.75 | 440.25 | 14.0% |
+| Host/memory aligned, 1000 iterations | 471.88 | 409.13 | 13.3% |
+| Host/memory crossing, 1000 iterations | 646.96 | 595.79 | 7.9% |
+
+The full native/pinned interpreted comparison also passes, with a remaining gap of
+roughly 6–17× across these guests. That full run includes marked noisy rows and large
+outliers; its raw samples remain retained. These paired local measurements have no
+CPU isolation or deterministic instruction/cache counts, and arithmetic's small
+change is within noise. No Linux timing, compiled comparison or whole-client
+throughput claim follows. Baseline/profile and candidate/paired evidence are retained
+under `build/pvm9/baseline` and `build/pvm9/spans`. Reproduce the complete comparison
+with `make bench-pvm` at the compared revisions. Page-image copying remains a major
+profiled cost for subsequent work; fuzzing is deferred by maintainer instruction.
