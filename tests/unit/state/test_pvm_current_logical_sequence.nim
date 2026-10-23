@@ -97,6 +97,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone: bo
     assert owner.chainView.retainedCount == index+2
     assert owner.chainView.finalizedBlock.error != GenesisError.None
     assert owner.preparationAvailable and owner.stateProofAvailable
+    owner.proveLogicalCurrent(logical) # Installed current provenance survives a real canonical proof lease before the next preparation.
   assert original.lookup(key).value.bytes.len == 0 # Original physical aliases remain immutable across every real adoption.
   assert first.logicalProducer.currentUpdateState.lookup(key).value.bytes == @[17'u8, 18, 19]
   let uncollected = currentEmptyChild(owner.chainView.bestBlock.value)
@@ -144,6 +145,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone: bo
         CurrentHandoffPhase.Finished
     assert owner.takeCurrentAccumulation().error == CurrentHandoffError.None
     assert sameStateSnapshot(owner.stateSnapshot.value, logical.logicalProducer.currentUpdateState)
+    owner.proveLogicalCurrent(logical)
     owner.close()
     assert owner.start(options, "strict resumed logical restart")
     assert owner.chainView.retainedCount == heads.len and heads.len == 5

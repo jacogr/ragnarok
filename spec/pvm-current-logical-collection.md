@@ -84,6 +84,16 @@ be collected afterward, and only then can any skipped raw input retire. The last
 logical state still owns exactly the three confirmed successors. Strict disk startup recovers
 that confirmed four-map prefix, excluding the uncollected child, before the reseed/resume test.
 
+## Proof consumer after logical adoption
+
+Every confirmed logical successor and each post-restart continuation feeds the actual Services
+proof worker. The selected block and trusted root come independently from that logical producer
+before submission. Done and stale collection keep graph/RPC exclusion; exact collection reopens
+host access before response decoding or any logical alias inspection. Authentication checks all
+sixteen actual chapter values, the literal grown service99 payload and independently selected
+absence of service123456 under that original root. The unchanged physical logical successor
+continues to authorize the next real preparation. No partial proof view becomes complete state.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable

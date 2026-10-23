@@ -4,12 +4,13 @@
 ## Test-owned real Services preparation/collection and independently bounded State logical refresh for actual host consumers.
 import std/[assertions, monotimes, times]
 import std/posix/posix
-import ./[current_identity_context, current_namespace_refresh_context]
-import ../../src/app/[services, preparation_worker, current_block_input, candidate]
+import ./[current_identity_context, current_namespace_refresh_context,
+    current_logical_proof_context, current_services_disk_samples]
+import ../../src/app/[services, preparation_worker, current_block_input, candidate, proof_query, proof_worker]
 import ../../src/rpc/server
-import ../../src/codec/[bounded, block_codec]
+import ../../src/codec/[bounded, block_codec, state_layout, state_accounts, state_service_values]
 import ../../src/state/[accumulation_current_update, current_identities, current_request_keys,
-    current_refresh_plan, current_logical_refresh, current_logical]
+    current_refresh_plan, current_logical_refresh, current_logical, planned_proof, proof_view, store]
 type LogicalPreparation = object ## Only scalar receiver/ticket identities cross native wait/cancel/collection boundaries.
   ticket: PreparationTicket
   input: CurrentBlockInputId
@@ -87,3 +88,43 @@ proc refreshCollectedIdentities*(source: PreservedCurrentIdentities): CurrentLog
   let logical = executeCurrentLogicalRefresh(plan.value)
   assert logical.error == LogicalRefreshError.None
   logical.value
+proc proveLogicalCurrent*(owner: var Services, logical: CurrentLogicalState) {.raises.} =
+  ## Independently select the installed logical producer's root and exact proof plan before native borrowing; no retained logical/canonical owner is touched until matching collection.
+  let update = logical.logicalProducer
+  let selected = update.currentUpdateChildContext.hash
+  let root = update.currentUpdateState.commitment.root
+  let plan = logicalProofPlan()
+  let limits = logicalProofLimits()
+  let ticket = owner.beginStateProof(selected, plan, limits)
+  assert ticket.error == StateProofAdmissionError.None
+  let started = getMonoTime()
+  while owner.stateProofPhase != ProofWorkerPhase.Done:
+    assert (getMonoTime()-started).inSeconds < 20
+    yieldCurrentDiskThread()
+  assert owner.stateProofActive and owner.rpc.chainPaused
+  assert not owner.preparationAvailable and not owner.stateProofAvailable
+  assert owner.collectStateProof(default(ProofWorkerTicket)).kind ==
+      ProofWorkerCompletionKind.Uninitialized
+  assert owner.stateProofActive and owner.stateProofPhase == ProofWorkerPhase.Done
+  let completed = owner.collectStateProof(ticket.value)
+  assert completed.kind == ProofWorkerCompletionKind.Completed
+  assert completed.value.error == ProofQueryError.None
+  assert not owner.stateProofActive and not owner.rpc.chainPaused
+  assert array[32, byte](completed.value.value.blockHash) == array[32, byte](selected)
+  assert array[32, byte](completed.value.value.stateRoot) == array[32, byte](root)
+  let wire = completed.value.value.bytes(limits.wireBytes)
+  assert wire.error == ProofQueryError.None
+  let authenticated = decodePlannedProofs(wire.value, plan, root, limits.view, limits.proof,
+      limits.aggregate, limits.wireBytes)
+  assert authenticated.error == ProofViewError.None
+  let view = authenticated.value
+  assert view.len == 18
+  for i in 1..16:
+    # Every actual chapter value is authenticated under the independently selected logical root; response bytes supply no trust policy.
+    let key = chapterKey(StateChapter(uint8(i)))
+    assert view.lookup(key).value.bytes == update.currentUpdateState.lookup(key).value.bytes
+  let key = serviceStorageKey(ServiceIndex(99), @[5'u8], ByteLimit(1)).value
+  assert view.lookup(key).value.present and view.lookup(key).value.bytes == @[17'u8, 18, 19]
+  assert not view.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(123456))).value.present
+  assert sameStateSnapshot(owner.stateSnapshot.value, update.currentUpdateState)
+  assert owner.preparationAvailable and owner.stateProofAvailable
