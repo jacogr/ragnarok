@@ -1,0 +1,111 @@
+{
+  "source": "tests/native/storage_light_cache_results.nim",
+  "build_name": "storage-light-cache-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-light-cache-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light cache result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-light-cache-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light cache result failed guard"
+    },
+    {
+      "identity": {
+        "member": "cache",
+        "origin": "default"
+      },
+      "arguments": [
+        "cache",
+        "default"
+      ],
+      "name": "storage-light-cache-cache-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light cache cache default guard"
+    },
+    {
+      "identity": {
+        "member": "cache",
+        "origin": "failed"
+      },
+      "arguments": [
+        "cache",
+        "failed"
+      ],
+      "name": "storage-light-cache-cache-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light cache cache failed guard"
+    },
+    {
+      "identity": {
+        "member": "root",
+        "origin": "default"
+      },
+      "arguments": [
+        "root",
+        "default"
+      ],
+      "name": "storage-light-cache-root-default",
+      "diagnostic": "not cache.data == nil",
+      "description": "Light cache root default guard"
+    },
+    {
+      "identity": {
+        "member": "len",
+        "origin": "default"
+      },
+      "arguments": [
+        "len",
+        "default"
+      ],
+      "name": "storage-light-cache-len-default",
+      "diagnostic": "not cache.data == nil",
+      "description": "Light cache len default guard"
+    },
+    {
+      "identity": {
+        "member": "values",
+        "origin": "default"
+      },
+      "arguments": [
+        "values",
+        "default"
+      ],
+      "name": "storage-light-cache-values-default",
+      "diagnostic": "not cache.data == nil",
+      "description": "Light cache values default guard"
+    },
+    {
+      "identity": {
+        "member": "limits",
+        "origin": "default"
+      },
+      "arguments": [
+        "limits",
+        "default"
+      ],
+      "name": "storage-light-cache-limits-default",
+      "diagnostic": "not cache.data == nil",
+      "description": "Light cache limits default guard"
+    }
+  ]
+}
