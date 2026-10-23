@@ -106,14 +106,85 @@ proc observationCycle() =
   assert uint32(observed.index) == 16 and observed.access == PageAccess.ReadOnly
   for index in 0..<4096: assert observed.bytes[index] == byteAt(index)
 
+proc zeroCycle() =
+  ## Writes to shared known-zero storage must isolate every chunk, page, permission alias and sealed writer epoch.
+  let blank = captureMemory([], PageLimit(4)).value
+  assert withWritablePages(blank, PageIndex(16), PageIndex(21)).error == MachineError.LimitExceeded
+  let mapped = withWritablePages(blank, PageIndex(16), PageIndex(20)).value
+  let dirty = store(mapped, MemoryAddress(65539), AccessWidth(1), RegisterValue(99)).value
+  let cleared = withPageRange(dirty, PageIndex(16), PageIndex(20), PageAccess.ReadWrite,
+    PageContent.Zeroed).value
+  let readonly = withPageRange(cleared, PageIndex(16), PageIndex(20), PageAccess.ReadOnly,
+    PageContent.Preserved).value
+  let partial = withWritablePages(readonly, PageIndex(17), PageIndex(18)).value
+  assert store(readonly, MemoryAddress(69632), AccessWidth(1), RegisterValue(9)).error ==
+      MachineError.Fault
+  assert store(mapped, MemoryAddress(81916), AccessWidth(8), RegisterValue(9)).error ==
+      MachineError.Fault
+  let private = store(partial, MemoryAddress(69633), AccessWidth(1), RegisterValue(23)).value
+  let writer = newScalarMemoryWriter(mapped).value
+  let alias = writer
+  assert store(writer, MemoryAddress(66047), AccessWidth(8), RegisterValue(
+      0x0807060504030201'u64)).error == MachineError.None
+  let first = snapshotMemory(writer).value
+  assert store(alias, MemoryAddress(70143), AccessWidth(8), RegisterValue(
+      0x1817161514131211'u64)).error == MachineError.None
+  let second = snapshotMemory(alias).value
+  var input = newSeq[byte](1026)
+  for index in 0..<input.len: input[index] = byte((index*17+3) mod 251)
+  let bulk = writeBytes(cleared, MemoryAddress(74238), input, MemoryByteLimit(1026)).value
+  let scalar = store(cleared, MemoryAddress(81914), AccessWidth(4), RegisterValue(
+      0x44332211'u64)).value
+  for side in 0..<4:
+    # Independent expectations expose unintended writes to another chunk/page that happens to share the same zero child.
+    let index = PageIndex(uint32(16+side))
+    let original = pageImage(mapped, index).value
+    let old = pageImage(dirty, index).value
+    let zero = pageImage(cleared, index).value
+    let protected = pageImage(readonly, index).value
+    let changed = pageImage(private, index).value
+    let one = pageImage(first, index).value
+    let two = pageImage(second, index).value
+    let many = pageImage(bulk, index).value
+    let word = pageImage(scalar, index).value
+    assert original.access == PageAccess.ReadWrite and zero.access == PageAccess.ReadWrite
+    assert protected.access == PageAccess.ReadOnly
+    assert changed.access == (if side == 1: PageAccess.ReadWrite else: PageAccess.ReadOnly)
+    for offset in 0..<4096:
+      assert original.bytes[offset] == 0 and zero.bytes[offset] == 0 and protected.bytes[offset] == 0
+      assert old.bytes[offset] == (if side == 0 and offset == 3: 99'u8 else: 0'u8)
+      assert changed.bytes[offset] == (if side == 1 and offset == 1: 23'u8 else: 0'u8)
+      let a = if side == 0 and offset >= 511 and offset < 519: byte(offset-510) else: 0'u8
+      let b = if side == 1 and offset >= 511 and offset < 519: byte(offset-494) else: a
+      assert one.bytes[offset] == a and two.bytes[offset] == b
+      let relative = side*4096+offset-8702
+      assert many.bytes[offset] == (if relative >= 0 and relative < 1026: byte((
+          relative*17+3) mod 251) else: 0'u8)
+      let octet = if side == 3 and offset >= 4090 and offset < 4094:
+          byte((0x44332211'u64 shr (8*(offset-4090))) and 255)
+        else: 0'u8
+      assert word.bytes[offset] == octet
+  let dropped = withPageRange(cleared, PageIndex(16), PageIndex(20), PageAccess.Inaccessible,
+    PageContent.Zeroed).value
+  assert uint32(writablePageCount(dropped, PageIndex(16), PageIndex(20)).value) == 0
+  let remapped = withWritablePages(dropped, PageIndex(16), PageIndex(20)).value
+  for side in 0..<4:
+    let gone = pageImage(dropped, PageIndex(uint32(16+side))).value
+    let restored = pageImage(remapped, PageIndex(uint32(16+side))).value
+    assert gone.access == PageAccess.Inaccessible and restored.access == PageAccess.ReadWrite
+    for offset in 0..<4096: assert gone.bytes[offset] == 0 and restored.bytes[offset] == 0
+  assert uint32(writablePageCount(blank, PageIndex(16), PageIndex(20)).value) == 0
+
 snapshotCycle()
 captureCycle()
 observationCycle()
+zeroCycle()
 let before = getOccupiedMem()
 for cycle in 0..<1000:
   snapshotCycle() # Private chunk/header owners and every retained generation must retire without cycles.
   captureCycle()
   observationCycle()
+  zeroCycle()
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("pvm_memory_chunks", 1000, before, after)

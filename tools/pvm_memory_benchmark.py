@@ -16,7 +16,7 @@ from setup_nimony import installed
 from pvm_benchmark import cpu_model,digest
 
 BUILD=ROOT/'build/tests/pvm-memory'
-CASES=tuple((kind,size) for size in (512,4096,65536) for kind in ('read','write'))+(('capture',4096),('capture',65536),('image',4096))
+CASES=tuple((kind,size) for size in (512,4096,65536) for kind in ('read','write'))+(('capture',4096),('capture',65536),('image',4096),('reserve',131072),('clear',131072))
 
 
 def parse_output(output,reverse=False):
