@@ -57,6 +57,23 @@ type
       # Callers cannot inspect a fabricated zero/default execution state on failure.
       discard
 
+
+  InstructionEffect = object ## Private scalar exit metadata contains no immutable machine root or mutable graph alias.
+    case kind: StepExit
+    of Fault:
+      failedPage: PageAddress
+    of Host:
+      callNumber: HostCallId
+      callAddress: CodeAddress
+    else:
+      discard # Ordinary exits carry no unrelated fault/host metadata.
+  InstructionEvaluation = object ## Local failures expose no intermediate CPU/memory prefix, even inside the evaluator.
+    case status: StepError
+    of None:
+      effect: InstructionEffect
+    else:
+      discard # The invocation discards its private cursor on local refusal.
+
 type
   HostResultKind* {.pure.} = enum ## Callback selection is independent of the caller's enum: no numeric reason implies success.
     Uninitialized, Response, Failure
@@ -378,36 +395,28 @@ proc controlMutation(program: Program, item: Instruction,
     info.blockCharged = false
   outcome
 
-# Evaluate exactly one supported instruction with GP whole-block gas precedence.
-# limit bounds gas simulation only; finding the containing block is bounded by program byte size.
-proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
-    hostCalls: bool, cache: var BlockChargeCache, decoded: ProgramResult[Instruction]): StepResult =
-  let captured = machineInfo(source)
-  # A default machine must not become an all-zero executable state.
-  if captured.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
-  let owner = programOf(source)
-  let memory = memoryOf(source)
-  # Child handles come from the same immutable snapshot, never caller-selected replacements.
-  if owner.error != MachineError.None or memory.error != MachineError.None:
-    return StepResult(status: StepError.InvalidMachine)
-  let program = owner.value
-  var info = captured.value
+# Mutate only invocation-owned CPU values and an immutable memory handle; no per-instruction machine root is allocated.
+proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Memory,
+    limit: GasCycleLimit, control, memoryAccess, hostCalls: bool, cache: var BlockChargeCache,
+    decoded: ProgramResult[Instruction]): InstructionEvaluation =
   if uint64(info.gasDeficit) != 0:
     # Terminal host debt must never be reinterpreted as executable zero gas.
-    return StepResult(status: StepError.InvalidMachine)
+    return InstructionEvaluation(status: StepError.InvalidMachine)
   # Both private callers derive this result from the current machine's own program and PC.
   # Entry capture validates PC; terminal snapshots may intentionally have a non-executable PC.
-  if decoded.error != ProgramError.None: return StepResult(status: StepError.InvalidMachine)
+  if decoded.error != ProgramError.None: return InstructionEvaluation(
+      status: StepError.InvalidMachine)
   let item = decoded.value
   if not registerOnlyOpcode(item.opcode) and
       not (control and (terminatesBlock(item.opcode) or item.opcode == 2)) and
       not (memoryAccess and memoryOpcode(item.opcode)) and not (hostCalls and item.opcode == 10):
     # Capability rejection precedes evaluation and never fabricates a guest trap or gas debit.
-    return StepResult(status: StepError.UnsupportedInstruction)
+    return InstructionEvaluation(status: StepError.UnsupportedInstruction)
   if not info.blockCharged:
     # Interior entry still charges the entire containing block, including already-skipped instructions.
     let start = containingBlockStart(program, info.pc)
-    if start.error != ProgramError.None: return StepResult(status: StepError.InvalidMachine)
+    if start.error != ProgramError.None: return InstructionEvaluation(
+        status: StepError.InvalidMachine)
     # The private caller keeps one program/limit for this cache's entire lifetime.
     # A cache hit reuses simulation work only; affordability and debit below still run on every visit.
     var chargeError = GasError.None
@@ -426,28 +435,28 @@ proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
     of GasError.None:
       # Prove affordability before subtraction and before evaluating any register mutation.
       if uint64(info.gas) < needed:
-        return StepResult(status: StepError.None,
-          completed: StepOutcome(kind: StepExit.OutOfGas, machine: source))
+        return InstructionEvaluation(status: StepError.None,
+          effect: InstructionEffect(kind: StepExit.OutOfGas))
       info.gas = MachineGas(uint64(info.gas) - needed)
       info.blockCharged = true
     of GasError.CycleLimitExceeded:
       # Local simulation exhaustion is not guest out-of-gas and carries no partial debit.
-      return StepResult(status: StepError.GasCycleLimitExceeded)
+      return InstructionEvaluation(status: StepError.GasCycleLimitExceeded)
     of GasError.NegativeBranchTarget:
       # Retain the historical error alternative; current PolkaVM-aligned pricing does not emit it.
-      return StepResult(status: StepError.NegativeBranchTarget)
+      return InstructionEvaluation(status: StepError.NegativeBranchTarget)
     else:
       # A captured valid PC must have a valid containing block.
-      return StepResult(status: StepError.InvalidMachine)
+      return InstructionEvaluation(status: StepError.InvalidMachine)
   var outcome = StepExit.Continued
-  var changedMemory = memory.value
+  var changedMemory = memory
   var failedPage = PageAddress(0)
   if registerOnlyOpcode(item.opcode):
     # Register-only execution retains its existing scope and copied-register semantics.
     let mutation = evaluateRegisters(decoded, info.registers)
     if mutation.error != RegisterError.None:
       # Defensive evaluator failure cannot publish the tentative copied gas state.
-      return StepResult(status: StepError.UnsupportedInstruction)
+      return InstructionEvaluation(status: StepError.UnsupportedInstruction)
     info.registers = mutation.value
     info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
   elif memoryOpcode(item.opcode):
@@ -464,10 +473,10 @@ proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
       outcome = StepExit.Fault
     of MachineError.AmbiguousAccessOrder:
       # Retain the historical error alternative for compatibility; current PolkaVM-aligned scalar inspection never emits it.
-      return StepResult(status: StepError.AmbiguousAccessOrder)
+      return InstructionEvaluation(status: StepError.AmbiguousAccessOrder)
     else:
       # Decoded widths and captured owners make other scalar API failures unreachable.
-      return StepResult(status: StepError.InvalidMachine)
+      return InstructionEvaluation(status: StepError.InvalidMachine)
   elif item.opcode == 10:
     # Psi_1 ecalli inherits the default PC increment and leaves the current block prepaid.
     outcome = StepExit.Host
@@ -475,22 +484,56 @@ proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
   else:
     # This path is reachable only for explicitly supported control/no-op instructions.
     outcome = controlMutation(program, item, info)
-  let updated = (if outcome in {StepExit.Panic, StepExit.Halt}:
-    captureTerminalMachine(program, changedMemory, info)
-    else: captureMachine(program, changedMemory, info))
-  if updated.error != MachineError.None:
-    # Publish only a complete validated successor; the original snapshot remains untouched.
-    return StepResult(status: StepError.InvalidMachine)
+  if outcome notin {StepExit.Panic, StepExit.Halt} and
+      instructionOpcode(program, info.pc).error != ProgramError.None:
+    return InstructionEvaluation(status: StepError.InvalidMachine) # Preserve executable-successor validation before the next attempt, including final-slot host calls.
+  memory = changedMemory # Only immutable page owners pass between private iterations; published source memory never mutates.
   if outcome == StepExit.Fault:
-    # Construct the sole guest alternative with fault metadata only after the snapshot is complete.
-    return StepResult(status: StepError.None,
-      completed: StepOutcome(kind: StepExit.Fault, machine: updated.value, failedPage: failedPage))
+    return InstructionEvaluation(status: StepError.None,
+        effect: InstructionEffect(kind: StepExit.Fault, failedPage: failedPage))
   if outcome == StepExit.Host:
-    # Keep the full decoded immediate, including negative compact encodings, in its nominal domain.
-    return StepResult(status: StepError.None, completed: StepOutcome(kind: StepExit.Host,
-      machine: updated.value, callNumber: HostCallId(uint64(item.x)), callAddress: item.address))
-  StepResult(status: StepError.None,
-    completed: StepOutcome(kind: outcome, machine: updated.value))
+    return InstructionEvaluation(status: StepError.None,
+        effect: InstructionEffect(kind: StepExit.Host, callNumber: HostCallId(uint64(item.x)),
+        callAddress: item.address))
+  InstructionEvaluation(status: StepError.None, effect: InstructionEffect(kind: outcome))
+
+proc publishInstruction(program: Program, memory: Memory, info: MachineInfo,
+    effect: InstructionEffect, terminal: bool): StepResult =
+  ## Materialize an immutable observable snapshot only after evaluation/normalization succeeds; local capture refusals expose no prefix.
+  let updated = (if terminal or effect.kind in {StepExit.Panic, StepExit.Halt}:
+    captureTerminalMachine(program, memory, info)
+    else: captureMachine(program, memory, info))
+  if updated.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
+  case effect.kind
+  of StepExit.Fault:
+    return StepResult(status: StepError.None,
+        completed: StepOutcome(kind: StepExit.Fault, machine: updated.value,
+            failedPage: effect.failedPage))
+  of StepExit.Host:
+    return StepResult(status: StepError.None,
+        completed: StepOutcome(kind: StepExit.Host, machine: updated.value,
+        callNumber: effect.callNumber, callAddress: effect.callAddress))
+  else:
+    return StepResult(status: StepError.None,
+        completed: StepOutcome(kind: effect.kind, machine: updated.value)) # Ordinary outcomes never inherit metadata from a prior instruction.
+
+proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
+    hostCalls: bool, cache: var BlockChargeCache, decoded: ProgramResult[Instruction]): StepResult =
+  ## Single-step APIs retain their exact immutable-snapshot boundary and capability/refusal semantics.
+  let captured = machineInfo(source)
+  let owner = programOf(source)
+  let originalMemory = memoryOf(source)
+  if captured.error != MachineError.None or owner.error != MachineError.None or
+      originalMemory.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
+  var info = captured.value
+  var memory = originalMemory.value
+  let evaluated = evaluateInstruction(owner.value, info, memory, limit, control, memoryAccess,
+      hostCalls, cache, decoded)
+  if evaluated.status != StepError.None: return StepResult(status: evaluated.status)
+  if evaluated.effect.kind == StepExit.OutOfGas:
+    return StepResult(status: StepError.None, completed: StepOutcome(kind: StepExit.OutOfGas,
+        machine: source)) # An unaffordable single step preserves the exact original root.
+  publishInstruction(owner.value, memory, info, evaluated.effect, false)
 
 # Single-step calls never inherit cached work across owners, scopes or local simulation limits.
 proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
@@ -539,52 +582,31 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
     # Reject terminal debt before even a zero-budget or invalid-PC execution path.
     return StepResult(status: StepError.InvalidMachine)
   let program = owner.value
-  var current = source
-  # Retain only the current immutable root; no host recursion or growing state history is required.
+  var info = original.value
+  var memory = originalMemory.value
+  # CPU values are local to this invocation; immutable memory updates cannot mutate retained source snapshots.
   while remaining > 0:
-    # Consume each attempted instruction once, even when a Host exit returns to the dispatcher.
-    dec remaining
-    let prior = machineInfo(current).value
-    let priorMemory = memoryOf(current).value
+    dec remaining # Each attempted instruction consumes exactly one local step, including invalid entry and every exit.
+    let prior = info
+    let priorMemory = memory
     let decoded = instruction(program, prior.pc)
     if decoded.error != ProgramError.None:
-      # A trusted terminal/import snapshot may have an invalid PC: Psi's deblob branch panics uncharged.
-      var stopped = prior
-      stopped.pc = CodeAddress(0)
-      let captured = captureTerminalMachine(program, priorMemory, stopped)
-      if captured.error != MachineError.None:
-        # Never expose a fabricated normalized state if ownership validation fails.
-        return StepResult(status: StepError.InvalidMachine)
-      return StepResult(status: StepError.None,
-        completed: StepOutcome(kind: StepExit.Panic, machine: captured.value))
-    let evaluated = stepDecoded(current, gasLimit, true, true, true, chargeCache, decoded)
-    if evaluated.error != StepError.None:
-      # Tentative earlier steps are private snapshots; local gates/limits discard all accumulated progress.
-      return evaluated
-    var outcome = evaluated.value
-    if outcome.exit == StepExit.Continued:
-      # The next iteration observes precisely the completed instruction's immutable successor.
-      current = outcome.machine
-    else:
-      # Psi distinguishes terminal normalization from resumable exits at the causing instruction.
-      var stopped = machineInfo(outcome.machine).value
-      var stoppedMemory = memoryOf(outcome.machine).value
-      if outcome.exit in {StepExit.Panic, StepExit.Halt}:
-        # Final panic/halt retains posterior registers and memory, including load-and-jump mutations.
-        stopped.pc = CodeAddress(0)
+      info.pc = CodeAddress(0) # Trusted terminal/import snapshots retain the existing uncharged deblob panic rule.
+      return publishInstruction(program, memory, info, InstructionEffect(kind: StepExit.Panic), true)
+    let evaluated = evaluateInstruction(program, info, memory, gasLimit, true, true, true,
+        chargeCache, decoded)
+    if evaluated.status != StepError.None:
+      return StepResult(status: evaluated.status) # The whole private cursor retires; local failures never publish earlier progress.
+    let effect = evaluated.effect
+    if effect.kind != StepExit.Continued:
+      if effect.kind in {StepExit.Panic, StepExit.Halt}:
+        info.pc = CodeAddress(0) # Final exits preserve posterior registers/memory, including load-and-jump mutations.
       else:
-        # Fault, out-of-gas and host retain prior PC/registers/memory but posterior gas and charged flag.
-        stopped.pc = prior.pc
-        stopped.registers = prior.registers
-        stoppedMemory = priorMemory
-      let captured = captureTerminalMachine(program, stoppedMemory, stopped)
-      if captured.error != MachineError.None:
-        # Only a complete normalized snapshot may accompany the copied exit metadata.
-        return StepResult(status: StepError.InvalidMachine)
-      outcome.machine = captured.value
-      return StepResult(status: StepError.None, completed: outcome)
-  # Exhaustion is a local policy refusal, never OutOfGas, a host call, or a resumable guest outcome.
-  StepResult(status: StepError.StepLimitExceeded)
+        info.pc = prior.pc
+        info.registers = prior.registers
+        memory = priorMemory # Fault, gas and host exits retain causing-instruction state plus posterior gas/charged flag.
+      return publishInstruction(program, memory, info, effect, true)
+  StepResult(status: StepError.StepLimitExceeded) # Bounded exhaustion grants no machine or resumable prefix.
 
 proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycleLimit): StepResult =
   ## Execute a guest-only segment with a fresh local instruction budget; Host is returned to the caller.

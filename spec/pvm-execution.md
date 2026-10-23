@@ -16,7 +16,8 @@ boundaries. All return guarded `StepResult` values; branch-target pricing and wr
 memory follow the maintainer-approved pinned PolkaVM behavior.
 
 `execute(machine, stepLimit, gasLimit)` evaluates the recursive `Psi` exit rules
-using a loop over immutable snapshots. Its input program is already validated
+using an invocation-owned CPU cursor with immutable memory handles. Observable exits retain
+immutable machine snapshots. Its input program is already validated
 and owned by the machine. Raw blob parsing, standard initialization, host-function
 implementation and complete JAM invocation are outside this API. A default machine
 is local `InvalidMachine`, not a fabricated guest panic for an absent program.
@@ -36,7 +37,7 @@ existing containing-block scans remain bounded by the captured program size.
 This is a deterministic work bound, not a wall-clock deadline.
 
 Limit exhaustion and other local errors carry no machine, host identifier, gas
-debit or completed-prefix progress. Previously created private snapshots are
+debit or completed-prefix progress. The private cursor and intermediate memory owners are
 released; the caller's original snapshot is unchanged. These failures are not
 out-of-gas, guest exits or resumable scheduler yields. A future yielding API would
 need an explicit successful progress contract rather than attaching state to a
@@ -68,7 +69,7 @@ The host identifier alone does not establish that a particular host function exi
 
 ## Recursive exit rules and ownership
 
-For `Continued`, execution retains the completed successor and loops. For final
+For `Continued`, execution retains the private CPU values and immutable memory successor and loops. For final
 `Panic` or `Halt`, it sets PC to zero and preserves posterior gas, charged flag,
 registers and memory. This retains load-and-jump register writes even when that
 instruction panics or halts; trap's single-step PC increment is normalized only
@@ -81,7 +82,7 @@ before the exiting instruction, including completed earlier instructions—not
 the invocation's initial state. Memory repair/retry therefore retains the paid
 block charge and all earlier successful mutations.
 
-The loop retains only its current machine root plus bounded per-step temporaries;
+The loop retains only its copied CPU state, immutable program/memory handles and bounded per-step temporaries;
 it does not recurse on the host stack or retain an execution history. Program
 and unchanged memory pages remain shared immutable children. Normalization creates
 one owned machine root. Returning a local error releases temporary progress without
@@ -116,3 +117,30 @@ successful immutable program/cycle-limit calculations within one execution call.
 memo across continuations because host replies retain the program and cycle limit. Gas
 affordability/debit, local failure behavior and all exported snapshot contracts remain
 unchanged; direct single-step calls and independent execution invocations start fresh.
+
+
+## Private execution cursor
+
+The evaluator separates instruction effects from observable machine capture. Single-step APIs
+still capture a complete immutable successor for every successful step, and an unaffordable
+single step returns the exact original root. Bounded execution keeps CPU values local and
+immutable memory handles between instructions, materializing a machine only for a successful
+observable exit. There is no exported mutable machine, retained caller register pointer, global
+cache or mutation of shared pages. Host callbacks still receive immutable suspension snapshots;
+they cannot observe an interior cursor.
+
+Every successful nonterminal successor still passes the original executable-PC validation before
+another attempt or local budget check. Program capture continues to require a final terminator;
+the cursor adds no fallback or alternate invalid-entry representation. Existing gas precedence,
+capability rejection, local failure without
+progress, fault atomicity, terminal PC normalization and load-and-jump mutations are unchanged.
+Private evaluation failures contain only their reason and never expose a cursor prefix.
+
+The execution suite retains all four intermediate single-step roots while independent cursor
+runs overwrite the same page twice, exhaust local budgets, resume from each root and suspend at
+an exact host PC. Every old CPU/page stays unchanged. Repeating this witness together with the
+existing fault/repair/host lifecycle for 1,000 cycles returns occupied ARC memory to its warm
+baseline. The existing single-step, host response/failure, mixed-program and metered fault/host
+corpora remain regression controls. A compiler privacy fixture rejects external mutable evaluator
+access. Local benchmark evidence and limits are recorded in the
+[performance comparison contract](pvm-benchmark-comparison.md).
