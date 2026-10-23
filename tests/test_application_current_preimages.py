@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 from application_current_sequence import observe_preimages
-from e2e_checks import application_current_preimages
+from e2e_checks import application_current_preimages, prepare_current_sequence_responder
 
 
 class CurrentPreimageExecutable(unittest.TestCase):
@@ -32,9 +32,13 @@ class CurrentPreimageExecutable(unittest.TestCase):
                 bs=folder/'bs', quic=folder/'quic', checks=checks,
                 current_download_peer=({'exit_code': 1}, folder/'peer'))
             with patch('application_current_sequence.observe_preimages') as observed:
+                # Run the registered prerequisite; a failed peer must skip witness compilation entirely.
+                prepare_current_sequence_responder(context)
                 self.assertFalse(application_current_preimages(context)['passed'])
                 checks.build.assert_not_called()
                 context.current_download_peer = ({'exit_code': 0}, folder/'peer')
+                # A usable peer still cannot run a stale witness after the shared prerequisite build fails.
+                prepare_current_sequence_responder(context)
                 self.assertFalse(application_current_preimages(context)['passed'])
                 self.assertEqual(checks.build.call_count, 1)
                 observed.assert_not_called()
