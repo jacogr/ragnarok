@@ -33,7 +33,8 @@ type
       ModifiedAccountsDisabled,  ## The caller did not enable bounded modified-account tracking.
       CreatedAccountsDisabled,   ## Explicit creation facts require enabled bounded tracing.
       AccountWriteFactsDisabled, ## The caller did not enable bounded physical account-write facts.
-      StorageWriteFactsDisabled  ## Raw storage identity capture was not enabled for this invocation.
+      StorageWriteFactsDisabled, ## Raw storage identity capture was not enabled for this invocation.
+      RequestFactsDisabled       ## The caller did not enable bounded original request identity capture.
   AccumulationModifiedAccountIndex* = distinct uint64 ## Modification ordinal is distinct from a protocol service identity.
   # Immutable unique membership facts contain only fixed identities and no parent-effect owners.
   ModifiedAccountsData = ref object
@@ -62,6 +63,15 @@ type
   StorageFactsData = ref object ## First-touch ordering and exact raw-byte accounting follow immutable implication selection.
     values: seq[AccumulationStorageFact]
     bytes: uint64
+  AccumulationRequestFactIndex* = distinct uint64 ## Logical request ordinal cannot substitute a physical account-write or raw-storage ordinal.
+  AccumulationRequestFact* = object ## Copied first-touch observation; only its producing context certifies successful provenance.
+    service*: ServiceIndex
+    hash*: ServicePreimageHash
+    length*: RequestLength
+    key*: StateKey
+    removedPreimage*: bool ## At least one actual expired forget on this selected lineage removed the associated preimage.
+  RequestFactsData = ref object ## Immutable fixed descriptors retain no payloads or parent effect graph.
+    values: seq[AccumulationRequestFact]
   AccumulationAccountScope* {.pure.} = enum ## Conservative mutation provenance since the credited initial context; equal bytes never reset it.
     Initial,         ## No account mutation occurred on this retained lineage.
     SelfMetadata,    ## Only supported metadata operations changed the invoking service's record.
@@ -131,6 +141,8 @@ type
     accountScope: AccumulationAccountScope
     modified: ModifiedAccountsData
     modifiedLimit: ElementLimit
+    requestFacts: RequestFactsData
+    requestFactLimit: ElementLimit
     storageFacts: StorageFactsData
     storageLimits: AccumulationStorageFactLimits
     writeFacts: AccountWriteFactsData
@@ -208,7 +220,8 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
         scope = AccumulationAccountScope.SelfMetadata # Self metadata preserves any existing bounded self-key proof.
     else:
       scope = AccumulationAccountScope.Unsupported # No broader mutation can opt itself back into publication.
-  EffectData(storageFacts: previous.storageFacts, storageLimits: previous.storageLimits,
+  EffectData(requestFacts: previous.requestFacts, requestFactLimit: previous.requestFactLimit,
+    storageFacts: previous.storageFacts, storageLimits: previous.storageLimits,
     writeFacts: previous.writeFacts, writeFactLimit: previous.writeFactLimit,
     modified: previous.modified, modifiedLimit: previous.modifiedLimit,
     deleted: previous.deleted, deletedLimit: previous.deletedLimit,
@@ -220,6 +233,68 @@ proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
     nextService: previous.nextService,
     staging: previous.staging, queues: previous.queues, privileges: previous.privileges,
     output: previous.output, provisions: previous.provisions, transfers: previous.transfers)
+
+proc prepareRequestFact(previous: EffectData, service: ServiceIndex,
+    hash: ServicePreimageHash, length: RequestLength, key: StateKey,
+    removedPreimage: bool): AccumulationEffectResult[RequestFactsData] =
+  ## Retain original logical request identities before candidate-map publication, coalescing successful first touches without fabricating operation order.
+  let retained = previous.requestFacts
+  if uint64(previous.requestFactLimit) == 0:
+    return AccumulationEffectResult[RequestFactsData](status: AccumulationEffectError.None,
+        completed: retained)
+  var found = -1
+  for i, fact in retained.values:
+    # One service/physical request identity must preserve exact original hash and full public length.
+    if uint32(fact.service) == uint32(service) and array[31, byte](fact.key) == array[31, byte](key):
+      if array[32, byte](fact.hash) != array[32, byte](hash) or uint32(fact.length) != uint32(length):
+        return AccumulationEffectResult[RequestFactsData](
+            status: AccumulationEffectError.InvalidState)
+      if fact.removedPreimage or not removedPreimage:
+        return AccumulationEffectResult[RequestFactsData](status: AccumulationEffectError.None,
+            completed: retained)
+      found = i # Expired-forget provenance is sticky on this immutable selected lineage.
+  let count = retained.values.len
+  if count > high(int) div sizeof(AccumulationRequestFact):
+    return AccumulationEffectResult[RequestFactsData](status: AccumulationEffectError.LimitExceeded)
+  var size = count
+  if found < 0:
+    if uint64(count) >= uint64(previous.requestFactLimit) or count >= high(int) div sizeof(AccumulationRequestFact):
+      return AccumulationEffectResult[RequestFactsData](
+          status: AccumulationEffectError.LimitExceeded)
+    inc size # Native descriptor bounds precede addition and allocation.
+  var values = newSeq[AccumulationRequestFact](size)
+  for i, fact in retained.values: values[i] = fact # Older context/checkpoint facts remain immutable and independently retained.
+  if found < 0:
+    values[count] = AccumulationRequestFact(service: service, hash: hash, length: length,
+        key: key, removedPreimage: removedPreimage)
+  else:
+    values[found].removedPreimage = true # Publish the new observation only with the matching successful account successor.
+  AccumulationEffectResult[RequestFactsData](status: AccumulationEffectError.None,
+      completed: RequestFactsData(values: values))
+
+proc effectRequestFactCount*(context: AccumulationEffectContext): AccumulationEffectResult[int] =
+  ## Disabled capture is distinct from a proven empty successful request trace.
+  let data = context.data
+  if data == nil:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.Uninitialized)
+  if uint64(data.requestFactLimit) == 0:
+    return AccumulationEffectResult[int](status: AccumulationEffectError.RequestFactsDisabled)
+  AccumulationEffectResult[int](status: AccumulationEffectError.None,
+      completed: data.requestFacts.values.len)
+
+proc effectRequestFactAt*(context: AccumulationEffectContext,
+    index: AccumulationRequestFactIndex): AccumulationEffectResult[AccumulationRequestFact] =
+  ## Return a detached fixed fact only from this exact retained implication context after full-width index validation.
+  let count = context.effectRequestFactCount
+  if count.error != AccumulationEffectError.None:
+    return AccumulationEffectResult[AccumulationRequestFact](status: count.error)
+  if uint64(index) >= uint64(count.value):
+    return AccumulationEffectResult[AccumulationRequestFact](
+        status: AccumulationEffectError.InvalidIndex)
+  let data = context.data
+  assert data != nil
+  AccumulationEffectResult[AccumulationRequestFact](status: AccumulationEffectError.None,
+      completed: data.requestFacts.values[int(uint64(index))])
 
 proc prepareStorageFact(previous: EffectData, service: ServiceIndex, key: StateKey,
     raw: openArray[byte]): AccumulationEffectResult[StorageFactsData] =
@@ -778,7 +853,8 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
     accountWriteKeys = ElementLimit(0), createdAccounts = ElementLimit(0),
         deletedAccounts = ElementLimit(0), modifiedAccounts = ElementLimit(0),
             accountWriteFacts = ElementLimit(0),
-    storageFacts = default(AccumulationStorageFactLimits)): AccumulationEffectResult[
+    storageFacts = default(AccumulationStorageFactLimits),
+    requestFacts = ElementLimit(0)): AccumulationEffectResult[
     AccumulationEffects] =
   ## Begin at the actual initial I in both dimensions; no caller-selected replacement state or yield is accepted.
   ## accountWriteFacts independently bounds exact successful service/key pairs; zero disables their queries.
@@ -804,6 +880,7 @@ proc prepareAccumulationEffects*(contexts: PreparedAccumulationContexts,
     accounts: initial.value.contextAccounts.value, accountScope: AccumulationAccountScope.Initial,
     designated: false, blessed: false, assigned: false,
     modified: ModifiedAccountsData(values: members), modifiedLimit: modifiedAccounts,
+    requestFacts: RequestFactsData(values: @[]), requestFactLimit: requestFacts,
     storageFacts: StorageFactsData(values: @[], bytes: 0), storageLimits: storageFacts,
     writeFacts: AccountWriteFactsData(values: facts), writeFactLimit: accountWriteFacts,
     accountKeys: AccountKeysData(keys: @[]), accountKeyLimit: accountWriteKeys,
@@ -1551,6 +1628,10 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
     AccumulationAccountWriteFact(service: selected, key: request.value.key)])
   if facts.error != AccumulationEffectError.None:
     fail(facts.error) # All successful write facts fit before candidate account publication.
+  let requests = prepareRequestFact(previous, selected, ServicePreimageHash(array[32, byte](
+      source.codeHash)), source.length, request.value.key, false)
+  if requests.error != AccumulationEffectError.None:
+    fail(requests.error) # Seed request identity capacity precedes child/cursor/account publication.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply([
     StateWrite(key: parentEntry.key, kind: StateWriteKind.Put, value: parentEntry.value),
@@ -1570,6 +1651,7 @@ proc recordAccumulationNew*(effects: AccumulationEffects, source: AccumulationNe
       AccumulationAccountScope.Unsupported and uint64(previous.createdLimit) != 0:
     candidate.accountScope = if previous.accountScope == AccumulationAccountScope.DeletedAccounts:
       AccumulationAccountScope.DeletedAccounts else: AccumulationAccountScope.CreatedAccounts # New preserves earlier ejection facts.
+  candidate.requestFacts = requests.value # Creation preserves the actual original code-request hash and length independently of later upgrades.
   candidate.created = captured.value # Enabled creation membership survives independently of legacy account-scope publication.
   candidate.nextService = next
   candidate.writeFacts = facts.value # Bind physical keys to the same immutable account successor.
@@ -2164,6 +2246,9 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
   let facts = prepareAccountWriteFacts(previous, target, writes)
   if facts.error != AccumulationEffectError.None:
     fail(facts.error) # All successful write facts fit before candidate account publication.
+  let requests = prepareRequestFact(previous, target, hash, length, request.value.key, false)
+  if requests.error != AccumulationEffectError.None:
+    fail(requests.error) # No newly retained identity or map escapes a request trace quota refusal.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -2179,6 +2264,7 @@ proc recordAccumulationSolicit*(effects: AccumulationEffects, hash: ServicePreim
     selfAccountData(previous, changed.value, keys)
   else:
     successorData(previous, changed.value) # Foreign execution awaits parallel modified-account selection.
+  candidate.requestFacts = requests.value # Bind original logical arguments to this exact successful history/map.
   candidate.writeFacts = facts.value # Bind physical keys to the same immutable account successor.
   candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)
@@ -2245,6 +2331,7 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     replacement = unavailableHistory(history.restoredAt, RequestSlot(
         time)) # Retain latest availability and append current removal time.
   var writes: seq[StateWrite] = @[]
+  var requestKey = default(StateKey)
   if remove:
     let accountKey = chapterServiceKey(StateChapter(255), target)
     var metadata = selected.value
@@ -2257,6 +2344,7 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     let request = serviceRequestKey(target, hash, length, ByteLimit(32))
     if request.error != RequestError.None:
       fail(AccumulationEffectError.BackendFailure) # Stop on failed request derivation without more namespace work.
+    requestKey = request.value # Reuse the genuine request key; capture performs no extra namespace hash.
     writes.add(StateWrite(key: accountKey, kind: StateWriteKind.Put, value: encoded.value))
     writes.add(StateWrite(key: request.value, kind: StateWriteKind.Delete))
     if removePreimage:
@@ -2272,6 +2360,7 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
           3), maxBytes: ByteLimit(13))))
     if request.error != RequestError.None:
       fail(AccumulationEffectError.BackendFailure) # Failed canonical replacement has no request payload to publish.
+    requestKey = request.value.key # Replacement and deletion retain the same exact request identity contract.
     writes.add(StateWrite(key: request.value.key, kind: StateWriteKind.Put,
         value: request.value.value)) # Replacement changes no metadata or preimage.
   var keys = previous.accountKeys
@@ -2287,6 +2376,9 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
   let facts = prepareAccountWriteFacts(previous, target, writes)
   if facts.error != AccumulationEffectError.None:
     fail(facts.error) # All successful write facts fit before candidate account publication.
+  let requests = prepareRequestFact(previous, target, hash, length, requestKey, removePreimage)
+  if requests.error != AccumulationEffectError.None:
+    fail(requests.error) # Expired-preimage removal evidence is published only with all matching account writes.
   var working = forkStateStore(previous.accounts).value
   let changed = working.apply(writes)
   case changed.error
@@ -2302,6 +2394,7 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
     selfAccountData(previous, changed.value, keys)
   else:
     successorData(previous, changed.value) # Foreign execution awaits parallel modified-account selection.
+  candidate.requestFacts = requests.value # Selected checkpoint ownership keeps request/preimage removal evidence paired with its map.
   candidate.writeFacts = facts.value # Bind physical keys to the same immutable account successor.
   candidate.modified = modified.value # Publish exactly the set paired with this successful account operation.
   let current = AccumulationEffectContext(data: candidate)

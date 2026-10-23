@@ -26,6 +26,7 @@ type
     transfers*, accountWriteKeys*, createdAccounts*,
       deletedAccounts*: ElementLimit         ## Independent current/legacy effect-proof capacities.
     modifiedAccounts*, accountWriteFacts*: ElementLimit ## Ready guests require modified tracking; physical facts remain an explicit downstream opt-in.
+    requestFacts*: ElementLimit ## Explicit bounded original request identities, including seeded new-account requests; zero disables capture.
     storageFacts*: AccumulationStorageFactLimits ## Explicit downstream raw identity capture; zero items preserves disabled behavior.
     annulment*: AccumulationAnnulmentLimits  ## Complete original source/modification/conflict inspection ceilings.
     coverage*: AccumulationCoverageLimits    ## Final provider families, row work and aggregate actual gas budget.
@@ -180,7 +181,7 @@ proc runAccumulationGuests*(inputs: PreparedAccumulationInputs, state: StateStor
       limits.provisions,
       limits.probes, limits.transfers, limits.accountWriteKeys, limits.createdAccounts,
       limits.deletedAccounts, limits.modifiedAccounts, limits.accountWriteFacts,
-      limits.storageFacts)
+      limits.storageFacts, limits.requestFacts)
     if executed.error != AccumulationDispatchError.None:
       return AccumulationGuestResult(status: AccumulationGuestError.DispatchFailure,
           dispatchReason: executed) # Preserve actual step/refusal detail; prior successful guests remain private and release.
