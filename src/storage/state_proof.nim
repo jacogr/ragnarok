@@ -59,7 +59,8 @@ proc bytes*(lookup: VerifiedStateLookup): seq[byte] {.requires: lookup.owner != 
   let owner = lookup.owner
   assert owner != nil and owner.kind == StateLookupKind.Present
   result = newSeq[byte](owner.bytes.len)
-  for index, octet in owner.bytes: result[index] = octet # Mutable copies cannot change the retained evidence.
+  for index in 0..<owner.bytes.len: result[index] = owner.bytes[
+      index] # Mutable copies cannot change the retained evidence.
 
 func one(key: StateKey, depth: int): bool =
   ## Callers prove depth<248 before reading a query's MSB-first direction bit.

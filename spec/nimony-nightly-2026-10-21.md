@@ -651,3 +651,38 @@ JAM/STF parity. Raw scoped evidence is under ignored `build/ci/nimony-2026-10-23
 `build/ci/nimony-2026-10-23-report-evidence/`; maintained fuzz/reopen/package logs retain their
 standard build paths. Earlier compiler/source results above remain historical, not attributed
 to this archive. Publishing the updated PR automatically requests Smoke; heavy CI remains opt-in.
+
+
+## Storage light-proof tranche on October 23
+
+Merge master `a60cef83` (15 storage PRs after `b723f0c1`) through merge commit
+`5aae0833`, retaining the qualified October 23 compiler `4724f66c2`. This tranche adds
+complete-trie proof production, authenticated light caches, canonical snapshots, atomic files,
+updates, streaming verification, borrowed publication, bounded proof retrieval/pagination and
+selected exports. These remain the incoming standalone storage contracts; this compiler update
+does not extend their application/state integration authority.
+
+The new code hits the existing retained-ref iterator restriction. Use checked indexed reads in
+four loops: `VerifiedStateLookup.bytes`, `PreparedLightSnapshot.bytes`, cache `forget`, and
+`FullStateTrie.prove`'s detached value copy. Retain each immutable owner, output order, bounds
+checks and copy semantics. Of the 98 incoming files, 94 remain byte-identical to master; only
+these four storage modules differ, including their pre-existing upgrade adaptations.
+
+Scoped local macOS ARM64 qualification passes all 23 selected native suites (15 new storage
+suites plus eight complete-trie/StateStore consumers), 21 incoming compiler rejection fixtures
+(18 privacy and three ownership/borrow checks), and 69 strict runtime misuse probes across five
+families. Each runtime family builds successfully and requires its declared assertion diagnostic;
+positive behavior is covered by the native suites. All 65 selected Python inventory/native-harness/
+verification-guard tests and inventory preflight pass.
+
+The debug and checked-release graphs cover all 396 production modules plus the real
+integration/offload main. Linux amd64 checks cover the complete graph and main semantically;
+they are not Linux runtime evidence. The four maintained strict fresh-reopen cases pass with
+independent report validation. Pinned formatting covers the updated source tree. Raw evidence
+is under ignored `build/ci/nimony-storage-light-*`; the original iterator diagnostic is retained.
+The broader October 23 qualification above retains its earlier source scope: this increment
+makes no new full-Python/full-guard/full-E2E, fuzz or performance-comparison claim.
+
+PR #971 stays open for the maintainer's upcoming PVM/state merges and subsequent merge decision.
+The compiler ownership hold remains resolved; the three documented compiler limitations and
+report drafts remain unchanged. Publishing requests automatic Smoke only.

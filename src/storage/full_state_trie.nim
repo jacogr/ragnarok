@@ -402,8 +402,8 @@ proc prove*(trie: FullStateTrie, key: StateKey,
       inc next
       if compareKey(current.key, key) == 0:
         payload = newSeq[byte](current.payload.len)
-        for index, octet in current.payload: payload[
-            index] = octet # Detached bytes never share mutable backing with a leaf.
+        for index in 0..<current.payload.len: payload[index] = current.payload[
+            index] # Detached bytes never share mutable backing with a leaf.
       break # Absence leaves intentionally omit their raw value, including long values.
     let left = current.left
     let right = current.right

@@ -224,7 +224,8 @@ proc forget*(cache: LightStateCache, keys: openArray[StateKey]): LightCacheResul
         completed: cache) # Unknown-only removal reuses the snapshot without output allocation or hashing.
   var entries = newSeq[CacheEntry](count)
   var next = 0
-  for entry in data.entries:
+  for index in 0..<data.entries.len:
+    let entry = data.entries[index] # Keep retained proof access indexed through the immutable cache owner.
     if not contains(ordered, entry.key):
       assert next < entries.len
       entries[next] = entry # Retained views share immutable proof results rather than raw mutable buffers.
