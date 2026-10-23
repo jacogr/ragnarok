@@ -106,6 +106,10 @@ proofs in request order. It bounds query scratch, traversal, individual proofs a
 output, refusing the whole batch for unknown/duplicate evidence or exceeded limits.
 See the [batch retrieval contract](../../spec/storage-light-proof-batches.md).
 
+`proofCursor` and `readPage` enumerate canonical retained evidence under page-sized item/path/value
+limits. Immutable continuations retain the original image, support deterministic retry and survive
+writer retirement. See the [pagination contract](../../spec/storage-light-proof-pagination.md).
+
 ## Boundaries and ownership
 
 The trie reuses GP 0.8.0 key/node encodings and crypto primitives. The existing complete-map

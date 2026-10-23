@@ -25,6 +25,10 @@ type
     nodes*: ElementLimit
     valueBytes*: ByteLimit
     proof*: StateProofLimits
+  LightProofPageLimits* = object ## Bound page cardinality and detached payload, independently of retained image size.
+    items*, nodes*: ElementLimit
+    valueBytes*: ByteLimit
+    proof*: StateProofLimits
   LightSnapshotError* {.pure.} = enum ## Default/refused images expose no bytes, cache or partial proof prefix.
     Uninitialized, None, InvalidFormat, WrongChain, WrongRoot, LimitExceeded,
     LengthOverflow, ChecksumMismatch, ProofFailure, BackendFailure
@@ -37,6 +41,13 @@ type
     checksum: StorageChecksum
   PreparedLightSnapshot* = object ## Copies retain one immutable validated local image, never a root-trust decision.
     owner: nil SnapshotData
+  LightProofCursor* = object ## Private immutable position retains exactly one validated image, never a writer lease.
+    owner: nil SnapshotData
+    offset: int
+  LightProofPage* = object ## Only completed pages expose detached evidence and an image-bound continuation.
+    ready: bool
+    evidence: seq[LightStateProof]
+    continuation: LightProofCursor
   LightSnapshotResult*[T] = object ## Selected proof failures carry a reason, never a completed prefix.
     case status: LightSnapshotError
     of None: completed: T
@@ -247,6 +258,88 @@ proc prove*(snapshot: PreparedLightSnapshot, keys: openArray[StateKey],
     for index in 0..<entry.size: value[index] = owner.encoded[offset+index]
     output[entry.index] = LightStateProof(key: entry.key, proof: StateProof(nodes: nodes, value: value))
   LightSnapshotResult[seq[LightStateProof]](status: LightSnapshotError.None, completed: output)
+func initialized*(cursor: LightProofCursor): bool =
+  ## Default cursors have no position or authenticated image authority.
+  cursor.owner != nil
+proc finished*(cursor: LightProofCursor): bool {.requires: cursor.owner != nil.} =
+  ## Inspect terminal position without reading another entry or copying retained bytes.
+  let owner = cursor.owner
+  assert owner != nil
+  cursor.offset == owner.encoded.len-32
+proc root*(cursor: LightProofCursor): StateRoot {.requires: cursor.owner != nil.} =
+  ## Return the original independently chosen complete-root binding of this immutable traversal.
+  let owner = cursor.owner
+  assert owner != nil
+  owner.root
+proc len*(page: LightProofPage): int {.requires: page.ready.} =
+  ## Default pages cannot expose a successful empty prefix.
+  page.evidence.len
+proc proofs*(page: LightProofPage): seq[LightStateProof] {.requires: page.ready.} =
+  ## Return independently mutable evidence without exposing the page's retained buffers.
+  page.evidence
+proc nextCursor*(page: LightProofPage): LightProofCursor {.requires: page.ready.} =
+  ## Retain the immutable continuation; retrying the original cursor reproduces the same page.
+  page.continuation
+proc proofCursor*(snapshot: PreparedLightSnapshot): LightSnapshotResult[LightProofCursor] =
+  ## Start canonical evidence traversal without materializing keys or copying the image.
+  let owner = snapshot.owner
+  if owner == nil: return LightSnapshotResult[LightProofCursor](
+      status: LightSnapshotError.Uninitialized)
+  LightSnapshotResult[LightProofCursor](status: LightSnapshotError.None,
+      completed: LightProofCursor(owner: owner, offset: HeaderBytes))
+proc readPage*(cursor: LightProofCursor,
+    limits: LightProofPageLimits): LightSnapshotResult[LightProofPage] =
+  ## Select the largest bounded canonical prefix, then copy its proofs; a nonterminal success always advances.
+  let owner = cursor.owner
+  if owner == nil: return LightSnapshotResult[LightProofPage](
+      status: LightSnapshotError.Uninitialized)
+  let stop = owner.encoded.len-32
+  assert cursor.offset >= HeaderBytes and cursor.offset <= stop
+  var scan = cursor.offset
+  var count = 0
+  var nodes = 0'u64
+  var values = 0'u64
+  while scan < stop and uint64(count) < uint64(limits.items):
+    # Private canonical entry boundaries prove all addressing before multiplication or narrowing.
+    assert stop-scan >= EntryBytes
+    let path = number(owner.encoded, scan+31, 2)
+    let size = number(owner.encoded, scan+33)
+    assert path <= 249 and path <= uint64((stop-scan-EntryBytes) div 64)
+    let nodeBytes = int(path)*64
+    assert size <= uint64(stop-scan-EntryBytes-nodeBytes)
+    let shapeFits = path <= uint64(limits.proof.nodes) and size <= uint64(limits.proof.valueBytes)
+    let totalsFit = path <= uint64(limits.nodes)-nodes and size <= uint64(limits.valueBytes)-values
+    if not shapeFits or not totalsFit: break # A later oversized entry belongs to the unchanged next cursor.
+    if count >= high(int) div sizeof(LightStateProof):
+      return LightSnapshotResult[LightProofPage](status: LightSnapshotError.LengthOverflow)
+    inc count
+    nodes += path
+    values += size
+    scan += EntryBytes+nodeBytes+int(size)
+  if count == 0 and scan < stop:
+    return LightSnapshotResult[LightProofPage](status: LightSnapshotError.LimitExceeded)
+  var evidence = newSeq[LightStateProof](count)
+  var offset = cursor.offset
+  for index in 0..<count:
+    # Complete page preflight bounded both metadata and every owned path/value buffer before allocation.
+    let key = readKey(owner.encoded, offset)
+    let path = int(number(owner.encoded, offset+31, 2))
+    let size = int(number(owner.encoded, offset+33))
+    offset += EntryBytes
+    var pathNodes = newSeq[EncodedStateNode](path)
+    for slot in 0..<path:
+      var raw = default(array[64, byte])
+      for octet in 0..<64: raw[octet] = owner.encoded[offset+octet]
+      pathNodes[slot] = EncodedStateNode(raw)
+      offset += 64
+    var value = newSeq[byte](size)
+    for slot in 0..<size: value[slot] = owner.encoded[offset+slot]
+    offset += size
+    evidence[index] = LightStateProof(key: key, proof: StateProof(nodes: pathNodes, value: value))
+  assert offset == scan
+  LightSnapshotResult[LightProofPage](status: LightSnapshotError.None,
+    completed: LightProofPage(ready: true, evidence: evidence,
+      continuation: LightProofCursor(owner: owner, offset: scan)))
 proc prepareLightSnapshot*(chain: StorageChainId, root: StateRoot,
     proofs: openArray[LightStateProof], limits: LightSnapshotLimits): LightSnapshotResult[
         PreparedLightSnapshot] =
