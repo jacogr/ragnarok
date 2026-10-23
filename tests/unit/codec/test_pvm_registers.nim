@@ -164,4 +164,36 @@ block validatedResultOwnership:
     let expected = if i == 2: 18'u64 else: uint64(input[i])
     assert uint64(completed.value[i]) == expected
 
+# Every bit position independently witnesses population/leading/trailing behavior in both supported widths.
+for op in 101'u8..106'u8:
+  let bits = if (op mod 2) == 0: 32 else: 64
+  for position in 0..<64:
+    for inverted in [false, true]:
+      # One-hot and one-clear words distinguish upper-half masking from a native 64-bit count.
+      let one = 1'u64 shl position
+      let value = if inverted: not one else: one
+      var expected = 0'u64
+      if op in [101'u8, 102]:
+        expected = if inverted: uint64(bits-(if position < bits: 1 else: 0))
+          else: uint64(if position < bits: 1 else: 0)
+      elif op in [103'u8, 104]:
+        expected = if inverted: (if position == bits-1: 1'u64 else: 0'u64)
+          else: uint64(if position < bits: bits-1-position else: bits)
+      else:
+        expected = if inverted: (if position == 0: 1'u64 else: 0'u64)
+          else: uint64(if position < bits: position else: bits)
+      for destination in [0, 1, 12]:
+        # Both alias and nonalias destinations preserve all unrelated original register values.
+        var input = default(RegisterFile)
+        for index in 0..<13: input[index] = RegisterValue(uint64(index+19))
+        input[0] = RegisterValue(value)
+        let decoded = instruction(programFor(op, byte(destination), 0, 0), CodeAddress(0))
+        let scalar = evaluateRegisterWrite(decoded, input)
+        let completed = evaluateRegisters(decoded, input)
+        assert scalar.error == RegisterError.None and completed.error == RegisterError.None
+        assert int(byte(scalar.destination)) == destination and uint64(scalar.writeValue) == expected
+        for index in 0..<13:
+          assert uint64(completed.value[index]) == (if index == destination: expected else: uint64(
+              input[index]))
+
 echo "PVM register operations passed"

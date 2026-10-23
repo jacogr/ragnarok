@@ -107,22 +107,34 @@ func multiplyHigh(a, b: uint64): uint64 =
   let combined = (middle and mask) + (a and mask) * (b shr 32)
   (a shr 32) * (b shr 32) + carry + (combined shr 32)
 
-# Count set bits or leading/trailing zeroes in exactly the requested low-width word.
-func countBits(value: uint64, bits: int, mode: int): uint64 =
-  result = 0
-  # Bit-by-bit traversal is bounded by 64 and avoids undefined zero-input intrinsics.
-  for index in 0..<bits:
-    let position = (if mode == 1: bits - 1 - index else: index)
-    let one = (value shr position) and 1
-    if mode == 0:
-      # Population count includes every bit in the selected width.
-      result += one
-    elif one == 0:
-      # Zero-count modes stop at the first one from their respective end.
-      inc result
-    else:
-      # A one completes the contiguous zero prefix/suffix.
-      break
+func populationCount(value: uint64): uint64 {.inline.} =
+  ## Sum disjoint bit lanes with fixed masks; all shifts are literal and modular multiplication retains the byte total.
+  var word = value - ((value shr 1) and 0x5555555555555555'u64)
+  word = (word and 0x3333333333333333'u64) + ((word shr 2) and 0x3333333333333333'u64)
+  word = (word + (word shr 4)) and 0x0f0f0f0f0f0f0f0f'u64
+  (word * 0x0101010101010101'u64) shr 56
+
+func countBits(value: uint64, bits: int, mode: int): uint64 {.requires:
+    (bits == 32 or bits == 64) and mode >= 0 and mode <= 2.} =
+  ## Internal callers select 32/64 bits and population/leading/trailing mode; no data-dependent bit traversal remains.
+  let word = if bits == 32: value and 0xffffffff'u64 else: value
+  if mode == 0:
+    # The selected low word includes no high-half contribution to a 32-bit population count.
+    return populationCount(word)
+  if word == 0:
+    # Both zero-count modes define a zero word as exactly its selected width; no undefined zero intrinsic is used.
+    return uint64(bits)
+  if mode == 2:
+    # Modular negation isolates the lowest one; subtracting one fills exactly its lower zero positions.
+    return populationCount((word and (0'u64-word))-1)
+  # Spread the highest one through every lower lane; population then measures its one-based position.
+  var filled = word or (word shr 1)
+  filled = filled or (filled shr 2)
+  filled = filled or (filled shr 4)
+  filled = filled or (filled shr 8)
+  filled = filled or (filled shr 16)
+  filled = filled or (filled shr 32)
+  uint64(bits)-populationCount(filled)
 
 proc evaluateRegisterWrite*(decoded: ProgramResult[Instruction],
     registers: RegisterFile): RegisterWriteResult {.inline.} =
