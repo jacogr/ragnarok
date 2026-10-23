@@ -67,3 +67,13 @@ separate identities and roots. M1 framing/current request namespace is complete;
 complete current-pin state serialization/STF or JAM parity. Missing witness, proven absence,
 malformed value and resource refusal remain distinct; partial proof evidence never supplies complete
 map or trusted-root authority.
+
+## Subsequent supplied host continuation
+
+The subsequent host tranche also implements explicit complete supplied-successor planning and
+execution after actual native collection, bounded configured host seed capture, fixed logical
+producer/context observations and retained checkpoint/proof/original-current review consumers.
+[Durable consumer composition](application-logical-durable-consumers.md) qualifies actual identity
+changes, later preserved continuation, both disk layouts and detached outputs. This remains supplied
+matching, not a jointly designed producer mutation certificate. Original normative parity and
+untouched-key/ordered-operation/rollback provenance gates above remain open.

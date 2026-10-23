@@ -66,6 +66,171 @@
         "reason": "publication-current"
       },
       "name": "application-logical-services-publication-current"
+    },
+    {
+      "arguments": [
+        "preparation-seed"
+      ],
+      "description": "Managed host logical exclusion preparation-seed",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-seed"
+      },
+      "name": "application-logical-services-preparation-seed"
+    },
+    {
+      "arguments": [
+        "preparation-supplied-plan"
+      ],
+      "description": "Managed host logical exclusion preparation-supplied-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-supplied-plan"
+      },
+      "name": "application-logical-services-preparation-supplied-plan"
+    },
+    {
+      "arguments": [
+        "preparation-supplied-execution"
+      ],
+      "description": "Managed host logical exclusion preparation-supplied-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-supplied-execution"
+      },
+      "name": "application-logical-services-preparation-supplied-execution"
+    },
+    {
+      "arguments": [
+        "preparation-logical-checkpoint"
+      ],
+      "description": "Managed host logical exclusion preparation-logical-checkpoint",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-checkpoint"
+      },
+      "name": "application-logical-services-preparation-logical-checkpoint"
+    },
+    {
+      "arguments": [
+        "preparation-logical-review"
+      ],
+      "description": "Managed host logical exclusion preparation-logical-review",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-review"
+      },
+      "name": "application-logical-services-preparation-logical-review"
+    },
+    {
+      "arguments": [
+        "proof-seed"
+      ],
+      "description": "Managed host logical exclusion proof-seed",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-seed"
+      },
+      "name": "application-logical-services-proof-seed"
+    },
+    {
+      "arguments": [
+        "proof-supplied-plan"
+      ],
+      "description": "Managed host logical exclusion proof-supplied-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-supplied-plan"
+      },
+      "name": "application-logical-services-proof-supplied-plan"
+    },
+    {
+      "arguments": [
+        "proof-supplied-execution"
+      ],
+      "description": "Managed host logical exclusion proof-supplied-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-supplied-execution"
+      },
+      "name": "application-logical-services-proof-supplied-execution"
+    },
+    {
+      "arguments": [
+        "proof-logical-checkpoint"
+      ],
+      "description": "Managed host logical exclusion proof-logical-checkpoint",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-checkpoint"
+      },
+      "name": "application-logical-services-proof-logical-checkpoint"
+    },
+    {
+      "arguments": [
+        "proof-logical-review"
+      ],
+      "description": "Managed host logical exclusion proof-logical-review",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-review"
+      },
+      "name": "application-logical-services-proof-logical-review"
+    },
+    {
+      "arguments": [
+        "publication-seed"
+      ],
+      "description": "Managed host logical exclusion publication-seed",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-seed"
+      },
+      "name": "application-logical-services-publication-seed"
+    },
+    {
+      "arguments": [
+        "publication-supplied-plan"
+      ],
+      "description": "Managed host logical exclusion publication-supplied-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-supplied-plan"
+      },
+      "name": "application-logical-services-publication-supplied-plan"
+    },
+    {
+      "arguments": [
+        "publication-supplied-execution"
+      ],
+      "description": "Managed host logical exclusion publication-supplied-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-supplied-execution"
+      },
+      "name": "application-logical-services-publication-supplied-execution"
+    },
+    {
+      "arguments": [
+        "publication-logical-checkpoint"
+      ],
+      "description": "Managed host logical exclusion publication-logical-checkpoint",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-checkpoint"
+      },
+      "name": "application-logical-services-publication-logical-checkpoint"
+    },
+    {
+      "arguments": [
+        "publication-logical-review"
+      ],
+      "description": "Managed host logical exclusion publication-logical-review",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-review"
+      },
+      "name": "application-logical-services-publication-logical-review"
     }
   ],
   "crypto_library": "observer",

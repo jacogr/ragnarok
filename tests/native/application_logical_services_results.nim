@@ -4,6 +4,9 @@
 ## Actual managed preparation and proof leases reject both logical source alternatives before canonical access.
 import std/[assertions, cmdline, syncio, strutils, monotimes, times]
 import std/posix/posix
+import ../../src/app/[logical_seed, collected_supplied_plan, collected_supplied_state,
+    logical_checkpoint, logical_review]
+import ../../src/state/account_review_plan
 import ../../src/app/[services, current_logical, preparation_worker, current_block_input,
     proof_worker, current_handoff, disk_worker]
 import ../../src/state/[parent_logical, current_logical, proof_plan, accumulation_current_update,
@@ -66,7 +69,20 @@ proc main() {.raises.} =
     assert owner.cancelStateProof(ticket)
     assert owner.stateProofActive # Proof Done plus cancellation keeps the same canonical exclusion.
   let receipt = default(PreparationCompletion)
-  if mode.endsWith("selected"):
+  let logical = default(CurrentLogicalState)
+  if mode.endsWith("-seed"):
+    discard owner.captureLogicalSeed([], default(LogicalSeedLimits))
+  elif mode.endsWith("-supplied-plan"):
+    discard owner.planCollectedSupplied(receipt, default(CollectedSuppliedLimits))
+  elif mode.endsWith("-supplied-execution"):
+    let plan = default(CollectedSuppliedPlan)
+    discard owner.executeCollectedSupplied(plan, [])
+  elif mode.endsWith("-logical-checkpoint"):
+    discard owner.captureLogicalCheckpoint(logical, ByteLimit(1048576))
+  elif mode.endsWith("-logical-review"):
+    discard owner.reviewLogicalState(logical, default(AccountReviewPlanLimits))
+  elif mode.endsWith("selected"):
+
     let empty = default(SelectedLogicalParent)
     discard owner.refreshCollectedLogical(receipt, empty, collectedLogicalTestLimits())
   else:
