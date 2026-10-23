@@ -3,7 +3,7 @@
 
 """Observe actual current-command exits and progress alongside an independent native TLS/map witness.
 
-Exposes observe, observe_preimages and observe_guarantees; process failures always reap the responder and cannot borrow another case's verdict.
+Exposes observe, observe_preimages, observe_guarantees and observe_rotated; process failures always reap the responder and cannot borrow another case's verdict.
 """
 import subprocess
 import tempfile
@@ -38,7 +38,8 @@ def _observe(peer, responder, directory, environment, cases, extra=(), context_r
                     '--state-db', 'current-state.db', '--download-blocks', str(total)]
                 if name in ('managed', 'managed-resumed', 'empty', 'managed-maintenance',
                             'maintenance-resource', 'maintenance-resumed', 'preimages-managed',
-                            'preimages-repeated', 'guarantees-managed', 'guarantees-wrong'):
+                            'preimages-repeated', 'guarantees-managed', 'guarantees-wrong',
+                            'rotated-managed', 'rotated-maintenance', 'rotated-resource'):
                     arguments += ['--state-layout', 'managed', '--state-compact-bytes',
                                   '1' if 'maintenance' in name else '0']
                 arguments += list(extra) # Source-owned acquisition options never alter the shared credential/endpoint tuple.
@@ -109,3 +110,11 @@ def observe_guarantees(peer, responder, directory, environment):
              ('guarantees-wrong', 2, True), ('guarantees-timeout', 2, True)]
     return _observe(peer, responder, directory, environment, cases,
                     extra=('--download-discover-ancestors', '1'), context_requests=1)
+
+
+def observe_rotated(peer, responder, directory, environment):
+    """Verify the actual rotated selected state through durable success, restart, maintenance and a bounded prefix."""
+    cases = [('rotated-journal', 3, False), ('rotated-managed', 3, False),
+             ('rotated-resumed', 3, False), ('rotated-maintenance', 3, False),
+             ('rotated-resource', 3, True)]
+    return _observe(peer, responder, directory, environment, cases)

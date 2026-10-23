@@ -325,6 +325,39 @@ def application_current_guarantees(context):
 
 
 @PLAN.workload
+def application_current_rotated(context):
+    """Verify real validator rotation across executable success, restart, maintenance and later resource refusal."""
+    import hashlib
+    import os
+    from native_fixtures import unit_runtime_fixtures
+    from application_current_sequence import observe_rotated as observe
+    peer_build, peer = context.current_download_peer
+    observed = dict(passed=False)
+    if peer_build['exit_code'] == 0:
+        # A failed current peer build must never execute a previous binary or build an unrelated witness.
+        compiled, responder = context.checks.build(context.compiler,
+            ROOT/'tests/native/application_current_sequence.nim', 'application-current-rotated',
+            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+        observed['build'] = compiled
+        if compiled['exit_code'] == 0:
+            _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
+                suite='pvm_current_rotated_fixture')['pvm_current_rotated_fixture']
+            for path, expected in files:
+                # Preserve independent input identities before launching either live process.
+                if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                    raise ValueError('Current download fixture mismatch: '+str(path))
+            environment = dict(os.environ, **{name: str(path) for name, path in inputs.items()})
+            try:
+                result = observe(peer, responder, context.checks.folder/'current-rotated-work', environment)
+                observed.update(run=result, fixtures={str(path): digest for path, digest in files},
+                                passed=result['passed'])
+            except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
+                observed['failure'] = str(error) # Process, CLI, protocol and cleanup refusals remain this workload's own failure.
+    announce('executable current rotation and second-epoch successors', observed['passed'])
+    return observed
+
+
+@PLAN.workload
 def application_download_sequence(context):
     """Verify actual executable multi-child success, later refusal and timeout against independent native TLS/maps."""
     import hashlib

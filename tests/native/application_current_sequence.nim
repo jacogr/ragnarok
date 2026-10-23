@@ -12,7 +12,8 @@ import ../../src/state/[block_admission, report_admission, accumulation_current_
 import ../support/[accumulation_current_chain_context,
   current_download_command_context,
   current_application_context, current_services_disk_samples, block_download_transport,
-  current_consecutive_context, current_consecutive_download_context,
+  current_consecutive_context, current_rotated_sequence_context,
+  current_consecutive_download_context,
   current_preimage_sequence_context, current_guarantee_sequence_context, current_guarantee_remote_context]
 
 proc main() {.raises.} =
@@ -21,14 +22,17 @@ proc main() {.raises.} =
   assert mode in ["journal", "managed", "journal-resumed", "managed-resumed", "replay", "empty",
       "timeout", "resource", "managed-maintenance", "maintenance-resource", "maintenance-resumed",
       "preimages-journal", "preimages-managed", "preimages-repeated", "preimages-resumed",
-      "guarantees-journal", "guarantees-managed", "guarantees-wrong", "guarantees-timeout"]
+      "guarantees-journal", "guarantees-managed", "guarantees-wrong", "guarantees-timeout",
+      "rotated-journal", "rotated-managed", "rotated-resumed", "rotated-maintenance", "rotated-resource"]
+  let rotated = mode in ["rotated-journal", "rotated-managed", "rotated-resumed",
+      "rotated-maintenance", "rotated-resource"]
   let preimages = mode in ["preimages-journal", "preimages-managed", "preimages-repeated", "preimages-resumed"]
   let guarantees = mode in ["guarantees-journal", "guarantees-managed", "guarantees-wrong", "guarantees-timeout"]
   let managed = mode in ["managed", "managed-resumed", "empty", "managed-maintenance",
       "maintenance-resource", "maintenance-resumed", "preimages-managed", "preimages-repeated",
-      "guarantees-managed", "guarantees-wrong"]
+      "guarantees-managed", "guarantees-wrong", "rotated-managed", "rotated-maintenance", "rotated-resource"]
   let partial = mode in ["replay", "empty", "timeout", "resource", "maintenance-resource",
-      "preimages-repeated", "guarantees-wrong", "guarantees-timeout"]
+      "preimages-repeated", "guarantees-wrong", "guarantees-timeout", "rotated-resource"]
   let total = if guarantees or (preimages and not partial): 2 else: 3
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
   var report = newSeq[byte](raw.len)
@@ -37,7 +41,9 @@ proc main() {.raises.} =
   var fixture = default(CurrentConsecutiveFixture)
   var repeated = default(OwnedBlock)
   var remoteFixture = default(CurrentGuaranteeSequenceFixture)
-  if guarantees:
+  if rotated:
+    fixture = currentRotatedSequenceFixture(base) # Existing signed rotation and genuine second-epoch children retain exact expected maps.
+  elif guarantees:
     remoteFixture = currentGuaranteeSequenceFixture(base)
     fixture = remoteFixture.sequence
   elif preimages:
@@ -51,7 +57,7 @@ proc main() {.raises.} =
   if mode in ["timeout", "guarantees-timeout"]:
     limits.stream.timeout = CurrentDownloadTimeout(20000)
     limits.attemptTimeout = CurrentDownloadAttemptTimeout(30000)
-  if mode in ["resource", "maintenance-resource"]:
+  if mode in ["resource", "maintenance-resource", "rotated-resource"]:
     limits.candidate.completion.composition.recent.history.blocks = ElementLimit(
         3) # Third successor requires four retained C3 rows.
   if guarantees: limits.input.discoverAncestors = true
@@ -75,7 +81,8 @@ proc main() {.raises.} =
     requests = currentGuaranteeRequests(remoteFixture)
     responses = currentGuaranteeResponses(remoteFixture, mode == "guarantees-wrong")
     modes = @[Healthy, Healthy, (if mode == "guarantees-timeout": NoFin else: Healthy)]
-  let resumed = mode in ["journal-resumed", "managed-resumed", "maintenance-resumed", "preimages-resumed"]
+  let resumed = mode in ["journal-resumed", "managed-resumed", "maintenance-resumed",
+      "preimages-resumed", "rotated-resumed"]
   if resumed:
     assert servers.openSequenceResponders(@[requests[0]], @[responses[0]], @[modes[0]])
   else:
