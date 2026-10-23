@@ -8,3 +8,8 @@ are supplied. Undercoverage remains successful observation. Guarded defaults and
 review failures expose no prefix. All retained-source work runs on the stable host outside native
 ARC graph leases. Native tests cover exact compact identity, complete content observations,
 resource-before-hash admission, backend failure and default source/pair guards.
+
+Services exposes explicit retained-source review under all three managed graph exclusions. It adds
+no root selection or adoption policy. The native managed witness collects real current execution,
+qualifies supplied namespaces, captures original-current review, explicitly adopts and verifies
+retained source/report observations after joined shutdown.
