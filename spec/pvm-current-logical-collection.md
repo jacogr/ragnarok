@@ -102,6 +102,14 @@ collection yields only `Cancelled`. The unchanged physical logical owner remains
 and a new full authenticated proof succeeds before later native preparation. These observations
 never inspect, copy or retire logical aliases during the proof lease.
 
+## Joined logical proof consumers
+
+The same live flows also stop actual Services proof work immediately and after cancelled Done,
+without collecting it. Only joined `stopStateProofs` returns graph/RPC access; the retired ticket
+then yields no completion. The retained logical successor is unchanged, the canonical Services
+owner remains live, and a subsequent full authenticated proof restarts the bounded worker before
+another real preparation. No close/reopen or new physical source is substituted for this reuse.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
