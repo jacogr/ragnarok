@@ -27,9 +27,9 @@ fn main() {
     };
     let data = std::fs::read(&args[1]).unwrap();
     assert!(data.len() >= 12 && &data[..8] == b"PVMBEN01");
-    assert_eq!(word(&data, 8, 4), 10);
+    assert_eq!(word(&data, 8, 4), 11);
     let mut cursor = 12;
-    for row in 0..10 {
+    for row in 0..11 {
         assert!(data.len() - cursor >= 273);
         let h = &data[cursor..cursor + 273];
         let length = word(h, 0, 4) as usize;
@@ -39,8 +39,13 @@ fn main() {
         let price = word(h, 29, 8);
         let halt = word(h, 45, 4) as u32;
         let halt_price = word(h, 49, 8);
-        assert!(kind <= 4 && iterations > 0 && iterations <= 10000);
+        assert!(kind <= 5 && iterations > 0 && iterations <= 10000);
         assert!(price > 0 && price < 1000 && halt_price > 0 && halt_price < 1000);
+        let second_price = if kind == 5 { word(h, 13, 8) } else { 0 };
+        if kind == 5 {
+            // Memoryless alternating records specify the second block PC/price in auxiliary slots.
+            assert!(address == 8 && second_price > 0 && second_price < 1000);
+        }
         cursor += 273;
         assert!(length >= 4 && length <= 128 && length <= data.len() - cursor);
         let wire = &data[cursor..cursor + length];
@@ -79,6 +84,12 @@ fn main() {
             module.calculate_gas_cost_for(ProgramCounter(halt)),
             Some(halt_price as i64)
         );
+        if kind == 5 {
+            assert_eq!(
+                module.calculate_gas_cost_for(ProgramCounter(address)),
+                Some(second_price as i64)
+            );
+        }
         let prepare_ns = preparation.elapsed().as_nanos();
         for sample in 0..13 {
             // Instantiation, input resets and register setup are excluded from execution time.
@@ -106,7 +117,7 @@ fn main() {
             for i in 0..13 {
                 instance.set_reg(Reg::from_raw(i as u32).unwrap(), word(h, 65 + i * 8, 8));
             }
-            instance.set_gas((iterations * price + halt_price + 7) as i64);
+            instance.set_gas((iterations * (price + second_price) + halt_price + 7) as i64);
             instance.set_next_program_counter(ProgramCounter(0));
             let mut calls = 0_u64;
             let start = Instant::now();

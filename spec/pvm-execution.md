@@ -236,3 +236,15 @@ shared budgets and 1000 ownership cycles remain controls. Final Paper conditiona
 preserve Panic for either chosen path when the other successor is absent; unpaid
 execution still returns OutOfGas first. Timing evidence and remaining gaps are in
 the interpreter comparison contract; no unchecked execution mode is introduced.
+
+
+## Multiple priced blocks per invocation, 2026-10-23
+
+Execution's private gas memo now retains the first successful block and three recent
+successful prices, with no heap allocation or owner retention. Exact cached starts
+reuse their established block membership; uncached interior PCs still resolve and
+pay their whole containing block. Every cached hit checks/debits the current balance.
+Only successful simulations under the invocation's fixed program/profile/cycle limit
+enter the memo; failed prices never evict. New calls/limits start empty, and host
+continuations retain only this invocation's memo. See the block-cache contract for
+capacity, replacement, exact gas/limit/pressure tests and the benchmark evidence.

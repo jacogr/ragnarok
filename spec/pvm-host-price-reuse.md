@@ -62,3 +62,10 @@ This is a reproduced incremental-cache limitation of the pinned Nimony setup, no
 a reason to accept a failed build or relax guest correctness. A source-sensitive
 project cache boundary needs separate tooling review; no compiler-wide diagnosis or
 minimal standalone reproducer is claimed by this runtime optimization.
+
+
+The 2026-10-23 [bounded multi-block extension](pvm-interpreter-block-cache.md#bounded-multi-block-pricing-2026-10-23)
+retains four successful prices under this same invocation/limit invariant. Cached
+membership never substitutes for per-visit affordability or permits reuse across a
+new/nested call. Host responses still cannot replace the program/profile or caller's
+cycle policy; all original refusal, gas and ownership contracts remain unchanged.

@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 from dependencies import ROOT
 from pvm_benchmark_reference import HEADER,fixtures
+from pvm_gas_reference import simulate,tables
 from pvm_benchmark_report import ACTIVE_ENGINES,DEFERRED_COMPILER,ENGINES,NAMES,parse_output,aggregate,summarize_benchmark
 
 
@@ -31,27 +32,35 @@ class PvmBenchmarkTests(unittest.TestCase):
         descriptor=json.loads((ROOT/'tests/fixtures/pvm_benchmark.fixture.json').read_text())
         self.assertEqual(hashlib.sha256(data).hexdigest(),descriptor['files']['pvm-benchmark.bin'])
         cursor=12
-        original_end=12
+        original_end=12;ten_end=12
         for index,(kind,expected) in enumerate(((0,30000),(1,1000),(1,1000),(2,1000),(2,1000),
-                                               (0,3),(0,48),(3,None),(4,1000),(4,1000))):
+                                               (0,3),(0,48),(3,None),(4,1000),(4,1000),(5,1000))):
             row=HEADER.unpack_from(data,cursor)
             self.assertEqual(row[1],kind)
             if expected is not None:self.assertEqual(row[31],expected)
             cursor+=HEADER.size+row[0]
             if index==4:original_end=cursor
+            if index==9:ten_end=cursor
         self.assertEqual(cursor,len(data))
         # Historical five-row bytes are frozen independently of the expanded corpus descriptor.
         historical=data[:8]+(5).to_bytes(4,'little')+data[12:original_end]
         self.assertEqual(hashlib.sha256(historical).hexdigest(),
                          'c6e7edfe2ffc0eb83a4c7fedfecd0ce7a6cd7844abb35d43916b3a8d319a154e')
+        ten=data[:8]+(10).to_bytes(4,'little')+data[12:ten_end]
+        self.assertEqual(hashlib.sha256(ten).hexdigest(),
+                         '09b42cdc62759e569389e3f799c97adc478aae415c023aca02b5a96550e14801')
 
     def test_new_dimensions_and_bit_expectations(self):
         """Short calls and sparse sets stay distinct; bit results have an independent literal final witness."""
         data,count=fixtures();cursor=12;rows=[]
         for _ in range(count):
             row=HEADER.unpack_from(data,cursor);rows.append(row);cursor+=HEADER.size+row[0]
-        self.assertEqual([row[2] for row in rows[5:]], [1,16,1000,1000,1000])
-        self.assertEqual([row[3] for row in rows[8:]], [0x10000,0x10fff])
+        self.assertEqual([row[2] for row in rows[5:10]], [1,16,1000,1000,1000])
+        self.assertEqual([row[3] for row in rows[8:10]], [0x10000,0x10fff])
+        control=rows[10]
+        self.assertEqual((control[1],control[3],control[8]),(5,8,21))
+        self.assertEqual((control[6],control[4],control[9],control[7]),(15,22,22,25))
+        self.assertEqual(control[31],1000);self.assertEqual(control[34],1000)
         bits=rows[7]
         self.assertEqual(bits[1],3)
         self.assertEqual(bits[25:32],(9,0,8,281474976710911,578703756024086528,13,18374967954648334848))
@@ -60,6 +69,14 @@ class PvmBenchmarkTests(unittest.TestCase):
         complete=output();without_new='\n'.join(line for line in complete.splitlines()
                                                if int(line.split('\t')[1])<5)
         with self.assertRaises(ValueError):parse_output(without_new,'ragnarok')
+
+    def test_nonzero_block_prices_keep_original_code_positions(self):
+        """A branch to an earlier noncheap opcode must not become a wrapped absent/cheap byte when pricing the second block."""
+        first=[bytes((131,119,1)),bytes((40,5,0,0,0))]
+        second=[bytes((131,170,1)),bytes((83,74,5,0,0,0,245,255,255,255)),bytes((50,2))]
+        definitions=tables()
+        self.assertEqual(simulate(second,definitions,prefix=first),(22,25))
+        self.assertNotEqual(simulate(second,definitions),(22,25))
 
     def test_lock_identity(self):
         """The standalone benchmark crate introduces no transitive version/checksum changes."""
