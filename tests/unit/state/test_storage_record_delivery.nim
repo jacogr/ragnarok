@@ -48,6 +48,12 @@ proc cycle() =
   physical.sort(compareRecord)
   let expected = RecordCollection(records: physical)
   var wire = encodeRecordCollection(expected, policy).value
+  reset(0)
+  let occupied = getOccupiedMem()
+  let inspected = inspectOrderedRecordCollection(wire, policy)
+  assert inspected.error == RecordError.None and inspected.value.records == uint64(physical.len)
+  assert inspected.value.valueBytes == 2 and int(calls()) == 0
+  assert getOccupiedMem() == occupied # Ordered structural inspection retains no descriptor or payload allocation.
   var delivered = Delivery(stopAfter: -1)
   reset(0)
   let completed = visitOrderedRecordCollection(wire, policy, delivered, accept)
@@ -100,6 +106,12 @@ proc batchCycle() =
   let policy = storageLimits().codec
   let physical = exportFullTrie(storageTrie(7), policy.records).value
   var wire = encodeTrieExport(physical, policy).value
+  reset(0)
+  let inspected = inspectTrieExport(wire, policy)
+  assert inspected.error == RecordError.None and inspected.value.records == uint64(
+      physical.records.len)
+  assert inspected.value.valueBytes == 2 and int(calls()) == 0
+  assert array[32, byte](inspected.value.root) == array[32, byte](physical.root)
   var delivered = Delivery(stopAfter: -1)
   reset(0)
   let completed = visitTrieExport(wire, policy, delivered, accept)
@@ -119,6 +131,8 @@ proc batchCycle() =
   reset(0)
   assert visitTrieExport(duplicate, policy, none, accept).error == RecordError.DuplicateNode
   assert none.calls == 0 and int(calls()) == 0
+  assert inspectTrieExport(duplicate, policy).error == RecordError.DuplicateNode
+  assert int(calls()) == 0
   duplicate[header+72] = duplicate[header+72] xor 1 # Duplicate refusal still precedes a hash mismatch.
   assert visitTrieExport(duplicate, policy, none, accept).error == RecordError.DuplicateNode
   assert none.calls == 0 and int(calls()) == 0
