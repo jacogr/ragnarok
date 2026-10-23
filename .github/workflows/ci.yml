@@ -270,7 +270,7 @@ jobs:
 
   e2e:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full')) }}
-    name: End-to-end networking tests
+    name: E2E Networking
     timeout-minutes: 60
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
@@ -278,7 +278,7 @@ jobs:
       - *checkout
       - *python
       - *inventory
-      - name: End-to-end networking tests
+      - name: E2E Networking
         run: make check-e2e
       - *summary
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
