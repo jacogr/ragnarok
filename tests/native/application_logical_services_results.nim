@@ -4,6 +4,7 @@
 ## Actual managed preparation and proof leases reject both logical source alternatives before canonical access.
 import std/[assertions, cmdline, syncio, strutils, monotimes, times]
 import std/posix/posix
+import ../../src/state/storage_logical_continuation
 import ../../src/app/logical_source_export
 import ../../src/app/logical_code_proof
 import ../../src/app/paged_logical_proof
@@ -83,7 +84,12 @@ proc main() {.raises.} =
     assert owner.stateProofActive # Proof Done plus cancellation keeps the same canonical exclusion.
   let receipt = default(PreparationCompletion)
   let logical = default(CurrentLogicalState)
-  if mode.endsWith("-source-export-plan"):
+  if mode.endsWith("-storage-parent"):
+    discard owner.continueCurrentStorage(default(SelectedLogicalParent), default(
+        PreparedCurrentChainUpdate), default(StorageContinuationLimits))
+  elif mode.endsWith("-storage-current"):
+    discard owner.continueCurrentStorage(logical, default(PreparedCurrentChainUpdate), default(StorageContinuationLimits))
+  elif mode.endsWith("-source-export-plan"):
     discard owner.planLogicalSourceExport(logical, default(LogicalSourceExportLimits))
   elif mode.endsWith("-source-export"):
     discard owner.executeLogicalSourceExport(default(LogicalSourceExportPlan))
