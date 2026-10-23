@@ -3,7 +3,7 @@
 ## Scope and baseline
 
 Continue native stack 1238 above `e42c652ac266490e8c48eb005d1024602f2aef4b`, within the current
-20-PR batch ceiling. This feature keeps implementation, related tests and documentation in one
+15-PR batch ceiling. This feature keeps implementation, related tests and documentation in one
 PR. It changes only private incremental-trie representation; no state/application integration,
 public API, physical record/disk format, compiler/provider pin or allocator is changed.
 
@@ -46,3 +46,49 @@ Git baseline with matching checked flags/providers, without changing that worklo
 No timing, resident-pressure, power-loss, out-of-core or full-JAM parity claim follows from live
 allocator measurements. Existing documented M1 framing/implemented-scope migration completion
 remains distinct from complete JAM state serialization and whole-client parity.
+
+## Measured node-layout result
+
+Clang's exact generated-C layout shows a 128-byte baseline node body and 136-byte ARC owner,
+compared with an 88-byte candidate body and 96-byte ARC owner (alignment 8). Body/owner size
+falls by 40 bytes; ordinary allocator rounding changes the observed owner charge from 144 to 96,
+a 48-byte saving per physical incremental node. This is not inferred from unrelated RSS peaks.
+
+| Entries | Value bytes | Nodes | Baseline graph bytes | Candidate graph bytes | Saved bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 0 | 0 | 0 | 64 | 64 | 0 |
+| 1 | 0 | 1 | 208 | 160 | 48 |
+| 32 | 0 | 74 | 10,720 | 7,168 | 3,552 |
+| 512 | 32 | 1,030 | 164,768 | 115,328 | 49,440 |
+| 8,192 | 0 | 16,386 | 2,359,648 | 1,573,120 | 786,528 |
+| 8,192 | 256 | 16,386 | 4,456,800 | 3,670,272 | 786,528 |
+
+All fifteen cases preserve exact independent root/count expectations in both full orders. Every
+nonempty graph saves exactly 48 times its node count, and every held leaf saves 48 bytes. The
+source graph's size does not affect the held leaf's footprint. At 32/512/8192 entries the selected
+single-key update observation falls from 2544 to 1728 bytes for empty source values, and from 3056
+to 2240 for 256-byte source values. Those call-boundary observations share identical synchronous
+input temporaries; they are not process high-water values or total allocation counters.
+
+The test separately calibrates ordinary payload allocation, caps retained graph ownership below
+128 bytes per node plus payload/revision allowance, and caps singleton owner cost below 128 bytes
+plus payload. It requires exact release of the update path while source/leaf owners remain,
+then exact release of the leaf after every revision is gone. This catches a representation or
+lifetime regression without exporting private node or allocator access.
+
+Raw evidence: `build/storage-db12-footprint-baseline.tsv`,
+`build/storage-db12-footprint-candidate.tsv`, `build/storage-db12-footprint-comparison.json` and
+`build/storage-db12-node-layouts.json`. The latter preserves generated-C identity and exact
+Clang layout records. Four existing compiler privacy guards still reject revision, leaf owner,
+result status and result payload access with the expected private-field diagnostics.
+
+## Functional qualification
+
+The new footprint suite and nineteen affected existing native suites pass locally: core trie,
+private sharing/hash-prefix failure observer, published trie replay; StateStore, contract,
+incremental/failure/replay/checkpoint-update suites; checkpoint-bank replay and checkpoint;
+physical node export, repository, backend contract, disk replay, disk StateStore, managed disk
+StateStore, disk-store hash failure and historical roots. The private observer retains all
+1,000 success/refusal/recovery ARC cycles and exact unchanged source/held-value checks.
+Inventory and full pinned formatting also pass. This is scoped local evidence, distinct from
+full Linux CI, whole-client verification or earlier resident-pressure results.

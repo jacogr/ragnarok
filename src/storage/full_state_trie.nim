@@ -29,15 +29,17 @@ type
       completed: T
     else:
       discard             # Refusals own their reason alone.
-  TrieNode = ref object ## Acyclic managed ownership; only unpublished nodes may receive cached hashes.
-    leaf: bool
-    key: StateKey
-    payload: seq[byte]
-    left, right: nil TrieNode
-    entries: int
-    nodes, valueBytes: uint64
-    hashed: bool
+  TrieNode = ref object         ## Acyclic private alternatives own only leaf data or branch children/aggregates.
     digest: StateNodeHash
+    hashed: bool                ## Only newly built unpublished nodes may receive cached hashes.
+    case leaf: bool
+    of true:
+      key: StateKey
+      payload: seq[byte]        ## Leaf totals derive from one entry/node and this owned length.
+    of false:
+      left, right: nil TrieNode
+      entries: int
+      nodes, valueBytes: uint64 ## Only branches need cached aggregate summaries.
   RevisionData = ref object ## A nonnil owner distinguishes an initialized empty trie from a default.
     root: nil TrieNode
     limits: FullStateTrieLimits
@@ -77,16 +79,22 @@ func one(key: StateKey, depth: int): bool =
   (raw[depth div 8] and byte(128 shr (depth mod 8))) != 0
 
 func entryCount(node: nil TrieNode): int =
-  ## Empty children contribute no mapping entries.
-  if node == nil: 0 else: node.entries
+  ## Empty children contribute zero; a leaf always contributes exactly one complete entry.
+  if node == nil: 0
+  elif node.leaf: 1
+  else: node.entries
 
 func nodeCount(node: nil TrieNode): uint64 =
-  ## Empty children contribute no nonempty committed nodes.
-  if node == nil: 0'u64 else: node.nodes
+  ## Leaf topology is exactly one node; only branch totals require a stored aggregate.
+  if node == nil: 0'u64
+  elif node.leaf: 1'u64
+  else: node.nodes
 
 func valueSize(node: nil TrieNode): uint64 =
-  ## Cached aggregate payload size excludes fixed keys and node metadata.
-  if node == nil: 0'u64 else: node.valueBytes
+  ## Leaf bytes derive from the immutable payload; branch caches sum complete descendant values.
+  if node == nil: 0'u64
+  elif node.leaf: uint64(node.payload.len)
+  else: node.valueBytes
 
 proc find(node: nil TrieNode, key: StateKey): nil TrieNode =
   ## Iterative bounded traversal never grants absence based on a partial map.
@@ -105,8 +113,7 @@ proc leaf(key: StateKey, bytes: openArray[byte]): TrieNode =
   ## Copy new caller values after payload preflight; no mutable source backing can escape.
   var owned = newSeq[byte](bytes.len)
   for i, octet in bytes: owned[i] = octet # Empty values remain initialized leaves.
-  TrieNode(leaf: true, key: key, payload: owned, entries: 1, nodes: 1,
-    valueBytes: uint64(bytes.len))
+  TrieNode(leaf: true, key: key, payload: owned)
 
 proc branch(left, right: nil TrieNode): nil TrieNode =
   ## Normalize empty/singleton subtrees while preserving protocol-required unary branches.
@@ -115,7 +122,7 @@ proc branch(left, right: nil TrieNode): nil TrieNode =
   if right == nil and left != nil and left.leaf: return left # Collapse the last surviving leaf.
   # Preflight bounds entries by high(int) and uint64/249, and payload totals by uint64.
   # Deletions precede insertions, so every intermediate mapping fits those proved extents.
-  TrieNode(left: left, right: right, entries: entryCount(left)+entryCount(right),
+  TrieNode(leaf: false, left: left, right: right, entries: entryCount(left)+entryCount(right),
     nodes: 1+nodeCount(left)+nodeCount(right), valueBytes: valueSize(left)+valueSize(right))
 
 proc remove(node: nil TrieNode, key: StateKey, depth: int): nil TrieNode =
@@ -239,7 +246,7 @@ proc apply*(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[Ful
     let old = find(data.root, index.key)
     if old != nil:
       dec count # Account for every overwritten/deleted leaf before counting any new value.
-      total -= old.valueBytes
+      total -= valueSize(old)
   for index in ordered:
     let write = writes[index.position]
     if write.kind == TrieWriteKind.Put:

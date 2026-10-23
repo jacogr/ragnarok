@@ -85,6 +85,15 @@ proc observe(count, size: int): Observation =
   held = default(TrieValue)
   assert getOccupiedMem() == before
 
+proc payloadHeap(size: int): int =
+  ## Calibrate ordinary payload allocation so the node-owner budget excludes value-size rounding.
+  let before = getOccupiedMem()
+  block:
+    let owned = payload(0, size)
+    result = getOccupiedMem()-before
+    assert owned.len == size
+  assert getOccupiedMem() == before
+
 proc panel(): string =
   ## Reverse the full count/value order and require identical graph, path and singleton-live observations.
   const Counts = [0, 1, 32, 512, 8192]
@@ -95,11 +104,17 @@ proc panel(): string =
     for slot in 0..<15:
       let index = if turn == 0: slot else: 14-slot
       let observed = observe(Counts[index div 3], Sizes[index mod 3])
+      let values = payloadHeap(Sizes[index mod 3])
+      let budget = observed.nodes*128'u64+uint64(Counts[index div 3]*values)+96'u64
+      assert uint64(observed.graph) <= budget # Keep live graph ownership below128 bytes per node plus values/revision.
+      assert observed.leaf <= values+128 # A held value cannot retain the old graph or a redundant large leaf owner.
       if turn == 0:
         seen[index] = observed # First order records only current live allocations, never a process high-water value.
       else:
         assert observed.nodes == seen[index].nodes and observed.graph == seen[index].graph
         assert observed.path == seen[index].path and observed.leaf == seen[index].leaf
+  for index in 3..<15:
+    assert seen[index].leaf == seen[3+index mod 3].leaf # A held leaf's footprint is independent of source graph size.
   for index in 0..<15:
     result.add($Counts[index div 3] & "\t" & $Sizes[index mod 3] & "\t" & $seen[index].nodes &
       "\t" & $seen[index].graph & "\t" & $seen[index].path & "\t" & $seen[index].leaf & "\n")
