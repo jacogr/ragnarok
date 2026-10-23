@@ -217,3 +217,36 @@ throughput claim follows. Baseline/profile and candidate/paired evidence are ret
 under `build/pvm9/baseline` and `build/pvm9/spans`. Reproduce the complete comparison
 with `make bench-pvm` at the compared revisions. Page-image copying remains a major
 profiled cost for subsequent work; fuzzing is deferred by maintainer instruction.
+
+
+## Scalar register writes, 2026-10-23
+
+Profiling the checked interpreter identified copied register-file results in its
+arithmetic path. The arithmetic evaluator now returns a guarded scalar destination
+and value for the executor's private CPU cursor; compatibility callers still obtain
+a complete copied register array. The arithmetic equations, gas ordering and source
+alias contract remain unchanged. An out-of-line form improved arithmetic but
+regressed aligned memory/host guests, so it was rejected; inlining the scalar
+calculation removed that result-transfer overhead.
+
+The accepted form was measured in two independent opposite-order comparisons of
+preserved binaries, with the unchanged five guests and checked ThinLTO profile.
+The confirmation's medians across twenty measured samples per variant were:
+
+| Fixed guest | Page spans (µs) | Scalar writes (µs) | Less execution time |
+| --- | ---: | ---: | ---: |
+| Arithmetic, 10000 iterations | 590.88 | 479.10 | 18.9% |
+| Memory aligned, 1000 iterations | 264.65 | 254.19 | 4.0% |
+| Memory crossing, 1000 iterations | 426.44 | 407.81 | 4.4% |
+| Host/memory aligned, 1000 iterations | 407.35 | 405.04 | No established change |
+| Host/memory crossing, 1000 iterations | 581.50 | 575.56 | No established change |
+
+The earlier accepted comparison showed 17.3% arithmetic and 5.1–8.2% memory savings;
+host differences remained within a few percent. Complete final registers, memory,
+gas and host counts validate every sample. The full pinned interpreter comparison
+passes and still shows roughly 4.8–15.2× native/reference ratios on this host. Raw
+rejected/accepted/confirmation evidence lives under `build/pvm9/writes`,
+`build/pvm9/writes-inline` and `build/pvm9/writes-inline-confirm`. Existing local
+noise, no-isolation, no deterministic-counter, no Linux/compiled/full-client claim
+limits remain. Arithmetic witnesses, dependent chains, execution and guarded-result
+controls are recorded in [the register contract](pvm-registers.md#scalar-write-evaluation-2026-10-23).

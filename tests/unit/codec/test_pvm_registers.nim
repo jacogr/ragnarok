@@ -79,7 +79,15 @@ for row in 0..<count:
   let evaluated = evaluateRegisters(program, CodeAddress(0), input)
   assert evaluated.error == RegisterError.None
   let output = evaluated.value
-  let reused = evaluateRegisters(instruction(program, CodeAddress(0)), input)
+  let decoded = instruction(program, CodeAddress(0))
+  let written = evaluateRegisterWrite(decoded, input)
+  assert written.error == RegisterError.None
+  assert int(byte(written.destination)) == destination and uint64(written.writeValue) == expected
+  let retainedWrite = written
+  var changedInput = input
+  changedInput[destination] = RegisterValue(not expected)
+  assert uint64(retainedWrite.writeValue) == expected # The scalar result owns copied bits, with no alias into either array.
+  let reused = evaluateRegisters(decoded, input)
   assert reused.error == RegisterError.None
   for index in 0..<13:
     # Only the selected destination may differ, and the input array must remain untouched.
@@ -98,6 +106,11 @@ for op in 0..<256:
   # Only opcodes actually replayed contribute to coverage.
   if seen[op]: inc covered
 assert covered == 85
+let missingWrite = default(RegisterWriteResult)
+assert missingWrite.error == RegisterError.Uninitialized
+let missingDecode = default(ProgramResult[Instruction])
+assert evaluateRegisterWrite(missingDecode, default(RegisterFile)).error ==
+    RegisterError.InvalidInstruction
 let missingResult = default(RegisterResult)
 assert missingResult.error == RegisterError.Uninitialized
 assert evaluateRegisters(default(Program), CodeAddress(0), default(RegisterFile)).error ==
@@ -117,6 +130,8 @@ for op in 0..255:
   # Valid decoded instructions outside the evaluator must fail without a payload.
   if validOpcode(byte(op)) and not seen[op]:
     let unsupported = programFor(byte(op), 0, 0, 0)
+    assert evaluateRegisterWrite(instruction(unsupported, CodeAddress(0)), default(
+        RegisterFile)).error == RegisterError.UnsupportedInstruction
     assert evaluateRegisters(unsupported, CodeAddress(0), default(RegisterFile)).error ==
       RegisterError.UnsupportedInstruction
     assert evaluateRegisters(instruction(unsupported, CodeAddress(0)), default(

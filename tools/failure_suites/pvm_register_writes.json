@@ -1,0 +1,84 @@
+{
+  "build_name": "pvm-register-write-results",
+  "cases": [
+    {
+      "arguments": [
+        "default",
+        "destination"
+      ],
+      "description": "PVM scalar register write default destination",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "member": "destination",
+        "origin": "default"
+      },
+      "name": "pvm-register-write-default-destination"
+    },
+    {
+      "arguments": [
+        "default",
+        "value"
+      ],
+      "description": "PVM scalar register write default value",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "member": "value",
+        "origin": "default"
+      },
+      "name": "pvm-register-write-default-value"
+    },
+    {
+      "arguments": [
+        "invalid",
+        "destination"
+      ],
+      "description": "PVM scalar register write invalid destination",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "member": "destination",
+        "origin": "invalid"
+      },
+      "name": "pvm-register-write-invalid-destination"
+    },
+    {
+      "arguments": [
+        "invalid",
+        "value"
+      ],
+      "description": "PVM scalar register write invalid value",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "member": "value",
+        "origin": "invalid"
+      },
+      "name": "pvm-register-write-invalid-value"
+    },
+    {
+      "arguments": [
+        "unsupported",
+        "destination"
+      ],
+      "description": "PVM scalar register write unsupported destination",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "member": "destination",
+        "origin": "unsupported"
+      },
+      "name": "pvm-register-write-unsupported-destination"
+    },
+    {
+      "arguments": [
+        "unsupported",
+        "value"
+      ],
+      "description": "PVM scalar register write unsupported value",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "member": "value",
+        "origin": "unsupported"
+      },
+      "name": "pvm-register-write-unsupported-value"
+    }
+  ],
+  "source": "tests/native/pvm_register_write_results.nim"
+}
