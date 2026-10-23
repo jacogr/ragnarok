@@ -48,8 +48,7 @@ available on the initial macOS host. Preparation-only timing is a coarse observa
 
 Completion: pass the independent differential checks, run both measurement processes,
 report warm and cold results including losses, and preserve the exact build identity.
-Next possible increment: add one guest branch and prove exact gas/budget/PC behavior
-before drawing conclusions about an IR execution engine.
+The guest-loop follow-up below now checks the next execution boundary.
 
 Initial wall-only timings were dominated by descheduling while other work ran. The
 final probe retains both wall and process CPU time; summaries use the process CPU
@@ -59,3 +58,22 @@ A deliberately failing assertion control must fail with its exact sentinel befor
 measurements are accepted. The only C helper reads the OS CPU clock.
 
 See [RESULTS.md](RESULTS.md) for the recorded first measurement and interpretation.
+
+## Real guest-loop follow-up
+
+Run `NIMONY=/absolute/path/to/pinned/nimony make -C experiments/pvm-ir loop`.
+This compares actual production `execute` with a generated experiment-only copy that
+replaces its decoder cache with an immutable prepared table. It retains the production
+register evaluator, gas simulation/cache, branch checks, budgets, exits and snapshot
+publication bodies. A read-only cache parameter avoids copying the table on each call.
+The generator requires the expected source anchors and saves an exact source diff.
+Production source files and specification/toolchain pins remain unchanged.
+
+The guest loop has 2, 16 or 64 add/xor body instructions, a counter increment, a real
+conditional backedge and a dynamic halt. It runs for 1 or 10,000 iterations. Total guest
+attempts are `(body + 2) * iterations + 1`. Three modes compare production execution,
+reused preparation and preparation paid on every invocation. The fixed-loop oracle
+models CPU/exit/charging behavior separately while using production pipeline prices.
+Source ownership, byte-PC mapping, failure cases and memory tradeoffs are described in
+[LOOP_RESULTS.md](LOOP_RESULTS.md), which records the final measurements and limitations.
+Host and memory-fault semantics are not exercised by this increment.

@@ -1,5 +1,8 @@
 # Observed local results — 2026-10-23
 
+The subsequent [real guest-loop comparison](LOOP_RESULTS.md) measures production execution.
+The figures below remain the first arithmetic-kernel experiment.
+
 This isolated experiment supports exploring prepared instructions, with no production
 integration yet. Both independent process runs reproduced the following pattern:
 
