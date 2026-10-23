@@ -1,0 +1,143 @@
+{
+  "build_name": "state-current-refresh-logical-results",
+  "cases": [
+    {
+      "arguments": [
+        "plan-default"
+      ],
+      "description": "Guard complete current logical refresh plan-default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "plan-default"
+      },
+      "name": "state-current-refresh-logical-plan-default"
+    },
+    {
+      "arguments": [
+        "plan-phase"
+      ],
+      "description": "Guard complete current logical refresh plan-phase",
+      "diagnostic": "outcome.status == LimitExceeded",
+      "identity": {
+        "reason": "plan-phase"
+      },
+      "name": "state-current-refresh-logical-plan-phase"
+    },
+    {
+      "arguments": [
+        "plan-profile"
+      ],
+      "description": "Guard complete current logical refresh plan-profile",
+      "diagnostic": "outcome.status == ProfileFailure",
+      "identity": {
+        "reason": "plan-profile"
+      },
+      "name": "state-current-refresh-logical-plan-profile"
+    },
+    {
+      "arguments": [
+        "plan-globals"
+      ],
+      "description": "Guard complete current logical refresh plan-globals",
+      "diagnostic": "outcome.status == GlobalsFailure",
+      "identity": {
+        "reason": "plan-globals"
+      },
+      "name": "state-current-refresh-logical-plan-globals"
+    },
+    {
+      "arguments": [
+        "plan-source"
+      ],
+      "description": "Guard complete current logical refresh plan-source",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "plan-source"
+      },
+      "name": "state-current-refresh-logical-plan-source"
+    },
+    {
+      "arguments": [
+        "plan-limits"
+      ],
+      "description": "Guard complete current logical refresh plan-limits",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "plan-limits"
+      },
+      "name": "state-current-refresh-logical-plan-limits"
+    },
+    {
+      "arguments": [
+        "plan-info"
+      ],
+      "description": "Guard complete current logical refresh plan-info",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "plan-info"
+      },
+      "name": "state-current-refresh-logical-plan-info"
+    },
+    {
+      "arguments": [
+        "execution-default"
+      ],
+      "description": "Guard complete current logical refresh execution-default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "execution-default"
+      },
+      "name": "state-current-refresh-logical-execution-default"
+    },
+    {
+      "arguments": [
+        "execution-invalid"
+      ],
+      "description": "Guard complete current logical refresh execution-invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "execution-invalid"
+      },
+      "name": "state-current-refresh-logical-execution-invalid"
+    },
+    {
+      "arguments": [
+        "execution-refresh"
+      ],
+      "description": "Guard complete current logical refresh execution-refresh",
+      "diagnostic": "outcome.status == RefreshFailure",
+      "identity": {
+        "reason": "execution-refresh"
+      },
+      "name": "state-current-refresh-logical-execution-refresh"
+    },
+    {
+      "arguments": [
+        "execution-state"
+      ],
+      "description": "Guard complete current logical refresh execution-state",
+      "diagnostic": "outcome.status == StateFailure",
+      "identity": {
+        "reason": "execution-state"
+      },
+      "name": "state-current-refresh-logical-execution-state"
+    },
+    {
+      "arguments": [
+        "execution-logical"
+      ],
+      "description": "Guard complete current logical refresh execution-logical",
+      "diagnostic": "outcome.status == LogicalFailure",
+      "identity": {
+        "reason": "execution-logical"
+      },
+      "name": "state-current-refresh-logical-execution-logical"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_refresh_logical_results.nim"
+}
