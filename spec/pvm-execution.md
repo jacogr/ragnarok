@@ -144,3 +144,29 @@ baseline. The existing single-step, host response/failure, mixed-program and met
 corpora remain regression controls. A compiler privacy fixture rejects external mutable evaluator
 access. Local benchmark evidence and limits are recorded in the
 [performance comparison contract](pvm-benchmark-comparison.md).
+
+
+## Invocation-scoped decoded instructions
+
+Bounded execution retains sixteen scalar decoder results in a fixed direct-slot memo. The complete
+instruction address tags every hit. A collision replaces only that slot after a genuine successful
+`instruction` decode; failed/default results never populate or evict successful entries. No input
+owner, callback, memory page, mutable register or partial state is retained by the memo.
+Direct slot inspection and an inline helper avoid an extra full-result copy on the hot path.
+
+The program and decode profile remain fixed through one `execute` or `executeWithHost` invocation.
+Host continuations retain this invocation's memo; nested executions and new calls always start with
+an explicitly empty independent memo. Single-step entry points still decode directly. Hits skip
+operand reconstruction only: instruction-attempt accounting, gas/cycle limits, successor validation,
+capability checks and every observable exit rule still execute. Space is constant, independent of
+guest length or host-call count, with no new caller resource default or unbounded preprocessing.
+
+`pvm_execution_cache` compares complete execution CPU results with uncached public single-step
+traces for colliding PCs 0/16 and a repeated block exceeding memo capacity. Literal expectations
+check decrements and all twenty-one additions. Nested callbacks run a different program with
+incompatible operands at the outer continuation PC; both ordinary and fallible host APIs preserve
+outer identity, resource refusals and callback side effects. Separate programs reuse PC 0 without
+sharing operands. A thousand repeated collision/host groups return ARC memory to baseline.
+The private decoder helper has a compiler rejection guard. Existing execution, mixed-program,
+host-failure and metered fault references remain regression controls. Run
+`make unit SUITE=pvm_execution_cache` and `make check-inventory`.

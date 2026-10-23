@@ -15,6 +15,7 @@ type
     valid: bool
     start: CodeAddress
     charge: BlockGas
+  InstructionCache = array[16, ProgramResult[Instruction]] ## Fixed-size scalar-only decoder memo belongs to one program invocation, including its host resumptions.
   HostCallId* = distinct uint64 ## Host identifiers occupy a register-width domain distinct from gas, addresses and step budgets.
   ExecutionStepLimit* = distinct uint64 ## Local scheduling policy bounds attempted instructions; it is not guest gas or a guest exit.
   HostCallLimit* = distinct uint64 ## Local dispatch budget, independent of attempted guest instructions and guest gas.
@@ -566,11 +567,21 @@ proc stepOnce*(source: Machine, limit: GasCycleLimit): StepResult =
   ## Existing specification gates remain local failures and expose no partially updated machine.
   stepImpl(source, limit, true, true, true)
 
+proc cachedInstruction(program: Program, address: CodeAddress,
+    cache: var InstructionCache): ProgramResult[Instruction] {.inline.} =
+  ## A full-address tag prevents direct-slot collisions; only genuine successful scalar decoder results populate this invocation's memo.
+  let slot = int(uint64(address) mod uint64(cache.len)) # The fixed positive slot count proves native conversion and indexing bounds.
+  if cache[slot].error == ProgramError.None and uint64(cache[slot].value.address) == uint64(address):
+    return cache[slot] # Program and decode profile remain immutable throughout the enclosing invocation.
+  result = instruction(program, address)
+  if result.error == ProgramError.None:
+    cache[slot] = result # Invalid entries never populate, evict a valid instruction or authorize a successful fallback.
+
 # Evaluate recursive Psi iteratively over an already validated program and captured machine.
 # The shared remaining budget counts attempted instructions, including the exiting instruction.
 # Each gas simulation is independently bounded by gasLimit. Local failures expose no partial progress.
 proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLimit,
-    chargeCache: var BlockChargeCache): StepResult =
+    chargeCache: var BlockChargeCache, instructions: var InstructionCache): StepResult =
   let original = machineInfo(source)
   let owner = programOf(source)
   let originalMemory = memoryOf(source)
@@ -589,7 +600,7 @@ proc executeBudget(source: Machine, remaining: var uint64, gasLimit: GasCycleLim
     dec remaining # Each attempted instruction consumes exactly one local step, including invalid entry and every exit.
     let prior = info
     let priorMemory = memory
-    let decoded = instruction(program, prior.pc)
+    let decoded = cachedInstruction(program, prior.pc, instructions)
     if decoded.error != ProgramError.None:
       info.pc = CodeAddress(0) # Trusted terminal/import snapshots retain the existing uncharged deblob panic rule.
       return publishInstruction(program, memory, info, InstructionEffect(kind: StepExit.Panic), true)
@@ -613,7 +624,8 @@ proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycle
   var remaining = uint64(stepLimit)
   # A direct execution has its own memo, never inherited from another program or local policy.
   var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
-  executeBudget(source, remaining, gasLimit, chargeCache)
+  var instructions = default(InstructionCache) # Fresh explicit empty memo prevents cross-program or cross-invocation operand reuse.
+  executeBudget(source, remaining, gasLimit, chargeCache, instructions)
 
 # Lift guest/engine results without confusing guest terminal exits with local host errors.
 func executionResult[Reason: enum](evaluated: StepResult): HostExecutionResult[Reason] =
@@ -626,8 +638,8 @@ func executionResult[Reason: enum](evaluated: StepResult): HostExecutionResult[R
 # Advance a shared invocation budget to the next dispatch or terminal result.
 # Dispatch credit is consumed before callbacks, identically for both public callback forms.
 proc nextHost(current: Machine, remaining, calls: var uint64, gasLimit: GasCycleLimit,
-    chargeCache: var BlockChargeCache): StepResult =
-  let evaluated = executeBudget(current, remaining, gasLimit, chargeCache)
+    chargeCache: var BlockChargeCache, instructions: var InstructionCache): StepResult =
+  let evaluated = executeBudget(current, remaining, gasLimit, chargeCache, instructions)
   if evaluated.error != StepError.None:
     # Engine refusals carry no partial machine state.
     return evaluated
@@ -653,9 +665,10 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   # Host responses preserve this invocation's program and fixed simulation limit.
   # Scalar cached prices retain neither context nor callbacks and disappear on every return.
   var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
+  var instructions = default(InstructionCache) # Host replies preserve the program, so scalar decoder hits remain valid until this invocation returns.
   while true:
     # Iteration retains one current snapshot; the shared helper owns all guest/dispatch budget rules.
-    let evaluated = nextHost(current, remaining, calls, gasLimit, chargeCache)
+    let evaluated = nextHost(current, remaining, calls, gasLimit, chargeCache, instructions)
     if evaluated.error != StepError.None:
       # Local refusal exposes no machine progress; already-completed context mutations remain visible.
       return executionResult[Reason](evaluated)
@@ -694,9 +707,10 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   # Host responses preserve this invocation's program and fixed simulation limit.
   # Scalar cached prices retain neither context nor callbacks and disappear on every return.
   var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
+  var instructions = default(InstructionCache) # Host replies preserve the program, so scalar decoder hits remain valid until this invocation returns.
   while true:
     # All scheduling and charging happens in the same helper used by fallible callbacks.
-    let evaluated = nextHost(current, remaining, calls, gasLimit, chargeCache)
+    let evaluated = nextHost(current, remaining, calls, gasLimit, chargeCache, instructions)
     if evaluated.error != StepError.None:
       # Preserve the legacy local engine refusal without reading a failed payload.
       return evaluated
