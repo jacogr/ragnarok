@@ -31,8 +31,27 @@ roots and compaction suites remain the affected consumers.
 
 Measurement must compare the same fixed full public selection workload and native profile against
 parent `99746f106056f36cc6a67ca07b4d1b9028c12949`, preserving full root order and counts. No speed
-claim is made until the comparison is recorded. Temporary reports belong under
-`build/storage-db14-*`; this adds no routine performance matrix or remote CI request.
+claim is made for small inventories. The measured candidate is `ff5bef38`; later changes in this
+layer are documentation only. Nine selected native suites, inventory and pinned formatting pass.
+
+The checked macOS ARM64 ARC/Clang release/LTO probe builds the same independently validated
+4097-root history, selects a reversed twice-repeated list four times, checks all output roots,
+4096 physical records, zero hash attempts and exact owner retirement. Identical probe/fixture
+bytes compile against parent/candidate archives using the maintained native build helper. Python
+`perf_counter_ns` measures serial fresh processes, with three warmups and ten paired samples in
+each order (`hyperfine`/`valgrind` are unavailable). These timings include identical fixture setup.
+
+| Order | Parent median | Candidate median | Reduction |
+| --- | ---: | ---: | ---: |
+| baseline-candidate | 55.30ms | 10.26ms | 81.5% |
+| candidate-baseline | 56.39ms | 10.49ms | 81.4% |
+
+The algorithmic change and this large distinct-inventory workload justify retaining the fix.
+No small-inventory speedup or disk-recovery/RSS improvement is inferred. Complete commands,
+source/compiler/library SHA-256 identities, raw samples and spread are in
+`build/storage-db14-measure/timing.json`, using `build/storage-db14-measure.json` and
+`build/storage-stack-measure.py`. Native results are in `build/storage-db14-selected-checks.json`.
+This adds no routine performance matrix or remote CI request; exact-head Linux CI remains separate.
 
 ## Boundaries
 
