@@ -119,6 +119,18 @@ qualified successor and its posterior map root. Preparation, publication and pro
 exclude the RPC graph through cancellation/Done. Client retirement precedes joined shutdown;
 no stale socket or response is reused across restart. This changes no RPC/root policy.
 
+## Actual namespace identity mutation refusals
+
+`pvm_current_logical_mutations` collects genuinely successful native preparations whose funded
+service99 guest creates absent raw key7 or deletes existing present-empty raw key5. The configured
+logical seed refuses the exact physical key with `NewIdentity` or `MissingIdentity`, respectively.
+The host consumer leaves enqueue idle and canonical ownership unchanged. Strict journal/managed
+restart restores only the original complete parent map, proving no rejected logical successor
+was published. These cases preserve the explicit unchanged-identity scope; general mutation
+propagation remains separate producer-contract work.
+
+Run `make unit SUITE=pvm_current_logical_mutations`.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
