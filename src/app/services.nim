@@ -15,6 +15,7 @@ import ./block_input
 import ./preparation_worker
 import ./[collected_supplied_plan, collected_supplied_state]
 import ./logical_review
+import ./logical_proof
 import ../state/account_review_plan
 import ./logical_checkpoint
 import ./logical_seed
@@ -50,6 +51,32 @@ type
     of QueryFailure: queryReason: ProofQueryError
     of WorkerFailure: workerReason: ProofWorkerError
     else: discard # Closed/busy/default refusals expose no authority.
+
+type
+  LogicalProofAdmissionError* {.pure.} = enum ## Capture provenance/resource failures remain distinct from managed worker/RPC admission.
+    Uninitialized, None, Closed, Busy, CaptureFailure, AdmissionFailure
+  LogicalProofAdmission* = object ## Only actual native submission grants an existing managed proof ticket.
+    case status: LogicalProofAdmissionError
+    of None: ticket: ProofWorkerTicket
+    of CaptureFailure: captureReason: LogicalProofResult
+    of AdmissionFailure: admissionReason: StateProofAdmission
+    else: discard # Defaults, closed Services and active leases retain no query or ticket.
+
+func error*(admission: LogicalProofAdmission): LogicalProofAdmissionError =
+  ## Observe the selected capture or managed admission stage without granting a graph lease.
+  admission.status
+func value*(admission: LogicalProofAdmission): ProofWorkerTicket {.inline,
+    requires: admission.status == LogicalProofAdmissionError.None.} =
+  ## Successful submission returns the existing ticket for actual collection or joined shutdown.
+  admission.ticket
+func captureFailure*(admission: LogicalProofAdmission): LogicalProofResult {.inline,
+    requires: admission.status == LogicalProofAdmissionError.CaptureFailure.} =
+  ## Keep invalid original source, view admission and nested query refusal causes unchanged.
+  admission.captureReason
+func admissionFailure*(admission: LogicalProofAdmission): StateProofAdmission {.inline,
+    requires: admission.status == LogicalProofAdmissionError.AdmissionFailure.} =
+  ## Preserve original RPC pause or native-worker admission refusal without a successful ticket.
+  admission.admissionReason
 
 type
   ServiceDiskOperation {.pure.} = enum ## One private tag selects the receipt/cleanup path for the shared native disk slot.
@@ -818,6 +845,34 @@ proc beginStateProof*(services: var Services, selected: BlockHash, plan: Service
   discard services.proofWorker.start() # Idle reuse never creates a worker per request.
   let reason = services.stageStateProof(selected, plan, limits)
   services.finishStateProof(reason) # No selected-state temporary survives the staging activation.
+
+proc stageLogicalProof(services: var Services, source: CurrentLogicalState,
+    plan: StateProofPlan, limits: LogicalProofLimits, failure: var LogicalProofResult): bool =
+  ## Retire every temporary source/query alias before the caller can submit the staged owner.
+  let captured = captureLogicalProofQuery(source, plan, limits)
+  if captured.error != LogicalProofError.None:
+    failure = captured # Only refused capture alternatives reach the caller's failure owner.
+    return false
+  services.proofInput = captured.value
+  true
+
+proc beginLogicalProof*(services: var Services, source: CurrentLogicalState,
+    plan: StateProofPlan, limits: LogicalProofLimits): LogicalProofAdmission {.raises.} =
+  ## Explicit retained producer provenance selects this proof; canonical installation and root trust remain separate.
+  if not services.started:
+    return LogicalProofAdmission(status: LogicalProofAdmissionError.Closed)
+  if not services.stateProofAvailable:
+    return LogicalProofAdmission(status: LogicalProofAdmissionError.Busy) # Check scalar exclusions before touching any source alias.
+  discard services.proofWorker.start() # Reuse the one fixed-address managed worker and its existing exclusive lease.
+  var failure = default(LogicalProofResult)
+  if not services.stageLogicalProof(source, plan, limits, failure):
+    return LogicalProofAdmission(status: LogicalProofAdmissionError.CaptureFailure,
+      captureReason: failure)
+  let admitted = services.finishStateProof(ProofQueryError.None) # Staging activation has retired; successful submission permits only scalar/ticket work.
+  if admitted.error != StateProofAdmissionError.None:
+    return LogicalProofAdmission(status: LogicalProofAdmissionError.AdmissionFailure,
+      admissionReason: admitted)
+  LogicalProofAdmission(status: LogicalProofAdmissionError.None, ticket: admitted.value)
 
 proc stateProofPhase*(services: var Services): ProofWorkerPhase =
   ## Synchronized scalar polling never observes or copies selected-state ARC owners.

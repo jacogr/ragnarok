@@ -200,3 +200,13 @@ The [durable composition](../spec/application-logical-durable-consumers.md) exer
 creation, three consecutive children, both disk layouts, retained consumers through actual native
 collection and detached bytes after shutdown. Broader producer-owned operation/rollback/untouched-key
 provenance and independent current-pin parity gates remain open.
+
+## Submit a retained logical proof through Services
+
+Call `Services.beginLogicalProof(source, plan, limits)` outside other managed work to prove the
+original retained logical producer, including a prepared successor not yet installed canonically.
+Use its guarded admission error before extracting the existing proof-worker ticket. Capture refusals
+retain original logical/query causes; managed RPC/native refusal remains separate. Keep every source
+and plan alias untouched until actual `collectStateProof(ticket)` or joined close; cancellation and
+Done retain exclusion. Authenticate detached response bytes against your independently selected
+expected root. See [managed logical proofs](../spec/application-managed-logical-proofs.md).

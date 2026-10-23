@@ -1,0 +1,45 @@
+{
+  "build_name": "application-logical-proof-admission-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "Managed logical proof value extraction guard",
+      "diagnostic": "admission.status == None",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "application-logical-proof-admission-value"
+    },
+    {
+      "arguments": [
+        "capture"
+      ],
+      "description": "Managed logical proof capture extraction guard",
+      "diagnostic": "admission.status == CaptureFailure",
+      "identity": {
+        "reason": "capture"
+      },
+      "name": "application-logical-proof-admission-capture"
+    },
+    {
+      "arguments": [
+        "admission"
+      ],
+      "description": "Managed logical proof admission extraction guard",
+      "diagnostic": "admission.status == AdmissionFailure",
+      "identity": {
+        "reason": "admission"
+      },
+      "name": "application-logical-proof-admission-admission"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_logical_proof_admission_results.nim"
+}
