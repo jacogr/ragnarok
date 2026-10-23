@@ -25,6 +25,7 @@ import ./logical_export
 import ./logical_checkpoint_import
 import ./logical_code
 import ../state/code_availability
+import ./full_logical_proof
 import ./logical_seed
 import ../codec/[state_composition, composite]
 import ./current_logical as collected_logical
@@ -1326,3 +1327,9 @@ proc auditLogicalCodeAvailability*(services: Services, source: CurrentLogicalSta
     not (services.proofing or services.preparing or services.publishing).} =
   ## Original logical/current payload aliases remain excluded until actual matching collection or joined shutdown.
   logical_code.auditLogicalCodeAvailability(source, limits)
+
+proc planFullLogicalProof*(services: Services, source: CurrentLogicalState,
+    limits: FullLogicalProofLimits): FullLogicalProofResult[FullLogicalProofPlan] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Whole-map enumeration and selector ownership remain excluded until actual managed collection/join.
+  full_logical_proof.planFullLogicalProof(source, limits)
