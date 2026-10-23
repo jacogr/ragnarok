@@ -4,6 +4,7 @@
 ## Test-owned real Services preparation/collection and independently bounded State logical refresh for actual host consumers.
 import std/[assertions, monotimes, times]
 import std/posix/posix
+import ../../src/state/[account_review_plan, account_audit_plan, account_audit]
 import ./current_logical_review_context
 import ../../src/state/[current_state, current_review, current_globals, current_profile,
     supplied_logical_inventory, inventory, manifest, account_review, economic_profile]
@@ -233,3 +234,17 @@ proc checkCollectedReview*(logical: CurrentLogicalState) =
   let info = reviewed.accountReviewInfo.value
   assert info.invariants.content.preimages == 6 and info.invariants.footprints.services == 2
   assert info.economics.covered == 2 and info.economics.uncovered == 0
+  let alternativeAudit = executeAccountAudit(planAccountAudit(second, logicalReviewTestLimits().audit).value).value
+  let mixed = joinAccountReview(alternativeAudit, reviewed.reviewSupervision.value,
+      reviewed.reviewEconomics.value)
+  assert mixed.error == AccountReviewError.SourceMismatch # Equal physical state cannot turn compact2 evidence into compact1 review predicates.
+  var alternativeWire = original.encodeParameters
+  assert alternativeWire.len > 8 and alternativeWire[8] == 0
+  alternativeWire[8] = 1
+  let alternative = captureEconomicProfile(decodeParameters(alternativeWire).value).value
+  let observed = executeAccountReview(planAccountReview(first, alternative, logicalReviewTestLimits()).value).value
+  assert observed.accountReviewInfo.value.economics.uncovered == 1
+  assert not sameEconomicProfile(observed.reviewEconomicProfile.value,
+      reviewed.reviewEconomicProfile.value)
+  assert reviewed.accountReviewInfo.value.economics.covered == 2 and
+      reviewed.accountReviewInfo.value.economics.uncovered == 0

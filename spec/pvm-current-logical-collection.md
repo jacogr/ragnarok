@@ -201,6 +201,15 @@ certification covers both actual services and content checking covers six origin
 the explicit zero-deposit fixture profile reports two covered services. Review temporaries retire
 on the open host gate before native publication; no new validation/funding rule is introduced.
 
+## Review scope and undercoverage controls
+
+An actual audit of the logical raw-key companion cannot join the original current review's
+supervision/economic predicates: `SourceMismatch` preserves distinct compact ownership despite
+identical physical maps. A separate explicit byte-price profile observes one uncovered service;
+it cannot replace the original current review's profile, source or two-covered-service result.
+Successful undercoverage remains a bounded observation, never a new qualification or funding
+policy. Every later enqueue still consumes only the original genuine prepared successor.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
