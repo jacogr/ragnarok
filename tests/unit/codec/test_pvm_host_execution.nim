@@ -217,6 +217,80 @@ block meteredInvocationIsolation:
     # No successful or refused invocation mutates the caller's retained source snapshot.
     assert uint64(unchanged.registers[i]) == uint64(registers[i])
 
+type
+  RetainedReason {.pure.} = enum ## Explicit local refusal never carries a partially resumed machine.
+    Refused
+  RetainedContext = object ## The callback intentionally keeps all published roots across subsequent resumption and refusal.
+    calls: int
+    refuse: bool
+    roots: seq[Machine]
+
+proc retainedReply(context: var RetainedContext, stopped: StepOutcome): HostResponse {.raises: [].} =
+  ## Observe the previous response, retain its genuine snapshot, then return independently owned posterior bytes/registers.
+  let cpu = machineInfo(stopped.machine).value
+  let memory = memoryOf(stopped.machine).value
+  assert stopped.exit == StepExit.Host and uint64(stopped.hostCall) == 7
+  assert uint64(cpu.pc) == uint64(context.calls*2) and cpu.blockCharged
+  assert uint64(cpu.registers[8]) == uint64(context.calls)
+  assert uint64(cpu.gas) == uint64(100000-context.calls)
+  assert uint64(load(memory, MemoryAddress(65536), AccessWidth(8)).value) == uint64(context.calls)
+  context.roots.add(stopped.machine)
+  inc context.calls
+  var registers = cpu.registers
+  registers[8] = RegisterValue(uint64(context.calls))
+  let updated = store(memory, MemoryAddress(65536), AccessWidth(8), RegisterValue(uint64(
+      context.calls))).value
+  HostResponse(action: HostAction.Continue, gas: MachineGas(uint64(100000-context.calls)),
+    gasDeficit: GasDeficit(0), registers: registers, memory: updated)
+
+proc retainedFallible(context: var RetainedContext, stopped: StepOutcome): HostResult[
+    RetainedReason] {.raises: [].} =
+  ## Completed callback observations persist when a later typed refusal prevents posterior state application.
+  let reply = retainedReply(context, stopped)
+  if context.refuse and context.calls == 3:
+    return hostFailure[RetainedReason](RetainedReason.Refused)
+  hostSuccess[RetainedReason](reply)
+
+proc retainedCycle() =
+  ## Compare full CPU/page observations for both APIs, including a callback refusal and post-reply instruction exhaustion.
+  let memory = captureMemory([PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+    bytes: default(array[4096, byte]))], PageLimit(1)).value
+  let initial = withMemory(source(4), memory).value
+  for mode in 0..<3:
+    var context = RetainedContext(calls: 0, refuse: mode == 1, roots: @[])
+    if mode == 0:
+      let run = executeWithHost(initial, context, retainedReply, ExecutionStepLimit(5),
+          HostCallLimit(4), GasCycleLimit(0))
+      assert run.error == StepError.None and run.value.exit == StepExit.Halt
+      assert uint64(machineInfo(run.value.machine).value.gas) == 99996
+      assert uint64(load(memoryOf(run.value.machine).value, MemoryAddress(65536), AccessWidth(
+          8)).value) == 4
+    elif mode == 1:
+      let run = executeWithHost(initial, context, retainedFallible, ExecutionStepLimit(5),
+          HostCallLimit(4), GasCycleLimit(0))
+      assert run.error == HostExecutionError.HostFailure and run.hostError == RetainedReason.Refused
+    else:
+      let run = executeWithHost(initial, context, retainedFallible, ExecutionStepLimit(4),
+          HostCallLimit(4), GasCycleLimit(0))
+      assert run.error == HostExecutionError.ExecutionFailure and run.executionError ==
+          StepError.StepLimitExceeded
+    assert context.calls == (if mode == 1: 3 else: 4) and context.roots.len == context.calls
+    for index in 0..<context.roots.len:
+      # All retained CPU fields and every byte must still describe the instant before that callback's reply.
+      let cpu = machineInfo(context.roots[index]).value
+      assert uint64(cpu.pc) == uint64(index*2) and uint64(cpu.gas) == uint64(100000-index)
+      assert uint64(cpu.gasDeficit) == 0 and cpu.blockCharged
+      for register in 0..<13:
+        let expected = if register == 0: 0xffff0000'u64 elif register == 8: uint64(
+            index) else: 0'u64
+        assert uint64(cpu.registers[register]) == expected
+      let image = pageImage(memoryOf(context.roots[index]).value, PageIndex(16)).value
+      assert image.access == PageAccess.ReadWrite
+      for offset in 0..<4096:
+        assert image.bytes[offset] == (if offset == 0: byte(index) else: 0'u8)
+    assert uint64(machineInfo(initial).value.registers[8]) == 0
+    assert uint64(load(memoryOf(initial).value, MemoryAddress(65536), AccessWidth(8)).value) == 0
+
 # All roots and context values die at each invocation boundary, including failure after callback effects.
 proc cycle() =
   var context = Context(calls: 0, action: HostAction.Continue, badMemory: false)
@@ -227,10 +301,12 @@ proc cycle() =
     GasCycleLimit(0)).error == StepError.StepLimitExceeded
 
 cycle()
+retainedCycle()
 let before = getOccupiedMem()
 for iteration in 0..<1000:
   # Repeated synchronous dispatch retains neither machine history nor callback/context references.
   cycle()
+  retainedCycle() # Retained callback roots never alias the private continuation CPU or writable successors.
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("pvm_host_execution", 1000, before, after)

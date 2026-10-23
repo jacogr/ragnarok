@@ -102,3 +102,55 @@ pricing exceptions and unresolved specification questions. Local execution limit
 and remaining integration scope still prevent an unrestricted PVM conformance claim.
 M1 framing is complete; full state serialization, whole-block parity and full
 chainspec equivalence remain open.
+
+
+## Scalar write evaluation, 2026-10-23
+
+`evaluateRegisterWrite(decoded, registers)` evaluates the same 85 operations into a
+`RegisterWriteResult`. On success, `destination` returns a nominal register index
+below thirteen and `writeValue` returns its copied 64-bit pattern. Both accessors
+require success. Default, invalid and unsupported alternatives expose only their
+`RegisterError`; callers cannot retag the result or construct its private fields.
+Operands and conditional fallbacks still read the original register array before
+any caller applies the write. Neither the input array nor any machine is mutated.
+
+The executor applies this one scalar write to its private CPU cursor after gas and
+capability checks. The existing `evaluateRegisters` overloads retain their complete
+copied-array API, materializing that array only after successful scalar evaluation.
+There is one arithmetic implementation for both forms; no alternate opcode table,
+unchecked entry point or gas behavior is introduced.
+
+The independent frozen arithmetic corpus checks the scalar destination/value and
+both array entry points for every witness across all 85 operations. It also checks
+input/result independence, default/invalid results and unsupported instructions.
+Dependent register chains, charged-step snapshots and cached execution retain their
+existing complete-state checks. Six runtime accessor failure probes and their actual
+positive control verify both guarded fields across default/invalid/unsupported
+origins; three compiler probes reject private payload/status access. These tests do
+not change the existing complete-JAM parity gates or the scoped M1 framing status.
+
+
+## Bounded word-level bit counts, 2026-10-23
+
+All six 32/64-bit population/leading/trailing-count instructions now use bounded
+unsigned word operations. The private helper requires width 32/64 and one of its
+three count modes; every evaluator call supplies literals. The 32-bit path masks
+the upper half before any count. Population count sums disjoint two/four/eight-bit
+lanes and collects their total with intentional modulo-2^64 multiplication.
+All shift counts are fixed below 64 and the final total is at most 64.
+
+Both zero-count modes explicitly return the selected width for a zero low word.
+Trailing count isolates the lowest set bit by modular negation and counts the
+positions below it. Leading count spreads the highest one through lower positions,
+then subtracts its population from the selected width. The filled word has at most
+that many bits, so the subtraction cannot underflow. No zero-undefined intrinsic,
+architecture-specific extension, unchecked shift, disabled contract or mutable owner
+is introduced. Arithmetic result/error/alias semantics remain unchanged.
+
+The independent arithmetic corpus remains the primary control across all 85 opcodes.
+An additional 2304 literal one-hot/one-clear witnesses check every bit position,
+both widths and alias/nonalias destinations through scalar and array APIs, comparing
+all thirteen output registers. Upper-half-only words explicitly select 32-bit zero
+behavior. Dependent-register, mixed-program and cached/nested execution consumers
+remain controls, along with the pinned mixed-bit performance guest. Timing and
+remaining interpreter gaps are recorded in the benchmark contract.

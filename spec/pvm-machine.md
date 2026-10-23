@@ -22,8 +22,9 @@ trap increment beyond code without relaxing executable-entry validation. It does
 not authenticate an exit reason; callers follow `StepOutcome.exit` when deciding
 whether to execute again. See [single-step terminal semantics](pvm-step.md).
 
-Memory is a sorted sparse sequence of immutable page references. Each page owns
-4096 bytes and inaccessible/read-only/read-write permission. A missing page has
+Memory is a sorted sparse sequence of immutable page headers. Each header owns
+eight immutable 512-byte chunks and inaccessible/read-only/read-write permission;
+the public page image remains 4096 bytes. A missing page has
 zero underlying bytes and inaccessible permissions. Inaccessible stored pages
 retain their bytes, so changing their permissions need not erase their contents.
 `captureMemory` requires sorted unique page ordinals below 2^20 and applies a
@@ -35,8 +36,8 @@ can change permissions or contents, preserves other pages, and enforces the
 original owner's page ceiling for insertions. Replacement at the ceiling is
 allowed. This is not a guest store or a host-function implementation.
 
-Published owners form acyclic ARC graphs. Updates copy the page-reference vector
-and at most the touched pages, sharing all other immutable pages. No backing
+Published owners form acyclic ARC graphs. Updates copy the page-reference vector and touched headers/chunks, sharing all
+other immutable page storage. No backing
 reference or borrowed pointer is public. Failure returns only a typed reason;
 a guest page-fault address is part of that reason, never partial operation progress.
 
@@ -57,14 +58,14 @@ Read-write implies readable. Missing/inaccessible pages fault on either access;
 read-only pages fault on writes. A fault reports the aligned physical byte address
 of the first inaccessible page in the original increasing access sequence.
 
-Every touched byte is checked before reading a value or allocating changed pages.
+All touched page permissions are checked before reading a value or allocating changed pages.
 Failed cross-page stores therefore cannot alter their first page. Successful stores
 publish a new owner; old aliases remain unchanged. Machine stores replace only
 memory and preserve every register, PC, gas and charged flag. `withRegister` and
 `withMemory` are explicit state-building operations, not instruction stepping.
 
-Permission lookup is logarithmic in stored pages; an access checks at most eight
-bytes. Snapshot updates currently copy O(stored pages) references. This correctness
+Permission lookup is logarithmic in stored pages; a scalar resolves at most two
+page slots and reuses those validated slots for its at most eight payload bytes. Snapshot updates currently copy O(stored pages) references. This correctness
 baseline has no performance or gas-proportional execution claim. Allocation is
 bounded by the page limit; allocation failure itself is not mapped to a VM exit.
 
@@ -138,3 +139,71 @@ and host dispatch have separate contracts; concrete host functions and complete 
 
 Terminal host balances now carry canonical gas credit/deficit; see
 [host gas accounting](pvm-host-gas.md). Negative snapshots cannot resume execution.
+
+
+## Scalar page spans, 2026-10-23
+
+The private scalar preflight retains resolved sparse page slots, first-page offset and
+bounded byte counts. Loads and stores reuse these slots rather than searching the
+page vector for every byte. It preserves owner/width validation, low-32 address
+selection, exclusive-end overflow, protected-prefix panic, cross-page store presence
+priority and failure atomicity. No unchecked pointer or mutable backing storage is
+exposed; successful stores still clone the vector and touched storage before publication.
+
+The native machine suite adds 64 neighboring page pairs separated by holes, checking
+unaligned eight-byte loads/stores, every output byte, exact hole faults and retained
+aliases across the full sparse vector. The existing independent 4050-case scalar
+reference, pinned boundary reference and memory-instruction suite pass; machine and
+memory-step owners return to their ARC baselines after 1000 cycles. A compiler guard
+keeps the resolved-span helper private. Measurement and remaining copying costs are
+recorded in [the interpreter comparison](pvm-benchmark-comparison.md).
+
+
+## Persistent page chunks, 2026-10-23
+
+A private page header retains eight fully initialized 512-byte chunk owners. Scalar
+stores clone at most two touched chunks, including when an eight-byte scalar crosses
+a chunk/page boundary. Host writes clone every intersected chunk only after complete
+range/permission/copy-budget preflight. All mutation targets private successors;
+predecessors and untouched chunks remain immutable. Permission-only successors share
+payload owners while preserving predecessor permissions. Zero/remap/free operations
+retain their existing byte and page-budget contracts.
+
+The public `PageImage`, 4096-byte guest page, page-count limit and byte-copy policy
+are unchanged. `captureMemory` copies all input bytes into private chunks and
+`pageImage` materializes a complete independent array; no chunk, reference or mutable
+view is exported. Chunk geometry is an implementation detail, not a protocol page
+size or a new caller resource policy. Owners remain an acyclic ARC graph.
+
+The `pvm_memory_chunks` native suite retains original/read-only/remapped and three
+write generations across nine interior/page boundaries. Independent full-page byte
+expectations check overlapping scalar/host writes, input mutation, copy-budget
+refusal and unchanged predecessor permissions. A thousand repeated groups release
+all owners. Machine, host-memory, scalar/boundary references, memory instruction,
+heap mapping, initialization and execution/host suites pass with their ARC evidence.
+Compiler probes keep chunk cloning and byte mutation private. The
+[benchmark record](pvm-benchmark-comparison.md) reports broad execution improvements,
+preparation boundaries and remaining interpreted performance gaps.
+
+
+## Scalar write epochs, 2026-10-23
+
+`newScalarMemoryWriter` creates an explicitly mutable reference identity from a valid
+immutable memory owner. Copied writer handles share progress. Checked scalar `load`
+and `store` preserve the existing width/address/permission/fault precedence rules;
+a failed store preserves all previous successful writes. Page mappings, permissions
+and page budgets remain fixed throughout an epoch. Missing/nil owners return
+`InvalidOwner`, and failed/default results expose only their reason.
+
+The first successful write allocates a private page vector and one dirty byte per
+admitted page. Each touched header and 512-byte chunk clones only once in that epoch.
+`snapshotMemory` transfers the private vector into an immutable memory owner, retires
+the dirty map and resets all writer aliases to that immutable base. Later writes
+start a fresh copy-on-write epoch. An unchanged epoch returns its existing owner.
+No page/chunk/vector reference escapes, and the ownership graph remains acyclic.
+The builder is mutable caller state and requires exclusive access during calls.
+
+The scalar-writer suite checks all scalar widths across chunk/page boundaries,
+retained source and multiple published generations, shared writer identity,
+refused cross-page writes and invalid owners. A thousand complete ownership cycles
+return to baseline. Compiler probes keep mutation helpers and page storage private.
