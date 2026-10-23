@@ -1,0 +1,77 @@
+{
+  "build_name": "state-current-identities-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard current identity default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-current-identities-default"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard current identity reason",
+      "diagnostic": "outcome.status == MissingIdentity or outcome.status == NewIdentity",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-current-identities-reason"
+    },
+    {
+      "arguments": [
+        "parent"
+      ],
+      "description": "Guard current identity parent",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "parent"
+      },
+      "name": "state-current-identities-parent"
+    },
+    {
+      "arguments": [
+        "update"
+      ],
+      "description": "Guard current identity update",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "update"
+      },
+      "name": "state-current-identities-update"
+    },
+    {
+      "arguments": [
+        "logical"
+      ],
+      "description": "Guard current identity logical",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "logical"
+      },
+      "name": "state-current-identities-logical"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Guard current identity info",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "info"
+      },
+      "name": "state-current-identities-info"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_identities_results.nim"
+}
