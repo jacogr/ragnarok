@@ -10,9 +10,12 @@ import ../../src/rpc/server
 import ../../src/codec/[bounded, block_codec]
 import ../../src/state/[accumulation_current_update, current_identities, current_request_keys,
     current_refresh_plan, current_logical_refresh, current_logical]
-proc collectLogicalChild*(owner: var Services, input: var CurrentBlockInput, child: OwnedBlock,
-    policies: CurrentCandidateLimits): PreparedCurrentChainUpdate {.raises.} =
-  ## Encode and bind on the open host gate; the exact native lease stays exclusive until matching collection, including Done/stale observations.
+type LogicalPreparation = object ## Only scalar receiver/ticket identities cross native wait/cancel/collection boundaries.
+  ticket: PreparationTicket
+  input: CurrentBlockInputId
+proc beginLogicalChild(owner: var Services, input: var CurrentBlockInput, child: OwnedBlock,
+    policies: CurrentCandidateLimits): LogicalPreparation {.raises.} =
+  ## Bind the actual canonical parent and capture raw wire before granting the worker an exclusive graph lease.
   var wire = newSeq[byte](child.blockInfo.value.consumed)
   assert child.encodeOwnedBlock(wire).error == FrameError.None
   let received = owner.beginBlockInput(input, ByteLimit(uint64(wire.len)), [],
@@ -22,6 +25,9 @@ proc collectLogicalChild*(owner: var Services, input: var CurrentBlockInput, chi
   assert input.append(received.value, wire, true) == CurrentBlockInputError.None
   let ticket = owner.beginPreparation(input, received.value)
   assert ticket.error == PreparationError.None
+  LogicalPreparation(ticket: ticket.value, input: received.value)
+proc waitLogicalPreparation(owner: var Services) =
+  ## Native completion is observed through synchronized scalars; Done does not release the canonical graph or RPC exclusion.
   let started = getMonoTime()
   while owner.preparationPhase != PreparationPhase.Done:
     assert (getMonoTime()-started).inSeconds < 20
@@ -30,15 +36,36 @@ proc collectLogicalChild*(owner: var Services, input: var CurrentBlockInput, chi
     var remaining = default(Timespec)
     discard nanosleep(delay, remaining) # No retained graph owner is accessed, copied or retired during native borrowing.
   assert owner.preparationActive and owner.rpc.chainPaused
+proc collectLogicalChild*(owner: var Services, input: var CurrentBlockInput, child: OwnedBlock,
+    policies: CurrentCandidateLimits): PreparedCurrentChainUpdate {.raises.} =
+  ## Only matching collection exposes a genuine update; all raw/canonical owners remain untouched while the worker can borrow them.
+  let job = owner.beginLogicalChild(input, child, policies)
+  owner.waitLogicalPreparation()
   assert owner.collectPreparation(default(PreparationTicket)).kind ==
       PreparationCompletionKind.Uninitialized
   assert owner.preparationActive and owner.preparationPhase == PreparationPhase.Done
-  let completed = owner.collectPreparation(ticket.value)
+  let completed = owner.collectPreparation(job.ticket)
   assert completed.kind == PreparationCompletionKind.CurrentCompleted
   assert completed.currentValue.error == CurrentBlockInputError.None
   assert not owner.preparationActive and not owner.rpc.chainPaused
   assert owner.preparationAvailable and owner.stateProofAvailable
   completed.currentValue.value
+proc cancelLogicalChild*(owner: var Services, input: var CurrentBlockInput, child: OwnedBlock,
+    policies: CurrentCandidateLimits, afterDone: bool) {.raises.} =
+  ## Immediate and completed genuine jobs return only Cancelled; stale collection cannot release capacity or any graph alias.
+  let job = owner.beginLogicalChild(input, child, policies)
+  if afterDone: owner.waitLogicalPreparation() # This branch guarantees an actual successful native result is discarded by cancellation.
+  assert owner.cancelPreparation(job.ticket)
+  owner.waitLogicalPreparation()
+  assert owner.collectPreparation(default(PreparationTicket)).kind ==
+      PreparationCompletionKind.Uninitialized
+  assert owner.preparationActive and owner.rpc.chainPaused
+  assert not owner.preparationAvailable and not owner.stateProofAvailable
+  assert owner.collectPreparation(job.ticket).kind == PreparationCompletionKind.Cancelled
+  assert not owner.preparationActive and not owner.rpc.chainPaused
+  discard input.cancel(job.input) # A skipped job can leave Ready raw input; only the now-open host gate can retire it.
+  assert input.stage == CurrentBlockInputStage.Idle
+  assert owner.preparationAvailable and owner.stateProofAvailable
 proc refreshCollectedIdentities*(source: PreservedCurrentIdentities): CurrentLogicalState =
   ## Every actual opaque predecessor is checked under explicit independent namespace policies before extraction; no enqueue or installation occurs here.
   let keys = captureCurrentRequestKeys(source, namespaceRequestLimits)

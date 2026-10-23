@@ -66,6 +66,15 @@ qualifies the next real native preparation, publication and adoption. A second s
 checks all five retained maps and exact block/hash/parent/slot identities, with absent finality.
 No restored-root equality is promoted to retained provenance or producer-owned mutation evidence.
 
+## Cancellation before logical continuation
+
+Before the second real child, every layout cancels one actual native job immediately and one
+only after Done. Stale collection keeps the canonical/RPC lease and admission exclusion intact;
+matching collection returns only `Cancelled`. Any skipped raw input is retired after that release.
+The prior fully qualified logical state stays untouched throughout both leases and still names
+the unchanged canonical parent. Preparing the same signed child afresh then completes logical
+continuation and installation normally; cancellation grants no successful logical prefix.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable

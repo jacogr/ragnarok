@@ -58,6 +58,13 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int) {.raises.} =
     let child = if index == 0:
         fixture.source.round.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value.value.admitted.admittedBlock
       else: currentEmptyChild(owner.chainView.bestBlock.value)
+    if index == 1:
+      # Retain the fully qualified prior logical owner across both real cancellation lifetimes, then prepare the same signed child successfully.
+      for afterDone in [false, true]:
+        owner.cancelLogicalChild(input, child, policies, afterDone)
+        assert sameStateSnapshot(before, owner.stateSnapshot.value)
+        assert sameStateSnapshot(before, logical.logicalProducer.currentUpdateState)
+        assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
     let update = owner.collectLogicalChild(input, child, policies)
     let identities = if index == 0:
         preserveCurrentIdentities(parent, update, currentIdentityTestLimits)
