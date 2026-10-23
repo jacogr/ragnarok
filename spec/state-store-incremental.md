@@ -38,10 +38,11 @@ checked optimized ARC/Clang/LTO build and maintained crypto observer. Compare id
 inputs after integration; report memory tradeoffs explicitly. Occupied/peak bytes are live memory
 observations, not total allocation counts. These counters make no wall-clock latency claim.
 
-Disk adoption, journal/checkpoint/canonical-head atomicity, durable pin policy, full/light startup
-selection and all other consumer adoption remain separately gated. This tranche adds no M1 or
-complete state-serialization claim. No public StateStore backend selector or alternate execution
-path is introduced.
+This in-memory tranche did not introduce disk publication, canonical-head atomicity or a
+StateStore backend selector. The subsequently authorized disk and managed adoption are recorded
+in [the disk contract](disk-state-store.md) and [managed integration contract](managed-disk-integration.md).
+Their consumer evidence remains separate from trie verification. Full/light semantics and M1/complete
+state-serialization claims are unchanged.
 
 ## In-memory adoption
 
@@ -131,5 +132,6 @@ counts, RSS, throughput or wall-clock latency claims. Descriptor merging remains
 reducing the measured memory cost needs a separately justified representation change.
 
 All stated evidence is local to this checked profile. Exact-head Linux CI remains separate.
-The scoped three-PR in-memory tranche is complete; disk/canonical-head integration and startup
-configuration remain deferred, and the existing M1/serialization completion gates are unchanged.
+The scoped three-PR in-memory tranche is complete. Subsequent disk/canonical-head integration
+and startup configuration follow the linked disk and managed contracts; they are no longer
+deferred by this historical tranche. Existing M1/serialization completion gates are unchanged.
