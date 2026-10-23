@@ -67,14 +67,55 @@ proc scenario(fixture: NamespaceExecutionFixture) {.raises.} =
   assert owner.preparationAvailable and owner.stateProofAvailable
   assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
   let update = completed.currentValue.value
+  # Qualification runs on the open host gate; none of these refusals may enqueue or publish the genuine successor.
+  let foreignProfile = captureParentProfile(fixture.parent, parentProfileTestLimits).value
+  let foreignGlobals = qualifyParentGlobals(foreignProfile, parentGlobalsTestLimits).value
+  let foreignServices = fixture.executableNamespaceServices(
+      foreignProfile.parentContext.value.state)
+  let foreignParent = captureLogicalParent(foreignGlobals, foreignServices,
+      suppliedLogicalTestLimits).value
+  assert array[32, byte](foreignProfile.parentContext.value.state.commitment.root) == array[32,
+      byte](before.commitment.root)
+  assert preserveCurrentIdentities(foreignParent, update, currentIdentityTestLimits).error ==
+      CurrentIdentityError.ParentMismatch
+  let finalized = owner.chainView.finalizeView(head)
+  assert finalized.error == ViewFinalizeError.None
+  let alteredProfile = captureParentProfile(finalized.value, parentProfileTestLimits).value
+  let alteredGlobals = qualifyParentGlobals(alteredProfile, parentGlobalsTestLimits).value
+  let alteredParent = captureLogicalParent(alteredGlobals, declarations,
+      suppliedLogicalTestLimits).value
+  assert sameStateSnapshot(alteredProfile.parentContext.value.state, before)
+  assert preserveCurrentIdentities(alteredParent, update, currentIdentityTestLimits).error ==
+      CurrentIdentityError.ViewMismatch
+  var identityLimits = currentIdentityTestLimits
+  identityLimits.keys = ElementLimit(0)
+  assert preserveCurrentIdentities(parent.value, update, identityLimits).error ==
+      CurrentIdentityError.LimitExceeded
   let identities = preserveCurrentIdentities(parent.value, update, currentIdentityTestLimits)
   assert identities.error == CurrentIdentityError.None
   let keys = captureCurrentRequestKeys(identities.value, namespaceRequestLimits)
   assert keys.error == CurrentRequestKeyError.None
+  var keyLimits = namespaceRequestLimits
+  keyLimits.requests = ElementLimit(0)
+  assert captureCurrentRequestKeys(identities.value, keyLimits).error ==
+      CurrentRequestKeyError.LimitExceeded
+  var reconstructionLimits = namespaceRefreshLimits
+  reconstructionLimits.projection.bytes = ByteLimit(0)
+  let refusedCopy = planCurrentRefresh(keys.value, reconstructionLimits)
+  assert refusedCopy.error == CurrentRefreshPlanError.LimitExceeded
+  assert refusedCopy.refusedPhase == CurrentRefreshRefusal.Projection
   let reconstruction = planCurrentRefresh(keys.value, namespaceRefreshLimits)
   assert reconstruction.error == CurrentRefreshPlanError.None
   let plan = planCurrentLogicalRefresh(reconstruction.value, namespaceLogicalLimits())
   assert plan.error == LogicalRefreshPlanError.None
+  var logicalLimits = namespaceLogicalLimits()
+  logicalLimits.retainedBytes = ByteLimit(0)
+  let refusedLogical = planCurrentLogicalRefresh(reconstruction.value, logicalLimits)
+  assert refusedLogical.error == LogicalRefreshPlanError.LimitExceeded
+  assert refusedLogical.refusedPhase == LogicalRefreshRefusal.Retention
+  assert sameStateSnapshot(before, owner.stateSnapshot.value)
+  assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
+  assert owner.preparationAvailable and owner.stateProofAvailable
   let logical = executeCurrentLogicalRefresh(plan.value)
   assert logical.error == LogicalRefreshError.None
   assert sameStateSnapshot(logical.value.logicalProducer.currentUpdateState,

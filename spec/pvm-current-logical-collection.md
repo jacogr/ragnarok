@@ -25,6 +25,15 @@ Run `make unit SUITE=pvm_current_logical_collection` and `make check-inventory`.
 The shared chainspec helper also accepts an original `BlockSnapshot`; existing fixture callers
 forward to that serializer without changing output.
 
+## Collected-successor refusal controls
+
+At the actual post-collection boundary, an equal-root fixture parent with a different physical
+owner refuses `ParentMismatch`. A finalized view of the exact same Services state refuses
+`ViewMismatch` because its finality differs from the prepared original view. Zero identity-key,
+request-key, reconstruction-descriptor and retained-logical budgets refuse at their exact typed
+stages. Every refusal leaves canonical ownership unchanged and the handoff idle. The original
+successful policies still qualify and install the genuine successor afterward.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
