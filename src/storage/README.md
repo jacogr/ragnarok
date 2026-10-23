@@ -101,6 +101,11 @@ image independently of the native lease, refusing fresh access after IO uncertai
 See the [retrieval contract](../../spec/storage-light-proof-retrieval.md) for ownership,
 resource bounds and recovery coverage.
 
+Batch `prove(keys, LightProofBatchLimits)` scans canonical headers once and returns detached
+proofs in request order. It bounds query scratch, traversal, individual proofs and aggregate
+output, refusing the whole batch for unknown/duplicate evidence or exceeded limits.
+See the [batch retrieval contract](../../spec/storage-light-proof-batches.md).
+
 ## Boundaries and ownership
 
 The trie reuses GP 0.8.0 key/node encodings and crypto primitives. The existing complete-map

@@ -19,6 +19,12 @@ type
   LightProofReadLimits* = object ## Bound examined canonical entries and detached proof output independently.
     entries*: ElementLimit
     proof*: StateProofLimits
+  LightProofBatchLimits* = object ## Bound query sorting, one canonical scan and complete detached proof output.
+    queries*: ElementLimit
+    entries*: ElementLimit
+    nodes*: ElementLimit
+    valueBytes*: ByteLimit
+    proof*: StateProofLimits
   LightSnapshotError* {.pure.} = enum ## Default/refused images expose no bytes, cache or partial proof prefix.
     Uninitialized, None, InvalidFormat, WrongChain, WrongRoot, LimitExceeded,
     LengthOverflow, ChecksumMismatch, ProofFailure, BackendFailure
@@ -39,6 +45,12 @@ type
   KeyIndex = object ## Fixed key/source positions sort untrusted transport without copying proof buffers.
     key: StateKey
     index: int
+  ProofReadIndex = object ## Sorted query descriptors record validated payload spans without copying evidence.
+    key: StateKey
+    index: int
+    offset: int
+    nodes: int
+    size: int
 func error*[T](outcome: LightSnapshotResult[T]): LightSnapshotError =
   ## Inspect only a completed operation's reason.
   outcome.status
@@ -163,6 +175,78 @@ proc grow(size: var uint64, amount, maximum: uint64): bool =
   if size > maximum or amount > maximum-size: return false
   size += amount
   true
+proc compareRead(left, right: ProofReadIndex): int =
+  ## Sort query identities while preserving each caller-requested output position.
+  compareKey(left.key, right.key)
+proc prove*(snapshot: PreparedLightSnapshot, keys: openArray[StateKey],
+    limits: LightProofBatchLimits): LightSnapshotResult[seq[LightStateProof]] =
+  ## Preflight all requested evidence in one scan, then detach complete proofs in caller order without hashing.
+  let owner = snapshot.owner
+  if owner == nil:
+    return LightSnapshotResult[seq[LightStateProof]](status: LightSnapshotError.Uninitialized)
+  if uint64(keys.len) > uint64(limits.queries):
+    return LightSnapshotResult[seq[LightStateProof]](status: LightSnapshotError.LimitExceeded)
+  if keys.len > high(int) div sizeof(ProofReadIndex) or keys.len > high(int) div sizeof(LightStateProof):
+    return LightSnapshotResult[seq[LightStateProof]](status: LightSnapshotError.LengthOverflow)
+  var ordered = newSeq[ProofReadIndex](keys.len)
+  for index, key in keys: ordered[index] = ProofReadIndex(key: key, index: index)
+  ordered.sort(compareRead)
+  for index in 1..<ordered.len:
+    # Duplicate output would charge/copy the same evidence twice; reject before scanning the image.
+    if compareKey(ordered[index-1].key, ordered[index].key) == 0:
+      return LightSnapshotResult[seq[LightStateProof]](status: LightSnapshotError.ProofFailure,
+          proofReason: LightCacheError.DuplicateKey)
+  let stop = owner.encoded.len-32
+  var cursor = HeaderBytes
+  var slot = 0
+  var examined = 0'u64
+  var totalNodes = 0'u64
+  var totalValues = 0'u64
+  while slot < ordered.len:
+    # End-of-image and sorted gaps establish unknown evidence, never an authenticated absence.
+    if cursor == stop:
+      return LightSnapshotResult[seq[LightStateProof]](status: LightSnapshotError.ProofFailure,
+          proofReason: LightCacheError.UnknownKey)
+    if examined >= uint64(limits.entries):
+      return LightSnapshotResult[seq[LightStateProof]](status: LightSnapshotError.LimitExceeded)
+    inc examined
+    assert cursor <= stop and stop-cursor >= EntryBytes
+    let order = compareKey(readKey(owner.encoded, cursor), ordered[slot].key)
+    if order > 0:
+      return LightSnapshotResult[seq[LightStateProof]](status: LightSnapshotError.ProofFailure,
+          proofReason: LightCacheError.UnknownKey)
+    let count = number(owner.encoded, cursor+31, 2)
+    let size = number(owner.encoded, cursor+33)
+    cursor += EntryBytes
+    assert count <= 249 and count <= uint64((stop-cursor) div 64)
+    let nodeBytes = int(count)*64
+    assert size <= uint64(stop-cursor-nodeBytes)
+    if order == 0:
+      # Bound the complete selected output before any proof buffer or result sequence is allocated.
+      if count > uint64(limits.proof.nodes) or size > uint64(limits.proof.valueBytes):
+        return LightSnapshotResult[seq[LightStateProof]](status: LightSnapshotError.LimitExceeded)
+      if not grow(totalNodes, count, uint64(limits.nodes)) or
+          not grow(totalValues, size, uint64(limits.valueBytes)):
+        return LightSnapshotResult[seq[LightStateProof]](status: LightSnapshotError.LimitExceeded)
+      ordered[slot].offset = cursor
+      ordered[slot].nodes = int(count)
+      ordered[slot].size = int(size)
+      inc slot
+    cursor += nodeBytes+int(size) # Each canonical entry is examined once, independent of request order.
+  var output = newSeq[LightStateProof](keys.len)
+  for entry in ordered:
+    # All queries and aggregate limits passed; immutable recorded spans safely supply detached output.
+    var offset = entry.offset
+    var nodes = newSeq[EncodedStateNode](entry.nodes)
+    for index in 0..<entry.nodes:
+      var raw = default(array[64, byte])
+      for octet in 0..<64: raw[octet] = owner.encoded[offset+octet]
+      nodes[index] = EncodedStateNode(raw)
+      offset += 64
+    var value = newSeq[byte](entry.size)
+    for index in 0..<entry.size: value[index] = owner.encoded[offset+index]
+    output[entry.index] = LightStateProof(key: entry.key, proof: StateProof(nodes: nodes, value: value))
+  LightSnapshotResult[seq[LightStateProof]](status: LightSnapshotError.None, completed: output)
 proc prepareLightSnapshot*(chain: StorageChainId, root: StateRoot,
     proofs: openArray[LightStateProof], limits: LightSnapshotLimits): LightSnapshotResult[
         PreparedLightSnapshot] =

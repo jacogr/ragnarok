@@ -210,6 +210,97 @@
       "name": "storage-light-snapshot-proof-limited",
       "diagnostic": "outcome.status == None",
       "description": "Detached proof limited result guard"
+    },
+    {
+      "identity": {
+        "member": "batch",
+        "origin": "default"
+      },
+      "arguments": [
+        "batch",
+        "default"
+      ],
+      "name": "storage-light-snapshot-batch-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Batch proof default result guard"
+    },
+    {
+      "identity": {
+        "member": "batch",
+        "origin": "uninitialized"
+      },
+      "arguments": [
+        "batch",
+        "uninitialized"
+      ],
+      "name": "storage-light-snapshot-batch-uninitialized",
+      "diagnostic": "outcome.status == None",
+      "description": "Batch proof uninitialized result guard"
+    },
+    {
+      "identity": {
+        "member": "batch",
+        "origin": "unknown"
+      },
+      "arguments": [
+        "batch",
+        "unknown"
+      ],
+      "name": "storage-light-snapshot-batch-unknown",
+      "diagnostic": "outcome.status == None",
+      "description": "Batch proof unknown result guard"
+    },
+    {
+      "identity": {
+        "member": "batch",
+        "origin": "limited"
+      },
+      "arguments": [
+        "batch",
+        "limited"
+      ],
+      "name": "storage-light-snapshot-batch-limited",
+      "diagnostic": "outcome.status == None",
+      "description": "Batch proof limited result guard"
+    },
+    {
+      "identity": {
+        "member": "batch",
+        "origin": "duplicate"
+      },
+      "arguments": [
+        "batch",
+        "duplicate"
+      ],
+      "name": "storage-light-snapshot-batch-duplicate",
+      "diagnostic": "outcome.status == None",
+      "description": "Batch proof duplicate result guard"
+    },
+    {
+      "identity": {
+        "member": "batch-reason",
+        "origin": "default"
+      },
+      "arguments": [
+        "batch-reason",
+        "default"
+      ],
+      "name": "storage-light-snapshot-batch-reason-default",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Batch proof default reason guard"
+    },
+    {
+      "identity": {
+        "member": "batch-reason",
+        "origin": "success"
+      },
+      "arguments": [
+        "batch-reason",
+        "success"
+      ],
+      "name": "storage-light-snapshot-batch-reason-success",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Batch proof success reason guard"
     }
   ]
 }

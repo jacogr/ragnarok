@@ -13,6 +13,22 @@ proc main() =
     items: ElementLimit(8), proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(256))))
   let complete = prepareLightSnapshot(default(StorageChainId), default(StateRoot), [], policy)
   assert complete.error == LightSnapshotError.None
+  if member == "batch" or member == "batch-reason":
+    # Dynamic batch outcomes require a guarded complete sequence and a separately selected proof reason.
+    let key = default(StateKey)
+    let absent = LightStateProof(key: key)
+    let retained = prepareLightSnapshot(default(StorageChainId), default(StateRoot), [absent], policy).value
+    let bounds = LightProofBatchLimits(queries: ElementLimit(2), entries: ElementLimit(1))
+    let selected = if origin == "default": default(LightSnapshotResult[seq[LightStateProof]])
+      elif origin == "uninitialized": default(PreparedLightSnapshot).prove([key], bounds)
+      elif origin == "unknown": complete.value.prove([key], bounds)
+      elif origin == "limited": retained.prove([key], default(LightProofBatchLimits))
+      elif origin == "duplicate" or (member == "batch-reason" and origin == "valid"):
+        retained.prove([key, key], bounds)
+      else: retained.prove([key], bounds)
+    if member == "batch-reason": echo selected.proofError
+    else: echo selected.value.len
+    return
   if member == "proof":
     # Dynamic outcomes instantiate the detached proof result guard for every refusal class.
     let absent = LightStateProof(key: default(StateKey))
