@@ -12,12 +12,14 @@ import ../../support/[collected_native_context, collected_logical_context,
   accumulation_execution_context, accumulation_current_candidate_context,
   current_identity_context, application_download_chain, pvm_accumulation_program, arc_evidence]
 import ../../../src/app/[chain, candidate, preparation_worker, current_block_input]
-import ../../../src/state/[logical_continuation, service_identity_history,
+import ../../../src/state/[accumulation_current_driver, accumulation_current_sequence,
+   logical_continuation,
+  service_identity_history,
   accumulation_current_update, accumulation_storage_history, request_identity_history,
   accumulation_effects, accumulation_round, accumulation_queue, report_admission,
   block_transition, block_admission, current_logical, current_identities,
   supplied_logical_inventory, supplied_services, store]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_requests]
+import ../../../src/codec/[bounded, composite, report_owned, state_accounts, state_layout, state_requests]
 import ../../../src/chain/[provider, genesis]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Early planning ceilings must refuse independently of crypto availability.
@@ -129,6 +131,35 @@ proc main() {.raises.} =
         let deleted = history.serviceIdentityDeletionAt(ServiceDeletionIndex(0)).value
         assert uint32(created.fact.service) == 99 and uint32(deleted.fact.service) == 99
         assert uint64(created.fact.ordinal) > uint64(deleted.fact.ordinal)
+  var sequentialPolicy = candidatePolicy()
+  sequentialPolicy.round.blockGas = Gas(200000)
+  let sequential = namespaceSequentialReplacementFixture(nativeBase(), sequentialPolicy)
+  let selected = sequential.update.currentUpdateServiceIdentityHistory
+  assert selected.serviceIdentityHistoryInfo.value.creations == 1
+  assert selected.serviceIdentityHistoryInfo.value.deletions == 1
+  let producer = selected.serviceIdentityHistorySource.value
+  assert producer.completedSequenceInfo.value.entries == 2
+  let creation = selected.serviceIdentityCreationAt(ServiceCreationIndex(0)).value
+  let deletion = selected.serviceIdentityDeletionAt(ServiceDeletionIndex(0)).value
+  assert uint64(deletion.entry) < uint64(creation.entry)
+  let continuedSequence = check(Fixture(origin: sequential, update: sequential.update), 2)
+  let declarations = copySuppliedServices(continuedSequence.currentLogicalInventory.value, policy().projection).value
+  var selectedReplacement = false
+  for service in declarations:
+    if uint32(service.service) == 99:
+      assert service.requests.len == 1 and service.preimages.len == 0 and service.storage.len == 0
+      assert uint32(service.requests[0].length) == 0
+      assert service.requests[0].history.state == RequestState.Requested
+      selectedReplacement = true
+  assert selectedReplacement
+  assert continueCurrentStorage(sequential.parent, sequential.update, policy()).error ==
+      LogicalContinuationError.UnsupportedChange
+  var missingPolicy = sequentialPolicy
+  missingPolicy.serviceIdentities = default(ServiceIdentityHistoryLimits)
+  let missingSequence = namespaceSequentialReplacementFixture(nativeBase(), missingPolicy)
+  let missingContinuation = continueCurrentNamespaces(missingSequence.parent,
+    missingSequence.update, policy())
+  assert missingContinuation.error == LogicalContinuationError.UnsupportedChange
   let grown = fixture()
   let continued = check(grown, 3)
   let created = grown.update.currentUpdateServiceIdentityHistory.serviceIdentityCreationAt(
