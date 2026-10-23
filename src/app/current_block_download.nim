@@ -5,7 +5,8 @@
 ## Native callbacks copy bytes/observe FIN; producers explicitly enqueue or lend Ready input to a joined worker later.
 
 import std/assertions
-import ./[chain, candidate, current_block_input, services, current_handoff, preparation_worker]
+import ./[chain, candidate, current_block_input, services, current_handoff, preparation_worker,
+    current_logical_download]
 import ../chain/[genesis, provider]
 import ../codec/[bounded, header]
 import ../state/[report_anchors, store, accumulation_current_update]
@@ -17,7 +18,9 @@ type
   CurrentBlockDownloadError* {.pure.} = enum ## Successful framing is distinct from a usable finalized successor.
     Uninitialized, None, Busy, MissingHead, ProfileMismatch, LimitExceeded, InvalidAncestor,
     Exhausted, StaleDownload, NotReady, Truncated, Trailing, EmptyResponse, InputFailure,
-    PreparationFailure, WorkerStartupFailure, WorkerFailure, Cancelled, HandoffFailure, NeedsAncestors
+    PreparationFailure, WorkerStartupFailure, WorkerFailure, Cancelled, HandoffFailure,
+      NeedsAncestors,
+    LogicalFailure
   CurrentBlockDownloadFailure* = object ## Only the actual selected failed child is retained; no successful prefix survives refusal.
     case status: CurrentBlockDownloadError
     of InputFailure:
@@ -28,6 +31,8 @@ type
       workerReason: PreparationError
     of HandoffFailure:
       handoffReason: CurrentHandoffAdmission
+    of LogicalFailure:
+      logicalReason: CurrentLogicalDownloadResult
     else:
       discard # Plain framing/readiness reasons retain no child owners.
   CurrentBlockDownloadResult*[T] = object ## Defaults are failures; only checked success authorizes generation/request/certificate access.
@@ -44,6 +49,8 @@ type
       ancestors: seq[OwnedHeader]
       resources: CurrentBlockInputLimits
       policies: CurrentCandidateLimits
+      qualifyLogical: bool
+      logicalPolicy: CurrentLogicalDownloadPolicy
       request: array[42, byte]
       header: array[4, byte]
       headerBytes, claimed, received: int
@@ -59,6 +66,7 @@ type
     pending: PendingCurrentDownload
     input: CurrentBlockInput
     ticket: PreparationTicket
+    logicalResult: CurrentLogicalDownloadResult
 
 proc `=copy`*(destination: var CurrentBlockDownload,
     source: CurrentBlockDownload) {.error: "CurrentBlockDownload owns reception".}
@@ -75,6 +83,7 @@ proc `=destroy`*(download: CurrentBlockDownload) =
   `=destroy`(download.pending)
   `=destroy`(download.input)
   `=destroy`(download.ticket)
+  `=destroy`(download.logicalResult)
 proc `==`*(left, right: CurrentBlockDownloadId): bool {.borrow.}
   ## Compare only generations from this receiver's lifetime.
 
@@ -123,6 +132,15 @@ func handoffError*(reason: CurrentBlockDownloadFailure): CurrentHandoffAdmission
     requires: reason.status == CurrentBlockDownloadError.HandoffFailure.} =
   ## Preserve only an actual host enqueue refusal after execution has retired.
   reason.handoffReason
+
+func logicalFailure*(reason: CurrentBlockDownloadFailure): CurrentLogicalDownloadResult {.inline,
+    requires: reason.status == CurrentBlockDownloadError.LogicalFailure.} =
+  ## Only an actual failed post-collection qualification exposes its exact State stage.
+  reason.logicalReason
+func logicalCompletion*(download: CurrentBlockDownload): CurrentLogicalDownloadResult {.inline,
+    requires: download.stage == CurrentBlockDownloadStage.Idle.} =
+  ## Observe the qualified result only after successful enqueue; default/nonlogical generations expose Uninitialized.
+  download.logicalResult
 
 func refused[T](reason: CurrentBlockDownloadError): CurrentBlockDownloadResult[T] =
   ## Construct a plain refusal without a successful payload or unrelated child error.
@@ -174,6 +192,7 @@ proc begin*(download: var CurrentBlockDownload, chain: ApplicationChain,
   for index, octet in array[32, byte](head.blockHash): request[5 +
       index] = octet # The captured head alone supplies the start hash.
   request[38] = 1 # Direction zero and E4 maximum one; all other fixed bytes were initialized to zero.
+  download.logicalResult = default(CurrentLogicalDownloadResult) # A new admitted generation retires any previous host-only completion.
   inc download.next
   let id = CurrentBlockDownloadId(download.next)
   download.pending = PendingCurrentDownload(status: CurrentBlockDownloadStage.Receiving, id: id,
@@ -190,6 +209,18 @@ proc begin*(download: var CurrentBlockDownload, owner: Services, ancestors: open
   if chain.error != ApplicationChainError.None:
     return refused[CurrentBlockDownloadId](CurrentBlockDownloadError.MissingHead) # Closed/default services have no requested head.
   download.begin(chain.value, ancestors, resources, policies)
+
+proc begin*(download: var CurrentBlockDownload, owner: Services, ancestors: openArray[OwnedHeader],
+    resources: CurrentBlockInputLimits, policies: CurrentCandidateLimits,
+    logical: CurrentLogicalDownloadPolicy): CurrentBlockDownloadResult[CurrentBlockDownloadId] =
+  ## Opt in before worker submission; the immutable source/policy stays untouched until matching collection or joined retirement.
+  if not owner.preparationAvailable:
+    return refused[CurrentBlockDownloadId](CurrentBlockDownloadError.Busy) # Inspect no shared canonical/logical owner while another managed lease is active.
+  let admitted = download.begin(owner, ancestors, resources, policies)
+  if admitted.error == CurrentBlockDownloadError.None:
+    download.pending.qualifyLogical = true
+    download.pending.logicalPolicy = logical # Retain only after complete generation admission on the open host gate.
+  admitted
 
 proc request*(download: CurrentBlockDownload, id: CurrentBlockDownloadId): CurrentBlockDownloadResult[
     array[42, byte]] =
@@ -341,6 +372,15 @@ proc collectPreparation*(download: var CurrentBlockDownload, id: CurrentBlockDow
     discard download.fail(reason)
     return CurrentBlockDownloadResult[PreparedCurrentChainUpdate](successful: false,
         refused: reason)
+  var logical = default(CurrentLogicalDownloadResult)
+  if download.pending.qualifyLogical:
+    logical = qualifyCurrentDownload(download.pending.logicalPolicy, prepared.value)
+    if logical.error != CurrentLogicalDownloadError.None:
+      let reason = CurrentBlockDownloadFailure(status: CurrentBlockDownloadError.LogicalFailure,
+          logicalReason: logical)
+      discard download.fail(reason) # Matching collection already ended the lease; no failed logical prefix reaches the handoff.
+      return CurrentBlockDownloadResult[PreparedCurrentChainUpdate](successful: false,
+          refused: reason)
   let queued = owner.enqueueCurrentAccumulation(prepared.value)
   if queued != CurrentHandoffAdmission.None:
     let reason = CurrentBlockDownloadFailure(status: CurrentBlockDownloadError.HandoffFailure,
@@ -348,6 +388,7 @@ proc collectPreparation*(download: var CurrentBlockDownload, id: CurrentBlockDow
     discard download.fail(reason)
     return CurrentBlockDownloadResult[PreparedCurrentChainUpdate](successful: false,
         refused: reason)
+  download.logicalResult = logical # Publish logical completion only after the exact genuine update was successfully enqueued.
   download.pending = default(PendingCurrentDownload) # All worker aliases retired before host adoption owns the certificate.
   CurrentBlockDownloadResult[PreparedCurrentChainUpdate](successful: true,
       completed: prepared.value)
