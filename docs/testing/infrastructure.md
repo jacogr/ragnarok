@@ -90,11 +90,11 @@ the exact build profile; workers reuse only their own compatible intermediates. 
 advisory lock serializes standalone and cumulative unit invocations through evidence validation, including exceptional exits. Cumulative runs log
 the active batch and its elapsed time.
 
-CI partitions the discovered batch plan across eight bounded jobs, keeping each job's
+CI partitions the discovered batch plan across twelve bounded jobs, keeping each job's
 linked/resource work sequential. Shards prepare only their selected native dependencies and
 fixture providers, reusing sibling manifests from each provider once. Codec discovery belongs only to the first
 partition and independent corpora only to the last; no tests or corpora are duplicated.
-`UNIT_SHARD=index/count make check-unit` selects the same source-derived scope locally; plain `make check-unit` remains complete. Each shard
+`UNIT_SHARD=index/count make check-unit` selects the same source-derived scope locally (up to twelve partitions); plain `make check-unit` remains complete. Each shard
 validates its exact expected identities and reports its scope, and a stable aggregate PR check
 requires every shard to succeed. The 30-minute job limits and individual command timeouts remain
 unchanged.

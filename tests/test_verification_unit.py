@@ -75,21 +75,21 @@ class VerificationUnit(unittest.TestCase):
 
     # A shard must contain exactly its discovered suites and only its assigned independent corpora.
     def test_partition_verdicts(self):
-        for index in range(1, 9):
+        for index in range(1, 13):
             # Every partition rejects omissions, duplicate substitutions, failed rows and foreign scope.
             with self.subTest(index=index):
-                batches, corpora = test_runtime.unit_partition((index, 8))
+                batches, corpora = test_runtime.unit_partition((index, 12))
                 names = [name for _, members, _ in batches for name in members]
                 rows = [dict(name=name, passed=True) for name in names]
-                report = dict(unit_shard=[index, 8], suites=rows,
+                report = dict(unit_shard=[index, 12], suites=rows,
                               **{name: dict(passed=True) for name in test_runtime.CORPUS_NAMES if corpora})
                 self.assertTrue(test_runtime.unit_passed(report))
                 self.assertFalse(test_runtime.unit_passed({**report, 'suites': rows[1:]}))
                 self.assertFalse(test_runtime.unit_passed({**report, 'suites': rows[:-1]+[rows[0]]}))
                 self.assertFalse(test_runtime.unit_passed({**report, 'suites': [dict(name=names[0], passed=False)]+rows[1:]}))
-                self.assertFalse(test_runtime.unit_passed({**report, 'unit_shard': [0, 8]}))
+                self.assertFalse(test_runtime.unit_passed({**report, 'unit_shard': [0, 12]}))
                 self.assertFalse(test_runtime.unit_passed({**report, 'extra_corpus': dict(passed=True)}))
-                self.assertFalse(test_runtime.unit_passed({**report, 'unit_shard': [index % 8 + 1, 8]}))
+                self.assertFalse(test_runtime.unit_passed({**report, 'unit_shard': [index % 12 + 1, 12]}))
                 if corpora:
                     # The one corpus-owning shard cannot omit a corpus or mask its failed result.
                     key = test_runtime.CORPUS_NAMES[0]
@@ -101,8 +101,8 @@ class VerificationUnit(unittest.TestCase):
     # A successful subset summary must visibly identify the partition that actually ran.
     def test_partition_summary_scope(self):
         from summarize_tests import summarize
-        report = dict(unit_shard=[2, 8], status='checks-passed', suites=[dict(name='fixture', passed=True)])
-        self.assertIn('shard 2/8', summarize(report, 'runtime'))
+        report = dict(unit_shard=[2, 12], status='checks-passed', suites=[dict(name='fixture', passed=True)])
+        self.assertIn('shard 2/12', summarize(report, 'runtime'))
 
     # Failures retain complete execution; invalid shard requests stop before compiler/setup work.
     def test_invalid_partition_cli(self):

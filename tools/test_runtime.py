@@ -140,7 +140,7 @@ def main():
     parser.add_argument('--compiler', type=Path, required=True)
     parser.add_argument('--group', choices=('unit', 'failures'), default='unit')
     parser.add_argument('--unit-shard', type=parse_unit_shard, default=os.environ.get('UNIT_SHARD'),
-                        help='Run one discovered unit partition, index/count (at most eight)')
+                        help='Run one discovered unit partition, index/count (at most twelve)')
     parser.add_argument('--failure-shard', type=parse_failure_shard, default=os.environ.get('FAILURE_SHARD'),
                         help='Run one discovered contract partition, index/count (at most four)')
     args = parser.parse_args()
