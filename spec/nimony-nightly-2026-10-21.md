@@ -293,3 +293,30 @@ above; this increment ran the affected native result guards. Local runtime evide
 macOS ARM64; Linux semantic checks do not establish Linux linking/runtime success. Raw local
 evidence is under ignored `build/ci/nimony-storage-transfer-*`. The PR remains held for the
 published sequence-copy fix, with remaining workaround probes to recheck after the next nightly.
+
+
+## Additional PVM synchronization on the October 22 pin
+
+Merge master `e76fc43483bdbc6d83d79dc0bb2ab2510613aa30` normally (merge `3856a8b9`),
+covering 30 additional PVM merges. All 100 incoming files remain byte-identical to master.
+This includes the production current-download loop's managed-maintenance wait and the new
+consecutive-adoption, preimage-delivery, ancestry and validator-rotation qualification. No new
+compiler compatibility edits were necessary. Keep compiler/browser pin `8cb7a690a`, all earlier
+workaround adaptations and the sequence-element copy-hook hold for #2737 unchanged.
+
+All 360 production modules, 12 affected Python executable-harness tests and all 19 incoming
+native PVM suites passed. The shipped integration/offload binary built with checked
+ARC/Clang/LTO. The four source-owned executable workloads passed all 24 cases: 11 consecutive
+current-download cases, four nonempty-preimage cases, four original-ancestry acquisition cases
+and five validator-rotation cases. Their existing independent TLS/map witnesses, fixture hashes,
+request counts, durable-history checks, restart and refusal verdicts were retained. Inventory,
+pinned formatting of all 31 incoming Nim files and the Linux x86-64 semantic check of
+`current_block_download_loop.nim` passed. Diff checks passed.
+
+These are selected compatibility/runtime results on macOS ARM64. No full E2E plan, new storage
+performance measurement or Linux runtime run is claimed. Earlier broad Python/compiler-guard
+results retain their explicitly recorded source scope. Raw evidence is under ignored
+`build/ci/nimony-pvm-sequence-*`, including exact incoming-tree preservation and per-workload
+JSON reports. The next bounded compiler task remains qualification of a published nightly
+containing #2737, followed by rechecking the remaining workaround probes and drafting any
+still-needed minimal reports for maintainer submission.
