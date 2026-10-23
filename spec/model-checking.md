@@ -145,3 +145,22 @@ that cancellation of the first job cannot contaminate the next admission. Mutant
 generation checking, remove owner checking or retain the previous cancellation flag. The
 witness reaches an uncancelled second Done job after restart. Active close/join and temporary
 ARC aliases remain in the preparation lifecycle model; exact uint64 exhaustion remains native.
+
+## Two-worker proof offload pool
+
+`quic_offload_pool.nif` maps the enabled `src/quic/offload.nim` implementation's
+`worker`, `submitPool`, `cancelPool`, `collectPool` and `stopPool`. It keeps the real two
+workers and four-slot limit. One distinguished job retains phase and cancellation identity;
+interchangeable other slots are counted as queued, worker-owned Running or uncollected Done.
+Slot ordering and payloads are abstracted because the checked properties concern ownership
+and occupancy. Each locked claim, unlocked synchronous verification, locked completion,
+cancellation, stop observation and join is a separate transition.
+
+The invariant bounds total occupancy, forbids two workers from claiming the distinguished
+job, and prevents cancellation/shutdown from freeing its Running slot before native return.
+Both workers must exit before joined retirement. Mutants duplicate a Running claim, reuse a
+cancelled Running slot, free that slot during stop or omit Done from admission accounting.
+The witness first saturates the real capacity and then reaches shutdown with both workers
+still owning jobs, retaining the cancelled distinguished slot. Native/E2E checks retain crypto
+correctness, immutable bytes, setup failures, explicit held-gate behavior and generation IDs.
+The base explores 274 states under the unchanged 10,000-state cap; all four mutants are killed.

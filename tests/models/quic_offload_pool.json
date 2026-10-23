@@ -1,0 +1,50 @@
+{
+  "cases": [
+    {
+      "name": "base",
+      "role": "base",
+      "assignments": {},
+      "expected": "pass"
+    },
+    {
+      "name": "duplicate-running-slot-claim",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "1"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "cancel-reuses-running-slot",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "2"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "stop-releases-running-slot",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "3"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "done-does-not-count-toward-capacity",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "4"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "reachable-saturated-two-worker-shutdown",
+      "role": "witness",
+      "assignments": {
+        "Witness": "(true)"
+      },
+      "expected": "violated"
+    }
+  ]
+}
