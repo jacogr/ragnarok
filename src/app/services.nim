@@ -23,6 +23,8 @@ import ../state/supplied_services
 import ./logical_service_proof
 import ./logical_export
 import ./logical_checkpoint_import
+import ./logical_code
+import ../state/code_availability
 import ./logical_seed
 import ../codec/[state_composition, composite]
 import ./current_logical as collected_logical
@@ -1318,3 +1320,9 @@ proc importLogicalCheckpoint*(services: Services, source: CurrentLogicalState,
     not (services.proofing or services.preparing or services.publishing).} =
   ## Original logical/root aliases remain outside every managed native lease until actual collection or join.
   logical_checkpoint_import.importLogicalCheckpoint(source, wire, limits, wireLimit)
+
+proc auditLogicalCodeAvailability*(services: Services, source: CurrentLogicalState,
+    limits: CodeAvailabilityLimits): LogicalCodeResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Original logical/current payload aliases remain excluded until actual matching collection or joined shutdown.
+  logical_code.auditLogicalCodeAvailability(source, limits)
