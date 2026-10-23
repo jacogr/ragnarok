@@ -4,7 +4,8 @@
 ## A successful funded write followed by unaffordable host work qualifies only the selected rollback namespace.
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_mutation_context,
-    current_namespace_context, current_namespace_transition_context, current_namespace_execution_context,
+    current_namespace_context, current_namespace_transition_context,
+    current_namespace_execution_context,
     accumulation_execution_context,
     current_identity_context, supplied_services_context, pvm_accumulation_program]
 import ../../../src/app/[collected_supplied_state, preparation_worker, current_block_input]
