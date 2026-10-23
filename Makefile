@@ -20,6 +20,7 @@ export COMPILE_CHECK_JOBS ?= 4
 # Local builds retain readable assets; CI uses the native JS/CSS minifier. Override with 0 or 1.
 export UI_MINIFY ?= $(if $(filter 1 true,$(CI)),1,0)
 # Optional one-suite selection is passed through the environment, never interpolated as shell code.
+export REOPEN_PAIR_CONFIG ?=
 export SUITE ?=
 SUMMARY_OUTPUT ?= build/ci/summary.md
 # The pinned compiler supports Linux x86-64; Docker can emulate it on an ARM development host.
@@ -27,7 +28,7 @@ DOCKER ?= docker
 DOCKER_IMAGE ?= ragnarok:local
 DOCKER_PLATFORM ?= linux/amd64
 
-.PHONY: bench-storage-growth summary-storage-growth probe-storage-resident-pressure bench-storage-resident-pressure diagnose-storage-aborts summary-storage-memory-ceilings bench-storage-memory-ceilings summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: inspect-storage-reopen-pair bench-storage-growth summary-storage-growth probe-storage-resident-pressure bench-storage-resident-pressure diagnose-storage-aborts summary-storage-memory-ceilings bench-storage-memory-ceilings summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
@@ -210,6 +211,10 @@ diagnose-storage-aborts: setup
 
 bench-storage-memory-ceilings: setup
 	$(PYTHON) tools/storage_memory_ceilings.py
+
+# Inspect caller-selected frozen local artifacts without rebuilding or executing them.
+inspect-storage-reopen-pair:
+	$(PYTHON) tools/paired_storage_reopens.py --config "$${REOPEN_PAIR_CONFIG:?Set REOPEN_PAIR_CONFIG}"
 
 bench-storage-fresh-reopen: setup
 	$(PYTHON) tools/storage_fresh_reopen.py
