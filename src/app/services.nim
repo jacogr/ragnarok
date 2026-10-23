@@ -22,7 +22,7 @@ import ./frozen_supplied
 import ../state/supplied_services
 import ./logical_service_proof
 import ./logical_seed
-import ../codec/state_composition
+import ../codec/[state_composition, composite]
 import ./current_logical as collected_logical
 import ../state/[parent_logical, current_logical]
 import ./[proof_query, proof_worker]
