@@ -723,3 +723,52 @@ iterator rejection. Earlier full compiler/Python/runtime qualification retains i
 source scope; no new exhaustive fuzz, full-E2E, Linux-runtime or performance claim is made.
 The compiler pin and three remaining report drafts are unchanged. PR #971 remains open pending
 the state merge and maintainer decision; publishing requests only automatic Smoke.
+
+
+## State continuation and app timing tranche on October 23
+
+Merge master `f5bdd0fa` (15 state/app PRs plus timing fix #1342 after `1c699722`) through
+merge commit `a7403913`, retaining the qualified October 23 compiler `4724f66c2`. The incoming
+contracts cover authenticated page import, producer-owned storage/request identities and selected
+history, storage/request/service/preimage logical continuation, namespace-changing current
+downloads, identity-source refresh and joined-shutdown receipts.
+
+Five new loops in `accumulation_effects.nim` hit the same retained-ref iteration restriction.
+Use checked indexed reads for request-fact lookup/copy, storage-fact lookup/copy and detached raw
+key copying. Preserve first-touch identity rules, sticky request provenance, immutable fact sharing,
+output order and existing allocation/byte limits. Of the 155 incoming files, 153 remain byte-identical
+to master; `current_logical_startup.nim` retains its two earlier indexed-read adaptations, and only
+`accumulation_effects.nim` needs new compatibility changes. No protocol or ownership contract is
+weakened.
+
+The E2E timing fix remains byte-identical to master: the real cancellation workload stops polling
+once reset delivery is observed, and the finite Running fixture gas allowance rises from 40 million
+to 400 million after the interpreter speedups. Its actual cancellation/reset/resource workload is
+qualified separately from the native unit verdicts.
+
+
+Local macOS ARM64 qualification passes all 37 selected native suites: every changed state unit
+and the affected logical-source, durable/mutation, current-download command/loop/session/retention,
+option and proof-import consumers. All 39 incoming compiler privacy fixtures and 134 strict runtime
+misuse probes across 17 families pass. Each runtime family builds successfully before requiring
+its declared assertion diagnostic. All 153 selected Python state/reference/current-download/tooling
+checks and inventory preflight pass.
+
+Canonical debug smoke and checked-release semantic audits pass all 402 production modules plus
+the real integration/offload main. The complete Linux amd64 graph/main semantic checks pass;
+Linux runtime remains untested locally. Pinned formatting passes 4,449 Nim sources plus Rust.
+All 24 selected actual current-download executable cases pass with the rebuilt peer. The separate
+signed cancellation/reset resource workload passes all 33 joined idle observations: one idle
+thread, zero descriptor range and 10,256,384 bytes of retained RSS range, below its 16 MiB growth
+budget. This qualifies the actual timing fix without changing its source or weakening its bounds.
+
+Evidence is under ignored `build/ci/nimony-state-continuation-*`, including the original retained-ref
+diagnostics and source/profile receipts. Broader prior nightly, fuzz, package and fresh-reopen
+results retain their recorded source scope; they were not rerun for unrelated unchanged inputs.
+This is selected local runtime coverage plus Linux semantics, not full E2E or Linux runtime.
+
+All three announced storage, PVM and state merge batches are now incorporated. No additional
+compiler blocker was found. The sequence-copy hold remains resolved, while the integer-generic,
+nullable-var-call and sequence-slice adapters/report drafts remain unchanged. Leave PR #971 open
+for the maintainer's merge decision; automatic Smoke is requested on publication, without heavy
+CI labels or automatic merging.
