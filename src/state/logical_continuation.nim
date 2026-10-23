@@ -6,7 +6,7 @@ import ./[parent_logical, current_logical, current_identities, accumulation_curr
     accumulation_storage_history, accumulation_effects, supplied_logical_inventory,
     supplied_services, inventory, store, current_profile, current_globals, current_state,
     global_snapshot, request_identity_history, service_identity_history]
-import ../codec/[bounded, state_layout, state_composition, state_accounts, state_requests]
+import ../codec/[bounded, state_layout, state_composition, state_accounts, state_requests, state_service_values]
 type
   LogicalContinuationLimits* = object ## Original binding, admitted identity scratch, bounded planning and whole output/current qualification retain independent policies.
     identity*: CurrentIdentityLimits
@@ -19,11 +19,12 @@ type
   LogicalContinuationError* {.pure.} = enum ## Unsupported namespaces, missing producer capture, exact source and genuine typed qualification refusal expose no prefix.
     Uninitialized, None, InvalidParent, IdentityFailure, MissingStorageEvidence, LimitExceeded,
     UnsupportedChange, MetadataFailure, RequestFailure, ProfileFailure, GlobalsFailure,
-    StateFailure, LogicalFailure, MissingRequestEvidence
+    StateFailure, LogicalFailure, MissingRequestEvidence, PreimageFailure
   LogicalContinuationResult* = object ## Only complete original-current and raw-key requalification exposes a logical successor.
     case status: LogicalContinuationError
     of None: completed: CurrentLogicalState
     of IdentityFailure: identityReason: CurrentIdentityResult[PreservedCurrentIdentities]
+    of PreimageFailure: preimageReason: ServiceValueError
     of MetadataFailure: metadataReason: ServiceMetadataError
     of RequestFailure: requestReason: RequestError
     of ProfileFailure: profileReason: CurrentProfileResult[DerivedCurrentProfile]
@@ -43,7 +44,12 @@ type
     owner: int
     key: StateKey
     item: StateRequestItem
-    present, original, produced: bool
+    present, original, produced, removedPreimage: bool
+  PreimageIdentityRow = object ## Bounded original/request-derived full hashes are distinct from final presence and expired-forget removal evidence.
+    owner: int
+    key: StateKey
+    hash: ServicePreimageHash
+    present, original, removed: bool
   StorageIdentityRow = object ## Admitted private scratch owns raw identities; presence and evidence remain bound to this exact target.
     owner: int
     key: StateKey
@@ -61,6 +67,10 @@ func identityFailure*(outcome: LogicalContinuationResult): CurrentIdentityResult
     LogicalContinuationError.IdentityFailure.} =
   ## Preserve actual original state/view/Parameters/resource refusal; accepted identity changes never appear as a failed source prefix.
   outcome.identityReason
+func preimageError*(outcome: LogicalContinuationResult): ServiceValueError {.inline,
+    requires: outcome.status == LogicalContinuationError.PreimageFailure.} =
+  ## Preserve only a genuine canonical preimage-key derivation refusal.
+  outcome.preimageReason
 func metadataError*(outcome: LogicalContinuationResult): ServiceMetadataError {.inline,
     requires: outcome.status == LogicalContinuationError.MetadataFailure.} =
   ## Preserve exact current metadata decoding refusal.
@@ -199,6 +209,13 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
       fail(LogicalContinuationError.LimitExceeded)
     requestCapacity = info.facts+uint64(requestInfo.facts)
     scratch -= requestCapacity*uint64(sizeof(RequestIdentityRow)) # Complete worst-case request planning storage is admitted before allocation.
+  var preimageCapacity = 0'u64
+  when kind == ContinuationKind.StorageAndRequests:
+    let preimageSlots = scratch div uint64(sizeof(PreimageIdentityRow))
+    if info.facts > preimageSlots or requestCapacity > preimageSlots-info.facts:
+      fail(LogicalContinuationError.LimitExceeded)
+    preimageCapacity = info.facts+requestCapacity
+    scratch -= preimageCapacity*uint64(sizeof(PreimageIdentityRow)) # Admit every original and request-derived full-hash candidate before any output allocation.
   if raw.rawKeyBytes > scratch: fail(LogicalContinuationError.LimitExceeded)
   scratch -= raw.rawKeyBytes
   if uint64(produced.facts) > produced.bytes div uint64(sizeof(StorageHistoryRow)):
@@ -210,10 +227,13 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
   var requestKeys: seq[StateKey] = @[]
   var requestRows: seq[RequestIdentityRow] = @[]
   var requestUsed = 0
+  var preimageRows: seq[PreimageIdentityRow] = @[]
+  var preimageUsed = 0
   when kind == ContinuationKind.StorageOnly:
     requestKeys = newSeq[StateKey](int(info.facts))
   else:
     requestRows = newSeq[RequestIdentityRow](int(requestCapacity))
+    preimageRows = newSeq[PreimageIdentityRow](int(preimageCapacity))
   var used = 0
   for i in 0..<info.services:
     spend()
@@ -233,6 +253,15 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
           present: found.error == StateStoreError.None, original: true, produced: false)
       inc used # Original qualified counts fit the admitted fixed identity scratch.
     when kind == ContinuationKind.StorageAndRequests:
+      for j in 0..<row.preimages:
+        spend()
+        let fact = compact.inventoryPreimageAt(service, InventoryPreimageIndex(uint64(j))).value
+        let found = target.lookup(fact.key)
+        if found.error notin {StateStoreError.None, StateStoreError.MissingKey}:
+          fail(LogicalContinuationError.UnsupportedChange)
+        preimageRows[preimageUsed] = PreimageIdentityRow(owner: i, key: fact.key, hash: fact.hash,
+          present: found.error == StateStoreError.None, original: true)
+        inc preimageUsed # Original complete compact facts bound every seeded preimage descriptor.
       for j in 0..<row.requests:
         spend()
         let item = compact.inventoryRequestAt(service, InventoryRequestIndex(uint64(j))).value
@@ -295,6 +324,8 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
             originalRequest.length) != uint32(fact.length):
           fail(LogicalContinuationError.UnsupportedChange) # Do not replace logical identity on a physical collision.
         requestRows[selected].produced = true
+        requestRows[selected].removedPreimage = requestRows[selected].removedPreimage or
+            fact.removedPreimage
       else:
         let found = target.lookup(fact.key)
         if found.error notin {StateStoreError.None, StateStoreError.MissingKey}: fail(
@@ -302,8 +333,34 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
         requestRows[requestUsed] = RequestIdentityRow(owner: owner, key: fact.key,
             item: StateRequestItem(hash: fact.hash, length: fact.length, history: requestedHistory(
           )),
-            present: found.error == StateStoreError.None, original: false, produced: true)
+            present: found.error == StateStoreError.None, original: false, produced: true,
+            removedPreimage: fact.removedPreimage)
         inc requestUsed # Selected request identities coalesce only exact original service/hash/length bindings.
+  when kind == ContinuationKind.StorageAndRequests:
+    for i in 0..<requestUsed:
+      spend()
+      let request = requestRows[i]
+      let key = servicePreimageKey(serviceAt(request.owner).service, request.item.hash, ByteLimit(32))
+      if key.error != ServiceValueError.None:
+        return LogicalContinuationResult(status: LogicalContinuationError.PreimageFailure,
+          preimageReason: key.error)
+      var selected = -1
+      for j in 0..<preimageUsed:
+        spend()
+        if preimageRows[j].owner == request.owner and array[31, byte](preimageRows[j].key) == array[
+            31, byte](key.value): selected = j
+      if selected >= 0:
+        if array[32, byte](preimageRows[selected].hash) != array[32, byte](request.item.hash):
+          fail(LogicalContinuationError.UnsupportedChange) # Physical key equality never substitutes a different full hash.
+        preimageRows[selected].removed = preimageRows[selected].removed or request.removedPreimage
+      else:
+        let found = target.lookup(key.value)
+        if found.error notin {StateStoreError.None, StateStoreError.MissingKey}:
+          fail(LogicalContinuationError.UnsupportedChange)
+        preimageRows[preimageUsed] = PreimageIdentityRow(owner: request.owner, key: key.value,
+          hash: request.item.hash, present: found.error == StateStoreError.None, original: false,
+          removed: request.removedPreimage)
+        inc preimageUsed # One candidate per exact request hash fits the whole preflight even if no payload was fulfilled.
   var bytes = min(uint64(limits.projection.bytes), uint64(high(int)))
   var facts = uint64(limits.projection.facts)
   template charge(count: int, kind: untyped) =
@@ -342,7 +399,19 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
             payload(uint64(rows[j].raw.len))
             payload(uint64(target.lookup(rows[j].key).value.byteLength))
       charge(storage, StateStorageItem)
-      charge(row.preimages, StatePreimageItem)
+      when kind == ContinuationKind.StorageOnly:
+        charge(row.preimages, StatePreimageItem)
+      else:
+        var selectedPreimages = 0
+        for j in 0..<preimageUsed:
+          spend()
+          if preimageRows[j].owner == i:
+            if preimageRows[j].original and not preimageRows[j].present and not preimageRows[j].removed:
+              fail(LogicalContinuationError.UnsupportedChange) # Only a selected expired forget authorizes loss of an original retained blob.
+            if preimageRows[j].present:
+              inc selectedPreimages
+              payload(uint64(target.lookup(preimageRows[j].key).value.byteLength))
+        charge(selectedPreimages, StatePreimageItem)
       when kind == ContinuationKind.StorageOnly:
         charge(row.requests, StateRequestItem)
       else:
@@ -358,12 +427,13 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
               if value.byteLength > 13: fail(LogicalContinuationError.UnsupportedChange)
               payload(uint64(value.byteLength))
         charge(selectedRequests, StateRequestItem)
-      for j in 0..<row.preimages:
-        spend()
-        let fact = compact.inventoryPreimageAt(ordinal, InventoryPreimageIndex(uint64(j))).value
-        let value = target.lookup(fact.key)
-        if value.error != StateStoreError.None: fail(LogicalContinuationError.UnsupportedChange)
-        payload(uint64(value.value.byteLength))
+      when kind == ContinuationKind.StorageOnly:
+        for j in 0..<row.preimages:
+          spend()
+          let fact = compact.inventoryPreimageAt(ordinal, InventoryPreimageIndex(uint64(j))).value
+          let value = target.lookup(fact.key)
+          if value.error != StateStoreError.None: fail(LogicalContinuationError.UnsupportedChange)
+          payload(uint64(value.value.byteLength))
       when kind == ContinuationKind.StorageOnly:
         for j in 0..<row.requests:
           spend()
@@ -399,9 +469,14 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
         requestCountForService = 0
         for j in 0..<requestUsed:
           if requestRows[j].owner == i and requestRows[j].present: inc requestCountForService
+      var preimageCountForService = row.preimages
+      when kind == ContinuationKind.StorageAndRequests:
+        preimageCountForService = 0
+        for j in 0..<preimageUsed:
+          if preimageRows[j].owner == i and preimageRows[j].present: inc preimageCountForService
       services[outputService] = StateService(service: row.service,
           metadata: metadata.value.metadata, storage: newSeq[StateStorageItem](storage),
-              preimages: newSeq[StatePreimageItem](row.preimages),
+              preimages: newSeq[StatePreimageItem](preimageCountForService),
           requests: newSeq[StateRequestItem](requestCountForService))
       var next = 0
       for j in 0..<used:
@@ -409,10 +484,19 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
           services[outputService].storage[next] = StateStorageItem(key: rows[j].raw,
               value: target.lookup(rows[j].key).value.bytes)
           inc next # Local scratch owns these keys; only complete qualification exposes independently retained raw backing.
-      for j in 0..<row.preimages:
-        let fact = compact.inventoryPreimageAt(ordinal, InventoryPreimageIndex(uint64(j))).value
-        services[outputService].preimages[j] = StatePreimageItem(hash: fact.hash,
-            value: target.lookup(fact.key).value.bytes)
+      when kind == ContinuationKind.StorageOnly:
+        for j in 0..<row.preimages:
+          let fact = compact.inventoryPreimageAt(ordinal, InventoryPreimageIndex(uint64(j))).value
+          services[outputService].preimages[j] = StatePreimageItem(hash: fact.hash,
+              value: target.lookup(fact.key).value.bytes)
+      else:
+        var copiedPreimages = 0
+        for j in 0..<preimageUsed:
+          if preimageRows[j].owner == i and preimageRows[j].present:
+            services[outputService].preimages[copiedPreimages] = StatePreimageItem(
+                hash: preimageRows[j].hash,
+              value: target.lookup(preimageRows[j].key).value.bytes)
+            inc copiedPreimages # Whole descriptor and actual payload admission preceded every blob copy.
       when kind == ContinuationKind.StorageOnly:
         for j in 0..<row.requests:
           var fact = compact.inventoryRequestAt(ordinal, InventoryRequestIndex(uint64(j))).value
