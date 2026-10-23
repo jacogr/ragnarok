@@ -3,35 +3,40 @@
     {
       "name": "base",
       "assignments": {},
-      "expected": "pass"
+      "expected": "pass",
+      "role": "base"
     },
     {
       "name": "cancel-releases",
       "assignments": {
         "Mut": "1"
       },
-      "expected": "violated"
+      "expected": "violated",
+      "role": "mutant"
     },
     {
       "name": "early-collect",
       "assignments": {
         "Mut": "2"
       },
-      "expected": "violated"
+      "expected": "violated",
+      "role": "mutant"
     },
     {
       "name": "close-before-join",
       "assignments": {
         "Mut": "3"
       },
-      "expected": "violated"
+      "expected": "violated",
+      "role": "mutant"
     },
     {
       "name": "reachable-cancelled-shutdown",
       "assignments": {
         "Witness": "(true)"
       },
-      "expected": "violated"
+      "expected": "violated",
+      "role": "witness"
     }
   ]
 }

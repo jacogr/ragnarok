@@ -34,11 +34,13 @@ def validate_inventory():
     from failure_plans import FAILURE_COUNTS
     from compiler_fixtures import COMPILER_FIXTURES
     from runtime_provenance import runtime_sources
+    from test_models import declarations
     collisions = set(ARC_SUITES.values()).intersection(FAILURE_COUNTS)
     if collisions:
         # Unit ARC observations must not masquerade as foreign runtime-contract results.
         raise ValueError('ARC report keys overlap runtime failure families: '+', '.join(sorted(collisions)))
     runtime_sources()
+    declarations(ROOT/'tests/models')
     validate_e2e_groups((ROOT/'.github/workflows/ci.yml').read_text())
     expected = {unit_source(name) for name in UNIT_SUITES}
     for source in expected:

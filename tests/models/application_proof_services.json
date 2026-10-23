@@ -3,35 +3,40 @@
     {
       "name": "base",
       "assignments": {},
-      "expected": "pass"
+      "expected": "pass",
+      "role": "base"
     },
     {
       "name": "unguarded-canonical-read",
       "assignments": {
         "Mut": "1"
       },
-      "expected": "violated"
+      "expected": "violated",
+      "role": "mutant"
     },
     {
       "name": "foreign-stop-resumes",
       "assignments": {
         "Mut": "2"
       },
-      "expected": "violated"
+      "expected": "violated",
+      "role": "mutant"
     },
     {
       "name": "cancel-resumes",
       "assignments": {
         "Mut": "3"
       },
-      "expected": "violated"
+      "expected": "violated",
+      "role": "mutant"
     },
     {
       "name": "reachable-cancelled-done",
       "assignments": {
         "Witness": "(true)"
       },
-      "expected": "violated"
+      "expected": "violated",
+      "role": "witness"
     }
   ]
 }

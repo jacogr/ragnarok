@@ -13,6 +13,12 @@ Run `build/model-tools/bin/tlanif --help` for upstream options. A source/build i
 checksum validate retained output; changed inputs rebuild instead of trusting an old executable.
 `make clean` removes the installation. No global installation or Nimble dependency is required.
 
+Each model-local declaration requires exactly one unmodified passing `base`, at least one
+nonzero `Mut` counterexample with role `mutant`, and exactly one unmutated `Witness`
+counterexample with role `witness`. Default switches must select unmutated safety.
+`make check-inventory` validates these contracts before provisioning the checker, so removing
+negative cases or relabeling a witness as a mutant cannot silently weaken CI.
+
 Models check bounded abstractions of documented implementation transitions. A passing safety
 check alone is insufficient: each model must also kill an intentional guard-removal mutant and
 reach its interesting state through a counterexample witness. Parser errors, state-limit exhaustion
