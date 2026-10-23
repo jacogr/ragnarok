@@ -3,6 +3,7 @@
 
 ## Real native mutation receipts retain explicit known successor declarations and independently selected proof expectations.
 import std/assertions
+import ../../src/codec/[state_accounts, state_requests]
 import ./pvm_accumulation_program
 import ./[collected_native_context, collected_supplied_context, collected_logical_context,
     current_namespace_transition_context, current_logical_proof_context, accumulation_current_candidate_context]
@@ -66,5 +67,19 @@ proc writeMutationCode*(value: seq[byte], ending: openArray[seq[byte]]): seq[byt
     registerImmediate(9, 1), registerImmediate(10, 196609), registerImmediate(11, uint64(
         value.len)), @[10'u8, 5]]
   for instruction in ending: instructions.add(instruction) # Terminal operations execute after the actual successful write.
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, writable): result.add(octet)
+proc requestMutationCode*(hash: ServicePreimageHash, length: RequestLength,
+    operations: openArray[uint8]): seq[byte] =
+  ## The known request hash is initialized before each actual solicit/forget host invocation; caller supplies exact operation order.
+  let raw = array[32, byte](hash)
+  var writable = newSeq[byte](32)
+  for i in 0..<32: writable[i] = raw[i]
+  var instructions: seq[seq[byte]] = @[]
+  for operation in operations:
+    assert operation == 25 or operation == 26
+    for instruction in [registerImmediate(7, high(uint64)), registerImmediate(8, 196608),
+      registerImmediate(9, uint64(uint32(length))), @[10'u8, operation]]: instructions.add(instruction)
+  instructions.add(@[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable): result.add(octet)
