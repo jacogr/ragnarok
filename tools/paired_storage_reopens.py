@@ -14,8 +14,8 @@ import tempfile
 from compare_storage_reopens import compare, read_report
 from storage_benchmark import atomic_text, component_hashes, crypto_components, cpu_model
 from storage_fresh_reopen import ROOT, CHILD, CASES, parse_prepared, parse_reopened, selected_hashes
-from storage_resource_validation import python_identity, validate_counters
-from storage_environment import environment
+from storage_resource_validation import python_identity, validate_counters, validate_checks, digest
+from storage_environment import environment, validate_environment
 from pvm_reference import command
 
 LABELS = ('baseline', 'candidate')
@@ -212,20 +212,157 @@ def collect(config, folder, *, execute_local_builds=False):
                 raise ValueError('Paired executable drift')
         if provider_hashes() != reports['baseline']['inputs']['native_components']:
             raise ValueError('Paired provider drift')
-        report['status'] = 'checks-passed'; save()
+        report['status'] = 'checks-passed'
+        summary = render_pair(report); save()
+        atomic_text(folder/'summary.md', summary)
         return report
     except BaseException as error:
         report.update(status='failed', error=str(error)); save()
         raise
 
 
+def validate_host(value):
+    """Host metadata identifies the paired run without claiming exclusive scheduling or cache state."""
+    if (type(value) is not dict or set(value) != {'system','release','machine','cpu','page_size'} or
+            value['system'] not in ('Darwin','Linux') or
+            any(type(value[k]) is not str or not 0 < len(value[k]) <= 4096 or '\x00' in value[k]
+                for k in ('system','release','machine','cpu')) or
+            type(value['page_size']) is not int or not 512 <= value['page_size'] <= 1<<24 or
+            value['page_size'] & (value['page_size']-1)):
+        raise ValueError('Invalid paired host identity')
+
+
+def metadata_path(value):
+    """Admit canonical absolute build-local path metadata without opening any imported file."""
+    if type(value) is not str or not value or '\x00' in value or len(value) > 4096:
+        raise ValueError('Invalid paired path metadata')
+    path = Path(value)
+    if (not path.is_absolute() or not path.is_relative_to(ROOT/'build') or
+            '..' in path.parts or str(path) != value):
+        raise ValueError('Invalid paired build path metadata')
+    return path
+
+
+def validate_pair(report):
+    """Reparse every native witness and exact execution vector; imported paths never authorize execution or I/O."""
+    if (type(report) is not dict or report.get('status') != 'checks-passed' or report.get('error') or
+            type(report.get('schema_version')) is not int or report['schema_version'] != 1):
+        raise ValueError('Invalid paired report status/schema')
+    reports = report.get('reports'); hashes = report.get('binary_sha256'); paths = report.get('binary_paths')
+    if any(type(value) is not dict or set(value) != set(LABELS) for value in (reports,hashes,paths)):
+        raise ValueError('Invalid paired input coverage')
+    allowed = report.get('allowed_source_changes')
+    if type(allowed) is not list or any(type(v) is not str for v in allowed) or len(set(allowed)) != len(allowed):
+        raise ValueError('Invalid paired source approvals')
+    compare(reports['baseline'], reports['candidate'], allowed)
+    for label in LABELS:
+        metadata_path(paths[label])
+        if not digest(hashes[label]) or hashes[label] != reports[label]['native_binary_sha256']:
+            raise ValueError('Invalid paired executable identity')
+    drivers = report.get('driver_sha256')
+    if (type(drivers) is not dict or set(drivers) != {'paired_storage_reopens.py','compare_storage_reopens.py'} or
+            any(not digest(v) for v in drivers.values())):
+        raise ValueError('Invalid paired driver identity')
+    validate_host(report.get('host_start')); validate_host(report.get('host_end'))
+    if report['host_start'] != report['host_end']:
+        raise ValueError('Paired host drift')
+    for name in ('environment_start','environment_end'):
+        validate_environment(report.get(name))
+        for original in reports.values():
+            if not same_environment(report[name], original['environment']):
+                raise ValueError('Paired environment drift')
+    folder = metadata_path(report.get('output'))
+    rows = report.get('rows')
+    if type(rows) is not list or len(rows) != 16:
+        raise ValueError('Incomplete paired consumer coverage')
+    checks = validate_checks(report.get('checks'), 24)
+    namespaces = set(); row_index = 0; check_index = 0
+    for turn, engine, count, producer, order in execution_plan():
+        prefix = f'pass{turn}-{engine}-{count}'
+        first = rows[row_index]
+        if type(first) is not dict:
+            raise ValueError('Invalid paired row')
+        owned = metadata_path(first.get('owned'))
+        if owned.parent != folder or not owned.name.startswith(prefix+'-') or str(owned) in namespaces:
+            raise ValueError('Invalid paired namespace ownership')
+        namespaces.add(str(owned))
+        expected_prepare = [paths[producer],'prepare',engine,str(count),str(owned)]
+        if checks[check_index]['command'] != expected_prepare:
+            raise ValueError('Substituted paired producer command')
+        check_index += 1
+        for label in order:
+            row = rows[row_index]; row_index += 1
+            if (type(row) is not dict or type(row.get('turn')) is not int or type(row.get('count')) is not int or
+                    (row.get('turn'),row.get('backend'),row.get('count'),row.get('binary'),row.get('owned')) !=
+                    (turn,engine,count,label,str(owned)) or
+                    type(row.get('prepared_raw')) is not str or type(row.get('raw')) is not str):
+                raise ValueError('Invalid paired case/order')
+            root = parse_prepared(row['prepared_raw'], engine, count)
+            original = next(r for r in reports[label]['rows'] if r['case'] == [engine,count])
+            observed = parse_reopened(row['raw'], engine, count, root)
+            if (root != row.get('root') or root != original['root'] or
+                    json.dumps(observed,sort_keys=True) != json.dumps(row.get('observed'),sort_keys=True) or
+                    any(observed[k] != original['observed'][k] for k in ('stored_nodes','checks')) or
+                    row.get('selected_before') != original['selected_before'] or
+                    row.get('selected_after') != original['selected_before']):
+                raise ValueError('Substituted paired native work or selected bytes')
+            validate_counters(row.get('resources'))
+            counters = folder/(prefix+'-'+label+'-resources.json')
+            expected_open = [reports[label]['inputs']['python_identity']['executable'],str(CHILD),
+                             str(counters),paths[label],'open',engine,str(count),str(owned),root]
+            if checks[check_index]['command'] != expected_open:
+                raise ValueError('Substituted paired consumer command')
+            check_index += 1
+    return rows
+
+
+def render_pair(report):
+    """Publish descriptive RSS and retained Nim ranges only after complete read-only validation."""
+    rows = validate_pair(report)
+    host = report['host_start']
+    lines = ['# Matched strict reopen observations', '',
+             f'Host: {host["system"]} {host["release"]}, {host["machine"]}, {host["cpu"]}.',
+             'Two reversed case/binary orders, both producer directions, identical selected bytes and complete release.',
+             'Whole-child high-water RSS differs from retained live Nim allocation. No speed, cold-cache or out-of-core claim.', '',
+             '| Backend | Entries | Baseline RSS MiB | Candidate RSS MiB | Baseline live Nim MiB | Candidate live Nim MiB |',
+             '| --- | ---: | ---: | ---: | ---: | ---: |']
+    for engine, count in CASES:
+        values = []
+        for metric in ('rss','live'):
+            for label in LABELS:
+                selected = [r for r in rows if (r['backend'],r['count'],r['binary']) == (engine,count,label)]
+                samples = [(r['resources']['peak_rss_bytes'] if metric == 'rss' else
+                            r['observed']['opened_bytes']-r['observed']['baseline'])/1048576 for r in selected]
+                values.append(f'{min(samples):.1f}–{max(samples):.1f}')
+        lines.append(f'| {engine} | {count} | '+ ' | '.join(values)+' |')
+    return '\n'.join(lines)+'\n'
+
+
 def main():
-    """Input inspection grants no authority to execute any imported report command."""
+    """Inspection/validation are read-only; native collection requires explicit local-build execution consent."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--config', type=Path, required=True)
+    parser.add_argument('--config', type=Path)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--execute-local-builds', action='store_true')
+    parser.add_argument('--validate', type=Path)
+    parser.add_argument('--summary', type=Path)
     args = parser.parse_args()
+    if args.validate is not None:
+        if args.config is not None or args.output is not None or args.execute_local_builds:
+            parser.error('--validate cannot select or execute local builds')
+        if args.summary is not None:
+            if args.summary.resolve() == args.validate.resolve():
+                parser.error('Summary must not replace its source report')
+            args.summary.unlink(missing_ok=True)
+        summary = render_pair(read_report(args.validate))
+        if args.summary is not None:
+            args.summary.parent.mkdir(parents=True, exist_ok=True)
+            atomic_text(args.summary, summary)
+        else:
+            print(summary, end='')
+        return
+    if args.config is None or args.summary is not None:
+        parser.error('Select --config or --validate; --summary requires --validate')
     config = read_config(args.config)
     if args.output is not None:
         report = collect(config, args.output, execute_local_builds=args.execute_local_builds)
