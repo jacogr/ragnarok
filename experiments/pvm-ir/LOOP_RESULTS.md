@@ -1,5 +1,8 @@
 # Real guest-loop follow-up — 2026-10-23
 
+The subsequent [bounded memory/host experiment](EFFECT_RESULTS.md) checks broader effects
+and records regressions that qualify this arithmetic-heavy result.
+
 Preparing actual PVM operands preserves a measurable benefit through full execution,
 but it is much smaller than the earlier arithmetic-kernel results. Keep this as an
 experiment: this evidence does not yet justify production integration.

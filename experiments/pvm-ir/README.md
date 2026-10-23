@@ -77,3 +77,20 @@ models CPU/exit/charging behavior separately while using production pipeline pri
 Source ownership, byte-PC mapping, failure cases and memory tradeoffs are described in
 [LOOP_RESULTS.md](LOOP_RESULTS.md), which records the final measurements and limitations.
 Host and memory-fault semantics are not exercised by this increment.
+
+## Bounded shared preparation, memory and host effects
+
+The latest [memory/host results](EFFECT_RESULTS.md) show both the memory savings and
+performance regressions of a program-owned representation. Run `make effects` or
+`make effects-asan` in this directory with `NIMONY` set to the pinned compiler.
+The second target runs a separate AddressSanitizer profile; its timings are discarded.
+
+The new table has a private program owner, decoded records and a uint16 byte-PC index.
+It is reused across fresh register/memory snapshots, fault repairs and valid host
+memory replacement. Preparation returns typed refusals and enforces 4,096-code-byte /
+256-instruction caps, giving a maximum 24 KiB payload (metadata and existing program
+storage excluded). Exact maximum-size execution and owner lifetime are checked.
+`shared_api.nim.inc` is appended to an experiment-only generated module, not installed
+as a production API. Semantic execution bodies and ordinary build/test configuration
+remain unchanged. Current coverage includes response-only host callbacks and 64-bit
+scalar memory operations; other widths, fallible callbacks and Linux remain gates.
