@@ -22,7 +22,8 @@ proc parameters(): Parameters =
     for i in 0..<8: wire[field*8+i] = byte((value shr (8*i)) and 255) # Exact existing deposit tuple order.
   for i in 74..<78: wire[i] = 0 # maxLookupAnchorAge retains its documented E4 position.
   decodeParameters(wire).value
-proc initial(hash: ServicePreimageHash, expired = false, capacity = 2'u64): AccumulationEffects =
+proc initial(hash: ServicePreimageHash, expired = false, capacity = 2'u64,
+    lifecycle = false): AccumulationEffects =
   ## Authentic original bootstrap contains either no request or one coherent expired request/preimage pair.
   var entries: seq[StateEntry] = @[]
   if expired:
@@ -36,7 +37,9 @@ proc initial(hash: ServicePreimageHash, expired = false, capacity = 2'u64): Accu
       storageBytes: AccountStorageBytes(if expired: 84'u64 else: 0'u64)), extra = entries,
       spareEntries = 4, writes = 3, registrar = 42, slot = HeaderSlot(20000))
   prepareAccumulationEffects(prepareAccumulationContexts(prepared.machineBootstrap.value,
-      pvmContextConfig()).value, requestFacts = ElementLimit(capacity)).value
+      pvmContextConfig()).value, requestFacts = ElementLimit(capacity),
+    createdAccounts = ElementLimit(if lifecycle: 2 else: 0),
+    deletedAccounts = ElementLimit(if lifecycle: 2 else: 0)).value
 proc run(checkpoint, panic: bool, credit = 100000'u64): AccumulationOutcome =
   ## A real solicit of the literal zero digest tests selected regular/exceptional effects without a synthetic dispatch result.
   var code = @[registerImmediate(7, high(uint64)), registerImmediate(8, 196608), registerImmediate(
@@ -61,6 +64,27 @@ proc main() {.raises.} =
   let hash = ServicePreimageHash(array[32, byte](blake2b256([97'u8, 98, 99]).value))
   let regular = AccumulationDimension.Regular
   let exceptional = AccumulationDimension.Exceptional
+  let phaseSource = initial(hash, expired = true, lifecycle = true)
+  let phaseForgotten = recordAccumulationForget(phaseSource, hash, RequestLength(3), parameters()).value
+  let phaseCheckpoint = checkpointAccumulationEffects(phaseForgotten).value
+  let birth = recordAccumulationNew(phaseCheckpoint, AccumulationNewService(codeHash: default(
+      CodeHash),
+    length: RequestLength(0), desired: AccumulationDesiredService(7)), parameters(),
+        ServiceProbeLimit(8)).value
+  let beforePhase = birth.effects.effectContext(regular).value.effectRequestFactAt(
+      AccumulationRequestFactIndex(0)).value
+  failAfter(2)
+  assert recordAccumulationSolicit(birth.effects, hash, RequestLength(3), parameters()).error ==
+      AccumulationEffectError.BackendFailure
+  fail(0)
+  let phaseRestored = recordAccumulationSolicit(birth.effects, hash, RequestLength(3), parameters()).value
+  let phaseCurrent = phaseRestored.effectContext(regular).value
+  assert phaseCurrent.effectRequestFactCount.value == 2
+  let refreshed = phaseCurrent.effectRequestFactAt(AccumulationRequestFactIndex(0)).value
+  assert uint64(beforePhase.phase) == 0 and uint64(refreshed.phase) == 1
+  assert beforePhase.removedPreimage and refreshed.removedPreimage
+  assert uint64(phaseRestored.effectContext(exceptional).value.effectRequestFactAt(
+      AccumulationRequestFactIndex(0)).value.phase) == 0
   let source = initial(hash)
   assert initial(hash, capacity = 0).effectContext(regular).value.effectRequestFactCount.error ==
       AccumulationEffectError.RequestFactsDisabled
@@ -121,7 +145,10 @@ proc main() {.raises.} =
   assert run(false, false, 0).outcomeContext.value.effectRequestFactCount.value == 0
   for i in 0..<25: discard recordAccumulationSolicit(source, hash, RequestLength(3), parameters()).value # Warm this exact immutable request capture/retirement path.
   let before = getOccupiedMem()
-  for i in 0..<1000: discard recordAccumulationSolicit(source, hash, RequestLength(3), parameters()).value
+  for i in 0..<1000:
+    # Refreshing full-capacity unique identity metadata must not add descriptors or retain old effect graphs.
+    discard recordAccumulationSolicit(source, hash, RequestLength(3), parameters()).value
+    discard recordAccumulationSolicit(birth.effects, hash, RequestLength(3), parameters()).value
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("accumulation_request_identities", 1000, before, after)

@@ -178,6 +178,24 @@ proc main() {.raises.} =
   let orphan = namespaceRetiredReplacementFixture(nativeBase(), retirementPolicy, orphan = true)
   let rejectedOrphan = continueCurrentNamespaces(orphan.parent, orphan.update, policy())
   assert rejectedOrphan.error == LogicalContinuationError.UnsupportedChange
+  var postBirthPolicy = retirementPolicy
+  postBirthPolicy.completion.execution.execution.round.guests.provisions = AccumulationProvisionLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  postBirthPolicy.completion.execution.execution.round.provisions.values = PreimageLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  postBirthPolicy.completion.execution.execution.round.provisions.encodedBytes = ByteLimit(128)
+  let postBirth = namespaceRetiredReplacementFixture(nativeBase(), postBirthPolicy,
+      postBirth = true)
+  let postLogical = check(Fixture(origin: postBirth, update: postBirth.update), 2)
+  let postServices = copySuppliedServices(postLogical.currentLogicalInventory.value, policy().projection).value
+  var postFound = false
+  for service in postServices:
+    if uint32(service.service) == 99:
+      assert service.storage.len == 1 and service.preimages.len == 1 and service.requests.len == 2
+      assert service.storage[0].key == @[5'u8] and service.storage[0].value == @[8'u8]
+      assert service.preimages[0].value == @[77'u8]
+      postFound = true
+  assert postFound
   let grown = fixture()
   let continued = check(grown, 3)
   let created = grown.update.currentUpdateServiceIdentityHistory.serviceIdentityCreationAt(
@@ -243,6 +261,7 @@ proc main() {.raises.} =
     discard continueCurrentNamespaces(grown.origin.parent, grown.update, policy()).value
     discard continueCurrentNamespaces(retired.parent, retired.update, policy()).value
     discard continueCurrentNamespaces(reused.parent, reused.update, policy()).value
+    discard continueCurrentNamespaces(postBirth.parent, postBirth.update, policy()).value
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("service_logical_continuation", 1000, before, after)

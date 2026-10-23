@@ -5,12 +5,14 @@
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[pvm_accumulation_program, pvm_accumulation_context, arc_evidence]
 import ../../src/state/[accumulation_effects, accumulation_dispatch, accumulation_context,
-    accumulation_machine, accumulation_outcome]
+    accumulation_machine, accumulation_outcome, accumulation_invocation]
 import ../../src/chain/parameters
-import ../../src/codec/[bounded, state_accounts, state_layout]
+import ../../src/codec/[bounded, state_accounts, state_layout, state_requests]
 import ../../src/pvm/[machine, step, gas, host_fetch]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine backend failure leaves original effect and raw fact ownership unchanged.
+proc failAfter(count: cint) {.importc: "ro_blake_after", cdecl.}
+  ## Fail a required map hash after physical-key derivation and private phase preparation.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Per-key resource refusal must precede namespace hashing.
 const policy = AccumulationStorageFactLimits(items: ElementLimit(2), perKey: ByteLimit(2),
@@ -22,12 +24,15 @@ proc schedule(): Parameters =
     for i in 0..<8:
       wire[field*8+i] = byte((amount shr (8*i)) and 255) # Three leading E8 deposit fields retain canonical width.
   decodeParameters(wire).value
-proc initial(limits: AccumulationStorageFactLimits): AccumulationEffects =
+proc initial(limits: AccumulationStorageFactLimits, lifecycle = false): AccumulationEffects =
   ## Authentic machine bootstrap supplies original input provenance; no result or private source is forged.
   let prepared = guestProgram([@[50'u8, 0]], account = ServiceMetadata(balance: AccountBalance(
-      1000000000)), spareEntries = 4)
+      1000000000)), spareEntries = 4, registrar = (if lifecycle: 42'u32 else: 0'u32),
+      writes = (if lifecycle: 3'u64 else: 2'u64))
   prepareAccumulationEffects(prepareAccumulationContexts(prepared.machineBootstrap.value,
-      pvmContextConfig()).value, storageFacts = limits).value
+      pvmContextConfig()).value, storageFacts = limits,
+    createdAccounts = ElementLimit(if lifecycle: 2 else: 0),
+    deletedAccounts = ElementLimit(if lifecycle: 2 else: 0)).value
 proc run(checkpoint, panic: bool, limits: AccumulationStorageFactLimits,
     credit = 100000'u64): AccumulationOutcome =
   ## Actual guest writes one raw byte then either halts or panics, optionally preserving it through the real checkpoint host call.
@@ -50,6 +55,32 @@ proc main() {.raises.} =
     return
   if getEnv("RAGNAROK_STATE_REPORT").len == 0:
     putEnv("RAGNAROK_STATE_REPORT", "tests/fixtures/state-report.bin") # Supported unit runs retain their explicit absolute fixture binding.
+  let phaseSource = initial(policy, lifecycle = true)
+  let phaseFirst = recordAccumulationStorage(phaseSource, @[7'u8], @[1'u8], schedule(), ByteLimit(
+      2)).value.effects
+  let phaseCheckpoint = checkpointAccumulationEffects(phaseFirst).value
+  let preparedBirth = recordAccumulationNew(phaseCheckpoint, AccumulationNewService(
+      codeHash: default(CodeHash),
+    length: RequestLength(1), desired: AccumulationDesiredService(7)), schedule(),
+        ServiceProbeLimit(8))
+  assert preparedBirth.error == AccumulationEffectError.None, $preparedBirth.error
+  let birth = preparedBirth.value
+  let beforePhase = birth.effects.effectContext(AccumulationDimension.Regular).value.effectStorageFactAt(
+      AccumulationStorageFactIndex(0)).value
+  failAfter(1)
+  assert recordAccumulationStorage(birth.effects, @[7'u8], @[2'u8], schedule(), ByteLimit(
+      2)).error == AccumulationEffectError.BackendFailure
+  fail(0)
+  assert uint64(beforePhase.storageFactInfo.value.phase) == 0
+  let phaseChanged = recordAccumulationStorage(birth.effects, @[7'u8], @[2'u8], schedule(),
+      ByteLimit(2)).value.effects
+  let afterPhase = phaseChanged.effectContext(AccumulationDimension.Regular).value
+  assert afterPhase.effectStorageFactCount.value == 1
+  assert uint64(afterPhase.effectStorageFactAt(AccumulationStorageFactIndex(
+      0)).value.storageFactInfo.value.phase) == 1
+  assert uint64(phaseChanged.effectContext(AccumulationDimension.Exceptional).value.effectStorageFactAt(
+      AccumulationStorageFactIndex(0)).value.storageFactInfo.value.phase) == 0
+  assert beforePhase.copyStorageFactKey(ByteLimit(1)).value == @[7'u8]
   let original = initial(policy)
   let regular = AccumulationDimension.Regular
   let exceptional = AccumulationDimension.Exceptional
@@ -119,8 +150,10 @@ proc main() {.raises.} =
   for i in 0..<25: discard recordAccumulationStorage(original, @[7'u8], @[1'u8], schedule(),
       ByteLimit(2)).value
   let before = getOccupiedMem()
-  for i in 0..<1000: discard recordAccumulationStorage(original, @[7'u8], @[1'u8], schedule(),
-      ByteLimit(2)).value
+  for i in 0..<1000:
+    # Both first touch and a phase refresh release every private owner while retaining shared immutable raw bytes.
+    discard recordAccumulationStorage(original, @[7'u8], @[1'u8], schedule(), ByteLimit(2)).value
+    discard recordAccumulationStorage(birth.effects, @[7'u8], @[2'u8], schedule(), ByteLimit(2)).value
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("accumulation_storage_identities", 1000, before, after)
