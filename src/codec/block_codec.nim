@@ -271,8 +271,8 @@ proc put[kind: static[ComponentKind]](owner: Component[kind], output: var openAr
   let data = owner.data
   assert data != nil # Internal commit helpers require a validated retained child.
   # Exact immutable child bytes preserve existing C.2 framing without another protocol encoder implementation.
-  for value in data.wire:
-    output[cursor] = value
+  for i in 0..<data.wire.len:
+    output[cursor] = data.wire[i]
     inc cursor
 
 proc encodeComponent*[kind: static[ComponentKind]](owner: Component[kind], output: var openArray[

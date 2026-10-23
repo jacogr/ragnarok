@@ -3,7 +3,7 @@
 
 ## Reject package hashes as segment roots; this compiler prints both generic domains as ReportHash.
 
-# @@Verification={"group": "nominal", "expected": "ReportHash", "early": ["verifyImportSegment(", "[1] expected: ReportHash but got: ReportHash"]}
+# @@Verification={"group": "nominal","expected": "ReportHash","early": ["verifyImportSegment(","[1] expected: ReportHash[2] but got: ReportHash[0]"]}
 
 import ../../../src/state/import_justification
 import ../../../src/codec/[work_package, work_report]

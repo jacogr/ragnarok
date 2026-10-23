@@ -6,7 +6,7 @@
 ## Compiler-rejection fixture; compilation must fail at the attempted access or type misuse.
 ## Exposes no library API.
 
-# @@Verification={"group": "nominal", "expected": "got: ReportHash but wanted: ReportHash"}
+# @@Verification={"group": "nominal","expected": "got: ReportHash[4] but wanted: ReportHash[7]"}
 
 import ../../../src/codec/work_report
 let wrong = ReportHeader(lookupStateRoot: StateRoot())

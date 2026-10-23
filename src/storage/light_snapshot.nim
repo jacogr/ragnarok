@@ -118,7 +118,8 @@ proc bytes*(snapshot: PreparedLightSnapshot): seq[byte] {.requires: snapshot.own
   let owner = snapshot.owner
   assert owner != nil
   result = newSeq[byte](owner.encoded.len)
-  for index, octet in owner.encoded: result[index] = octet
+  for index in 0..<owner.encoded.len: result[index] = owner.encoded[
+      index] # Keep the immutable owner retained during indexed reads.
 func compareKey(left, right: StateKey): int =
   ## Canonical ordering uses every serialized query-key octet.
   let a = array[31, byte](left)

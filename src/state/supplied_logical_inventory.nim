@@ -126,6 +126,6 @@ proc copySuppliedStorageKey*(source: SuppliedLogicalInventory, service: Inventor
   if uint64(size) > uint64(limit):
     return SuppliedLogicalResult[seq[byte]](status: SuppliedLogicalError.LimitExceeded)
   var owned = newSeq[byte](size)
-  for i, octet in data.rows[row].keys[item]:
-    owned[i] = octet # Never expose retained immutable raw-key storage through mutable output buffers.
+  for i in 0..<size:
+    owned[i] = data.rows[row].keys[item][i] # Copy by index without iterating through the retained ref.
   SuppliedLogicalResult[seq[byte]](status: SuppliedLogicalError.None, completed: owned)

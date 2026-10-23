@@ -244,8 +244,9 @@ proc prepareRequestFact(previous: EffectData, service: ServiceIndex,
     return AccumulationEffectResult[RequestFactsData](status: AccumulationEffectError.None,
         completed: retained)
   var found = -1
-  for i, fact in retained.values:
-    # One service/physical request identity must preserve exact original hash and full public length.
+  for i in 0..<retained.values.len:
+    let fact = retained.values[i] # Read each immutable fact while retaining its original owner.
+                                  # One service/physical request identity must preserve exact original hash and full public length.
     if uint32(fact.service) == uint32(service) and array[31, byte](fact.key) == array[31, byte](key):
       if array[32, byte](fact.hash) != array[32, byte](hash) or uint32(fact.length) != uint32(length):
         return AccumulationEffectResult[RequestFactsData](
@@ -264,7 +265,8 @@ proc prepareRequestFact(previous: EffectData, service: ServiceIndex,
           status: AccumulationEffectError.LimitExceeded)
     inc size # Native descriptor bounds precede addition and allocation.
   var values = newSeq[AccumulationRequestFact](size)
-  for i, fact in retained.values: values[i] = fact # Older context/checkpoint facts remain immutable and independently retained.
+  for i in 0..<retained.values.len: values[i] = retained.values[
+      i] # Older context/checkpoint facts remain immutable and independently retained.
   if found < 0:
     values[count] = AccumulationRequestFact(service: service, hash: hash, length: length,
         key: key, removedPreimage: removedPreimage)
@@ -305,8 +307,9 @@ proc prepareStorageFact(previous: EffectData, service: ServiceIndex, key: StateK
   if uint64(limits.items) == 0:
     return AccumulationEffectResult[StorageFactsData](status: AccumulationEffectError.None,
         completed: retained)
-  for fact in retained.values:
-    # Repeated writes and deletions retain one first-touch identity without recopying its raw bytes.
+  for factIndex in 0..<retained.values.len:
+    let fact = retained.values[factIndex] # Preserve shared immutable identity ownership with checked indexed reads.
+ # Repeated writes and deletions retain one first-touch identity without recopying its raw bytes.
     let data = fact.data
     assert data != nil
     if uint32(data.service) == uint32(service) and array[31, byte](data.key) == array[31, byte](key):
@@ -331,7 +334,8 @@ proc prepareStorageFact(previous: EffectData, service: ServiceIndex, key: StateK
   var copied = newSeq[byte](raw.len)
   for i, octet in raw: copied[i] = octet # Empty raw keys are real identities and consume one descriptor.
   var values = newSeq[AccumulationStorageFact](count+1)
-  for i, fact in retained.values: values[i] = fact # Share immutable independent facts, never older effect versions.
+  for i in 0..<retained.values.len: values[i] = retained.values[
+      i] # Share immutable independent facts, never older effect versions.
   values[count] = AccumulationStorageFact(data: StorageFactData(service: service, key: key, raw: copied))
   AccumulationEffectResult[StorageFactsData](status: AccumulationEffectError.None,
       completed: StorageFactsData(values: values, bytes: retained.bytes+uint64(raw.len)))
@@ -380,7 +384,8 @@ proc copyStorageFactKey*(fact: AccumulationStorageFact,
   if uint64(data.raw.len) > uint64(limit):
     return AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.LimitExceeded)
   var copied = newSeq[byte](data.raw.len)
-  for i, octet in data.raw: copied[i] = octet # Mutating detached output cannot alter this fact or future checkpoints.
+  for i in 0..<data.raw.len: copied[i] = data.raw[
+      i] # Mutating detached output cannot alter this fact or future checkpoints.
   AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.None, completed: copied)
 
 # Bound unique nonmetadata keys before allocating a trace or hashing its prospective map.
@@ -397,7 +402,8 @@ proc prepareSelfAccountKeys(previous: EffectData, writes: openArray[StateWrite])
     # Self metadata is already handled by the batch's separate fixed-record policy.
     if array[31, byte](write.key) == array[31, byte](own): continue
     var seen = false
-    for key in retained.keys:
+    for retainedIndex in 0..<retained.keys.len:
+      let key = retained.keys[retainedIndex]
       if array[31, byte](key) == array[31, byte](write.key): seen = true # Existing touched keys need no new descriptor.
     for earlier in 0..<index:
       if array[31, byte](writes[earlier].key) == array[31, byte](
@@ -412,7 +418,8 @@ proc prepareSelfAccountKeys(previous: EffectData, writes: openArray[StateWrite])
       completed: previous.accountKeys) # Replacements/deletions of already touched keys share the immutable key set.
   var keys = newSeq[StateKey](count)
   var destination = 0
-  for key in retained.keys:
+  for retainedIndex in 0..<retained.keys.len:
+    let key = retained.keys[retainedIndex]
     keys[destination] = key
     inc destination # The full new descriptor extent was preflighted above.
   for write in writes:
@@ -546,7 +553,8 @@ proc prepareCreatedAccount(previous: EffectData, service: ServiceIndex, requestK
     return AccumulationEffectResult[CreatedAccountsData](
         status: AccumulationEffectError.LimitExceeded) # No partial child/cursor/debit or descriptor allocation.
   var values = newSeq[AccumulationCreatedAccount](count+1)
-  for index, value in previous.created.values:
+  for index in 0..<previous.created.values.len:
+    let value = previous.created.values[index]
     values[index] = value # Immutable fixed facts are copied without retaining parent effect chains.
   values[count] = AccumulationCreatedAccount(service: service, requestKey: requestKey)
   AccumulationEffectResult[CreatedAccountsData](status: AccumulationEffectError.None,
@@ -563,7 +571,8 @@ proc prepareDeletedAccount(previous: EffectData, service: ServiceIndex):
     return AccumulationEffectResult[DeletedAccountsData](
         status: AccumulationEffectError.LimitExceeded) # No candidate balance or partial key owner escapes.
   var values = newSeq[AccumulationDeletedAccount](count+1)
-  for index, value in previous.deleted.values:
+  for index in 0..<previous.deleted.values.len:
+    let value = previous.deleted.values[index]
     values[index] = value # Fixed service identities do not retain a chain of old effect versions.
   values[count] = AccumulationDeletedAccount(service: service)
   AccumulationEffectResult[DeletedAccountsData](status: AccumulationEffectError.None,
@@ -632,7 +641,8 @@ proc effectAccountModified*(context: AccumulationEffectContext,
     return AccumulationEffectResult[bool](status: count.error) # No fabricated false result for absent tracking.
   let data = context.data
   assert data != nil # Successful count retains this initialized owner.
-  for value in data.modified.values:
+  for modifiedIndex in 0..<data.modified.values.len:
+    let value = data.modified.values[modifiedIndex]
     if uint32(value) == uint32(service):
       return AccumulationEffectResult[bool](status: AccumulationEffectError.None,
           completed: true) # Exact nominal identity membership.
@@ -987,7 +997,7 @@ proc copyProvisionBytes*(provision: AccumulationProvision): AccumulationEffectRe
     return AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.Uninitialized)
   var bytes = newSeq[byte](data.bytes.len)
   # Exact retained length was bounded before construction; copy without exporting shared mutable storage.
-  for i, octet in data.bytes: bytes[i] = octet
+  for i in 0..<data.bytes.len: bytes[i] = data.bytes[i]
   AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.None, completed: bytes)
 
 proc recordAccumulationProvision*(effects: AccumulationEffects, service: ServiceIndex,
@@ -1031,7 +1041,8 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
   if not requested.value:
     fail(AccumulationEffectError.NotRequested) # Only the exact outstanding (hash,length) request is eligible.
   # Equality is target plus complete raw bytes, not hash-only equality or an unrelated owner's coordinates.
-  for provision in previous.provisions.values:
+  for provisionIndex in 0..<previous.provisions.values.len:
+    let provision = previous.provisions.values[provisionIndex]
     let retained = provision.data
     assert retained != nil # Published provision sequences contain initialized owners only.
     if uint32(retained.service) == uint32(service) and retained.bytes == bytes:
@@ -1045,7 +1056,7 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
   for i, octet in bytes: owned[i] = octet
   var provisions = newSeq[AccumulationProvision](previous.provisions.values.len+1)
   # Share only immutable prior provision owners; no new version links back to its parent effect pair.
-  for i, provision in previous.provisions.values: provisions[i] = provision
+  for i in 0..<previous.provisions.values.len: provisions[i] = previous.provisions.values[i]
   provisions[previous.provisions.values.len] = AccumulationProvision(data: ProvisionData(
       service: service, bytes: owned))
   let candidate = successorData(previous, previous.accounts)

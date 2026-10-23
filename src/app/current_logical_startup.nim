@@ -242,7 +242,8 @@ proc captureCurrentLogicalStartup*(view: ChainView, declarations: CurrentLogical
   if uint64(data.services) > uint64(projection.services) or uint64(data.rows.len) > uint64(
       projection.facts):
     return fail[Output](CurrentLogicalStartupError.LimitExceeded)
-  for row in data.rows:
+  for ordinal in 0..<data.rows.len:
+    let row = data.rows[ordinal]
     if row.kind == DeclarationKind.Storage and uint64(row.key.len) > uint64(projection.perValue):
       return fail[Output](CurrentLogicalStartupError.LimitExceeded) # A later tighter caller policy cannot inherit larger raw-key hashing permission.
   var available = min(uint64(projection.bytes), uint64(high(int)))
@@ -267,7 +268,8 @@ proc captureCurrentLogicalStartup*(view: ChainView, declarations: CurrentLogical
   var output = newSeq[StateService](data.services)
   var selected = -1
   # Each service's exact child arrays are counted and admitted before their first payload read or allocation.
-  for ordinal, row in data.rows:
+  for ordinal in 0..<data.rows.len:
+    let row = data.rows[ordinal]
     if row.kind == DeclarationKind.Service:
       inc selected
       var storage, preimages, requests = 0

@@ -6,8 +6,12 @@ ownership, arithmetic and migration evidence.
 
 These observations came from the structured JSON refactor, CE 128 stream integration and PVM work
 on macOS ARM64 with Nimony 0.6.3, revision `5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`.
-Recheck affected entries when changing the pin.
-They describe the exercised APIs and target, rather than compiler-wide support guarantees.
+The October 21–23 nightly review and retained-workaround decisions are recorded in
+[the upgrade audit](../spec/nimony-nightly-2026-10-21.md).
+The generic-integer, nullable mutable-callback and sequence-slice failures persist on October 23
+`4724f66c2`; standalone [report drafts](../spec/nimony-reports-2026-10-23/integer-generic.md)
+record exact reproducers, output and successful alternatives.
+These observations describe exercised APIs and targets, rather than compiler-wide support guarantees.
 
 | Area | Observed behavior | Working approach and evidence |
 | --- | --- | --- |
@@ -17,7 +21,7 @@ They describe the exercised APIs and target, rather than compiler-wide support g
 | Tuple arguments | An array literal of unnamed `(string, JsonValue)` tuples did not match the attempted `openArray[tuple[key: string, value: JsonValue]]` parameter. | `openArray[(string, JsonValue)]` with indexed tuple access compiled in `jsonObject`. Probe named conversions before relying on them elsewhere. |
 | JSON output | Inspection of the pinned `std/json` typed writer found signed integer output and no full-width unsigned or raw-number overload. Its API differs from Nim 2's `%*` examples. | [`src/lib/json_writer.nim`](../src/lib/json_writer.nim) preserves unsigned decimal values and validated numeric lexemes. `spec/rpc.md` documents the trust boundary; RPC tests cover `uint64` maximum and exact ID spelling. |
 | Nullable mutable borrows | In the CE 128 callback, checking a `nil ptr BlockDownload` local once did not preserve the non-null proof across successive calls taking its pointee by `var`. | After checking the nullable local, bind an explicitly typed `ptr BlockDownload` local. The [verified callback](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/tests/support/block_download_transport.nim) passes the native transfer suite without casting away receiver nilability. |
-| Scalar-only exclusive owners | Error copy/dup declarations alone did not reject the exercised scalar-only controller copy during full compilation. | The final [stream controller](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/src/quic/block_download_stream.nim) combines explicit copy/dup prohibitions with a destructor checking actual callback retirement. Its [lowering probe](https://github.com/jacogr/ragnarok/blob/5b79c125c33e8e53ff1e08db6ff653961ad940fa/tests/native/compile_fail/application_download_stream_copy.nim) rejects `'=dup' is not available for type <BlockDownloadStream>`. Verify each exclusive owner; do not add artificial cleanup to ordinary scalar views. |
+| Exclusive owner copies | October 23 includes [#2737](https://github.com/nim-lang/nimony/issues/2737): both tested sequence-element copy bans now reject, alongside scalar-only and stream-array copies. | Exact lowering guards cover copy-only and copy-plus-dup elements; a native positive control verifies explicit sequence moves. Keep ownership exclusions and real callback-retirement destructors. No artificial scalar destructor is needed. |
 
 ## PVM integration observations
 
@@ -29,14 +33,11 @@ asserting its error, or using a short exact-reason assertion helper. Run semanti
 formatting and before the expensive linked suite; a formatting pass alone does not prove validity.
 The formatted-source check and native import-justification suite passed with the helper approach.
 
-Nominal diagnostics can omit useful type detail. Generic hash-domain substitutions may print
-`ReportHash` on both sides, and a sequence mismatch may print `seq` without its element type.
-Preserve the actual diagnostic plus its intended call/argument position, and a compiling positive
-control for the accepted domain. Do not weaken a fixture into accepting an arbitrary compile error.
-Existing examples include `tests/native/compile_fail/swapped_report_root.nim` and
-`tests/native/compile_fail/history_segment_as_package.nim`; the trial records the generic hash
-rendering. PVM argument-position fixtures were verified in
-[the import-justification PR](https://github.com/jacogr/ragnarok/pull/284).
+October 23 renders instantiated generic arguments in nominal diagnostics. Hash-domain
+substitutions now distinguish `ReportHash[2]` from `ReportHash[0]`, and collection diagnostics
+identify element/schema types. Sixteen source-owned guards now require those exact types while
+retaining call/argument positions. Preserve this precision rather than accepting arbitrary compile
+failure or removing generic arguments from expected diagnostics.
 
 ## Before integrating a new pattern
 
@@ -85,8 +86,26 @@ restriction or justify modifying the compiler.
 
 For the observed stale imported generic-call arity after an incremental source edit,
 see the [source-sensitive native cache record](../spec/pvm-native-cache-identity.md).
-Fresh project-owned source epochs preserve checked builds without a compiler patch;
-this is a bounded observed failure, not a general compiler-cache correctness claim.
+The October 21 nightly fixes the reproduced imported-generic invalidation failure; project-owned
+source epochs have been removed after the same-cache control passed. Native ABI, compiler,
+configuration and worker/profile cache isolation remain in place.
+
+## Sequence slices on the October 22/23 candidates
+
+At `8cb7a690ae48363eb3ce65564aafb921ca5d23f3`, instantiating the stdlib sequence
+slice with `let bytes = @[1'u8, 2, 3]; let prefix = bytes[0..<2]` fails in
+`lib/std/system.nim` with `cannot mutate rawData(result)[i] through a ref/ptr in a
+.noSideEffect context` (the diagnostic prints `.noSideEffect` with backticks).
+The four-line standalone probe is preserved in the nightly audit evidence. For the record,
+journal and context-codec truncation tests, borrow `toOpenArray(0, stop-1)` instead: the caller
+retains the source, decoders accept read-only inputs and every prefix including empty remains
+covered. The current logical-proof test checks the four RPV1 magic bytes by index after its
+minimum-length assertion, avoiding the same slice instantiation while retaining every byte check.
+The image-repository test copies its deliberately incomplete record prefix by checked index
+before asserting rejection, preserving owned records without sequence slicing. No stdlib patch or
+weaker assertion is required. Retest the minimal probe before removing these adapters. The October 23 archive reproduces
+the same failure; the
+[two-line draft](../spec/nimony-reports-2026-10-23/sequence-slice.md) includes clean-run output.
 
 ## Deferred Linux RSS return
 

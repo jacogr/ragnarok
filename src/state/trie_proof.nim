@@ -60,8 +60,8 @@ proc suppliedValue*(proof: StateProof): StateProofResult[seq[byte]] =
   if data == nil:
     return StateProofResult[seq[byte]](status: StateProofError.Uninitialized)
   var copied = newSeq[byte](data.value.len)
-  for i, octet in data.value:
-    copied[i] = octet # No mutable backing storage escapes the immutable owner.
+  for i in 0..<data.value.len:
+    copied[i] = data.value[i] # No mutable backing storage escapes the immutable owner.
   StateProofResult[seq[byte]](status: StateProofError.None, completed: copied)
 proc captureStateProof*(nodes: openArray[EncodedStateNode], supplied: openArray[byte],
     limits: StateProofLimits): StateProofResult[StateProof] =
@@ -167,7 +167,8 @@ proc verifyStateProof*(proof: StateProof, expectedRoot: StateRoot, query: StateK
         keyIdentity: query, found: false))
   var expected = array[32, byte](expectedRoot)
   var partial = false
-  for depth, node in data.nodes:
+  for depth in 0..<data.nodes.len:
+    let node = data.nodes[depth]
     # Authenticate root or selected edge without fabricating a left child's discarded high bit.
     let hashed = hashStateNode(node)
     if hashed.error != StateLayoutError.None:
@@ -494,12 +495,13 @@ proc encodeStateProof*(proof: StateProof, limits: StateProofLimits,
     output[4+i] = byte((uint64(data.nodes.len) shr (8*i)) and 255) # Canonical fixed E2 node count.
   for i in 0..<4:
     output[6+i] = byte((uint64(data.value.len) shr (8*i)) and 255) # Canonical fixed E4 value length.
-  for i, node in data.nodes:
+  for i in 0..<data.nodes.len:
+    let node = data.nodes[i]
     # Nodes keep exact pinned 64-byte encodings; local framing never rewrites left commitments.
     let bytes = array[64, byte](node)
     for j in 0..<64: output[10+i*64+j] = bytes[j]
-  for i, octet in data.value:
-    output[int(overhead)+i] = octet # Return new caller-owned storage, not a mutable owner view.
+  for i in 0..<data.value.len:
+    output[int(overhead)+i] = data.value[i] # Return new caller-owned storage, not a mutable owner view.
   StateProofResult[seq[byte]](status: StateProofError.None, completed: output)
 
 proc decodeStateProof*(input: openArray[byte], limits: StateProofLimits,

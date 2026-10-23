@@ -18,8 +18,10 @@ proc run() =
   assert uint64(decoded.generation) == 9 and decoded.context == @[1'u8, 2, 3]
   assert decoded.batch.records.len == 0
   for stop in 0..<wire.len:
-    assert decodeContextJournalFrame(wire[0..<stop], ByteLimit(3), limits, ByteLimit(164)).error !=
-        FrameError.None
+    # Borrow the same truncated extent without allocating a sequence slice.
+    let prefix = decodeContextJournalFrame(wire.toOpenArray(0, stop-1), ByteLimit(3), limits,
+        ByteLimit(164))
+    assert prefix.error != FrameError.None
   for index in 0..<wire.len:
     var changed = wire
     changed[index] = changed[index] xor 1

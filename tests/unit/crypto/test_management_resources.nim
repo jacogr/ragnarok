@@ -40,10 +40,10 @@ block flat_directory:
   var sampler = default(ResourceSampler)
   sampler.configure(directory, directory)
   sampler.tick()
-  assert sampler.directory != nil and not sampler.databaseKnown
+  assert sampler.directoryOpen and not sampler.databaseKnown
   assert "\"logicalBytes\":null" in $sampler.snapshot()
   sampler.tick()
-  assert sampler.directory == nil and sampler.databaseKnown
+  assert not sampler.directoryOpen and sampler.databaseKnown
   assert sampler.logical == 1048636 and sampler.files == 21
   sampler.close()
   sampler.close() # Repeated cleanup cannot close an unrelated descriptor.
@@ -53,8 +53,17 @@ block admission_limit:
   sampler.tick()
   sampler.scanCount = 4096 # An existing partial stream must refuse the next entry beyond the hard limit.
   sampler.tick()
-  assert sampler.directory == nil and not sampler.databaseKnown
+  assert not sampler.directoryOpen and not sampler.databaseKnown
   assert sampler.databaseStatus == "entry-limit" and "\"logicalBytes\":null" in $sampler.snapshot()
+block read_failure:
+  var sampler = default(ResourceSampler)
+  sampler.configure(directory, directory)
+  sampler.tick()
+  assert sampler.directoryOpen and not sampler.databaseKnown
+  assert closeDirStream(sampler.directory) == 0 # Force a mid-scan read failure through the public API.
+  sampler.tick()
+  assert not sampler.directoryOpen and not sampler.databaseKnown
+  assert sampler.databaseStatus == "unavailable" and "\"logicalBytes\":null" in $sampler.snapshot()
 block missing:
   var sampler = default(ResourceSampler)
   sampler.configure(directory & "/missing", directory)
@@ -81,7 +90,7 @@ for cycle in 0..<1000:
     var sampler = default(ResourceSampler)
     sampler.configure(directory, directory)
     sampler.tick()
-    assert sampler.directory != nil
+    assert sampler.directoryOpen
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("management_resources", 1000, before, after)

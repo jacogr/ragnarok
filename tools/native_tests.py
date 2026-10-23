@@ -17,7 +17,6 @@ import platform
 import argparse
 import sys
 from setup_nimony import ROOT, cache_directory
-from native_source_identity import source_identity
 
 # Share directory-discovered suite identities with selection, cumulative reports and provenance.
 from verification_inventory import UNIT_SOURCES, UNIT_SUITES, ARC_SUITES
@@ -118,7 +117,6 @@ def unit_command(compiler, name=None, libraries=None):
             # Header discovery follows the same maintained include directories used by the compiler.
             inputs.extend(sorted((ROOT/'native'/include).glob('*.h')))
     profile = dict(directory=str(target.parent if name is not None else target), flags=flags,
-                   sources=source_identity(ROOT,target),
                    native={str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs})
     identity = hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()[:16]
     # The parallel codec pool keeps its own cache; it cannot race with serial profile reuse.

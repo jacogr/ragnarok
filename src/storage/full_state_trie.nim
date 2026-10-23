@@ -266,7 +266,7 @@ proc bytes*(view: TrieValue): seq[byte] {.requires: view.owner != nil.} =
   let owner = view.owner
   assert owner != nil # Retain the checked leaf once throughout the copy.
   result = newSeq[byte](owner.payload.len)
-  for i, octet in owner.payload: result[i] = octet # Retain the owner throughout copying.
+  for i in 0..<owner.payload.len: result[i] = owner.payload[i] # Retain the owner throughout copying.
 
 proc applyBatch(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[FullStateTrie] =
   ## Preflight the complete batch, build a private topology, then hash and return one new revision.
@@ -402,8 +402,8 @@ proc prove*(trie: FullStateTrie, key: StateKey,
       inc next
       if compareKey(current.key, key) == 0:
         payload = newSeq[byte](current.payload.len)
-        for index, octet in current.payload: payload[
-            index] = octet # Detached bytes never share mutable backing with a leaf.
+        for index in 0..<current.payload.len: payload[index] = current.payload[
+            index] # Detached bytes never share mutable backing with a leaf.
       break # Absence leaves intentionally omit their raw value, including long values.
     let left = current.left
     let right = current.right
@@ -459,7 +459,7 @@ proc exportNodes(node, base: nil TrieNode, depth: int, output: var seq[TrieRecor
     assert node != nil # Preflight and omission establish a complete physical node.
     if node.leaf:
       var copied = newSeq[byte](node.payload.len)
-      for i, octet in node.payload: copied[i] = octet # Published backing never escapes.
+      for i in 0..<node.payload.len: copied[i] = node.payload[i] # Published backing never escapes.
       output[next] = TrieRecord(kind: TrieRecordKind.Leaf, digest: node.digest,
         key: node.key, payload: copied)
       inc next

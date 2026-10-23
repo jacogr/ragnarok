@@ -301,7 +301,8 @@ proc publishDisputes*(state: var StateStore, plan: DisputesPlan): DisputesResult
   if array[32, byte](parent.value.commitment.root) != array[32, byte](data.parent.commitment.root):
     return DisputesResult[StateStoreSnapshot](status: DisputesError.ParentMismatch) # Plans cannot cross state contexts.
   var writes: seq[StateWrite] = @[]
-  for entry in data.entries:
+  for i in 0..<data.entries.len:
+    let entry = data.entries[i]
     if parent.value.lookup(entry.key).value.bytes != entry.value:
       writes.add(StateWrite(key: entry.key, kind: StateWriteKind.Put,
           value: entry.value)) # Preserve no-op write budgets.

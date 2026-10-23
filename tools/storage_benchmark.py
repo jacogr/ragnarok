@@ -76,7 +76,7 @@ def benchmark_sources():
         ROOT/'tools/storage_benchmark.py',ROOT/'tools/storage_benchmark_report.py',
         ROOT/'tools/native_checks.py',ROOT/'tools/pvm_reference.py',ROOT/'spec/toolchain.json',
         ROOT/'Makefile',ROOT/'.github/workflows/ci.yml',ROOT/'tools/build_crypto.py',
-        ROOT/'tools/native_source_identity.py',ROOT/'spec/crypto-pins.json',*[ROOT/name for name in NATIVE_SOURCES],
+        ROOT/'spec/crypto-pins.json',*[ROOT/name for name in NATIVE_SOURCES],
         *sorted((ROOT/'native/bandersnatch/src').rglob('*.rs'))]
 
 def source_hashes(paths):
