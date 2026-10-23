@@ -4,6 +4,7 @@
 ## Actual managed preparation and proof leases reject both logical source alternatives before canonical access.
 import std/[assertions, cmdline, syncio, strutils, monotimes, times]
 import std/posix/posix
+import ../../src/state/store
 import ../../src/app/logical_checkpoint_import
 import ../../src/app/logical_export
 import ../../src/app/logical_service_proof
