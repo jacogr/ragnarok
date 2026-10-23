@@ -123,3 +123,25 @@ shutdown state and `takeShutdown` explicitly releases the gate. Mutants erase re
 evidence, restart before acknowledgement or forget retirement-only errors. The witness retains
 both a completed operation and a retirement error. Worker shutdown outcomes are abstract inputs
 here, including Interrupted; the model does not manufacture a process-failure execution path.
+
+## Authority across service admissions and worker reuse
+
+`application_service_lease_authority.nif` distinguishes preparation, proof and disk owners,
+plus two distinct retained `RpcChainLease` tokens. It maps scalar admission/pause, submission
+success/refusal, native completion and matching retirement in `Services`, and exact-token
+`Server.pauseChain`/`resumeChain`. Foreign stop calls, a stale token from a retired attempt,
+nested pause and failed admission must not release, replace or leak the active token. Each
+has a killed mutant. The witness reaches a second proof job at Done while its new token is
+still held. Joined worker retirement is an abstraction already checked by the lifecycle models;
+the token model does not certify join ordering, disk installation or query payloads. The
+pre-submit host activation is serialized: no foreign host API interleaves pause and submission.
+
+`application_worker_reuse.nif` checks two preparation/proof submissions, with optional idle
+close/restart between them. Generations remain distinct across restart and startup allocates
+a fresh identity. A retained old generation in the same namespace and an equal-generation
+ticket from a foreign owner are inert. Those two equality classes also cover old namespaces
+after restart; actual ref lifetimes remain native evidence. The model additionally checks
+that cancellation of the first job cannot contaminate the next admission. Mutants remove
+generation checking, remove owner checking or retain the previous cancellation flag. The
+witness reaches an uncancelled second Done job after restart. Active close/join and temporary
+ARC aliases remain in the preparation lifecycle model; exact uint64 exhaustion remains native.
