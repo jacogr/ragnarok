@@ -144,10 +144,8 @@ proc mergeProofViews*(left, right: ProofView, limits: ProofViewLimits): ProofVie
     if order == 0:
       # Duplicate keys must agree on presence and exact bytes, never last-writer-wins.
       let other = b.entries[second]
-      if chosen.present != other.present:
-        return ProofViewResult[ProofView](status: ProofViewError.ConflictingEvidence)
-      if chosen.present and (chosen.byteLength != other.byteLength or chosen.bytes != other.bytes):
-        return ProofViewResult[ProofView](status: ProofViewError.ConflictingEvidence)
+      if not sameVerifiedLookup(chosen, other).value:
+        return ProofViewResult[ProofView](status: ProofViewError.ConflictingEvidence) # Exact immutable fact comparison copies no potentially large duplicate payload.
       inc first
       inc second
     elif order < 0:
