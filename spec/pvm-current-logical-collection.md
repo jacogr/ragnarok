@@ -172,6 +172,16 @@ memory before/after; native verification records fresh ARC evidence for 2,000 re
 
 Run `make unit SUITE=pvm_current_logical_retention`.
 
+## Full economic tuple provenance at actual collection
+
+Before refreshing each actual collected child, the host also constructs a structurally valid
+logical source from the exact same physical retained maps/headers and an explicitly changed
+fixture byte-price. Core/epoch/current-validator cardinalities stay equal; all configured bytes
+are retained. The source itself matches complete namespaces, but continuation refuses
+`ViewMismatch` against the genuine original prepared update. Equal map ownership/cardinalities
+cannot authorize replacement of the producer's full original Parameters. Canonical Services
+configuration is never mutated by this negative source control.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable

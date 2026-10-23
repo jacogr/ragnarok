@@ -4,6 +4,10 @@
 ## Test-owned real Services preparation/collection and independently bounded State logical refresh for actual host consumers.
 import std/[assertions, monotimes, times]
 import std/posix/posix
+import ./[accumulation_current_chain_context, parent_profile_context, parent_globals_context, supplied_logical_context]
+import ../../src/chain/[provider, genesis, parameters]
+import ../../src/codec/state_composition
+import ../../src/state/[parent_profile, parent_globals, parent_logical]
 import ./[current_identity_context, current_namespace_refresh_context,
     current_logical_proof_context, current_services_disk_samples]
 import ../../src/app/[services, preparation_worker, current_block_input, candidate, proof_query, proof_worker]
@@ -162,3 +166,32 @@ proc retireLogicalProof*(owner: var Services, logical: CurrentLogicalState,
   assert not owner.stateProofActive and not owner.rpc.chainPaused
   assert sameStateSnapshot(owner.stateSnapshot.value, update.currentUpdateState)
   assert owner.preparationAvailable and owner.stateProofAvailable
+proc checkRepricedLogicalSeed*(owner: Services, update: PreparedCurrentChainUpdate,
+    declarations: openArray[StateService]) =
+  ## A structurally recaptured source with the same physical map and cardinalities but another economic parameter tuple cannot authorize the actual collected successor.
+  let view = owner.chainView
+  assert view.finalizedBlock.error != GenesisError.None
+  let original = view.bestBlock.value.chainParameters
+  var wire = original.encodeParameters
+  assert wire.len > 8 and wire[8] == 0
+  wire[8] = 1 # Only the explicit fixture's original zero byte-price changes; this is not a production parameter override.
+  let alternative = decodeParameters(wire).value
+  assert alternative.get(coreCount) == original.get(coreCount)
+  assert alternative.get(epochPeriod) == original.get(epochPeriod)
+  assert alternative.encodeParameters != original.encodeParameters
+  var history: seq[BlockSnapshotResult] = @[]
+  for i in 0..<view.retainedCount:
+    # Structural snapshot capture preserves each actual state/header owner while explicitly selecting the different full configured tuple.
+    let snapshot = view.retainedBlockAt(RetainedBlockIndex(i)).value
+    let captured = captureBlockSnapshot(currentChainBytes(snapshot.header), snapshot.stateSnapshot, alternative)
+    assert captured.error == GenesisError.None
+    assert uint64(captured.value.activeValidators) == uint64(snapshot.activeValidators)
+    history.add(captured)
+  let repriced = restoreLocalChainView(history).value
+  let profile = captureParentProfile(repriced, parentProfileTestLimits).value
+  let globals = qualifyParentGlobals(profile, parentGlobalsTestLimits).value
+  let parent = captureLogicalParent(globals, declarations, suppliedLogicalTestLimits)
+  assert parent.error == ParentLogicalError.None
+  assert sameStateSnapshot(profile.parentContext.value.state, update.currentUpdatePriorState)
+  assert preserveCurrentIdentities(parent.value, update, currentIdentityTestLimits).error ==
+      CurrentIdentityError.ViewMismatch

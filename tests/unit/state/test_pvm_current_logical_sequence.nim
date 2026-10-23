@@ -89,6 +89,10 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone,
         assert sameStateSnapshot(before, logical.logicalProducer.currentUpdateState)
         assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
     let update = owner.collectLogicalChild(input, child, policies)
+    let stableDeclarations = if index == 0: declarations
+      else: copySuppliedServices(logical.currentLogicalInventory.value,
+          namespaceRefreshLimits.projection).value
+    owner.checkRepricedLogicalSeed(update, stableDeclarations)
     let identities = if index == 0:
         preserveCurrentIdentities(parent, update, currentIdentityTestLimits)
       else: preserveCurrentIdentities(logical, update, currentIdentityTestLimits)
