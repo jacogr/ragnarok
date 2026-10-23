@@ -1,0 +1,85 @@
+{
+  "source": "tests/native/storage_light_compaction_results.nim",
+  "build_name": "storage-light-compaction-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "plan",
+        "origin": "default"
+      },
+      "arguments": [
+        "plan",
+        "default"
+      ],
+      "name": "storage-light-compaction-plan-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light compaction plan default guard"
+    },
+    {
+      "identity": {
+        "member": "plan",
+        "origin": "failed"
+      },
+      "arguments": [
+        "plan",
+        "failed"
+      ],
+      "name": "storage-light-compaction-plan-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light compaction plan failed guard"
+    },
+    {
+      "identity": {
+        "member": "receipt",
+        "origin": "default"
+      },
+      "arguments": [
+        "receipt",
+        "default"
+      ],
+      "name": "storage-light-compaction-receipt-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light compaction receipt default guard"
+    },
+    {
+      "identity": {
+        "member": "receipt",
+        "origin": "failed"
+      },
+      "arguments": [
+        "receipt",
+        "failed"
+      ],
+      "name": "storage-light-compaction-receipt-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light compaction receipt failed guard"
+    },
+    {
+      "identity": {
+        "member": "epoch",
+        "origin": "default"
+      },
+      "arguments": [
+        "epoch",
+        "default"
+      ],
+      "name": "storage-light-compaction-epoch-default",
+      "diagnostic": "not prepared.data == nil",
+      "description": "Light compaction epoch default guard"
+    },
+    {
+      "identity": {
+        "member": "sequence",
+        "origin": "default"
+      },
+      "arguments": [
+        "sequence",
+        "default"
+      ],
+      "name": "storage-light-compaction-sequence-default",
+      "diagnostic": "not prepared.data == nil",
+      "description": "Light compaction sequence default guard"
+    }
+  ]
+}
