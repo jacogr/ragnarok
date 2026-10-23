@@ -1,0 +1,110 @@
+{
+  "build_name": "state-parent-profile-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard parent profile default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-parent-profile-default"
+    },
+    {
+      "arguments": [
+        "missing"
+      ],
+      "description": "Guard parent profile missing",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "missing"
+      },
+      "name": "state-parent-profile-missing"
+    },
+    {
+      "arguments": [
+        "reason"
+      ],
+      "description": "Guard parent profile reason",
+      "diagnostic": "outcome.status == PreviousFailure",
+      "identity": {
+        "reason": "reason"
+      },
+      "name": "state-parent-profile-reason"
+    },
+    {
+      "arguments": [
+        "profile"
+      ],
+      "description": "Guard parent profile profile",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "profile"
+      },
+      "name": "state-parent-profile-profile"
+    },
+    {
+      "arguments": [
+        "context"
+      ],
+      "description": "Guard parent profile context",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "context"
+      },
+      "name": "state-parent-profile-context"
+    },
+    {
+      "arguments": [
+        "info"
+      ],
+      "description": "Guard parent profile info",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "info"
+      },
+      "name": "state-parent-profile-info"
+    },
+    {
+      "arguments": [
+        "view"
+      ],
+      "description": "Guard parent profile view",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "view"
+      },
+      "name": "state-parent-profile-view"
+    },
+    {
+      "arguments": [
+        "raw-context"
+      ],
+      "description": "Guard parent profile raw-context",
+      "diagnostic": "0 < len(view.snapshot)",
+      "identity": {
+        "reason": "raw-context"
+      },
+      "name": "state-parent-profile-raw-context"
+    },
+    {
+      "arguments": [
+        "raw-retention"
+      ],
+      "description": "Guard parent profile raw-retention",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "raw-retention"
+      },
+      "name": "state-parent-profile-raw-retention"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_parent_profile_results.nim"
+}
