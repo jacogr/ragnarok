@@ -106,6 +106,45 @@
       "name": "storage-repository-nodes-default",
       "diagnostic": "not view.data == nil",
       "description": "Storage repository nodes default guard"
+    },
+    {
+      "identity": {
+        "member": "take",
+        "origin": "default"
+      },
+      "arguments": [
+        "take",
+        "default"
+      ],
+      "name": "storage-repository-take-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage repository guarded ownership transfer default"
+    },
+    {
+      "identity": {
+        "member": "take",
+        "origin": "failed"
+      },
+      "arguments": [
+        "take",
+        "failed"
+      ],
+      "name": "storage-repository-take-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage repository guarded ownership transfer failed"
+    },
+    {
+      "identity": {
+        "member": "take",
+        "origin": "moved"
+      },
+      "arguments": [
+        "take",
+        "moved"
+      ],
+      "name": "storage-repository-take-moved",
+      "diagnostic": "outcome.status == None",
+      "description": "Storage repository guarded ownership transfer moved"
     }
   ]
 }
