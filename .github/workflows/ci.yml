@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [unit, e2e, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, storage-diagnostics, storage-pressure, full]
+        options: [unit, e2e, build, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, storage-diagnostics, storage-pressure, full]
         default: full
         required: true
 
@@ -436,8 +436,8 @@ jobs:
 
   # Build locally and execute the final image; no registry credentials or image publishing.
   docker:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
-    name: Docker image
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
+    name: Build Docker
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
@@ -456,6 +456,61 @@ jobs:
           path: |
             build/ci/docker-build.log
             build/ci/docker-smoke.log
+
+  # Build only the host families with pinned compiler distributions and maintained native ABIs.
+  binary:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
+    name: Build ${{ matrix.target.name }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - {os: ubuntu-24.04, name: Linux, platform: linux-amd64}
+          - {os: macos-15, name: macOS, platform: macos-arm64}
+    runs-on: ${{ matrix.target.os }}
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Build, package and smoke-test relocated peer
+        run: make package-binary
+      - name: Retain downloadable binary archive
+        uses: *upload-artifact
+        with:
+          name: ragnarok-${{ matrix.target.platform }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            build/dist/ragnarok-${{ matrix.target.platform }}.tar.gz
+            build/dist/ragnarok-${{ matrix.target.platform }}.tar.gz.sha256
+      - name: Retain binary build diagnostics
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: binary-${{ matrix.target.platform }}-diagnostics-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/crypto/build.log
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
+            build/quic/build.log
+
+  # A complete Build request requires the image and both native binary archives.
+  build-status:
+    name: Build
+    needs: [docker, binary]
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full')) }}
+    strategy: *os-strategy
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Require every Build job
+        env:
+          DOCKER_RESULT: ${{ needs.docker.result }}
+          BINARY_RESULT: ${{ needs.binary.result }}
+        run: test "$DOCKER_RESULT" = success && test "$BINARY_RESULT" = success
 
   # Perf jobs publish validated measurements on master pushes and explicit group/full requests.
   bench-pvm:
