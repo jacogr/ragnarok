@@ -1,7 +1,7 @@
 # Complete logical service proof selection
 
 Select one service from an original complete logical source under independent full-service traversal,
-selector count, request hash-work and scratch/retained array quotas. Admission precedes allocation
+selector count, request hash-work and input/retained array and pinned merge-sort scratch quotas. Admission precedes allocation
 and request-key hashing. Metadata, every storage identity, preimage and request are included; raw
 keys are not inferred from physical maps. Unknown service, invalid source, quota refusal and genuine
 request backend failures remain distinct and expose no selected prefix.

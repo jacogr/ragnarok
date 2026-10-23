@@ -69,9 +69,11 @@ proc planLogicalServiceProof*(source: CurrentLogicalState, service: ServiceIndex
   charge(row.preimages)
   charge(row.requests)
   let total = budget-remaining
-  if uint64(row.requests) > uint64(limits.requests) or total > min(uint64(limits.bytes), uint64(
-      high(int))) div uint64(2*sizeof(StateKey)):
-    fail(LogicalServiceProofError.LimitExceeded) # Two arrays cover scratch plus generic retained plan keys.
+  let slots = min(uint64(limits.bytes), uint64(high(int))) div uint64(sizeof(StateKey))
+  if uint64(row.requests) > uint64(limits.requests) or total > slots div 2:
+    fail(LogicalServiceProofError.LimitExceeded)
+  if total div 2 > slots-total*2:
+    fail(LogicalServiceProofError.LimitExceeded) # Input, retained keys and pinned merge-sort scratch all fit before allocation.
   var keys = newSeq[StateKey](int(total))
   keys[0] = chapterServiceKey(StateChapter(255), service)
   var next = 1

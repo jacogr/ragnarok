@@ -55,10 +55,10 @@ proc main() {.raises.} =
   var exact = limits
   exact.keys = ElementLimit(uint64(info.keys))
   exact.requests = ElementLimit(uint64(info.requests))
-  exact.bytes = ByteLimit(uint64(info.keys)*uint64(2*sizeof(StateKey)))
+  exact.bytes = ByteLimit((uint64(info.keys)*2+uint64(info.keys) div 2)*uint64(sizeof(StateKey)))
   assert planLogicalServiceProof(logical, ServiceIndex(99), exact).error ==
       LogicalServiceProofError.None
-  exact.bytes = ByteLimit(uint64(info.keys)*uint64(2*sizeof(StateKey))-1)
+  exact.bytes = ByteLimit((uint64(info.keys)*2+uint64(info.keys) div 2)*uint64(sizeof(StateKey))-1)
   assert planLogicalServiceProof(logical, ServiceIndex(99), exact).error ==
       LogicalServiceProofError.LimitExceeded
   assert planLogicalServiceProof(logical, ServiceIndex(123456), limits).error ==
