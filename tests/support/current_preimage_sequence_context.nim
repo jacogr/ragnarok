@@ -3,7 +3,7 @@
 
 ## Genuine current preimage bodies follow an empty predecessor, with a separately sealed already-delivered repetition.
 import std/assertions
-import ../../src/app/chain
+import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[block_codec, report_owned]
 import ../../src/state/[accumulation_current_completion, accumulation_current_update,
@@ -15,12 +15,12 @@ type CurrentPreimageSequenceFixture* = object ## Expected full maps are phase-co
   sequence*: CurrentConsecutiveFixture
   repeated*: OwnedBlock
 
-proc preimageSeed(base: OwnedReport): CurrentChainFixture =
-  ## Existing signed options seed outstanding requests before roots/signatures; no guest supplies them before the intended extrinsic.
-  let authored = executionFixture(base, activityOptions(blobs = true, provided = false))
+proc currentExecutionSeed*(authored: ExecutionFixture,
+    limits: CurrentCandidateLimits): CurrentChainFixture =
+  ## Complete only a genuine configured execution round, then retain its exact original signed parent and full parameter tuple.
   let completed = runCurrentAccumulationCompletion(authored.round, currentRoundParameters(),
-    currentConsecutiveLimits().completion)
-  assert completed.error == CurrentAccumulationCompletionError.None, "real preimage seed completion"
+    limits.completion)
+  assert completed.error == CurrentAccumulationCompletionError.None, "real configured execution seed completion"
   let source = completed.value
   let admitted = source.currentChainAdmission.reportBlockStage.value.value.admitted
   let parent = captureBlockSnapshot(currentChainBytes(admitted.admittedParent),
@@ -29,7 +29,7 @@ proc preimageSeed(base: OwnedReport): CurrentChainFixture =
   CurrentChainFixture(source: source, parent: parent, entries: authored.entries,
       older: authored.older)
 
-proc authoredBody(seed: CurrentChainFixture): seq[byte] =
+proc currentFixtureBody*(seed: CurrentChainFixture): seq[byte] =
   ## Copy only the exact already-admitted extrinsic suffix, retaining independent header sealing for every successor.
   let child = seed.source.currentChainAdmission.reportBlockStage.value.value.admitted.admittedBlock
   let info = child.blockInfo.value
@@ -43,8 +43,9 @@ proc authoredBody(seed: CurrentChainFixture): seq[byte] =
 proc currentPreimageSequenceFixture*(base: OwnedReport): CurrentPreimageSequenceFixture =
   ## Real constructors and exact original ancestry qualify each accepted map; the repeated body never receives a completion certificate.
   result = default(CurrentPreimageSequenceFixture)
-  result.sequence.seed = preimageSeed(base)
-  let body = authoredBody(result.sequence.seed)
+  let authored = executionFixture(base, activityOptions(blobs = true, provided = false))
+  result.sequence.seed = currentExecutionSeed(authored, currentConsecutiveLimits())
+  let body = currentFixtureBody(result.sequence.seed)
   var chain = initApplicationChain(genesisView(result.sequence.seed.parent)).value
   result.sequence.heads.add(chain.chainView.bestBlock.value)
   var ancestors = result.sequence.seed.older
