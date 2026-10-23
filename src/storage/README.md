@@ -107,6 +107,11 @@ requires the independently trusted generation and root of the complete prefix be
 anything; complete corrupt frames and complete successor revisions are never discarded. Strict
 open remains unchanged. Real child-process short-write checks exercise recovery and resumed append.
 
+Physical trie full/delta/inverse exports provision exactly the preflighted record count. Their
+payloads remain detached mutable copies. `TrieResult.takeValue` transfers an owned export, revision
+or retained value once and leaves `Uninitialized`; the copying `.value` accessor remains available.
+See the [owning export contract](../../spec/storage-owned-trie-exports.md).
+
 `matches(view, otherView)` compares exact initialized immutable source owners without allocation,
 graph traversal or IO. Default views never match; equal roots/generations in a cloned owner do not
 authorize maintenance. Managed compaction uses this check before requested-root traversal; see the

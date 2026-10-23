@@ -26,8 +26,9 @@ proc main() =
     var selected = if origin == "default": default(TrieResult[TrieExport])
       elif origin == "failed": exportFullTrie(trie, default(TrieExportLimits))
       else: exportFullTrie(trie, TrieExportLimits(records: TrieNodeLimit(1), valueBytes: ByteLimit(0)))
+    var held = default(TrieExport)
     if origin == "moved":
-      let held = selected.takeValue # A second extraction must fail even while the first owned export remains alive.
+      held = selected.takeValue # The first owned export remains alive when a second extraction is attempted.
       assert held.records.len == 1
     echo selected.takeValue.records.len
   of "apply":
