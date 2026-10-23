@@ -112,7 +112,7 @@ jobs:
             build/tests/python/results.json
 
   guards:
-    if: &full ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
+    if: *requested
     name: Compile rejection guards
     timeout-minutes: 30
     strategy: *os-strategy
@@ -219,7 +219,7 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   failures:
-    if: *full
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
     name: Contract shard ${{ matrix.shard }}
     timeout-minutes: 30
     strategy:

@@ -41,7 +41,7 @@ request verification of the current PR merge revision:
 
 | Label | Requested checks |
 | --- | --- |
-| `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation |
+| `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation, compiler rejection guards |
 | `ci:e2e` | End-to-end networking tests only |
 | `ci:interop` | All Interop jobs: PVM reference comparisons and JAM Tart interoperability |
 | `ci:perf` | All Perf jobs: the validated interpreted PVM speed comparison |
