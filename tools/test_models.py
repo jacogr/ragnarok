@@ -59,18 +59,40 @@ def declarations(folder):
     for model in models:
         # A file owns its own expected mutants and witnesses rather than a central registry.
         data = json.loads(model.with_suffix('.json').read_text(), object_pairs_hook=unique_object)
-        if set(data) != {'cases'} or not isinstance(data['cases'], list) or not data['cases']:
+        if not isinstance(data, dict) or set(data) != {'cases'} or not isinstance(data['cases'], list) or not data['cases']:
             raise ValueError('Invalid model cases: '+str(model))
+        source = model.read_text()
+        if rewrite(source, {'Mut': '0', 'Witness': '(false)'}) != source:
+            raise ValueError('Model defaults must check unmutated safety: '+str(model))
         names = set()
+        roles = []
         for case in data['cases']:
             # Names also become log filenames, so no path characters are permitted.
-            if (set(case) != {'name', 'assignments', 'expected'} or
+            if (not isinstance(case, dict) or set(case) != {'name', 'role', 'assignments', 'expected'} or
+                    not isinstance(case['name'], str) or
                     re.fullmatch(r'[a-z][a-z0-9-]*', case['name']) is None or
                     case['name'] in names or case['expected'] not in ('pass', 'violated') or
                     not isinstance(case['assignments'], dict)):
                 raise ValueError('Invalid model case: '+str(model))
-            rewrite(model.read_text(), case['assignments'])
+            role, assignments = case['role'], case['assignments']
+            # Roles bind the promised evidence to concrete switches, not descriptive case names.
+            if role == 'base':
+                valid = assignments == {} and case['expected'] == 'pass'
+            elif role == 'mutant':
+                valid = (set(assignments) == {'Mut'} and isinstance(assignments['Mut'], str) and
+                         re.fullmatch(r'[1-9][0-9]*', assignments['Mut']) is not None and
+                         case['expected'] == 'violated')
+            elif role == 'witness':
+                valid = assignments == {'Witness': '(true)'} and case['expected'] == 'violated'
+            else:
+                valid = False # Unknown roles cannot silently skip the safety/mutation/witness contract.
+            if not valid:
+                raise ValueError('Invalid model case role: '+str(model))
+            rewrite(source, assignments)
+            roles.append(role)
             names.add(case['name'])
+        if roles.count('base') != 1 or 'mutant' not in roles or roles.count('witness') != 1:
+            raise ValueError('Expected one base, mutants and one witness: '+str(model))
         result.append((model, data['cases']))
     return result
 

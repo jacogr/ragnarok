@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Model orchestration must reject incomplete/error verdicts and exploration disagreement."""
+import copy
 import json
 from pathlib import Path
 import subprocess
@@ -44,6 +45,59 @@ class ModelChecks(unittest.TestCase):
                                    (source, {'Mut': '(plus 1 2)'})]:
             with self.assertRaises(ValueError):
                 test_models.rewrite(text, assignments)
+
+    def model_cases(self):
+        """Return independent complete declarations so tampering targets one contract at a time."""
+        return [dict(name='base', role='base', assignments={}, expected='pass'),
+                dict(name='mutant', role='mutant', assignments={'Mut': '1'}, expected='violated'),
+                dict(name='witness', role='witness', assignments={'Witness': '(true)'},
+                     expected='violated')]
+
+    def load_cases(self, cases, source='(assign Mut.0. 0)(assign Witness.0. (false))'):
+        """Validate real paired files without executing a checker or provisioning dependencies."""
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder/'worker.nif').write_text(source)
+            (folder/'worker.json').write_text(json.dumps(dict(cases=cases)))
+            return test_models.declarations(folder)
+
+    def test_required_roles(self):
+        """Deletion of any evidence role or duplication of the base/witness fails preflight."""
+        cases = self.model_cases()
+        self.assertEqual(self.load_cases(cases)[0][1], cases)
+        for index in range(len(cases)):
+            # Every role is independently mandatory, regardless of the remaining verdicts.
+            with self.subTest(missing=cases[index]['role']), self.assertRaises(ValueError):
+                self.load_cases(cases[:index]+cases[index+1:])
+        for index in (0, 2):
+            # Different names cannot disguise two conflicting safety or reachability declarations.
+            extra = dict(cases[index], name='duplicate')
+            with self.subTest(duplicate=extra['role']), self.assertRaises(ValueError):
+                self.load_cases(cases+[extra])
+
+    def test_role_tampering(self):
+        """A renamed case, wrong verdict or mixed switches cannot replace real evidence."""
+        changes = [(0, 'assignments', {'Mut': '1'}), (0, 'expected', 'violated'),
+                   (1, 'assignments', {}), (1, 'assignments', {'Mut': '0'}),
+                   (1, 'assignments', {'Mut': 1}), (1, 'expected', 'pass'),
+                   (1, 'assignments', {'Witness': '(true)'}),
+                   (1, 'assignments', {'Mut': '1', 'Witness': '(true)'}),
+                   (2, 'assignments', {'Witness': '(false)'}), (2, 'expected', 'pass'),
+                   (2, 'role', 'unknown')]
+        for index, field, value in changes:
+            # Each fixture otherwise contains the complete, valid evidence contract.
+            cases = copy.deepcopy(self.model_cases())
+            cases[index][field] = value
+            with self.subTest(index=index, field=field, value=value), self.assertRaises(ValueError):
+                self.load_cases(cases)
+
+    def test_default_switches(self):
+        """The unmodified source must select safety with all intentional defects disabled."""
+        for source in ('(assign Mut.0. 1)(assign Witness.0. (false))',
+                       '(assign Mut.0. 0)(assign Witness.0. (true))', '(assign Mut.0. 0)'):
+            # Witness-only defaults or missing switches cannot count as passing base evidence.
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                self.load_cases(self.model_cases(), source)
 
     def test_disagreement_fails(self):
         """Two individually passing but different explorations fail and replace stale green evidence."""
