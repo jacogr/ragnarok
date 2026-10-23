@@ -23,12 +23,12 @@ proc namespaceHaltCode*(): seq[byte] =
   ## Existing whole-code framing prefixes maintained guestEnvelope with the single code metadata octet.
   result = @[0'u8]
   for octet in guestEnvelope([@[50'u8, 0]]): result.add(octet)
-proc executionNamespaceParent*(source: ExecutionFixture): ChainView =
+proc executionNamespaceParent*(source: ExecutionFixture, parameters = currentChainSettings()): ChainView =
   ## Capture exact original signed parent/state/Parameters without inventing completion authority.
   let admission = source.round.roundBlockQueue.value.accumulationAdmission.value
   let bound = admission.reportBlockStage.value.value.admitted
   let captured = captureBlockSnapshot(currentChainBytes(bound.admittedParent),
-      source.state.snapshot.value, currentChainSettings())
+      source.state.snapshot.value, parameters)
   assert captured.error == GenesisError.None
   genesisView(captured).finalizeView(captured.value.blockHash).value
 proc prepareNamespaceExecution*(source: ExecutionFixture): PreparedCurrentChainUpdate =
