@@ -59,7 +59,10 @@ proc cycle() =
   assert restoreRepositoryImage(orphan, limits, ElementLimit(3), ByteLimit(1000000)).error ==
       RepositoryError.InvalidGraph
   bad = image
-  let fewerRecords = bad.collection.records[0..<bad.collection.records.len-1]
+  var fewerRecords = newSeq[TrieRecord](bad.collection.records.len-1)
+  for index in 0..<fewerRecords.len:
+    # Copy the same incomplete record prefix without instantiating stdlib sequence slicing.
+    fewerRecords[index] = bad.collection.records[index]
   bad.collection.records = fewerRecords
   assert restoreRepositoryImage(bad, limits, ElementLimit(2), ByteLimit(1000000)).error !=
       RepositoryError.None

@@ -102,8 +102,10 @@ journal and context-codec truncation tests, borrow `toOpenArray(0, stop-1)` inst
 retains the source, decoders accept read-only inputs and every prefix including empty remains
 covered. The current logical-proof test checks the four RPV1 magic bytes by index after its
 minimum-length assertion, avoiding the same slice instantiation while retaining every byte check.
-No stdlib patch or weaker assertion is required. Recheck the minimal probe on the next nightly
-before drafting the remaining compiler reports.
+The image-repository test copies its deliberately incomplete record prefix by checked index
+before asserting rejection, preserving owned records without sequence slicing. No stdlib patch or
+weaker assertion is required. Recheck the minimal probe on the next nightly before drafting the
+remaining compiler reports.
 
 ## Deferred Linux RSS return
 

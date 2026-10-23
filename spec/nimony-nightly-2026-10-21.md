@@ -355,3 +355,42 @@ evidence, exact incoming-tree preservation, per-suite logs and strict refusal re
 ignored `build/ci/nimony-state-current-*`. Next remains a published nightly containing #2737,
 then rechecking the remaining workaround probes and drafting still-needed minimal reports for
 maintainer submission.
+
+
+## Bounded storage admission synchronization on the October 22 pin
+
+Merge master `90dc41d5` normally (merge `c56899fa`), covering 30 storage merges. Preserve
+structural record preflight, provisional per-record delivery, private staged image/publication
+owners, complete graph authority, atomic refusal and independent retained views. All 47 incoming
+files outside the prior indexed traversal adaptation in `node_repository.nim` remain byte-identical
+to master. The new record-codec implementation is unchanged. Compiler/browser pin `8cb7a690a`
+and the sequence-element copy-hook hold for #2737 remain unchanged.
+
+The broader image-repository consumer test, which predates this incoming tranche, hits the same
+confirmed stdlib sequence-slice failure through its deliberately incomplete record prefix. Copy
+that prefix by checked index into an independently owned sequence before the original refusal
+assertion. This preserves the same omitted record and all graph/ownership assertions without a
+compiler/stdlib patch. It is the sole new compatibility adaptation in this synchronization.
+The first 15 selected native suites passed before that correction and were reused unchanged;
+the remaining nine, including the corrected image suite, then passed.
+
+All 368 production modules and 24 selected native storage suites passed: the ten incoming
+admission/delivery/failure/ownership suites plus 14 affected record, repository, image, publication,
+file/managed/context, replay and repair consumers. All five incoming compiler privacy fixtures
+passed their exact module-member rejection predicates. The 250 affected Python tests passed,
+including paired-reopen artifact/evidence validation, privacy predicates, storage references,
+native profiles and Make/CI safeguards. The first Python launcher named two nonexistent modules;
+its 203 actual tests passed, and the corrected Make/CI selection passed all 47 tests. Preserve
+both logs and the aggregate receipt instead of presenting the initial launcher as successful.
+
+The strict fresh-reopen panel passed all four cases; independent read-only report validation
+passed. The complete checked ARC/Clang/LTO integration/offload peer build passed. Both changed
+production modules passed Linux x86-64 semantic checks. Inventory, pinned formatting of the 18
+incoming Nim files and the final adapted image test, and diff checks passed.
+
+Results apply to local macOS ARM64 runtime and the stated Linux semantic checks. No new matched
+baseline/candidate memory measurement, Linux resident-pressure run or full E2E result is claimed.
+The merged storage measurements retain their original compiler, source and host scopes; optional
+paired collection was not rerun against unlike compiler captures. Raw evidence is under ignored
+`build/ci/nimony-storage-admission-*`. The next compiler task remains a published nightly with
+#2737 followed by the retained workaround probes and any still-needed minimal report drafts.
