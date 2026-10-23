@@ -154,16 +154,21 @@ proc sourceChecks(fixture: NamespaceExecutionFixture) =
   assert captureCurrentLogicalStartup(fixture.parent, declarations, smaller).error ==
       CurrentLogicalStartupError.GlobalsFailure
 proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false, omitted = false,
-    refuse = false, namespaces = false) {.raises.} =
+    refuse = false, namespaces = false, refresh = false, partial = false,
+        unwritable = false) {.raises.} =
   ## Actual command sockets, worker collection and adoption use explicit files; strict disk restart reconstructs a fresh physical logical owner.
   var chainPath = "pvm-logical-cli-chain"
   var policyPath = "pvm-logical-cli-policy"
   var sourcePath = "pvm-logical-cli-source"
+  let actualSourcePath = sourcePath
+  var sourceDescriptor = -1.cint
   var logicalPolicyPath = "pvm-logical-cli-limits"
   var database = "pvm-logical-cli-state-" & $layout
   var namespacePath = "pvm-logical-cli-namespace-policy"
   defer:
-    for name in [chainPath, policyPath, sourcePath, logicalPolicyPath, namespacePath]:
+    if sourceDescriptor >= 0: discard posix.close(
+        sourceDescriptor) # Parent descriptor outlives every forked responder and source publication attempt.
+    for name in [chainPath, policyPath, actualSourcePath, logicalPolicyPath, namespacePath]:
       var path = name
       discard posix.unlink(path.toCString())
     if layout == 2 and not malformed: removeManagedSample(database, [ManagedEpoch(1)])
@@ -185,6 +190,11 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
       else: reduced.add(row & "\n")
     text = reduced
   writeFile(sourcePath, text)
+  if unwritable:
+    var nativePath = actualSourcePath
+    sourceDescriptor = posix.open(nativePath.toCString(), O_RDONLY)
+    assert sourceDescriptor >= 0
+    sourcePath = "/dev/fd/" & $sourceDescriptor # A real readable regular source has a kernel descriptor-directory parent where atomic sibling creation must fail, including under root.
   let first = fixture.source.round.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value.value.admitted.admittedBlock
   var model = initApplicationChain(fixture.update.currentUpdateView).value
   var heads = @[fixture.parent.bestBlock.value, model.chainView.bestBlock.value]
@@ -196,12 +206,14 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     children.add(child)
     heads.add(model.chainView.bestBlock.value)
   var extra: seq[string] = @[]
+  if refresh: extra.add("--download-update-logical-source") # Only explicit opt-in may replace the previously qualified input file.
   if namespaces:
     var namespacePolicy = namespacePolicyTestLimits()
     if refuse: namespacePolicy.continuation.scratchBytes = ByteLimit(
         0) # Preserve a genuine local continuation refusal after real receipt without adoption.
     writeFile(namespacePath, if malformed: "wrong\n" else: encodeCurrentNamespacePolicy(namespacePolicy))
-    extra = @["--download-namespace-policy", namespacePath]
+    extra.add("--download-namespace-policy")
+    extra.add(namespacePath)
   if layout != 0:
     for argument in ["--state-storage", "disk", "--state-db", database]: extra.add(argument)
     if layout == 2:
@@ -211,28 +223,42 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
   for i in 0..<3:
     requests.add(currentExpectedRequest(array[32, byte](heads[i].blockHash)))
     responses.add(currentConsecutiveResponse(children[i]))
-  let firstCount = if malformed or omitted or refuse or namespaces or layout == 0: 3 else: 1
+  if partial: responses[1] = @[0'u8, 0, 0, 0] # The second authenticated response is genuinely empty; one attempt must exhaust after the first adopted child.
+  let firstCount = if unwritable: 1 elif malformed or omitted or refuse or partial or (
+      namespaces and not refresh) or layout == 0: 3 else: 1
   let exchanged = logicalCommandExchange(chainPath, policyPath, sourcePath, logicalPolicyPath,
       requests, responses, firstCount, extra)
   if malformed or omitted:
     assert exchanged.outcome.error == (if malformed and
         namespaces: CurrentDownloadCommandResult.InvalidPolicy else: CurrentDownloadCommandResult.InvalidLogicalSource)
     assert exchanged.outcome.adoptedBlocks == 0 and exchanged.secondRequests == 0
+  elif unwritable:
+    assert exchanged.outcome.error == CurrentDownloadCommandResult.LogicalSourcePublicationFailure
+    assert exchanged.outcome.adoptedBlocks == 1 and exchanged.secondRequests == 1
+    assert readFile(actualSourcePath) == text # Ordinary atomic publication refusal preserves the entire previous source file.
+  elif partial:
+    assert exchanged.outcome.error == CurrentDownloadCommandResult.Exhausted
+    assert exchanged.outcome.adoptedBlocks == 1 and exchanged.secondRequests == 2
   elif refuse:
     assert exchanged.outcome.error == CurrentDownloadCommandResult.Exhausted
     assert exchanged.outcome.adoptedBlocks == 0 and exchanged.secondRequests == 1
   else:
     assert exchanged.outcome.error == CurrentDownloadCommandResult.Adopted
     assert exchanged.outcome.adoptedBlocks == firstCount and exchanged.secondRequests == firstCount
+  if refresh and not malformed and not omitted and not refuse and not unwritable:
+    let updated = readFile(actualSourcePath)
+    if namespaces:
+      assert updated != text and "k=07\n" in updated # Exported raw identity comes only from the actual qualified adopted source.
+    else: assert updated == text # Strict identity preservation exports the same canonical declarations after actual adoption.
   if malformed:
     assert not fileExists(database) and not dirExists(
         database) # Lexical refusal precedes Services or database startup.
   elif layout != 0:
-    if not omitted and not refuse and not namespaces:
+    if not omitted and not refuse and not unwritable and (not namespaces or refresh):
       var nextRequests: seq[array[42, byte]] = @[]
       var nextResponses: seq[seq[byte]] = @[]
       for i in 1..<3:
-        nextRequests.add(requests[i]); nextResponses.add(responses[i])
+        nextRequests.add(requests[i]); nextResponses.add(currentConsecutiveResponse(children[i]))
       let restarted = logicalCommandExchange(chainPath, policyPath, sourcePath, logicalPolicyPath,
           nextRequests, nextResponses, 2, extra)
       assert restarted.outcome.error == CurrentDownloadCommandResult.Adopted
@@ -240,7 +266,7 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     var owner = default(Services)
     let options = currentDiskOptions(chainPath, database, layout == 2, 0)
     assert owner.start(options, "strict CLI logical final reopen")
-    assert owner.chainView.retainedCount == (if omitted or refuse: 1 else: 4)
+    assert owner.chainView.retainedCount == (if omitted or refuse: 1 elif unwritable: 2 else: 4)
     for i in 0..<owner.chainView.retainedCount:
       equalCurrentDiskMap(owner.chainView.retainedBlockAt(RetainedBlockIndex(uint64(
           i))).value.stateSnapshot, heads[i].stateSnapshot)
@@ -260,12 +286,16 @@ proc main() {.raises.} =
   sourceChecks(fixture)
   for layout in 0..2:
     command(fixture, layout)
+    command(fixture, layout, refresh = true)
     command(fixture, layout, true)
     command(fixture, layout, false, true)
     command(fixture, layout, false, false, true)
     command(mutated, layout, namespaces = true)
     command(mutated, layout, namespaces = true, refuse = true)
     command(mutated, layout, namespaces = true, malformed = true)
+    command(mutated, layout, namespaces = true, refresh = true)
+    command(mutated, layout, namespaces = true, refresh = true, partial = true)
+    command(mutated, layout, namespaces = true, refresh = true, unwritable = true)
   echo "PVM current logical startup passed"
 try: main()
 except: quit(2) # Parser, source matching, command adoption and every native cleanup path are mandatory evidence.

@@ -81,6 +81,13 @@ proc main() {.raises.} =
       "--with-state"], pair), extra)]:
     assert not parseOptions(invalid, options)
     assert options.namespaceDownloadPolicyPath.len == 0 and not options.logicalDownloadEnabled
+  let update = @["--download-update-logical-source"]
+  assert parseOptions(joined(joined(base, pair), update), options) and
+      options.updateLogicalDownloadSource
+  assert not parseOptions(joined(base, update), options)
+  assert not options.updateLogicalDownloadSource
+  assert not parseOptions(joined(joined(joined(base, pair), update), update), options)
+  assert not options.updateLogicalDownloadSource
   var path = "current-namespace-policy-file"
   discard posix.unlink(path.toCString())
   defer: discard posix.unlink(path.toCString()) # Only this test-owned file is removed after its bounded reader closes.

@@ -15,7 +15,8 @@ const
   MaximumCompactionBytes = 128'u64*1024*1024 # Leave journal capacity for a bounded final publication frame.
   DefaultStateWrites = 1000'u64       # CLI defaults do not widen explicitly supplied component policies.
   DefaultStateWriteBytes = 100000'u64 # Each omitted mutation ceiling resolves independently.
-  Switches = ["--with-ui", "--with-rpc", "--with-management", "--with-telemetry", "--with-state", "--download-local-ancestors"]
+  Switches = ["--with-ui", "--with-rpc", "--with-management", "--with-telemetry", "--with-state",
+      "--download-local-ancestors", "--download-update-logical-source"]
   Values = ["--telemetry", "--chain", "--management-socket", "--rpc-port", "--ui-port",
       "--dev-ui-dir", "--state-writes", "--state-write-bytes", "--state-checkpoint",
       "--state-trust", "--state-header",
@@ -32,7 +33,7 @@ type StateDiskLayout* {.pure.} = enum ## Physical layout is independent of memor
   Journal, Managed
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
-  parsed, telemetry, rpc, ui, state, recover, localAncestors, management: bool
+  parsed, telemetry, rpc, ui, state, recover, localAncestors, management, updateLogicalSource: bool
   positional: seq[string]
   ancestorFiles: seq[string]
   downloadCount, remoteAncestors, discoverAncestors: int
@@ -87,6 +88,10 @@ proc logicalDownloadSourcePath*(options: Options): string =
 proc logicalDownloadPolicyPath*(options: Options): string =
   ## Complete separate resource-policy path is retained independently of the declaration file.
   if options.parsed: options.logicalPolicy else: ""
+
+func updateLogicalDownloadSource*(options: Options): bool =
+  ## Explicit paired opt-in updates only the already qualified source file after actual adoption and joined shutdown.
+  options.parsed and options.updateLogicalSource
 
 proc namespaceDownloadPolicyPath*(options: Options): string =
   ## Only an explicitly paired current logical download can expose this opt-in namespace resource path.
@@ -220,6 +225,7 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
       of "--with-ui": candidate.ui = true
       of "--with-state": candidate.state = true
       of "--download-local-ancestors": candidate.localAncestors = true
+      of "--download-update-logical-source": candidate.updateLogicalSource = true
       else: return false # Switch classification above makes this branch unreachable.
       inc i
     elif name in Values:
@@ -351,7 +357,7 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
   if candidate.remoteAncestors > 0 and candidate.discoverAncestors > 0:
     return false # Up-front fixed acquisition and child-driven discovery are explicit alternative command modes.
   if candidate.logicalSource.len > 0 or candidate.logicalPolicy.len > 0 or
-      candidate.namespacePolicy.len > 0:
+      candidate.namespacePolicy.len > 0 or candidate.updateLogicalSource:
     if candidate.logicalSource.len == 0 or candidate.logicalPolicy.len == 0 or
         candidate.positional.len == 0 or candidate.positional[0] != "download-current" or
             not candidate.state:
