@@ -18,8 +18,10 @@ full/Perf requests, with a standalone `bench-pvm` scope also available, and publ
 one speed table with raw samples. The current baseline compares Ragnarök
 and the PolkaVM interpreter; compiled comparisons are deferred. Full fuzzing CI remains future work.
 
-Pushes to `master` request full verification. Pull requests run checks when a maintainer adds
-`ci:unit`, `ci:e2e` or `ci:full`; opening a PR or pushing another commit does not request a run.
+Pushes to `master` request full verification. PR opening, reopening and source updates automatically
+run **Smoke**: complete formatting plus production peer entry-point semantic compilation. Heavy
+checks still require a maintainer label (`ci:unit`, `ci:e2e`, `ci:interop`, `ci:perf` or `ci:full`).
+Automatic smoke runs have their own cancellation group, separate from explicit heavy requests.
 The workflow also supports manual dispatch with a selected scope.
 
 Jobs publish summaries and retain diagnostic logs and reports from `build/`. See
