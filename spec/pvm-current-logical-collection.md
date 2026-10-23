@@ -46,6 +46,16 @@ finality and the exact corresponding logical successor. This is an authored gues
 
 Run `make unit SUITE=pvm_current_logical_sequence`.
 
+## Durable logical handoff
+
+The repeated collected-successor witness runs in memory, journal and managed layouts. Every
+logical result is created before enqueue; its canonical aliases stay untouched through native
+disk publication, including Done, until matching collection. After three confirmed adoptions,
+strict journal/managed startup restores all four exact retained maps and block/hash/parent/slot
+identities. Actual prepared/current logical provenance remains tied to the original physical
+owners; reopening proves durability without asserting those old owners can authorize new work.
+Automatic managed compaction is explicitly disabled for this publication witness.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
