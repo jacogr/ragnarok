@@ -1,0 +1,55 @@
+{
+  "build_name": "state-current-refresh-execution-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "Guard current refresh execution default",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "default"
+      },
+      "name": "state-current-refresh-execution-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "Guard current refresh execution invalid",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "invalid"
+      },
+      "name": "state-current-refresh-execution-invalid"
+    },
+    {
+      "arguments": [
+        "metadata"
+      ],
+      "description": "Guard current refresh execution metadata",
+      "diagnostic": "outcome.status == MetadataFailure",
+      "identity": {
+        "reason": "metadata"
+      },
+      "name": "state-current-refresh-execution-metadata"
+    },
+    {
+      "arguments": [
+        "request"
+      ],
+      "description": "Guard current refresh execution request",
+      "diagnostic": "outcome.status == RequestFailure",
+      "identity": {
+        "reason": "request"
+      },
+      "name": "state-current-refresh-execution-request"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/state_current_refresh_execution_results.nim"
+}
