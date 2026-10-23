@@ -239,16 +239,17 @@ proc decodeLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId,
   for index in 0..<32:
     if input[stop+index] != checksum[index]: return LightSnapshotResult[LightStateCache](
         status: LightSnapshotError.ChecksumMismatch)
-  var proofs = newSeq[LightStateProof](int(count))
   cursor = HeaderBytes
-  # The stable borrowed input and complete first pass prove each exact copy/allocation extent.
-  for index in 0..<proofs.len:
+  proc readProof(index: int): LightStateProof {.closure.} =
+    ## The synchronous constructor calls each index once; complete shape preflight proves every cursor and allocation extent.
+    assert index >= 0 and index < int(count)
     let key = readKey(input, cursor)
     let count = int(number(input, cursor+31, 2))
     let size = int(number(input, cursor+33))
     cursor += EntryBytes
     var nodes = newSeq[EncodedStateNode](count)
     for slot in 0..<count:
+      # Copy only the selected bounded path, then retire it before the next proof-reader call.
       var raw = default(array[64, byte])
       for offset in 0..<64: raw[offset] = input[cursor+offset]
       nodes[slot] = EncodedStateNode(raw)
@@ -256,14 +257,14 @@ proc decodeLightSnapshot*(input: openArray[byte], expectedChain: StorageChainId,
     var value = newSeq[byte](size)
     for offset in 0..<size: value[offset] = input[cursor+offset]
     cursor += size
-    proofs[index] = LightStateProof(key: key, proof: StateProof(nodes: nodes, value: value))
-  assert cursor == stop
-  let admitted = newLightStateCache(expectedRoot, proofs, limits.cache)
+    LightStateProof(key: key, proof: StateProof(nodes: nodes, value: value))
+  let admitted = restoreLightStateCache(expectedRoot, int(count), readProof, limits.cache)
   if admitted.error == LightCacheError.BackendFailure:
     return LightSnapshotResult[LightStateCache](status: LightSnapshotError.BackendFailure)
   if admitted.error != LightCacheError.None:
     return LightSnapshotResult[LightStateCache](status: LightSnapshotError.ProofFailure,
         proofReason: admitted.error)
+  assert cursor == stop # Only complete successful stream consumption authorizes the cache result.
   LightSnapshotResult[LightStateCache](status: LightSnapshotError.None, completed: admitted.value)
 
 proc ownedSnapshot(encoded: sink seq[byte], chain: StorageChainId, root: StateRoot,

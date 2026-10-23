@@ -288,3 +288,8 @@ Light-file reopening transfers its owned read buffer into the validated prepared
 The public `takeLightSnapshot` consumes only on success; failed validation preserves
 the caller buffer, and borrowed restoration retains its copying contract. See the
 [ownership and measured memory record](../../spec/storage-light-restore-memory.md).
+
+Light snapshot decoding preflights the complete image and checksum, then verifies one
+proof at a time through a synchronous canonical reader into a private final cache.
+The reader is never retained and a failed suffix exposes no partial cache. See the
+[streaming verification and memory contract](../../spec/storage-light-streaming.md).
