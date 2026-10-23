@@ -37,9 +37,9 @@ try:
   data = readFile(getEnv("RAGNAROK_PVM_BENCHMARK"))
 except:
   quit 2
-assert data.len >= 12 and data[0..7] == "PVMBEN01" and word(data, 8, 4) == 10
+assert data.len >= 12 and data[0..7] == "PVMBEN01" and word(data, 8, 4) == 11
 var cursor = 12
-for row in 0..<10:
+for row in 0..<11:
   # Bound guest inputs before timing or narrowing; malformed corpora cannot create measurements.
   assert data.len - cursor >= 273
   let at = cursor
@@ -52,9 +52,13 @@ for row in 0..<10:
   let cycles = word(data, at + 37, 8)
   let halt = word(data, at + 45, 4)
   let haltPrice = word(data, at + 49, 8)
-  assert kind <= 4 and iterations > 0 and iterations <= 10000
+  assert kind <= 5 and iterations > 0 and iterations <= 10000
   assert price > 0 and price < 1000 and haltPrice > 0 and haltPrice < 1000
   assert cycles > 0 and cycles < 1000
+  let secondPrice = if kind == 5: initial else: 0'u64
+  if kind == 5:
+    # The memoryless alternating guest reuses auxiliary header slots for its independently specified second block.
+    assert address == 8 and secondPrice > 0 and secondPrice < 1000
   cursor += 273
   assert length >= 4 and length <= 128 and length <= uint64(data.len - cursor)
   let preparation = getMonoTime().ticks
@@ -83,12 +87,15 @@ for row in 0..<10:
   var registers = default(RegisterFile)
   for i in 0..<13: registers[i] = RegisterValue(word(data, at + 65 + i * 8, 8))
   let source = captureMachine(program, memory, MachineInfo(pc: CodeAddress(0),
-    gas: MachineGas(iterations * price + haltPrice + 7), blockCharged: false,
+    gas: MachineGas(iterations * (price+secondPrice) + haltPrice + 7), blockCharged: false,
         registers: registers)).value
   let prepareNs = getMonoTime().ticks - preparation
   assert uint64(blockGas(program, CodeAddress(0), GasCycleLimit(cycles)).value) == price
   assert uint64(blockGas(program, CodeAddress(halt), GasCycleLimit(cycles)).value) == haltPrice
-  let perLoop = if kind == 0: 3'u64 elif kind in [1'u8, 4]: 5'u64 elif kind == 3: 9'u64 else: 6'u64
+  if kind == 5:
+    assert uint64(blockGas(program, CodeAddress(address), GasCycleLimit(cycles)).value) == secondPrice
+  let perLoop = if kind == 0: 3'u64 elif kind in [1'u8, 4]: 5'u64 elif kind == 3: 9'u64 elif kind ==
+      5: 4'u64 else: 6'u64
   for sample in 0..<13:
     # Three warmups precede ten recorded samples; source owners are immutable across every run.
     var context = HostContext(calls: 0)

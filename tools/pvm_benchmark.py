@@ -81,7 +81,7 @@ def run():
         sources=[*sorted((ROOT/'src').rglob('*.nim')),ROOT/'tests/performance/pvm_workload.nim',
                  *sorted((CRATE/'src').rglob('*.rs')),CRATE/'Cargo.toml',CRATE/'Cargo.lock',
                  ROOT/'tools/pvm_benchmark.py',ROOT/'tools/pvm_benchmark_report.py',ROOT/'tests/pvm_benchmark_reference.py',
-                 ROOT/'spec/toolchain.json',ROOT/'Makefile',ROOT/'.github/workflows/ci.yml']
+                 ROOT/'tests/pvm_gas_reference.py',ROOT/'spec/toolchain.json',ROOT/'Makefile',ROOT/'.github/workflows/ci.yml']
         report.update(head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
             worktree_dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT)),
             hardware=dict(platform=platform.platform(),cpu=cpu_model(),logical_cpus=os.cpu_count(),

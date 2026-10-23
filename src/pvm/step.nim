@@ -11,10 +11,16 @@
 import ./[program, machine, registers, gas]
 
 type
-  BlockChargeCache = object ## Private constant-space memo bound to one execution's immutable program and cycle limit.
+  BlockChargeEntry = object ## One complete successful pipeline price belongs to this invocation's immutable program and cycle limit.
     valid: bool
     start: CodeAddress
     charge: BlockGas
+  BlockChargeCache = object ## Keep the first block as a direct hit and three bounded recent prices; no failed simulation enters the memo.
+    valid: bool
+    start: CodeAddress
+    charge: BlockGas
+    recent: array[3, BlockChargeEntry]
+    next: range[0..2]
   InstructionCache = object ## Sixteen genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
     entries: array[16, ProgramResult[Instruction]]
     replaceUpper: array[8, bool]
@@ -252,6 +258,34 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
 func memoryOpcode(opcode: byte): bool =
   opcode in {30'u8..33'u8, 52'u8..62'u8, 70'u8..73'u8, 120'u8..130'u8}
 
+func initBlockChargeCache(): BlockChargeCache =
+  ## New invocation/limit pairs explicitly start with no valid primary/recent block or inherited replacement progress.
+  BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0),
+    recent: default(array[3, BlockChargeEntry]), next: 0)
+
+proc cachedCharge(cache: BlockChargeCache, start: CodeAddress,
+    needed: var uint64): bool {.inline.} =
+  ## Only exact starts from successful owned simulations grant a price; at most three secondary scalar entries are inspected.
+  if cache.valid and uint64(cache.start) == uint64(start):
+    needed = uint64(cache.charge)
+    return true
+  for entry in cache.recent:
+    if entry.valid and uint64(entry.start) == uint64(start):
+      needed = uint64(entry.charge)
+      return true
+  false # A miss does not modify the caller's initialized price or authorize a debit.
+
+proc rememberCharge(cache: var BlockChargeCache, start: CodeAddress, charge: BlockGas) =
+  ## Keep the first successful block fast; later successful misses rotate three bounded secondary entries.
+  if not cache.valid:
+    cache.valid = true
+    cache.start = start
+    cache.charge = charge
+  else:
+    cache.recent[cache.next] = BlockChargeEntry(valid: true, start: start, charge: charge)
+    if cache.next == 2: cache.next = 0
+    else: inc cache.next # The 0..2 domain and branch prove the next index; no guest-length counter can wrap.
+
 func initWorkingMemory(memory: Memory, buffered: bool): WorkingMemory =
   ## No mutable builder or vector allocates before enough successful stores justify a private epoch.
   WorkingMemory(current: memory, writer: nil, stores: 0, buffered: buffered)
@@ -485,24 +519,20 @@ proc evaluateInstruction(program: Program, info: var MachineInfo, memory: var Wo
     # Capability rejection precedes evaluation and never fabricates a guest trap or gas debit.
     return InstructionEvaluation(status: StepError.UnsupportedInstruction)
   if not info.blockCharged:
-    # Interior entry still charges the entire containing block, including already-skipped instructions.
-    let start = containingBlockStart(program, info.pc)
-    if start.error != ProgramError.None: return InstructionEvaluation(
-        status: StepError.InvalidMachine)
-    # The private caller keeps one program/limit for this cache's entire lifetime.
-    # A cache hit reuses simulation work only; affordability and debit below still run on every visit.
+    # Exact cached starts already certify block membership; arbitrary interior entry retains the complete containing-block lookup.
     var chargeError = GasError.None
     var needed = 0'u64
-    if cache.valid and uint64(cache.start) == uint64(start.value):
-      # A successful prior simulation in this invocation has exactly the same immutable input.
-      needed = uint64(cache.charge)
-    else:
-      # Failed or locally refused simulations never populate the cache.
-      let charge = blockGas(program, start.value, limit)
-      chargeError = charge.error
-      if chargeError == GasError.None:
-        needed = uint64(charge.value)
-        cache = BlockChargeCache(valid: true, start: start.value, charge: charge.value)
+    if not cachedCharge(cache, info.pc, needed):
+      let start = containingBlockStart(program, info.pc)
+      if start.error != ProgramError.None: return InstructionEvaluation(
+          status: StepError.InvalidMachine)
+      if not cachedCharge(cache, start.value, needed):
+        # Only successful prices under this invocation's immutable program/limit enter the memo; failures publish no prefix.
+        let charge = blockGas(program, start.value, limit)
+        chargeError = charge.error
+        if chargeError == GasError.None:
+          needed = uint64(charge.value)
+          rememberCharge(cache, start.value, charge.value)
     case chargeError
     of GasError.None:
       # Prove affordability before subtraction and before evaluating any register mutation.
@@ -620,7 +650,7 @@ proc stepDecoded(source: Machine, limit: GasCycleLimit, control, memoryAccess,
 # Single-step calls never inherit cached work across owners, scopes or local simulation limits.
 proc stepImpl(source: Machine, limit: GasCycleLimit, control, memoryAccess,
     hostCalls: bool): StepResult =
-  var cache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
+  var cache = initBlockChargeCache()
   let owner = programOf(source)
   let current = machineInfo(source)
   if owner.error != MachineError.None or current.error != MachineError.None:
@@ -731,7 +761,7 @@ proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycle
   ## Execute a guest-only segment with a fresh local instruction budget; Host is returned to the caller.
   var remaining = uint64(stepLimit)
   # A direct execution has its own memo, never inherited from another program or local policy.
-  var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
+  var chargeCache = initBlockChargeCache()
   var instructions = default(InstructionCache) # Fresh explicit empty memo prevents cross-program or cross-invocation operand reuse.
   var unusedCursor = default(ExecutionCursor) # Ordinary execution uses source validation and its original loop-local CPU storage.
   executeBudget(source, remaining, gasLimit, chargeCache, instructions, unusedCursor, false)
@@ -784,7 +814,7 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   if initialized != StepError.None: return executionResult[Reason](StepResult(status: initialized))
   # Host responses preserve this invocation's program and fixed simulation limit.
   # Scalar cached prices retain neither context nor callbacks and disappear on every return.
-  var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
+  var chargeCache = initBlockChargeCache()
   var instructions = default(InstructionCache) # Host replies preserve the program, so scalar decoder hits remain valid until this invocation returns.
   while true:
     # Publish the next actual callback observation from this invocation's validated continuation.
@@ -827,7 +857,7 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   if initialized != StepError.None: return StepResult(status: initialized)
   # Host responses preserve this invocation's program and fixed simulation limit.
   # Scalar cached prices retain neither context nor callbacks and disappear on every return.
-  var chargeCache = BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0))
+  var chargeCache = initBlockChargeCache()
   var instructions = default(InstructionCache) # Host replies preserve the program, so scalar decoder hits remain valid until this invocation returns.
   while true:
     # All scheduling and charging happens in the same helper used by fallible callbacks.

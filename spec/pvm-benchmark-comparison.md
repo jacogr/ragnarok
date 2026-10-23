@@ -18,7 +18,8 @@ producing expectations. The original five fixed guests exercise arithmetic/branc
 iterations), scalar memory (1000 aligned/crossing iterations) and memory/host loops
 (1000 aligned/crossing iterations). Five additional guests measure arithmetic at 1/16
 iterations, a mixed bit-operation loop and aligned/crossing scalar loops over 128
-sparsely mapped pages. All use finite gas and local native step limits.
+sparsely mapped pages. An alternating two-block guest additionally isolates pipeline
+pricing reuse. All use finite gas and local native step limits.
 
 ## Build and measurement contract
 
@@ -50,7 +51,7 @@ guest. Two passes reverse engine order. Every sample must match all thirteen reg
 remaining gas, host-call counts and every relevant memory byte before acceptance.
 Native checks additionally preserve source aliases. No expected-value checks or
 printing are in the timed region except the host dispatch/API contracts themselves.
-The raw fixture has `PVMBEN01` framing, ten 273-byte record headers and bounded blobs;
+The raw fixture has `PVMBEN01` framing, eleven 273-byte record headers and bounded blobs;
 its descriptor pins exact SHA-256 bytes.
 
 ## Results and quality
@@ -466,3 +467,46 @@ capacity pressure, nested owners, sealed metadata, failed/default access and fin
 conditional gas/budget ordering join the existing full CPU/page/reference controls.
 Checked ARC/Clang ThinLTO, pins and assertions/bounds remain unchanged. Local macOS
 limits, compiled deferral, deferred fuzzing and open full STF/JAM parity still apply.
+
+
+## Multiple block prices and exact cached starts, 2026-10-23
+
+The new 1000-iteration alternating-block guest adds four attempted instructions per
+iteration and a dynamic halt. Its independently priced blocks at PCs0/8 cost15/22;
+terminal PC21 costs22. Initial gas includes every visit plus7 untouched gas. Both
+native and pinned public PolkaVM APIs validate these prices and full outcomes.
+A code-prefix-aware test-only simulator keeps raw target bytes at their actual PCs;
+all previous default-prefix gas fixtures and the original ten benchmark records
+retain their exact historical hashes. Compiled comparison stays deferred.
+
+Before optimization, the new guest took466.85 µs against about15.1 µs interpreted,
+a gap of30.9×. Sampling found pipeline pricing dominant. A private four-price memo
+now retains the first block plus three recent successes; exact cached starts reuse
+known membership before rescanning. Every visit still checks/debits gas. Failed
+simulations, new programs/limits, callbacks and local failures preserve the existing
+contracts, with no new caller resource default or public mutable state.
+
+Two opposite-order preserved-binary comparisons confirm the effect. Final confirmation
+medians across twenty validated samples per matched eleven-guest binary were:
+
+| Fixed guest | Prior single price (µs) | Four prices (µs) | Less execution time |
+| --- | ---: | ---: | ---: |
+| Arithmetic, 10000 iterations | 507.21 | 448.15 | 11.6% |
+| Memory aligned, 1000 iterations | 103.33 | 98.29 | 4.9% |
+| Memory crossing, 1000 iterations | 111.81 | 106.08 | 5.1% |
+| Mixed bits, 1000 iterations | 114.00 | 110.50 | 3.1% |
+| Alternating blocks, 1000 iterations | 485.54 | 61.48 | 87.3% |
+
+The first comparison showed9.8% arithmetic and87.6% alternating-block savings.
+Host differences were1–5%, sparse differences about1–4%; these small changes and
+sub-microsecond short-call observations are not broad whole-client claims. The full
+pinned comparison passes all eleven guests; the alternating-block gap is now about
+3.9×. Evidence remains under `build/pvm9/multiblock-baseline`, `multiblock-candidate`,
+`multiblock-paired`, `multiblock-confirm` and the separate sampling wrappers.
+
+All warmups/outliers/noise flags and exact source/fixture/binary identities remain
+recorded. Normal checked ARC/Clang ThinLTO, pins and timing/validation boundaries are
+unchanged. Post-change sampling now ranks basic-block membership/control checks well
+ahead of pipeline pricing; these are the next measured target. Sampling ranks are
+directional, not deterministic counters. No Linux, compiled or full JAM throughput
+result is claimed. Fuzzing remains deferred, and full STF/JAM parity remains open.
