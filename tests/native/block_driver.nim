@@ -181,8 +181,8 @@ proc decodeRequest(parts: seq[string]) {.raises.} =
       let logical = fields(child)
       let split = logical.splitWhitespace()
       # Print all six independent counts before all six exact child encodings.
-      let counts = "1 " & split[0..4].join(" ")
-      let bytes = wire(headerPart) & " " & split[5..9].join(" ")
+      let counts = "1 " & split.toOpenArray(0, 4).join(" ")
+      let bytes = wire(headerPart) & " " & split.toOpenArray(5, 9).join(" ")
       var output = newSeq[byte](count+3)
       for i in 0..<output.len: output[i] = 0xA5 # Extra destination capacity is outside this frame.
       assert checked(encodeOwnedBlock(parsed.value.owner, output)) == count

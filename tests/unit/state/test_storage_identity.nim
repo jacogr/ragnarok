@@ -21,7 +21,7 @@ proc main() =
     124, 144, 50, 233, 242, 221, 159]
   assert encoded == @expected
   for stop in 0..<encoded.len:
-    assert decodeDatabaseIdentity(encoded[0..<stop], chain, limit).error ==
+    assert decodeDatabaseIdentity(encoded.toOpenArray(0, stop-1), chain, limit).error ==
         IdentityError.InvalidFormat
   for index in 0..<encoded.len:
     var corrupted = encoded

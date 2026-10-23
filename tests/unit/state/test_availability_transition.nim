@@ -84,13 +84,13 @@ proc releaseCycle(owner: AvailabilitySnapshot, active: ValidatorStateSnapshot, v
 proc boundaries(owner: AvailabilitySnapshot, active: ValidatorStateSnapshot, values: seq[Assurance],
     parent: AssuranceParent, original: seq[byte], config: AvailabilityTransitionConfig) =
   assert values.len == 6
-  let exact = planAvailability(owner, active, ValidatorCount(6), values[0..<5], parent, StateTime(
-      12), config)
+  let exact = planAvailability(owner, active, ValidatorCount(6), values.toOpenArray(0, 4), parent,
+      StateTime(12), config)
   assert exact.error == AvailabilityTransitionError.None and exact.value.availableReportCount == 0
   assert assignmentBytes(exact.value.assuredAssignments, config.assignments) ==
       original # Four votes out of six are insufficient.
-  let strict = planAvailability(owner, active, ValidatorCount(6), values[1..<6], parent, StateTime(
-      12), config)
+  let strict = planAvailability(owner, active, ValidatorCount(6), values.toOpenArray(1, 5), parent,
+      StateTime(12), config)
   assert strict.error == AvailabilityTransitionError.None and strict.value.availableReportCount == 1
   let before = planAvailability(owner, active, ValidatorCount(6), [], parent, StateTime(15), config)
   let deadline = planAvailability(owner, active, ValidatorCount(6), [], parent, StateTime(16), config)
