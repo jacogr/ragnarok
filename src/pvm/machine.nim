@@ -393,8 +393,8 @@ proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
   let data = memory.data
   let span = checked.value
   var pages = newSeqOfCap[PageData](data.pages.len)
-  for page in data.pages:
-    pages.add(page) # Untouched immutable page owners remain shared with the source.
+  for index in 0..<data.pages.len:
+    pages.add(data.pages[index]) # Untouched immutable page owners remain shared with the source.
   pages[span.first] = writablePageClone(data.pages[span.first], span.offset, span.firstCount)
   for i in 0..<span.firstCount:
     # Each byte targets only the first private clone, with a bounded shift below 64.
@@ -564,7 +564,8 @@ proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: Acces
     # Page count and vector extent already belong to the admitted base; no write can insert pages or change permissions.
     writer.pages = newSeqOfCap[PageData](source.pages.len)
     writer.dirty = newSeq[byte](source.pages.len)
-    for page in source.pages: writer.pages.add(page)
+    for index in 0..<source.pages.len: writer.pages.add(source.pages[
+        index]) # Retain immutable source pages through checked indexed reads.
     writer.active = true
   let span = checked.value
   prepareWriterSpan(writer, span.first, span.offset, span.firstCount)

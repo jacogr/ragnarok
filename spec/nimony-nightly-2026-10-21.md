@@ -686,3 +686,40 @@ makes no new full-Python/full-guard/full-E2E, fuzz or performance-comparison cla
 PR #971 stays open for the maintainer's upcoming PVM/state merges and subsequent merge decision.
 The compiler ownership hold remains resolved; the three documented compiler limitations and
 report drafts remain unchanged. Publishing requests automatic Smoke only.
+
+
+## PVM cursor and page-sharing tranche on October 23
+
+Merge master `1c699722` (11 PVM PRs after `a60cef83`) through merge commit `a5cd6e93`,
+keeping the qualified October 23 compiler `4724f66c2`. The incoming tranche adds validated scalar
+spans/register writes, immutable shared page chunks, private staged memory writes and host
+execution cursors, decoded successor pairs, bounded block-price reuse and owner-bound static
+target validation. It also expands the frozen benchmark corpus. Preserve these upstream
+contracts and recorded performance evidence without claiming a new timing comparison here.
+
+Two new page-owner copy loops hit the retained-ref iterator diagnostic. Change only their
+traversal to checked indexed reads in `machine.nim`: immutable scalar stores and initial scalar
+writer activation retain the same shared page references, order, permission checks and snapshot
+ownership. Of the 51 incoming files, 50 remain byte-identical to master; the only additional
+compatibility edits are these two loops. No compiler/runtime patch or unchecked borrow is used.
+
+Local macOS ARM64 qualification passes all 26 selected native suites, covering every changed
+unit plus memory/control/register reference fixtures, host responses/failures/gas, inner invocation
+and computed/assured/current-continuation consumers. All 12 incoming compiler privacy guards
+and 54 strict runtime misuse probes across ten PVM families pass. Every runtime fixture builds
+successfully before its exact assertion checks. Python PVM reference/benchmark/tooling discovery
+passes 87 tests with two skips; inventory preflight passes.
+
+Both debug smoke and checked-release semantic audits pass all 396 production modules plus
+the real integration/offload main; the complete Linux amd64 graph and main also pass semantic
+checks. Pinned formatting passes 4,378 Nim sources plus Rust. The sanitized program fuzz gate
+passes 10,000 inputs, including the maintained frozen-seed and assertion/artifact/replay controls.
+The default-allocator coverage limitations documented above remain unchanged. All 24 selected actual
+current-download executable cases pass, including sequence, preimage, guarantee and rotated
+workloads through the rebuilt integration/offload binary.
+
+Scoped evidence is under ignored `build/ci/nimony-pvm-cursor-*`, including the original
+iterator rejection. Earlier full compiler/Python/runtime qualification retains its exact earlier
+source scope; no new exhaustive fuzz, full-E2E, Linux-runtime or performance claim is made.
+The compiler pin and three remaining report drafts are unchanged. PR #971 remains open pending
+the state merge and maintainer decision; publishing requests only automatic Smoke.
