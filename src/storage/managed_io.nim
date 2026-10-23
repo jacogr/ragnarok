@@ -461,3 +461,53 @@ proc replaceManagedManifest*(directory: ManagedDirectory, bytes: openArray[byte]
     return FileError.IoFailure
   if directory.synchronize != FileError.None: return FileError.PublishedUnsynced
   FileError.None
+
+proc seekNative(fd: cint, offset: int64, origin: cint): int64 {.importc: "lseek", cdecl,
+    header: "<unistd.h>".}
+  ## A private synchronous journal inspection rewinds its held regular inode; O_APPEND still governs later writes.
+proc sameJournal(directory: ManagedDirectory, epoch: ManagedEpoch,
+    journal: ManagedJournal): FileError =
+  ## The selected name must still resolve to the held inode with its original bounded extent, not an equal-byte replacement.
+  let named = managedFileName(ManagedFileKind.Journal, epoch)
+  if named.error != FileError.None: return named.error
+  var name = named.value
+  let descriptor = openAt(directory.nativeDescriptor, name.toCString(), O_RDONLY or O_CLOEXEC or
+      O_NONBLOCK or noFollow, 0)
+  if descriptor < 0: return FileError.RecoveryMismatch
+  var selected = default(Stat)
+  var held = default(Stat)
+  let valid = posix.fstat(descriptor, selected) == 0 and posix.fstat(journal.descriptor, held) == 0
+  let retired = closeNative(descriptor)
+  if retired != 0: return FileError.IoFailure
+  if not valid or not S_ISREG(selected.st_mode) or not S_ISREG(held.st_mode) or
+      held.st_size < 0 or selected.st_size < 0: return FileError.IoFailure
+  if selected.st_dev != held.st_dev or selected.st_ino != held.st_ino or
+      uint64(selected.st_size) != journal.size or uint64(held.st_size) != journal.size:
+    return FileError.RecoveryMismatch
+  FileError.None
+proc readHeldManagedJournal*(journal: var ManagedJournal, directory: ManagedDirectory,
+    epoch: ManagedEpoch): ManagedIoResult[seq[byte]] =
+  ## Revalidate name/inode/extent before and after a bounded read of the actual held append descriptor for explicit repair.
+  if not journal.active: return ManagedIoResult[seq[byte]](status: FileError.Uninitialized)
+  if journal.poisoned: return ManagedIoResult[seq[byte]](status: FileError.RecoveryRequired)
+  if not directory.opened or directory.data != journal.state: return ManagedIoResult[seq[byte]](
+      status: FileError.WrongIdentity)
+  let before = sameJournal(directory, epoch, journal)
+  if before != FileError.None:
+    # Observed selected-name or held-extent uncertainty requires closing before a fresh inspection.
+    journal.poisoned = true
+    return ManagedIoResult[seq[byte]](status: before)
+  if seekNative(journal.descriptor, 0, 0) != 0:
+    journal.poisoned = true
+    return ManagedIoResult[seq[byte]](status: FileError.IoFailure)
+  var loaded = readAll(journal.descriptor, journal.limit)
+  if loaded.error != FileError.None:
+    journal.poisoned = true
+    return loaded
+  let after = sameJournal(directory, epoch, journal)
+  if after != FileError.None or uint64(loaded.completed.len) != journal.size:
+    # Metadata only bounds reading; actual EOF and a second namespace/inode observation must also agree.
+    journal.poisoned = true
+    return ManagedIoResult[seq[byte]](status: (if after !=
+        FileError.None: after else: FileError.RecoveryMismatch))
+  loaded

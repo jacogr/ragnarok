@@ -349,3 +349,8 @@ never yields salvage authority. See [replay and tail planning](../../spec/storag
 bootstrap and strict replay on reopen. Opaque authenticated updates append only a bounded frame;
 uncertain I/O refuses fresh observations until explicit close and strict reopen. See the
 [durable journal lifecycle](../../spec/storage-light-journal-cache.md).
+
+Explicit `LightJournalRecovery` inspection holds the selected journal inode and directory
+lease. Repair revalidates CURRENT, checkpoint, exact original bytes and selected inode/extent
+before synchronized prefix truncation transfers one writable owner. Complete corruption is
+never salvaged. See [held-inode repair](../../spec/storage-light-journal-repair.md).

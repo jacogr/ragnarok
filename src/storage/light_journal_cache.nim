@@ -276,3 +276,128 @@ proc update*(owner: var LightJournalCache, proofs: openArray[LightStateProof],
   let checked = deltaReason(prepared.error)
   if checked != FileError.None: return fail[StorageDurability](checked)
   owner.append(prepared.value)
+
+type
+  RecoveryOwner = ref object ## Explicit partial-tail inspection retains exactly the lease/inode whose bytes authorized its plan.
+    owner: JournalOwner
+    plan: LightTailPlan
+  LightJournalRecovery* = object ## Move-only repair/retirement authority is distinct from a fresh writable journal owner.
+    data: nil RecoveryOwner
+proc `=copy`*(destination: var LightJournalRecovery, source: LightJournalRecovery) {.error.}
+  ## A repair lease has one native retirement authority.
+proc `=dup`*(source: LightJournalRecovery): LightJournalRecovery {.error.}
+  ## Reject hidden duplication of a recovery handle during actual lowering.
+proc requireClosed(recovery: LightJournalRecovery) {.requires: recovery.data == nil.} =
+  ## A caller must explicitly repair-transfer or close every held inspection.
+  discard
+proc `=destroy`*(recovery: LightJournalRecovery) =
+  ## Moved-from recovery values are inert; live native inspection cannot silently retire in destruction.
+  requireClosed(recovery)
+  `=destroy`(recovery.data)
+func opened*(recovery: LightJournalRecovery): bool =
+  ## Default and transferred recovery handles safely report an absent lease.
+  recovery.data != nil
+proc close*(recovery: var LightJournalRecovery): FileError =
+  ## Retire append before directory and disarm the inspection even if native close fails.
+  let data = recovery.data
+  if data == nil: return FileError.Uninitialized
+  let reason = retire(data.owner)
+  recovery.data = nil
+  reason
+proc plan*(recovery: LightJournalRecovery): LightJournalResult[LightTailPlan] =
+  ## Retain only a checked immutable prefix plan; it grants no fresh writable owner or durability receipt.
+  let data = recovery.data
+  if data == nil: return fail[LightTailPlan](FileError.Uninitialized)
+  let reason = lifecycle(data.owner)
+  if reason != FileError.None: return fail[LightTailPlan](reason)
+  LightJournalResult[LightTailPlan](status: FileError.None, completed: data.plan)
+proc inspectLightJournalTail*(recovery: var LightJournalRecovery, path: string,
+    config: LightJournalConfig): FileError =
+  ## Hold the selected directory and journal inode while explicitly planning only a bounded structurally possible incomplete suffix.
+  if recovery.opened: return FileError.Busy
+  var data = JournalOwner(config: config)
+  let acquired = openManagedDirectory(data.directory, path)
+  if acquired != FileError.None: return acquired
+  defer:
+    if recovery.data == nil: discard retire(data) # Failed inspection exposes no held authority and preserves forensic bytes.
+  let selected = readSelection(data)
+  if selected.error != FileError.None: return selected.error
+  data.selected = selected.value
+  var loaded = readManagedFile(data.directory, ManagedFileKind.Snapshot, data.selected.epoch,
+      config.snapshot.bytes)
+  if loaded.error != FileError.None: return loaded.error
+  var encoded = loaded.takeValue
+  let checkpoint = takeLightSnapshot(encoded, config.chain, config.root, config.snapshot)
+  let reason = snapshotReason(checkpoint.error)
+  if reason != FileError.None: return reason
+  var journal = openManagedJournal(data.journal, data.directory, data.selected.epoch,
+      config.journal.bytes)
+  if journal.error != FileError.None: return journal.error
+  var input = journal.takeValue
+  let planned = planLightJournalTail(input, data.selected, checkpoint.value, config.journal)
+  if planned.error != LightReplayError.None:
+    # Complete corruption never becomes salvage; only an explicit nonempty incomplete next frame can authorize inspection.
+    case planned.error
+    of LightReplayError.LimitExceeded, LightReplayError.SequenceExhausted: return FileError.LimitExceeded
+    of LightReplayError.BackendFailure: return FileError.BackendFailure
+    of LightReplayError.InvalidSelection: return selectionReason(planned.selectionError)
+    of LightReplayError.InvalidDelta: return deltaReason(planned.deltaError)
+    of LightReplayError.WrongCheckpoint: return FileError.WrongIdentity
+    else: return FileError.InvalidJournal
+  recovery.data = RecoveryOwner(owner: data, plan: planned.value)
+  FileError.None
+proc revalidateCheckpoint(data: JournalOwner): FileError =
+  ## Explicit destructive repair also rechecks the selected checkpoint bytes against the same trusted manifest before truncation.
+  var loaded = readManagedFile(data.directory, ManagedFileKind.Snapshot, data.selected.epoch,
+      data.config.snapshot.bytes)
+  if loaded.error != FileError.None: return loaded.error
+  var encoded = loaded.takeValue
+  let restored = takeLightSnapshot(encoded, data.config.chain, data.config.root,
+      data.config.snapshot)
+  let reason = snapshotReason(restored.error)
+  if reason != FileError.None: return reason
+  if array[32, byte](restored.value.checksum) != array[32, byte](data.selected.snapshotChecksum):
+    return FileError.RecoveryMismatch
+  FileError.None
+proc repair*(recovery: var LightJournalRecovery, owner: var LightJournalCache): LightJournalResult[
+    StorageDurability] =
+  ## Revalidate current selection, held inode/extent and all original bytes, then truncate/sync exactly the authenticated prefix before transfer.
+  if owner.opened: return fail[StorageDurability](FileError.Busy)
+  let data = recovery.data
+  if data == nil: return fail[StorageDurability](FileError.Uninitialized)
+  let reason = lifecycle(data.owner)
+  if reason != FileError.None: return fail[StorageDurability](reason)
+  let selected = readSelection(data.owner)
+  if selected.error != FileError.None:
+    data.owner.poisoned = true
+    return fail[StorageDurability](selected.error)
+  if array[32, byte](selected.value.checksum) != array[32, byte](data.plan.selectionChecksum):
+    data.owner.poisoned = true
+    return fail[StorageDurability](FileError.RecoveryMismatch)
+  let checkpoint = revalidateCheckpoint(data.owner)
+  if checkpoint != FileError.None:
+    data.owner.poisoned = true
+    return fail[StorageDurability](checkpoint)
+  var loaded = readHeldManagedJournal(data.owner.journal, data.owner.directory,
+      data.owner.selected.epoch)
+  if loaded.error != FileError.None:
+    data.owner.poisoned = true
+    return fail[StorageDurability](loaded.error)
+  var bytes = loaded.takeValue
+  let checked = validateLightTailPlan(bytes, selected.value, data.plan)
+  if checked != LightReplayError.None:
+    data.owner.poisoned = true
+    return fail[StorageDurability](if checked == LightReplayError.BackendFailure: FileError.BackendFailure else: FileError.RecoveryMismatch)
+  let retained = data.plan.prefix
+  let truncated = truncateManagedJournal(data.owner.journal, uint64(retained.byteLength))
+  if truncated != FileError.None:
+    # Both pre-truncate uncertainty and failed post-truncate durability require close and fresh strict reopen/inspection.
+    data.owner.poisoned = true
+    return fail[StorageDurability](truncated)
+  data.owner.image = retained.snapshot
+  data.owner.sequence = retained.sequence
+  data.owner.frames = retained.frameCount
+  owner.data = data.owner
+  recovery.data = nil
+  LightJournalResult[StorageDurability](status: FileError.None,
+      completed: StorageDurability.FileAndDirectorySynced)
