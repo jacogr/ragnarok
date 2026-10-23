@@ -19,7 +19,7 @@ proc logicalProofLimits*(): ProofQueryLimits =
       wireBytes: ByteLimit(1048576), hashes: ProofHashLimit(10000000))
 proc logicalProducer*(logical: CurrentLogicalState): PreparedCurrentChainUpdate =
   ## Follow only guarded original source provenance; callers must hold the canonical host gate open.
-  logical.currentLogicalSource.value.currentStateGlobals.value.qualifiedCurrentProfile.value.derivedUpdate.value
+  logical.currentLogicalUpdate.value
 proc logicalProofPlan*(): StateProofPlan =
   ## All sixteen global keys plus one retained storage value and an independently selected proven-absent fixed key.
   var keys: seq[StateKey] = @[]
