@@ -27,7 +27,7 @@ builds the pinned JAM Tart collector and verifies interoperability, including fa
 and restart/replay behavior; see [telemetry verification](../spec/telemetry.md).
 
 The additional `check-docker` job builds and smoke-tests the [container image](containers.md)
-on unit/full requests, retaining logs without publishing an image.
+on master pushes, full requests and explicit manual `docker` requests, retaining logs without publishing an image.
 
 Each group writes `results.json` and diagnostic logs in its evidence directory. Use
 `make summary-unit`, `make summary-failures`, `make summary-guards`, `make summary-python`,
@@ -41,7 +41,7 @@ request verification of the current PR merge revision:
 
 | Label | Requested checks |
 | --- | --- |
-| `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation, Docker build/smoke |
+| `ci:unit` | All native unit shards and codec corpora, Python references/tooling, source compilation, compiler rejection guards |
 | `ci:e2e` | End-to-end networking tests only |
 | `ci:interop` | All Interop jobs: PVM reference comparisons and JAM Tart interoperability |
 | `ci:perf` | All Perf jobs: the validated interpreted PVM speed comparison |

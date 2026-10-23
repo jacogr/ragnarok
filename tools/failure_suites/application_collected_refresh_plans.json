@@ -1,0 +1,23 @@
+{
+  "build_name": "application-collected-refresh-plans-results",
+  "cases": [
+    {
+      "arguments": [
+        "value"
+      ],
+      "description": "application_collected_refresh_plans guarded value",
+      "diagnostic": "outcome.successful",
+      "identity": {
+        "reason": "value"
+      },
+      "name": "application-collected-refresh-plans-value"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_collected_refresh_plans_results.nim"
+}

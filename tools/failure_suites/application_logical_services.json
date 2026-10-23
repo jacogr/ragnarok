@@ -1,0 +1,606 @@
+{
+  "build_name": "application-logical-services-results",
+  "cases": [
+    {
+      "arguments": [
+        "preparation-selected"
+      ],
+      "description": "Managed logical exclusion preparation-selected",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-selected"
+      },
+      "name": "application-logical-services-preparation-selected"
+    },
+    {
+      "arguments": [
+        "preparation-current"
+      ],
+      "description": "Managed logical exclusion preparation-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-current"
+      },
+      "name": "application-logical-services-preparation-current"
+    },
+    {
+      "arguments": [
+        "proof-selected"
+      ],
+      "description": "Managed logical exclusion proof-selected",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-selected"
+      },
+      "name": "application-logical-services-proof-selected"
+    },
+    {
+      "arguments": [
+        "proof-current"
+      ],
+      "description": "Managed logical exclusion proof-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-current"
+      },
+      "name": "application-logical-services-proof-current"
+    },
+    {
+      "arguments": [
+        "publication-selected"
+      ],
+      "description": "Managed logical exclusion publication-selected",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-selected"
+      },
+      "name": "application-logical-services-publication-selected"
+    },
+    {
+      "arguments": [
+        "publication-current"
+      ],
+      "description": "Managed logical exclusion publication-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-current"
+      },
+      "name": "application-logical-services-publication-current"
+    },
+    {
+      "arguments": [
+        "preparation-seed"
+      ],
+      "description": "Managed host logical exclusion preparation-seed",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-seed"
+      },
+      "name": "application-logical-services-preparation-seed"
+    },
+    {
+      "arguments": [
+        "preparation-supplied-plan"
+      ],
+      "description": "Managed host logical exclusion preparation-supplied-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-supplied-plan"
+      },
+      "name": "application-logical-services-preparation-supplied-plan"
+    },
+    {
+      "arguments": [
+        "preparation-supplied-execution"
+      ],
+      "description": "Managed host logical exclusion preparation-supplied-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-supplied-execution"
+      },
+      "name": "application-logical-services-preparation-supplied-execution"
+    },
+    {
+      "arguments": [
+        "preparation-logical-checkpoint"
+      ],
+      "description": "Managed host logical exclusion preparation-logical-checkpoint",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-checkpoint"
+      },
+      "name": "application-logical-services-preparation-logical-checkpoint"
+    },
+    {
+      "arguments": [
+        "preparation-logical-review"
+      ],
+      "description": "Managed host logical exclusion preparation-logical-review",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-review"
+      },
+      "name": "application-logical-services-preparation-logical-review"
+    },
+    {
+      "arguments": [
+        "proof-seed"
+      ],
+      "description": "Managed host logical exclusion proof-seed",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-seed"
+      },
+      "name": "application-logical-services-proof-seed"
+    },
+    {
+      "arguments": [
+        "proof-supplied-plan"
+      ],
+      "description": "Managed host logical exclusion proof-supplied-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-supplied-plan"
+      },
+      "name": "application-logical-services-proof-supplied-plan"
+    },
+    {
+      "arguments": [
+        "proof-supplied-execution"
+      ],
+      "description": "Managed host logical exclusion proof-supplied-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-supplied-execution"
+      },
+      "name": "application-logical-services-proof-supplied-execution"
+    },
+    {
+      "arguments": [
+        "proof-logical-checkpoint"
+      ],
+      "description": "Managed host logical exclusion proof-logical-checkpoint",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-checkpoint"
+      },
+      "name": "application-logical-services-proof-logical-checkpoint"
+    },
+    {
+      "arguments": [
+        "proof-logical-review"
+      ],
+      "description": "Managed host logical exclusion proof-logical-review",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-review"
+      },
+      "name": "application-logical-services-proof-logical-review"
+    },
+    {
+      "arguments": [
+        "publication-seed"
+      ],
+      "description": "Managed host logical exclusion publication-seed",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-seed"
+      },
+      "name": "application-logical-services-publication-seed"
+    },
+    {
+      "arguments": [
+        "publication-supplied-plan"
+      ],
+      "description": "Managed host logical exclusion publication-supplied-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-supplied-plan"
+      },
+      "name": "application-logical-services-publication-supplied-plan"
+    },
+    {
+      "arguments": [
+        "publication-supplied-execution"
+      ],
+      "description": "Managed host logical exclusion publication-supplied-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-supplied-execution"
+      },
+      "name": "application-logical-services-publication-supplied-execution"
+    },
+    {
+      "arguments": [
+        "publication-logical-checkpoint"
+      ],
+      "description": "Managed host logical exclusion publication-logical-checkpoint",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-checkpoint"
+      },
+      "name": "application-logical-services-publication-logical-checkpoint"
+    },
+    {
+      "arguments": [
+        "publication-logical-review"
+      ],
+      "description": "Managed host logical exclusion publication-logical-review",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-review"
+      },
+      "name": "application-logical-services-publication-logical-review"
+    },
+    {
+      "arguments": [
+        "preparation-logical-review-plan"
+      ],
+      "description": "Managed frozen logical review exclusion preparation-logical-review-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-review-plan"
+      },
+      "name": "application-logical-services-preparation-logical-review-plan"
+    },
+    {
+      "arguments": [
+        "preparation-logical-review-execution"
+      ],
+      "description": "Managed frozen logical review exclusion preparation-logical-review-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-review-execution"
+      },
+      "name": "application-logical-services-preparation-logical-review-execution"
+    },
+    {
+      "arguments": [
+        "proof-logical-review-plan"
+      ],
+      "description": "Managed frozen logical review exclusion proof-logical-review-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-review-plan"
+      },
+      "name": "application-logical-services-proof-logical-review-plan"
+    },
+    {
+      "arguments": [
+        "proof-logical-review-execution"
+      ],
+      "description": "Managed frozen logical review exclusion proof-logical-review-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-review-execution"
+      },
+      "name": "application-logical-services-proof-logical-review-execution"
+    },
+    {
+      "arguments": [
+        "publication-logical-review-plan"
+      ],
+      "description": "Managed frozen logical review exclusion publication-logical-review-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-review-plan"
+      },
+      "name": "application-logical-services-publication-logical-review-plan"
+    },
+    {
+      "arguments": [
+        "publication-logical-review-execution"
+      ],
+      "description": "Managed frozen logical review exclusion publication-logical-review-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-review-execution"
+      },
+      "name": "application-logical-services-publication-logical-review-execution"
+    },
+    {
+      "arguments": [
+        "preparation-frozen-supplied-capture"
+      ],
+      "description": "Managed host exclusion preparation-frozen-supplied-capture",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-frozen-supplied-capture"
+      },
+      "name": "application-logical-services-preparation-frozen-supplied-capture"
+    },
+    {
+      "arguments": [
+        "preparation-frozen-supplied-execution"
+      ],
+      "description": "Managed host exclusion preparation-frozen-supplied-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-frozen-supplied-execution"
+      },
+      "name": "application-logical-services-preparation-frozen-supplied-execution"
+    },
+    {
+      "arguments": [
+        "proof-frozen-supplied-capture"
+      ],
+      "description": "Managed host exclusion proof-frozen-supplied-capture",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-frozen-supplied-capture"
+      },
+      "name": "application-logical-services-proof-frozen-supplied-capture"
+    },
+    {
+      "arguments": [
+        "proof-frozen-supplied-execution"
+      ],
+      "description": "Managed host exclusion proof-frozen-supplied-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-frozen-supplied-execution"
+      },
+      "name": "application-logical-services-proof-frozen-supplied-execution"
+    },
+    {
+      "arguments": [
+        "publication-frozen-supplied-capture"
+      ],
+      "description": "Managed host exclusion publication-frozen-supplied-capture",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-frozen-supplied-capture"
+      },
+      "name": "application-logical-services-publication-frozen-supplied-capture"
+    },
+    {
+      "arguments": [
+        "publication-frozen-supplied-execution"
+      ],
+      "description": "Managed host exclusion publication-frozen-supplied-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-frozen-supplied-execution"
+      },
+      "name": "application-logical-services-publication-frozen-supplied-execution"
+    },
+    {
+      "arguments": [
+        "preparation-collected-plan-selected"
+      ],
+      "description": "Managed host exclusion preparation-collected-plan-selected",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-collected-plan-selected"
+      },
+      "name": "application-logical-services-preparation-collected-plan-selected"
+    },
+    {
+      "arguments": [
+        "preparation-collected-plan-current"
+      ],
+      "description": "Managed host exclusion preparation-collected-plan-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-collected-plan-current"
+      },
+      "name": "application-logical-services-preparation-collected-plan-current"
+    },
+    {
+      "arguments": [
+        "preparation-collected-plan-execution"
+      ],
+      "description": "Managed host exclusion preparation-collected-plan-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-collected-plan-execution"
+      },
+      "name": "application-logical-services-preparation-collected-plan-execution"
+    },
+    {
+      "arguments": [
+        "proof-collected-plan-selected"
+      ],
+      "description": "Managed host exclusion proof-collected-plan-selected",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-collected-plan-selected"
+      },
+      "name": "application-logical-services-proof-collected-plan-selected"
+    },
+    {
+      "arguments": [
+        "proof-collected-plan-current"
+      ],
+      "description": "Managed host exclusion proof-collected-plan-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-collected-plan-current"
+      },
+      "name": "application-logical-services-proof-collected-plan-current"
+    },
+    {
+      "arguments": [
+        "proof-collected-plan-execution"
+      ],
+      "description": "Managed host exclusion proof-collected-plan-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-collected-plan-execution"
+      },
+      "name": "application-logical-services-proof-collected-plan-execution"
+    },
+    {
+      "arguments": [
+        "publication-collected-plan-selected"
+      ],
+      "description": "Managed host exclusion publication-collected-plan-selected",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-collected-plan-selected"
+      },
+      "name": "application-logical-services-publication-collected-plan-selected"
+    },
+    {
+      "arguments": [
+        "publication-collected-plan-current"
+      ],
+      "description": "Managed host exclusion publication-collected-plan-current",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-collected-plan-current"
+      },
+      "name": "application-logical-services-publication-collected-plan-current"
+    },
+    {
+      "arguments": [
+        "publication-collected-plan-execution"
+      ],
+      "description": "Managed host exclusion publication-collected-plan-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-collected-plan-execution"
+      },
+      "name": "application-logical-services-publication-collected-plan-execution"
+    },
+    {
+      "arguments": [
+        "preparation-logical-service-selection"
+      ],
+      "description": "Managed host exclusion preparation-logical-service-selection",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-service-selection"
+      },
+      "name": "application-logical-services-preparation-logical-service-selection"
+    },
+    {
+      "arguments": [
+        "proof-logical-service-selection"
+      ],
+      "description": "Managed host exclusion proof-logical-service-selection",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-service-selection"
+      },
+      "name": "application-logical-services-proof-logical-service-selection"
+    },
+    {
+      "arguments": [
+        "publication-logical-service-selection"
+      ],
+      "description": "Managed host exclusion publication-logical-service-selection",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-service-selection"
+      },
+      "name": "application-logical-services-publication-logical-service-selection"
+    },
+    {
+      "arguments": [
+        "preparation-logical-export-plan"
+      ],
+      "description": "Managed host exclusion preparation-logical-export-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-export-plan"
+      },
+      "name": "application-logical-services-preparation-logical-export-plan"
+    },
+    {
+      "arguments": [
+        "preparation-logical-export-execution"
+      ],
+      "description": "Managed host exclusion preparation-logical-export-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-export-execution"
+      },
+      "name": "application-logical-services-preparation-logical-export-execution"
+    },
+    {
+      "arguments": [
+        "proof-logical-export-plan"
+      ],
+      "description": "Managed host exclusion proof-logical-export-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-export-plan"
+      },
+      "name": "application-logical-services-proof-logical-export-plan"
+    },
+    {
+      "arguments": [
+        "proof-logical-export-execution"
+      ],
+      "description": "Managed host exclusion proof-logical-export-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-export-execution"
+      },
+      "name": "application-logical-services-proof-logical-export-execution"
+    },
+    {
+      "arguments": [
+        "publication-logical-export-plan"
+      ],
+      "description": "Managed host exclusion publication-logical-export-plan",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-export-plan"
+      },
+      "name": "application-logical-services-publication-logical-export-plan"
+    },
+    {
+      "arguments": [
+        "publication-logical-export-execution"
+      ],
+      "description": "Managed host exclusion publication-logical-export-execution",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-export-execution"
+      },
+      "name": "application-logical-services-publication-logical-export-execution"
+    },
+    {
+      "arguments": [
+        "preparation-logical-checkpoint-import"
+      ],
+      "description": "Managed host exclusion preparation-logical-checkpoint-import",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "preparation-logical-checkpoint-import"
+      },
+      "name": "application-logical-services-preparation-logical-checkpoint-import"
+    },
+    {
+      "arguments": [
+        "proof-logical-checkpoint-import"
+      ],
+      "description": "Managed host exclusion proof-logical-checkpoint-import",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "proof-logical-checkpoint-import"
+      },
+      "name": "application-logical-services-proof-logical-checkpoint-import"
+    },
+    {
+      "arguments": [
+        "publication-logical-checkpoint-import"
+      ],
+      "description": "Managed host exclusion publication-logical-checkpoint-import",
+      "diagnostic": "not services.proofing or services.preparing or services.publishing",
+      "identity": {
+        "reason": "publication-logical-checkpoint-import"
+      },
+      "name": "application-logical-services-publication-logical-checkpoint-import"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "quic_library": "quic",
+  "source": "tests/native/application_logical_services_results.nim"
+}

@@ -230,9 +230,9 @@ def unit_partition(shard=None):
         return batches, True
     if (not isinstance(shard, (tuple, list)) or len(shard) != 2
             or any(type(value) is not int for value in shard)
-            or not 1 <= shard[0] <= shard[1] <= 8):
+            or not 1 <= shard[0] <= shard[1] <= 12):
         # Invalid or empty partition declarations must fail before setup or verdict calculation.
-        raise ValueError('Unit shard must be index/count with 1 <= index <= count <= 8')
+        raise ValueError('Unit shard must be index/count with 1 <= index <= count <= 12')
     index, count = shard
     # Spread serial linked/resource workloads lexically; codec discovery and corpora each run once.
     selected = ([batches[0]] if index == 1 else []) + batches[index::count]

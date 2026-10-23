@@ -13,6 +13,20 @@ import ./[handoff, current_handoff, current_block_input]
 import ./candidate
 import ./block_input
 import ./preparation_worker
+import ./[collected_supplied_plan, collected_supplied_state]
+import ./logical_review
+import ./logical_proof
+import ../state/account_review_plan
+import ./logical_checkpoint
+import ./frozen_supplied
+import ../state/supplied_services
+import ./logical_service_proof
+import ./logical_export
+import ./logical_checkpoint_import
+import ./logical_seed
+import ../codec/[state_composition, composite]
+import ./current_logical as collected_logical
+import ../state/[parent_logical, current_logical]
 import ./[proof_query, proof_worker]
 import ../state/[proof_service, proof_plan, proof_view, trie_proof]
 import ./[disk_chain, disk_worker]
@@ -42,6 +56,32 @@ type
     of QueryFailure: queryReason: ProofQueryError
     of WorkerFailure: workerReason: ProofWorkerError
     else: discard # Closed/busy/default refusals expose no authority.
+
+type
+  LogicalProofAdmissionError* {.pure.} = enum ## Capture provenance/resource failures remain distinct from managed worker/RPC admission.
+    Uninitialized, None, Closed, Busy, CaptureFailure, AdmissionFailure
+  LogicalProofAdmission* = object ## Only actual native submission grants an existing managed proof ticket.
+    case status: LogicalProofAdmissionError
+    of None: ticket: ProofWorkerTicket
+    of CaptureFailure: captureReason: LogicalProofResult
+    of AdmissionFailure: admissionReason: StateProofAdmission
+    else: discard # Defaults, closed Services and active leases retain no query or ticket.
+
+func error*(admission: LogicalProofAdmission): LogicalProofAdmissionError =
+  ## Observe the selected capture or managed admission stage without granting a graph lease.
+  admission.status
+func value*(admission: LogicalProofAdmission): ProofWorkerTicket {.inline,
+    requires: admission.status == LogicalProofAdmissionError.None.} =
+  ## Successful submission returns the existing ticket for actual collection or joined shutdown.
+  admission.ticket
+func captureFailure*(admission: LogicalProofAdmission): LogicalProofResult {.inline,
+    requires: admission.status == LogicalProofAdmissionError.CaptureFailure.} =
+  ## Keep invalid original source, view admission and nested query refusal causes unchanged.
+  admission.captureReason
+func admissionFailure*(admission: LogicalProofAdmission): StateProofAdmission {.inline,
+    requires: admission.status == LogicalProofAdmissionError.AdmissionFailure.} =
+  ## Preserve original RPC pause or native-worker admission refusal without a successful ticket.
+  admission.admissionReason
 
 type
   ServiceDiskOperation {.pure.} = enum ## One private tag selects the receipt/cleanup path for the shared native disk slot.
@@ -811,6 +851,34 @@ proc beginStateProof*(services: var Services, selected: BlockHash, plan: Service
   let reason = services.stageStateProof(selected, plan, limits)
   services.finishStateProof(reason) # No selected-state temporary survives the staging activation.
 
+proc stageLogicalProof(services: var Services, source: CurrentLogicalState,
+    plan: StateProofPlan, limits: LogicalProofLimits, failure: var LogicalProofResult): bool =
+  ## Retire every temporary source/query alias before the caller can submit the staged owner.
+  let captured = captureLogicalProofQuery(source, plan, limits)
+  if captured.error != LogicalProofError.None:
+    failure = captured # Only refused capture alternatives reach the caller's failure owner.
+    return false
+  services.proofInput = captured.value
+  true
+
+proc beginLogicalProof*(services: var Services, source: CurrentLogicalState,
+    plan: StateProofPlan, limits: LogicalProofLimits): LogicalProofAdmission {.raises.} =
+  ## Explicit retained producer provenance selects this proof; canonical installation and root trust remain separate.
+  if not services.started:
+    return LogicalProofAdmission(status: LogicalProofAdmissionError.Closed)
+  if not services.stateProofAvailable:
+    return LogicalProofAdmission(status: LogicalProofAdmissionError.Busy) # Check scalar exclusions before touching any source alias.
+  discard services.proofWorker.start() # Reuse the one fixed-address managed worker and its existing exclusive lease.
+  var failure = default(LogicalProofResult)
+  if not services.stageLogicalProof(source, plan, limits, failure):
+    return LogicalProofAdmission(status: LogicalProofAdmissionError.CaptureFailure,
+      captureReason: failure)
+  let admitted = services.finishStateProof(ProofQueryError.None) # Staging activation has retired; successful submission permits only scalar/ticket work.
+  if admitted.error != StateProofAdmissionError.None:
+    return LogicalProofAdmission(status: LogicalProofAdmissionError.AdmissionFailure,
+      admissionReason: admitted)
+  LogicalProofAdmission(status: LogicalProofAdmissionError.None, ticket: admitted.value)
+
 proc stateProofPhase*(services: var Services): ProofWorkerPhase =
   ## Synchronized scalar polling never observes or copies selected-state ARC owners.
   services.proofWorker.phase
@@ -882,6 +950,58 @@ proc collectPreparation*(services: var Services, ticket: PreparationTicket): Pre
     services.preparing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # Stale/early collection cannot release another active lease.
+
+proc planCollectedSupplied*(services: Services, receipt: PreparationCompletion,
+    limits: CollectedSuppliedLimits): CollectedSuppliedPlanResult[CollectedSuppliedPlan] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Freeze only the genuine collected target while the actual canonical host gate is open.
+  collected_supplied_plan.planCollectedSupplied(services.canonical, receipt, limits)
+proc executeCollectedSupplied*(services: Services, plan: CollectedSuppliedPlan,
+    declarations: openArray[StateService]): CollectedSuppliedResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Recheck frozen prior provenance and complete borrowed successor declarations outside every managed native lease.
+  collected_supplied_state.executeCollectedSupplied(services.canonical, plan, declarations)
+
+proc captureLogicalCheckpoint*(services: Services, source: CurrentLogicalState,
+    limit: ByteLimit): LogicalCheckpointResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Explicit retained logical sources may share canonical ARC graphs; checkpoint copying requires the managed host gate open.
+  logical_checkpoint.captureLogicalCheckpoint(source, limit)
+
+proc reviewLogicalState*(services: Services, source: CurrentLogicalState,
+    limits: AccountReviewPlanLimits): LogicalReviewResult[ReviewedLogicalState] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Explicit immutable logical sources may alias canonical state; original-current review runs only outside all managed graph leases.
+  logical_review.reviewLogicalState(source, limits)
+
+proc planLogicalReview*(services: Services, source: CurrentLogicalState,
+    limits: AccountReviewPlanLimits): LogicalReviewResult[LogicalReviewPlan] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Frozen admission may share canonical graphs, so every existing native exclusion remains checked.
+  logical_review.planLogicalReview(source, limits)
+proc executeLogicalReview*(services: Services,
+    source: LogicalReviewPlan): LogicalReviewResult[ReviewedLogicalState] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Content retry touches retained original aliases only outside native graph leases; it grants no adoption authority.
+  logical_review.executeLogicalReview(source)
+
+proc captureLogicalSeed*(services: Services, declarations: openArray[StateService],
+    limits: LogicalSeedLimits): LogicalSeedResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Select the actual physical canonical parent only while all managed native aliases are available.
+  logical_seed.captureLogicalSeed(services.canonical, declarations, limits)
+
+proc refreshCollectedLogical*(services: Services, completion: PreparationCompletion,
+    source: SelectedLogicalParent, limits: CollectedLogicalLimits): CollectedLogicalResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Run bounded host qualification only after all managed native leases end; canonical installation remains separately owned.
+  collected_logical.refreshCollectedLogical(services.canonical, completion, source, limits)
+
+proc refreshCollectedLogical*(services: Services, completion: PreparationCompletion,
+    source: CurrentLogicalState, limits: CollectedLogicalLimits): CollectedLogicalResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Run bounded host qualification only after all managed native leases end; canonical installation remains separately owned.
+  collected_logical.refreshCollectedLogical(services.canonical, completion, source, limits)
 
 proc takeAccumulation*(services: var Services): ApplicationChainResult[BlockSnapshot] {.requires:
     services.accumulationStage == AccumulationHandoffStage.Finished.} =
@@ -1145,3 +1265,56 @@ proc stageCheckpointVerification*(services: var Services, expected: ApplicationC
     limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointAdmission =
   ## Independent fixed trust and explicit decode budgets require no canonical alias, so verification may run during preparation leases.
   services.checkpointExport.stageVerification(expected, limits, limit)
+
+proc freezeCollectedSupplied*(services: Services, plan: CollectedSuppliedPlan,
+    declarations: openArray[StateService], limits: SuppliedServicesLimits): FrozenSuppliedResult[
+        FrozenSuppliedInput] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Capture source aliases only after every managed native graph lease has ended.
+  frozen_supplied.freezeCollectedSupplied(services.canonical, plan, declarations, limits)
+proc executeFrozenSupplied*(services: Services, source: FrozenSuppliedInput): FrozenSuppliedResult[
+    CurrentLogicalState] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Frozen input does not bypass canonical staleness or native exclusion checks.
+  frozen_supplied.executeFrozenSupplied(services.canonical, source)
+
+proc planCollectedLogical*(services: Services, completion: PreparationCompletion,
+    source: SelectedLogicalParent, limits: CollectedLogicalLimits): CollectedLogicalPlanResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Retaining prepared source graphs requires every existing native lease to have ended.
+  collected_logical.planCollectedLogical(services.canonical, completion, source, limits)
+
+proc planCollectedLogical*(services: Services, completion: PreparationCompletion,
+    source: CurrentLogicalState, limits: CollectedLogicalLimits): CollectedLogicalPlanResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Retaining prepared source graphs requires every existing native lease to have ended.
+  collected_logical.planCollectedLogical(services.canonical, completion, source, limits)
+proc executeCollectedLogical*(services: Services, plan: CollectedLogicalPlan): CollectedLogicalResult {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Retry cannot bypass native exclusion or the frozen update's exact canonical-parent check.
+  collected_logical.executeCollectedLogical(services.canonical, plan)
+
+proc planLogicalServiceProof*(services: Services, source: CurrentLogicalState,
+    service: ServiceIndex, limits: LogicalServiceProofLimits): LogicalServiceProofResult[
+        LogicalServiceProof] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Namespace selection reads retained source aliases only outside the managed native graph lease.
+  logical_service_proof.planLogicalServiceProof(source, service, limits)
+
+proc planLogicalExport*(services: Services, source: CurrentLogicalState,
+    limits: SuppliedServicesLimits): LogicalExportResult[LogicalExportPlan] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Complete export admission reads retained original source graphs only outside managed native leases.
+  logical_export.planLogicalExport(source, limits)
+proc executeLogicalExport*(services: Services, plan: LogicalExportPlan): LogicalExportResult[seq[
+    StateService]] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Detached copying remains excluded through actual collection/join of every native graph borrower.
+  logical_export.executeLogicalExport(plan)
+
+proc importLogicalCheckpoint*(services: Services, source: CurrentLogicalState,
+    wire: openArray[byte], limits: StateStoreLimits,
+    wireLimit: ByteLimit): LogicalCheckpointImportResult[ImportedLogicalCheckpoint] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Original logical/root aliases remain outside every managed native lease until actual collection or join.
+  logical_checkpoint_import.importLogicalCheckpoint(source, wire, limits, wireLimit)

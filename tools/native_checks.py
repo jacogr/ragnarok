@@ -55,13 +55,13 @@ class NativeChecks:
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-    # Keep ARC, Clang and checks fixed; production-like callers retain full LTO by default.
+    # Keep ARC, Clang and checks fixed; production-like callers retain ThinLTO by default.
     def build(self, compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=()):
         flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
                  '--boundchecks:on']
         if self.lto:
             # Units/contracts may opt out of link-time optimization without disabling runtime checks.
-            flags += ['--passC:-flto', '--passL:-flto']
+            flags += ['--passC:-flto=thin', '--passL:-flto=thin']
         if platform.system() == 'Linux':
             # Preserve the established Linux LLD linker choice on that host.
             flags += ['--passL:-fuse-ld=lld']

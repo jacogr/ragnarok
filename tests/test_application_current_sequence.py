@@ -13,7 +13,8 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 from application_current_sequence import observe
 from application_current_download import ready_port
-from e2e_checks import application_current_sequence, prepare_current_download_peer
+from e2e_checks import (application_current_sequence, prepare_current_download_peer,
+                        prepare_current_sequence_responder)
 
 
 class CurrentDownloadExecutable(unittest.TestCase):
@@ -35,10 +36,14 @@ class CurrentDownloadExecutable(unittest.TestCase):
             prepare_current_download_peer(context)
             self.assertEqual(checks.build.call_args.kwargs['defines'], ('integration', 'offload'))
             with patch('application_current_sequence.observe') as observed:
+                # Run the registered prerequisite; a failed peer must skip witness compilation entirely.
+                prepare_current_sequence_responder(context)
                 self.assertFalse(application_current_sequence(context)['passed'])
                 observed.assert_not_called()
                 self.assertEqual(checks.build.call_count, 1)
                 context.current_download_peer = ({'exit_code': 0}, folder/'peer')
+                # A usable peer still cannot run a stale witness after the shared prerequisite build fails.
+                prepare_current_sequence_responder(context)
                 self.assertFalse(application_current_sequence(context)['passed'])
                 observed.assert_not_called()
                 self.assertEqual(checks.build.call_count, 2)

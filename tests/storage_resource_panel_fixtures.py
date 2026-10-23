@@ -19,7 +19,7 @@ def fixture(module):
     """Every case has independently authored native output plus a matching checked build/execution receipt."""
     binary = '/fixture/panel-native'
     build = ['/fixture/nimony', 'c', '--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on',
-             '--passC:-flto', '--passL:-flto', '--passC:-I'+str(panel.ROOT/'native/crypto'),
+             '--passC:-flto=thin', '--passL:-flto=thin', '--passC:-I'+str(panel.ROOT/'native/crypto'),
              '--passL:'+str(panel.ROOT/'build/crypto/libragnarok_crypto.dylib'),
              '--passL:-Wl,-rpath,'+str(panel.ROOT/'build/crypto'),
              *['-d:'+v for v in module.DEFINES], '--nimcache:/fixture/cache', '--out:'+binary, str(module.SOURCE)]

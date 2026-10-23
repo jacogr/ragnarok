@@ -122,6 +122,35 @@ See [selected parent profiles](../spec/state-parent-profile.md),
 [proof integration](../spec/state-current-logical-proofs.md) and
 [worker leases](../spec/state-current-logical-worker-lease.md).
 
+## Consume an actual preparation completion on the host
+
+`app/current_logical.refreshCollectedLogical` connects the bounded stages above to the actual
+preparation worker receipt. Its Services overloads accept the configured `SelectedLogicalParent`
+or completed `CurrentLogicalState`, the opaque `PreparationCompletion` and explicit
+`CollectedLogicalLimits`. Capture the configured source against the physical Services-owned view
+after startup; an independently reparsed equal-root source cannot replace it.
+
+Keep retained sources and receipts completely untouched while preparation, proof or publication
+owns its graph lease. Call `Services.collectPreparation` with the actual ticket first. An
+`Uninitialized` receipt leaves the lease closed. Done and cancellation alone grant no host access.
+After matching collection reopens access, call `Services.refreshCollectedLogical`; its existing
+canonical guards enforce all three managed exclusions. The adapter checks current-vs-legacy
+completion, original typed preparation success and the exact still-selected canonical parent before
+running identity preservation, request-key capture, reconstruction planning and full qualification.
+
+Inspect `CollectedLogicalError` and use only its selected nested reason accessor. A successful
+result is the existing `CurrentLogicalState`; no map constructor or installation authority is added.
+Qualification is an optional bounded observation: its resource refusal does not invalidate an
+otherwise successful prepared candidate. Enqueue/adopt that original prepared update separately
+through existing host APIs. Reusing its receipt after adoption returns `StaleUpdate`. Before another
+worker starts, finish any source replacement and let temporary canonical aliases retire. General
+producer mutation propagation still requires the separate contract below.
+
+The [collected qualification contract](../spec/application-current-logical.md) records genuine
+worker, managed Services, detached proof and durable-publication witnesses. Their expected roots
+are explicitly selected actual posterior commitments, independently of the child's prior-state
+header root; they are not published upstream current-schema golden vectors.
+
 ## Remaining producer contract and parity gates
 
 PVM and state agreed to defer a public delta API until a jointly designed producer contract has a
@@ -146,3 +175,48 @@ verification separately from adopted current Thin VRF parity. Conflicting bless 
 `AmbiguousPrivileges` under the [existing integration contract](../spec/pvm-accumulation-integration.md).
 No pins, compatibility fallback, RPC root/schema policy or storage API/format are changed. M1 framing
 and current request namespace completion do not imply complete state serialization/STF or JAM parity.
+
+## Explicit supplied successors and retained consumers
+
+When actual execution changes physical identities, identity-preserving refresh continues to refuse.
+A caller with complete explicitly supplied successor declarations may instead use
+`planCollectedSupplied` then `executeCollectedSupplied` after actual collection. The frozen plan
+binds the genuine target and independent policies; execution rechecks the canonical prior and
+matches the entire actual map before retaining raw keys. This is supplied post-state evidence,
+not a producer mutation relation or provenance certificate. See
+[collected supplied qualification](../spec/application-collected-supplied.md).
+
+`captureLogicalSeed` captures the actual configured host source under independent selected-view,
+global and logical policies. Fixed `currentLogicalUpdate`, `currentLogicalContext` and
+`currentLogicalViewInfo` observations preserve original provenance before heavy copy admission.
+Retained-source consumers include [checkpoint capture](../spec/application-logical-checkpoint.md),
+[bounded proof queries](../spec/application-logical-proof.md) and
+[original-current review](../spec/application-logical-review.md). Services guards seed, supplied
+planning/execution, checkpoint and review against all three managed native graph leases. Review
+never joins raw-key companion compact predicates into original-current reports. Bounded failures
+remain optional observations, separate from valid candidate acceptance and actual adoption.
+
+The [durable composition](../spec/application-logical-durable-consumers.md) exercises real new-key
+creation, three consecutive children, both disk layouts, retained consumers through actual native
+collection and detached bytes after shutdown. Broader producer-owned operation/rollback/untouched-key
+provenance and independent current-pin parity gates remain open.
+
+## Submit a retained logical proof through Services
+
+Call `Services.beginLogicalProof(source, plan, limits)` outside other managed work to prove the
+original retained logical producer, including a prepared successor not yet installed canonically.
+Use its guarded admission error before extracting the existing proof-worker ticket. Capture refusals
+retain original logical/query causes; managed RPC/native refusal remains separate. Keep every source
+and plan alias untouched until actual `collectStateProof(ticket)` or joined close; cancellation and
+Done retain exclusion. Authenticate detached response bytes against your independently selected
+expected root. See [managed logical proofs](../spec/application-managed-logical-proofs.md).
+
+## Freeze targeted logical review before content execution
+
+Use `Services.planLogicalReview(source, limits)` to admit the complete original-current review and
+its original parameter rates without content hashing. Inspect `logicalReviewPlanInfo`, then call
+`Services.executeLogicalReview(plan)` with that immutable plan. Execution accepts no replacement
+source or policy; a backend failure can be retried on the same plan after recovery. Both calls require
+all managed graph leases to have ended by actual collection/join. The returned pair retains the
+original current inventory for predicate joins, separately from the raw-key companion. See the
+[frozen review contract](../spec/application-logical-review-plans.md).

@@ -1,0 +1,308 @@
+{
+  "build_name": "application-host-logical-results",
+  "cases": [
+    {
+      "arguments": [
+        "seed-value"
+      ],
+      "description": "Host logical guard seed-value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "seed-value"
+      },
+      "name": "application-host-logical-seed-value"
+    },
+    {
+      "arguments": [
+        "seed-profile"
+      ],
+      "description": "Host logical guard seed-profile",
+      "diagnostic": "outcome.status == ProfileFailure",
+      "identity": {
+        "reason": "seed-profile"
+      },
+      "name": "application-host-logical-seed-profile"
+    },
+    {
+      "arguments": [
+        "seed-globals"
+      ],
+      "description": "Host logical guard seed-globals",
+      "diagnostic": "outcome.status == GlobalsFailure",
+      "identity": {
+        "reason": "seed-globals"
+      },
+      "name": "application-host-logical-seed-globals"
+    },
+    {
+      "arguments": [
+        "seed-logical"
+      ],
+      "description": "Host logical guard seed-logical",
+      "diagnostic": "outcome.status == LogicalFailure",
+      "identity": {
+        "reason": "seed-logical"
+      },
+      "name": "application-host-logical-seed-logical"
+    },
+    {
+      "arguments": [
+        "receipt-value"
+      ],
+      "description": "Host logical guard receipt-value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "receipt-value"
+      },
+      "name": "application-host-logical-receipt-value"
+    },
+    {
+      "arguments": [
+        "receipt-preparation"
+      ],
+      "description": "Host logical guard receipt-preparation",
+      "diagnostic": "outcome.status == PreparationFailure",
+      "identity": {
+        "reason": "receipt-preparation"
+      },
+      "name": "application-host-logical-receipt-preparation"
+    },
+    {
+      "arguments": [
+        "plan-value"
+      ],
+      "description": "Host logical guard plan-value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "plan-value"
+      },
+      "name": "application-host-logical-plan-value"
+    },
+    {
+      "arguments": [
+        "plan-admission"
+      ],
+      "description": "Host logical guard plan-admission",
+      "diagnostic": "outcome.status == AdmissionFailure",
+      "identity": {
+        "reason": "plan-admission"
+      },
+      "name": "application-host-logical-plan-admission"
+    },
+    {
+      "arguments": [
+        "plan-profile"
+      ],
+      "description": "Host logical guard plan-profile",
+      "diagnostic": "outcome.status == ProfileFailure",
+      "identity": {
+        "reason": "plan-profile"
+      },
+      "name": "application-host-logical-plan-profile"
+    },
+    {
+      "arguments": [
+        "plan-globals"
+      ],
+      "description": "Host logical guard plan-globals",
+      "diagnostic": "outcome.status == GlobalsFailure",
+      "identity": {
+        "reason": "plan-globals"
+      },
+      "name": "application-host-logical-plan-globals"
+    },
+    {
+      "arguments": [
+        "supplied-value"
+      ],
+      "description": "Host logical guard supplied-value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "supplied-value"
+      },
+      "name": "application-host-logical-supplied-value"
+    },
+    {
+      "arguments": [
+        "supplied-state"
+      ],
+      "description": "Host logical guard supplied-state",
+      "diagnostic": "outcome.status == StateFailure",
+      "identity": {
+        "reason": "supplied-state"
+      },
+      "name": "application-host-logical-supplied-state"
+    },
+    {
+      "arguments": [
+        "supplied-logical"
+      ],
+      "description": "Host logical guard supplied-logical",
+      "diagnostic": "outcome.status == LogicalFailure",
+      "identity": {
+        "reason": "supplied-logical"
+      },
+      "name": "application-host-logical-supplied-logical"
+    },
+    {
+      "arguments": [
+        "checkpoint-value"
+      ],
+      "description": "Host logical guard checkpoint-value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "checkpoint-value"
+      },
+      "name": "application-host-logical-checkpoint-value"
+    },
+    {
+      "arguments": [
+        "checkpoint-reason"
+      ],
+      "description": "Host logical guard checkpoint-reason",
+      "diagnostic": "outcome.status == CheckpointFailure",
+      "identity": {
+        "reason": "checkpoint-reason"
+      },
+      "name": "application-host-logical-checkpoint-reason"
+    },
+    {
+      "arguments": [
+        "proof-value"
+      ],
+      "description": "Host logical guard proof-value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "proof-value"
+      },
+      "name": "application-host-logical-proof-value"
+    },
+    {
+      "arguments": [
+        "proof-reason"
+      ],
+      "description": "Host logical guard proof-reason",
+      "diagnostic": "outcome.status == QueryFailure",
+      "identity": {
+        "reason": "proof-reason"
+      },
+      "name": "application-host-logical-proof-reason"
+    },
+    {
+      "arguments": [
+        "review-value"
+      ],
+      "description": "Host logical guard review-value",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "review-value"
+      },
+      "name": "application-host-logical-review-value"
+    },
+    {
+      "arguments": [
+        "review-reason"
+      ],
+      "description": "Host logical guard review-reason",
+      "diagnostic": "outcome.status == ReviewFailure",
+      "identity": {
+        "reason": "review-reason"
+      },
+      "name": "application-host-logical-review-reason"
+    },
+    {
+      "arguments": [
+        "source-update"
+      ],
+      "description": "Host logical source guard source-update",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source-update"
+      },
+      "name": "application-host-logical-source-update"
+    },
+    {
+      "arguments": [
+        "source-context"
+      ],
+      "description": "Host logical source guard source-context",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source-context"
+      },
+      "name": "application-host-logical-source-context"
+    },
+    {
+      "arguments": [
+        "source-view"
+      ],
+      "description": "Host logical source guard source-view",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "source-view"
+      },
+      "name": "application-host-logical-source-view"
+    },
+    {
+      "arguments": [
+        "plan-update"
+      ],
+      "description": "Host logical source guard plan-update",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "plan-update"
+      },
+      "name": "application-host-logical-plan-update"
+    },
+    {
+      "arguments": [
+        "plan-global-source"
+      ],
+      "description": "Host logical source guard plan-global-source",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "plan-global-source"
+      },
+      "name": "application-host-logical-plan-global-source"
+    },
+    {
+      "arguments": [
+        "plan-policy"
+      ],
+      "description": "Host logical source guard plan-policy",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "plan-policy"
+      },
+      "name": "application-host-logical-plan-policy"
+    },
+    {
+      "arguments": [
+        "pair-logical"
+      ],
+      "description": "Host logical source guard pair-logical",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "pair-logical"
+      },
+      "name": "application-host-logical-pair-logical"
+    },
+    {
+      "arguments": [
+        "pair-reviewed"
+      ],
+      "description": "Host logical source guard pair-reviewed",
+      "diagnostic": "outcome.status == None",
+      "identity": {
+        "reason": "pair-reviewed"
+      },
+      "name": "application-host-logical-pair-reviewed"
+    }
+  ],
+  "crypto_library": "observer",
+  "native_libraries": [
+    "bandersnatch_observer",
+    "bandersnatch"
+  ],
+  "source": "tests/native/application_host_logical_results.nim"
+}

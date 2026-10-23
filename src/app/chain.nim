@@ -8,6 +8,7 @@ import ../chain/[genesis, provider, parameters]
 import ../state/[store, accumulation_chain, accumulation_finalization, accumulation_completion,
   accumulation_publication, accumulation_current_consensus, accumulation_current_update]
 import ../codec/bounded
+import ../state/parent_profile
 import ../rpc/server as rpc_server
 from ../rpc/protocol import configuredParameters, configuredGenesis
 
@@ -67,6 +68,10 @@ func genesisFailure*[T](outcome: ApplicationChainResult[T]): GenesisError {.inli
 func chainView*(chain: ApplicationChain): ChainView =
   ## Retain an immutable request/history view; default owners retain an explicitly uninitialized view.
   chain.view
+proc captureParentProfile*(chain: ApplicationChain,
+    limits: ParentProfileLimits): ParentProfileResult[SelectedParentProfile] =
+  ## Borrow the original private view directly so profile admission precedes its whole-view/index copy.
+  parent_profile.captureParentProfile(chain.view, limits)
 proc stateSnapshot*(chain: ApplicationChain): StateStoreResult[StateStoreSnapshot] =
   ## Retain the canonical complete-map version; default owners return the store's precise initialization error.
   chain.state.snapshot

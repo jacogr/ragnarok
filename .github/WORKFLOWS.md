@@ -9,7 +9,8 @@ the root README on the repository landing page.
 It runs the maintained Make targets on native Linux runners, with separate jobs for source
 compilation, Python references/tooling, native units/corpora, runtime failures, compiler guards,
 E2E networking, JAM Tart telemetry interoperability and the Docker image build/smoke check.
-The Docker job runs for unit/full requests and never publishes an image. A separate PVM
+The Docker job runs on master pushes, full requests and explicit manual `docker` requests,
+and never publishes an image. A separate PVM
 reference job runs the pinned public-API probes and matching native suites for master pushes
 and full/Interop requests, or standalone manual `ref-pvm` requests. It explicitly
 selects the interpreter. **Perf PVM** measures validated workloads on master pushes and

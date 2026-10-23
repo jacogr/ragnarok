@@ -17,7 +17,7 @@ from setup_nimony import ROOT, installed, cache_directory
 # Keep the shipped peer profile explicit; the same checks/LTO and public headers are used by verification.
 def build_command(compiler, output, crypto, bandersnatch, quic):
     flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on',
-             '--passC:-flto', '--passL:-flto', '-d:integration', '-d:offload']
+             '--passC:-flto=thin', '--passL:-flto=thin', '-d:integration', '-d:offload']
     if platform.system() == 'Linux':
         # Linux uses the same LTO linker as the canonical verification path.
         flags.append('--passL:-fuse-ld=lld')

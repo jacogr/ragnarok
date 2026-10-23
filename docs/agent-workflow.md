@@ -57,9 +57,14 @@ Protocol, ownership and result contracts in `AGENTS.md` remain mandatory.
 - Coordinate through concise changes: new interface proposals, ownership changes, evidence or blockers.
   Link the existing contract instead of repeating it; include enough context for the receiving agent
   to act without rediscovering the work.
-- For an authorized multi-layer stack, batch publication and remote verification of several coherent,
-  locally checked layers when no feedback or dependency requires earlier publication. Preserve a
-  separate reviewable commit/PR per increment and all native stack/head checks below.
+- Publish each substantive review unit as soon as its scoped implementation, supporting tests/docs
+  and required local verification are ready, before continuing to the next unit. Do not accumulate
+  ready branches for bulk submission. Further work may require adjustments or additional commits
+  to an already open PR. Follow the PR sizing and publication rules in `AGENTS.md`, and preserve
+  all native stack/head checks below.
+- Treat a requested PR target as authorization to continue substantive work until that reporting
+  boundary or a genuine blocker. It is not a race or speed quota: preserve coherent review units
+  and appropriate verification, publish them as they become ready, and report back at the target.
 
 ## Resume existing work
 

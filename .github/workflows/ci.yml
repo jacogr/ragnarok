@@ -44,7 +44,7 @@ env:
 jobs:
   modules:
     if: &requested ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
-    name: Source compilation
+    name: Compile source
     timeout-minutes: 30
     strategy: &os-strategy
       fail-fast: false
@@ -66,7 +66,7 @@ jobs:
       - &inventory
         name: Validate verification inventory
         run: make check-inventory
-      - name: Source compilation
+      - name: Compile source
         run: make check-modules
       - &summary
         name: Show verification coverage
@@ -84,6 +84,60 @@ jobs:
             build/ci/*.log
             build/tests/modules/*.log
             build/tests/modules/results.json
+
+  python:
+    if: *requested
+    name: Compile reference & tooling
+    timeout-minutes: 15
+    strategy: *os-strategy
+    runs-on: ${{ matrix.os }}
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Compile reference & tooling
+        run: make check-python
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: ${{ matrix.os }}-python-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/python/*.log
+            build/tests/python/results.json
+
+  guards:
+    if: *requested
+    name: Compile rejection guards
+    timeout-minutes: 30
+    strategy: *os-strategy
+    runs-on: ${{ matrix.os }}
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Compile rejection guards
+        run: make check-guards
+      - *summary
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
+      - name: Retain verification evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: ${{ matrix.os }}-guards-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            build/ci/*.log
+            build/tests/guards/*.log
+            build/tests/guards/results.json
+            build/bandersnatch/build.log
+            build/bandersnatch/cargo-features.log
 
   models:
     if: *requested
@@ -114,70 +168,16 @@ jobs:
             build/tests/models/*.nif
             build/tests/models/results.json
 
-  python:
-    if: *requested
-    name: Python reference and tooling tests
-    timeout-minutes: 15
-    strategy: *os-strategy
-    runs-on: ${{ matrix.os }}
-    steps:
-      - *checkout
-      - *python
-      - *inventory
-      - name: Python reference and tooling tests
-        run: make check-python
-      - *summary
-      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
-      - name: Retain verification evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: ${{ matrix.os }}-python-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/*.log
-            build/tests/python/*.log
-            build/tests/python/results.json
-
-  guards:
-    if: &full ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
-    name: Compiler rejection guards
-    timeout-minutes: 30
-    strategy: *os-strategy
-    runs-on: ${{ matrix.os }}
-    steps:
-      - *checkout
-      - *python
-      - *inventory
-      - name: Compiler rejection guards
-        run: make check-guards
-      - *summary
-      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
-      - name: Retain verification evidence
-        if: always()
-        uses: *upload-artifact
-        with:
-          name: ${{ matrix.os }}-guards-${{ github.run_attempt }}
-          retention-days: 7
-          if-no-files-found: ignore
-          path: |
-            build/ci/*.log
-            build/tests/guards/*.log
-            build/tests/guards/results.json
-            build/bandersnatch/build.log
-            build/bandersnatch/cargo-features.log
-
   unit:
     if: *requested
     name: Unit shard ${{ matrix.shard }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 12
       matrix:
         os: *ci-os
-        shard: ["1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8"]
+        shard: ["1/12", "2/12", "3/12", "4/12", "5/12", "6/12", "7/12", "8/12", "9/12", "10/12", "11/12", "12/12"]
     env:
       UNIT_SHARD: ${{ matrix.shard }}
     runs-on: ${{ matrix.os }}
@@ -219,7 +219,7 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   failures:
-    if: *full
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
     name: Contract shard ${{ matrix.shard }}
     timeout-minutes: 30
     strategy:
@@ -270,15 +270,26 @@ jobs:
 
   e2e:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full')) }}
-    name: End-to-end networking tests
+    name: E2E ${{ matrix.family.name }}
     timeout-minutes: 60
-    strategy: *os-strategy
+    strategy:
+      fail-fast: false
+      matrix:
+        os: *ci-os
+        family:
+          - {group: application, name: Application}
+          - {group: current, name: Current Downloads}
+          - {group: offload, name: Offload}
+          - {group: telemetry, name: Telemetry}
+          - {group: transport, name: Transport}
     runs-on: ${{ matrix.os }}
+    env:
+      E2E_GROUP: ${{ matrix.family.group }}
     steps:
       - *checkout
       - *python
       - *inventory
-      - name: End-to-end networking tests
+      - name: E2E Networking
         run: make check-e2e
       - *summary
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
@@ -286,7 +297,7 @@ jobs:
         if: always()
         uses: *upload-artifact
         with:
-          name: ${{ matrix.os }}-e2e-${{ github.run_attempt }}
+          name: ${{ matrix.os }}-e2e-${{ matrix.family.group }}-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -318,6 +329,18 @@ jobs:
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
             build/quic/build.log
+
+  e2e-status:
+    name: E2E Networking
+    needs: e2e
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full'))) }}
+    strategy: *os-strategy
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Require every E2E family
+        env:
+          SHARDS_RESULT: ${{ needs.e2e.result }}
+        run: test "$SHARDS_RESULT" = success
 
   # Keep Interop jobs adjacent; group requests run every implementation comparison.
   # Pinned public-API comparisons remain distinct from frozen native fixtures and future fuzzing.
@@ -384,7 +407,7 @@ jobs:
 
   # Build locally and execute the final image; no registry credentials or image publishing.
   docker:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
     name: Docker image
     timeout-minutes: 30
     runs-on: ubuntu-latest

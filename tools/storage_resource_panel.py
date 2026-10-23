@@ -63,7 +63,7 @@ def validate_panel(report, source, defines, cases, arguments, parser):
                 all(type(v) is str and v and '\x00' not in v for v in check['command']), 'command/log')
     require(len({c['log'] for c in checks}) == len(checks), 'unique logs')
     build = checks[0]['command']
-    required = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on', '--passC:-flto', '--passL:-flto']
+    required = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on', '--passC:-flto=thin', '--passL:-flto=thin']
     require(len(build) >= 11 and build[1] == 'c' and build[2:9] == required and build[-1] == str(source), 'build')
     controlled = ('--mm:', '--cc:', '--opt:', '--boundchecks:', '--checks:', '--assertions:', '--rangechecks:', '--define:', '-d:')
     require([v for v in build if v.startswith(controlled)] == [*required[:5], *['-d:'+d for d in defines]], 'checks/defines')

@@ -42,23 +42,23 @@ def peer_selftest(context, prepared, flag, log_name):
         row['passed'] = row['run']['exit_code'] == 0
     return row
 
-@PLAN.selftest
+@PLAN.selftest(group='transport', requires=('prepare_peer',))
 def quic_peer_parser(context):
     """Exercise the real peer parser selftest."""
     return peer_selftest(context, context.peer, '--selftest', quic_peer_parser.__name__)
 
-@PLAN.selftest
+@PLAN.selftest(group='transport', requires=('prepare_peer',))
 def quic_peer_io(context):
     """Exercise peer readiness and I/O checks."""
     return peer_selftest(context, context.peer, '--io-selftest', quic_peer_io.__name__)
 
-@PLAN.selftest
+@PLAN.selftest(group='transport', requires=('prepare_peer',))
 def quic_peer_mesh_policy(context):
     """Exercise the peer's mesh policy checks."""
     return peer_selftest(context, context.peer, '--mesh-selftest', quic_peer_mesh_policy.__name__)
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload
+@PLAN.workload(group='transport', requires=('prepare_peer',))
 def quic_peer(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
@@ -79,7 +79,7 @@ def quic_peer(context):
 
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload
+@PLAN.workload(group='transport', requires=('quic_peer',))
 def quic_peer_controls(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     report = context.report
@@ -98,7 +98,7 @@ def quic_peer_controls(context):
 
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload
+@PLAN.workload(group='application', requires=('prepare_peer',))
 def rpc(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
@@ -122,7 +122,7 @@ def rpc(context):
     return observed
 
 
-@PLAN.workload
+@PLAN.workload(group='application', requires=('prepare_peer',))
 def application_state(context):
     """Verify explicit executable policy selection in both peer shapes and enabled RPC."""
     compiled, binary = context.peer
@@ -138,7 +138,7 @@ def application_state(context):
     return observed
 
 
-@PLAN.workload
+@PLAN.workload(group='application', requires=('prepare_peer',))
 def application_checkpoint_import(context):
     """Verify explicit trusted checkpoint imports in the production executable and both retained peer shapes."""
     compiled, binary = context.peer
@@ -154,7 +154,7 @@ def application_checkpoint_import(context):
     return observed
 
 
-@PLAN.workload
+@PLAN.workload(group='application')
 def application_download_load(context):
     """Repeat authenticated signed download cancellation and native reset progress before real adoption."""
     import hashlib
@@ -192,7 +192,7 @@ def prepare_current_download_peer(context):
         quic_library=context.quic, defines=('integration', 'offload'))
 
 
-@PLAN.workload
+@PLAN.workload(group='current', requires=('prepare_current_download_peer',))
 def application_current_download(context):
     """Verify explicit current command success, partial refusal and timeout through independent TLS/maps."""
     import hashlib
@@ -225,7 +225,18 @@ def application_current_download(context):
     return observed
 
 
-@PLAN.workload
+@PLAN.setup(requires=('prepare_current_download_peer',))
+def prepare_current_sequence_responder(context):
+    """Compile one witness for every current-sequence case; modes are selected at process startup."""
+    context.current_sequence_responder = ({'exit_code': 1}, None)
+    if context.current_download_peer[0]['exit_code'] == 0:
+        # Failed peer builds cannot launch stale witnesses; every consumer checks this same build result.
+        context.current_sequence_responder = context.checks.build(context.compiler,
+            ROOT/'tests/native/application_current_sequence.nim', 'application-current-sequence',
+            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+
+
+@PLAN.workload(group='current', requires=('prepare_current_sequence_responder',))
 def application_current_sequence(context):
     """Verify explicit current command success, partial refusal and timeout through independent TLS/maps."""
     import hashlib
@@ -236,9 +247,8 @@ def application_current_sequence(context):
     observed = dict(passed=False)
     if peer_build['exit_code'] == 0:
         # A failed current peer build must never execute a previous binary or build an unrelated witness.
-        compiled, responder = context.checks.build(context.compiler,
-            ROOT/'tests/native/application_current_sequence.nim', 'application-current-sequence',
-            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+        # Reuse compilation evidence, while each scenario still launches its own fresh processes and state.
+        compiled, responder = context.current_sequence_responder
         observed['build'] = compiled
         if compiled['exit_code'] == 0:
             _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
@@ -258,7 +268,7 @@ def application_current_sequence(context):
     return observed
 
 
-@PLAN.workload
+@PLAN.workload(group='current', requires=('prepare_current_sequence_responder',))
 def application_current_preimages(context):
     """Verify explicit current command success, partial refusal and timeout through independent TLS/maps."""
     import hashlib
@@ -269,9 +279,8 @@ def application_current_preimages(context):
     observed = dict(passed=False)
     if peer_build['exit_code'] == 0:
         # A failed current peer build must never execute a previous binary or build an unrelated witness.
-        compiled, responder = context.checks.build(context.compiler,
-            ROOT/'tests/native/application_current_sequence.nim', 'application-current-preimages',
-            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+        # Reuse compilation evidence, while each scenario still launches its own fresh processes and state.
+        compiled, responder = context.current_sequence_responder
         observed['build'] = compiled
         if compiled['exit_code'] == 0:
             _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
@@ -291,7 +300,7 @@ def application_current_preimages(context):
     return observed
 
 
-@PLAN.workload
+@PLAN.workload(group='current', requires=('prepare_current_sequence_responder',))
 def application_current_guarantees(context):
     """Verify explicit current command success, partial refusal and timeout through independent TLS/maps."""
     import hashlib
@@ -302,9 +311,8 @@ def application_current_guarantees(context):
     observed = dict(passed=False)
     if peer_build['exit_code'] == 0:
         # A failed current peer build must never execute a previous binary or build an unrelated witness.
-        compiled, responder = context.checks.build(context.compiler,
-            ROOT/'tests/native/application_current_sequence.nim', 'application-current-guarantees',
-            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+        # Reuse compilation evidence, while each scenario still launches its own fresh processes and state.
+        compiled, responder = context.current_sequence_responder
         observed['build'] = compiled
         if compiled['exit_code'] == 0:
             _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
@@ -324,7 +332,7 @@ def application_current_guarantees(context):
     return observed
 
 
-@PLAN.workload
+@PLAN.workload(group='current', requires=('prepare_current_sequence_responder',))
 def application_current_rotated(context):
     """Verify real validator rotation across executable success, restart, maintenance and later resource refusal."""
     import hashlib
@@ -335,9 +343,8 @@ def application_current_rotated(context):
     observed = dict(passed=False)
     if peer_build['exit_code'] == 0:
         # A failed current peer build must never execute a previous binary or build an unrelated witness.
-        compiled, responder = context.checks.build(context.compiler,
-            ROOT/'tests/native/application_current_sequence.nim', 'application-current-rotated',
-            context.crypto, native_libraries=(context.bs,), quic_library=context.quic)
+        # Reuse compilation evidence, while each scenario still launches its own fresh processes and state.
+        compiled, responder = context.current_sequence_responder
         observed['build'] = compiled
         if compiled['exit_code'] == 0:
             _, inputs, files = unit_runtime_fixtures(context.certificates, None, None,
@@ -357,7 +364,7 @@ def application_current_rotated(context):
     return observed
 
 
-@PLAN.workload
+@PLAN.workload(group='application', requires=('prepare_peer',))
 def application_download_sequence(context):
     """Verify actual executable multi-child success, later refusal and timeout against independent native TLS/maps."""
     import hashlib
@@ -422,20 +429,20 @@ def ancestor_executable(context, *, discovery=False):
     return observed
 
 
-@PLAN.workload
+@PLAN.workload(group='application', requires=('prepare_peer',))
 def application_remote_ancestors(context):
     """Verify explicit up-front acquisition through the shared actual executable/map witness."""
     return ancestor_executable(context)
 
 
-@PLAN.workload
+@PLAN.workload(group='application', requires=('prepare_peer',))
 def application_discovery_ancestors(context):
     """Verify child-driven acquisition, deadline/refusal, managed restart and successive-child reconnect."""
     return ancestor_executable(context, discovery=True)
 
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload
+@PLAN.workload(group='telemetry', requires=('prepare_peer',))
 def telemetry(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
@@ -487,14 +494,14 @@ def prepare_integrated_peer(context):
 
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.selftest
+@PLAN.selftest(group='transport', requires=('prepare_integrated_peer',))
 def quic_peer_integration(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     return peer_selftest(context, context.integrated, '--integration-selftest', 'quic-peer-integration-selftest')
 
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload
+@PLAN.workload(group='transport', requires=('prepare_peer',))
 def quic_service(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
@@ -516,7 +523,7 @@ def quic_service(context):
 
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload
+@PLAN.workload(group='transport', requires=('prepare_integrated_peer',))
 def quic_integration_service(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
@@ -539,7 +546,7 @@ def quic_integration_service(context):
 
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload
+@PLAN.workload(group='transport', requires=('prepare_peer',))
 def quic_mesh(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
@@ -563,7 +570,7 @@ def quic_mesh(context):
 
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload
+@PLAN.workload(group='transport', requires=('prepare_peer',))
 def quic_mesh_disruption(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
@@ -585,7 +592,7 @@ def quic_mesh_disruption(context):
 
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload
+@PLAN.workload(group='transport', requires=('prepare_peer',))
 def quic_endpoint_soak(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
@@ -607,7 +614,7 @@ def quic_endpoint_soak(context):
 
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload
+@PLAN.workload(group='transport', requires=('prepare_peer',))
 def quic_admission(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
@@ -629,7 +636,7 @@ def quic_admission(context):
 
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload
+@PLAN.workload(group='transport', requires=('prepare_peer',))
 def quic_closed_before_request(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
@@ -690,10 +697,11 @@ def run_offload_selftest(function, context):
     return row
 
 
-PLAN.include_selftests(OFFLOAD_SELFTESTS, run_offload_selftest)
+PLAN.include_selftests(OFFLOAD_SELFTESTS, run_offload_selftest,
+                      group='offload', requires=('prepare_offload_peer',))
 
 # Preserve this task and its original checks in dependency order.
-@PLAN.workload
+@PLAN.workload(group='offload', requires=('prepare_offload_peer',))
 def quic_offload(context):
     """Execute the owning E2E task; failed prerequisites remain explicit failures."""
     BUILD = context.checks.folder
@@ -716,9 +724,9 @@ def quic_offload(context):
 
 
 # Explicit prerequisites remain ordered tasks; names and expected verdicts come from the same plan.
-def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integration_wires, report, checks):
+def run(compiler, crypto_library, bs_library, quic_library, quic_fixtures, integration_wires, report, checks, group=None):
     """Run every declared task once with this invocation's binaries and fixture ownership."""
     context = SimpleNamespace(compiler=compiler, crypto=crypto_library, bs=bs_library,
                               quic=quic_library, certificates=quic_fixtures,
                               wires=integration_wires, report=report, checks=checks)
-    PLAN.run(context)
+    PLAN.select(group).run(context)

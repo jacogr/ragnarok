@@ -92,6 +92,25 @@ Use Conventional Commits (`type(scope): summary`). Every final report supplies a
 message, or says no commit is needed. Commit only when asked; never merge a PR without explicit
 maintainer authorization. Use authenticated `gh` and selected JSON fields; do not reinvent clients.
 
+Size each PR around a coherent, substantive feature, fix or refactor that a reviewer can assess
+as one unit. Include its supporting tests and documentation in the same PR; use separate commits
+within that PR when helpful. Do not create a PR per test case, documentation entry, helper or
+mechanical step, or split work merely to meet a requested PR count. For outstanding test-only or
+documentation-only work, group related work by type and affected behavior into meaningful review
+units. Balance scope: split independent concerns or changes too broad to review together, while
+keeping tightly coupled implementation, tests and docs together. Apply this rule to every agent
+and every layer of a stack; commit count does not determine PR count.
+
+Publish each substantive PR when its branch's scoped implementation, supporting tests/docs and
+required local verification are ready. Do not hold ready branches for bulk submission at the end
+of a batch; submit each ready review unit before continuing to the next one. Further work may
+require adjustments or additional commits to an already open PR, which is expected.
+
+A requested target of X PRs defines a continuous operation and the point to report back, not a
+race or speed quota. Continue with substantive review units and appropriate verification until
+that target or a genuine blocker is reached. Do not rush, fragment work or accumulate ready PRs
+to reach the count. Apply these publication and continuation rules to every agent and stack layer.
+
 A stacked PR requires verified native GitHub stack membership, not merely a dependent base.
 Use official `gh stack` commands after checking scope, worktree cleanliness and published heads;
 preserve unpublished work. Only the native extension's guarded pushes after verified stack rebases
