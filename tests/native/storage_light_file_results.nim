@@ -14,6 +14,12 @@ proc main() {.raises.} =
   let member = paramStr(1)
   let origin = paramStr(2)
   var owner = default(LightFileCache)
+  if member == "image" and origin != "valid":
+    # A fresh prepared-image result carries no default or failed payload.
+    let selected = if origin == "default": default(LightFileResult[
+        PreparedLightSnapshot]) else: owner.preparedSnapshot
+    echo selected.value.byteLength
+    return
   if member == "result" and origin != "valid":
     let selected = if origin == "default": default(LightFileResult[
         LightStateCache]) else: owner.snapshot
@@ -25,6 +31,7 @@ proc main() {.raises.} =
   let created = initializeLightFileCache(owner, path, config, prepared)
   assert created.error == FileError.None
   if member == "result": echo created.value
+  if member == "image": echo owner.preparedSnapshot.value.byteLength
   if origin == "unclosed": return # Destruction must require explicit retirement of the live lock.
   assert owner.close == FileError.None
   var current = path & "/CURRENT"

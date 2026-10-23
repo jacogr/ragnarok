@@ -158,6 +158,58 @@
       "name": "storage-light-snapshot-borrowed-default",
       "diagnostic": "not snapshot.owner == nil",
       "description": "Light snapshot borrowed bytes default guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "default"
+      },
+      "arguments": [
+        "proof",
+        "default"
+      ],
+      "name": "storage-light-snapshot-proof-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Detached proof default result guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "uninitialized"
+      },
+      "arguments": [
+        "proof",
+        "uninitialized"
+      ],
+      "name": "storage-light-snapshot-proof-uninitialized",
+      "diagnostic": "outcome.status == None",
+      "description": "Detached proof uninitialized result guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "unknown"
+      },
+      "arguments": [
+        "proof",
+        "unknown"
+      ],
+      "name": "storage-light-snapshot-proof-unknown",
+      "diagnostic": "outcome.status == None",
+      "description": "Detached proof unknown result guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "limited"
+      },
+      "arguments": [
+        "proof",
+        "limited"
+      ],
+      "name": "storage-light-snapshot-proof-limited",
+      "diagnostic": "outcome.status == None",
+      "description": "Detached proof limited result guard"
     }
   ]
 }

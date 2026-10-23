@@ -125,6 +125,13 @@ proc snapshot*(owner: LightFileCache): LightFileResult[LightStateCache] =
   if data == nil: return LightFileResult[LightStateCache](status: FileError.Uninitialized)
   if data.poisoned: return LightFileResult[LightStateCache](status: FileError.RecoveryRequired)
   LightFileResult[LightStateCache](status: FileError.None, completed: data.image.cache)
+proc preparedSnapshot*(owner: LightFileCache): LightFileResult[PreparedLightSnapshot] =
+  ## Retain selected immutable proof evidence without IO or a new durability receipt; no directory lease escapes.
+  let data = owner.data
+  if data == nil: return LightFileResult[PreparedLightSnapshot](status: FileError.Uninitialized)
+  if data.poisoned: return LightFileResult[PreparedLightSnapshot](
+      status: FileError.RecoveryRequired)
+  LightFileResult[PreparedLightSnapshot](status: FileError.None, completed: data.image)
 proc publish*(owner: var LightFileCache, prepared: PreparedLightSnapshot): LightFileResult[
     StorageDurability] =
   ## Atomically replace the selected image only after matching its opaque preparation to the fixed owner policy.

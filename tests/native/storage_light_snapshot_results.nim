@@ -13,6 +13,18 @@ proc main() =
     items: ElementLimit(8), proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(256))))
   let complete = prepareLightSnapshot(default(StorageChainId), default(StateRoot), [], policy)
   assert complete.error == LightSnapshotError.None
+  if member == "proof":
+    # Dynamic outcomes instantiate the detached proof result guard for every refusal class.
+    let absent = LightStateProof(key: default(StateKey))
+    let retained = prepareLightSnapshot(default(StorageChainId), default(StateRoot), [absent], policy).value
+    let bounds = LightProofReadLimits(entries: ElementLimit(1))
+    let selected = if origin == "default": default(LightSnapshotResult[StateProof])
+      elif origin == "uninitialized": default(PreparedLightSnapshot).prove(default(StateKey), bounds)
+      elif origin == "unknown": complete.value.prove(default(StateKey), bounds)
+      elif origin == "limited": retained.prove(default(StateKey), default(LightProofReadLimits))
+      else: retained.prove(default(StateKey), bounds)
+    echo selected.value.nodes.len
+    return
   if member == "result":
     let selected = if origin == "default": default(LightSnapshotResult[PreparedLightSnapshot])
       elif origin == "failed": prepareLightSnapshot(default(StorageChainId), default(StateRoot), [],

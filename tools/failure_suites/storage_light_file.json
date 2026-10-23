@@ -41,6 +41,32 @@
       "name": "storage-light-file-retire-unclosed",
       "diagnostic": "owner.data == nil",
       "description": "Light file retire unclosed guard"
+    },
+    {
+      "identity": {
+        "member": "image",
+        "origin": "default"
+      },
+      "arguments": [
+        "image",
+        "default"
+      ],
+      "name": "storage-light-file-image-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Prepared file image default result guard"
+    },
+    {
+      "identity": {
+        "member": "image",
+        "origin": "failed"
+      },
+      "arguments": [
+        "image",
+        "failed"
+      ],
+      "name": "storage-light-file-image-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Prepared file image failed result guard"
     }
   ]
 }

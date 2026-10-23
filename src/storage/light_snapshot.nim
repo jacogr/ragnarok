@@ -16,6 +16,9 @@ type
   LightSnapshotLimits* = object ## Bound complete encoded images and restored cache contents independently of ordinary batches.
     cache*: LightCacheLimits
     bytes*: ByteLimit
+  LightProofReadLimits* = object ## Bound examined canonical entries and detached proof output independently.
+    entries*: ElementLimit
+    proof*: StateProofLimits
   LightSnapshotError* {.pure.} = enum ## Default/refused images expose no bytes, cache or partial proof prefix.
     Uninitialized, None, InvalidFormat, WrongChain, WrongRoot, LimitExceeded,
     LengthOverflow, ChecksumMismatch, ProofFailure, BackendFailure
@@ -116,6 +119,45 @@ func readKey(input: openArray[byte], offset: int): StateKey =
   var raw = default(array[31, byte])
   for index in 0..<31: raw[index] = input[offset+index]
   StateKey(raw)
+proc prove*(snapshot: PreparedLightSnapshot, key: StateKey,
+    limits: LightProofReadLimits): LightSnapshotResult[StateProof] =
+  ## Copy retained authenticated evidence without hashing; unknown keys never become absence proofs.
+  let owner = snapshot.owner
+  if owner == nil: return LightSnapshotResult[StateProof](status: LightSnapshotError.Uninitialized)
+  let stop = owner.encoded.len-32
+  var cursor = HeaderBytes
+  var examined = 0'u64
+  while cursor < stop:
+    # Only private, validated canonical images reach this scan; prove addressing before native arithmetic.
+    if examined >= uint64(limits.entries):
+      return LightSnapshotResult[StateProof](status: LightSnapshotError.LimitExceeded)
+    inc examined
+    assert cursor <= stop and stop-cursor >= EntryBytes
+    let order = compareKey(readKey(owner.encoded, cursor), key)
+    if order > 0: break # Sorted order proves the requested key is not retained.
+    let count = number(owner.encoded, cursor+31, 2)
+    let size = number(owner.encoded, cursor+33)
+    cursor += EntryBytes
+    assert count <= 249 and count <= uint64((stop-cursor) div 64)
+    let nodeBytes = int(count)*64
+    assert size <= uint64(stop-cursor-nodeBytes)
+    if order == 0:
+      # Check both output quotas before allocating either path or value; output owns all copied bytes.
+      if count > uint64(limits.proof.nodes) or size > uint64(limits.proof.valueBytes):
+        return LightSnapshotResult[StateProof](status: LightSnapshotError.LimitExceeded)
+      var nodes = newSeq[EncodedStateNode](int(count))
+      for slot in 0..<int(count):
+        var raw = default(array[64, byte])
+        for offset in 0..<64: raw[offset] = owner.encoded[cursor+offset]
+        nodes[slot] = EncodedStateNode(raw)
+        cursor += 64
+      var value = newSeq[byte](int(size))
+      for offset in 0..<int(size): value[offset] = owner.encoded[cursor+offset]
+      return LightSnapshotResult[StateProof](status: LightSnapshotError.None,
+          completed: StateProof(nodes: nodes, value: value))
+    cursor += nodeBytes+int(size) # Proven body extents allow constant work to skip unselected payloads.
+  LightSnapshotResult[StateProof](status: LightSnapshotError.ProofFailure,
+      proofReason: LightCacheError.UnknownKey)
 proc grow(size: var uint64, amount, maximum: uint64): bool =
   ## Prove both file policy and host addressing before addition or later narrowing.
   if size > maximum or amount > maximum-size: return false

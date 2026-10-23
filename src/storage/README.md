@@ -94,6 +94,13 @@ The [snapshot contract](../../spec/storage-light-snapshots.md) records exact wid
 ordering, golden bytes and lifetime coverage. Checksums do not select trusted roots or authorize
 full/light schema conversion. File publication and application trust selection remain separate work.
 
+Retained canonical evidence can be read with `PreparedLightSnapshot.prove` under explicit
+entry-scan and proof-output budgets. Missing evidence remains `UnknownKey`; retained absence
+returns a successful proof. `LightFileCache.preparedSnapshot` retains the selected immutable
+image independently of the native lease, refusing fresh access after IO uncertainty.
+See the [retrieval contract](../../spec/storage-light-proof-retrieval.md) for ownership,
+resource bounds and recovery coverage.
+
 ## Boundaries and ownership
 
 The trie reuses GP 0.8.0 key/node encodings and crypto primitives. The existing complete-map
