@@ -22,3 +22,8 @@ backend refusal/retry and detached key mutation. Strict payload/nested-stage and
 protect authority. Twenty-five warm cycles precede 1,000 isolated success/late-refusal/recovery cycles
 with fresh exact ARC occupancy evidence. These authored fixtures do not replace upstream independent
 current-schema STF vectors or certify full JAM parity.
+
+The grouped actual-current corpus additionally uses this atomic boundary for all nine maintained
+storage/preimage/request/deletion/checkpoint/panic/out-of-gas mutation and rollback scenarios.
+Each imported typed owner remains physically distinct from original execution and generic restored
+owners; selected roots, every serialized value and original-slot code observations remain exact.

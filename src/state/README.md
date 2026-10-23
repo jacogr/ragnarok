@@ -37,7 +37,12 @@ Bounded immutable state trie membership/absence interfaces are documented in the
 [state proof guide](../../docs/state-proofs.md) and [feature contract](../../spec/state-trie-proofs.md).
 
 [Verified partial read views](../../docs/state-proof-views.md) retain exact-key evidence
-under one root, with explicit unknown/absent/present outcomes and no complete-map conversion.
+under one root, with explicit unknown/absent/present outcomes. A witnessed subset remains partial.
+[Checked complete import](../../spec/state-proof-state-import.md) reconstructs a candidate map and
+requires equality with an independently selected complete root before exposing full-state ownership.
+[Atomic supplied qualification](../../spec/state-supplied-proof-import.md) additionally requires
+all-global, exact-manifest and retained raw-key validation before exposing supplied serialization;
+neither result grants original producer identity or canonical installation authority.
 
 [`global_snapshot.nim`](global_snapshot.nim) validates all sixteen global chapters
 from one complete map under explicit codec/copy policies. Its
