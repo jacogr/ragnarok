@@ -13,6 +13,21 @@ proc main() =
     items: ElementLimit(8), proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(256))))
   let complete = prepareLightSnapshot(default(StorageChainId), default(StateRoot), [], policy)
   assert complete.error == LightSnapshotError.None
+  if member == "select-result" or member == "select-reason":
+    # Selective exports refuse whole images; no missing key or policy refusal authorizes a prepared prefix.
+    let key = default(StateKey)
+    let selected = if origin == "default": default(LightSnapshotResult[PreparedLightSnapshot])
+      elif origin == "uninitialized": default(PreparedLightSnapshot).select([], policy,
+          ElementLimit(0))
+      elif origin == "unknown" or (member == "select-reason" and origin == "valid"):
+        complete.value.select([key], policy, ElementLimit(0))
+      elif origin == "limited": complete.value.select([], default(LightSnapshotLimits),
+          ElementLimit(0))
+      elif origin == "duplicate": complete.value.select([key, key], policy, ElementLimit(0))
+      else: complete.value.select([], policy, ElementLimit(0))
+    if member == "select-reason": echo selected.proofError
+    else: echo selected.value.cache.len
+    return
   if member == "cursor-finished" or member == "cursor-root":
     # Default traversal handles have neither a meaningful terminal position nor root binding.
     let selected = if origin == "default": default(
