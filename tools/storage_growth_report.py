@@ -170,7 +170,7 @@ def _validate_commands(checks):
         if type(command) is not list or not 0<len(command)<=128 or any(type(v) is not str or not 0<len(v)<=4096 or '\x00' in v for v in command):
             raise ValueError('Invalid sustained command provenance')
     build=commands[0]
-    required=['--mm:arc','--cc:clang','-d:release','--opt:speed','--boundchecks:on','--passC:-flto','--passL:-flto']
+    required=['--mm:arc','--cc:clang','-d:release','--opt:speed','--boundchecks:on','--passC:-flto=thin','--passL:-flto=thin']
     if len(build)<11 or build[1]!='c' or build[2:9]!=required or tuple(build[-1].replace('\\','/').split('/')[-3:])!=('tests','performance','storage_growth_workload.nim'):
         raise ValueError('Invalid sustained checked build plan')
     forbidden=('--checks:off','--boundchecks:off','--rangechecks:off','--assertions:off','-d:danger','--define:danger','-d:storageIoCounts','--define:storageIoCounts')

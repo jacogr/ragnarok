@@ -52,7 +52,7 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Any supported shard count covers every discovered suite exactly once, without new registrations.
     def test_partition_inventory(self):
-        for count in range(1, 9):
+        for count in range(1, 13):
             # Separate coverage and serial-load checks catch gaps, duplicates and accidentally duplicated corpora.
             partitions = [native_tests.unit_partition((index, count)) for index in range(1, count+1)]
             names = [name for batches, _ in partitions for _, members, _ in batches for name in members]
@@ -67,15 +67,16 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Empty, unbounded or malformed shard declarations cannot silently turn into partial verification.
     def test_invalid_partitions(self):
-        for shard in [(0, 8), (9, 8), (1, 9), (1, 0), (True, 8), (1,), '1/8']:
+        for shard in [(0, 12), (13, 12), (1, 13), (9, 8), (1, 0), (True, 12), (1,), '1/12']:
             # Report metadata is validated with the same bounds as the CLI.
             with self.subTest(shard=shard), self.assertRaises(ValueError):
                 native_tests.unit_partition(shard)
-        for value in ['0/8', '1/9', '2/1', 'one/8', '1', '1/8/8']:
+        for value in ['0/12', '1/13', '13/12', '2/1', 'one/12', '1', '1/12/12']:
             # Invalid CLI notation must fail before libraries or native tools are prepared.
             with self.subTest(value=value), self.assertRaises(ValueError):
                 native_tests.parse_unit_shard(value)
         self.assertEqual(native_tests.parse_unit_shard('2/8'), (2, 8))
+        self.assertEqual(native_tests.parse_unit_shard('12/12'), (12, 12))
 
     # Worker limits affect only directory discovery; linked and networking cases stay serial.
     def test_bounded_codec_workers(self):
@@ -357,6 +358,8 @@ class NativeUnitHarness(unittest.TestCase):
                                 self.assertIn('--forward:--passC:-Dbs_'+function+'=bo_'+function, args)
                         self.assertNotIn('--forward:--passC:-flto', args)
                         self.assertNotIn('--forward:--passL:-flto', args)
+                        self.assertNotIn('--forward:--passC:-flto=thin', args)
+                        self.assertNotIn('--forward:--passL:-flto=thin', args)
                         self.assertEqual('--forward:--passL:-fuse-ld=lld' in args, system == 'Linux')
                         record = native_tests.NATIVE_REQUIREMENTS[name]
                         key = json.dumps({field: record[field] for field in

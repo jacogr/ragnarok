@@ -112,7 +112,7 @@ jobs:
             build/tests/python/results.json
 
   guards:
-    if: &full ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
+    if: *requested
     name: Compile rejection guards
     timeout-minutes: 30
     strategy: *os-strategy
@@ -174,10 +174,10 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 12
       matrix:
         os: *ci-os
-        shard: ["1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8"]
+        shard: ["1/12", "2/12", "3/12", "4/12", "5/12", "6/12", "7/12", "8/12", "9/12", "10/12", "11/12", "12/12"]
     env:
       UNIT_SHARD: ${{ matrix.shard }}
     runs-on: ${{ matrix.os }}
@@ -219,7 +219,7 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   failures:
-    if: *full
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
     name: Contract shard ${{ matrix.shard }}
     timeout-minutes: 30
     strategy:
@@ -407,7 +407,7 @@ jobs:
 
   # Build locally and execute the final image; no registry credentials or image publishing.
   docker:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
     name: Docker image
     timeout-minutes: 30
     runs-on: ubuntu-latest

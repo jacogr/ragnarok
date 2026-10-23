@@ -61,7 +61,7 @@ def build(folder, compiler, baseline_compiler):
             shutil.copytree(ROOT/'src', snapshot/'src', dirs_exist_ok=True)
         (snapshot/'main.nim').write_bytes(source.read_bytes())
         flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundChecks:on',
-                 '--passC:-flto', '--passL:-flto', '--passC:-I'+str(ROOT/'native/crypto'),
+                 '--passC:-flto=thin', '--passL:-flto=thin', '--passC:-I'+str(ROOT/'native/crypto'),
                  '--passC:-I'+str(snapshot/'src/crypto'), '--passL:'+str(library), '--passL:'+str(crypto),
                  '--passL:-Wl,-rpath,'+str(folder), '--passL:-Wl,-rpath,'+str(crypto.parent)]
         if label == 'nim2':

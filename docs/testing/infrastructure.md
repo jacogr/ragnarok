@@ -90,11 +90,11 @@ the exact build profile; workers reuse only their own compatible intermediates. 
 advisory lock serializes standalone and cumulative unit invocations through evidence validation, including exceptional exits. Cumulative runs log
 the active batch and its elapsed time.
 
-CI partitions the discovered batch plan across eight bounded jobs, keeping each job's
+CI partitions the discovered batch plan across twelve bounded jobs, keeping each job's
 linked/resource work sequential. Shards prepare only their selected native dependencies and
 fixture providers, reusing sibling manifests from each provider once. Codec discovery belongs only to the first
 partition and independent corpora only to the last; no tests or corpora are duplicated.
-`UNIT_SHARD=index/count make check-unit` selects the same source-derived scope locally; plain `make check-unit` remains complete. Each shard
+`UNIT_SHARD=index/count make check-unit` selects the same source-derived scope locally (up to twelve partitions); plain `make check-unit` remains complete. Each shard
 validates its exact expected identities and reports its scope, and a stable aggregate PR check
 requires every shard to succeed. The 30-minute job limits and individual command timeouts remain
 unchanged.
@@ -156,10 +156,11 @@ per-build caches. Independent unit corpora use this same profile-reuse path. Pro
 the active build and elapsed time.
 
 Units, independent corpora and runtime contracts keep ARC, Clang, release/speed optimization and
-runtime checks enabled, but omit LTO to reduce compilation/linking cost. E2E and the shipped peer
-retain full LTO. The shared native builder defaults to full LTO, including future production-like
-and fuzz callers unless they deliberately select another profile. LTO selection participates in
-the compiler cache identity, so full-LTO and non-LTO intermediates cannot be mixed.
+runtime checks enabled, but omit LTO to reduce compilation/linking cost. E2E, performance
+workloads and the shipped peer use ThinLTO (`--passC:-flto=thin --passL:-flto=thin`), retaining
+release/speed optimization and all runtime checks. The shared native builder defaults to
+ThinLTO, including future production-like and fuzz callers unless they deliberately opt out.
+LTO flags participate in the compiler cache identity, so incompatible intermediates cannot mix.
 
 CI partitions the discovered ordinary contract families across four bounded jobs. Specialized
 controls execute once, in the final partition. Each partition requires its exact predeclared
@@ -289,7 +290,7 @@ CI artifact globs even when compiler setup never starts. Provisioned and non-APT
 path. The workflow's overall job limits are unchanged.
 
 E2E builds opt into the same serial, source-epoch/native-ABI/profile-isolated compiler cache,
-retaining full LTO, runtime checks and separate production feature defines. Current-sequence,
+retaining ThinLTO, runtime checks and separate production feature defines. Current-sequence,
 preimage, guarantee and rotation workloads share one freshly compiled responder; each still
 launches independent processes and state, checks fixture hashes and publishes its own required
 verdict. A failed shared build blocks every dependent workload from running stale binaries.

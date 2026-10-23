@@ -140,6 +140,8 @@ class VerificationE2E(unittest.TestCase):
                     self.assertEqual(run.call_args.kwargs['group'], group)
                     report = json.loads((folder/'e2e/results.json').read_text())
                     self.assertEqual(report['e2e_group'], group)
+                    self.assertEqual(report['e2e_lto'], 'thin')
+                    self.assertTrue(run.call_args.args[7].lto)
                     self.assertTrue(test_e2e.passed(report))
                     if group in (None, 'transport'):
                         corpus.assert_called_once()

@@ -27,7 +27,7 @@ def check_module(compiler, source, folder):
     relative = source.relative_to(ROOT)
     name = '-'.join(relative.with_suffix('').parts)
     args = [str(compiler), 'check', '--mm:arc', '--cc:clang', '-d:release', '--boundchecks:on',
-            '--passC:-flto', '--passL:-flto', '--nimcache:'+str(cache_directory(compiler, folder, name)), str(source)]
+            '--passC:-flto=thin', '--passL:-flto=thin', '--nimcache:'+str(cache_directory(compiler, folder, name)), str(source)]
     try:
         # A fresh module cache isolates each result; checking does not pretend to prove native linking or runtime behavior.
         result = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=180)

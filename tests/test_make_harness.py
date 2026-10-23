@@ -320,8 +320,8 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
             # Compare the commands used by the real builder rather than a duplicated test-only flag list.
             with self.subTest(system=system), patch.object(build.platform, 'system', return_value=system):
                 arguments = build.build_command(compiler, output, *libraries)
-                for flag in ('--mm:arc', '--cc:clang', '--boundchecks:on', '--passC:-flto',
-                             '--passL:-flto', '-d:integration', '-d:offload'):
+                for flag in ('--mm:arc', '--cc:clang', '--boundchecks:on', '--passC:-flto=thin',
+                             '--passL:-flto=thin', '-d:integration', '-d:offload'):
                     # Feature selection must not switch runtime checks off in an optimized build.
                     self.assertIn(flag, arguments)
                 self.assertEqual('--passL:-fuse-ld=lld' in arguments, system == 'Linux')
