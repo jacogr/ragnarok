@@ -23,6 +23,11 @@ export UI_MINIFY ?= $(if $(filter 1 true,$(CI)),1,0)
 export REOPEN_PAIR_REPORT ?=
 export REOPEN_PAIR_OUTPUT ?=
 export REOPEN_PAIR_CONFIG ?=
+# Focused fuzzing is opt-in; all controls are passed as environment values, never shell source.
+export FUZZ_RUNS ?= 100000
+export FUZZ_CLANG ?= clang
+export FUZZ_LIBFUZZER ?=
+export FUZZ_REPLAY ?=
 export SUITE ?=
 # Select one independent E2E family; an empty value retains complete local verification.
 export E2E_GROUP ?=
@@ -32,7 +37,7 @@ DOCKER ?= docker
 DOCKER_IMAGE ?= ragnarok:local
 DOCKER_PLATFORM ?= linux/amd64
 
-.PHONY: summary-storage-reopen-pair bench-storage-reopen-pair inspect-storage-reopen-pair bench-storage-growth summary-storage-growth probe-storage-resident-pressure bench-storage-resident-pressure diagnose-storage-aborts summary-storage-memory-ceilings bench-storage-memory-ceilings summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: summary-storage-reopen-pair bench-storage-reopen-pair inspect-storage-reopen-pair bench-storage-growth summary-storage-growth probe-storage-resident-pressure bench-storage-resident-pressure diagnose-storage-aborts summary-storage-memory-ceilings bench-storage-memory-ceilings summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm fuzz-pvm-program summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
@@ -158,6 +163,10 @@ bench-pvm: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fmt --manifest-path tests/performance/polkavm/Cargo.toml -- --check
 	$(PYTHON) tools/pvm_benchmark.py
+
+# Coverage-guided byte fuzzing owns its native adapter, finite controls and retained corpus; it never runs from ordinary unit or E2E checks.
+fuzz-pvm-program: toolchain check-inventory
+	$(PYTHON) tools/fuzz_pvm_program.py
 
 # Runtime contract/crash probes retain strict diagnostics without delaying ordinary unit/corpus checks.
 check-failures: setup
@@ -329,6 +338,7 @@ help:
 	  'make unit SUITE=natural  Run one native suite; full output stays under build/tests/native/selected/' \
 	  'make check-modules Check every production module' \
 	  'make check-inventory  Validate local registries without native setup' \
+	  'make fuzz-pvm-program  Run bounded sanitized program fuzzing (FUZZ_RUNS=16..1000000)' \
 	  'make bench-storage  Compare validated memory, journal and managed storage' \
 	  'make bench-storage-growth  Measure sustained storage growth and SDK IO' \
 	  'make bench-pvm      Measure validated PVM workloads against PolkaVM backends' \
