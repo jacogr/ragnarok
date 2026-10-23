@@ -320,3 +320,38 @@ results retain their explicitly recorded source scope. Raw evidence is under ign
 JSON reports. The next bounded compiler task remains qualification of a published nightly
 containing #2737, followed by rechecking the remaining workaround probes and drafting any
 still-needed minimal reports for maintainer submission.
+
+
+## Current logical state synchronization on the October 22 pin
+
+Merge master `3aa4c368cdc8cf85d93ac7194fac9a1456cecbca` normally (merge `52af3a3e`),
+covering 30 additional state merges. Preserve bounded configured selected-parent admission,
+completed-origin identities, immutable request-key companions, frozen service/full logical
+refresh and source-bound review/proof composition. All 12 incoming production modules remain
+byte-identical to master; no production compatibility change was needed. Compiler/browser pin
+`8cb7a690a` and the #2737 sequence-element copy-hook hold remain unchanged.
+
+The current logical-proof suite instantiates the same confirmed stdlib sequence-slice failure
+recorded above, through `wire[0..3]`. After the original minimum-length assertion, compare each
+of the four RPV1 magic bytes by checked index. Keep every expected byte, proof/root assertion,
+projection, missing-witness refusal and 1,000-cycle allocation check. This is the only incoming
+file adapted: the other 241 of 242 files remain byte-identical to master. The first seven native
+suites passed before this test-only correction and were not repeated; all remaining suites were
+then qualified, including the corrected proof suite. Retain the existing standalone slice
+reproducer for next-nightly rechecking; no compiler/stdlib patch or weaker validation is used.
+
+All 368 production modules, 132 focused state Python tests, all 29 incoming native suites and
+all 71 incoming source-owned privacy/nominal compiler rejection fixtures passed. The 59 strict
+runtime refusal probes across 11 families passed with successful builds and exact assertion
+diagnostics; the native suites retain their genuine successful accessor controls. The complete
+checked ARC/Clang/LTO integration/offload peer build passed. All 12 changed production modules
+passed Linux x86-64 semantic checks. Inventory, pinned formatting of 142 incoming Nim files
+(including the final adapted proof test) and diff checks passed.
+
+Results apply to local macOS ARM64 execution and the stated Linux semantic checks. This sync
+makes no new full E2E, Linux runtime, performance, complete current-schema/STF or JAM parity
+claim. The previous 24-case PVM executable results retain their earlier source scope. Raw
+evidence, exact incoming-tree preservation, per-suite logs and strict refusal reports are under
+ignored `build/ci/nimony-state-current-*`. Next remains a published nightly containing #2737,
+then rechecking the remaining workaround probes and drafting still-needed minimal reports for
+maintainer submission.

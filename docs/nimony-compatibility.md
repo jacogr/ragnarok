@@ -100,8 +100,10 @@ slice with `let bytes = @[1'u8, 2, 3]; let prefix = bytes[0..<2]` fails in
 The four-line standalone probe is preserved in the nightly audit evidence. For the record,
 journal and context-codec truncation tests, borrow `toOpenArray(0, stop-1)` instead: the caller
 retains the source, decoders accept read-only inputs and every prefix including empty remains
-covered. No stdlib patch or weaker assertion is required. Recheck the minimal probe on the next
-nightly before drafting the remaining compiler reports.
+covered. The current logical-proof test checks the four RPV1 magic bytes by index after its
+minimum-length assertion, avoiding the same slice instantiation while retaining every byte check.
+No stdlib patch or weaker assertion is required. Recheck the minimal probe on the next nightly
+before drafting the remaining compiler reports.
 
 ## Deferred Linux RSS return
 
