@@ -3,6 +3,7 @@
 
 ## Real native mutation receipts retain explicit known successor declarations and independently selected proof expectations.
 import std/assertions
+import ./pvm_accumulation_program
 import ./[collected_native_context, collected_supplied_context, collected_logical_context,
     current_namespace_transition_context, current_logical_proof_context, accumulation_current_candidate_context]
 import ../../src/app/[chain, preparation_worker, current_block_input, candidate,
@@ -56,3 +57,14 @@ proc checkMutationProof*(fixture: CollectedMutationFixture, present: bool, paylo
   else: assert payload.len == 0 # An authenticated absent key exposes no invented bytes.
   assert decodePlannedProofs(wire, plan, oldRoot, limits.view, limits.proof, limits.aggregate,
     limits.wireBytes).error != ProofViewError.None
+proc writeMutationCode*(value: seq[byte], ending: openArray[seq[byte]]): seq[byte] =
+  ## Author a real funded key7 host write followed by explicit opcode boundaries for selected terminal behavior.
+  assert value.len > 0 and value.len <= 65
+  var writable = @[7'u8]
+  for octet in value: writable.add(octet)
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 196608),
+    registerImmediate(9, 1), registerImmediate(10, 196609), registerImmediate(11, uint64(
+        value.len)), @[10'u8, 5]]
+  for instruction in ending: instructions.add(instruction) # Terminal operations execute after the actual successful write.
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, writable): result.add(octet)
