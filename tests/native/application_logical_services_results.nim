@@ -4,6 +4,7 @@
 ## Actual managed preparation and proof leases reject both logical source alternatives before canonical access.
 import std/[assertions, cmdline, syncio, strutils, monotimes, times]
 import std/posix/posix
+import ../../src/app/paged_logical_proof
 import ../../src/app/full_logical_proof
 import ../../src/state/code_availability
 import ../../src/app/logical_code
@@ -80,7 +81,9 @@ proc main() {.raises.} =
     assert owner.stateProofActive # Proof Done plus cancellation keeps the same canonical exclusion.
   let receipt = default(PreparationCompletion)
   let logical = default(CurrentLogicalState)
-  if mode.endsWith("-full-logical-proof-plan"):
+  if mode.endsWith("-page-plan"):
+    discard owner.planLogicalProofPages(logical, default(FullLogicalProofLimits), default(LogicalProofPageLimits))
+  elif mode.endsWith("-full-logical-proof-plan"):
     discard owner.planFullLogicalProof(logical, default(FullLogicalProofLimits))
   elif mode.endsWith("-logical-code"):
     discard owner.auditLogicalCodeAvailability(logical, default(CodeAvailabilityLimits))
