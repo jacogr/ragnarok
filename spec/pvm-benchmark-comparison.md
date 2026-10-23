@@ -14,9 +14,11 @@ until the interpreter baseline is competitive. No compiler backend process is st
 by `make bench-pvm`, and no CI kernel settings are changed. The
 independent fixture generator encodes original guest bytes and derives complete
 registers, memory, host-call counts and GP block prices without either engine
-producing expectations. Five fixed guests exercise arithmetic/branches (10000 loop
+producing expectations. The original five fixed guests exercise arithmetic/branches (10000 loop
 iterations), scalar memory (1000 aligned/crossing iterations) and memory/host loops
-(1000 aligned/crossing iterations). All use finite gas and local native step limits.
+(1000 aligned/crossing iterations). Five additional guests measure arithmetic at 1/16
+iterations, a mixed bit-operation loop and aligned/crossing scalar loops over 128
+sparsely mapped pages. All use finite gas and local native step limits.
 
 ## Build and measurement contract
 
@@ -48,7 +50,7 @@ guest. Two passes reverse engine order. Every sample must match all thirteen reg
 remaining gas, host-call counts and every relevant memory byte before acceptance.
 Native checks additionally preserve source aliases. No expected-value checks or
 printing are in the timed region except the host dispatch/API contracts themselves.
-The raw fixture has `PVMBEN01` framing, five 273-byte record headers and bounded blobs;
+The raw fixture has `PVMBEN01` framing, ten 273-byte record headers and bounded blobs;
 its descriptor pins exact SHA-256 bytes.
 
 ## Results and quality
@@ -371,3 +373,39 @@ The same local macOS shared-host/no-isolation limits apply. Preparation remains
 outside execution timing. No deterministic-counter, Linux, compiled or whole-client
 throughput claim follows, and fuzzing remains deferred. M1 framing completion and
 remaining full STF/JAM parity are unchanged.
+
+
+## Broader invocation, integer and page dimensions, 2026-10-23
+
+The benchmark now retains the original five record byte sequences and adds five
+related workload dimensions as one grouped feature. The historical five-row corpus
+hash is independently reconstructed in tooling tests. Complete expected outcomes
+remain authored independently; pinned PolkaVM supplies only a public-API cross-check.
+
+* Arithmetic at 1 and 16 iterations separates short-invocation latency from the
+  existing 10000-iteration throughput loop. Setup/reset remains outside execution.
+* A 1000-iteration dependent bit loop combines 64-bit population/leading/trailing
+  counts, byte reversal, rotation, XOR, arithmetic and a real backward branch.
+  Python mathematical/byte operations derive every final register; a fixed final
+  witness additionally protects those expectations.
+* Sparse aligned/crossing loops map 64 two-page pairs separated by two-page holes,
+  retaining 128 page payloads. Both embeddings validate every mapped byte and every
+  hole after every sample. Native additionally preserves every original snapshot.
+  Guest work touches the original first pair; this measures page-table-size overhead,
+  not random traversal across the whole mapped payload or a larger instruction set.
+
+Both embeddings use the same ten owned records and strict 13-observation-per-row
+parser. Missing new rows cannot become a successful report. No timeout/price/checked
+profile, upstream source, dependency pin or compiler-deferral policy changed. The
+native public execute/host entry points retain their normal finite budgets.
+
+Initial expanded observations show approximately 0.6/1.4 µs native execution for
+1/16-iteration arithmetic versus about 1.4/1.5 µs in the pinned interpreter. These
+short timings are close to timer/scheduling overhead and do not establish whole-client
+latency superiority. Mixed bits remain roughly 5.7× slower, and sparse memory roughly
+2.9–6.3× slower. They identify optimization targets beyond the five original loops.
+Full raw samples, noisy rows, hashes and preparation observations remain under
+`build/pvm9/working-sets`; local shared-macOS limits still apply. No claimed Linux,
+compiled, deterministic-counter, random-access or full JAM performance follows.
+Fuzzing remains deferred. Rejected operand-dispatch experiments produced no reliable
+gain and were excluded from this production tree; the arithmetic issue remains open.
