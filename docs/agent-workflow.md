@@ -59,7 +59,9 @@ Protocol, ownership and result contracts in `AGENTS.md` remain mandatory.
   to act without rediscovering the work.
 - For an authorized multi-layer stack, batch publication and remote verification of several coherent,
   locally checked layers when no feedback or dependency requires earlier publication. Preserve a
-  separate reviewable commit/PR per increment and all native stack/head checks below.
+  reviewable PR per substantive increment, including its supporting tests/docs and any useful
+  separate commits, following the PR sizing rule in `AGENTS.md`. Preserve all native stack/head
+  checks below.
 
 ## Resume existing work
 
