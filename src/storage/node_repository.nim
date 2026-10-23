@@ -584,29 +584,34 @@ proc selectRepositoryRoots*(view: RepositoryView, roots: openArray[StateRoot],
     if not duplicate: unique.add(root)
   if not selected: return RepositoryResult[RepositorySelection](
       status: RepositoryError.RootMismatch)
-  var retained = newSeq[uint64](graphWords(source.table.records.len))
   var indices: seq[int] = @[]
   var bytes = 0'u64
-  var visit = GraphVisit(seen: newSeq[uint64](graphWords(source.table.records.len)),
-      collect: GraphCollection.Records)
-  for root in unique:
-    # Reuse bounded storage, but reset membership and counters for independent per-root graph checks.
-    resetGraph(visit)
-    var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
-    let checked = graph(source.table, StateNodeHash(array[32, byte](root)), 0,
-      default(array[31, byte]), source.limits.codec.trie, visit, counts)
-    if checked != RepositoryError.None:
-      return RepositoryResult[RepositorySelection](status: checked)
-    for index in visit.leaves:
-      if not marked(retained, index):
-        mark(retained, index)
-        indices.add(index)
-        bytes += uint64(payloadBytes(source.table.records[
-            index])) # Unique source records are bounded by source.valueBytes.
+  block:
+    # Traversal scratch retires before freezing the long-lived exact index inventory.
+    var retained = newSeq[uint64](graphWords(source.table.records.len))
+    var visit = GraphVisit(seen: newSeq[uint64](graphWords(source.table.records.len)),
+        collect: GraphCollection.Records)
+    for root in unique:
+      # Reuse bounded storage, but reset membership and counters for independent per-root graph checks.
+      resetGraph(visit)
+      var counts = GraphCounts(entries: 0, nodes: 0, bytes: 0)
+      let checked = graph(source.table, StateNodeHash(array[32, byte](root)), 0,
+        default(array[31, byte]), source.limits.codec.trie, visit, counts)
+      if checked != RepositoryError.None:
+        return RepositoryResult[RepositorySelection](status: checked)
+      for index in visit.leaves:
+        if not marked(retained, index):
+          mark(retained, index)
+          indices.add(index)
+          bytes += uint64(payloadBytes(source.table.records[
+              index])) # Unique source records are bounded by source.valueBytes.
   indices.sort() # Canonicalize the immutable union once; repeated exports/clones can borrow this order.
+  var exact = newSeq[int](indices.len)
+  for position, index in indices:
+    exact[position] = index # Freeze only validated sorted slots; no growable capacity outlives traversal.
   RepositoryResult[RepositorySelection](status: RepositoryError.None,
     completed: RepositorySelection(data: RepositorySelectionData(source: view, roots: unique,
-      indices: indices, valueBytes: bytes)))
+      indices: move(exact), valueBytes: bytes)))
 
 proc commitment*(selection: RepositorySelection): StateTrieCommitment {.requires: selection.initialized.} =
   ## Copy the selected current complete commitment from this plan's immutable source.
