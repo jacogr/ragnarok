@@ -418,6 +418,97 @@
       "name": "storage-light-snapshot-page-result-failed",
       "diagnostic": "outcome.status == None",
       "description": "Light pagination page-result failed guard"
+    },
+    {
+      "identity": {
+        "member": "select-result",
+        "origin": "default"
+      },
+      "arguments": [
+        "select-result",
+        "default"
+      ],
+      "name": "storage-light-snapshot-select-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light selective export default result guard"
+    },
+    {
+      "identity": {
+        "member": "select-result",
+        "origin": "uninitialized"
+      },
+      "arguments": [
+        "select-result",
+        "uninitialized"
+      ],
+      "name": "storage-light-snapshot-select-result-uninitialized",
+      "diagnostic": "outcome.status == None",
+      "description": "Light selective export uninitialized result guard"
+    },
+    {
+      "identity": {
+        "member": "select-result",
+        "origin": "unknown"
+      },
+      "arguments": [
+        "select-result",
+        "unknown"
+      ],
+      "name": "storage-light-snapshot-select-result-unknown",
+      "diagnostic": "outcome.status == None",
+      "description": "Light selective export unknown result guard"
+    },
+    {
+      "identity": {
+        "member": "select-result",
+        "origin": "limited"
+      },
+      "arguments": [
+        "select-result",
+        "limited"
+      ],
+      "name": "storage-light-snapshot-select-result-limited",
+      "diagnostic": "outcome.status == None",
+      "description": "Light selective export limited result guard"
+    },
+    {
+      "identity": {
+        "member": "select-result",
+        "origin": "duplicate"
+      },
+      "arguments": [
+        "select-result",
+        "duplicate"
+      ],
+      "name": "storage-light-snapshot-select-result-duplicate",
+      "diagnostic": "outcome.status == None",
+      "description": "Light selective export duplicate result guard"
+    },
+    {
+      "identity": {
+        "member": "select-reason",
+        "origin": "default"
+      },
+      "arguments": [
+        "select-reason",
+        "default"
+      ],
+      "name": "storage-light-snapshot-select-reason-default",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Light selective export default reason guard"
+    },
+    {
+      "identity": {
+        "member": "select-reason",
+        "origin": "success"
+      },
+      "arguments": [
+        "select-reason",
+        "success"
+      ],
+      "name": "storage-light-snapshot-select-reason-success",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Light selective export success reason guard"
     }
   ]
 }

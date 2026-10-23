@@ -110,6 +110,11 @@ See the [batch retrieval contract](../../spec/storage-light-proof-batches.md).
 limits. Immutable continuations retain the original image, support deterministic retry and survive
 writer retirement. See the [pagination contract](../../spec/storage-light-proof-pagination.md).
 
+`select(keys, limits, entries)` exports exactly retained queries as a separately validated canonical
+image under explicit output limits. It preserves the original chain/complete root, revalidates
+selected proofs and leaves omitted evidence unknown. See the
+[selective export contract](../../spec/storage-light-selected-exports.md).
+
 ## Boundaries and ownership
 
 The trie reuses GP 0.8.0 key/node encodings and crypto primitives. The existing complete-map
