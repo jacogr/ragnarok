@@ -38,6 +38,12 @@ DOCKER_PLATFORM ?= linux/amd64
 build: setup
 	$(PYTHON) tools/build.py
 
+# Package only after Make has provisioned and compiled the production peer on this pinned host.
+.PHONY: package-binary
+package-binary: export BINARY_PACKAGE = 1
+package-binary: build
+	$(PYTHON) tools/package_binary.py
+
 # Docker owns an isolated setup/build; do not provision host compilers or reuse host artifacts.
 .PHONY: docker-build check-docker
 docker-build:
@@ -92,6 +98,7 @@ sources:
 host-tools:
 	@if [ "$$(uname -s)" = Linux ] && command -v apt-get >/dev/null; then \
 	  packages='build-essential clang lld cmake zlib1g-dev openssl'; missing=0; \
+	  if [ "$(BINARY_PACKAGE)" = 1 ]; then packages="$$packages patchelf"; fi; \
 	  if [ "$(STORAGE_ABORT_DIAGNOSTICS)" = 1 ]; then packages="$$packages lldb"; fi; \
 	  for package in $$packages; do \
 	    if [ "$$(dpkg-query -W -f='$${Status}' "$$package" 2>/dev/null || true)" != 'install ok installed' ]; then missing=1; fi; \
@@ -311,6 +318,7 @@ summary-e2e:
 help:
 	@printf '%s\n' 'make / make build  Provision dependencies and build build/ragnarok' \
 	  'make setup         Provision pinned toolchains, submodules and Cargo dependencies' \
+	  'make package-binary  Build and smoke-test a relocatable native archive in build/dist/' \
 	  'make docker-build  Build the Linux amd64 runtime image (DOCKER_IMAGE=ragnarok:local)' \
 	  'make check-docker  Build and smoke-test the image locally; never publish it' \
 	  'make ui-assets     Stage/embed UI assets (UI_MINIFY=1 minifies JS/CSS; default in CI)' \
