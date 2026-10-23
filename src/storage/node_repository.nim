@@ -850,22 +850,32 @@ proc putCollectionHash(output: var seq[byte], offset: int, digest: StateNodeHash
   let raw = array[32, byte](digest)
   for index in 0..<32: output[offset+index] = raw[index]
 
-proc encodeRepositorySelection*(selection: RepositorySelection,
-    limits: RecordLimits): RepositoryResult[seq[byte]] =
-  ## Serialize an opaque admitted immutable union without detached transport or repeated node hashes.
+proc encodeFramedRepositorySelection*(selection: RepositorySelection, limits: RecordLimits,
+    prefixBytes, suffixBytes: uint64, outputLimit: ByteLimit): RepositoryResult[seq[byte]] =
+  ## Serialize an opaque admitted union between caller-sized, zero-filled frame reservations in one allocation.
+  ## Full-width nonnegative extents and the independent whole-output ceiling are checked before narrowing.
+  ## Reservations grant no record/graph authority; callers own their framing, checksum and outer interpretation.
   ## No raw records or validation flag are accepted; mutable collections still use the strict record codec.
   ## Failure carries only Uninitialized/LimitExceeded; success owns bytes independent of every source owner.
   let measured = measureRepositorySelection(selection, limits)
   if measured.error != RepositoryError.None:
     return RepositoryResult[seq[byte]](status: measured.error) # No failed extent authorizes output allocation.
+  let maximum = min(uint64(outputLimit), uint64(high(int)))
+  let bodyBytes = uint64(measured.value)
+  if prefixBytes > maximum or suffixBytes > maximum-prefixBytes:
+    return RepositoryResult[seq[byte]](status: RepositoryError.LimitExceeded)
+  let reserved = prefixBytes+suffixBytes
+  if bodyBytes > maximum-reserved:
+    return RepositoryResult[seq[byte]](status: RepositoryError.LimitExceeded)
   let data = selection.data
   assert data != nil # Exact measurement succeeded only for a private initialized immutable selection.
   let source = data.source.data
   assert source != nil # Selection construction retained its independently admitted source view.
   const Magic = "RAGNAROK-RECORDS-V1\n"
-  var output = newSeq[byte](measured.value)
-  for index, character in Magic: output[index] = byte(character)
-  var offset = Magic.len
+  var output = newSeq[byte](int(reserved+bodyBytes))
+  let prefix = int(prefixBytes)
+  for index, character in Magic: output[prefix+index] = byte(character)
+  var offset = prefix+Magic.len
   putCollectionNumber(output, offset, uint64(data.indices.len))
   offset += 8
   for position in data.indices:
@@ -882,15 +892,21 @@ proc encodeRepositorySelection*(selection: RepositorySelection,
       putCollectionNumber(output, offset, uint64(cell.payload.len))
       offset += 8
       for octet in cell.payload:
-        output[offset] = octet # Copy raw values directly from the stable private owner into the sole body buffer.
+        output[offset] = octet # Copy raw values directly from the stable private owner into the sole final buffer.
         inc offset
     else:
       putCollectionHash(output, offset, cell.left)
       offset += 32
       putCollectionHash(output, offset, cell.right)
       offset += 32 # Physical format retains both complete edges, including the left address's high bit.
-  assert offset == output.len # The canonical writer and existing bounded extent calculator must agree exactly.
+  assert offset == output.len-int(suffixBytes) # The writer must end exactly before the reserved suffix.
   RepositoryResult[seq[byte]](status: RepositoryError.None, completed: output)
+
+
+proc encodeRepositorySelection*(selection: RepositorySelection,
+    limits: RecordLimits): RepositoryResult[seq[byte]] =
+  ## Preserve canonical body-only encoding, independent ownership and typed preflight failures without reservations.
+  encodeFramedRepositorySelection(selection, limits, 0, 0, limits.encoded)
 
 proc cloneRepositorySelection*(selection: RepositorySelection,
     limits: RepositoryLimits): RepositoryResult[NodeRepository] =
