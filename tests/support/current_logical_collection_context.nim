@@ -66,6 +66,16 @@ proc cancelLogicalChild*(owner: var Services, input: var CurrentBlockInput, chil
   discard input.cancel(job.input) # A skipped job can leave Ready raw input; only the now-open host gate can retire it.
   assert input.stage == CurrentBlockInputStage.Idle
   assert owner.preparationAvailable and owner.stateProofAvailable
+proc joinLogicalChild*(owner: var Services, input: var CurrentBlockInput, child: OwnedBlock,
+    policies: CurrentCandidateLimits, afterDone: bool) {.raises.} =
+  ## Joined shutdown is the sole lease release for this uncollected genuine preparation; every outer logical/canonical alias stays untouched until close returns.
+  let job = owner.beginLogicalChild(input, child, policies)
+  if afterDone: owner.waitLogicalPreparation() # Done remains leased and cannot authorize retirement without collection or join.
+  owner.close()
+  assert not owner.preparationActive and not owner.rpc.chainPaused
+  assert owner.collectPreparation(job.ticket).kind == PreparationCompletionKind.Uninitialized
+  discard input.cancel(job.input) # Raw receiver retirement occurs strictly after joined worker shutdown.
+  assert input.stage == CurrentBlockInputStage.Idle
 proc refreshCollectedIdentities*(source: PreservedCurrentIdentities): CurrentLogicalState =
   ## Every actual opaque predecessor is checked under explicit independent namespace policies before extraction; no enqueue or installation occurs here.
   let keys = captureCurrentRequestKeys(source, namespaceRequestLimits)

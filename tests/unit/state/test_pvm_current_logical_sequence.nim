@@ -22,7 +22,7 @@ proc overwriteCode(): seq[byte] =
       @[10'u8, 5], @[50'u8, 0]]
   result = @[0'u8]
   for octet in guestEnvelope(instructions, @[5'u8, 17, 18, 19]): result.add(octet)
-proc scenario(fixture: NamespaceExecutionFixture, layout: int) {.raises.} =
+proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone: bool) {.raises.} =
   ## Each matching native collection precedes logical continuation; each explicit adoption precedes signing/preparing the following child.
   var path = "pvm-current-logical-sequence-chain"
   writeFile(path, fixture.parent.bestBlock.value.currentApplicationText)
@@ -99,8 +99,11 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int) {.raises.} =
     assert owner.preparationAvailable and owner.stateProofAvailable
   assert original.lookup(key).value.bytes.len == 0 # Original physical aliases remain immutable across every real adoption.
   assert first.logicalProducer.currentUpdateState.lookup(key).value.bytes == @[17'u8, 18, 19]
+  let uncollected = currentEmptyChild(owner.chainView.bestBlock.value)
+  owner.joinLogicalChild(input, uncollected, policies, joinAfterDone)
+  assert logical.logicalProducer.currentUpdateState.lookup(key).value.bytes == @[17'u8, 18, 19]
+  assert logical.logicalProducer.currentUpdateView.retainedCount == 4
   if layout != 0:
-    owner.close()
     assert owner.start(options, "strict logical sequence restart")
     let view = owner.chainView
     assert view.retainedCount == heads.len
@@ -160,7 +163,8 @@ proc main() {.raises.} =
   for i in 0..<raw.len: bytes[i] = byte(raw[i])
   let fixture = namespaceExecutionFixture(decodeOwnedReport(bytes, 2).value, namespaceHaltCode(),
       overwriteCode())
-  for layout in 0..2: scenario(fixture, layout)
+  for layout in 0..2:
+    for joinAfterDone in [false, true]: scenario(fixture, layout, joinAfterDone)
   echo "PVM current logical sequence passed"
 try:
   main()

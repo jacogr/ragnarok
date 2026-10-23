@@ -75,6 +75,15 @@ The prior fully qualified logical state stays untouched throughout both leases a
 the unchanged canonical parent. Preparing the same signed child afresh then completes logical
 continuation and installation normally; cancellation grants no successful logical prefix.
 
+## Joined uncollected preparation
+
+Every memory/journal/managed sequence also begins a real next signed child and shuts Services
+down without collecting it, once immediately and once after observing Done. Outer qualified
+logical and canonical owners remain untouched until joined close returns. The old ticket cannot
+be collected afterward, and only then can any skipped raw input retire. The last qualified
+logical state still owns exactly the three confirmed successors. Strict disk startup recovers
+that confirmed four-map prefix, excluding the uncollected child, before the reseed/resume test.
+
 ## Next work
 
 Qualify real host admission/refusal, repeated children, cancellation/join and memory/durable
