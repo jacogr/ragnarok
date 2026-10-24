@@ -34,7 +34,12 @@ fill the requested window; incomplete frame bytes receive the established typed 
 
 At most frame-sized encoded buffers are live for reading and verification, independent of the
 complete encoded-log length. The verifier may make its existing private frame copy. This does
-not remove checkpoint or successor-image allocations. Every window rechecks selected name,
+not remove checkpoint or successor-image allocations. Checkpoint loading and anchor admission now
+share one private initialization scope. Only replay progress retains the admitted checkpoint
+when that scope ends; a completely authenticated first successor may retire it before later
+frames. Anchor-only reopen still retains the checkpoint as its selected image. This changes
+private lifetimes, not verification order, frame/EOF checks, failure publication or caller-held
+immutable-reader lifetimes. Every window rechecks selected name,
 inode and extent; final actual EOF/identity revalidation occurs after all proof processing.
 Only then does the durable owner publish the final image, sequence and frame count. Refusal
 releases both native resources and preserves exact forensic files, with no fallback or cleanup.

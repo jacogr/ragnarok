@@ -130,20 +130,32 @@ proc readSelection(data: JournalOwner): LightJournalResult[LightJournalManifest]
   let reason = selectionReason(decoded.error)
   if reason != FileError.None: return fail[LightJournalManifest](reason)
   LightJournalResult[LightJournalManifest](status: FileError.None, completed: decoded.value)
-proc readStreamedJournal(data: JournalOwner, checkpoint: PreparedLightSnapshot): FileError =
-  ## Keep one bounded frame buffer while authenticating the exact selected held inode; publish owner state only after final EOF revalidation.
-  let attached = attachManagedJournal(data.journal, data.directory, data.selected.epoch,
-      data.config.journal.bytes)
-  if attached != FileError.None: return attached
-  let total = managedJournalBytes(data.journal).value
-  var anchor = default(array[LightJournalAnchorBytes, byte])
-  let readAnchor = readManagedJournalRange(data.journal, data.directory, data.selected.epoch, 0, anchor)
-  if readAnchor.error != FileError.None: return readAnchor.error
-  let started = beginLightJournalReplay(anchor.toOpenArray(0, readAnchor.value-1), data.selected,
-      checkpoint, data.config.journal)
-  let reason = replayReason(started)
-  if reason != FileError.None: return reason
-  var progress = started.value
+proc readStreamedJournal(data: JournalOwner): FileError =
+  ## Retire checkpoint extraction aliases before advancing frame-sized replay; publish only after final EOF revalidation.
+  var progress = default(LightJournalReplay)
+  var total = 0'u64
+  block:
+    # Only progress retains the checked checkpoint after this scope; a first successor can release it before later replay.
+    var loaded = readManagedFile(data.directory, ManagedFileKind.Snapshot, data.selected.epoch,
+        data.config.snapshot.bytes)
+    if loaded.error != FileError.None: return loaded.error
+    var encoded = loaded.takeValue
+    let restored = takeLightSnapshot(encoded, data.config.chain, data.config.root,
+        data.config.snapshot)
+    let checked = snapshotReason(restored.error)
+    if checked != FileError.None: return checked
+    let attached = attachManagedJournal(data.journal, data.directory, data.selected.epoch,
+        data.config.journal.bytes)
+    if attached != FileError.None: return attached
+    total = managedJournalBytes(data.journal).value
+    var anchor = default(array[LightJournalAnchorBytes, byte])
+    let readAnchor = readManagedJournalRange(data.journal, data.directory, data.selected.epoch, 0, anchor)
+    if readAnchor.error != FileError.None: return readAnchor.error
+    let started = beginLightJournalReplay(anchor.toOpenArray(0, readAnchor.value-1), data.selected,
+        restored.value, data.config.journal)
+    let reason = replayReason(started)
+    if reason != FileError.None: return reason
+    progress = started.value
   while uint64(progress.byteLength) < total:
     # Bound work and sequence before reading a header or allocating its declared extent.
     if progress.frameCount >= uint64(data.config.journal.frames) or uint64(progress.sequence) ==
@@ -191,14 +203,7 @@ proc openLightJournalCache*(owner: var LightJournalCache, path: string,
   let selected = readSelection(data)
   if selected.error != FileError.None: return selected.error
   data.selected = selected.value
-  var loaded = readManagedFile(data.directory, ManagedFileKind.Snapshot, data.selected.epoch,
-      config.snapshot.bytes)
-  if loaded.error != FileError.None: return loaded.error
-  var encoded = loaded.takeValue
-  let restored = takeLightSnapshot(encoded, config.chain, config.root, config.snapshot)
-  let reason = snapshotReason(restored.error)
-  if reason != FileError.None: return reason
-  let replayed = readStreamedJournal(data, restored.value)
+  let replayed = readStreamedJournal(data)
   if replayed != FileError.None: return replayed
   owner.data = data
   FileError.None
