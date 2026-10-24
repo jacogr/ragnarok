@@ -10,7 +10,10 @@ increment. `src/pvm/machine.nim` adds immutable CPU snapshots and sparse paged m
 with atomic scalar stores; see [the machine/memory contract](../../spec/pvm-machine.md),
 including the approved PolkaVM memory exception ordering. `src/pvm/registers.nim`
 evaluates all 85 register-only instruction mutations against a copied register file;
-see [the register semantics contract](../../spec/pvm-registers.md). `src/pvm/gas.nim`
+see [the register semantics contract](../../spec/pvm-registers.md). The internal
+`src/pvm/internal/register_ops.nim` module shares typed arithmetic between that
+guarded public evaluator and private charged dispatch, with copied scalar outputs
+and no retained execution state. `src/pvm/gas.nim`
 calculates whole-block pipeline costs with bounded storage and a local cycle limit;
 [the gas contract](../../spec/pvm-gas.md) records independent witnesses and approved
 PolkaVM wrapped branch-target pricing. `src/pvm/step.nim` now charges whole blocks and
