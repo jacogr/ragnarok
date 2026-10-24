@@ -540,7 +540,8 @@ proc fetchFullPagedPage*(io: PagedInput, checked: CheckedFullPagedArtifact,
     ordinal: PageOrdinal): FullPagedStreamResult[array[PagedPageBytes, byte]] =
   ## Copy one captured-root-authenticated page; no native owner, cache slot or callback escapes.
   if not checked.ready:
-    return FullPagedStreamResult[array[PagedPageBytes, byte]](status: FullPagedStreamError.Uninitialized)
+    return FullPagedStreamResult[array[PagedPageBytes, byte]](
+        status: FullPagedStreamError.Uninitialized)
   var work = initWork(checked.policy)
   let shape = checked.header.geometry
   if uint64(ordinal) >= shape.dataPages:
