@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_STATE_TRACE_STEP",
+  "files": {
+    "state-trace-step.bin": "26c4fb03b3e348acef92a824ec87966ed9570b26adf166f442e08a862a52d429"
+  },
+  "target": "state-trace-step.bin"
+}

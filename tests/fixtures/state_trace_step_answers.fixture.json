@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_STATE_TRACE_STEP_ANSWERS",
+  "files": {
+    "state-trace-step.json": "bd42e5fb23326a4abcb1e945c32c9e9bbbc8795492150409b5a1ac5ba4e3101c"
+  },
+  "target": "state-trace-step.json"
+}
