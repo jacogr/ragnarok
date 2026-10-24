@@ -181,6 +181,11 @@ bench-pvm-sieve: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fmt --manifest-path tests/performance/polkavm/Cargo.toml -- --check
 	$(PYTHON) tools/pvm_sieve_benchmark.py
 
+# Native host byte-range API throughput is separate from interpreter backend comparisons.
+.PHONY: bench-pvm-memory
+bench-pvm-memory: setup
+	$(PYTHON) tools/pvm_memory_benchmark.py
+
 # Coverage-guided byte fuzzing owns its native adapter, finite controls and retained corpus; it never runs from ordinary unit or E2E checks.
 fuzz-pvm-program: toolchain check-inventory
 	$(PYTHON) tools/fuzz_pvm_program.py

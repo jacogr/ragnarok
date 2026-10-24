@@ -24,8 +24,8 @@ proc fixture(access: PageAccess): Memory =
   captureMemory(pages, PageLimit(3)).value
 
 let original = fixture(PageAccess.ReadWrite)
-for offset in [0, 1, 4095, 4096]:
-  for size in [0, 1, 2, 4095, 4096, 4097, 8192]:
+for offset in [0, 1, 503, 504, 505, 511, 512, 513, 4095, 4096]:
+  for size in [0, 1, 2, 511, 512, 513, 1023, 1024, 1025, 4095, 4096, 4097, 8192]:
     # Compare aligned, unaligned and multiple-page reads with an independently calculated byte stream.
     let address = 65536'u64 + uint64(offset)
     let read = readBytes(original, MemoryAddress(address), MemoryLength(uint64(size)),
@@ -41,6 +41,15 @@ for offset in [0, 1, 4095, 4096]:
       input[i] = byte((i * 7 + 19) mod 256)
     let written = writeBytes(original, MemoryAddress(address), input, MemoryByteLimit(uint64(size)))
     assert written.error == MachineError.None
+    for side in 0..<3:
+      # Public page images independently inspect raw storage; a matching read/write copy bug cannot validate itself.
+      let image = pageImage(written.value, PageIndex(uint32(16+side))).value
+      assert image.access == PageAccess.ReadWrite
+      for index in 0..<4096:
+        let position = side*4096+index
+        let wanted = if position >= offset and position-offset < size: input[position-offset]
+          else: byte((65536+position) mod 251)
+        assert image.bytes[index] == wanted
     let all = readBytes(written.value, MemoryAddress(65536), MemoryLength(12288), MemoryByteLimit(12288)).value
     for i in 0..<12288:
       # Bytes outside the exact requested extent remain unchanged, including untouched page suffixes.
@@ -64,6 +73,22 @@ for access in [PageAccess.ReadOnly, PageAccess.Inaccessible]:
   assert read.error == (if access == PageAccess.ReadOnly: MachineError.None else: MachineError.Fault)
 
 # Missing pages and explicitly inaccessible pages share the same first-failure diagnostic.
+# Sorted storage must not turn a sparse missing middle page into a contiguous physical range.
+let gap = captureMemory([pageImage(original, PageIndex(16)).value,
+  pageImage(original, PageIndex(18)).value], PageLimit(2)).value
+let gapAddress = MemoryAddress(65537)
+let gapLength = MemoryLength(8192)
+let gapRead = readBytes(gap, gapAddress, gapLength, MemoryByteLimit(8192))
+let gapWrite = writeBytes(gap, gapAddress, newSeq[byte](8192), MemoryByteLimit(8192))
+assert gapRead.error == MachineError.Fault and uint32(gapRead.faultPage) == 69632
+assert gapWrite.error == MachineError.Fault and uint32(gapWrite.faultPage) == 69632
+for checked in [readableRange(gap, gapAddress, gapLength), writableRange(gap, gapAddress, gapLength)]:
+  assert checked.error == MachineError.Fault and uint32(checked.faultPage) == 69632
+for ordinal in [16'u32, 18'u32]:
+  let image = pageImage(gap, PageIndex(ordinal)).value
+  for index in 0..<4096: assert image.bytes[index] == byte((uint64(ordinal)*4096+uint64(
+      index)) mod 251)
+
 let empty = captureMemory([], PageLimit(0)).value
 assert readBytes(empty, MemoryAddress(70000), MemoryLength(1), MemoryByteLimit(1)).error ==
     MachineError.Fault
