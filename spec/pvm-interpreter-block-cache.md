@@ -220,3 +220,100 @@ The unchanged calibrated census still passes429 invocations, nine affected Pytho
 instrumentation/guard tests and pinned formatting pass. The accepted raw comparison
 is`build/pvm12/charge-lazy-final-paired.json`; the additional controls and rejected
 variants are retained alongside it.
+
+
+## Adaptive price reuse under sustained misses, 2026-10-24
+
+After the decoded-instruction spill, a fresh ready-process Pinky sample puts1,448
+samples in`blockGas`, versus290 in the execution loop and236 in instruction lookup.
+A diagnostic copy counts2,021,638 successful dynamic simulations with128 secondary
+positions; fixed512/2,048/4,096-position copies reduce this to439,825/29,025/3,487.
+Every copy checks the same full guest result. These counts isolate cache pressure;
+all instrumented timings are discarded and the fixed-capacity copies are not shipped.
+
+Keep the existing pinned first price, three recent prices and128-entry secondary
+lookup first. The secondary owner now counts up to128 successful misses handled by that owner,
+including its allocating miss but excluding seeded older facts.
+The next successful miss allocates one fixed4,096-entry/two-way child, seeds only
+valid complete prices, and inserts the new price. Hits and failed simulations never
+advance this counter or allocate either owner. The original secondary entries stay
+available and read-only after promotion; later successful misses update the child
+and recent ring. No further growth occurs, regardless of input size or miss count.
+At most4,228 price positions exist, including hot facts and possible duplicates.
+
+The small lookup retains its established address/tag checks before inspecting the
+optional larger child. Each child set uses the top11 bits of wrapping multiplicative
+address mixing, with exact full-width address tags and alternating replacement.
+Every hit still passes the ordinary affordability/debit boundary. The invocation,
+its immutable program/profile and cycle limit remain fixed across both host callback
+forms. Complete plans bypass dynamic price reuse; lazy memos retain their existing
+invocation front-cache contract. There is no new prepared representation or public API.
+
+Ownership is acyclic: the private invocation owns the small table, which owns at most
+one larger child. Synchronous lookup temporaries retain their owners. Neither table
+contains program, machine, memory, host context, balance or partial simulator owners.
+All tables retire on every completed/refused invocation, including nested callbacks.
+The larger scalar payload adds98KiB, excluding ARC/allocator overhead; the small
+owner remains about3.1KiB. Four-hot-price invocations allocate neither table.
+
+The cache suite adds170 recurrent unequal blocks crossing promotion, plus5,000
+blocks exceeding all price positions. Dynamic, complete-plan and cold/warm memo
+execution must match full public-single-step CPU/gas results. Exact/one-less step
+bounds, late out-of-gas publication and retained source snapshots are checked.
+After a170-block warmup, literal PCs280/1,877/2,864/4,461/7,045/8,642 all share
+expanded set101; six different recurrent multiply-dependent prices must retain
+exact gas and final registers despite exceeding two ways plus the hot ring.
+
+The shared host-pressure runner also checks two promoted passes, ordinary/fallible
+continuation, terminal callbacks, typed refusal and one-less local failure. Nested
+execution uses the same original PCs with different block boundaries/prices, so its
+private table cannot authorize an outer price. Both pressure families check repeated
+balanced ownership; every iteration of the existing1,000-cycle ARC group now creates
+and releases a promoted price child in addition to the decoded spill.
+
+A first large-first lookup with extra invocation fields retained the Pinky benefit
+but repeatedly slowed smaller dynamic controls by about4–5%; it was rejected and its
+incomplete broader comparison retained only as diagnostic evidence. Keeping the small
+lookup first follows Mike Pall's discussion of preserving interpreter fast paths and
+moving uncommon work aside ([LuaJIT explanation](https://lua-users.org/lists/lua-l/2011-02/msg00742.html)).
+This is an implementation hypothesis, not evidence that a compiler hint or assembly
+strategy will improve this interpreter. Pinned runtime checks and pricing rules remain
+unchanged; acceptance requires matched uninstrumented measurements.
+
+The final uninstrumented checked ARC/Clang ThinLTO pair retains all seven bounded
+real inputs, all three pricing modes, two opposite process orders, three warmups
+and ten measured samples per process:1,092 complete-state-checked invocations.
+Pinky CPU medians in milliseconds on M1 Max/macOS, with preparation excluded:
+
+| Pricing | Parent | Adaptive | Observed change |
+| --- | ---: | ---: | ---: |
+| Dynamic | 3,017.242 | 609.847 | -79.8% |
+| Complete plan | 557.637 | 605.191 | +8.5% |
+| Lazy memo | 689.548 | 602.598 | -12.6% |
+
+The initial complete-plan slowdown does not reproduce in a separate52-invocation
+opposite-order comparison:579.157→579.849ms (+0.1%). Planned pricing is therefore
+unproven, with the unfavorable initial result retained rather than filtered away.
+The analogous memo repeat is644.175→589.380ms (-8.5%), supporting the direction
+without promising the initial percentage. An earlier four-fresh-process dynamic
+screen also found a large reduction; the final13-sample comparison qualifies the
+shipped small-first layout. The final instrumented diagnostic records1,281 successful
+Pinky simulations; only uninstrumented binaries supply the timing table.
+
+An additional six-input opposite-order comparison passes936 complete-state checks.
+Its larger controls vary from-2.1% to+1.1%, while the full run has wider small-input
+variation (including a+3.7% planned memory-fill cell). No universal small-input or
+planned-pricing improvement is claimed. All1,716 synthetic invocations pass; most
+changes are within a few percent and no broad synthetic improvement is claimed.
+The calibrated census passes429 invocations, nine affected Python guard checks,
+selected cache/host-memory-reentry/mixed-policy suites, inventory and pinned formatting
+pass. Cache and host reentry each preserve1,000 balanced ARC cycles.
+
+Exact source/binary hashes and complete raw samples are retained in
+`build/pvm12/adaptive-prices-small-first/build.json`,
+`build/pvm12/adaptive-small-first-paired.json`, the additional control/confirmation
+reports and`build/pvm12/adaptive-price-counts/results.json`. These are local checked
+interpreter measurements, without CPU affinity/frequency isolation; they establish
+neither exact-head Linux performance nor compiled-backend or whole-JAM throughput.
+M1 framing remains scoped completion; full state serialization and STF/JAM parity
+remain open, and fuzzing remains paused pending the maintainer's Daybreak access.
