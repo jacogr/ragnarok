@@ -84,8 +84,13 @@ for row in 0..<count:
   let decoded = instruction(program, CodeAddress(0))
   var directIndex: range[0..12] = 12
   var directValue = RegisterValue(not expected)
-  assert computeRegisterWrite(decoded, input, directIndex, directValue)
+  assert computeRegisterWrite[true](decoded, input, directIndex, directValue)
   assert int(directIndex) == destination and uint64(directValue) == expected
+  directIndex = 12
+  directValue = RegisterValue(not expected)
+  assert computeRegisterWrite[false](decoded, input, directIndex, directValue)
+  assert int(directIndex) == destination and uint64(directValue) == expected
+
   let written = evaluateRegisterWrite(decoded, input)
   assert written.error == RegisterError.None
   assert int(byte(written.destination)) == destination and uint64(written.writeValue) == expected
@@ -150,7 +155,10 @@ proc unchangedFailure(decoded: ProgramResult[Instruction]) =
   let input = default(RegisterFile)
   var index: range[0..12] = 7
   var value = RegisterValue(0xdeadbeefcafebabe'u64)
-  assert not computeRegisterWrite(decoded, input, index, value)
+  assert not computeRegisterWrite[true](decoded, input, index, value)
+  assert not computeRegisterWrite[false](decoded, input, index,
+      value) # Defensive case rejection preserves sentinels even without the redundant membership precheck.
+
   assert index == 7 and uint64(value) == 0xdeadbeefcafebabe'u64
 
 unchangedFailure(default(ProgramResult[Instruction]))

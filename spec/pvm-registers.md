@@ -225,3 +225,24 @@ arithmetic calls, so this is a measured workload tradeoff, not a code-size win.
 Publication only adds documentation to the qualified runtime; native restacking
 verifies complete runtime/tool tree equality. Ragnarök still trails PolkaVM on
 these inputs. M1 framing completion and full-JAM parity gates remain unchanged.
+
+## Reusing charged register-scope admission, 2026-10-24
+
+The internal typed arithmetic expansion specializes its redundant membership
+precheck with a static boolean. Public scalar/array evaluators retain that
+precheck. Charged register dispatch selects the other specialization only after
+its existing capability classifier admitted the same immutable decoded opcode.
+Neither decoding nor whole-block pricing can change that captured instruction.
+The successful-result guard and defensive opcode-case fallback remain in both
+specializations; unsupported cases still publish neither output. No unchecked
+memory/index operation, public runtime mode or alternate arithmetic is introduced.
+
+The frozen38977-row corpus checks both scalar specializations and all existing
+public/charged paths across85 opcodes. Default, invalid-PC and every valid
+out-of-scope instruction retain both output sentinels in either specialization.
+Inputs, complete CPU/gas/page state and owner lifetimes remain covered by the
+same step/cache/mixed/host suites. All arithmetic cases and capability/gas
+ordering remain unchanged. Linux profiles place most executed instructions in
+the inlined dispatch body; paired CI must establish whether removing this
+repeated opcode-set decision helps beyond control variation. No local timing
+claim or change to the scoped M1/full-JAM gates is made.

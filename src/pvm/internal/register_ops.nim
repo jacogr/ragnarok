@@ -92,16 +92,18 @@ func countBits(value: uint64, bits: int, mode: int): uint64 {.requires:
   filled = filled or (filled shr 32)
   uint64(bits)-populationCount(filled)
 
-template computeRegisterWrite*(decoded: ProgramResult[Instruction], registers: RegisterFile,
-    writeIndex: var range[0..12], writeValue: var RegisterValue): bool =
+template computeRegisterWrite*[CheckScope: static[bool]](decoded: ProgramResult[Instruction],
+    registers: RegisterFile, writeIndex: var range[0..12], writeValue: var RegisterValue): bool =
   ## Compute one atomic write from original operands; invalid/default/unsupported inputs leave outputs unchanged.
   ## Both private dispatch and the public result wrapper share this typed expansion without temporary tagged results.
+  ## Public wrappers check opcode scope; charged dispatch reuses its admission of the same immutable decoded opcode.
+  ## The case fallback still refuses any unsupported opcode without publishing either output.
   block:
     var completed = false
     if decoded.error == ProgramError.None:
       # Guard the captured instruction before extracting any payload or register operand.
       let item = decoded.value
-      if isRegisterOpcode(item.opcode):
+      if not CheckScope or isRegisterOpcode(item.opcode):
         # Arithmetic uses the original register values, including every source/destination alias.
         let indices = instructionRegisters(decoded)
         let a = uint64(registers[indices.aIndex])

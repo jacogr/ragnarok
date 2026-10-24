@@ -708,7 +708,7 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
     # Register-only execution retains its existing scope and copied-register semantics.
     var index: range[0..12] = 0
     var value = RegisterValue(0)
-    if not computeRegisterWrite(decoded, info.registers, index, value):
+    if not computeRegisterWrite[false](decoded, info.registers, index, value):
       # Defensive evaluator failure cannot publish the tentative copied gas state.
       return InstructionEvaluation(status: StepError.UnsupportedInstruction)
     info.registers[index] = value

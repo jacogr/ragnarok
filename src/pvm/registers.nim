@@ -68,7 +68,7 @@ proc evaluateRegisterWrite*(decoded: ProgramResult[Instruction],
     return RegisterWriteResult(status: RegisterError.InvalidInstruction)
   var index: range[0..12] = 0
   var value = RegisterValue(0)
-  if not computeRegisterWrite(decoded, registers, index, value):
+  if not computeRegisterWrite[true](decoded, registers, index, value):
     # Unsupported instructions cannot authorize a register write.
     return RegisterWriteResult(status: RegisterError.UnsupportedInstruction)
   RegisterWriteResult(status: RegisterError.None, completedIndex: index, completedValue: value)
