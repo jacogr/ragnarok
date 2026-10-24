@@ -76,7 +76,15 @@ choose `smoke`, `unit`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, 
 `ref-pvm` and `bench-pvm` selections remain available for individual PVM jobs.
 **Perf PVM** also runs automatically on master pushes. Its validated interpreted
 [PVM speed comparison](../spec/pvm-benchmark-comparison.md) appears in the Actions
-run summary with raw artifacts, so no manual dispatch is needed after a merge. CLI equivalent:
+run summary with raw artifacts, so no manual dispatch is needed after a merge. The same job also
+runs the frozen real-guest comparisons: sieve at 1k, 10k, 100k and 10 million; minimal
+indirect calls; memory fill; and one initialized Pinky NES frame. Each
+compares Ragnarök dynamic/complete-plan/lazy-memo execution with PolkaVM interpreted on
+the same runner. Tables include median ratios, CPU variability, wall medians and scoped
+pricing/first-execution costs; common module loading is excluded. No compiled backend or
+additional VM is measured. Guest JSON/CSV, summaries and diagnostic logs are retained
+with the synthetic workload evidence; fixture binaries and build caches are excluded.
+See [the real-guest contract](../spec/pvm-sieve-benchmark.md). CLI equivalent:
 
 ```sh
 gh workflow run ci.yml --ref <branch> -f suite=full

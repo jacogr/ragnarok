@@ -547,9 +547,22 @@ jobs:
       - *inventory
       - name: Measure validated PVM workloads
         run: make bench-pvm
+      - name: Measure validated real sieve
+        run: make bench-pvm-sieve
+      - name: Measure validated minimal, memory-fill and Pinky guests
+        run: make bench-pvm-guests
       - name: Show speed comparison table
         if: always()
         run: make summary-pvm-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      - name: Show real-guest speed comparison tables
+        if: always()
+        run: |
+          for report in build/tests/pvm-sieve/summary.md build/tests/pvm-guests/summary.md; do
+            # Missing reports follow a failed/skipped runner; never substitute old successful evidence.
+            if test -f "$report"; then
+              cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
       - name: Retain raw benchmark evidence
         if: always()
         uses: *upload-artifact
@@ -562,6 +575,17 @@ jobs:
             build/tests/pvm-benchmark/results.json
             build/tests/pvm-benchmark/samples.csv
             build/tests/pvm-benchmark/summary.md
+            build/tests/pvm-sieve/*.log
+            build/tests/pvm-sieve/results.json
+            build/tests/pvm-sieve/samples.csv
+            build/tests/pvm-sieve/summary.md
+            build/tests/pvm-guests/results.json
+            build/tests/pvm-guests/samples.csv
+            build/tests/pvm-guests/summary.md
+            build/tests/pvm-guests/*/*.log
+            build/tests/pvm-guests/*/results.json
+            build/tests/pvm-guests/*/samples.csv
+            build/tests/pvm-guests/*/summary.md
             build/pvm-benchmark/native-build.log
             build/ci/*.log
 

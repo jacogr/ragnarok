@@ -7,7 +7,7 @@ import ../../src/pvm/[program, machine, gas, gas_plan, gas_memo]
 import ../../src/pvm/step as reference
 
 type GuestKind {.pure.} = enum ## One immutable process selection binds the frozen guest to an independent expected result.
-  Sieve, Minimal, Memset
+  Sieve, Minimal, Memset, Pinky
 
 proc selectedGuest(value: string): GuestKind =
   ## Keep the original default and reject unknown family labels before any timing.
@@ -15,6 +15,7 @@ proc selectedGuest(value: string): GuestKind =
   of "", "sieve": GuestKind.Sieve # Existing sieve callers retain their original protocol.
   of "minimal": GuestKind.Minimal # Indirect calls retain a deterministic counter result.
   of "memset": GuestKind.Memset # Memory fill retains byte zero and checks the remaining extent.
+  of "pinky": GuestKind.Pinky # One rendered frame from the shared initialized NES snapshot.
   else:
     assert false, "unknown checked guest family"
     GuestKind.Sieve
@@ -30,6 +31,9 @@ proc word(data: string, at, width: int): uint64 =
 
 proc count(guest: GuestKind, limit: uint64): uint64 =
   ## Select independent expectations without reading mutable process configuration during execution.
+  if guest == GuestKind.Pinky:
+    assert limit == 1
+    return 1 # The checked guest returns only after initialization and framebuffer conversion complete.
   if guest != GuestKind.Sieve:
     assert limit in [1000'u64, 100000'u64]
     if guest == GuestKind.Minimal: return 2*limit + limit mod 2
@@ -81,6 +85,7 @@ assert expected.len >= 120 and expected[0..7] == "PVMSIE01"
 let wireSize = int(word(data, 8, 4))
 let entry = word(data, 12, 4)
 let limit = word(data, 16, 4)
+discard count(guest, limit) # Reject a foreign family/size before an expensive execution or policy allocation.
 let pageCount = int(word(data, 20, 4))
 assert wireSize > 0 and wireSize <= 4 * 1024 * 1024 and pageCount > 0 and pageCount <= 4096
 assert data.len == 136 + wireSize + pageCount * 4101

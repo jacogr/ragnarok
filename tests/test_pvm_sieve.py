@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 from dependencies import ROOT
 import pvm_sieve_benchmark as benchmark
-from pvm_sieve_report import ENGINES,LIMITS,parse_output,parse_process_output,summarize
+from pvm_sieve_report import ENGINES,LIMITS,limits_for_guest,parse_output,parse_process_output,summarize
 
 
 def output(engine='ragnarok',limit=1000):
@@ -19,12 +19,12 @@ def output(engine='ragnarok',limit=1000):
     return '\n'.join(f'SIEVE,{engine},{limit},{index},{2000+index},{1000+index}' for index in range(13))
 
 
-def report():
+def report(guest='sieve'):
     """Construct every required engine/pass/limit identity with explicit plan preparation."""
-    return dict(status='checks-passed',passes=[dict(limit=limit,engine=engine,pass_index=p,
+    return dict(status='checks-passed',guest=guest,passes=[dict(guest=guest,limit=limit,engine=engine,pass_index=p,
         samples=parse_output(output(engine,limit),engine,limit),
         preparation=dict(cpu_ns=1000,wall_ns=2000,code_bytes=16,block_count=1,payload_bytes=128,cycle_limit=1000000) if engine=='ragnarok_planned' else (dict(cpu_ns=100,wall_ns=200,code_bytes=16,payload_bytes=128,cycle_limit=1000000,priced_blocks=1 if limit==1000 else 2) if engine=='ragnarok_memo' else None))
-        for limit in LIMITS for engine in ENGINES for p in range(2)])
+        for limit in limits_for_guest(guest) for engine in ENGINES for p in range(2)])
 
 
 class SieveBenchmarkTests(unittest.TestCase):
@@ -90,6 +90,23 @@ class SieveBenchmarkTests(unittest.TestCase):
             if p['engine']=='ragnarok_memo':p['samples'][0]['cpu_ns']=0
         with self.assertRaises(ValueError):summarize(data)
 
+    def test_explicit_workload_sizes_and_interpreted_scope(self):
+        """Every requested sieve size must complete; Pinky and loop controls keep distinct bounded domains."""
+        self.assertEqual(LIMITS,(1000,10000,100000,10000000))
+        self.assertEqual(limits_for_guest('minimal'),(1000,100000))
+        self.assertEqual(limits_for_guest('pinky'),(1,))
+        self.assertEqual(ENGINES,('ragnarok','ragnarok_planned','ragnarok_memo','polkavm_interpreter'))
+        self.assertIn('CPU mean ± SD ms',summarize(report()))
+        self.assertIn('PolkaVM interpreted | — |',summarize(report()))
+        for guest in ('sieve','minimal','memset','pinky'):
+            self.assertIn('| Limit |',summarize(report(guest)))
+            for limit in limits_for_guest(guest):
+                prefix='' if guest=='sieve' else 'GUEST,'+guest+'\n'
+                parse_process_output(prefix+output('polkavm_interpreter',limit),'polkavm_interpreter',limit,guest)
+        with self.assertRaises(ValueError):
+            parse_process_output('GUEST,pinky\n'+output(limit=1000),'ragnarok',1000,'pinky')
+        with self.assertRaises(ValueError):limits_for_guest('unknown')
+
     def test_complete_protocol(self):
         """Both clocks and every sample survive parsing in original process order."""
         rows=parse_output(output(),'ragnarok',1000)
@@ -126,7 +143,7 @@ class SieveBenchmarkTests(unittest.TestCase):
         for item in data['passes']:
             for row in item['samples'][:3]:row['cpu_ns']=10**12
         after=summarize(data)
-        self.assertEqual(after.split('Additional native initialization')[0],before.split('Additional native initialization')[0])
+        self.assertEqual(after.split('Pricing initialization and first execution')[0],before.split('Pricing initialization and first execution')[0])
         self.assertNotEqual(after,before) # Cold sample zero is now an explicit cost observation, not a hidden warmup.
         self.assertEqual(len(data['passes'][0]['samples']),13)
 

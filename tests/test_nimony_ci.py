@@ -301,6 +301,14 @@ class NimonyCISafeguards(unittest.TestCase):
         section = text.split('  bench-pvm:\n', 1)[1]
         self.assertIn("if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}", section)
         self.assertEqual(section.count('run: make bench-pvm\n'), 1)
+        for target in ('bench-pvm-sieve','bench-pvm-guests'):
+            self.assertEqual(section.count('run: make '+target+'\n'),1)
+        self.assertIn('build/tests/pvm-sieve/summary.md build/tests/pvm-guests/summary.md',section)
+        for folder in ('pvm-sieve','pvm-guests'):
+            for name in ('results.json','samples.csv','summary.md'):
+                self.assertIn('build/tests/'+folder+'/'+name,section)
+        self.assertIn('build/tests/pvm-guests/*/*.log',section)
+        self.assertNotIn('pvm-ir',section)
         self.assertLess(section.index('- *inventory'), section.index('run: make bench-pvm'))
         self.assertIn('summary-pvm-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', section)
         for name in ('results.json','samples.csv','summary.md'):

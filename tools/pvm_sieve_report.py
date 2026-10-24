@@ -8,13 +8,21 @@ import re
 from pvm_benchmark_report import ACTIVE_ENGINES
 
 ENGINES=ACTIVE_ENGINES
-LIMITS=(1000,100000)
+LIMITS=(1000,10000,100000,10000000)
 SAMPLES=13
+
+
+def limits_for_guest(guest):
+    """Keep workload sizes explicit: full sieve range, bounded loops, and one complete Pinky frame."""
+    if guest=='sieve':return LIMITS
+    if guest in ('minimal','memset'):return (1000,100000)
+    if guest=='pinky':return (1,)
+    raise ValueError('Unknown checked guest family')
 
 
 def parse_output(output,engine,limit):
     """Accept one ordered, complete pass; reject extra output, duplicate and nonpositive samples."""
-    if engine not in ENGINES or limit not in LIMITS:
+    if engine not in ENGINES or limit not in (*LIMITS,1):
         raise ValueError("Unknown sieve engine or limit")
     rows=[]
     for line in output.splitlines():
@@ -57,7 +65,8 @@ def validate_memo_preparation(item):
 
 def parse_process_output(output,engine,limit,guest='sieve'):
     """Require complete policy-specific initialization/occupancy framing in addition to every measured execution."""
-    if guest not in ('sieve','minimal','memset'):raise ValueError('Unknown checked guest family')
+    limits=limits_for_guest(guest)
+    if limit not in limits:raise ValueError('Unknown guest workload size')
     preparation=None;lines=output.splitlines()
     if guest!='sieve':
         # A mandatory first witness prevents cross-family reuse or relabeling of valid samples.
@@ -97,23 +106,23 @@ def validate_samples(rows):
 def summarize(report):
     """Show warmed runtime plus initialization/first-cold costs without hiding lazy work in discarded warmups."""
     guest=report.get('guest','sieve')
-    if guest not in ('sieve','minimal','memset'):raise ValueError('Unknown checked guest family')
-    title={'sieve':'Sieve','minimal':'Indirect calls','memset':'Memory fill'}[guest]
+    limits=limits_for_guest(guest)
+    title={'sieve':'Sieve','minimal':'Indirect calls','memset':'Memory fill','pinky':'Pinky (one initialized NES frame)'}[guest]
     if report['status']!='checks-passed':
         return title+' comparison: '+report['status']+'. '+report.get('error','')+'\n'
     if any(p.get('guest','sieve')!=guest for p in report['passes']):
         raise ValueError('Missing or foreign structured guest family')
     identities=[(p['limit'],p['engine'],p['pass_index']) for p in report['passes']]
     if (any(type(p['limit']) is not int or type(p['pass_index']) is not int for p in report['passes'])
-            or len(identities)!=len(set(identities)) or set(identities)!={(limit,engine,p) for limit in LIMITS for engine in ENGINES for p in range(2)}):
+            or len(identities)!=len(set(identities)) or set(identities)!={(limit,engine,p) for limit in limits for engine in ENGINES for p in range(2)}):
         raise ValueError('Missing or duplicate sieve report pass')
     lines=[title+' interpreter comparison (process CPU medians; all samples retained).','',
            '| Limit | Dynamic ms | Immutable plan ms | Lazy memo ms | PolkaVM ms | Dynamic/ref | Plan/ref | Memo/ref | Quality |',
            '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |']
     if any(p.get('preparation') is not None for p in report['passes'] if p['engine'] not in ('ragnarok_planned','ragnarok_memo')):
         raise ValueError('Unplanned engine supplied pricing metadata')
-    resources=set();plan_counts=set();amortization=[];cold=[]
-    for limit in LIMITS:
+    resources=set();plan_counts=set();amortization=[];cold=[];dispersion=[]
+    for limit in limits:
         medians={};noisy=False
         for engine in ENGINES:
             observed=[p for p in report['passes'] if p['limit']==limit and p['engine']==engine]
@@ -121,10 +130,15 @@ def summarize(report):
             groups=[[s['cpu_ns'] for s in p['samples'][3:]] for p in observed]
             values=sorted(sum(groups,[]));centers=[statistics.median(g) for g in groups]
             medians[engine]=statistics.median(values)
+            # Retain a human-readable distribution beside median ratios, including wall-clock scheduling effects.
+            walls=[s['wall_ns'] for p in observed for s in p['samples'][3:]]
+            dispersion.append(f"| {limit} | {engine} | {statistics.mean(values)/1e6:.3f} ± {statistics.stdev(values)/1e6:.3f} | "
+                f"{values[0]/1e6:.3f}–{values[-1]/1e6:.3f} | {statistics.median(walls)/1e6:.3f} |")
             noisy|=max(centers)>1.25*min(centers) or values[17]>2*values[2]
-            if engine=='ragnarok':
+            if engine in ('ragnarok','polkavm_interpreter'):
                 first=statistics.median(p['samples'][0]['cpu_ns'] for p in observed)
-                cold.append(f'| {limit} | Dynamic | — | {first/1e6:.3f} | {first/1e6:.3f} | — | — |')
+                cold.append(f'| {limit} | '+('Dynamic' if engine=='ragnarok' else 'PolkaVM interpreted')+
+                    f' | — | {first/1e6:.3f} | {first/1e6:.3f} | — | — |')
             if engine in ('ragnarok_planned','ragnarok_memo'):
                 # Occupancy depends on this input; immutable complete plans have one source-wide block count.
                 preparations=[p.get('preparation') for p in observed]
@@ -145,7 +159,10 @@ def summarize(report):
         lines.append(f'| {limit} | {dynamic/1e6:.3f} | {planned/1e6:.3f} | {memo/1e6:.3f} | {reference/1e6:.3f} | {dynamic/reference:.2f}x | {planned/reference:.2f}x | {memo/reference:.2f}x | '+
                      ('noisy; inspect raw samples' if noisy else 'within dispersion guard')+' |')
     if len(resources)!=1 or len(plan_counts)!=1:raise ValueError('Inconsistent source/policy resource identity')
-    lines+=['','Additional native initialization and first execution (two observations per cell).','',
+    lines+=['','Execution distributions (twenty measured observations; sample standard deviation).','',
+            '| Limit | Engine | CPU mean ± SD ms | CPU min–max ms | Wall median ms |',
+            '| --- | --- | ---: | ---: | ---: |',*dispersion,'',
+            'Pricing initialization and first execution (two observations per cell; common program/module loading excluded).','',
             '| Limit | Policy | Init CPU ms | First exec CPU ms | Init + first ms | Payload MiB | Priced blocks |',
             '| --- | --- | ---: | ---: | ---: | ---: | ---: |',*cold]
     if amortization:lines+=['','Additional immutable-plan preparation amortization from current medians: '+ '; '.join(amortization)+'.']
@@ -154,5 +171,5 @@ def summarize(report):
             'Initialization CPU below clock resolution may be zero; positive wall duration remains recorded.',
             'Common source capture/reset and full result validation are outside execution timing.',
             'Checked release ARC/Clang ThinLTO; PolkaVM Interpreter JamV1 Sync/Full/L2Hit.',
-            'These two input sizes do not establish general interpreter or full JAM performance.']
+            'These workloads do not establish general interpreter or full JAM performance.']
     return '\n'.join(lines)+'\n'

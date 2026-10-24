@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Compare a frozen indirect-call/memory-fill guest pack using maintained interpreted adapters.
+"""Compare a frozen indirect-call/memory-fill/NES guest pack using maintained interpreted adapters.
 
 Normal runs consume checked artifacts and never invoke the historical guest compiler.
 """
@@ -15,7 +15,8 @@ from pvm_sieve_benchmark import run as run_guest
 from pvm_sieve_report import summarize
 
 BUILD = ROOT/'build/tests/pvm-guests'
-GUESTS = ('minimal', 'memset')
+# Run the small control guest first, memory coverage second, and the expensive NES workload last.
+GUESTS = ('minimal', 'memset', 'pinky')
 
 
 def summarize_pack(report):

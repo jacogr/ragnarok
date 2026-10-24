@@ -1,0 +1,63 @@
+{
+  "adaptation": "Append checked one-frame entry to unchanged upstream main. Public initialize export runs untimed before input capture; restore identical initialized writable pages before each reference invocation. Return one after one original benchmark_run and framebuffer conversion complete.",
+  "artifact_sha256": "9976f59732625268d8eb2dc3d159932176af4f898bdc0c3b07ad0079ef2f7d09",
+  "build_inputs": {
+    "pinky.Cargo.toml": "5cb43fbed23b64af9e4672bc617a8762791a7c24b394bb03aed234d2920ae815",
+    "workspace.Cargo.toml": "ffa092a8b42e1b2a960b82341b0c398d6cdf2b1a0a313c9307d0d60989976396"
+  },
+  "checked_entry_sha256": "49eeaffc312a73558931647bd3474b8657d807ae0e21da41ca289b1345b9d73a",
+  "guest": "pinky",
+  "guest_command": [
+    "cargo",
+    "build",
+    "--release",
+    "--locked",
+    "--offline",
+    "--manifest-path",
+    "<fixture-build>/guest/Cargo.toml",
+    "-Z",
+    "build-std=core,alloc",
+    "--target",
+    "<pinned-target-json>",
+    "--bin",
+    "bench-pinky"
+  ],
+  "guest_lock_sha256": "25da65570dffc0b264372a7c43e943000b7557897a2884b304ee60744be88d1a",
+  "guest_profile": {
+    "codegen_units": 1,
+    "debug": true,
+    "lto": "fat",
+    "opt_level": 3,
+    "panic": "abort"
+  },
+  "guest_rust": "rustc 1.89.0-nightly (dcecb9917 2025-05-09)",
+  "guest_rustflags": [
+    "--remap-path-prefix=<fixture-build>=pinky-fixture",
+    "--remap-path-prefix=<polkavm-root>=polkavm",
+    "--remap-path-prefix=<rustup-home>=rustup",
+    "--remap-path-prefix=<cargo-home>=registry"
+  ],
+  "guest_target": "crates/polkavm-linker/targets/legacy/riscv64emac-unknown-none-polkavm.json",
+  "guest_toolchain": "nightly-2025-05-10",
+  "host_rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "initialization_entry": "initialize",
+  "instruction_set": "JamV1",
+  "linker_profile": "pinned public program_from_elf; default Config; JamV1",
+  "nes_commit": "5a9d4ff5f22731191cffd7d6202a1d144aacd740",
+  "polkavm_commit": "69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa",
+  "rom_sha256": "01b0507abdee44e6b78edcbe95f1de951c9d7ec39e7fcc5306f5e06b732ef92c",
+  "rom_source": "https://github.com/christopherpow/nes-test-roms/tree/97720008e51db15dd281a2a1e64d4c65cf1bca4c/nes15-1.0.0",
+  "schema": 1,
+  "timing_boundary": "One frame from a frozen initialized NES state; exclude nine initialization frames and source/module capture.",
+  "upstream_benchmark": "bench-pinky",
+  "upstream_sources": {
+    "Cargo.lock": "85ab439c30fc410415fd7d8bf06f7f69ce743096eba170755518d1ede3ff30e8",
+    "crates/polkavm-linker/targets/legacy/riscv64emac-unknown-none-polkavm.json": "d880185c2a4880455a0bca81d0030be05c5e7fdba497d1558bc5eb173b1d1569",
+    "guest-programs/Cargo.lock": "3f74fbd63678ebd5d94c016b20e9f76981b604436aabd9c32bd57a5aa5f2ecab",
+    "guest-programs/Cargo.toml": "5a44abc079139f06b56c8a374e23af00128168ba15775a5b4ac68075b7def600",
+    "guest-programs/bench-common.rs": "80e5f13521dfe638e71bf7c61d90021abbfad9cb53ff21d2a82609fa1750b25b",
+    "guest-programs/bench-pinky/Cargo.toml": "c0c1ae229f85d501e1abee04792e13467a6907de190d8b16b71cd78d20e22ebc",
+    "guest-programs/bench-pinky/src/main.rs": "69db93db34149739b2d5d56f61b09a3800e08463237e8a9642ef9c0a8d0a652b",
+    "guest-programs/bench-pinky/src/nes15-NTSC.nes": "01b0507abdee44e6b78edcbe95f1de951c9d7ec39e7fcc5306f5e06b732ef92c"
+  }
+}
