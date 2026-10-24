@@ -1,5 +1,9 @@
 # Whole-map STF goldens for offenders, validator populations and contest eviction
 
+The [verdict/fault extension](current-stf-verdict-fault-goldens.md) adds independently calculated
+judgment classification, opposing evidence and assignment cancellation. These original cases,
+fixtures and expected output hashes remain unchanged.
+
 Scope: sixteen additional genuine current-candidate transitions with independently calculated
 complete successor maps. Pins remain Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 Draft35 Thin v1/ark-vrf0.6.0 and vectors `23061ae1f9b51171c01387e7dde0f15794c98e24`.

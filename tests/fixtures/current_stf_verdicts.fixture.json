@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_VERDICTS",
+  "files": {
+    "current-stf-verdicts.json": "a84856325e3232d3a90ef903bcd6c9b95b8b14180051fa199232d2721917a267"
+  },
+  "target": "current-stf-verdicts.json"
+}
