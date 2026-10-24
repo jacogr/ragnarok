@@ -946,3 +946,8 @@ proc visitEntries*(reader: var FullPagedReader, root: StateRoot,
   if data == nil or not data.active: return refused[FullPagedCounts](
       FullPagedNativeError.Uninitialized)
   reader.visitEntries(root, visitor, data.checked.limits.work)
+
+func failure*[T](outcome: FullPagedNativeResult[T]): FullPagedNativeResult[bool] {.requires:
+    outcome.status != FullPagedNativeError.None.} =
+  ## Composite consumers retain an exact selected failure without carrying any successful operation payload.
+  rejected[bool, T](outcome)
