@@ -6,6 +6,7 @@ import hashlib
 import json
 import unittest
 from pvm_memory_access_reference import ROOT, HEADER, OPS, fixtures, witness
+from pvm_gas_reference import tables, simulate
 
 
 class MemoryAccessReferenceTests(unittest.TestCase):
@@ -36,6 +37,21 @@ class MemoryAccessReferenceTests(unittest.TestCase):
         self.assertEqual(seen,set(OPS))
         self.assertEqual(len(differences),48)
         self.assertEqual(set(differences),{31,32,33,60,61,62,71,72,73,121,122,123})
+
+    def test_complete_scalar_block_prices(self):
+        """Every frozen scalar/trap block has an independent25-gas/28-cycle price, including raw saturated aliases."""
+        data, count = fixtures()
+        definitions = tables()
+        cursor = 12
+        for row in range(count):
+            # Read the original literal blob; the independent simulator does not use production decoding or pricing.
+            header = HEADER.unpack_from(data, cursor)
+            blob = data[cursor+HEADER.size:cursor+HEADER.size+header[0]]
+            code = blob[3:3+blob[2]]
+            self.assertEqual(code[-1], 0)
+            self.assertEqual(simulate([code[:-1], b'\x00'], definitions), (25, 28), row)
+            cursor += HEADER.size+header[0]
+        self.assertEqual(cursor, len(data))
 
     def test_literal_signed_results(self):
         """Known 0x80/0xa580/0xefcaa580 values distinguish signed and unsigned load semantics."""
