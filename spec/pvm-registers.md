@@ -225,3 +225,23 @@ arithmetic calls, so this is a measured workload tradeoff, not a code-size win.
 Publication only adds documentation to the qualified runtime; native restacking
 verifies complete runtime/tool tree equality. Ragnarök still trails PolkaVM on
 these inputs. M1 framing completion and full-JAM parity gates remain unchanged.
+
+
+## Arithmetic scope selected once, 2026-10-25
+
+The shared evaluator retains its successful-decode guard and every payload/index
+contract, then lets the existing opcode switch decide support. Its default already
+returns false without publishing either output. Genuine instruction coordinates
+are saturated and bounded for every operand shape, including ordinary zero for
+non-arithmetic destinations; therefore selecting those original register values
+before default refusal is safe and pure. Failed/default results still refuse before
+any payload or register selection. The preliminary opcode-set lookup is removed;
+no new scope field, tag, API, representation or unchecked path is introduced.
+
+All arithmetic equations and the sole guarded output-publication block are identical
+apart from indentation. The standalone public opcode predicate is retained. The
+unchanged38977-row reference corpus, all valid out-of-scope output sentinels,
+dependent chains, charged execution/cache/ARC, memory/control and nested host/mixed
+policy checks remain required. The parent planned Pinky profile attributes119,775,747
+instructions to the removed membership expression; actual timing still requires
+isolated paired CI. Implemented M1 scope and the open full-JAM gap remain unchanged.
