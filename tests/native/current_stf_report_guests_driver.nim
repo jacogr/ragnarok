@@ -5,6 +5,7 @@
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/header
 import ../support/current_stf_epoch_context as epoch
+import ../support/current_stf_transfer_context
 import ../../src/app/[chain, candidate]
 import ../../src/chain/provider
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
@@ -86,7 +87,7 @@ proc failure(outcome: CurrentCandidateResult): string =
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
     uint32] = @[]) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
-  let codes = [namespaceHaltCode(), guest(mode)]
+  let codes = [namespaceHaltCode(), (if mode >= 5: transferCode(mode) else: guest(mode))]
   var seeds = namespaceSeeds()
   for index in 0..<2:
     let codeHash = ServicePreimageHash(array[32, byte](blake2b256(codes[index]).value))
@@ -105,6 +106,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   options.firstProgram = codes[0]
   options.secondProgram = codes[1]
   options.secondBalance = 1000000
+  if mode >= 5: options.signed.accountTransferGas = 10 # Explicit transfer originals admit the paid recipient invocation.
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -222,14 +224,14 @@ proc main() {.raises.} =
       missingCode = fields.len == 3
       if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 5
+      assert mode >= 0 and mode < 10
       bodies = @[]
       slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert mode == 4 and bodies.len > 0 # Strict independent output comparison binds each complete chain length.
+  assert mode in [4, 9] and bodies.len > 0 # Strict independent output comparison binds each complete chain length.
   run(base, mode, bodies, missingCode, slots)
 
 try:
