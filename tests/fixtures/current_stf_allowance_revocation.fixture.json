@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ALLOWANCE_REVOCATION",
+  "files": {
+    "current-stf-allowance-revocation.json": "e88ef604ef549850e51c67e40f83e215f8c013e45e83c8a28df82b653238e203"
+  },
+  "target": "current-stf-allowance-revocation.json"
+}
