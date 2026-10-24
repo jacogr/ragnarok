@@ -9,7 +9,7 @@ import ../support/[current_stf_transfer_context, current_stf_lifecycle_context]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/provider
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
-  state_requests, state_service_values, state_layout, state_safrole]
+  state_requests, state_service_values, state_layout, state_safrole, composite]
 import ../../src/crypto/primitives
 import ../../src/state/[store, checkpoint, accumulation_current_update,
   accumulation_current_completion,
@@ -20,7 +20,7 @@ import ../../src/state/[store, checkpoint, accumulation_current_update,
   current_globals, current_state, global_snapshot]
 import ../support/[accumulation_execution_context, accumulation_activity_context,
   current_namespace_execution_context, current_namespace_context, current_consecutive_context,
-  pvm_accumulation_program, state_inventory_context]
+  pvm_accumulation_program, pvm_accumulation_provision, state_inventory_context]
 
 proc hex(bytes: openArray[byte]): string =
   ## Preserve exact checkpoint and signed-block octets for independent complete comparison.
@@ -94,6 +94,10 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): 
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 67..71:
+    # A one-byte declared provision never aliases any code preimage or the original Q payload.
+    let hash = array[32, byte](blake2b256([82'u8]).value)
+    second = provisionCode(mode, hash)
   of 62..66:
     # R is a distinct one-byte payload identity, independent of code and the original I/Q reservations.
     let hash = array[32, byte](blake2b256([82'u8]).value)
@@ -133,7 +137,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
         replacement.len)),
       history: (if mode == 50: requestedHistory() else: availableHistory(RequestSlot(1)))))
     if mode != 50: seeds[1].preimages.add(StatePreimageItem(hash: hash, value: replacement))
-  if mode == 64:
+  if mode == 64 or mode in 67..71:
     # This original request must be removed before checkpointing and a later regular recreation is discarded.
     seeds[1].requests.add(StateRequestItem(hash: requestHash, length: RequestLength(1),
         history: requestedHistory()))
@@ -197,10 +201,18 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # At most two children extend the explicit two-account prior; later empty blocks retain all four canonical records.
     limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)
     limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
-  if mode in 62..66:
+  if mode in 62..71:
     # One identity may be touched on both sides of a checkpoint; explicit observations retain the selected prefix.
     limits.completion.execution.initial.guests.requestFacts = ElementLimit(4)
     limits.completion.execution.execution.round.guests.requestFacts = ElementLimit(4)
+  if mode in 67..71:
+    # One selected pair owns exactly one byte; union capture is explicit and shared by initial and continuation rounds.
+    limits.completion.execution.initial.guests.provisions = provisionPolicy(items = 1, perBlob = 1, total = 1)
+    limits.completion.execution.initial.provisions.values = PreimageLimits(items: ElementLimit(1),
+        perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+    limits.completion.execution.initial.provisions.encodedBytes = ByteLimit(32)
+    limits.completion.execution.execution.round.guests.provisions = limits.completion.execution.initial.guests.provisions
+    limits.completion.execution.execution.round.provisions = limits.completion.execution.initial.provisions
   var children: seq[ServiceIndex] = @[]
   var ancestors: seq[OwnedHeader] = @[]
   for bodyIndex, body in bodies:
@@ -239,7 +251,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
         assert before.stateSnapshot.lookup(chapterServiceKey(StateChapter(255), service)).error ==
             StateStoreError.MissingKey
     var services = currentNamespaceServices(snapshot, seeds)
-    if mode in 62..66:
+    if mode in 62..71:
       # Materialize only the explicitly authored R identity, never infer arbitrary namespace entries from raw hashes.
       let requestKey = serviceRequestKey(ServiceIndex(99), requestHash, RequestLength(1), ByteLimit(32)).value
       let stored = snapshot.lookup(requestKey)
@@ -253,6 +265,12 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       else: assert stored.error in [StateStoreError.None,
           StateStoreError.MissingKey] # Full-map comparison fixes presence independently.
 
+    if mode in 67..71:
+      # Only R is newly provisionable; exact independent maps constrain its value and corresponding request history.
+      let stored = snapshot.lookup(servicePreimageKey(ServiceIndex(99), requestHash, ByteLimit(32)).value)
+      if stored.error == StateStoreError.None:
+        services[1].preimages.add(StatePreimageItem(hash: requestHash, value: @[82'u8]))
+      else: assert stored.error == StateStoreError.MissingKey
     for index in 0..<2:
       # Original code/request identities remain explicit; unfulfilled payload requests stay untouched.
       let hash = ServicePreimageHash(array[32, byte](blake2b256(codes[index]).value))
@@ -340,14 +358,14 @@ proc main() {.raises.} =
       missingCode = fields.len == 3
       if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 67
+      assert mode >= 0 and mode < 72
       bodies = @[]
       slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66] and bodies.len >
+  assert mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71] and bodies.len >
       0 # Strict independent output comparison binds each complete chain length.
   run(base, mode, bodies, missingCode, slots)
 
