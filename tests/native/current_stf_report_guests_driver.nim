@@ -122,6 +122,8 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 123..130: second = reservedCreationCode(mode, replacement,
+      codeLength) # Explicit nonzero deposits and registrar allocation.
   of 118..122: second = designationCode(mode, staging) # Staging publication becomes pending and then active across two epochs.
   of 113..117: second = precedenceManagerCode(mode) # GP R preserves the manager proposal only when it actually changes the old role.
   of 107..112: second = authorizationAssignCode(mode) # Real ordered queue replacement and original-assigner publication.
@@ -239,6 +241,15 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     options.manager = 99
   if mode in 118..122:
     options.delegator = (if mode == 122: 42'u32 else: 99'u32) # A real original role determines selected staging authority.
+  if mode in 123..130:
+    options.registrar = 99
+    options.signed.accountBalance = 10000 # The other original account remains funded under the nonzero deposit profile.
+    if mode in [124, 126]:
+      options.secondBalance = 0
+      options.secondSupervisorBalance = 1000000 # Protected source modes cannot borrow liquid funds.
+    if mode == 130:
+      # Original99 has two raw entries and four requests:10items and396+codeBytes; child threshold224 must preserve this own minimum.
+      options.secondBalance = 566'u64+uint64(codes[1].len)+223'u64
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -254,6 +265,12 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # This authored larger-code profile admits the real queue-bearing program; mode112 retains512 as its eligibility control.
     var wire = chainParameters.encodeParameters
     for index in 0..<4: wire[98+index] = byte((4096'u32 shr (8*index)) and 255)
+    chainParameters = decodeParameters(wire).value
+  if mode in 123..130:
+    # Author a distinct nonzero deposit schedule; existing zero-deposit profiles and all protocol checks remain intact.
+    var wire = chainParameters.encodeParameters
+    for field, value in [7'u64, 1'u64, 100'u64]:
+      for index in 0..<8: wire[8*field+index] = byte((value shr (8*index)) and 255)
     chainParameters = decodeParameters(wire).value
   var chain = initApplicationChain(fixture.executionNamespaceParent(chainParameters)).value
   let original = checkpointHex(chain.stateSnapshot.value)
@@ -315,6 +332,10 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     limits.completion.execution.execution.round.guests.preimageBytes = ByteLimit(4096)
     limits.completion.execution.execution.round.guests.initialization.envelope = InitializationByteLimit(4096)
     limits.completion.execution.execution.round.guests.copyBytes = MemoryByteLimit(2560)
+  if mode in 123..130:
+    # The complete prior may contain the one reserved child on later blocks; creation/debit facts keep their original bounds.
+    limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)
+    limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
   var children: seq[ServiceIndex] = @[]
   var ancestors: seq[OwnedHeader] = @[]
   for bodyIndex, body in bodies:
@@ -352,6 +373,11 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       for service in children:
         assert before.stateSnapshot.lookup(chapterServiceKey(StateChapter(255), service)).error ==
             StateStoreError.MissingKey
+    if mode in 123..130 and uint32(before.slot) == 3:
+      # Only the explicitly requested reserved77 may be born; full-map comparison rejects any other identity or debit.
+      let stored = snapshot.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77)))
+      if stored.error == StateStoreError.None: children.add(ServiceIndex(77))
+      else: assert stored.error == StateStoreError.MissingKey
     var services = currentNamespaceServices(snapshot, seeds)
     if mode in 62..71 or mode in 87..91:
       # Materialize only the explicitly authored R identity, never infer arbitrary namespace entries from raw hashes.
@@ -499,7 +525,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 123
+      assert mode >= 0 and mode < 131
       bodies = @[]
       slots = @[]
     else:
@@ -508,7 +534,7 @@ proc main() {.raises.} =
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
-      106, 111, 112, 117, 122]
+      106, 111, 112, 117, 122, 130]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:

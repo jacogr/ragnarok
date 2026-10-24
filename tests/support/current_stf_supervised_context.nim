@@ -140,3 +140,19 @@ proc designationCode*(mode: int, staging: seq[byte]): seq[byte] =
   instructions.add(if mode in [119, 120]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, staging): result.add(octet)
+
+proc reservedCreationCode*(mode: int, hash: array[32, byte], codeLength: uint32): seq[byte] =
+  ## Registrar creation moves real deposits between selected source/child pools and keeps reserved identity stable.
+  var memory = newSeq[byte](60)
+  for index, octet in hash: memory[index] = octet
+  for index in 0..<4: memory[32+index] = byte((codeLength shr (8*index)) and 255)
+  memory[36] = 100
+  memory[44] = 19
+  let selection = if mode in 123..126: uint64(mode-123) else: 0'u64
+  let desired = if mode == 129: 42'u64 else: 77'u64
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, desired),
+    registerImmediate(9, selection), registerImmediate(10, 196608), @[10'u8, 20]]
+  if mode == 128: instructions.add(@[10'u8, 19]) # Debit and born child enter one actual selected implication.
+  instructions.add(if mode in [127, 128]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)
