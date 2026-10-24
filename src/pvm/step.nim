@@ -905,10 +905,11 @@ proc rememberSpill(table: DecodedSpill, address: CodeAddress, decoded: ProgramRe
   table.entries[bucket] = decoded
 
 proc decodeInstructionMiss(program: Program, address: CodeAddress,
-    cache: var InstructionCache, slot, alternative: int): ProgramResult[Instruction] {.noinline.} =
+    cache: var InstructionCache, slot, alternative: int): nil ptr ProgramResult[
+        Instruction] {.noinline.} =
   ## Keep decoding, bounded allocation and replacement off the original two-comparison hit path.
-  result = instruction(program, address)
-  if result.error == ProgramError.None:
+  let decoded = instruction(program, address)
+  if decoded.error == ProgramError.None:
     if cache.spill == nil:
       if cache.misses < 32768:
         inc cache.misses # Saturating successful-miss progress never wraps with guest work.
@@ -919,7 +920,7 @@ proc decodeInstructionMiss(program: Program, address: CodeAddress,
           if entry.error == ProgramError.None: rememberSpill(table, entry.value.address, entry)
         cache.spill = table
     let table = cache.spill
-    if table != nil: rememberSpill(table, address, result)
+    if table != nil: rememberSpill(table, address, decoded)
 
     var destination = slot
     if cache.entries[slot].error == ProgramError.None:
@@ -930,26 +931,30 @@ proc decodeInstructionMiss(program: Program, address: CodeAddress,
         let bucket = slot mod cache.replaceUpper.len
         destination = if cache.replaceUpper[bucket]: bucket+16 else: bucket
         cache.replaceUpper[bucket] = not cache.replaceUpper[bucket]
-    cache.entries[destination] = result
+    cache.entries[destination] = decoded
+    # The caller retains this fixed cache and consumes the fact before any subsequent lookup can replace its slot.
+    return addr cache.entries[destination]
+  nil # Genuine failures remain uncached; private consumers preserve their existing error mapping without selecting payloads.
 
 proc cachedInstruction(program: Program, address: CodeAddress,
-    cache: var InstructionCache): ProgramResult[Instruction] {.inline.} =
-  ## Promoted invocations probe the dominant exact-tagged direct table first; ordinary calls retain both small ways.
+    cache: var InstructionCache): nil ptr ProgramResult[Instruction] {.inline.} =
+  ## Borrow only a genuine complete cache entry through the current callback-free evaluation; no pointer escapes the invocation.
+  ## Fixed arrays cannot relocate, and neither consumer performs another decode lookup or calls a host while using the borrow.
   let table {.cursor.} = cache.spill # The invocation owns this immutable-program fact table through the callback-free lookup.
   if table != nil:
     # Exact PC tags permit copied scalar results only; misses alone enter the allocating cold path.
     let bucket = int(uint64(address) and 16383)
     if table.entries[bucket].error == ProgramError.None and uint64(table.entries[
         bucket].value.address) == uint64(address):
-      return table.entries[bucket]
+      return addr table.entries[bucket]
   let slot = int(uint64(address) mod uint64(cache.entries.len)) # Fixed positive capacity proves the native index.
   if cache.entries[slot].error == ProgramError.None and uint64(cache.entries[slot].value.address) ==
       uint64(address):
-    return cache.entries[slot] # Most existing working sets keep their original single-comparison hit path.
+    return addr cache.entries[slot] # Most existing working sets keep their original single-comparison hit path.
   let alternative = slot xor 16 # Toggling one of five bounded index bits stays within 0..31.
   if cache.entries[alternative].error == ProgramError.None and uint64(cache.entries[
       alternative].value.address) == uint64(address):
-    return cache.entries[alternative]
+    return addr cache.entries[alternative]
   decodeInstructionMiss(program, address, cache, slot, alternative)
 
 # Evaluate recursive Psi iteratively over an already validated program and captured machine.
@@ -1001,11 +1006,11 @@ template budgetBody[UsePlan, UseMemo: static[bool]](source: Machine, remaining: 
     dec remaining # Each attempted instruction consumes exactly one local step, including invalid entry and every exit.
     let causingPc = info.pc # Nonfinal instruction exits preserve registers/memory; only the causing PC needs restoration.
     let decoded = cachedInstruction(program, causingPc, instructions)
-    if decoded.error != ProgramError.None:
+    if decoded == nil:
       info.pc = CodeAddress(0) # Trusted terminal/import snapshots retain the existing uncharged deblob panic rule.
       return publishInstruction(program, memory, info, InstructionEffect(kind: StepExit.Panic), true)
     let evaluated = evaluateSelected[UsePlan, UseMemo](program, info, memory, gasLimit, chargeCache,
-        decoded, plan, memo)
+        decoded[], plan, memo)
     if evaluated.status != StepError.None:
       return StepResult(status: evaluated.status) # The whole private cursor retires; local failures never publish earlier progress.
     let effect = evaluated.effect
@@ -1106,11 +1111,12 @@ proc applyCursorResponse(cursor: var ExecutionCursor, response: HostResponse,
     instructions: var InstructionCache): InstructionEvaluation =
   ## Only a genuine cursor-produced Host reaches this private continuation; reuse its invocation-bound decode.
   let item = cachedInstruction(cursor.program, cursor.info.pc, instructions)
-  if item.error != ProgramError.None: return InstructionEvaluation(
+  if item == nil: return InstructionEvaluation(
       status: StepError.InvalidHostSuspension)
-  if item.value.opcode != 10: return InstructionEvaluation(status: StepError.InvalidHostSuspension)
+  if item[].value.opcode != 10: return InstructionEvaluation(
+      status: StepError.InvalidHostSuspension)
   var exit = StepExit.Continued
-  let applied = applyResponseCursor(cursor, item.value, response, exit)
+  let applied = applyResponseCursor(cursor, item[].value, response, exit)
   if applied != StepError.None: return InstructionEvaluation(status: applied)
   InstructionEvaluation(status: StepError.None, effect: InstructionEffect(kind: exit))
 
