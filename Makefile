@@ -95,7 +95,8 @@ ui-assets: web-toolchain $(if $(filter 1,$(UI_MINIFY)),ui-minifier)
 rust-tools:
 	rustup toolchain install "$(RUSTUP_TOOLCHAIN)" --profile minimal --component rustfmt --no-self-update
 
-# Python provenance/reference tests need pinned sources, but no native toolchain or bridge builds.
+# Check out clean static source submodules at recorded pins, including after parent updates; never overwrite edits.
+# Python provenance/reference tests need these sources, but no native toolchain or bridge builds.
 sources:
 	mkdir -p build/ci
 	$(PYTHON) tools/setup_submodules.py 2>&1 | tee build/ci/sources.log

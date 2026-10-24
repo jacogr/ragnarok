@@ -21,7 +21,13 @@ The installer supports Linux x86-64 and macOS ARM64. [Toolchain pins](../spec/to
 select exact official archives and SHA-256 checksums; no upstream installer runs. Both local
 setup and CI use the same host/identity/version checks. Tools stay under ignored `build/toolchain/`.
 Repeated setup verifies retained archives; unknown hosts fail before executing mismatched tools.
-Upstream source submodules remain pristine.
+Upstream source submodules remain pristine. After pulling or switching a parent revision,
+run `make sources` to check out its recorded source pins. Normal `make setup`, build and check
+prerequisites run the same command. Clean checkouts at older pins are moved to the indexed
+gitlinks, including nested sources; no upstream branch is followed or pushed. Tracked/staged
+edits and ordinary untracked files stop the selected batch before any checkout moves.
+`vendor/jamtestvectors` retains its focused sparse checkout. The command does not change pins
+or use force/reset to discard local source work.
 
 `source build/toolchain/env.sh` optionally exports NIMONY, NIMPRETTY and compiler/formatter-only
 PATH entries. Make activates this managed environment for compiler/formatter commands. Nimpretty comes from
@@ -103,7 +109,7 @@ logic that would become longer, less portable or harder to validate as shell com
 | Helpers | Responsibility |
 | --- | --- |
 | `setup_nimony.py`, `toolchain_archives.py` | Host/archive identity, checksums, safe extraction and installed binary validation |
-| `setup_submodules.py` | Pinned/clean gitlink validation and focused vector checkout |
+| `setup_submodules.py` | Clean pinned-source checkout, dirty-batch preflight and focused vector checkout |
 | `build.py` | Checked platform-specific linker profile and maintained native library preparation |
 | `format.py` | Canonical formatter comparison without modifying files in check mode |
 | `native_tests.py` | Hastur discovery, linking profiles, fixture integrity and ARC observations |
