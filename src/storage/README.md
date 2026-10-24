@@ -383,4 +383,6 @@ publishes its owner only after the complete held extent and final EOF revalidate
 
 Prepared [light journal update batches](../../spec/storage-light-journal-batches.md) authenticate
 bounded consecutive edits privately, retain only their final image, and publish with one append
-barrier. Interrupted groups preserve complete earlier frames for explicit prefix recovery.
+barrier. Interrupted groups preserve complete earlier frames for explicit prefix recovery. Grouped
+[batch process-crash qualification](../../spec/storage-light-journal-batch-crashes.md) checks
+complete-frame boundaries, partial-tail repair and retry without duplicating retained edits.
