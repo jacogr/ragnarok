@@ -86,3 +86,26 @@ with controls, synthetic first/repeat records and exact source/binary hashes und
 was stopped; it is diagnostic-only and contributes no acceptance timing. All final
 timing passes exclude concurrent local builds/checks. These observations establish
 local interpreter behavior, not exact-head Linux performance or whole-JAM throughput.
+
+## Borrowing the writer's immutable base, 2026-10-24
+
+Writer scalar load/store operations borrow their existing base `MemoryData` with
+an explicit cursor. The caller retains the writer throughout the synchronous
+operation, and its base remains fixed: preflight and hint refresh do not change
+it, while store activation/chunk cloning change only private staging. There are
+no callbacks or snapshot publication inside either operation. Snapshot sealing
+retains its existing ownership; this change does not borrow across base replacement.
+
+The Linux instruction profile attributes185,538,171 planned Pinky instructions
+to memory-owner destruction,2.62% of the selected execution total. Generated C
+also shows a source-owner retain plus release paths in each writer load/store.
+The cursor prototype removes those operations while retaining nil-owner checks,
+complete scalar preflight, chunk cloning, bounds/assertion contracts and atomic
+failure/publication behavior. No public API, memory representation or alias rule
+changes. Source, writer aliases and sealed snapshots retain their own strong owners.
+
+Existing writer alias/epoch/chunk tests, the independent4050-row access corpus,
+boundary ordering, metered cross-page repair, nested host reentry and execution
+ARC/cache suites qualify correctness. Paired Linux CPU/synthetic/noise comparison
+must establish the performance result; instruction attribution alone is not a
+speed claim. M1 framing remains scoped, and full-JAM parity remains open.
