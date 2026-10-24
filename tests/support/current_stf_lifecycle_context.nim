@@ -46,3 +46,25 @@ proc creationCode*(mode: int, replacement: array[32, byte], codeLength: uint32):
   instructions.add(if mode in [58, 59]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc requestCode*(mode: int, hash: array[32, byte]): seq[byte] =
+  ## Solicit/forget a single declared identity; checkpoints distinguish removal from a later discarded recreation.
+  var memory = newSeq[byte](32)
+  for index, octet in hash: memory[index] = octet
+  var operations = @[25'u8]
+  case mode
+  of 63: operations = @[25'u8, 26] # Ordinary creation and removal restore the original request footprint.
+  of 64: operations = @[26'u8, 19, 25] # Select the removed request before discarding a later recreation.
+  of 66: operations = @[25'u8, 19] # Retain a genuine pending request after exceptional termination.
+  else: discard # Single-call halt/panic modes share the same literal solicitation.
+  var instructions: seq[seq[byte]] = @[]
+  for operation in operations:
+    if operation == 19:
+      instructions.add(@[10'u8, 19]) # Capture the actual preceding request namespace version.
+    else:
+      for instruction in [registerImmediate(7, high(uint64)), registerImmediate(8, 196608),
+          registerImmediate(9, 1), @[10'u8, operation]]:
+        instructions.add(instruction) # Every call reselects self after the previous protocol return code.
+  instructions.add(if mode in [64, 65, 66]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)
