@@ -212,6 +212,15 @@ census-pvm: setup
 fuzz-pvm-program: toolchain check-inventory
 	$(PYTHON) tools/fuzz_pvm_program.py
 
+# Upstream owns its separate pinned fuzz nightly; ordinary runtime builds never depend on it.
+.PHONY: fuzz-pvm-upstream upstream-fuzz-tools
+upstream-fuzz-tools: sources
+	rustup toolchain install nightly-2025-03-29 --profile minimal
+
+fuzz-pvm-upstream: toolchain rust-tools upstream-fuzz-tools check-inventory
+	rustup run "$(RUSTUP_TOOLCHAIN)" rustfmt --edition 2021 --check tests/fuzz/pvm_upstream_bridge.rs.inc
+	$(PYTHON) tools/fuzz_pvm_upstream.py
+
 # Runtime contract/crash probes retain strict diagnostics without delaying ordinary unit/corpus checks.
 check-failures: setup
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" --group failures 2>&1 | tee build/ci/failures.log
@@ -384,6 +393,7 @@ help:
 	  'make check-modules Check every production module' \
 	  'make check-inventory  Validate local registries without native setup' \
 	  'make fuzz-pvm-program  Run bounded sanitized program fuzzing (FUZZ_RUNS=16..1000000)' \
+	  'make fuzz-pvm-upstream  Run pinned upstream campaigns and JAM interpreter comparisons' \
 	  'make bench-storage  Compare validated memory, journal and managed storage' \
 	  'make bench-storage-growth  Measure sustained storage growth and SDK IO' \
 	  'make bench-pvm      Measure validated PVM workloads against PolkaVM backends' \

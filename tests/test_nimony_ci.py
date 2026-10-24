@@ -57,13 +57,13 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [opened, reopened, synchronize, labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
             # Every group runs once and independently; no omnibus duplicate or serial CI dependency chain.
             self.assertEqual(text.count('run: make '+target+'\n'), 1)
-        self.assertEqual(text.count('needs:'), 7)
+        self.assertEqual(text.count('needs:'), 8)
         self.assertIn('needs: unit', text)
         self.assertNotIn('run: make check\n', text)
         self.assertNotIn('mkdir', text)
@@ -137,7 +137,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && "
                     "github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && "
-                    "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.run_id || github.ref }}")
+                    "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}")
         self.assertIn('group: '+expected+'\n  cancel-in-progress: true', text)
 
     # The matrix covers every partition once, and the stable unit gate rejects every non-success result.
@@ -217,6 +217,7 @@ class NimonyCISafeguards(unittest.TestCase):
         groups = {'compile': ('Compile', ('modules', 'python', 'guards')),
                   'interop': ('Interop', ('pvm-reference', 'telemetry-interop')),
                   'perf': ('Perf', ('bench-pvm', 'bench-storage', 'bench-storage-growth')),
+                  'fuzz': ('Fuzz', ('pvm-fuzz',)),
                   'build': ('Build', ('docker', 'binary'))}
         for group, (name, jobs) in groups.items():
             section = re.search(r'^  '+group+r'-status:\n(.*?)(?=^  [\w-]+:|\Z)',

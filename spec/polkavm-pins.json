@@ -41,6 +41,14 @@
     "crates/polkavm-common/src/abi.rs": "5c8d11c31279346032f0d0cf6e72711d4e75300a3fa182e6ca93c25bb42c92e5",
     "crates/polkavm/src/lib.rs": "162c07e71a6eab40ef152d7a0c0beba4bf73f81dfd72a5ea1974f8d29e0706c8",
     "crates/polkavm/src/sandbox/linux.rs": "bb0238d01dc8410d9dd5db567ee15303933d6cfb43087d5db82f67abde6139f4",
-    "Cargo.toml": "2f0f1176d9dfd0fd84b1b4048b0b2b4578d97f54d9597d6055281dd1cddf5daa"
+    "Cargo.toml": "2f0f1176d9dfd0fd84b1b4048b0b2b4578d97f54d9597d6055281dd1cddf5daa",
+    "fuzz/Cargo.toml": "730f7db350a99493100569b212e94f5b6c50e01fb83cea8ef9617efec14eaf96",
+    "fuzz/Cargo.lock": "2fa069de01a3605afabcc0b4c9983850bda12d603f55baa568c3a3a70fc40ff7",
+    "fuzz/rust-toolchain.toml": "0efa0eba6982366e2d7f6eff84fac9afe9b065c1df8fd03cff6692cfbb86868a",
+    "fuzz/fuzz_targets/fuzz_extended_decode.rs": "5b075ff7972777ac28d66b165204848d8b6b166c48fdb52c764de552058a66a6",
+    "fuzz/fuzz_targets/fuzz_generic_allocator.rs": "f864f92a00dbd856211c86294bcb1ee79e1c9883e50d14ae3c47c208aecd3477",
+    "fuzz/fuzz_targets/fuzz_linker.rs": "6ab673657df73ae02064402dd7b223ff403ccf774a2a8c8e544b2eac6986c430",
+    "fuzz/fuzz_targets/fuzz_program_blob.rs": "3c88ecd4c50e842596da97629750a979874e1183683e4207f555abbc608e6a21",
+    "fuzz/fuzz_targets/fuzz_shm_allocator.rs": "17801d8b001ce11452a9ef93b11158aafdba505c121ef18e5f6ec4cbe7b7ad4b"
   }
 }
