@@ -1,0 +1,500 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Complete full-state graph admission and authenticated reads use fixed traversal state and disk scratch.
+## Synchronous callbacks are borrowed; checked metadata owns no file, producer, graph or scratch buffer.
+import std/assertions
+import ./[full_paged_codec, paged_codec, paged_stream, node_records]
+import ../codec/[bounded, state_layout, state_trie]
+
+const FullPagedFixedBytes* = 4194304'u64 ## Conservative logical workspace, distinct from measured RSS.
+type
+  FullPagedWrite* = proc(offset: PagedOffset, input: openArray[byte]): bool {.closure.}
+    ## Write the complete scratch window or refuse; caller owns a private exact-sized scratch file.
+  FullPagedScratch* = object ## Disposable trusted private IO, never a selected-state or graph authority.
+    input*: PagedInput
+    write*: nil FullPagedWrite
+  FullPagedWorkLimits* = object ## Finite operation budgets count source and scratch IO together.
+    ioCalls*, hashes*, visits*: ElementLimit
+    readBytes*, writeBytes*: ByteLimit
+  FullPagedStreamLimits* = object ## Dataset, history, per-root, scratch and resident limits are independent.
+    dataset*: PagedLimits
+    trie*: StateTrieLimits
+    roots*, cachePages*: ElementLimit
+    workingBytes*, scratchBytes*: ByteLimit
+    work*: FullPagedWorkLimits
+  FullPagedStreamError* {.pure.} = enum ## Missing physical nodes never become protocol-level absence.
+    Uninitialized, None, CodecFailure, LimitExceeded, UnsupportedPolicy, IOFailure,
+    ChangedInput, MissingNode, InvalidGraph, CountMismatch, UnreachableRecord, UnknownRoot
+  FullPagedStreamResult*[T] = object ## Failed/default alternatives have no checked graph or partial value.
+    case status: FullPagedStreamError
+    of None: completed: T
+    of CodecFailure: cause: FullPagedError
+    else: discard
+  FullPagedCounts* = object ## Passive complete-operation work counts confer no graph authority.
+    ready: bool
+    io, hashes, visits, read, written: uint64
+  CheckedFullPagedArtifact* = object ## Complete root-union admission, bound to exact local page integrity.
+    ready: bool
+    header: FullPagedHeader
+    selected: FullPagedManifest
+    policy: FullPagedStreamLimits
+    used: FullPagedCounts
+  FullPagedLookup* = object ## An owned value is distinct from checked protocol absence.
+    present: bool
+    payload: seq[byte]
+  Work = object ## Sticky first-error state; no callbacks or allocations live in this owner.
+    status: FullPagedStreamError
+    cause: FullPagedError
+    limits: FullPagedStreamLimits
+    used: FullPagedCounts
+  Counter {.pure.} = enum ## Named channels prevent aliasing a mutable owner and its nested fields.
+    IO, Hash, Visit, Read, Write
+  PageCache = object ## Zero/one-cache policy uses one fixed transient buffer in both modes.
+    ready: bool
+    ordinal: uint64
+    bytes: array[PagedPageBytes, byte]
+  GraphCounts = object ## Per-root totals never infer completeness from stored claims.
+    entries, nodes, values: uint64
+
+func error*[T](outcome: FullPagedStreamResult[T]): FullPagedStreamError =
+  ## Inspect only the selected outcome.
+  outcome.status
+func value*[T](outcome: FullPagedStreamResult[T]): T {.inline,
+    requires: outcome.status == FullPagedStreamError.None.} =
+  ## Extract only a complete graph/lookup result.
+  outcome.completed
+func codecError*[T](outcome: FullPagedStreamResult[T]): FullPagedError {.requires:
+    outcome.status == FullPagedStreamError.CodecFailure.} =
+  ## Preserve selected format/provider diagnostics without exposing inactive fields.
+  outcome.cause
+func initialized*(checked: CheckedFullPagedArtifact): bool =
+  ## Default checked metadata has no graph authority.
+  checked.ready
+func header*(checked: CheckedFullPagedArtifact): FullPagedHeader {.requires: checked.ready.} =
+  ## Return complete admitted scalar claims only.
+  checked.header
+func manifest*(checked: CheckedFullPagedArtifact): FullPagedManifest {.requires: checked.ready.} =
+  ## Native owners still supply immutable inode/pin/durability authority separately.
+  checked.selected
+func counts*(checked: CheckedFullPagedArtifact): FullPagedCounts {.requires: checked.ready.} =
+  ## Copy passive actual counters from successful complete admission.
+  checked.used
+func ioCalls*(counts: FullPagedCounts): uint64 {.requires: counts.ready.} =
+  ## Includes source and scratch reads, writes and extent checks.
+  counts.io
+func hashes*(counts: FullPagedCounts): uint64 {.requires: counts.ready.} =
+  ## Count local page/digest and canonical record hash operations.
+  counts.hashes
+func visits*(counts: FullPagedCounts): uint64 {.requires: counts.ready.} =
+  ## Count complete-root physical graph visits, including shared records in separate roots.
+  counts.visits
+func readBytes*(counts: FullPagedCounts): uint64 {.requires: counts.ready.} =
+  ## Account every requested source and scratch octet before dispatch.
+  counts.read
+func writeBytes*(counts: FullPagedCounts): uint64 {.requires: counts.ready.} =
+  ## Account every scratch write before dispatch.
+  counts.written
+func present*(lookup: FullPagedLookup): bool =
+  ## A successful terminal miss is protocol absence in a completely admitted graph.
+  lookup.present
+proc bytes*(lookup: FullPagedLookup): seq[byte] {.requires: lookup.present.} =
+  ## Returned mutable value bytes are independently owned by the caller.
+  result = newSeq[byte](lookup.payload.len)
+  for index in 0..<lookup.payload.len: result[index] = lookup.payload[index] # Detach mutable output.
+proc fail(work: var Work, reason: FullPagedStreamError) =
+  ## Preserve the first failure across recursive traversal and cleanup.
+  if work.status == FullPagedStreamError.None: work.status = reason
+proc codec(work: var Work, reason: FullPagedError): bool =
+  ## Only the first codec refusal selects its diagnostic.
+  if reason != FullPagedError.None and work.status == FullPagedStreamError.None:
+    work.status = FullPagedStreamError.CodecFailure
+    work.cause = reason
+  reason == FullPagedError.None and work.status == FullPagedStreamError.None
+func refused[T](work: Work): FullPagedStreamResult[T] =
+  ## Failed operations contain only a reason and an optional selected codec cause.
+  if work.status == FullPagedStreamError.CodecFailure:
+    return FullPagedStreamResult[T](status: FullPagedStreamError.CodecFailure, cause: work.cause)
+  FullPagedStreamResult[T](status: work.status)
+proc increment(used: var uint64, amount, maximum: uint64): bool =
+  ## Prove additions before evaluating wrapping native integer arithmetic.
+  if used > maximum or amount > maximum-used: return false
+  used += amount
+  true
+proc charge(work: var Work, channel: Counter, amount: uint64): bool =
+  ## Quota refusal always occurs before callback dispatch or cryptography.
+  if work.status != FullPagedStreamError.None: return false
+  let limits = work.limits.work
+  let admitted = case channel
+    of Counter.IO: increment(work.used.io, amount, uint64(limits.ioCalls))
+    of Counter.Hash: increment(work.used.hashes, amount, uint64(limits.hashes))
+    of Counter.Visit: increment(work.used.visits, amount, uint64(limits.visits))
+    of Counter.Read: increment(work.used.read, amount, uint64(limits.readBytes))
+    of Counter.Write: increment(work.used.written, amount, uint64(limits.writeBytes))
+  if not admitted: work.fail(FullPagedStreamError.LimitExceeded)
+  admitted
+func initWork(limits: FullPagedStreamLimits): Work =
+  ## Four admitted record/value transports plus fixed traversal/page scratch bound all resident work.
+  result = Work(status: FullPagedStreamError.None, limits: limits, used: FullPagedCounts(ready: true))
+  let available = uint64(limits.workingBytes)
+  if available < FullPagedFixedBytes or uint64(limits.trie.perValue) > (
+      available-FullPagedFixedBytes) div 4:
+    result.status = FullPagedStreamError.LimitExceeded
+  elif uint64(limits.cachePages) > 1:
+    result.status = FullPagedStreamError.UnsupportedPolicy
+proc readExact(io: PagedInput, offset: uint64, output: var openArray[byte], work: var Work): bool =
+  ## No buffer or callback escapes synchronous complete-window reads.
+  let callback = io.read
+  if callback == nil:
+    work.fail(FullPagedStreamError.Uninitialized)
+    return false
+  if not work.charge(Counter.IO, 1) or not work.charge(Counter.Read, uint64(
+      output.len)): return false
+  if not callback(PagedOffset(offset), output): work.fail(FullPagedStreamError.IOFailure)
+  work.status == FullPagedStreamError.None
+proc checkExtent(io: PagedInput, expected: uint64, work: var Work): bool =
+  ## Real EOF and native held-version checks belong to the borrowed IO implementation.
+  let callback = io.extent
+  if callback == nil:
+    work.fail(FullPagedStreamError.Uninitialized)
+    return false
+  if not work.charge(Counter.IO, 1): return false
+  var actual = 0'u64
+  if not callback(actual): work.fail(FullPagedStreamError.IOFailure)
+  elif actual != expected: work.fail(FullPagedStreamError.ChangedInput)
+  work.status == FullPagedStreamError.None
+proc writeScratch(scratch: FullPagedScratch, offset: uint64, input: openArray[byte],
+    work: var Work): bool =
+  ## Scratch writes cannot mutate the source; callbacks are trusted private-workspace operations.
+  let callback = scratch.write
+  if callback == nil:
+    work.fail(FullPagedStreamError.Uninitialized)
+    return false
+  if not work.charge(Counter.IO, 1) or not work.charge(Counter.Write, uint64(
+      input.len)): return false
+  if not callback(PagedOffset(offset), input): work.fail(FullPagedStreamError.IOFailure)
+  work.status == FullPagedStreamError.None
+proc zero(scratch: FullPagedScratch, offset, size: uint64, work: var Work): bool =
+  ## Fixed zero windows initialize and reset membership without dataset-sized resident bitmaps.
+  var buffer = default(array[4096, byte])
+  var cursor = 0'u64
+  while cursor < size:
+    # Bounded subtraction controls final partial scratch writes.
+    let count = int(min(size-cursor, 4096'u64))
+    if not scratch.writeScratch(offset+cursor, buffer.toOpenArray(0, count-1), work): return false
+    cursor += uint64(count)
+  work.status == FullPagedStreamError.None
+proc page(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest, ordinal: uint64,
+    cache: var PageCache, work: var Work): bool =
+  ## Authenticate one data page against captured full-format integrity before exposing any bytes.
+  if work.status != FullPagedStreamError.None: return false
+  if uint64(work.limits.cachePages) == 1 and cache.ready and cache.ordinal == ordinal: return true
+  cache.ready = false
+  let shape = header.geometry
+  let planned = pagedPath(shape, PageOrdinal(ordinal))
+  if planned.error != PagedCodecError.None:
+    work.fail(FullPagedStreamError.InvalidGraph)
+    return false
+  if not io.readExact(ordinal*4096, cache.bytes, work): return false
+  if not work.charge(Counter.Hash, 1): return false
+  let leaf = fullPagedLeafDigest(shape, PageOrdinal(ordinal), cache.bytes)
+  if not work.codec(leaf.error): return false
+  var current = leaf.value
+  let path = planned.value
+  for level in 0..<path.len:
+    # Address schedules are arithmetic-only and bounded to at most 63 digest siblings.
+    var raw = default(array[32, byte])
+    let step = path.step(level)
+    if not io.readExact(uint64(step.offset), raw, work): return false
+    if not work.charge(Counter.Hash, 1): return false
+    let sibling = FullPagedDigest(raw)
+    let joined = if step.siblingLeft: fullPagedNodeDigest(sibling, current) else:
+      fullPagedNodeDigest(current, sibling)
+    if not work.codec(joined.error): return false
+    current = joined.value
+  if array[32, byte](current) != array[32, byte](selected.pageRoot):
+    discard work.codec(FullPagedError.ChecksumMismatch)
+    return false
+  cache.ready = true
+  cache.ordinal = ordinal
+  true
+proc range(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest, offset: uint64,
+    output: var openArray[byte], cache: var PageCache, work: var Work): bool =
+  ## Every requested extent remains within real data pages and can cross page boundaries safely.
+  let bound = uint64(header.geometry.treeOffset)
+  if offset > bound or uint64(output.len) > bound-offset:
+    work.fail(FullPagedStreamError.InvalidGraph)
+    return false
+  var filled = 0
+  while filled < output.len:
+    # Exact remaining bytes and one authenticated page bound each copied window.
+    let cursor = offset+uint64(filled)
+    let within = int(cursor mod 4096)
+    let count = min(output.len-filled, 4096-within)
+    if not io.page(header, selected, cursor div 4096, cache, work): return false
+    for index in 0..<count: output[filled+index] = cache.bytes[within+index] # Bounded complete copy.
+    filled += count
+  true
+proc row(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest, ordinal: uint64,
+    cache: var PageCache, work: var Work): FullPagedRow =
+  ## Ordinal bounds precede fixed-row address multiplication.
+  if ordinal >= header.geometry.entries:
+    work.fail(FullPagedStreamError.InvalidGraph)
+    return default(FullPagedRow)
+  var raw = default(array[64, byte])
+  if not io.range(header, selected, 4096+ordinal*64, raw, cache, work): return default(FullPagedRow)
+  let decoded = decodeFullPagedRow(raw, header.geometry)
+  if not work.codec(decoded.error): return default(FullPagedRow)
+  decoded.value
+proc position(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest,
+    digest: StateNodeHash, cache: var PageCache, work: var Work): uint64 =
+  ## Disk binary search uses full physical addresses; count is the private missing sentinel.
+  var first = 0'u64
+  var stop = header.geometry.entries
+  while first < stop and work.status == FullPagedStreamError.None:
+    # Difference-based midpoint never overflows the admitted ordinal interval.
+    let middle = first+(stop-first) div 2
+    let found = io.row(header, selected, middle, cache, work)
+    if work.status != FullPagedStreamError.None: return header.geometry.entries
+    let order = compareFullHash(array[32, byte](found.digest), array[32, byte](digest))
+    if order < 0: first = middle+1
+    elif order > 0: stop = middle
+    else: return middle
+  header.geometry.entries
+proc record(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest,
+    ordinal: uint64, cache: var PageCache, work: var Work): TrieRecord =
+  ## One bounded raw record and one decoded value coexist; no complete-record table is retained.
+  let found = io.row(header, selected, ordinal, cache, work)
+  if work.status != FullPagedStreamError.None: return default(TrieRecord)
+  let size = found.byteLength
+  let valueLimit = uint64(work.limits.trie.perValue)
+  if size > uint64(high(int)) or (size != 97 and (size < 72 or size-72 > valueLimit)):
+    work.fail(FullPagedStreamError.LimitExceeded)
+    return default(TrieRecord)
+  var raw = newSeq[byte](int(size))
+  if not io.range(header, selected, uint64(header.geometry.payloadOffset)+found.offset,
+      raw, cache, work): return default(TrieRecord)
+  let hashCount = (if size > 104: 2'u64 else: 1'u64)
+  if not work.charge(Counter.Hash, hashCount): return default(TrieRecord)
+  let decoded = decodeFullPagedRecord(raw, found.digest, work.limits.trie.perValue)
+  if not work.codec(decoded.error): return default(TrieRecord)
+  decoded.value
+proc tree(io: PagedInput, shape: PagedGeometry, start, width: uint64, cursor: var uint64,
+    work: var Work): FullPagedDigest =
+  ## Fixed-depth postorder recursion checks every stored digest, including nonphysical padding leaves.
+  if work.status != FullPagedStreamError.None: return default(FullPagedDigest)
+  var calculated = default(FullPagedDigest)
+  if width == 1:
+    # Exactly one real page or a domain-separated nonphysical padding leaf contributes.
+    if start < shape.dataPages:
+      var raw = default(array[4096, byte])
+      if not io.readExact(start*4096, raw, work): return calculated
+      if not work.charge(Counter.Hash, 1): return calculated
+      let hashed = fullPagedLeafDigest(shape, PageOrdinal(start), raw)
+      if not work.codec(hashed.error): return calculated
+      calculated = hashed.value
+    else:
+      if not work.charge(Counter.Hash, 1): return calculated
+      let hashed = fullPagedPaddingDigest(shape, PageOrdinal(start))
+      if not work.codec(hashed.error): return calculated
+      calculated = hashed.value
+  else:
+    # Geometry bounds tree height and all start/width arithmetic before traversal begins.
+    let left = io.tree(shape, start, width div 2, cursor, work)
+    let right = io.tree(shape, start+width div 2, width div 2, cursor, work)
+    if not work.charge(Counter.Hash, 1): return calculated
+    let hashed = fullPagedNodeDigest(left, right)
+    if not work.codec(hashed.error): return calculated
+    calculated = hashed.value
+  var stored = default(array[32, byte])
+  if not io.readExact(cursor, stored, work): return calculated
+  if stored != array[32, byte](calculated): discard work.codec(FullPagedError.ChecksumMismatch)
+  cursor += 32
+  calculated
+proc graph(io: PagedInput, scratch: FullPagedScratch, header: FullPagedHeader,
+    selected: FullPagedManifest, digest: StateNodeHash, depth: int, prefix: array[31, byte],
+    counts: var GraphCounts, cache: var PageCache, work: var Work) =
+  ## Complete full-root traversal validates every edge, routed leaf and root-specific visited membership.
+  if work.status != FullPagedStreamError.None: return
+  if array[32, byte](digest) == default(array[32, byte]): return
+  if not work.charge(Counter.Visit, 1): return
+  let index = io.position(header, selected, digest, cache, work)
+  if work.status != FullPagedStreamError.None: return
+  if index == header.geometry.entries:
+    work.fail(FullPagedStreamError.MissingNode)
+    return
+  var flag = default(array[1, byte])
+  if not scratch.input.readExact(index, flag, work): return
+  if flag[0] != 0:
+    work.fail(FullPagedStreamError.InvalidGraph)
+    return
+  flag[0] = 1
+  if not scratch.writeScratch(index, flag, work): return
+  if not scratch.writeScratch(header.geometry.entries+index, flag, work): return
+  if counts.nodes >= uint64(work.limits.trie.nodes):
+    work.fail(FullPagedStreamError.LimitExceeded)
+    return
+  inc counts.nodes
+  let current = io.record(header, selected, index, cache, work)
+  if work.status != FullPagedStreamError.None: return
+  if current.kind == TrieRecordKind.Leaf:
+    # Every routed high bit is checked, with depth 248 still inside the complete serialized key.
+    let key = array[31, byte](current.key)
+    for bit in 0..<depth:
+      let mask = byte(128 shr (bit mod 8))
+      if (key[bit div 8] and mask) != (prefix[bit div 8] and mask):
+        work.fail(FullPagedStreamError.InvalidGraph)
+        return
+    let size = uint64(current.payload.len)
+    if counts.entries >= uint64(work.limits.trie.items) or
+        size > uint64(work.limits.trie.totalValueBytes)-counts.values:
+      work.fail(FullPagedStreamError.LimitExceeded)
+      return
+    inc counts.entries
+    counts.values += size
+  else:
+    # Branches cannot route beyond the last serialized key bit; singleton subtrees must collapse.
+    if depth >= 248:
+      work.fail(FullPagedStreamError.InvalidGraph)
+      return
+    let before = counts.entries
+    io.graph(scratch, header, selected, current.left, depth+1, prefix, counts, cache, work)
+    var rightPrefix = prefix
+    rightPrefix[depth div 8] = rightPrefix[depth div 8] or byte(128 shr (depth mod 8))
+    io.graph(scratch, header, selected, current.right, depth+1, rightPrefix, counts, cache, work)
+    if counts.entries-before < 2: work.fail(FullPagedStreamError.InvalidGraph)
+proc padding(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest,
+    first, stop: uint64, cache: var PageCache, work: var Work): bool =
+  ## Canonical zero suffixes exclude hidden bytes outside index/payload framing even with valid page hashes.
+  var cursor = first
+  while cursor < stop:
+    # Padding is less than one page per section, and never requires a resident section buffer.
+    if not io.page(header, selected, cursor div 4096, cache, work): return false
+    let stopInPage = min(stop-cursor, 4096-(cursor mod 4096))
+    for index in 0..<int(stopInPage):
+      # One authenticated page supplies this entire zero suffix, even in zero-cache mode.
+      if cache.bytes[int(cursor mod 4096)+index] != 0:
+        discard work.codec(FullPagedError.InvalidFormat)
+        return false
+    cursor += stopInPage
+  work.status == FullPagedStreamError.None
+proc validateFullPaged*(io: PagedInput, scratch: FullPagedScratch, header: FullPagedHeader,
+    selected: FullPagedManifest, limits: FullPagedStreamLimits): FullPagedStreamResult[
+        CheckedFullPagedArtifact] =
+  ## Full admission rechecks physical bytes, complete graphs and exact root union before retaining metadata.
+  var work = initWork(limits)
+  if not header.initialized:
+    work.fail(FullPagedStreamError.Uninitialized)
+    return refused[CheckedFullPagedArtifact](work)
+  let shape = header.geometry
+  if uint64(header.len) > uint64(limits.roots) or shape.entries > uint64(limits.dataset.entries) or
+      shape.byteLength > uint64(limits.dataset.bytes) or shape.entries > uint64(
+          limits.scratchBytes) div 2:
+    work.fail(FullPagedStreamError.LimitExceeded)
+  if work.status != FullPagedStreamError.None: return refused[CheckedFullPagedArtifact](work)
+  if not work.charge(Counter.Hash, 1): return refused[CheckedFullPagedArtifact](work)
+  let encoded = selected.bytes
+  if not work.codec(encoded.error): return refused[CheckedFullPagedArtifact](work)
+  if not work.charge(Counter.Hash, 1): return refused[CheckedFullPagedArtifact](work)
+  let binding = decodeFullPagedManifest(encoded.value, header)
+  if not work.codec(binding.error): return refused[CheckedFullPagedArtifact](work)
+  if not io.checkExtent(shape.byteLength, work): return refused[CheckedFullPagedArtifact](work)
+  if not scratch.input.checkExtent(shape.entries*2, work): return refused[CheckedFullPagedArtifact](work)
+  var rawHeader = default(array[4096, byte])
+  if not io.readExact(0, rawHeader, work): return refused[CheckedFullPagedArtifact](work)
+  if rawHeader != header.bytes:
+    work.fail(FullPagedStreamError.ChangedInput)
+    return refused[CheckedFullPagedArtifact](work)
+  var cursor = uint64(shape.treeOffset)
+  let root = io.tree(shape, 0, shape.treeLeaves, cursor, work)
+  if work.status != FullPagedStreamError.None: return refused[CheckedFullPagedArtifact](work)
+  if cursor != shape.byteLength or array[32, byte](root) != array[32, byte](selected.pageRoot):
+    discard work.codec(FullPagedError.ChecksumMismatch)
+    return refused[CheckedFullPagedArtifact](work)
+  var cache = default(PageCache)
+  var scan = initFullPagedIndexScan(shape)
+  for ordinal in 0'u64..<shape.entries:
+    # Read every record before traversing so an unreachable malformed record cannot hide behind graph failures.
+    var raw = default(array[64, byte])
+    if not io.range(header, selected, 4096+ordinal*64, raw, cache, work): return refused[
+        CheckedFullPagedArtifact](work)
+    let admitted = scan.admit(raw)
+    if not work.codec(admitted.error): return refused[CheckedFullPagedArtifact](work)
+    discard io.record(header, selected, ordinal, cache, work)
+    if work.status != FullPagedStreamError.None: return refused[CheckedFullPagedArtifact](work)
+  if not work.codec(scan.finish): return refused[CheckedFullPagedArtifact](work)
+  if not io.padding(header, selected, 4096+shape.entries*64, uint64(shape.payloadOffset),
+      cache, work): return refused[CheckedFullPagedArtifact](work)
+  if not io.padding(header, selected, uint64(shape.payloadOffset)+shape.payloadBytes,
+      uint64(shape.treeOffset), cache, work): return refused[CheckedFullPagedArtifact](work)
+  if not scratch.zero(0, shape.entries*2, work): return refused[CheckedFullPagedArtifact](work)
+  for index in 0..<header.len:
+    # Per-root visitation resets independently; retained-union membership survives all roots.
+    if index != 0 and not scratch.zero(0, shape.entries, work): return refused[
+        CheckedFullPagedArtifact](work)
+    let claim = header.retainedRoot(index)
+    var counts = default(GraphCounts)
+    io.graph(scratch, header, selected, StateNodeHash(array[32, byte](claim.root)), 0,
+      default(array[31, byte]), counts, cache, work)
+    if work.status != FullPagedStreamError.None: return refused[CheckedFullPagedArtifact](work)
+    if counts.entries != claim.entries or counts.nodes != claim.nodes or counts.values !=
+        claim.valueBytes:
+      work.fail(FullPagedStreamError.CountMismatch)
+      return refused[CheckedFullPagedArtifact](work)
+  for ordinal in 0'u64..<shape.entries:
+    # An exact compact union contains every reachable record and no unclaimed historical garbage.
+    var flag = default(array[1, byte])
+    if not scratch.input.readExact(shape.entries+ordinal, flag, work): return refused[
+        CheckedFullPagedArtifact](work)
+    if flag[0] != 1:
+      work.fail(FullPagedStreamError.UnreachableRecord)
+      return refused[CheckedFullPagedArtifact](work)
+  if not io.checkExtent(shape.byteLength, work): return refused[CheckedFullPagedArtifact](work)
+  if not scratch.input.checkExtent(shape.entries*2, work): return refused[CheckedFullPagedArtifact](work)
+  FullPagedStreamResult[CheckedFullPagedArtifact](status: FullPagedStreamError.None,
+    completed: CheckedFullPagedArtifact(ready: true, header: header, selected: selected,
+      policy: limits, used: work.used))
+proc lookupFullPaged*(io: PagedInput, checked: CheckedFullPagedArtifact, root: StateRoot,
+    key: StateKey): FullPagedStreamResult[FullPagedLookup] =
+  ## Only an admitted retained root permits an owned lookup or authenticated protocol absence.
+  if not checked.ready: return FullPagedStreamResult[FullPagedLookup](
+      status: FullPagedStreamError.Uninitialized)
+  var work = initWork(checked.policy)
+  let header = checked.header
+  var retained = false
+  for index in 0..<header.len:
+    # No caller-substituted same-header root gains graph authority.
+    if array[32, byte](root) == array[32, byte](header.retainedRoot(index).root): retained = true
+  if not retained:
+    work.fail(FullPagedStreamError.UnknownRoot)
+    return refused[FullPagedLookup](work)
+  if not io.checkExtent(header.geometry.byteLength, work): return refused[FullPagedLookup](work)
+  var cache = default(PageCache)
+  var digest = StateNodeHash(array[32, byte](root))
+  var depth = 0
+  var lookup = FullPagedLookup(present: false)
+  let query = array[31, byte](key)
+  while array[32, byte](digest) != default(array[32, byte]):
+    # The originally checked topology bounds this path, while current reads stay page-authenticated.
+    if not work.charge(Counter.Visit, 1): return refused[FullPagedLookup](work)
+    let index = io.position(header, checked.selected, digest, cache, work)
+    if work.status != FullPagedStreamError.None: return refused[FullPagedLookup](work)
+    if index == header.geometry.entries:
+      work.fail(FullPagedStreamError.MissingNode)
+      return refused[FullPagedLookup](work)
+    let current = io.record(header, checked.selected, index, cache, work)
+    if work.status != FullPagedStreamError.None: return refused[FullPagedLookup](work)
+    if current.kind == TrieRecordKind.Leaf:
+      # Complete key equality establishes presence; a different valid terminal key establishes absence.
+      lookup = FullPagedLookup(present: array[31, byte](current.key) == query)
+      if lookup.present: lookup.payload = current.payload
+      digest = default(StateNodeHash)
+    else:
+      if depth >= 248:
+        work.fail(FullPagedStreamError.InvalidGraph)
+        return refused[FullPagedLookup](work)
+      let right = (query[depth div 8] and byte(128 shr (depth mod 8))) != 0
+      digest = (if right: current.right else: current.left)
+      inc depth
+  if not io.checkExtent(header.geometry.byteLength, work): return refused[FullPagedLookup](work)
+  FullPagedStreamResult[FullPagedLookup](status: FullPagedStreamError.None, completed: lookup)
