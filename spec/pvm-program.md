@@ -261,3 +261,18 @@ reclassifying the destination. Publication changes only evidence and the profile
 expanded coverage above the timed runtime; the complete feature patch remains
 byte-identical. Raw first/repeat reports live under `build/pvm12/ci-40132488022/`
 and `build/pvm12/ci-40132488022-attempt2/`.
+
+
+### Arithmetic destination instruction-profile confirmation
+
+CI40135301299 passes all five scoped full-state/source profiles and scope/assertion
+controls, with all24 captured C files verified. Inputs, build commands, cases and
+scope match parent profile40133617980; recorded source identities differ only in
+program.nim/register_ops.nim and their frozen snapshots. Native instructions change
+-2.086% dynamic Pinky (5,676,199,554→5,557,802,478), -2.588% planned Pinky
+(5,323,559,981→5,185,810,826), -2.805% planned sieve100000
+(176,015,342→171,078,722), -1.038% planned indirect100000
+(430,868,974→426,395,039), and -1.049% planned memory fill100000
+(199,920,934→197,823,901). Instrumented clocks are discarded. These counter changes
+support the separate paired results without predicting timing or memo-policy gains.
+The full archive and source-binding proof remain under `build/pvm12/ci-40135301299/`.
