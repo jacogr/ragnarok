@@ -682,9 +682,8 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
       # Every admitted nonterminator advances by the decoded skip, except a failed scalar access retaining its genuine causing PC.
       if outcome != StepExit.Fault and not instructionHasFallthrough(decoded):
         return InstructionEvaluation(status: StepError.InvalidMachine)
-    elif instructionOpcode(program, info.pc).error != ProgramError.None:
-      # Every control successor keeps the complete executable-location check before the next attempt or budget refusal.
-      return InstructionEvaluation(status: StepError.InvalidMachine)
+    # Continued controls already selected a complete executable block: sealed static/fallthrough facts or a checked dynamic target.
+    # No program mutation or callback occurs before this point, so another opcode lookup would only repeat that validation.
   # The workspace owns staged writes; published source/exit snapshots never expose its mutable storage.
   if outcome == StepExit.Fault:
     return InstructionEvaluation(status: StepError.None,

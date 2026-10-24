@@ -222,3 +222,6 @@ Raw samples and exact build/source/binary identities remain in
 same feature folder. These Apple M1 Max observations do not establish Linux or whole-JAM speed.
 M1 framing remains complete in its documented scope; full state serialization/STF parity and the
 existing fuzzing/compiled-comparison deferrals remain unchanged.
+
+Continuing-control destination reuse and its exact-state/paired measurement evidence are recorded
+in [validated control successors](pvm-control-successors.md).
