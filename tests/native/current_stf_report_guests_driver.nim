@@ -91,7 +91,8 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   let replacementHash = array[32, byte](blake2b256(replacement).value)
   let codes = [(if mode in 42..46: memoReceiverCode(mode) elif mode in 15..19: forwardingCode(mode)
     else: namespaceHaltCode()),
-    (if mode >= 47: upgradeCode(mode, replacementHash) elif mode >= 42: memoSenderCode()
+    (if mode >= 52: supervisorCode(mode) elif mode >= 47: upgradeCode(mode,
+        replacementHash) elif mode >= 42: memoSenderCode()
     elif mode >= 28: admissionTransferCode(mode) elif mode >= 20: poolTransferCode(mode)
     elif mode >= 5: transferCode(mode) else: guest(mode))]
   var seeds = namespaceSeeds()
@@ -131,6 +132,10 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       options.secondBalance = 0
       options.secondSupervisorBalance = 1000000
     if mode >= 24: options.signed.accountSupervisor = 99 # Direct credit requires actual destination authority.
+  if mode in 52..56:
+    # Actual protected-only funds make the post-reassignment authority check distinguishable from ordinary funding.
+    options.secondBalance = 0
+    options.secondSupervisorBalance = 1000000
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -252,14 +257,14 @@ proc main() {.raises.} =
       missingCode = fields.len == 3
       if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 52
+      assert mode >= 0 and mode < 57
       bodies = @[]
       slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert mode in [4, 9, 14, 19, 27, 41, 46, 51] and bodies.len >
+  assert mode in [4, 9, 14, 19, 27, 41, 46, 51, 56] and bodies.len >
       0 # Strict independent output comparison binds each complete chain length.
   run(base, mode, bodies, missingCode, slots)
 

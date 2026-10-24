@@ -14,3 +14,16 @@ proc upgradeCode*(mode: int, replacement: array[32, byte]): seq[byte] =
   instructions.add(if mode in [48, 49]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc supervisorCode*(mode: int): seq[byte] =
+  ## Reassign self supervision before attempting a protected-pool deferred transfer, making lost authority observable.
+  let nominee = if mode == 53: high(uint64) elif mode == 54: 77'u64 else: 42'u64
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, nominee), @[10'u8, 29]]
+  if mode == 56: instructions.add(@[10'u8, 19]) # Capture the changed supervisor before the later protected-transfer attempt.
+  for instruction in [registerImmediate(7, high(uint64)), registerImmediate(8, 42),
+      registerImmediate(9, 1), registerImmediate(10, 7), registerImmediate(11, 10000),
+      registerImmediate(12, 196608), @[10'u8, 22]]:
+    instructions.add(instruction) # Every transfer reads the actual earlier supervisor mutation in this invocation.
+  instructions.add(if mode in [55, 56]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, writable = newSeq[byte](128)): result.add(octet)

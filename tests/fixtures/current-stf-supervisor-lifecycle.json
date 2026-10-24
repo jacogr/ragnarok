@@ -1,0 +1,180 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "base_fixture_sha256": "b3f3e0df9b7be08edca890add2fba8f187c9db847ea7d558e25c271e01140bc9",
+  "successor_roots": [
+    [
+      "e157cba0170981bd814c3aea7b1614bba887812a101f89775262a7a71165b7fb",
+      "9eeac07463f28b9a9208549f42d544f77405397e5df29a7f4277cd3b7ce263a0",
+      "0e554694fb2782a0cd5a46e4cd92ccf087cebcfc6e5a7a1ea05b5bbc11b31c49",
+      "7a6eeeba9482a89d5f2c5abf3f13aa2ced31610182ae528edf8a1efdffae0046",
+      "a6a36bd9fbdabd3b7d5ee5225a32dd310507d750be7360bfa9829d44dfe88148",
+      "ec83ebc365c9c04b012044af46c1ea056195946f7c63109067462f71f6927fe7"
+    ],
+    [
+      "0a1a047dbf4af9d94e77773dc4aa7c166c77dc50b3f0140d4bd6d7480c34aa14",
+      "cdc128f58ca5524ddc85034ac5804d10016a1f613dff4965cf2b0806e7577fe6",
+      "a634543c18733b1bb6c5dd9f4e73b761ca3ff4eb9b3e8f9cf2d2b02f9ef516e5",
+      "d7cace0acab1488dd1a04e501b177038ab9cdd4e186e8d92ca8da548db21474e",
+      "f732da4e9ada5fde1b965368b724ef9d1486b000ac33c083b3b9ea0ef1c44a49",
+      "9a4e52361c15bc04f6fb559678ed5a83ac74e593bb875df26224292ca865d7ee"
+    ],
+    [
+      "39e3adba3d4d7dd8bf32b494663303565f75baad1cf23b3cf45cd38b0051d1dc",
+      "a7675a230a100be19975f1441c9d97d71871df775287893b5cb0684b7c11fcda",
+      "27775372e3ed7c11bfd813b82b2373234dbf07c46e88a654bbc1f7479c5aad89",
+      "1578d10e93fc0d61b2db932bda3c1da9c8b79c83049b48805269400322ea3d8d",
+      "43bfb04a6544d172c73d2d5ce1b7a047d3c6faf1a472002ebef41072c3b3f9e6",
+      "877edbd3b4ae0e0fd6912880218529ca809e31548c914cff8cd7ad1b3bc6137e"
+    ],
+    [
+      "ecbb85cdbf188d169607f31c64c35688a3421d753eb60c99535e8ce92974f77a",
+      "4eb79d1c173af1b57e340967bb443dce30d7979b9352805983a9c98bed4a1afb",
+      "23913bcc42c09440c460c741880da31da894f1f20a1de8d482f1ad74546e03d6",
+      "3a1e95be90e34285db9dbca6ce27fe579aca83035932d9870ceec6f139b421c7",
+      "259d12750c5e47047fccb7c9a547ee21ea42f0804c109d12b9938c812a058548",
+      "17a3b6f3047a70a02c5dc770114979af18988287f7fca107c969db12b4292b64"
+    ],
+    [
+      "6378d93cce952160969edb69cbe91b435464fd161c5af79fe99c80fb28620d16",
+      "341616c46b6079009b2453d64eebf433c192ff00162c48e4a9b5bbe41bf2fc00",
+      "a99b976575313ecb9a4b9844ace493a9c8f4d37576be6c0cab908b67379981fb",
+      "c30bf9fddc85701f8fae482ea507a146afa5c827ee9c4090778d7e6fb4277392",
+      "8d3025a6ebe9a574007871cfc25819c068e9e37b40fd1df490ee1141bc5a8e7a",
+      "19d6644c7bffab64f274a77908e29e40991bb2097d9b3876106933be3164b806"
+    ]
+  ],
+  "successor_checkpoint_sha256": [
+    [
+      "cb73810ba54f82fe79fe2a5eb8ae95767ea70f67b2275b559f8c2033bf4aad3a",
+      "d7d58b8cbf9e1d314d4fc2f84cec6553a3ff28afca0166d2118a83c249cd0d25",
+      "cb35ae822a0a8445b78213fa738c3d7dc387dcb513a744222ffbfd3468f3d931",
+      "243e1babd3d047b868c5e20500361051151e3553384412d02ae1d73683ca9d59",
+      "41d871e01b2c324aeae2efd065784978751cf7e97def6d73f1333a3528b3983c",
+      "c29260e4445079c9546dd9e13284cc06bea4bfe77206953fde2abe264232d4f7"
+    ],
+    [
+      "5e14f8d250da347260ac517495f44e7aba9ff0c6e1bb2cbcaf82705688c08a4f",
+      "8b59565c5483e4b51a20e39fd2c346c0b8d886768619ba3323709e1818cc5312",
+      "1ddcbe049f6fa52b4596aa3d0bf825085addfe1f81b04032abe8a488683f3661",
+      "98f16501ca6215c8de3a8db549949044284f61a5514acd4c1281345797976a80",
+      "78c10487b76878a0100d2b32c9a8850d491267be556ba585d27193b754c1c0a8",
+      "ae09222e27e35600128b027212d2c41728aaabc05f31e26490ab341b60d7ac75"
+    ],
+    [
+      "1943ca93dbe74cb0d9884dab4b660bb378627e644e1015e9e6611b277ac8f2d2",
+      "6ddf1fe89048a2ede17e95871a15bd2d8b95bbd15cae4ac6a92704e32f995f5d",
+      "ad01ead8c7d1d407d439c74c1309fb3da6ada987b65421a13586560832ebf0ba",
+      "bd1379ccbf4b5d55ee093f55bf523f707bfa14667ba3d4eb1a5708f829f17de0",
+      "aa23fae22fcb09b1eebf0e0aafa28b1440d1150245c2309dd8176d34ea63baf0",
+      "eec4a76ed4ce1e875704e596510c7486643b75730f116a09acc83eb4dcfb8b65"
+    ],
+    [
+      "442c1d5e0451488dcc0172dbe9cc27bb5d0caa9fa97f514b671e2b2a58d0d592",
+      "ae2589c58eccf86a62fe2f5a9d68a57c6419e11e6475043d8613c0296cb06854",
+      "02c4c284625b66090419e26bcaf10d92d1f54118c148aa8f63bdbdeee968ffda",
+      "f2a218710e3f857320b83539f956cfc05185b1d9d62c60387e5843a1ec953ca3",
+      "b6a919f13322e6011e1d3b8db8b8693f23efe1ba0903ad1e0ae19d0bbc0f773b",
+      "e87370b81876ba76c993c484a98e22128a0224288fafe960f756d622f5e728f1"
+    ],
+    [
+      "588eeeb616aa9c5f014616764404489d2c9524fb17db002083905696a939f2bb",
+      "fd30c82bf6ca8e3903d8c187c81b43fbdaf669491681820134ac68d58de5a80a",
+      "bc4a2ddc2d9ba2c7abbbe6373b608c72ee629060bc53ae07bbd0532af7674a5f",
+      "949d213b6c326609c3b8f19ce979ba788ecb529528802dc464e16ee1844f3610",
+      "dae0db7771c974d80ec47570da9ed30e0837f8f8a0ec9ea9367630755786a5af",
+      "14fb9489d96203cca6f9e90178c515295f52c17f5e5268f192825230cd472574"
+    ]
+  ],
+  "traces": [
+    [
+      {
+        "slot": 4,
+        "gas": 1680,
+        "assigned": true,
+        "delivered": false,
+        "stored_supervisor": 42,
+        "protected_balance": 1000000
+      },
+      {
+        "slot": 6,
+        "gas": 1680,
+        "assigned": false,
+        "delivered": false,
+        "stored_supervisor": 42,
+        "protected_balance": 1000000
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas": 11680,
+        "assigned": true,
+        "delivered": true,
+        "stored_supervisor": 99,
+        "protected_balance": 999993
+      },
+      {
+        "slot": 6,
+        "gas": 11680,
+        "assigned": true,
+        "delivered": true,
+        "stored_supervisor": 99,
+        "protected_balance": 999986
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas": 11680,
+        "assigned": false,
+        "delivered": true,
+        "stored_supervisor": 0,
+        "protected_balance": 999993
+      },
+      {
+        "slot": 6,
+        "gas": 11680,
+        "assigned": false,
+        "delivered": true,
+        "stored_supervisor": 0,
+        "protected_balance": 999986
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas": 1680,
+        "assigned": false,
+        "delivered": false,
+        "stored_supervisor": 0,
+        "protected_balance": 1000000
+      },
+      {
+        "slot": 6,
+        "gas": 1680,
+        "assigned": false,
+        "delivered": false,
+        "stored_supervisor": 0,
+        "protected_balance": 1000000
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas": 1784,
+        "assigned": true,
+        "delivered": false,
+        "stored_supervisor": 42,
+        "protected_balance": 1000000
+      },
+      {
+        "slot": 6,
+        "gas": 1784,
+        "assigned": false,
+        "delivered": false,
+        "stored_supervisor": 42,
+        "protected_balance": 1000000
+      }
+    ]
+  ]
+}
