@@ -203,6 +203,11 @@ bench-pvm-pricing: setup
 check-pvm-asan: setup
 	$(PYTHON) tools/pvm_sanitizers.py
 
+# Diagnostic opcode/pair counts use ignored snapshots and discard all instrumented timings.
+.PHONY: census-pvm
+census-pvm: setup
+	$(PYTHON) tools/pvm_opcode_census.py
+
 # Coverage-guided byte fuzzing owns its native adapter, finite controls and retained corpus; it never runs from ordinary unit or E2E checks.
 fuzz-pvm-program: toolchain check-inventory
 	$(PYTHON) tools/fuzz_pvm_program.py
