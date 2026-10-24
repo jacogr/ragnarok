@@ -8,8 +8,9 @@ import re
 
 
 # Supply complete event fields so absent labels never masquerade as a heavy request.
-def event_context(event='push', action='', label='', suite=''):
-    return dict(github=dict(event_name=event, event=dict(action=action, label=dict(name=label))),
+def event_context(event='push', action='', label='', suite='', state='open', merged=False):
+    return dict(github=dict(event_name=event, event=dict(action=action, label=dict(name=label),
+                                                          pull_request=dict(state=state, merged=merged))),
                 inputs=dict(suite=suite))
 
 
@@ -55,10 +56,21 @@ def job_section(text, job):
                      text, re.MULTILINE | re.DOTALL).group(1)
 
 
+# Resolve the one shared job condition without importing a YAML dependency into tooling tests.
+def job_condition(text, job):
+    section = job_section(text, job)
+    guard = re.search(r'^    if: (.+)$', section, re.MULTILINE).group(1)
+    if guard.startswith('*'):
+        # A missing anchor must fail the test instead of defaulting to a permissive condition.
+        anchor = re.escape(guard[1:])
+        return re.search(r'^    if: &'+anchor+r' (.+)$', text, re.MULTILINE).group(1)
+    return re.sub(r'^&[\w-]+ ', '', guard)
+
+
 # Evaluate the actual job guard and matrix expression for each PR/manual/master scenario.
 def selected_families(text, job, context):
     section = job_section(text, job)
-    guard = re.search(r'^    if: (.+)$', section, re.MULTILINE).group(1)
+    guard = job_condition(text, job)
     if not expression(guard, context):
         return []
     matrix = re.search(r'^        family: (.+)$', section, re.MULTILINE).group(1)

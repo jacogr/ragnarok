@@ -26,7 +26,7 @@ permissions:
 
 # New requests supersede earlier runs for the same ref; unrelated labels cannot cancel them.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 # All verification groups use the same shell and Python output policy.
@@ -44,14 +44,14 @@ env:
 jobs:
   # Complete source import graph plus peer main and read-only formatting; no native linking or fixture setup.
   compile:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke') }}
     name: Compile / ${{ matrix.family.name }}
     timeout-minutes: &ci-job-timeout 60
     strategy:
       fail-fast: false
       matrix:
         os: &ci-os [ubuntu-latest]
-        family: ${{ fromJSON((github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) && '[{"name":"Smoke","group":"smoke"},{"name":"Source","group":"modules"},{"name":"Reference & Tooling","group":"python"},{"name":"Rejection Guards","group":"guards"}]' || '[{"name":"Smoke","group":"smoke"}]') }}
+        family: ${{ fromJSON((github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) && '[{"name":"Smoke","group":"smoke"},{"name":"Source","group":"modules"},{"name":"Reference & Tooling","group":"python"},{"name":"Rejection Guards","group":"guards"}]' || '[{"name":"Smoke","group":"smoke"}]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - &checkout
@@ -142,7 +142,7 @@ jobs:
     name: Compile
     timeout-minutes: *ci-job-timeout
     needs: compile
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke')) }}
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke')) }}
     strategy: &os-strategy
       fail-fast: false
       matrix:
@@ -155,7 +155,7 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   models:
-    if: &requested ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
+    if: &requested ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
     name: Model verification
     timeout-minutes: *ci-job-timeout
     strategy: *os-strategy
@@ -234,7 +234,7 @@ jobs:
     name: Unit
     timeout-minutes: *ci-job-timeout
     needs: unit
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
@@ -244,7 +244,7 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   failures:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full') }}
     name: Contract / Shard (${{ matrix.shard }})
     timeout-minutes: *ci-job-timeout
     strategy:
@@ -290,7 +290,7 @@ jobs:
     name: Contract
     timeout-minutes: *ci-job-timeout
     needs: failures
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full')) }}
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
@@ -300,7 +300,7 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   e2e:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full')) }}
     name: E2E / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
@@ -370,7 +370,7 @@ jobs:
     name: E2E
     timeout-minutes: *ci-job-timeout
     needs: e2e
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
@@ -382,7 +382,7 @@ jobs:
   # Keep Interop jobs adjacent; group requests run every implementation comparison.
   # Pinned public-API comparisons remain distinct from frozen native fixtures and future fuzzing.
   interop:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
     name: Interop / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
@@ -447,7 +447,7 @@ jobs:
     name: Interop
     timeout-minutes: *ci-job-timeout
     needs: interop
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
@@ -457,7 +457,7 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   build:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full') }}
     name: Build / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
@@ -514,7 +514,7 @@ jobs:
     name: Build
     timeout-minutes: *ci-job-timeout
     needs: build
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full')) }}
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
@@ -524,7 +524,7 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   perf:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-storage' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-storage' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
     name: Perf / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
@@ -673,7 +673,7 @@ jobs:
     name: Perf
     timeout-minutes: *ci-job-timeout
     needs: perf
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
@@ -683,7 +683,7 @@ jobs:
         run: test "$SHARDS_RESULT" = success
 
   pvm-fuzz:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full')) }}
     name: Fuzz / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
@@ -725,7 +725,7 @@ jobs:
     name: Fuzz
     timeout-minutes: *ci-job-timeout
     needs: [pvm-fuzz]
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full'))) }}
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:

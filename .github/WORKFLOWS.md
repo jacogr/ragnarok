@@ -23,6 +23,8 @@ PR opening, reopening and source updates automatically run **Compile / Smoke**: 
 and the production peer main. Heavy
 checks still require a maintainer label (`ci:unit`, `ci:e2e`, `ci:interop`, `ci:perf` or `ci:full`).
 Automatic smoke runs have their own cancellation group, separate from explicit heavy requests.
+Label requests apply only while a PR is open. Closed/merged PR label events schedule no jobs
+and use isolated concurrency keys, so they cannot cancel active CI. Label removal is not a trigger.
 The workflow also supports manual dispatch with a selected scope. Every job, including aggregate
 checks, uses the shared `ci-job-timeout` anchor set to 60 minutes; families have no timeout overrides.
 

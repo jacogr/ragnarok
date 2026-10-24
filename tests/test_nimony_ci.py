@@ -17,7 +17,7 @@ import unittest
 from harness_fixtures import temporary_folder
 import threading
 from unittest.mock import patch
-from workflow_fixtures import event_context, expression, job_section, selected_families, family_section
+from workflow_fixtures import event_context, expression, job_section, selected_families, family_section, job_condition
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
@@ -76,7 +76,7 @@ class NimonyCISafeguards(unittest.TestCase):
         """An ordinary PR update runs the small gate without requesting or cancelling heavy CI."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         section = family_section(text, 'compile', 'smoke')
-        self.assertIn("github.event_name == 'pull_request' && github.event.action != 'labeled'", section)
+        self.assertIn("github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled'", section)
         self.assertIn("github.event_name == 'push' ||", section)
         self.assertIn("inputs.suite == 'smoke'", section)
         self.assertIn('run: make check-smoke', section)
@@ -156,10 +156,34 @@ class NimonyCISafeguards(unittest.TestCase):
                     text, job, event_context('workflow_dispatch', suite=suite))], wanted if job == owner else [])
         self.assertNotIn('github.event.pull_request.labels', text)
 
+    def test_closed_pr_labels_cannot_schedule_or_cancel_ci(self):
+        """Closed and merged PR label events schedule no jobs and use an isolated cancellation key."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        jobs = re.findall(r'^  ([\w-]+):\n', text.split('jobs:\n', 1)[1], re.MULTILINE)
+        key = re.search(r'^  group: ci-\$\{\{ github.workflow \}\}-\$\{\{ (.*) \}\}$',
+                        text, re.MULTILINE).group(1)
+        master = event_context()
+        master['github'].update(run_id=100, ref='refs/heads/master')
+        master_key = expression(key, master)
+        seen = set()
+        for merged in (False, True):
+            # A merged PR can carry a master ref; cancellation isolation cannot rely on ref alone.
+            for label in ('ci:full', 'ci:unit', 'ci:e2e', 'ci:interop', 'ci:perf', 'ci:fuzz', 'unrelated'):
+                event = event_context('pull_request', 'labeled', label, state='closed', merged=merged)
+                event['github'].update(run_id=200+len(seen), ref='refs/heads/master')
+                for job in jobs:
+                    self.assertFalse(expression(job_condition(text, job), event), (job, merged, label))
+                closed_key = expression(key, event)
+                self.assertNotEqual(closed_key, master_key)
+                self.assertNotIn(closed_key, seen)
+                seen.add(closed_key)
+        triggers = text.split('"on":\n', 1)[1].split('\npermissions:', 1)[0]
+        self.assertNotIn('unlabeled', triggers)
+
     # Automatic smoke updates and explicit heavy requests use separate cancellation groups.
     def test_ci_request_concurrency(self):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && "
+        expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && "
                     "github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && "
                     "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}")
         self.assertIn('group: '+expected+'\n  cancel-in-progress: true', text)
