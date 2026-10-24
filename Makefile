@@ -201,6 +201,7 @@ bench-pvm-guests: setup
 compare-pvm-guests: export RAGNAROK_PVM_COMPARE_BASE = $(value PVM_COMPARE_BASE)
 compare-pvm-guests: export RAGNAROK_PVM_COMPARE_SCOPE = $(value PVM_COMPARE_SCOPE)
 compare-pvm-guests: export RAGNAROK_PVM_COMPARE_OUTPUT = $(value PVM_COMPARE_OUTPUT)
+compare-pvm-guests: export RAGNAROK_PVM_COMPARE_SYNTHETIC = $(value PVM_COMPARE_SYNTHETIC)
 compare-pvm-guests: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_guest_compare.py

@@ -682,6 +682,8 @@ jobs:
     name: Perf / PVM Revisions
     timeout-minutes: *ci-job-timeout
     runs-on: ubuntu-24.04
+    env:
+      PVM_COMPARE_SYNTHETIC: "1"
     steps:
       - name: Checkout exact candidate and baseline history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

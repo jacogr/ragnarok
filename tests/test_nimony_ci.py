@@ -175,6 +175,7 @@ class NimonyCISafeguards(unittest.TestCase):
         section = job_section(text, 'compare-pvm')
         self.assertIn('timeout-minutes: *ci-job-timeout', section)
         self.assertIn('runs-on: ubuntu-24.04', section)
+        self.assertIn('PVM_COMPARE_SYNTHETIC: "1"', section)
         self.assertIn('fetch-depth: 0', section)
         self.assertIn('persist-credentials: false', section)
         self.assertIn('ref: ${{ github.event.pull_request.head.sha || github.sha }}', section)

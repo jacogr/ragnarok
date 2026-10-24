@@ -46,6 +46,10 @@ template runBenchmark(source: Machine, context: var HostContext, kind: uint64,
       if plannedMode: execute(source, steps, plan)
       else: execute(source, steps, cycles)
 
+# Every paired build must demonstrate that native assertions remain active before any timed execution.
+if getEnv("RAGNAROK_PVM_BENCH_ASSERT_PROBE") == "1":
+  assert false, "pvm synthetic native assertion control"
+
 let pricing = getEnv("RAGNAROK_PVM_PRICING")
 when defined(pvmBenchmarkMemo):
   assert pricing == "memo", "pvm benchmark memo mode mismatch" # A separate driver instantiation avoids changing legacy host-loop code generation.
