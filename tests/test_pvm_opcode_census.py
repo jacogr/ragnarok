@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from pvm_opcode_census import ROOT, instrument_step, parse_reports, calibration_passed, main
+from pvm_opcode_census import ROOT, instrument_step, parse_reports, calibration_passed, main, snapshot_sources
 
 
 def report(steps, ops, pairs):
@@ -56,6 +56,33 @@ class OpcodeCensusTests(unittest.TestCase):
         for text in [source+source, source.replace('proc cachedSecondaryCharge(', 'proc changed('), generated]:
             with self.assertRaises(ValueError):
                 instrument_step(text)
+
+    def test_nested_sources_are_captured_with_original_identity(self):
+        """A shared internal module remains present and hashed in the independently instrumented snapshot."""
+        import hashlib
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)/'source'
+            names = ['src/pvm/step.nim', 'src/pvm/internal/register_ops.nim',
+                     'src/codec/natural.nim', 'tests/performance/pvm_workload.nim',
+                     'tests/support/pvm_census_control.nim']
+            for name in names:
+                # Distinct immutable bytes make a missing or substituted nested input observable.
+                path = root/name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(name+'\n')
+            folder = Path(directory)/'snapshot'
+            with patch('pvm_opcode_census.ROOT', root), patch('pvm_opcode_census.instrument_step',
+                    side_effect=lambda source, capacity: source+'instrumented\n'):
+                original, generated = snapshot_sources(folder)
+            self.assertEqual(set(original), set(names))
+            for name in names:
+                expected = (root/name).read_bytes()
+                self.assertEqual(original[name], hashlib.sha256(expected).hexdigest())
+                if name == 'src/pvm/step.nim':
+                    # Only the execution observer changes snapshot bytes.
+                    expected += b'instrumented\n'
+                self.assertEqual((folder/name).read_bytes(), expected)
+                self.assertEqual(generated[name], hashlib.sha256(expected).hexdigest())
 
     def test_calibration(self):
         """Fresh, nested, outer and terminal records remain separate under both callback forms."""

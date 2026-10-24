@@ -181,3 +181,47 @@ profiles and memory/control/host/retry composition remain required.
 
 The unchanged frozen scalar/chain oracles now qualify complete invocation policies and both
 callback forms; see [register policy reference](pvm-register-policy-reference.md).
+
+
+## Shared typed arithmetic expansion, 2026-10-24
+
+The internal `src/pvm/internal/register_ops.nim` module owns the existing opcode
+set and arithmetic helpers. Its typed `computeRegisterWrite` template computes a
+bounded destination and copied value without constructing a tagged public result.
+Both outputs are committed only after success; default/invalid/unsupported inputs
+leave them unchanged. All source operands and conditional fallbacks are read before
+either output is published. No program representation, mutable owner, unchecked
+access or arithmetic rule changes.
+
+Charged execution expands this computation at its private register dispatch and
+applies exactly one write after the existing capability and whole-block gas checks.
+The public `registerOnlyOpcode`, `evaluateRegisterWrite`, `applyRegisterWrite` and
+both `evaluateRegisters` signatures and guarded result contracts remain unchanged.
+Their wrapper shares the same arithmetic implementation. Helpers remain private
+to the internal module; the module retains no execution state.
+
+The independent frozen corpus now also checks the internal scalar outputs for all
+38,977 witnesses across 85 opcodes. Sentinel controls check atomic refusal for
+default instructions, invalid PCs and every valid out-of-scope opcode. Existing
+register chains, charged-step, cache/ARC, mixed-program and host-reentry suites
+remain the affected consumers. Snapshot census instrumentation and benchmark/
+analyzer source identities recursively include internal Nim modules; a temporary
+source-tree control verifies nested bytes and both original/generated hashes.
+
+[CI40105931933](https://github.com/jacogr/ragnarok/actions/runs/40105931933)
+qualifies runtime `194021ac` against control-inlining parent `d9c78943` on an
+AMD EPYC7763 runner. It passes2808 paired state-checked invocations,2808
+identical-source controls, assertion controls and the pinned interpreted pack.
+Pinky CPU changes are -6.4% dynamic, -5.4% planned and -6.7% memo. Both process
+orders agree: dynamic -6.35/-6.71%, planned -6.08/-4.77%, memo -6.82/-6.61%.
+Long planned indirect calls improve9.8%, and planned sieve100000 improves5.1%.
+
+Tradeoffs remain: dynamic synthetic crossing hosts regress3.9% overall
+(+3.76/+3.69% per order, against -1.38/+0.91% same-source variation). Tiny memo
+arithmetic1 regresses8.1%, about40ns. Other small changes overlap noise; all21
+real and33 synthetic cells, both orders and cold data remain in
+`build/pvm12/ci-40105931933/`. Generated dispatch C grows while removing the
+arithmetic calls, so this is a measured workload tradeoff, not a code-size win.
+Publication only adds documentation to the qualified runtime; native restacking
+verifies complete runtime/tool tree equality. Ragnarök still trails PolkaVM on
+these inputs. M1 framing completion and full-JAM parity gates remain unchanged.

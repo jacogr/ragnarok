@@ -9,6 +9,7 @@
 ## Successful steps publish immutable snapshots; local failures publish no state or gas progress.
 
 import ./[program, machine, registers, gas, gas_plan, gas_memo]
+import ./internal/register_ops
 
 type
   BlockChargeEntry = object ## One complete successful pipeline price belongs to this invocation's immutable program and cycle limit.
@@ -705,11 +706,12 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
   var failedPage = PageAddress(0)
   if category == 'r':
     # Register-only execution retains its existing scope and copied-register semantics.
-    let mutation = evaluateRegisterWrite(decoded, info.registers)
-    if mutation.error != RegisterError.None:
+    var index: range[0..12] = 0
+    var value = RegisterValue(0)
+    if not computeRegisterWrite(decoded, info.registers, index, value):
       # Defensive evaluator failure cannot publish the tentative copied gas state.
       return InstructionEvaluation(status: StepError.UnsupportedInstruction)
-    applyRegisterWrite(info.registers, mutation)
+    info.registers[index] = value
     info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
   elif category == 'm':
     # Memory exceptions retain the charged gas/flag but never publish partial CPU or memory writes.
