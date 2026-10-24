@@ -156,3 +156,26 @@ proc reservedCreationCode*(mode: int, hash: array[32, byte], codeLength: uint32)
   instructions.add(if mode in [127, 128]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc childReadinessCode*(mode: int, hash: array[32, byte], childCode: seq[byte]): seq[byte] =
+  ## Keep the real returned public ID in r6 across checkpoint19, then provide exactly this child's reserved code.
+  var memory = newSeq[byte](60)
+  for index, octet in hash: memory[index] = octet
+  let length = uint32(childCode.len)
+  for index in 0..<4: memory[32+index] = byte((length shr (8*index)) and 255)
+  memory[36] = 100
+  memory[44] = 19
+  for octet in childCode: memory.add(octet)
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, high(uint64)),
+    registerImmediate(9, 0), registerImmediate(10, 196608), @[10'u8, 20], @[100'u8, 0x76]]
+  if mode == 133: instructions.add(@[10'u8, 19]) # Capture a created but not yet provided child.
+  for instruction in [@[100'u8, 0x67], registerImmediate(8, 196668), registerImmediate(9, uint64(
+      childCode.len))]:
+    instructions.add(instruction) # Restore the returned child ID after checkpoint clobbers r7.
+  if mode == 135: instructions.add(registerImmediate(7,
+      77)) # This nonexistent target must return WHO and leave the child pending.
+  instructions.add(@[10'u8, 28])
+  if mode == 134: instructions.add(@[10'u8, 19]) # Capture the complete created-account/provision pair before panic.
+  instructions.add(if mode in [132, 133, 134]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)

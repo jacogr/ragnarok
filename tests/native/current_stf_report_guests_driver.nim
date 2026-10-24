@@ -122,6 +122,8 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 131..135:
+    second = childReadinessCode(mode, replacement, namespaceHaltCode()) # The new public child becomes available only through selected fnprovide.
   of 123..130: second = reservedCreationCode(mode, replacement,
       codeLength) # Explicit nonzero deposits and registrar allocation.
   of 118..122: second = designationCode(mode, staging) # Staging publication becomes pending and then active across two epochs.
@@ -298,7 +300,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   limits.completion.composition.activity.preimages.perBlob = ByteLimit(512)
   limits.completion.composition.activity.preimages.totalBlobBytes = ByteLimit(512)
   limits.completion.composition.preimages.bytes = ByteLimit(512)
-  if mode in 57..61:
+  if mode in 57..61 or mode in 131..135:
     # At most two children extend the explicit two-account prior; later empty blocks retain all four canonical records.
     limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)
     limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
@@ -336,6 +338,16 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # The complete prior may contain the one reserved child on later blocks; creation/debit facts keep their original bounds.
     limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)
     limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
+  if mode in 131..135:
+    # One actual whole-code provision targets the just-created child, with exact input and union byte ceilings.
+    limits.completion.execution.initial.guests.provisions = provisionPolicy(items = 1,
+        perBlob = uint64(replacement.len), total = uint64(replacement.len))
+    limits.completion.execution.initial.provisions.values = PreimageLimits(items: ElementLimit(1),
+        perBlob: ByteLimit(uint64(replacement.len)), totalBlobBytes: ByteLimit(uint64(
+        replacement.len)))
+    limits.completion.execution.initial.provisions.encodedBytes = ByteLimit(64)
+    limits.completion.execution.execution.round.guests.provisions = limits.completion.execution.initial.guests.provisions
+    limits.completion.execution.execution.round.provisions = limits.completion.execution.initial.provisions
   var children: seq[ServiceIndex] = @[]
   var ancestors: seq[OwnedHeader] = @[]
   for bodyIndex, body in bodies:
@@ -356,7 +368,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     let globals = qualifyCurrentGlobals(profile, GlobalStateLimits(chapter: StateChapterPolicy(
         items: ElementLimit(10000), maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144))).value
     let snapshot = update.currentUpdateState
-    if mode in [57, 59, 60] and uint32(before.slot) == 3:
+    if (mode in [57, 59, 60] or mode in 131..135) and uint32(before.slot) == 3:
       # Derive explicit namespace identities from posterior entropy and the authenticated slot; expected maps use separate Python equations.
       let encoded = snapshot.lookup(chapterKey(StateChapter(6))).value.bytes
       assert encoded.len == 128
@@ -365,7 +377,11 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       let initial = initialAccumulationService(ServiceIndex(99), StateEntropyWord(entropy),
           HeaderSlot(4))
       assert initial.error == AccumulationInvocationError.None
-      children.add(initial.value)
+      if mode in 131..135:
+        let born = snapshot.lookup(chapterServiceKey(StateChapter(255), initial.value))
+        if born.error == StateStoreError.None: children.add(initial.value)
+        else: assert born.error == StateStoreError.MissingKey # Exceptional rollback may discard this explicitly derived public child.
+      else: children.add(initial.value)
       if mode == 60:
         # Public IDs occupy [65536,2^32-256); uint64 arithmetic proves the complete42-step addition before narrowing.
         let next = 65536'u64+(uint64(uint32(initial.value))-65536+42) mod 4294901504'u64
@@ -459,10 +475,22 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       assert value.error == StateStoreError.None
       let metadata = decodeServiceMetadata(value.value.bytes, ByteLimit(105))
       assert metadata.error == ServiceMetadataError.None and metadata.value.consumed == 105
-      services.add(StateService(service: service, metadata: metadata.value.metadata, storage: @[],
+      let hash = ServicePreimageHash(replacementHash)
+      let request = snapshot.lookup(serviceRequestKey(service, hash, RequestLength(uint32(
+          replacement.len)), ByteLimit(32)).value)
+      assert request.error == StateStoreError.None
+      let history = decodeRequestHistory(request.value.bytes, RequestHistoryConfig(
+          items: ElementLimit(3), maxBytes: ByteLimit(13)))
+      assert history.error == RequestError.None
+      var declared = StateService(service: service, metadata: metadata.value.metadata, storage: @[],
           preimages: @[],
-        requests: @[StateRequestItem(hash: ServicePreimageHash(replacementHash),
-            length: RequestLength(uint32(replacement.len)), history: requestedHistory())]))
+        requests: @[StateRequestItem(hash: hash, length: RequestLength(uint32(replacement.len)),
+            history: history.value.history)])
+      let preimage = snapshot.lookup(servicePreimageKey(service, hash, ByteLimit(32)).value)
+      if preimage.error == StateStoreError.None: declared.preimages.add(StatePreimageItem(
+          hash: hash, value: replacement))
+      else: assert preimage.error == StateStoreError.MissingKey # Created code is unavailable until a genuine selected provision fulfills its request.
+      services.add(declared)
     assert qualifyCurrentState(globals, services, inventoryCaptureLimits).error ==
         CurrentStateError.None
     assert checkpointHex(before.stateSnapshot) == saved
@@ -525,7 +553,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 131
+      assert mode >= 0 and mode < 136
       bodies = @[]
       slots = @[]
     else:
@@ -534,7 +562,7 @@ proc main() {.raises.} =
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
-      106, 111, 112, 117, 122, 130]
+      106, 111, 112, 117, 122, 130, 135]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:

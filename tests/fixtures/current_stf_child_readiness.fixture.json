@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_CHILD_READINESS",
+  "files": {
+    "current-stf-child-readiness.json": "6b0e4d8cbf5f088403c956c56bd99dbb15ac4fb561363d1d1e63de3d0d12bed7"
+  },
+  "target": "current-stf-child-readiness.json"
+}
