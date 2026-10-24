@@ -59,3 +59,8 @@ Incremental `admit` and `forget` are specified in
 image as well as its immutable cache, allowing later edits without caller retransmission
 of retained proofs. Successful file operations, including empty or unknown-only edits,
 still run publication barriers before returning a fresh synchronization receipt.
+
+The [process-crash qualification](storage-light-process-crashes.md) subsequently covers every
+real publication boundary and positive short-write chunk with exact stopped-child/kill receipts,
+live lease contention, complete old/new selection and explicit forensic cleanup. This extends
+process-death evidence without making a physical power-loss claim.
