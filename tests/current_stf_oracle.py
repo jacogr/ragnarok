@@ -138,8 +138,21 @@ def advance_no_reports(parent, child, body, extrinsic_root, *, outputs=(), preim
     assert child[104:200] == proof
     seal, _ = sign(1, context, child[:201])
     assert child[201:297] == seal
+    return advance_chapters(parent, child[:297], slot, 0, fresh_output,
+                            outputs=outputs, preimages=preimages)
+
+
+def advance_chapters(parent, header, slot, author, entropy_output, *, outputs=(), preimages=(),
+                     ticket_count=0):
+    """Advance no-report global chapters after a feature reference has independently authored its header."""
+    prior_slot = int.from_bytes(parent[chapter_key(11)], 'little')
+    assert slot > prior_slot and 0 <= author < 6
+    crossed = slot//12 > prior_slot//12
+    prior_root = tree(list(parent.items()))[0]
+    assert header[32:64] == prior_root and int.from_bytes(header[96:100], 'little') == slot
+    entropy = parent[chapter_key(6)]
     result = dict(parent)
-    result[chapter_key(6)] = digest(entropy[:32]+fresh_output)+entropy[32:]
+    result[chapter_key(6)] = digest(entropy[:32]+entropy_output)+(entropy[:96] if crossed else entropy[32:])
     result[chapter_key(11)] = slot.to_bytes(4, 'little')
     # No guarantees remove pool entries; append the indexed queue hash and retain the newest eight.
     pools = Reader(parent[chapter_key(1)])
@@ -157,7 +170,7 @@ def advance_no_reports(parent, child, body, extrinsic_root, *, outputs=(), preim
     result[chapter_key(1)] = b''.join(rows)
     # Recent history corrects the parent, appends the independently derived output root and bags peaks.
     blocks, peaks = history(parent[chapter_key(3)])
-    assert blocks[-1][0][:32] == child[:32]
+    assert blocks[-1][0][:32] == header[:32]
     fixed, pairs = blocks[-1]
     blocks[-1] = (fixed[:64]+prior_root+fixed[96:], pairs)
     leaves = [service.to_bytes(4, 'little')+commitment for service, commitment in outputs]
@@ -176,17 +189,20 @@ def advance_no_reports(parent, child, body, extrinsic_root, *, outputs=(), preim
     bag = present[0]
     for peak in present[1:]:
         bag = bytes.fromhex(keccak256(b'peak'+bag+peak))
-    blocks.append((digest(child[:297])+bag+bytes(32)+slot.to_bytes(4, 'little'), b''))
+    blocks.append((digest(header)+bag+bytes(32)+slot.to_bytes(4, 'little'), b''))
     result[chapter_key(3)] = history_wire((blocks[-8:], peaks))
     parsed = parse_statistics(parent[chapter_key(13)], DEFAULT)
     assert not isinstance(parsed, str), parsed
     (current, previous, _, _), consumed = parsed
     assert consumed == len(parent[chapter_key(13)])
-    row = list(current[0])
+    if crossed:
+        previous, current = current, [(0,)*6]*6
+    row = list(current[author])
     row[0] += 1
+    row[1] += ticket_count
     row[2] += len(preimages)
     row[3] += sum(len(value) for _, value in preimages)
-    current[0] = tuple(row)
+    current[author] = tuple(row)
     result[chapter_key(13)] = statistics_wire((current, previous, [(0,)*8]*2, []))
     assert set(result) == set(parent)
     return result
