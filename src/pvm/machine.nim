@@ -434,17 +434,22 @@ proc scalarSpan[Cached: static[bool]](memory: Memory, address: MemoryAddress, wi
   let firstPage = uint32(start div 4096)
   let lastPage = uint32((start + uint64(byte(width)) - 1) div 4096)
   let first = scalarSlot[Cached](data, firstPage, recent)
-  var last = first
   var firstAccess = PageAccess.Inaccessible
   if first < data.pages.len and uint32(data.pages[first].index) == firstPage:
     firstAccess = data.pages[first].access # Missing sparse slots never grant byte access.
-  var lastAccess = firstAccess
-  if firstPage != lastPage:
-    # Supported scalar widths reach at most two pages; retain both resolved slots for the payload operation.
-    last = scalarSlot[Cached](data, lastPage, recent)
-    lastAccess = PageAccess.Inaccessible
-    if last < data.pages.len and uint32(data.pages[last].index) == lastPage:
-      lastAccess = data.pages[last].access
+  if firstPage == lastPage:
+    # A complete single-page scalar needs one presence/permission decision and no second-page ordering.
+    if firstAccess == PageAccess.Inaccessible or (writing and firstAccess != PageAccess.ReadWrite):
+      return MachineResult[ScalarSpan](status: MachineError.Fault,
+        failedPage: PageAddress(firstPage * 4096'u32))
+    let count = int(byte(width))
+    return MachineResult[ScalarSpan](status: MachineError.None, completed: ScalarSpan(
+      first: first, last: first, offset: int(start mod 4096), firstCount: count, count: count))
+  # The remaining access crosses exactly two pages; complete presence checks still precede write permissions.
+  let last = scalarSlot[Cached](data, lastPage, recent)
+  var lastAccess = PageAccess.Inaccessible
+  if last < data.pages.len and uint32(data.pages[last].index) == lastPage:
+    lastAccess = data.pages[last].access
   if firstAccess == PageAccess.Inaccessible:
     return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(firstPage * 4096'u32))
   if writing and lastAccess == PageAccess.Inaccessible:
