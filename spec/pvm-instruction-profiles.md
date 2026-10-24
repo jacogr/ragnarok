@@ -165,3 +165,21 @@ qualify the added machine trace and every existing state/source profile before
 this evidence is considered complete. This extends the existing profiler review
 unit without changing guest source, build flags, pins, preparation or M1 scope;
 full-JAM parity remains open.
+
+
+[CI40140452445](https://github.com/jacogr/ragnarok/actions/runs/40140452445)
+qualifies the native-attribution extension on the decoded-destination stack. All
+five complete-state profiles, source sections and24 captured C hashes pass, as
+do scope-selected/absent and native assertion controls. The guest binary is
+byte-identical to CI40135301299; all five Ir totals match exactly. Minimal's
+simulated conditional-miss count differs by one, with other event counts unchanged;
+no timing inference is drawn from that variation.
+
+The extra planned Pinky invocation passes full-state checks and records exactly
+5,185,810,826 instructions, matching its ordinary profile. It contains native
+instruction/line positions and a selected execution symbol; the retained GNU
+objdump text contains x86-64 ELF execution instructions. The disassembly SHA-256
+is`a2d47d17331930a3869329c1fd2b1b10d1732942a1dae2dd51baa297d0db84de`.
+Both traces bind to guest binary SHA-256
+`50e782cf8535289a9f6233398716c2d9c585b2b6af4b3a0a10b3e3d51645e806`.
+These are diagnostic counters and native text, not new performance timings.
