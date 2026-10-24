@@ -1,0 +1,163 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "base_fixture_sha256": "b3f3e0df9b7be08edca890add2fba8f187c9db847ea7d558e25c271e01140bc9",
+  "successor_roots": [
+    [
+      "e21388d005c2b89856d1764a6744deecd76308ad48fa2e2db329ead683eaaf3b",
+      "fba7431dc0ec044f8fbe331e95c71800ff9cb0834001db59207db45a3b544f7b",
+      "391125b6f7fdbf204f317cc16e5597220603aab00fc6888cae35df1ff4768a64",
+      "94b0e07aa0fd841d824d0e7603901e1ceb2263523ca268f34ebcd97ec2245a29",
+      "80ef3db4332b35d10478201f2b6fdcc367f68dbd920777f9bb862c29a840a821",
+      "e87bf586317dd4567f10dff79231ab57cbb6bd149eb82e9ebee424e481adbe81"
+    ],
+    [
+      "bd0154f29389f1ef55af6ca83f71f7821d671e17806fa9068ca6d17b66b05f8c",
+      "9de755d63dbfbd2870324b9c636e3571cd63e311086f06a62b98431c4ff5074d",
+      "1fdc40422439fcb755e83d3357307065828fb74ba842da4d2f9abe41668ff817",
+      "46d91aea2c39fdb9061ce83d3a4328c444dadc80ea9037f2f220160184eb0cec",
+      "6808b7d82726b93d68f5a4afc9ebb7fcea052d955a142644dd869e9df8226772",
+      "880314897772b7567f6b490ad95378aa0554f60ec1788848a2b24c4abc0d7cb2"
+    ],
+    [
+      "12399f67d4449cd06f12f8173a4b5f70048ab2bf0493e41b7570569a8d99c510",
+      "ae4a50036d560c86e76f4c635bb44f7dd350ede083023dab8b94c424c4c6f0d2",
+      "f25ca91d1c2ab46296173befc4d013880bce8c97eaa6abbdb5b9843b43e67c81",
+      "a87222c1b5e9cc33fc166891f494130bd2e6f57712b1593033bd4025186f04ce",
+      "b88ddfde768ff59210fe907610a39c1baa7f65bcd590bb7fccc4ed1a6051d2ca",
+      "93a738a01e1ef0d3813f68a3756abf98083b901b45899a4f18f7f77edb1cda1e"
+    ],
+    [
+      "c4f4e31f331688353275e84931e1e2099efc8521d6b30a121f92f7414a52fe0d",
+      "fdd88cd211e5e24ea25364f507241217c5b8f0db6fb1d55c1000ead7f2bbed12",
+      "a0c29300531876e70701a2665c2140520eeec094abdec3539723921bb44b63fd",
+      "20ea6d3adc9e690c417979cf092d2793f309dace5977918177c8468afeba15df",
+      "df1e68d0cc49e7eb91679a0d58ddddb236d2ad465cb22aa8330da0f8a4a26b0d",
+      "6a1d590418078682223c564f631be120f68241ff245530e6659010f8916f376a"
+    ],
+    [
+      "5ffd85f83e53d8ce084a3defb729bfd2dad9eef43c012f6a05ec7d5bc0ffeb85",
+      "dc8cbf5dea7d6b905bdec50b99f599b82d1df1a2c53aafc4ab5fd6764f0f7304",
+      "e12f1c41553778029917cbac30e4e7d99312419e6bfc7e1cc7612a763f59b58e",
+      "b51ac1c4bb2bfd922fbbc8d64b5a573f171a4d48545f933d30c917ea1c3342b9",
+      "05e7713c0abb7151563264f22bcc6293d2fc9b1c2e65adc77c9a977962798f13",
+      "eef0c77f8faf1b5f87c8c0f0dec7815d743d576937be7178bd0b696d33eedfa0"
+    ]
+  ],
+  "successor_checkpoint_sha256": [
+    [
+      "ca2a379a69a4a14b6bddf6c12042af911b1fe550473a8ae8d3e22b97d5d57d69",
+      "e5b2bf20df8588c1578c6c7dc109d275af745e385291ab34a1009e7e5bf5f577",
+      "970371448bbd0ddc50bfa0b87ba94223d4ac47296e93eac3ca171277b7241620",
+      "c9b7b826c80714dccc1829ab9d5f8201fc4af052474b5c7ad29c34c3d096e93d",
+      "b82d969bede1a1b7e5ec26707b0928204ca82f74a4424c786fa750773b64bfca",
+      "cdf0601feb085c71628c70b382f8ac873a73e7fbd05aa5685c9f8e90777ab8aa"
+    ],
+    [
+      "753dfc6353be8b097e820fcb29df2d9f77cfbc03251502f9374998d5cbab462f",
+      "e24375125810ce1e022926784b88b2ff2eac52a51f05c87650f8ddb748eb894e",
+      "8e2cb0ebc63cbf289b8587d47069a3233eefc25af1a7205d701ae9c19f3d0eac",
+      "f8caf506912cf488ecd24b535b44ecc08a09d67ec2a4b1246f485649cdcf6eae",
+      "5763cdb77178b0c884eaf8a54a8609b1db278e9685c5d3c3a5293c6764e02261",
+      "4d343decbd8e9fcbdd085a23af8f9f4cb34f830ac207a0aaa87e36393600f346"
+    ],
+    [
+      "57ae4f4a0ebb39297a95528ceb6494054c025ae4af95799eea1d788058199e94",
+      "ad4cb22498bd465a9260d0e31dd9f722aa3f2431a4bc0043fa7bb8d2180da1c1",
+      "31689d678f056579af9efd9f77e34cf66507a4137cce7ca1e9fe6eeb23e2d432",
+      "a60860650f57b506a79c29b40200e9f415ec5ae53ba3b3bea1a4868303d19ddf",
+      "27d115cdcadb7e8a15d3b5a1cfa261660cea7b43e961397429199cc4f90fa089",
+      "bb8a2cb87f0413afb9d04f3c83b15dbcbf6ed8ceb1008bcf52a18bdb7ae8ec70"
+    ],
+    [
+      "f69932ac9c75d78fc86c41cfee77b9dd5cf7ccf39aeb4273cdcf78eabb781c54",
+      "bba0f4acb87b56f8baacd5090ca0e3996ac51ee8215129c23835507f501b9e5b",
+      "99a964d272d9f812544563521ede69833941ec35a0f30e7e01bc20cc1cde7197",
+      "7d7de8d20e046d764c80940a483e017fccf4d009559656f56b30064a2cf27650",
+      "1fc3a7d72d90d011cb14cd635b5610b91b7e157774c32aa8764fd1094912a216",
+      "bdd71ca64f1c9faa4d8f8f3bf98fe9a8dd71a59a2a394e16b0649f7f61e45e1b"
+    ],
+    [
+      "787e5c6f589fc9b2d4111610fce6067b1dbfdbf46f372f47b397096d28270dba",
+      "21c29a3987b42da00942de25063f38226a302a769b16c186c257b23e8514277f",
+      "9adef46a85247bfa2b90fbc16e2b9651efa1d90ff404ea1812270a0370210472",
+      "125405c1e3678e2893aad332a195c66b020b3e32518898f6914438bc0dfc9ccf",
+      "de0f0826e50c0865ac92839432f8cd377d733bf691b1319a4afc0435fdde9d49",
+      "f67dcf30882f96b7eefd977630a383e36d74aa666e230d3f203ba777a0720a55"
+    ]
+  ],
+  "traces": [
+    [
+      {
+        "slot": 4,
+        "gas": 8005,
+        "service": 99,
+        "child": 1187033478,
+        "code_ready": true
+      },
+      {
+        "slot": 6,
+        "gas": 22,
+        "service": 1187033478,
+        "child": 1187033478,
+        "code_ready": true
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas": 8005,
+        "service": 99,
+        "child": null,
+        "code_ready": false
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas": 8110,
+        "service": 99,
+        "child": 1187033478,
+        "code_ready": false
+      },
+      {
+        "slot": 6,
+        "gas": 0,
+        "service": 1187033478,
+        "child": 1187033478,
+        "code_ready": false
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas": 8109,
+        "service": 99,
+        "child": 1187033478,
+        "code_ready": true
+      },
+      {
+        "slot": 6,
+        "gas": 22,
+        "service": 1187033478,
+        "child": 1187033478,
+        "code_ready": true
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas": 8005,
+        "service": 99,
+        "child": 1187033478,
+        "code_ready": false
+      },
+      {
+        "slot": 6,
+        "gas": 0,
+        "service": 1187033478,
+        "child": 1187033478,
+        "code_ready": false
+      }
+    ]
+  ]
+}
