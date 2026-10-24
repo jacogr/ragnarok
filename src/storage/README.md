@@ -461,4 +461,6 @@ The [full-node paged contract](../../spec/storage-full-paged.md) records the sep
 complete-graph backend and subsequent light consumer adoption. `full_paged_codec`,
 `full_paged_stream`, `full_paged_build` and `full_paged_store` now provide the separate full
 format, bounded complete-graph admission, replay-bound construction and pinned native readers.
-Writer publication and consumer adoption remain subsequent implementation boundaries.
+Move-only writers/candidates now publish fully checked root unions with file/directory barriers,
+exact incarnation/source binding and separate post-confirmation retirement diagnostics. Captured
+reclamation, replay cleanup and consumer adoption remain subsequent implementation boundaries.
