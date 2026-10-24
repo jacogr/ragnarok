@@ -68,7 +68,7 @@ def inputs(parent, initial, slot):
     return gs, assurances(parent, count, bits)
 
 
-def guest_effect(result, parent, mode, service, count, slot):
+def guest_effect(result, parent, mode, service, count, slot, *, charge=None, retained=None):
     """Apply the literal halt/X or panic/Y implication and account one invocation with all its operands."""
     key = chapter_service(255, service)
     code, wide, narrow = metadata_parse(parent[key], 105)
@@ -76,7 +76,10 @@ def guest_effect(result, parent, mode, service, count, slot):
     instructions, memory, value = guest(mode)
     expected_code = envelope([bytes([50, 0])], b'Q') if service == 42 else envelope(instructions, memory)
     assert code == digest(expected_code)
-    if service == 99 and mode != 'panic-rollback':
+    gas = (simulate([bytes([50, 0])], gas_definitions(), prefix=[b'\0']*5)[0]
+           if service == 42 else guest_gas(mode)) if charge is None else charge
+    keep = mode != 'panic-rollback' if retained is None else retained
+    if service == 99 and keep:
         # Storage replacement removes its old footprint before applying the literal retained write.
         storage = value_key('S', 99, b'\7')
         previous = parent.get(storage)
@@ -85,9 +88,8 @@ def guest_effect(result, parent, mode, service, count, slot):
         if value:
             narrow[0] += 1; wide[4] += 35+len(value); result[storage] = value
         else: result.pop(storage, None)
-    narrow[2] = slot
+    if count > 0 or gas > 0: narrow[2] = slot # Current GP stamps every retained accumulation-statistics key.
     result[key] = metadata_wire((code, wide, narrow))
-    gas = simulate([bytes([50, 0])], gas_definitions(), prefix=[b'\0']*5)[0] if service == 42 else guest_gas(mode)
     return (service, 0, 0, 0, 0, 0, 0, 0, 0, count, 0, gas)
 
 
@@ -116,6 +118,8 @@ def advance(parent, initial, mode, slot, gs, ass, *, plan=None):
         assert plan['available'] == released
         batches = plan['batches']
     outputs = ((99, COMMITMENT),) if any(99 in group for group in batches) and mode != 'panic-rollback' else ()
+    if plan is not None and 'yielded' in plan:
+        outputs = ((99, COMMITMENT),) if plan['yielded'] else ()
     raw, commitment = body(gs, ass)
     child = authored_child(parent, raw, commitment)
     result = advance_no_reports(parent, child, raw, commitment, outputs=outputs)
@@ -157,10 +161,11 @@ def advance(parent, initial, mode, slot, gs, ass, *, plan=None):
     for wire in released:
         core = wire[273] if plan is None else plan['reports'][wire[:32]]['core'] # Deferred reports have variable dependency framing.
         cores[core][0] = int.from_bytes(wire[32:36], 'little')+4104*((65*int.from_bytes(wire[102:104], 'little')+63)//64)
-    for group in batches:
+    for batch_index, group in enumerate(batches):
         prior = dict(result) # Each recursive guest sees the actual earlier mathematical batch's state.
         for sid, count in sorted(group.items()):
-            row = guest_effect(result, prior, mode, sid, count, slot)
+            options = {} if plan is None or 'effects' not in plan else plan['effects'][batch_index][sid]
+            row = guest_effect(result, prior, mode, sid, count, slot, **options)
             combined = activity.setdefault(sid, [sid]+[0]*11)
             for index in range(1, 12): combined[index] += row[index]
     result[chapter_key(13)] = statistics_wire((current, previous, cores, [tuple(activity[sid]) for sid in sorted(activity)]))
