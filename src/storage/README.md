@@ -386,3 +386,10 @@ bounded consecutive edits privately, retain only their final image, and publish 
 barrier. Interrupted groups preserve complete earlier frames for explicit prefix recovery. Grouped
 [batch process-crash qualification](../../spec/storage-light-journal-batch-crashes.md) checks
 complete-frame boundaries, partial-tail repair and retry without duplicating retained edits.
+
+
+The [storage-only light-root advancement contract](../../spec/storage-light-root-advancement.md)
+defines an independently supplied destination root, complete replacement proof knowledge,
+retained old-root readers and atomic checkpoint/anchor selection. It is contract-first planned
+work; the current owner still binds one root. Startup, trust selection and network proof fetching
+remain separately owned integration work.
