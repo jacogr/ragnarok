@@ -215,3 +215,28 @@ proc childRetirementCode*(mode: int, hash: array[32, byte], codeLength: uint32):
   instructions.add(if mode in [145, 146, 147]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc childRecreationCode*(mode: int, hash: array[32, byte], codeLength: uint32): seq[byte] =
+  ## Recreate the actual emptied/ejected reserved77 with new minima; no original child namespace is reused.
+  var memory = newSeq[byte](120)
+  for start in [0, 60]:
+    # The second independently authored creation tuple differs in both gas minima.
+    for index, octet in hash: memory[start+index] = octet
+    let length = uint32(codeLength)
+    for index in 0..<4: memory[start+32+index] = byte((length shr (8*index)) and 255)
+    memory[start+36] = byte(if start == 0: 100 else: 200)
+    memory[start+44] = byte(if start == 0: 19 else: 39)
+  let pool = uint64(if mode <= 151: mode-148 else: 0)
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 77),
+      registerImmediate(9, pool),
+    registerImmediate(10, 196608), @[10'u8, 20], registerImmediate(7, 77), registerImmediate(8,
+        196608),
+    registerImmediate(9, uint64(codeLength)), @[10'u8, 26], registerImmediate(7, 77), @[10'u8, 23]]
+  if mode == 153: instructions.add(@[10'u8, 19]) # The checkpoint retains retirement but excludes the following new incarnation.
+  for instruction in [registerImmediate(7, high(uint64)), registerImmediate(8, 77),
+      registerImmediate(9, pool), registerImmediate(10, 196668), @[10'u8, 20]]:
+    instructions.add(instruction) # The same exact ID is now admitted only after a successful old-incarnation deletion.
+  if mode == 154: instructions.add(@[10'u8, 19]) # Keep the fresh reservation and its matching funding debit on panic.
+  instructions.add(if mode in [152, 153, 154]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)
