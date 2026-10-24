@@ -1,0 +1,46 @@
+{
+  "source": "tests/native/storage_light_recovery_results.nim",
+  "build_name": "storage-light-recovery-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "plan",
+        "origin": "default"
+      },
+      "arguments": [
+        "plan",
+        "default"
+      ],
+      "name": "storage-light-recovery-plan-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light recovery plan default guard"
+    },
+    {
+      "identity": {
+        "member": "plan",
+        "origin": "failed"
+      },
+      "arguments": [
+        "plan",
+        "failed"
+      ],
+      "name": "storage-light-recovery-plan-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light recovery plan failed guard"
+    },
+    {
+      "identity": {
+        "member": "retire",
+        "origin": "unclosed"
+      },
+      "arguments": [
+        "retire",
+        "unclosed"
+      ],
+      "name": "storage-light-recovery-retire-unclosed",
+      "diagnostic": "recovery.data == nil",
+      "description": "Light recovery retire unclosed guard"
+    }
+  ]
+}
