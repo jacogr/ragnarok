@@ -5,7 +5,7 @@
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/header
 import ../support/current_stf_epoch_context as epoch
-import ../support/current_stf_transfer_context
+import ../support/[current_stf_transfer_context, current_stf_lifecycle_context]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/provider
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
@@ -87,10 +87,13 @@ proc failure(outcome: CurrentCandidateResult): string =
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
     uint32] = @[]) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
-  let codes = [(if mode >= 42: memoReceiverCode(mode) elif mode in 15..19: forwardingCode(mode)
+  let replacement = namespaceHaltCode()
+  let replacementHash = array[32, byte](blake2b256(replacement).value)
+  let codes = [(if mode in 42..46: memoReceiverCode(mode) elif mode in 15..19: forwardingCode(mode)
     else: namespaceHaltCode()),
-    (if mode >= 42: memoSenderCode() elif mode >= 28: admissionTransferCode(mode)
-    elif mode >= 20: poolTransferCode(mode) elif mode >= 5: transferCode(mode) else: guest(mode))]
+    (if mode >= 47: upgradeCode(mode, replacementHash) elif mode >= 42: memoSenderCode()
+    elif mode >= 28: admissionTransferCode(mode) elif mode >= 20: poolTransferCode(mode)
+    elif mode >= 5: transferCode(mode) else: guest(mode))]
   var seeds = namespaceSeeds()
   for index in 0..<2:
     let codeHash = ServicePreimageHash(array[32, byte](blake2b256(codes[index]).value))
@@ -100,6 +103,13 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     let payload = @[byte(if index == 0: 73 else: 81)]
     seeds[index].requests.add(StateRequestItem(hash: ServicePreimageHash(array[32, byte](
         blake2b256(payload).value)), length: RequestLength(1), history: requestedHistory()))
+  if mode in 47..51:
+    # Replacement code is reserved in the original99 namespace; missing-target mode never fabricates its preimage.
+    let hash = ServicePreimageHash(replacementHash)
+    seeds[1].requests.add(StateRequestItem(hash: hash, length: RequestLength(uint32(
+        replacement.len)),
+      history: (if mode == 50: requestedHistory() else: availableHistory(RequestSlot(1)))))
+    if mode != 50: seeds[1].preimages.add(StatePreimageItem(hash: hash, value: replacement))
   if mode in [1, 2]:
     seeds[1].storage.add(StateStorageItem(key: @[7'u8], value: (if mode == 1: @[
         1'u8, 2, 3, 4, 5] else: @[1'u8, 2]))) # Original replacement/deletion footprints are genuine parent inputs.
@@ -242,14 +252,14 @@ proc main() {.raises.} =
       missingCode = fields.len == 3
       if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 47
+      assert mode >= 0 and mode < 52
       bodies = @[]
       slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert mode in [4, 9, 14, 19, 27, 41, 46] and bodies.len >
+  assert mode in [4, 9, 14, 19, 27, 41, 46, 51] and bodies.len >
       0 # Strict independent output comparison binds each complete chain length.
   run(base, mode, bodies, missingCode, slots)
 

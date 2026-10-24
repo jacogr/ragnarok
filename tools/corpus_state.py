@@ -719,5 +719,27 @@ def current_stf_transfer_memos_corpus(compiler, report, checks, libraries):
 
 
 
+@CORPORA.case
+def current_stf_service_upgrades_corpus(compiler, report, checks, libraries):
+    """Compare self-upgrade selection and later current-code invocation against independently calculated full maps."""
+    from current_stf_service_upgrades_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_service_upgrades', 'current_stf_transfers', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-service-upgrades-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-service-upgrades', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent self-upgrade metadata, prior-code lookup, missing code and host gas')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-service-upgrades-corpus', expected)
+    announce('independent service-upgrade whole STF maps', corpus['passed'])
+    return corpus
+
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run

@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_SERVICE_UPGRADES",
+  "files": {
+    "current-stf-service-upgrades.json": "b1d8e0d17dc9f8ec9a85c8299dd4ac7eb397dc39a93b84e9bf9b00885013d25b"
+  },
+  "target": "current-stf-service-upgrades.json"
+}
