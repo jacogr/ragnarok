@@ -411,19 +411,26 @@ retirement and partial cleanup progress. See [bounded journal maintenance](../..
 
 The [paged working-set contract](../../spec/storage-paged-working-set.md) starts with a separate
 disk-indexed light-evidence schema, bounded-memory strict open/lookup, independent reader pins
-and explicit immutable publication. It specifies the next implementation boundaries; no paged
-runtime or consumer adoption is supplied by the contract. Full-node paging retains complete-graph
+and explicit immutable publication. Its implemented storage-only boundaries and remaining completion gates are recorded there;
+consumer adoption remains gated. Full-node paging retains complete-graph
 validation requirements and a separate integration gate.
 
 `paged_codec.nim` supplies the first format boundary: checked dataset geometry, fixed page/index/
 manifest codecs, constant-space index ordering/coverage scans, proof framing and bounded postorder
 digest paths. Decoding CURRENT before opening an epoch and explicit header binding keep selection
 metadata separate from complete artifact/proof admission. It owns no files or resident dataset;
-streamed construction, paged lookups and native publication remain pending.
+streaming algorithms and native ownership are supplied by the layers below.
 
 `paged_stream.nim` adds synchronous replay-bound append construction, complete root-bound artifact
 admission and authenticated binary-search lookups through borrowed exact-read/EOF callbacks. It
 keeps zero/one-page cache modes, one-proof transport and fixed tree carry scratch under explicit
 workspace and operation budgets. Returned metadata owns no callbacks/files; verified lookup values
-are independently owned. Native sealed artifacts, publication, pinned readers, uncertainty owners
-and Linux resource qualification remain pending in the [paged contract](../../spec/storage-paged-working-set.md).
+are independently owned.
+
+`paged_io.nim` and `paged_store.nim` add explicit-close move-only writer/candidate/reader owners,
+independent shared epoch pins, durable atomic CURRENT selection and captured retired-epoch
+reclamation through exclusive pins. Complete verification precedes publication; receipts separate
+confirmed selection from later native retirement diagnostics. Unknown staging/build files remain
+forensic and block conflicting operations. Knowledge-preserving compaction, producer-bound
+candidate recovery, process/resource qualification and consumer adoption remain gates in the
+[paged contract](../../spec/storage-paged-working-set.md).

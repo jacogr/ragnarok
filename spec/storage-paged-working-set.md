@@ -1,8 +1,10 @@
 # Paged storage and bounded working sets
 
-Status: storage-only format codecs and synchronous streamed construction/admission/lookup algorithms.
-Native database readers/writers, memory qualification and application adoption remain pending. The first backend will be an
-immutable, disk-indexed **light-evidence** store whose selected dataset may exceed RAM while its
+Status: storage-only codecs, streamed construction/admission/lookup and native immutable epoch
+ownership/publication with pinned readers and explicit captured retired-epoch reclamation.
+Compaction, replay-bound candidate cleanup, process/resource qualification and application adoption
+remain pending. The backend is a disk-indexed **light-evidence** store designed for selected datasets
+that may exceed RAM while its
 private working set remains explicitly bounded. Existing complete-image/cache and full-node
 repository APIs keep their current contracts.
 
@@ -393,3 +395,89 @@ reader pins, replay-bound partial cleanup and controlled Linux working-set/RSS q
 still required. Resident callback fixtures and successful algorithm tests do not establish disk
 lifetime, power-loss durability or larger-than-RAM operation. Existing M1 framing completion
 remains distinct from complete state serialization and whole-client parity.
+
+
+## Native owners, selection and captured reclamation
+
+`src/storage/paged_io.nim` and `paged_store.nim` add the native storage-only boundary. The supported
+local filesystem profile is Linux/macOS with directory-relative no-follow regular-file opens,
+independent open-file-description `flock` pins, atomic same-directory rename and file/directory
+`fsync`. One caller serializes operations on each owner; callbacks remain synchronous and cannot
+retain the borrowed IO. Filesystem mutation by an external noncooperating writer during an
+operation is outside this ownership profile. Named-inode/held-inode, namespace, tracked extent,
+actual EOF and sealed nanosecond modification-time checks detect substitution or uncertainty
+before reuse. No directory walk, full artifact read, mmap, whole index or whole dataset is owned.
+
+`PagedDirectory`, `PagedFile`, `PagedWriter`, `PagedCandidate` and `PagedReader` are move-only,
+explicit-close owners. Failed authoring may leave a live candidate and failed bootstrap may leave
+a live writer; callers must test `opened` and explicitly `close` on every exit. Closing preserves
+forensic files, marks retirement before native close, reports failure and never retries a retired
+fd number. Candidates retain a stable private writer incarnation, not a reusable fd number or a
+lease after writer close. Reopening the same root/epoch cannot revive that candidate capability.
+
+`initializePagedWriter` exclusively creates a private namespace, persistent LOCK and epoch one at
+ordinary sequence zero. `openPagedWriter` takes LOCK exclusively and admits CURRENT only under
+independently supplied `PagedNativeConfig` chain/root and exact stream policies. `openPagedReader`
+reads CURRENT, opens an independent shared epoch pin, rereads CURRENT for exact equality and fully
+verifies all bytes and proofs. A changed selection refuses admission without retry. Temporary
+namespace handles retire before reader success. Each reader owns its own epoch and directory
+handles; writer selection/close does not revoke old readers or independently owned lookup bytes.
+Readers expose retained absence, present-empty and `UnknownKey` with their existing distinctions.
+
+`preparePagedReplacement` creates epoch+1 with sequence+1, including requested equal evidence.
+`preparePagedAdvance` requires an explicit different destination root, fresh complete evidence and
+preserves ordinary sequence. Epoch/sequence exhaustion refuses before producer/hash/build IO.
+The replay-bound streaming engine authors and checks the file; file and directory barriers precede
+sealing. Failed authoring is never a seal, never overwrites an epoch, and leaves an explicit-close
+forensic owner. Work budgets apply independently to each synchronous stream phase, including the
+finite number of complete source/candidate revalidations in a composite native operation; they
+are not a single aggregate native-operation quota or a measured process RSS cap.
+
+`publish` requires the live sealed candidate, exact original writer incarnation/source position,
+namespace and policies. It completely revalidates source and candidate, writes/fsyncs/closes
+CURRENT.next, rechecks source and candidate identity, renames and fsyncs the directory. Failure
+before confirmation grants no new head/receipt; publication uncertainty poisons the writer until
+explicit close and strict reopen. An existing CURRENT.next blocks selection and remains intact.
+After confirmed rename/directory sync, `PagedPublication` always retains the confirmed manifest and
+`FileAndDirectorySynced` durability, even if subsequent candidate/old-head retirement or new-head
+pin acquisition fails. Its separate `retirementError` and `writerUsable` report that outcome; an
+unusable writer requires close/reopen. Pure provider/quota refusal preserves an otherwise checked
+reader/source; inode/extent/read uncertainty latches until strict reopen.
+
+`epochReceipt` captures a reader's checked epoch, exact inode/namespace and inherited policies.
+`reclaim` takes that passive receipt plus the independently expected current manifest. It refuses
+selected/future epochs, another directory/policy, stale current positions and unknown staging files.
+It revalidates the current source, acquires an independent exclusive nonblocking old-epoch pin,
+checks the receipt's actual inode/version and all old bytes/proofs, rechecks CURRENT, then unlinks
+only that canonical captured old name and syncs the directory. Busy readers prevent deletion.
+Already-absent retries still synchronize the captured namespace. A post-confirmation close error
+is a separate successful-reclamation diagnostic; uncertain unlink/barriers require strict reopen.
+
+This layer does **not** implement knowledge-preserving compaction, sealed/unsealed candidate
+recovery or replay-bound partial-build cleanup. Ordinary open never adopts or deletes candidates;
+conflicting next-epoch and staging names remain forensic and block creation/publication. The
+contract's producer-bound cleanup, process crash schedules, Linux descriptor/RSS/page/cache
+accounting and populated larger-than-RAM qualification remain completion gates. No consumer,
+full-node graph authority, compiler/provider pin or complete-state serialization scope changes.
+
+The `storage_paged_native` checked ARC/Clang native suite covers independent rooted fixtures,
+same-root and root-advance selection, retained readers/lookups, unknown versus proved absence,
+writer exclusivity, stale-incarnation candidates, namespace/pending collisions, provider/quota
+refusal versus IO poison, every observed publication read/write/fsync/rename/close/pin fault,
+short progress/EINTR, reused-fd close, independently rehashed max counters, reclamation fault
+boundaries and 1,000 open/verify/lookup/move/close release cycles. An exact stopped-child shared
+pin blocks parent reclamation across publication until the child is killed/reaped. Native runtime
+result/receipt and live-owner guards, private-state rejection fixtures and actual ARC lowering
+rejections constrain the exported owner/result surface.
+
+`tests/models/storage_paged_epoch_pins.nif` checks the specific reader-admission/publication/cleanup
+race with separate CURRENT reads, lock acquisitions, rename, unlink and close steps. Its base
+invariant passes; removing either exclusive-pin exclusion or the post-pin CURRENT recheck produces
+an invariant counterexample. A reachability witness admits an old pinned reader before a later
+publication. Serial and four-worker exploration agree. This bounded lifecycle evidence does not
+model power loss, hostile filesystem mutation, complete proof semantics or process resource bounds.
+
+Reproduce with `make unit SUITE=storage_paged_native`, `make check-inventory`, the discovered
+`storage_paged_native` runtime/compiler guards and the `storage_paged_epoch_pins` model cases.
+Local macOS results are distinct from exact-head Linux CI and future memory qualification.
+Documented M1 framing completion remains separate from complete JAM state serialization.
