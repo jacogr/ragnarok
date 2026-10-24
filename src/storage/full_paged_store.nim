@@ -63,6 +63,16 @@ type
     selected: FullPagedManifest
     retirement: FileError
     usable: bool
+  FullPagedEpochReceipt* = object ## Captured old checked identity is passive and owns no native pin or writer incarnation.
+    ready: bool
+    header: FullPagedHeader
+    selected: FullPagedManifest
+    identity: PagedFileIdentity
+    limits: FullPagedStreamLimits
+  FullPagedReclamation* = object ## Confirmed absence survives later close diagnostics; uncertainty exposes no successful deletion prefix.
+    ready: bool
+    absentBefore: bool
+    retirement: FileError
 func opened*(writer: FullPagedWriter): bool =
   ## Default/moved/closed writers have no native retirement authority.
   let data = writer.data
@@ -526,3 +536,90 @@ proc initializeFullPagedWriter*(writer: var FullPagedWriter, path: string,
   if prepared.error != FullPagedNativeError.None: return rejected[FullPagedPublication,
       StorageDurability](prepared)
   writer.publish(candidate)
+
+proc epochReceipt*(reader: FullPagedReader): FullPagedNativeResult[FullPagedEpochReceipt] =
+  ## Capture exact checked epoch/namespace/version while pinned, without retaining the reader or native owner.
+  let data = reader.data
+  if data == nil or not data.active:
+    return refused[FullPagedEpochReceipt](FullPagedNativeError.Uninitialized)
+  let identity = data.file.fileIdentity
+  if identity.error != FileError.None: return fileFailed[FullPagedEpochReceipt](identity.error)
+  FullPagedNativeResult[FullPagedEpochReceipt](status: FullPagedNativeError.None,
+    completed: FullPagedEpochReceipt(ready: true, header: data.checked.header,
+      selected: data.checked.manifest, identity: identity.value, limits: data.checked.limits))
+func alreadyAbsent*(receipt: FullPagedReclamation): bool {.requires: receipt.ready.} =
+  ## Idempotent synchronized absence is distinct from unlinking a captured old inode during this call.
+  receipt.absentBefore
+func retirementError*(receipt: FullPagedReclamation): FileError {.requires: receipt.ready.} =
+  ## A confirmed unlink/directory barrier is not erased by later descriptor retirement failure.
+  receipt.retirement
+func durability*(receipt: FullPagedReclamation): StorageDurability {.requires: receipt.ready.} =
+  ## Successful already-absent retries also perform an actual directory synchronization.
+  StorageDurability.FileAndDirectorySynced
+func policy(limits: FullPagedStreamLimits): array[15, uint64] =
+  ## Bind every dataset/trie/history/cache/workspace/scratch/work scalar exactly, including zero allowances.
+  [uint64(limits.dataset.entries), uint64(limits.dataset.bytes), uint64(limits.trie.items),
+    uint64(limits.trie.nodes), uint64(limits.trie.perValue), uint64(limits.trie.totalValueBytes),
+    uint64(limits.roots), uint64(limits.cachePages), uint64(limits.workingBytes),
+    uint64(limits.scratchBytes), uint64(limits.work.ioCalls), uint64(limits.work.hashes),
+    uint64(limits.work.visits), uint64(limits.work.readBytes), uint64(limits.work.writeBytes)]
+proc reclaim*(writer: var FullPagedWriter, receipt: FullPagedEpochReceipt,
+    expected: FullPagedManifest): FullPagedNativeResult[FullPagedReclamation] =
+  ## Delete only an exact captured older physical epoch after full source/old-graph checks and exclusive pinning.
+  let data = writer.data
+  if data == nil or not data.active:
+    return refused[FullPagedReclamation](FullPagedNativeError.Uninitialized)
+  if data.poisoned: return refused[FullPagedReclamation](FullPagedNativeError.RecoveryRequired)
+  if not receipt.ready or not expected.initialized:
+    return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
+  let selected = data.checked.manifest.bytes
+  let captured = expected.bytes
+  if selected.error != FullPagedError.None: return codecFailed[FullPagedReclamation](selected.error)
+  if captured.error != FullPagedError.None: return codecFailed[FullPagedReclamation](captured.error)
+  if selected.value != captured.value: return refused[FullPagedReclamation](FullPagedNativeError.StaleView)
+  if uint64(receipt.selected.epoch) >= uint64(expected.epoch):
+    return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
+  if array[32, byte](receipt.header.chainId) != array[32, byte](data.config.chain) or policy(receipt.limits) != policy(data.config.limits) or
+      not data.directory.matchesDirectory(receipt.identity):
+    return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
+  let source = validateHead(data)
+  if source.error != FullPagedNativeError.None: return rejected[FullPagedReclamation, bool](source)
+  let pending = data.directory.pendingAbsent
+  if pending != FileError.None: return fileFailed[FullPagedReclamation](pending)
+  let exists = data.directory.epochExists(receipt.selected.epoch)
+  if exists.error != FileError.None: return fileFailed[FullPagedReclamation](exists.error)
+  if not exists.value:
+    # Fresh source checking and a real barrier qualify idempotent absence; stale names never become an unlink wildcard.
+    let current = current(data)
+    if current != FileError.None: return fileFailed[FullPagedReclamation](current)
+    let confirmed = data.directory.synchronize
+    if confirmed != FileError.None:
+      data.poisoned = true
+      return fileFailed[FullPagedReclamation](confirmed)
+    return FullPagedNativeResult[FullPagedReclamation](status: FullPagedNativeError.None,
+      completed: FullPagedReclamation(ready: true, absentBefore: true, retirement: FileError.None))
+  var file = default(PagedFile)
+  defer:
+    # Pre-confirmation failure may not leak even a captured exclusive cleanup pin.
+    if file.opened and file.close != FileError.None:
+      result = fileFailed[FullPagedReclamation](FileError.IoFailure)
+  let pinned = openEpoch(file, data.directory, receipt.selected.epoch,
+    PagedPin.Exclusive, receipt.limits.dataset.bytes)
+  if pinned != FileError.None: return fileFailed[FullPagedReclamation](pinned)
+  let actual = file.fileIdentity
+  if actual.error != FileError.None: return fileFailed[FullPagedReclamation](actual.error)
+  if not receipt.identity.matches(actual.value):
+    return fileFailed[FullPagedReclamation](FileError.RecoveryMismatch)
+  let verified = file.validateFullFile(data.directory, receipt.header, receipt.selected, receipt.limits)
+  if verified.error != FileError.None: return fileFailed[FullPagedReclamation](verified.error)
+  if verified.value.error != FullPagedStreamError.None:
+    return graphFailed[FullPagedReclamation, CheckedFullPagedArtifact](verified.value)
+  let current = current(data)
+  if current != FileError.None: return fileFailed[FullPagedReclamation](current)
+  let removed = removePinned(data.directory, file)
+  if removed != FileError.None:
+    data.poisoned = true
+    return fileFailed[FullPagedReclamation](removed)
+  let retired = file.close
+  FullPagedNativeResult[FullPagedReclamation](status: FullPagedNativeError.None,
+    completed: FullPagedReclamation(ready: true, absentBefore: false, retirement: retired))

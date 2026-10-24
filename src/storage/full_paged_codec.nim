@@ -482,3 +482,7 @@ proc decodeFullPagedSelection*(input: openArray[byte], chain: StorageChainId, ro
 func generation*(manifest: FullPagedManifest): RepositoryGeneration {.requires: manifest.ready.} =
   ## Read ordinary full-repository generation independently of the physical epoch.
   manifest.ordinary
+
+func initialized*(manifest: FullPagedManifest): bool =
+  ## Default selection metadata cannot grant epoch addressing or reclamation authority.
+  manifest.ready
