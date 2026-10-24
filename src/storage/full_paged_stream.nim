@@ -389,7 +389,7 @@ proc validateFullPaged*(io: PagedInput, scratch: FullPagedScratch, header: FullP
   let shape = header.geometry
   if uint64(header.len) > uint64(limits.roots) or shape.entries > uint64(limits.dataset.entries) or
       shape.byteLength > uint64(limits.dataset.bytes) or shape.entries > uint64(
-          limits.scratchBytes) div 4:
+          limits.scratchBytes) div 2:
     work.fail(FullPagedStreamError.LimitExceeded)
   if work.status != FullPagedStreamError.None: return refused[CheckedFullPagedArtifact](work)
   if not work.charge(Counter.Hash, 1): return refused[CheckedFullPagedArtifact](work)
