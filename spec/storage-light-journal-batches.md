@@ -62,6 +62,11 @@ six independent positive controls and three strict private-field compiler reject
 new opaque candidate and result payloads. Seven paired benchmark admission tests plus six
 full-image admission tests pass.
 
+Real process interruption is covered by the grouped
+[batch crash/recovery qualification](storage-light-journal-batch-crashes.md), including exact
+frame-boundary success, partial-prefix repair, live stopped-child LOCK contention and retry of
+only the remaining update. It is separate from injected write-failure evidence above.
+
 ## Matched resource/work panel
 
 ```sh
