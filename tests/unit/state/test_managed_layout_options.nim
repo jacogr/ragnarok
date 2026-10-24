@@ -21,6 +21,17 @@ proc main() =
     arguments.add("--state-compact-bytes"); arguments.add(value)
     assert parseOptions(arguments, selected) and selected.managedStorage
     if value == "0": assert uint64(selected.stateCompactionBytes) == 0
+  var paged = base
+  paged.add("--state-layout"); paged.add("paged")
+  assert parseOptions(paged, selected) and selected.pagedStorage and not selected.managedStorage
+  for suffix in [@["--state-compact-bytes", "0"], @["--state-migrate-from", "legacy.db"]]:
+    # A paged request cannot silently inherit managed maintenance or conversion controls.
+    var arguments = paged
+    for value in suffix: arguments.add(value)
+    assert not parseOptions(arguments, selected) and not selected.valid and
+        not selected.pagedStorage
+  assert not parseOptions(@["server", "--with-state", "--chain", "chain.json", "--state-layout",
+      "paged"], selected)
   let invalid = @[@["--state-layout", "unknown"], @["--state-layout", "Managed"],
     @["--state-layout", "managed", "--state-layout", "managed"], @["--state-compact-bytes", "0"],
     @["--state-layout", "managed", "--state-compact-bytes", "134217729"],

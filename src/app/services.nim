@@ -130,7 +130,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   diskCommitOutcome: DiskChainResult[RepositoryGeneration]
   diskId: StorageChainId
   diskLimits: JournalLimits
-  diskEnabled, publishing, diskFaulted, diskManaged: bool
+  diskEnabled, publishing, diskFaulted, diskManaged, diskPaged: bool
   compactBytes: ByteLimit
 
 func error*(admission: StateProofAdmission): StateProofAdmissionError =
@@ -452,7 +452,10 @@ proc managedPolicy(limits: JournalLimits): ManagedLimits =
 proc initializeSelectedDisk(services: var Services, path: string): DiskChainResult[
     RepositoryGeneration] =
   ## Explicit layout dispatch never resets an existing path or infers migration from its shape.
-  if services.diskManaged:
+  if services.diskPaged:
+    initializePagedDiskChain(services.disk, path, services.diskId, services.canonical,
+        services.diskLimits)
+  elif services.diskManaged:
     initializeManagedDiskChain(services.disk, path, services.diskId, services.canonical,
         managedPolicy(services.diskLimits))
   else:
@@ -483,6 +486,7 @@ proc setupDisk(services: var Services, options: Options, limits: StateStoreLimit
   services.diskId = StorageChainId(array[32, byte](digest.value))
   services.diskLimits = diskJournalLimits(limits)
   services.diskManaged = options.managedStorage
+  services.diskPaged = options.pagedStorage
   services.compactBytes = if services.diskManaged: options.stateCompactionBytes else: ByteLimit(0)
   if options.stateMigration:
     if imported: return false # Independently imported authority cannot be mixed with a local legacy source.
@@ -501,7 +505,10 @@ proc setupDisk(services: var Services, options: Options, limits: StateStoreLimit
     if services.initializeSelectedDisk(options.stateDatabase).error !=
         DiskChainError.None: return false
   else:
-    let opened = if services.diskManaged:
+    let opened = if services.diskPaged:
+      openPagedDiskChain(services.disk, options.stateDatabase, services.diskId,
+        seed.value.chainView.bestBlock.value.chainParameters, limits, services.diskLimits)
+    elif services.diskManaged:
       openManagedDiskChain(services.disk, options.stateDatabase, services.diskId,
         seed.value.chainView.bestBlock.value.chainParameters, limits, managedPolicy(
             services.diskLimits))

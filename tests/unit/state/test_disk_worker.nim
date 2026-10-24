@@ -10,6 +10,8 @@ import ../../../src/chain/provider
 import ../../../src/state/[store, disk_store, accumulation_publication]
 import ../../../src/storage/[file_repository, node_repository, node_records, record_codec, database_identity]
 import ../../../src/codec/[bounded, state_trie, report_owned]
+proc workerPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
+  ## Process-private paged namespaces never replace another native test's artifact.
 proc journalLimits(): JournalLimits =
   ## Explicit broad fixture ceilings bound all physical records, individual batches and history context.
   JournalLimits(repository: RepositoryLimits(codec: RecordLimits(trie: StateTrieLimits(
@@ -26,19 +28,28 @@ proc waitDone(worker: var DiskPublicationWorker) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Yield under a monotonic bounded test deadline.
-proc cycle(seed: ApplicationChain, prepared: PreparedChainUpdate, mode: int) {.raises.} =
+proc cycle(seed: ApplicationChain, prepared: PreparedChainUpdate, mode: int,
+    paged = false) {.raises.} =
   ## Modes collect normally, join a completed operation, or race joined shutdown against native entry.
   var owner = seed
   var disk = default(DiskStateStore)
   var worker = default(DiskPublicationWorker)
   var path = "disk-worker.db"
+  if paged: path = path & "-paged-" & $workerPid() & "-" &
+      $mode # Separate explicitly owned paged namespaces survive fixture retirement.
   let limits = journalLimits()
   let chain = default(StorageChainId)
   defer:
     discard worker.close # Join before disk, publication, application or retained fixture aliases retire.
     if disk.opened: discard disk.close
-  discard initializeDiskChain(disk, path, chain, owner, limits).value
-  defer: discard posix.unlink(path.toCString())
+  if paged:
+    discard initializePagedDiskChain(disk, path, chain, owner,
+        limits).value # One artifact binds retained complete roots and application context.
+  else:
+    discard initializeDiskChain(disk, path, chain, owner,
+        limits).value # Existing journal worker behavior remains qualified.
+  defer:
+    if not paged: discard posix.unlink(path.toCString()) # Paged directory artifacts remain in the ignored runner namespace for inspection.
   var publication = prepareDiskPublication(disk, owner, prepared, chain, limits.contextBytes).value
   assert worker.submit(disk, publication).error == DiskWorkerError.Closed, "start native worker"
   assert worker.start(), "live worker cannot restart"
@@ -91,6 +102,7 @@ proc main() {.raises.} =
   let seed = initApplicationChain(genesisView(fixture.parent)).value
   let prepared = seed.prepareAccumulation(fixture.source, completionLimits().composition).value
   for mode in 0..2: cycle(seed, prepared, mode)
+  for mode in 0..2: cycle(seed, prepared, mode, true) # Both update families use the same excluded native worker for paged commits.
   for index in 0..<24: cycle(seed, prepared, index mod 3)
 try:
   main()

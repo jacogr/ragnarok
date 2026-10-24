@@ -30,7 +30,7 @@ type StateStorage* {.pure.} = enum ## Backend choice is independent of future fu
   Memory, Disk
 
 type StateDiskLayout* {.pure.} = enum ## Physical layout is independent of memory/disk and future full/light selection.
-  Journal, Managed
+  Journal, Managed, Paged
 
 type Options* = object ## Validated service controls; command handlers validate their positional shapes.
   parsed, telemetry, rpc, ui, state, recover, localAncestors, management, updateLogicalSource: bool
@@ -119,6 +119,9 @@ func diskStorage*(options: Options): bool =
 func managedStorage*(options: Options): bool =
   ## Only an explicitly selected managed disk layout enables managed startup or automatic reclamation.
   options.diskStorage and options.layout == StateDiskLayout.Managed
+func pagedStorage*(options: Options): bool =
+  ## Explicit physical selection requires the disk backend; it never infers mode, migration or an existing directory schema.
+  options.diskStorage and options.layout == StateDiskLayout.Paged
 func stateCompactionBytes*(options: Options): ByteLimit {.requires: options.managedStorage.} =
   ## Return the managed soft journal threshold; explicit zero disables automatic maintenance.
   options.compactBytes
@@ -263,6 +266,7 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
         case value
         of "journal": candidate.layout = StateDiskLayout.Journal
         of "managed": candidate.layout = StateDiskLayout.Managed
+        of "paged": candidate.layout = StateDiskLayout.Paged
         else: return false # Layout spelling is explicit; existing paths never select migration implicitly.
       of "--state-db": candidate.database = value
       of "--download-logical-source", "--download-logical-policy", "--download-namespace-policy":
