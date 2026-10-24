@@ -137,7 +137,7 @@ all header truncations and trailing reserved bytes, exact/one-short geometry/val
 strict/sticky index coverage and ordering, every manifest-byte corruption, primitive failure,
 empty/long values and complete physical left-bit retention. This is format evidence only.
 Complete-graph admission, native readers/construction/publication are implemented by the units
-below. Compaction/recovery, consumer adoption and full resource/crash panels remain open.
+below. Recovery, consumer adoption and full resource/crash panels remain open.
 
 
 ## Bounded graph engine
@@ -280,3 +280,27 @@ or post-pin CURRENT equality produces a5-state violation; the retained-old-reade
 reachable with a5-state trace. Serial and four-worker results agree. Native tests exercise real
 pin contention and retained readers; the model excludes hostile filesystems, proof/graph semantics
 and power loss. No new integrated model or broader formal guarantee is claimed.
+
+
+## Source-derived full compaction
+
+`prepareFullPagedCompaction` takes no producer, root, count or history replacement. It derives
+all target metadata from the held completely checked source, advances only physical epoch and
+preserves ordinary generation even at its maximum. All complete retained roots, physical child
+identities, canonical index/payload bytes and section padding survive exactly.
+
+`compactFullPaged` checks that only epoch differs in the canonical header, then copies source
+pages through captured-root authentication. Its global construction counters reserve every
+fresh source-page fetch schedule (two EOF checks, page read, sibling reads and hashes) before
+dispatch. It rebuilds the complete target digest tree, performs full graph admission under the
+source's inherited policy and requires the final exact physical-record fingerprint to match the
+source. Native sealing shares the same fresh-stat/error boundary as ordinary construction.
+Compaction consumes no producer allowance; a zero producer quota remains valid.
+
+The `storage_full_paged_compaction` suite verifies both cache modes, every target byte against
+an independently rebuilt tree, exact/one-short global IO/hash/read/write quotas, changed epoch/
+generation rejection, corrupted source page refusal, retained history/readers/reclamation and
+maximum ordinary generation with no producer calls. Every observed native preparation IO failure
+preserves the strict selected source.1000 actual compaction/publication cycles retain30,464 ->
+30,464 occupied bytes. Ordinary publication and retention regressions pass after shared native
+sealing and test-oracle extraction. Explicit prefix cleanup/bootstrap recovery remain next.

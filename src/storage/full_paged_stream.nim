@@ -535,3 +535,22 @@ proc lookupFullPaged*(io: PagedInput, checked: CheckedFullPagedArtifact, root: S
       inc depth
   if not io.checkExtent(header.geometry.byteLength, work): return refused[FullPagedLookup](work)
   FullPagedStreamResult[FullPagedLookup](status: FullPagedStreamError.None, completed: lookup)
+
+proc fetchFullPagedPage*(io: PagedInput, checked: CheckedFullPagedArtifact,
+    ordinal: PageOrdinal): FullPagedStreamResult[array[PagedPageBytes, byte]] =
+  ## Copy one captured-root-authenticated page; no native owner, cache slot or callback escapes.
+  if not checked.ready:
+    return FullPagedStreamResult[array[PagedPageBytes, byte]](
+        status: FullPagedStreamError.Uninitialized)
+  var work = initWork(checked.policy)
+  let shape = checked.header.geometry
+  if uint64(ordinal) >= shape.dataPages:
+    work.fail(FullPagedStreamError.InvalidGraph)
+    return refused[array[PagedPageBytes, byte]](work)
+  if not io.checkExtent(shape.byteLength, work): return refused[array[PagedPageBytes, byte]](work)
+  var cache = default(PageCache)
+  if not io.page(checked.header, checked.selected, uint64(ordinal), cache, work):
+    return refused[array[PagedPageBytes, byte]](work)
+  if not io.checkExtent(shape.byteLength, work): return refused[array[PagedPageBytes, byte]](work)
+  FullPagedStreamResult[array[PagedPageBytes, byte]](status: FullPagedStreamError.None,
+    completed: cache.bytes)
