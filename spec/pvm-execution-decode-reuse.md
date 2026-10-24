@@ -298,7 +298,7 @@ claim or complete-JAM parity claim follows.
 
 ## Borrowed complete cache entries, 2026-10-24
 
-A candidate private lookup returns a nullable pointer to a complete genuine cache entry
+The private lookup returns a nullable pointer to a complete genuine cache entry
 instead of copying its64-byte result at every hit. Successful cold decoding still fills
 the existing fixed small array and bounded direct spill under the original replacement
 policy, then returns the small destination's address. Failures return nil without filling,
@@ -328,5 +328,29 @@ with no additional caller miss-result frame. AddressSanitizer passes the complet
 and frozen mixed-memory host-reentry cases with stack-use-after-return detection enabled;
 a separate positive stack-escape control is detected. These checks cover instrumented
 stack/scope addresses; the pinned native allocator does not individually poison heap
-objects, so they do not establish complete heap/leak coverage. No timing gain is claimed
-before the incremental CI comparison.
+objects, so they do not establish complete heap/leak coverage. The incremental comparison below supplies timing evidence for this exact runtime.
+
+
+[Standalone CI40116035877](https://github.com/jacogr/ragnarok/actions/runs/40116035877)
+compares runtime13fa3134 directly with published parent67df0628 on one AMD EPYC9V45
+runner. The rejected adaptive dynamic-target experiments are absent from both sources.
+All2808 paired full-state invocations,2808 identical-source controls, assertion controls
+and the interpreted reference pack pass. Both process orders improve Pinky CPU by
+14.54/13.27% dynamic,21.03/19.08% planned and12.55/13.65% memo. Corresponding Pinky
+controls vary -0.94/-2.50%, +1.90/-1.42% and -1.39/-3.08%. Long indirect calls improve
+14.60–20.53%, long sieve7.27–16.35%, and dynamic memory fill12.92/13.52%. These are
+within-run ratios; absolute times from other CPUs are not combined.
+
+All21 real and33 synthetic cells, cold observations and both orders remain retained.
+Short sieve1000 memo regresses4.11/3.78% (about5us), above its -1.41/+0.85% controls.
+Tiny arithmetic1 planned costs20/4.5ns more (+8.32/+1.83%); dynamic/memo tiny cases
+vary by tens of nanoseconds. Long memo memory fill changes -6.75/-0.67% against
+-1.20/+9.36% controls, and planned synthetic host changes overlap their controls;
+neither is claimed as an established gain. Dynamic and memo host reductions remain
+visible with their corresponding controls in the raw artifact.
+
+The exact standalone runtime passes all seven selected native cache/execution/mixed/
+reentry/failure/repair suites and their declared1000-cycle balanced ARC groups. Cache
+and frozen mixed-memory reentry ASan runs pass with a positive stack-escape control;
+native-allocator heap/leak coverage is not claimed. Documentation-only native rebases
+preserve the measured runtime, drivers, build configuration and dependency pins.
