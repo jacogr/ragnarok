@@ -431,8 +431,7 @@ are independently owned.
 independent shared epoch pins, durable atomic CURRENT selection and captured retired-epoch
 reclamation through exclusive pins. Complete verification precedes publication; receipts separate
 confirmed selection from later native retirement diagnostics. Unknown staging/build files remain
-forensic and block conflicting operations. Producer-bound
-candidate recovery, process/resource qualification and consumer adoption remain gates in the
+forensic and block conflicting operations. Process/resource qualification and consumer adoption remain gates in the
 [paged contract](../../spec/storage-paged-working-set.md).
 
 
@@ -440,3 +439,11 @@ candidate recovery, process/resource qualification and consumer adoption remain 
 with authenticated page copying and complete target verification. Exact retained knowledge and
 ordinary sequence survive; only the physical epoch advances. It accepts no caller replacement
 producer and makes no byte-reduction promise for this canonical immutable format.
+
+
+`preparePagedCleanup` reproduces independently expected target evidence in bounded anonymous disk
+scratch, then captures exact candidate/staging prefixes under exclusive pins. `discardPagedCandidate`
+consumes those capabilities, or a live sealed candidate, with complete preflight and synchronized
+absence. `resumePagedInitialization` explicitly recovers reproducible bootstrap prefixes only while
+CURRENT is absent under the existing persistent LOCK. Ordinary open preserves unknown files and
+never adopts staging; no recovery root or target shape is inferred from partial bytes.
