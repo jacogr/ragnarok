@@ -13,8 +13,7 @@ no dependency/toolchain pin changes, and no compiled backend is enabled.
 The default bounded matrix is sieve/indirect-call/memory-fill at1,000 and100,000,
 plus one initialized Pinky frame. `PVM_COMPARE_SCOPE=controls` explicitly selects
 the six non-Pinky inputs. The default has1,092 validated native invocations;
-the controls have936. The normal public-reference benchmark and CI matrices are
-unchanged. A baseline incompatible with the current driver fails explicitly rather
+the controls have936. The normal public-reference benchmark is unchanged. A baseline incompatible with the current driver fails explicitly rather
 than adapting its APIs or changing the reference expectation.
 
 ## Shared inputs and identity
@@ -53,7 +52,8 @@ cold samples, and policy resource metadata. It displays all21 CPU cells, includi
 regressions; raw wall/CPU distributions, cold samples and preparation facts remain.
 Small differences remain unproven without repeat/counter evidence.
 
-Outputs live under`build/tests/pvm-guest-compare/`: complete`results.json`,
+Outputs default to`build/tests/pvm-guest-compare/`; `PVM_COMPARE_OUTPUT` can select another
+owned directory below `build/` so a control run cannot overwrite paired evidence. Outputs include complete`results.json`,
 `summary.md`, per-process logs and source snapshots. A rerun retires prior successful
 aggregates before revision/setup validation. Running/failed evidence stays in
 `partial.json`; failed runs leave no completed aggregate or downloadable summary.
@@ -87,3 +87,25 @@ identical-source/control-subset edge cases passed in the final20 targeted guards
 Inventory passes; production Nim/Rust sources are unchanged from the already
 formatted, qualified scalar-preflight layer. No extra native/runtime suite is
 claimed from these tooling checks.
+
+
+## Opt-in same-runner CI
+
+The `compare-pvm` manual scope or `ci:pvm-compare` label selects the dedicated
+**Perf / PVM Revisions** job. Open-PR label requests check out the exact head SHA
+and use the event's exact base SHA. Manual dispatch uses the selected branch and
+`pvm_compare_base` (default `HEAD^`). Complete history makes those revisions locally
+resolvable; input refs reach Git through structured arguments, never shell interpolation.
+
+One Ubuntu 24.04 VM runs the complete pair, a separate `HEAD`/working-source control
+under `build/tests/pvm-guest-control/`, and the maintained candidate/PolkaVM interpreted
+real-guest pack sequentially. Each comparison finishes its builds before timing.
+All full-state and identity checks remain mandatory. Control variation, raw spread
+and repeated jobs qualify changes; no universal hardware isolation or cross-run
+absolute timing comparison is claimed. Correctness success is not a speed verdict.
+
+The job publishes all three summaries and raw JSON/logs even when an earlier step
+fails. Failed comparisons retain partial diagnostics and never a successful summary.
+Artifacts omit binaries, source snapshots, generated fixtures and compiler caches.
+Ordinary master/full/Perf jobs retain their current matrix; the new job requires its
+own explicit request and follows the shared 60-minute timeout policy.
