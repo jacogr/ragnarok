@@ -221,7 +221,7 @@ def build(checks, compiler, source, name, defines=(), cflags=()):
     output = row.pop('output')
     (checks.folder/(name+'-build.log')).write_text(output)
     if row['exit_code'] or 'Error:' in output or 'FAILURE' in output:
-        raise RuntimeError('opcode census build failed: '+name)
+        raise RuntimeError('checked PVM build failed: '+name)
     row['binary_sha256'] = hashlib.sha256(binary.read_bytes()).hexdigest()
     return row, binary
 
