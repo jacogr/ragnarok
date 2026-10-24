@@ -360,3 +360,26 @@ observations and regressions remain in both CI artifacts. This supports the
 repeated sieve/memset gains, not a universal speed claim. Reports are retained
 under `build/pvm12/ci-40105379172/` and its `-attempt2` sibling. Publication adds
 only this feature-contract evidence to the measured runtime.
+
+
+## Reusing execution classes for fallthrough, 2026-10-24
+
+The existing immutable opcode-class byte now distinguishes the nonterminating
+`unlikely` control instruction (`u`) from terminating controls (`c`). The `c`
+entries equal exactly the normative terminator set T; all admitted register,
+memory, host and `u` entries are nonterminators. Both control classes still require
+the control capability. Every byte in the256-entry table is checked against this
+partition in the retained source-identity probe before qualification.
+
+After the existing mutation/exit selection, `category != 'c'` selects the original
+nonterminator fallthrough check. This reuses the already loaded dispatch fact and
+lets the optimizer retain facts from each category branch, instead of repeating
+`terminatesBlock(opcode)` set membership. Gas charging, capability refusal,
+PC/paid-state mutation, success-guarded `instructionHasFallthrough`, memory-fault
+exemption and terminal normalization remain in their existing order. No owner,
+public API, instruction representation, new metadata allocation or check flag changes.
+
+The selected step/capability, conditional-control, memory, cache, host-reentry and
+mixed-policy suites cover the changed path. Paired GitHub CI against merged master
+must establish speed and retain regressions/identical-source controls before this
+candidate is published; local timing is discarded.
