@@ -68,3 +68,27 @@ proc requestCode*(mode: int, hash: array[32, byte]): seq[byte] =
   instructions.add(if mode in [64, 65, 66]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc provisionCode*(mode: int, hash: array[32, byte]): seq[byte] =
+  ## Provide a single explicit R payload and exercise account changes before the final relevance filter.
+  var memory = newSeq[byte](33)
+  for index, octet in hash: memory[index] = octet
+  memory[32] = 82
+  var operations = @[28'u8]
+  case mode
+  of 69: operations = @[28'u8, 19] # Exceptional selection retains the queued pair.
+  of 70: operations = @[26'u8, 28] # A removed request cannot authorize a later provision.
+  of 71: operations = @[28'u8, 26] # A queued pair becomes irrelevant after selected removal.
+  else: discard # Ordinary and panic provision literals share the same host call.
+  var instructions: seq[seq[byte]] = @[]
+  for operation in operations:
+    if operation == 19:
+      instructions.add(@[10'u8, 19]) # Retain the actual queued pair before exceptional termination.
+    else:
+      let pointer = if operation == 26: 196608'u64 else: 196640'u64
+      for instruction in [registerImmediate(7, high(uint64)), registerImmediate(8, pointer),
+          registerImmediate(9, 1), @[10'u8, operation]]:
+        instructions.add(instruction) # Reset self and the correct hash/payload address after every status.
+  instructions.add(if mode in [68, 69]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)
