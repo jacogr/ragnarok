@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_BUDGET_RETENTION",
+  "files": {
+    "current-stf-budget-retention.json": "d52416a16b38cb0af96b2661c12fde07a5dd5044ab913d5ca762ef95521cdca9"
+  },
+  "target": "current-stf-budget-retention.json"
+}

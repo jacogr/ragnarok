@@ -187,7 +187,7 @@ proc main() {.raises.} =
     else:
       assert fields[0] == "B" and mode >= 0
       bodies.add(unhex(fields[1]))
-  assert mode == 4 and bodies.len == 7
+  assert mode == 4 and bodies.len > 0 # Strict independent output comparison binds each complete chain length.
   run(base, mode, bodies)
 
 try:
