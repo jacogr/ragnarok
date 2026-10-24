@@ -428,65 +428,69 @@ proc finishWorking(memory: var WorkingMemory): MachineError =
 
 # Apply one memory instruction to tentative copied state only after gas affordability is established.
 # Failed preflight leaves registers and memory untouched; faultPage is meaningful only on Fault.
-proc memoryMutation(decoded: ProgramResult[Instruction], info: var MachineInfo,
+template memoryMutation(decoded: ProgramResult[Instruction], info: var MachineInfo,
     memory: var WorkingMemory, failedPage: var PageAddress): MachineError =
-  let item = decoded.value
-  let indices = instructionRegisters(decoded)
-  let op = item.opcode
-  let loading = op in {52'u8..58'u8, 124'u8..130'u8}
-  var width = 1
-  var signedLoad = false
-  var base = 0'u64
-  let offset = uint64(item.x)
-  var stored = uint64(info.registers[indices.aIndex])
-  if loading:
-    # Load pairs alternate unsigned/signed at 8/16/32 bits, followed by an unsigned 64-bit load.
-    let index = (if op <= 58: int(op) - 52 else: int(op) - 124)
-    width = 1 shl (index div 2)
-    signedLoad = index in [1, 3, 5]
-    if op >= 124:
-      # Indirect loads read the original B even when it aliases destination A.
+  ## Expand scalar dispatch without a temporary instruction argument or helper frame; preflight remains authoritative.
+  block:
+    let item = decoded.value
+    let indices = instructionRegisters(decoded)
+    let op = item.opcode
+    let loading = op in {52'u8..58'u8, 124'u8..130'u8}
+    var width = 1
+    var signedLoad = false
+    var base = 0'u64
+    let offset = uint64(item.x)
+    var stored = uint64(info.registers[indices.aIndex])
+    if loading:
+      # Load pairs alternate unsigned/signed at 8/16/32 bits, followed by an unsigned 64-bit load.
+      let index = (if op <= 58: int(op) - 52 else: int(op) - 124)
+      width = 1 shl (index div 2)
+      signedLoad = index in [1, 3, 5]
+      if op >= 124:
+        # Indirect loads read the original B even when it aliases destination A.
+        base = uint64(info.registers[indices.bIndex])
+    elif op <= 33:
+      # Absolute immediate stores use X as the address and Y as the stored bit pattern.
+      width = 1 shl (int(op) - 30)
+      stored = uint64(item.y)
+    elif op <= 62:
+      # Absolute register stores write the low bytes of A at X.
+      width = 1 shl (int(op) - 59)
+    elif op <= 73:
+      # Indirect immediate stores use original A plus X and store Y.
+      width = 1 shl (int(op) - 70)
+      base = uint64(info.registers[indices.aIndex])
+      stored = uint64(item.y)
+    else:
+      # Indirect register stores use original B plus X and store original A.
+      width = 1 shl (int(op) - 120)
       base = uint64(info.registers[indices.bIndex])
-  elif op <= 33:
-    # Absolute immediate stores use X as the address and Y as the stored bit pattern.
-    width = 1 shl (int(op) - 30)
-    stored = uint64(item.y)
-  elif op <= 62:
-    # Absolute register stores write the low bytes of A at X.
-    width = 1 shl (int(op) - 59)
-  elif op <= 73:
-    # Indirect immediate stores use original A plus X and store Y.
-    width = 1 shl (int(op) - 70)
-    base = uint64(info.registers[indices.aIndex])
-    stored = uint64(item.y)
-  else:
-    # Indirect register stores use original B plus X and store original A.
-    width = 1 shl (int(op) - 120)
-    base = uint64(info.registers[indices.bIndex])
-  # Mask operands before addition: the sum fits 33 bits and preserves every cyclic physical address.
-  let address = MemoryAddress((base and 0xffffffff'u64) + (offset and 0xffffffff'u64))
-  if loading:
-    # Preflight includes all bytes before a value or destination-register mutation becomes visible.
-    let read = loadWorking(memory, address, AccessWidth(byte(width)))
-    if read.error == MachineError.Fault:
-      # Propagate the physical page reason without selecting a failed value.
-      failedPage = read.faultPage
-    if read.error != MachineError.None: return read.error
-    var value = uint64(read.value)
-    if signedLoad:
-      # Signed widths are at most four bytes, so both shifts are strictly below 64.
-      let bits = width * 8
-      if (value and (1'u64 shl (bits - 1))) != 0:
-        # Fill the high bits explicitly instead of relying on checked narrowing casts.
-        value = value or (high(uint64) shl bits)
-    info.registers[indices.aIndex] = RegisterValue(value)
-  else:
-    # Scalar stores preflight the complete access before changing direct snapshots or private staged bytes.
-    let written = storeWorking(memory, address, AccessWidth(byte(width)), RegisterValue(stored), failedPage)
-    if written != MachineError.None: return written # Complete scalar preflight preserves prior staged writes on every refusal.
-  # All memory instructions are nonterminating; validated blobs guarantee a following instruction.
-  info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
-  MachineError.None
+    # Mask operands before addition: the sum fits 33 bits and preserves every cyclic physical address.
+    let address = MemoryAddress((base and 0xffffffff'u64) + (offset and 0xffffffff'u64))
+    var status = MachineError.None
+    if loading:
+      # Preflight includes all bytes before a value or destination-register mutation becomes visible.
+      let read = loadWorking(memory, address, AccessWidth(byte(width)))
+      status = read.error
+      if read.error == MachineError.Fault:
+        # Propagate the physical page reason without selecting a failed value.
+        failedPage = read.faultPage
+      if read.error == MachineError.None:
+        var value = uint64(read.value)
+        if signedLoad:
+          # Signed widths are at most four bytes, so both shifts are strictly below 64.
+          let bits = width * 8
+          if (value and (1'u64 shl (bits - 1))) != 0:
+            # Fill the high bits explicitly instead of relying on checked narrowing casts.
+            value = value or (high(uint64) shl bits)
+        info.registers[indices.aIndex] = RegisterValue(value)
+    else:
+      # Scalar stores retain complete preflight and prior staged writes on every refusal.
+      status = storeWorking(memory, address, AccessWidth(byte(width)), RegisterValue(stored), failedPage)
+    if status == MachineError.None:
+      # Only a completed memory instruction advances PC; failures retain the original instruction for repair/retry.
+      info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
+    status
 
 # Test static destination membership without narrowing invalid or negative mathematical addresses.
 proc blockTarget(program: Program, address: CodeAddress): bool =

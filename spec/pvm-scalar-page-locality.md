@@ -86,3 +86,24 @@ with controls, synthetic first/repeat records and exact source/binary hashes und
 was stopped; it is diagnostic-only and contributes no acceptance timing. All final
 timing passes exclude concurrent local builds/checks. These observations establish
 local interpreter behavior, not exact-head Linux performance or whole-JAM throughput.
+
+
+## Scalar instruction dispatch expansion, 2026-10-24
+
+The private scalar memory mutation helper now expands as a typed template at the
+charged dispatch site. Address masking, width selection, sign extension and
+original-register alias behavior remain unchanged. The maintained `loadWorking`
+and `storeWorking` operations still own complete preflight, staging and fault
+precedence. No page hint, memory representation or public API changes.
+
+A local error scalar carries each load/store outcome to the block expression.
+Only a successful load selects its value or changes its destination. Only a
+successful access advances PC; a fault retains the same paid instruction for
+repair/retry. Failed stores preserve prior staged writes, and only Fault selects
+the failed physical page. The template contains no return from its caller.
+
+Existing scalar-step, independent boundary, metered fault/cross-page repair,
+nested host-reentry and cache/ARC suites cover the changed path. The checked
+Linux paired guest and synthetic matrix, identical-source noise control and
+pinned PolkaVM comparison must qualify any performance claim. This candidate
+retains the documented M1 framing scope and remaining full-JAM parity gates.
