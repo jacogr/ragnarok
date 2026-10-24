@@ -2,7 +2,7 @@
 
 Status: storage-only codecs, streamed construction/admission/lookup and native immutable epoch
 ownership/publication with pinned readers and explicit captured retired-epoch reclamation.
-Compaction, replay-bound candidate cleanup, process/resource qualification and application adoption
+Replay-bound candidate cleanup, process/resource qualification and application adoption
 remain pending. The backend is a disk-indexed **light-evidence** store designed for selected datasets
 that may exceed RAM while its
 private working set remains explicitly bounded. Existing complete-image/cache and full-node
@@ -453,8 +453,8 @@ only that canonical captured old name and syncs the directory. Busy readers prev
 Already-absent retries still synchronize the captured namespace. A post-confirmation close error
 is a separate successful-reclamation diagnostic; uncertain unlink/barriers require strict reopen.
 
-This layer does **not** implement knowledge-preserving compaction, sealed/unsealed candidate
-recovery or replay-bound partial-build cleanup. Ordinary open never adopts or deletes candidates;
+The initial native layer does **not** implement sealed/unsealed candidate recovery or replay-bound
+partial-build cleanup. Source-derived compaction is implemented by the subsequent boundary below. Ordinary open never adopts or deletes candidates;
 conflicting next-epoch and staging names remain forensic and block creation/publication. The
 contract's producer-bound cleanup, process crash schedules, Linux descriptor/RSS/page/cache
 accounting and populated larger-than-RAM qualification remain completion gates. No consumer,
@@ -481,3 +481,37 @@ Reproduce with `make unit SUITE=storage_paged_native`, `make check-inventory`, t
 `storage_paged_native` runtime/compiler guards and the `storage_paged_epoch_pins` model cases.
 Local macOS results are distinct from exact-head Linux CI and future memory qualification.
 Documented M1 framing completion remains separate from complete JAM state serialization.
+
+
+## Source-derived compaction
+
+`preparePagedCompaction` derives the target only from the writer's held, shared-pinned, completely
+checked source epoch. It accepts no replacement producer, root, count, payload or sequence from
+the caller. A physical epoch increment preserves chain, root, exact retained knowledge and ordinary
+sequence, including an exhausted ordinary sequence. Physical epoch exhaustion refuses before
+hash/build IO. This canonical immutable format does not promise fewer bytes after rewriting;
+compaction is an explicit physical rewrite with unchanged logical knowledge.
+
+The synchronous `compactPagedArtifact` engine authenticates source header/index/payload pages
+against the captured complete page root, copies only those bounded pages, rebuilds the digest tree
+for the new physical header, completely admits the finished output and compares its canonical
+evidence-stream fingerprint with the captured source fingerprint. Equal JAM roots alone never
+justify a different retained query set. Each operation uses the inherited dataset/proof/workspace/
+cache/work limits; no producer, resident index or dataset-sized transport escapes. Source and target
+native callbacks remain borrowed during the operation. Sealing and publication use the existing
+explicit-close candidate, durability, source-incarnation and post-confirmation diagnostic rules.
+
+The native `storage_paged_compaction` suite checks an independent rehashed exact artifact/manifest
+witness after dropping retained absence under an unchanged root, sequence preservation, old-reader
+retention, every observed preparation read/write/barrier/pin refusal, strict reopen of the original
+head and 1,000 complete compaction/publication/close cycles with all transport retired before ARC
+samples. Stream tests independently change the destination to another valid same-root knowledge
+set, change sequence, exhaust the write budget and corrupt the captured source; all refuse without
+a successful target. Existing native publication and result/ownership guards remain applicable.
+Reproduce with `make unit SUITE=storage_paged_compaction`, `make unit SUITE=storage_paged_stream`
+and `make unit SUITE=storage_paged_native`. This does not qualify process crashes, bounded Linux
+RSS, larger-than-RAM data or candidate recovery. Those remain separate completion gates.
+
+All fourteen layers of the original native stack #1395 were merged before this continuation.
+New coherent outstanding-work units start from merged master in a new native stack, capped at
+fifteen simultaneously stacked PRs; completed/merged history is preserved without branch pruning.

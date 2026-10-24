@@ -431,6 +431,12 @@ are independently owned.
 independent shared epoch pins, durable atomic CURRENT selection and captured retired-epoch
 reclamation through exclusive pins. Complete verification precedes publication; receipts separate
 confirmed selection from later native retirement diagnostics. Unknown staging/build files remain
-forensic and block conflicting operations. Knowledge-preserving compaction, producer-bound
+forensic and block conflicting operations. Producer-bound
 candidate recovery, process/resource qualification and consumer adoption remain gates in the
 [paged contract](../../spec/storage-paged-working-set.md).
+
+
+`preparePagedCompaction` performs an explicit physical rewrite from the held checked source,
+with authenticated page copying and complete target verification. Exact retained knowledge and
+ordinary sequence survive; only the physical epoch advances. It accepts no caller replacement
+producer and makes no byte-reduction promise for this canonical immutable format.

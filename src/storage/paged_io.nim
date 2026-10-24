@@ -423,6 +423,18 @@ proc appender(data: FileData): PagedAppend =
     data.size += uint64(bytes.len)
     true
   append
+proc sealed(data: FileData, built: PagedStreamResult[CheckedPagedArtifact]): PagedIoResult[
+    PagedStreamResult[CheckedPagedArtifact]] =
+  ## Seal only complete stream success and a successful fresh metadata capture.
+  if built.error == PagedStreamError.None:
+    var metadata = default(Stat)
+    if posix.fstat(data.fd, metadata) != 0:
+      data.poisoned = true
+      return PagedIoResult[PagedStreamResult[CheckedPagedArtifact]](status: FileError.IoFailure)
+    else:
+      data.identity = metadata
+      data.sealed = true
+  PagedIoResult[PagedStreamResult[CheckedPagedArtifact]](status: FileError.None, completed: built)
 proc buildFile*(file: var PagedFile, producer: nil PagedProducer, header: PagedHeader,
     limits: PagedStreamLimits): PagedIoResult[PagedStreamResult[CheckedPagedArtifact]] =
   ## Only a newly created exclusive empty owner can append; failures preserve unsealed forensic bytes.
@@ -433,15 +445,22 @@ proc buildFile*(file: var PagedFile, producer: nil PagedProducer, header: PagedH
   let built = buildPagedArtifact(PagedOutput(source: input(data), append: appender(data)), producer,
       header, limits)
   latch(data, built.error)
-  if built.error == PagedStreamError.None:
-    var metadata = default(Stat)
-    if posix.fstat(data.fd, metadata) != 0:
-      data.poisoned = true
-      return PagedIoResult[PagedStreamResult[CheckedPagedArtifact]](status: FileError.IoFailure)
-    else:
-      data.identity = metadata
-      data.sealed = true
-  PagedIoResult[PagedStreamResult[CheckedPagedArtifact]](status: FileError.None, completed: built)
+  sealed(data, built)
+proc compactFile*(file: var PagedFile, source: var PagedFile, checked: CheckedPagedArtifact,
+    target: PagedHeader): PagedIoResult[PagedStreamResult[CheckedPagedArtifact]] =
+  ## Borrow independent exclusive destination and shared source pins only during the synchronous copy.
+  let destination = file.data
+  let original = source.data
+  if destination == nil or original == nil: return PagedIoResult[PagedStreamResult[
+      CheckedPagedArtifact]](status: FileError.Uninitialized)
+  if not destination.active or destination.sealed or destination.poisoned or not original.active:
+    return PagedIoResult[PagedStreamResult[CheckedPagedArtifact]](
+        status: FileError.RecoveryRequired)
+  let built = compactPagedArtifact(PagedOutput(source: input(destination), append: appender(
+      destination)), input(original), checked, target)
+  latch(destination, built.error)
+  if built.error != PagedStreamError.None and not identity(original): original.poisoned = true
+  sealed(destination, built)
 proc synchronize*(file: PagedFile): FileError =
   ## Complete validation precedes the file barrier; metadata/name/extent remain bound to the held pin.
   let checked = file.check

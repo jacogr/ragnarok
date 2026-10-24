@@ -24,6 +24,8 @@ type
     chain*: StorageChainId
     root*: StateRoot
     limits*: PagedStreamLimits
+  PagedBuildKind {.pure.} = enum ## Ordinary replacement advances sequence; root advance and compaction preserve it.
+    Replacement, Advance, Compaction
   WriterData = ref object ## Stable private writer incarnation binds candidate preparation without descriptor-number ABA.
     directory: PagedDirectory
     head: PagedFile
@@ -313,11 +315,12 @@ proc lookup*(reader: var PagedReader, query: StateKey, budget: PagedWorkLimits):
   PagedNativeResult[VerifiedStateLookup](status: PagedNativeError.None,
       completed: checked.value.verified)
 proc prepare(data: WriterData, candidate: var PagedCandidate, producer: nil PagedProducer,
-    root: StateRoot, count, payload: uint64, advance, initial: bool): PagedNativeResult[
-        StorageDurability] =
+    root: StateRoot, count, payload: uint64, kind: PagedBuildKind,
+        initial: bool): PagedNativeResult[StorageDurability] =
   ## Bind a new exclusive authoring owner to one live writer incarnation and exact source position/policies.
   if candidate.opened: return fileFailed[StorageDurability](FileError.Busy)
-  if producer == nil: return refused[StorageDurability](PagedNativeError.Uninitialized)
+  if producer == nil and kind != PagedBuildKind.Compaction: return refused[StorageDurability](
+      PagedNativeError.Uninitialized)
   if not data.active: return refused[StorageDurability](PagedNativeError.Uninitialized)
   if not initial and data.poisoned: return refused[StorageDurability](
       PagedNativeError.RecoveryRequired)
@@ -326,11 +329,12 @@ proc prepare(data: WriterData, candidate: var PagedCandidate, producer: nil Page
   var source = default(PagedManifest)
   if not initial:
     source = data.checked.manifest
-    if uint64(source.epoch) == high(uint64) or (not advance and uint64(source.sequence) == high(uint64)):
+    if uint64(source.epoch) == high(uint64) or (kind == PagedBuildKind.Replacement and uint64(
+        source.sequence) == high(uint64)):
       return refused[StorageDurability](PagedNativeError.CounterExhausted)
     epoch = uint64(source.epoch)+1
     sequence = uint64(source.sequence)
-    if not advance: inc sequence
+    if kind == PagedBuildKind.Replacement: inc sequence
     let checked = validateHead(data)
     if checked.error != PagedNativeError.None:
       if checked.error == PagedNativeError.FileFailure: return fileFailed[StorageDurability](
@@ -354,7 +358,10 @@ proc prepare(data: WriterData, candidate: var PagedCandidate, producer: nil Page
     return fileFailed[StorageDurability](created)
   artifact.active = true
   candidate.data = artifact
-  let authoring = buildFile(artifact.file, producer, header.value, data.config.limits)
+  let authoring = if kind == PagedBuildKind.Compaction:
+    compactFile(artifact.file, data.head, data.checked, header.value)
+  else:
+    buildFile(artifact.file, producer, header.value, data.config.limits)
   if authoring.error != FileError.None: return fileFailed[StorageDurability](authoring.error)
   let built = authoring.value
   if built.error != PagedStreamError.None: return streamFailed[StorageDurability,
@@ -372,7 +379,7 @@ proc preparePagedReplacement*(writer: var PagedWriter, candidate: var PagedCandi
   ## Same-root full replacement advances ordinary sequence once, even for explicitly requested equal evidence.
   let data = writer.data
   if data == nil: return refused[StorageDurability](PagedNativeError.Uninitialized)
-  prepare(data, candidate, producer, data.config.root, count, payload, false, false)
+  prepare(data, candidate, producer, data.config.root, count, payload, PagedBuildKind.Replacement, false)
 proc preparePagedAdvance*(writer: var PagedWriter, candidate: var PagedCandidate,
     destination: StateRoot, producer: nil PagedProducer, count, payload: uint64): PagedNativeResult[
         StorageDurability] =
@@ -381,7 +388,17 @@ proc preparePagedAdvance*(writer: var PagedWriter, candidate: var PagedCandidate
   if data == nil: return refused[StorageDurability](PagedNativeError.Uninitialized)
   if array[32, byte](destination) == array[32, byte](data.config.root): return refused[
       StorageDurability](PagedNativeError.InvalidTransition)
-  prepare(data, candidate, producer, destination, count, payload, true, false)
+  prepare(data, candidate, producer, destination, count, payload, PagedBuildKind.Advance, false)
+proc preparePagedCompaction*(writer: var PagedWriter,
+    candidate: var PagedCandidate): PagedNativeResult[StorageDurability] =
+  ## Exact knowledge comes from the held checked source pin; callers cannot substitute a same-root evidence producer.
+  let data = writer.data
+  if data == nil or not data.active: return refused[StorageDurability](
+      PagedNativeError.Uninitialized)
+  if data.poisoned: return refused[StorageDurability](PagedNativeError.RecoveryRequired)
+  let shape = data.checked.header.geometry
+  prepare(data, candidate, nil, data.config.root, shape.entries, shape.payloadBytes,
+    PagedBuildKind.Compaction, false)
 proc commitGuard(data: WriterData, artifact: CandidateData): proc(): FileError {.closure.} =
   ## Non-nil stable parameters preserve capture provenance across the staged-publication callback.
   proc beforeRename(): FileError {.closure.} =
@@ -469,7 +486,8 @@ proc initializePagedWriter*(writer: var PagedWriter, path: string, config: Paged
     if candidate.opened:
       let retired = candidate.close
       if retired != FileError.None: result = fileFailed[PagedPublication](retired)
-  let prepared = prepare(data, candidate, producer, config.root, count, payload, false, true)
+  let prepared = prepare(data, candidate, producer, config.root, count, payload,
+      PagedBuildKind.Replacement, true)
   if prepared.error != PagedNativeError.None:
     if prepared.error == PagedNativeError.FileFailure: return fileFailed[PagedPublication](
         prepared.fileError)
