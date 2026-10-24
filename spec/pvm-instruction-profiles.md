@@ -14,10 +14,11 @@ inputs as the paired comparison. Each profile executes one Pinky frame under
 dynamic and complete-plan pricing, plus sieve100000 under complete-plan pricing.
 All complete CPU/gas/page-state checks remain enabled.
 
-Callgrind collection begins and ends at genuine `executeBudget_0_*` native
+Callgrind collection begins and ends at genuine public `execute_?_*` native
 symbols. Missing symbols or zero instruction counts refuse the report; there is
-no whole-process fallback. Input preparation, result validation and clock calls
-remain outside collection. A compiled calibration driver contains selected and
+no whole-process fallback. Fixture preparation, full-state comparison and benchmark clock calls
+remain outside collection. Invocation entry validation, private caches and final
+snapshot publication belong to the public execution call and remain counted. A compiled calibration driver contains selected and
 excluded arithmetic: selecting the intended function must collect instructions
 without the excluded function; selecting a nonexistent function must collect zero.
 Generic process success, a crash or a partial raw profile cannot calibrate it.

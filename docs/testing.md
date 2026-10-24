@@ -114,6 +114,12 @@ master requests. Manual requests accept `pvm_compare_base` as a local ref in the
 gh workflow run ci.yml --ref <branch> -f suite=compare-pvm -f pvm_compare_base=<baseline-sha>
 ```
 
+The manual `profile-pvm` choice runs checked Linux Callgrind diagnostics separately
+from timing jobs. It attributes native execution instructions on one state-checked
+invocation per selected guest/policy; instrumented clocks establish no speed claim.
+Use `make profile-pvm-guests` on a provisioned Linux x86-64 host with the pinned
+Valgrind tools. See [the profile contract](../spec/pvm-instruction-profiles.md).
+
 Use the PR labels when PR-associated checks are needed. Manual branch dispatch is separate
 verification and may not satisfy required PR checks. If branch protection is introduced, require
 only the intended scope: a focused request deliberately skips full-only groups, and intermediate
@@ -168,10 +174,3 @@ In Actions, **Perf / Storage** sits beside **Perf / PVM**. Master pushes, `perf`
 `bench-storage-growth` selects the independent Perf / Storage Growth matrix and SDK controls.
 Each job always renders a summary and retains JSON, CSV, Markdown and logs, including failures. Timing has
 no fixed CI speed threshold. See [the workload contract](../spec/storage-benchmark.md) for scope.
-
-
-The manual `profile-pvm` choice runs checked Linux Callgrind diagnostics separately
-from timing jobs. It attributes native execution instructions on one state-checked
-invocation per selected guest/policy; instrumented clocks establish no speed claim.
-Use `make profile-pvm-guests` on a provisioned Linux x86-64 host with the pinned
-Valgrind tools. See [the profile contract](../spec/pvm-instruction-profiles.md).
