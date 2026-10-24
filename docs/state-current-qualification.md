@@ -68,6 +68,11 @@ epoch successors match supplied declarations. Existing default rollback-sentinel
 unchanged and still refuse complete typed matching. This is supplied-and-validated inventory;
 `PreparedCurrentChainUpdate` does not export a complete producer-owned logical manifest.
 
+The [whole-map STF golden chains](../spec/current-stf-whole-map.md) independently calculate all
+successor bytes for two complete current-schema chains of ten empty-body blocks each. They cover
+history eviction, MMR carries, authorizer-pool saturation, Thin entropy, statistics and unchanged
+service namespaces. Their scope is same-epoch empty-body execution; broader full STF parity remains open.
+
 See the source contracts for [current globals](../spec/state-current-globals.md),
 [current serialization](../spec/state-current-state.md),
 [current review](../spec/state-current-review.md),

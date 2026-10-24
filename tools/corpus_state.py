@@ -8,7 +8,7 @@ Exposes run_state to execute state serialization/composition corpora and record 
 from functools import partial
 from pathlib import Path
 import hashlib
-from corpus_checks import run_corpus, CorpusGroup
+from corpus_checks import run_corpus, compare_corpus, CorpusGroup
 from native_checks import announce
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -277,6 +277,28 @@ def outputs_corpus(compiler, report, checks, libraries):
                         crypto_library=crypto_library)
     corpus['passed'] = corpus['passed'] and len(traces) == 8 and all(row['complete_component_match'] for row in traces)
     announce('independent chapter-16 last accumulation outputs corpus', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_corpus(compiler, report, checks, libraries):
+    """Compare genuine current candidate execution against complete independently computed maps."""
+    from current_stf_oracle import expected_observations, verify_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    # Freeze all expected inputs/outputs before any native compilation or transition execution.
+    expected = expected_observations()
+    evidence = verify_observations(expected)
+    for identity in ('current_stf', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_driver.nim',
+        'current-stf', crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  scope='complete current-schema same-epoch empty-body STF; two explicit services')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1]], 'current-stf-corpus', expected)
+    announce('independent complete current-schema STF maps', corpus['passed'])
     return corpus
 
 
