@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_DEPENDENCY_WAVES",
+  "files": {
+    "current-stf-dependency-waves.json": "4d2485cedfd7a383b404e782c4f0ba5138da9d1eff4c4c317d5d1503aa91d36c"
+  },
+  "target": "current-stf-dependency-waves.json"
+}

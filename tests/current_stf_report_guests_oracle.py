@@ -37,19 +37,20 @@ def original(mode):
     return parent
 
 
-def guarantee(parent, initial, core, slot):
-    """Two honest assigned signatures cover a full immediate report and the actual service code hash."""
-    sid = (42 if core == 0 else 99) if slot == 3 else 99
+def guarantee(parent, initial, core, slot, *, package=None, prerequisites=b'', lookup=b'', service=None):
+    """Sign a full authored report, explicit dependency families and the actual target service code hash."""
+    sid = service if service is not None else ((42 if core == 0 else 99) if slot == 3 else 99)
     fixed = history(initial[chapter_key(3)])[0][0][0]
     pool = Reader(parent[chapter_key(1)])
     pools = [pool.take(32*pool.count()) for _ in range(2)]
-    package = digest(f'immediate package slot{slot} core{core}'.encode())
+    if package is None:
+        package = digest(f'immediate package slot{slot} core{core}'.encode()) # Preserve original immediate identities.
     anchor = fixed[:32]+(1).to_bytes(4, 'little')+tree(list(initial.items()))[0]
     header = (package+(100+slot+core).to_bytes(4, 'little')+digest(package+b'segments')
               +(6).to_bytes(2, 'little')+digest(package+b'exports')+(3+core).to_bytes(2, 'little')
               +anchor+bytes(32)+anchor)
-    value = dict(header=header, prerequisites=b'', core=core, authorizer=pools[core][:32],
-                 gas=17+core, auth=b'auth'+bytes([core]), lookup=b'',
+    value = dict(header=header, prerequisites=prerequisites, core=core, authorizer=pools[core][:32],
+                 gas=17+core, auth=b'auth'+bytes([core]), lookup=lookup,
                  digests=[(sid, metadata_parse(parent[chapter_service(255, sid)], 105)[0],
                            digest(package+b'payload'), 100000, 0, bytes([slot, core]),
                            (13+core, 2+core, 3+core, 4+core, 5+core))])
@@ -98,17 +99,23 @@ def accumulated(data):
     return rows
 
 
-def advance(parent, initial, mode, slot, gs, ass):
-    """Calculate all complete entries for admission, per-core availability, immediate guests and aging."""
+def advance(parent, initial, mode, slot, gs, ass, *, plan=None):
+    """Compose full admission/availability state with immediate or independently planned recursive guest batches."""
     old = pending(parent[chapter_key(10)])
     votes = [sum(bool(item['bits'] & (1 << core)) for item in ass) for core in range(2)]
     released = [old[core]['guarantee']['report'] for core in range(2) if old[core] is not None and votes[core] >= 5]
-    # The two authored admission waves have fixed service assignments and distinct package identities.
-    services = {}
-    for wire in released:
-        sid = 42 if wire[:32] == digest(b'immediate package slot3 core0') else 99
-        services[sid] = services.get(sid, 0)+1
-    outputs = ((99, COMMITMENT),) if 99 in services and mode != 'panic-rollback' else ()
+    # Optional queue mathematics supply processed batches separately from newly available reports.
+    processed = released if plan is None else plan['processed']
+    if plan is None:
+        services = {}
+        for wire in processed:
+            sid = 42 if wire[:32] == digest(b'immediate package slot3 core0') else 99
+            services[sid] = services.get(sid, 0)+1
+        batches = [services]
+    else:
+        assert plan['available'] == released
+        batches = plan['batches']
+    outputs = ((99, COMMITMENT),) if any(99 in group for group in batches) and mode != 'panic-rollback' else ()
     raw, commitment = body(gs, ass)
     child = authored_child(parent, raw, commitment)
     result = advance_no_reports(parent, child, raw, commitment, outputs=outputs)
@@ -128,9 +135,11 @@ def advance(parent, initial, mode, slot, gs, ass):
     blocks, peaks = history(result[chapter_key(3)])
     blocks[-1] = (blocks[-1][0], b''.join(sorted(item['layout']['header'][:32]+item['layout']['header'][70:102] for item in gs)))
     result[chapter_key(3)] = history_wire((blocks, peaks))
-    assert parent[chapter_key(14)] == bytes(12) # All incoming reports are immediate and fit the block budget.
-    result[chapter_key(14)] = bytes(12)
-    result[chapter_key(15)] = queue_wire('A', accumulated(parent[chapter_key(15)])[1:]+[b''.join(sorted(wire[:32] for wire in released))])
+    if plan is None:
+        assert parent[chapter_key(14)] == bytes(12) # Original immediate reports fit the block budget.
+        result[chapter_key(14)] = bytes(12)
+    else: result[chapter_key(14)] = queue_wire('R', plan['ready'])
+    result[chapter_key(15)] = queue_wire('A', accumulated(parent[chapter_key(15)])[1:]+[b''.join(sorted(wire[:32] for wire in processed))])
     (current, previous, _, _), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
     for index in {i for item in gs for i, _ in item['credentials']}:
         row = list(current[index]); row[4] += 1; current[index] = tuple(row)
@@ -146,12 +155,14 @@ def advance(parent, initial, mode, slot, gs, ass):
         for index, amount in enumerate(load, 4): row[index] += amount
     for core in range(2): cores[core][1] = votes[core]
     for wire in released:
-        core = wire[273] # Fixed header followed by the canonical zero-prerequisite count.
+        core = wire[273] if plan is None else plan['reports'][wire[:32]]['core'] # Deferred reports have variable dependency framing.
         cores[core][0] = int.from_bytes(wire[32:36], 'little')+4104*((65*int.from_bytes(wire[102:104], 'little')+63)//64)
-    for sid, count in sorted(services.items()):
-        row = guest_effect(result, parent, mode, sid, count, slot)
-        combined = activity.setdefault(sid, [sid]+[0]*11)
-        for index in range(1, 12): combined[index] += row[index]
+    for group in batches:
+        prior = dict(result) # Each recursive guest sees the actual earlier mathematical batch's state.
+        for sid, count in sorted(group.items()):
+            row = guest_effect(result, prior, mode, sid, count, slot)
+            combined = activity.setdefault(sid, [sid]+[0]*11)
+            for index in range(1, 12): combined[index] += row[index]
     result[chapter_key(13)] = statistics_wire((current, previous, cores, [tuple(activity[sid]) for sid in sorted(activity)]))
     return child, result
 
