@@ -8,6 +8,8 @@ use polkavm::{
 use polkavm_common::program::InstructionSetKind;
 use std::time::Instant;
 
+mod sieve;
+
 // Fixed scalar fields are read only after their enclosing record is checked.
 fn word(data: &[u8], at: usize, width: usize) -> u64 {
     let mut result = 0;
@@ -19,6 +21,13 @@ fn word(data: &[u8], at: usize, width: usize) -> u64 {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args
+        .get(1)
+        .is_some_and(|arg| arg == "--sieve" || arg == "--sieve-prepare")
+    {
+        sieve::command(&args[1..]);
+        return;
+    }
     assert_eq!(args.len(), 3);
     let backend = match args[2].as_str() {
         "interpreter" => BackendKind::Interpreter,

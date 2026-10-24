@@ -1,0 +1,52 @@
+(stmts#Copyright (c) 2026 Ragnarök contributors
+SPDX-License-Identifier: MIT OR Apache-2.0
+One host, one capacity-one disk worker, one admitted publication or maintenance.
+phase 0 Idle, 1 Queued, 2 Executing, 3 Done; pc 0 waiting, 1 IO, 2 retired, 3 exited.
+io/receipt 0 absent, 1 NotExecuted, 2 success, 3 uncertain failure. io is history.
+Hypothesis: shutdown after IO entry loses its receipt or ends a still-active graph lease.
+Source: src/app/disk_worker.nim submit/run/collect/close. No disk contents or crash recovery.#
+  (variables :phase.0. :pc.0. :stop.0. :leased.0. :used.0. :io.0. :receipt.0.)
+  (assign Mut.0. 0)
+  (assign Witness.0. (false))
+  (def :Init.0.
+    (and (prime phase.0. 0) (prime pc.0. 0) (prime stop.0. (false))
+         (prime leased.0. (false)) (prime used.0. (false))
+         (prime io.0. 0) (prime receipt.0. 0)))
+  (def :Submit.0.#submit: the locked admission borrows stable addresses before signaling.#
+    (and (not used.0.) (not stop.0.) (eq phase.0. 0)
+         (prime used.0. (true)) (prime phase.0. 1) (prime leased.0. (true))))
+  (def :Dispatch.0.#run: inspect stop and claim Queued under the same mutex.#
+    (and (not stop.0.) (eq phase.0. 1) (eq pc.0. 0)
+         (prime phase.0. 2) (prime pc.0. 1)))
+  (def :Execute.0.#execute: synchronous IO returns success or uncertainty before aliases retire.#
+    (and (eq pc.0. 1) (prime pc.0. 2)
+         (or (prime io.0. 2) (prime io.0. 3))))
+  (def :Publish.0.#run: only after activation retirement can Done be published.#
+    (and (eq pc.0. 2) (prime pc.0. 0) (prime phase.0. 3)))
+  (def :Collect.0.#collect: move the actual Done receipt and clear borrowed addresses.#
+    (and (not stop.0.) (eq phase.0. 3) (prime receipt.0. io.0.)
+         (prime phase.0. 0) (prime leased.0. (false))))
+  (def :Close.0.#close: set stop before join; this does not revoke active IO borrowing.#
+    (and (not stop.0.) (prime stop.0. (true))
+         (prime leased.0. (if (eq Mut.0. 1) (false) leased.0.))))
+  (def :Exit.0.#run: stop is observed at the wait boundary after any executing operation returns.#
+    (and stop.0. (eq pc.0. 0) (prime pc.0. 3)))
+  (def :Join.0.#close: only an exited thread permits retirement; preserve its actual selected receipt.#
+    (and stop.0. (eq pc.0. 3)
+         (prime receipt.0.
+           (if (eq phase.0. 3) (if (eq Mut.0. 2) 0 io.0.)
+             (if (eq phase.0. 1) (if (eq Mut.0. 3) 2 1) receipt.0.)))
+         (prime phase.0. 0) (prime leased.0. (false))))
+  (def :Next.0.
+    (or Submit.0. Dispatch.0. Execute.0. Publish.0. Collect.0. Close.0. Exit.0. Join.0.))
+  (def :Safe.0.
+    (and (or (and (neq pc.0. 1) (neq pc.0. 2)) leased.0.)
+         (or (eq phase.0. 0) leased.0.)
+         (or (eq io.0. 0) leased.0. (eq receipt.0. io.0.))
+         (or (lt receipt.0. 2) (eq receipt.0. io.0.))
+         (or (neq receipt.0. 1) (eq io.0. 0))))
+  (def :Reached.0.
+    (and stop.0. (eq pc.0. 3) (not leased.0.) (eq receipt.0. 3)))
+  (spec (always-stutter Init.0. Next.0.
+    (tuple phase.0. pc.0. stop.0. leased.0. used.0. io.0. receipt.0.)))
+  (check (if Witness.0. (not Reached.0.) Safe.0.)))

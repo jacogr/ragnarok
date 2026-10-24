@@ -21,13 +21,18 @@ proc code(parts: openArray[seq[byte]]): Program =
   for part in parts:
     starts.add(bytes.len)
     for octet in part: bytes.add(octet)
-  assert bytes.len > 0 and bytes.len < 128
-  var wire = @[0'u8, 0, byte(bytes.len)]
+  assert bytes.len > 0 and bytes.len < 4096
+  var wire = @[0'u8, 0]
+  if bytes.len < 128:
+    wire.add(byte(bytes.len)) # The original fixtures retain their canonical one-byte length.
+  else:
+    wire.add(byte(128+(bytes.len shr 8))) # Independent two-byte JAM framing covers bounded capacity-pressure programs.
+    wire.add(byte(bytes.len and 255))
   for octet in bytes: wire.add(octet)
   var mask = newSeq[byte]((bytes.len+7) div 8)
   for start in starts: mask[start div 8] = mask[start div 8] or (1'u8 shl (start mod 8))
   for octet in mask: wire.add(octet)
-  let captured = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(128), JumpCountLimit(0))
+  let captured = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(8192), JumpCountLimit(0))
   assert captured.error == ProgramError.None
   captured.value
 proc input(program: Program, count: uint64, charged = false): Machine =
@@ -75,16 +80,16 @@ proc collisions() =
   assert execute(source, ExecutionStepLimit(47), GasCycleLimit(0)).error ==
       StepError.GasCycleLimitExceeded
   var parts: seq[seq[byte]] = @[]
-  for index in 0..<21: parts.add(@[149'u8, 17, 1]) # Twenty-one additions plus decrement/branch exceed the fixed decoder memo capacity.
+  for index in 0..<37: parts.add(@[149'u8, 17, 1]) # Thirty-seven additions plus decrement/branch exceed the thirty-two-result decoder memo.
   parts.add(@[149'u8, 0, 255])
-  parts.add(@[82'u8, 16, 0, 190]) # Literal minus66 targets the original block start after all twenty-two mutations.
+  parts.add(@[82'u8, 16, 0, 142]) # Literal minus114 targets the original block start after all thirty-eight mutations.
   parts.add(@[0'u8])
   let crowded = input(code(parts), 3)
-  let completed = execute(crowded, ExecutionStepLimit(70), GasCycleLimit(10000))
+  let completed = execute(crowded, ExecutionStepLimit(118), GasCycleLimit(10000))
   assert completed.error == StepError.None and completed.value.exit == StepExit.Panic
-  same(machineInfo(completed.value.machine).value, compareSteps(crowded, 70))
+  same(machineInfo(completed.value.machine).value, compareSteps(crowded, 118))
   assert uint64(machineInfo(completed.value.machine).value.registers[0]) == 0
-  assert uint64(machineInfo(completed.value.machine).value.registers[1]) == 63
+  assert uint64(machineInfo(completed.value.machine).value.registers[1]) == 111
 proc threeWayPressure() =
   ## PCs0/16/32 share one bucket but have different mutations/control; rotating replacements must retain exact address tags.
   var decrement = @[149'u8, 0, 255, 255, 255, 255]
@@ -173,6 +178,55 @@ proc pricePressure() =
   assert uint64(final.registers[7]) == (1'u64 shl 48) and uint64(final.registers[10]) == 3
   assert uint64(machineInfo(source).value.registers[7]) == 1
   assert execute(source, ExecutionStepLimit(66), GasCycleLimit(25)).error ==
+      StepError.StepLimitExceeded
+
+proc collidingPrices() =
+  ## Six literal recurrent starts9/30/64/85/98/119 share set4 and exceed both the three hot entries and two secondary ways.
+  var first = @[40'u8, 9, 0, 0, 0]
+  while first.len < 9: first.add(0) # Ignored suffix places the first recurrent block at the independently chosen PC9.
+  var parts = @[first]
+  let multiplyCounts = [1, 3, 2, 1, 3]
+  let jumpLengths = [18, 25, 15, 10, 12]
+  for blockIndex in 0..<5:
+    for index in 0..<multiplyCounts[blockIndex]: parts.add(@[150'u8, 119, 2])
+    var jump = @[40'u8, byte(jumpLengths[blockIndex]), 0, 0, 0]
+    while jump.len < jumpLengths[blockIndex]: jump.add(
+        0) # The jump reaches exactly the next original partition, without executing ignored operand bytes.
+    parts.add(jump)
+  for index in 0..<5: parts.add(@[150'u8, 119, 2])
+  parts.add(@[131'u8, 170, 1])
+  parts.add(@[83'u8, 74, 4, 0, 0, 0, 128, 255, 255,
+      255]) # PC137 minus128 reaches PC9; all six unequal blocks recur four times.
+  parts.add(@[50'u8, 2])
+  let owner = code(parts)
+  let base = input(owner, 0)
+  var cpu = machineInfo(base).value
+  cpu.registers[7] = RegisterValue(1)
+  let source = captureMachine(owner, memoryOf(base).value, cpu).value
+  let run = execute(source, ExecutionStepLimit(90), GasCycleLimit(10000))
+  assert run.error == StepError.None and run.value.exit == StepExit.Halt
+  same(machineInfo(run.value.machine).value, compareSteps(source, 90, StepExit.Halt))
+  assert uint64(machineInfo(run.value.machine).value.registers[7]) == 1'u64 shl 60
+  assert uint64(machineInfo(run.value.machine).value.registers[10]) == 4
+  same(machineInfo(source).value, cpu)
+  assert execute(source, ExecutionStepLimit(89), GasCycleLimit(10000)).error ==
+      StepError.StepLimitExceeded
+
+proc largerPriceWorkingSet() =
+  ## Twenty-four recurrent blocks exceed all twenty retained price slots; full public-step CPU/gas parity survives bounded replacement.
+  var parts: seq[seq[byte]] = @[]
+  for blockIndex in 0..<24:
+    for index in 0..<(1+blockIndex mod 4): parts.add(@[150'u8, 119, 2])
+    parts.add(@[1'u8]) # A terminating fallthrough creates each next literal block boundary.
+  parts.add(@[149'u8, 0, 255])
+  parts.add(@[82'u8, 16, 0, 49, 255]) # PC207 minus207 returns to PC0 with a signed two-byte displacement.
+  parts.add(@[0'u8])
+  let source = input(code(parts), 3)
+  let run = execute(source, ExecutionStepLimit(259), GasCycleLimit(10000))
+  assert run.error == StepError.None and run.value.exit == StepExit.Panic
+  same(machineInfo(run.value.machine).value, compareSteps(source, 259))
+  assert uint64(machineInfo(source).value.registers[0]) == 3
+  assert execute(source, ExecutionStepLimit(258), GasCycleLimit(10000)).error ==
       StepError.StepLimitExceeded
 
 proc respond(context: var Context, stopped: StepOutcome): HostResponse {.raises: [].} =
@@ -294,6 +348,8 @@ collisions()
 threeWayPressure()
 alternatingPrices()
 pricePressure()
+collidingPrices()
+largerPriceWorkingSet()
 staticConditions()
 hosts()
 finalFallthrough()
@@ -303,6 +359,7 @@ for cycle in 0..<1000:
   threeWayPressure()
   alternatingPrices()
   pricePressure()
+  collidingPrices()
   finalFallthrough()
   hosts() # Both bounded memos and all observable/nested snapshot owners retire after each complete invocation group.
 let after = getOccupiedMem()

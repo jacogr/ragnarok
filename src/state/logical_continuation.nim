@@ -5,7 +5,8 @@
 import ./[parent_logical, current_logical, current_identities, accumulation_current_update,
     accumulation_storage_history, accumulation_effects, supplied_logical_inventory,
     supplied_services, inventory, store, current_profile, current_globals, current_state,
-    global_snapshot, request_identity_history, service_identity_history]
+    global_snapshot, request_identity_history, service_identity_history,
+    accumulation_current_sequence, accumulation_current_driver, accumulation_annulment]
 import ../codec/[bounded, state_layout, state_composition, state_accounts, state_requests, state_service_values]
 type
   LogicalContinuationLimits* = object ## Original binding, admitted identity scratch, bounded planning and whole output/current qualification retain independent policies.
@@ -39,7 +40,12 @@ type
     StorageOnly, StorageAndRequests
   ServiceIdentityRow = object ## Admitted service roster preserves original indices, genuine membership and final target presence.
     info: InventoryServiceInfo
-    present, created, deleted: bool
+    present, created, deleted, hasRetired: bool
+    retired: StateStoreSnapshot
+    birthEntry: CurrentSequenceEntryIndex
+    birthOutcome: AccumulationAnnulmentIndex
+    birthOrdinal: AccumulationServiceLifecycleIndex
+    seed: StateKey
   RequestIdentityRow = object ## Admitted private request planning retains exact logical identity and final presence for this actual target.
     owner: int
     key: StateKey
@@ -49,7 +55,7 @@ type
     owner: int
     key: StateKey
     hash: ServicePreimageHash
-    present, original, removed: bool
+    present, original, removed, produced: bool
   StorageIdentityRow = object ## Admitted private scratch owns raw identities; presence and evidence remain bound to this exact target.
     owner: int
     key: StateKey
@@ -179,13 +185,73 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
         if not roster[i].present and not roster[i].deleted:
           fail(LogicalContinuationError.UnsupportedChange) # Every disappeared original or created service needs actual selected ejection evidence.
         if i < info.services and roster[i].created:
-          fail(LogicalContinuationError.UnsupportedChange) # Unordered membership does not certify replacement generations at an original ID.
+          # An empty original has no namespace identities to carry across a certified local replacement.
+          let originalRow = roster[i].info
+          let nonempty = originalRow.storage != 0 or originalRow.preimages != 0 or
+              originalRow.requests != 0
+          var creation = default(ServiceCreationRow)
+          var deletion = default(ServiceDeletionRow)
+          var creations, deletions = 0
+          var creationIndex = ServiceCreationIndex(0)
+          var deletionIndex = ServiceDeletionIndex(0)
+          for j in 0..<extent.creations:
+            spend()
+            let row = members.serviceIdentityCreationAt(ServiceCreationIndex(uint64(j))).value
+            if uint32(row.fact.service) == uint32(originalRow.service):
+              creation = row
+              creationIndex = ServiceCreationIndex(uint64(j))
+              inc creations # Original capture limits bound each scan and native count.
+          for j in 0..<extent.deletions:
+            spend()
+            let row = members.serviceIdentityDeletionAt(ServiceDeletionIndex(uint64(j))).value
+            if uint32(row.fact.service) == uint32(originalRow.service):
+              deletion = row
+              deletionIndex = ServiceDeletionIndex(uint64(j))
+              inc deletions # Membership alone cannot select among multiple generations.
+          if creations != 1 or deletions != 1 or not roster[i].present:
+            fail(LogicalContinuationError.UnsupportedChange)
+          let sameEntry = uint64(creation.entry) == uint64(deletion.entry)
+          let sameInvocation = uint64(creation.outcome) == uint64(deletion.outcome)
+          let removedFirst = uint64(deletion.fact.ordinal) < uint64(creation.fact.ordinal)
+          let laterEntry = uint64(deletion.entry) < uint64(creation.entry)
+          let localOrder = sameEntry and sameInvocation and removedFirst
+          if not laterEntry and not localOrder:
+            fail(LogicalContinuationError.UnsupportedChange) # Successive entries use genuine selected predecessors; parallel invocation positions alone give no order.
+          if nonempty and not laterEntry:
+            # The actual atomic ejection map certifies nonempty retirement within one invocation.
+            spend() # Account for the additional ejection metadata lookup before resolving its owner.
+            let barrier = members.serviceIdentityRetirementAt(creationIndex, deletionIndex)
+            if barrier.error != ServiceIdentityHistoryError.None:
+              fail(LogicalContinuationError.UnsupportedChange)
+            roster[i].retired = barrier.value
+            roster[i].hasRetired = true
+          if laterEntry:
+            # Private history coordinates select this completed producer's exact post-ejection state, including selected provisions.
+            let sequence = members.serviceIdentityHistorySource.value.completedSequenceSource.value
+            roster[i].retired = sequence.currentSequenceStateAt(deletion.entry).value
+            roster[i].hasRetired = true
+          if roster[i].hasRetired:
+            # Both forms of genuine retirement bind subsequent touches to this exact selected birth.
+            roster[i].birthEntry = creation.entry
+            roster[i].birthOutcome = creation.outcome
+            roster[i].birthOrdinal = creation.fact.ordinal
+            roster[i].seed = creation.fact.requestKey
+
         if roster[i].present: inc finalServices
   template serviceAt(i: int): InventoryServiceInfo =
     (if roster.len == 0: compact.inventoryServiceAt(InventoryServiceIndex(uint64(
         i))).value else: roster[i].info)
   template servicePresent(i: int): bool =
     (roster.len == 0 or roster[i].present)
+  template wasRetired(owner: int): bool =
+    (roster.len > 0 and roster[owner].hasRetired)
+  template requireRetiredAbsence(owner: int, wireKey: StateKey) =
+    if wasRetired(owner):
+      # Each original identity needs actual absence at the selected barrier; equal final hashes cannot replace this provenance.
+      spend()
+      if roster[owner].retired.lookup(wireKey).error != StateStoreError.MissingKey:
+        fail(LogicalContinuationError.UnsupportedChange)
+
   if uint64(finalServices) > uint64(limits.projection.services): fail(
       LogicalContinuationError.LimitExceeded)
   if finalServices > 0:
@@ -248,9 +314,11 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
       let found = target.lookup(fact.key)
       if found.error notin {StateStoreError.None, StateStoreError.MissingKey}: fail(
           LogicalContinuationError.UnsupportedChange)
+      requireRetiredAbsence(i, fact.key)
       rows[used] = StorageIdentityRow(owner: i, key: fact.key,
           raw: original.copySuppliedStorageKey(service, index, limits.projection.perValue).value,
-          present: found.error == StateStoreError.None, original: true, produced: false)
+          present: found.error == StateStoreError.None, original: not wasRetired(i),
+              produced: false)
       inc used # Original qualified counts fit the admitted fixed identity scratch.
     when kind == ContinuationKind.StorageAndRequests:
       for j in 0..<row.preimages:
@@ -259,8 +327,9 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
         let found = target.lookup(fact.key)
         if found.error notin {StateStoreError.None, StateStoreError.MissingKey}:
           fail(LogicalContinuationError.UnsupportedChange)
+        requireRetiredAbsence(i, fact.key)
         preimageRows[preimageUsed] = PreimageIdentityRow(owner: i, key: fact.key, hash: fact.hash,
-          present: found.error == StateStoreError.None, original: true)
+          present: found.error == StateStoreError.None, original: not wasRetired(i))
         inc preimageUsed # Original complete compact facts bound every seeded preimage descriptor.
       for j in 0..<row.requests:
         spend()
@@ -272,12 +341,15 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
         let found = target.lookup(key.value)
         if found.error notin {StateStoreError.None, StateStoreError.MissingKey}: fail(
             LogicalContinuationError.UnsupportedChange)
+        requireRetiredAbsence(i, key.value)
         requestRows[requestUsed] = RequestIdentityRow(owner: i, key: key.value, item: item,
-            present: found.error == StateStoreError.None, original: true, produced: false)
+            present: found.error == StateStoreError.None, original: not wasRetired(i),
+                produced: false)
         inc requestUsed # Original compact fact count bounds the admitted request planning prefix.
   for i in 0..<produced.facts:
     spend()
-    let fact = history.storageHistoryAt(StorageHistoryIndex(uint64(i))).value.fact
+    let observation = history.storageHistoryAt(StorageHistoryIndex(uint64(i))).value
+    let fact = observation.fact
     let details = fact.storageFactInfo.value
     if uint64(details.rawBytes) > uint64(limits.projection.perValue): fail(
         LogicalContinuationError.LimitExceeded)
@@ -287,6 +359,14 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
       if uint32(serviceAt(j).service) ==
           uint32(details.service): owner = j
     if owner < 0: fail(LogicalContinuationError.UnsupportedChange) # No new service identity can come from an unexplained map difference.
+    var currentGeneration = true
+    if wasRetired(owner):
+      # A creator may perform authorized foreign writes after new; parallel outcomes never share its local event counter.
+      let later = uint64(observation.entry) > uint64(roster[owner].birthEntry)
+      let sameEntry = uint64(observation.entry) == uint64(roster[owner].birthEntry)
+      let sameOutcome = uint64(observation.outcome) == uint64(roster[owner].birthOutcome)
+      let touchedAfter = uint64(details.phase) > uint64(roster[owner].birthOrdinal)
+      currentGeneration = later or (sameEntry and sameOutcome and touchedAfter)
     let key = fact.copyStorageFactKey(limits.projection.perValue).value
     var selected = -1
     for j in 0..<used:
@@ -295,24 +375,36 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
           details.key): selected = j
     if selected >= 0:
       if rows[selected].raw != key: fail(LogicalContinuationError.UnsupportedChange) # Physical equality cannot replace exact original raw identity.
-      rows[selected].produced = true
+      rows[selected].produced = rows[selected].produced or currentGeneration
     else:
       let found = target.lookup(details.key)
       if found.error notin {StateStoreError.None, StateStoreError.MissingKey}: fail(
           LogicalContinuationError.UnsupportedChange)
       rows[used] = StorageIdentityRow(owner: owner, key: details.key, raw: key,
-          present: found.error == StateStoreError.None, original: false, produced: true)
+          present: found.error == StateStoreError.None, original: false,
+          produced: currentGeneration)
       inc used # Multiple selected invocations coalesce only identical raw storage identities.
   when kind == ContinuationKind.StorageAndRequests:
     for i in 0..<requestInfo.facts:
       spend()
-      let fact = requests.requestIdentityHistoryAt(RequestIdentityHistoryIndex(uint64(i))).value.fact
+      let observation = requests.requestIdentityHistoryAt(RequestIdentityHistoryIndex(uint64(i))).value
+      let fact = observation.fact
       var owner = -1
       for j in 0..<serviceCount:
         spend()
         if uint32(serviceAt(j).service) ==
             uint32(fact.service): owner = j
       if owner < 0: fail(LogicalContinuationError.UnsupportedChange) # New request owners require genuine selected creation membership.
+      var currentGeneration = true
+      if wasRetired(owner):
+        # The canonical seed precedes its creation fact; other identities need a successful later touch in that same invocation.
+        let later = uint64(observation.entry) > uint64(roster[owner].birthEntry)
+        let sameEntry = uint64(observation.entry) == uint64(roster[owner].birthEntry)
+        let sameOutcome = uint64(observation.outcome) == uint64(roster[owner].birthOutcome)
+        let seedKey = array[31, byte](fact.key) == array[31, byte](roster[owner].seed)
+        let touchedAfter = uint64(fact.phase) > uint64(roster[owner].birthOrdinal)
+        currentGeneration = later or (sameEntry and sameOutcome and (seedKey or touchedAfter))
+
       var selected = -1
       for j in 0..<requestUsed:
         spend()
@@ -323,7 +415,7 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
         if array[32, byte](originalRequest.hash) != array[32, byte](fact.hash) or uint32(
             originalRequest.length) != uint32(fact.length):
           fail(LogicalContinuationError.UnsupportedChange) # Do not replace logical identity on a physical collision.
-        requestRows[selected].produced = true
+        requestRows[selected].produced = requestRows[selected].produced or currentGeneration
         requestRows[selected].removedPreimage = requestRows[selected].removedPreimage or
             fact.removedPreimage
       else:
@@ -333,7 +425,8 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
         requestRows[requestUsed] = RequestIdentityRow(owner: owner, key: fact.key,
             item: StateRequestItem(hash: fact.hash, length: fact.length, history: requestedHistory(
           )),
-            present: found.error == StateStoreError.None, original: false, produced: true,
+            present: found.error == StateStoreError.None, original: false,
+                produced: currentGeneration,
             removedPreimage: fact.removedPreimage)
         inc requestUsed # Selected request identities coalesce only exact original service/hash/length bindings.
   when kind == ContinuationKind.StorageAndRequests:
@@ -353,13 +446,14 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
         if array[32, byte](preimageRows[selected].hash) != array[32, byte](request.item.hash):
           fail(LogicalContinuationError.UnsupportedChange) # Physical key equality never substitutes a different full hash.
         preimageRows[selected].removed = preimageRows[selected].removed or request.removedPreimage
+        preimageRows[selected].produced = preimageRows[selected].produced or request.produced
       else:
         let found = target.lookup(key.value)
         if found.error notin {StateStoreError.None, StateStoreError.MissingKey}:
           fail(LogicalContinuationError.UnsupportedChange)
         preimageRows[preimageUsed] = PreimageIdentityRow(owner: request.owner, key: key.value,
           hash: request.item.hash, present: found.error == StateStoreError.None, original: false,
-          removed: request.removedPreimage)
+          removed: request.removedPreimage, produced: request.produced)
         inc preimageUsed # One candidate per exact request hash fits the whole preflight even if no payload was fulfilled.
   var bytes = min(uint64(limits.projection.bytes), uint64(high(int)))
   var facts = uint64(limits.projection.facts)
@@ -395,6 +489,8 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
           if rows[j].original and not rows[j].present and not rows[j].produced:
             fail(LogicalContinuationError.UnsupportedChange) # No deletion is inferred from an unexplained map difference.
           if rows[j].present:
+            if wasRetired(i) and not rows[j].produced:
+              fail(LogicalContinuationError.UnsupportedChange) # Old-generation raw identity alone cannot authorize a replacement row.
             inc storage
             payload(uint64(rows[j].raw.len))
             payload(uint64(target.lookup(rows[j].key).value.byteLength))
@@ -409,6 +505,8 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
             if preimageRows[j].original and not preimageRows[j].present and not preimageRows[j].removed:
               fail(LogicalContinuationError.UnsupportedChange) # Only a selected expired forget authorizes loss of an original retained blob.
             if preimageRows[j].present:
+              if wasRetired(i) and not preimageRows[j].produced:
+                fail(LogicalContinuationError.UnsupportedChange) # Replacement preimages need a proven new-generation request hash.
               inc selectedPreimages
               payload(uint64(target.lookup(preimageRows[j].key).value.byteLength))
         charge(selectedPreimages, StatePreimageItem)
@@ -422,6 +520,8 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
             if requestRows[j].original and not requestRows[j].present and not requestRows[j].produced:
               fail(LogicalContinuationError.UnsupportedChange) # No unexplained original request removal is inferred absent.
             if requestRows[j].present:
+              if wasRetired(i) and not requestRows[j].produced:
+                fail(LogicalContinuationError.UnsupportedChange) # Earlier requests do not grant new-incarnation identity authority.
               inc selectedRequests
               let value = target.lookup(requestRows[j].key).value
               if value.byteLength > 13: fail(LogicalContinuationError.UnsupportedChange)
@@ -461,6 +561,14 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
       if metadata.error != ServiceMetadataError.None:
         return LogicalContinuationResult(status: LogicalContinuationError.MetadataFailure,
             metadataReason: metadata.error)
+      if i < info.services and uint32(metadata.value.metadata.created) != uint32(
+          row.metadata.created):
+        # An unchanged numeric ID cannot hide a new incarnation when selected lifecycle evidence is disabled.
+        when kind == ContinuationKind.StorageOnly:
+          fail(LogicalContinuationError.UnsupportedChange)
+        else:
+          if roster.len == 0 or not roster[i].created:
+            fail(LogicalContinuationError.UnsupportedChange)
       var storage = 0
       for j in 0..<used:
         if rows[j].owner == i and rows[j].present: inc storage # Fixed scratch identities count the exact selected storage array.

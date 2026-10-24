@@ -170,3 +170,31 @@ operand/interior/block targets, maximum positive displacement, and unmarked opco
 bytes. Terminating fallthrough covers all0–24 padding lengths and an absent successor.
 Operand-copy/owner-release controls, three failed/default runtime controls, a genuine
 positive control and a compiler rejection guard protect the result boundary.
+
+
+## Captured bounded register coordinates, 2026-10-23
+
+`instructionRegisters(decoded)` is a success-guarded query on a genuine
+`ProgramResult[Instruction]`. It returns copied `RegisterSlots` with read-only
+`aIndex`, `bIndex` and `dIndex` queries constrained to0–12. The owner decoder stores
+these bounded coordinates alongside the original nominal A/B/D values. One private
+byte-range helper implements the same GP saturation at12, preserving the separate
+Paper/JAM destination rules and zero unused fields. No second encoding is accepted.
+
+The public nominal `RegisterIndex` domain remains a byte, including its existing
+out-of-range API errors. Only the private captured coordinates carry an array-bound
+proof. Mutable raw `Instruction` copies cannot expose, rewrite or rebind that storage;
+failed/default instruction results grant no coordinate query. `RegisterSlots` is a
+plain scalar value with valid zero defaults, not an execution handle. Coordinates
+and decoded operands remain usable after the source program handle is released,
+without retaining a program back-reference or mutable backing.
+
+Bounded fields let the compiler prove thirteen-register array accesses in arithmetic,
+memory and control kernels. Default/invalid/unmarked-result runtime controls and a
+real positive owner-release/copy-mutation control protect the query. A compiler
+rejection protects the private storage, and existing literal operand/width/shape
+cases compare every coordinate with its independently expected nominal value.
+On the recorded ARM64 host the three-byte coordinates occupy existing padding:
+`Instruction` remains56 bytes and the scalar write result remains24 bytes.
+No cache capacity, preparation pass, resource default, protocol pin or runtime-check
+flag changes. Timing and full composition coverage are recorded separately.

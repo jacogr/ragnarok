@@ -37,8 +37,8 @@ is a failure, not evidence of coverage.
 
 ## Requesting CI
 
-PR opening, reopening and source updates automatically run **Smoke**: complete Nim/Rust
-formatting and unoptimized semantic compilation of every production module in one discovered
+Master pushes and PR opening, reopening and source updates automatically run **Smoke**:
+complete Nim/Rust formatting and unoptimized semantic compilation of every production module in one discovered
 import graph, plus the real peer main with integration/offload enabled. Run `make check-smoke`
 locally. No formatting is applied and no native libraries are linked. Master/full/unit source
 audits use the same complete graph with their checked-release profile.

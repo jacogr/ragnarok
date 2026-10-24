@@ -1,0 +1,50 @@
+{
+  "cases": [
+    {
+      "name": "base",
+      "role": "base",
+      "assignments": {},
+      "expected": "pass"
+    },
+    {
+      "name": "foreign-stop-resumes-owner",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "1"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "stale-token-resumes-new-lease",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "2"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "nested-pause-replaces-token",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "3"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "failed-admission-leaks-pause",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "4"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "reachable-second-proof-lease",
+      "role": "witness",
+      "assignments": {
+        "Witness": "(true)"
+      },
+      "expected": "violated"
+    }
+  ]
+}

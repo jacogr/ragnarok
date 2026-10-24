@@ -29,3 +29,5 @@ checkpoint/panic/out-of-gas selection and 1,000 balanced ARC cycles. Existing so
 current guest consumers, strict result guards, inventory and both formatting gates apply.
 M1 framing is complete; full independent current-schema STF, current Thin VRF and ambiguous
 privilege gates remain separate.
+
+The unique facts also retain [latest-touch lifecycle phases](service-post-birth-evidence.md), without changing identity counts or first-touch order. Phase refreshes preserve retained original/checkpoint owners; phase metadata is not a total operation log or cross-invocation ordering authority.

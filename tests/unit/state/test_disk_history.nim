@@ -67,7 +67,7 @@ proc main() {.raises.} =
         decoded.retainedBlockAt(RetainedBlockIndex(tag-1)).value.stateSnapshot)
   # Every truncation, impossible length, unknown tag and changed hint refuses without publishing.
   for stop in 0..<wire.len:
-    assert restoreDiskHistory(wire[0..<stop], chain, generation,
+    assert restoreDiskHistory(wire.toOpenArray(0, stop-1), chain, generation,
       fixture.view.bestBlock.value.chainParameters, disk, fixture.policy, limit).error !=
           DiskHistoryError.None
   for location in [0, HistoryPrefixBytes-2, HistoryPrefixBytes-1, HistoryPrefixBytes,

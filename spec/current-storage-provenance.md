@@ -29,8 +29,9 @@ capture refusal, late history quota refusal, no adoption and 1,000 balanced hist
 retain/retire cycles. Strict default/reason/capability guards, privacy rejection, affected candidate/
 worker consumers, inventory and both formatting gates apply.
 
-Next consumer: use this update-owned selected storage history with a qualified original logical
-parent to propagate only proven storage identity changes, followed by complete successor matching.
-Creation/ejection, request/preimage and non-guest identity changes remain separate producer work;
-no general supplied-delta API or full logical manifest is claimed. M1 framing is complete;
+The [storage continuation consumer](storage-logical-continuation.md) now uses this update-owned
+selected history with a qualified original logical parent, followed by complete successor matching.
+[Service lifecycle](service-logical-continuation.md), [request](request-logical-continuation.md) and
+[request-bound preimage](preimage-logical-continuation.md) contracts compose their own genuine
+producer evidence; they do not turn detached facts into a general supplied-delta API. M1 framing is complete;
 independent full current-schema STF, current Thin VRF and ambiguous privilege gates remain open.

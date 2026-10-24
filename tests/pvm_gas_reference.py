@@ -305,6 +305,17 @@ def fixtures():
         # Grey issue155: an unreachable jump must not split the earlier load/store gas block.
         cases.append([bytes([51, 7, 7]), bytes([59, 7, 0, 0, 3]), bytes([0]),
                       instruction(40, displacement=target-9)])
+    for length in (31, 32, 33, 65):
+        # A long oldest producer lets complete32-entry prefixes retire together, then new dependencies reuse compacted positions.
+        cases.append(([instruction(10)]+[instruction(51, a=n % 13) for n in range(length)])*3+[instruction(0)])
+        # Move elimination renames a waiting divide producer without a ROB entry; later writes remove only their own destination aliases.
+        chain = [instruction(203, 0, 1, 2)]
+        for n in range(length):
+            chain.extend([instruction(100, 2, 0, 3), instruction(200, 3, 4, 5), instruction(51, a=2)])
+        cases.append(chain+[instruction(0)])
+        # Repeated short producers, zero-latency renames and independent consumers span partial retirement prefixes and resource starts.
+        cases.append(([instruction(202, 0, 1, 2), instruction(100, 2, 0, 3),
+                       instruction(200, 3, 4, 5), instruction(51, a=2)])*length+[instruction(0)])
     out = bytearray(b'PVMGAS01'+struct.pack('<I', len(cases)))
     for index, sequence in enumerate(cases):
         # Relocate alternate blocks behind a completed trap; pricing depends on relative raw targets.

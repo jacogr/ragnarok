@@ -211,6 +211,24 @@ proc sameRoot(state: StateStore, rows: seq[StateEntry]) =
       wanted.snapshot.value.commitment.root),
     "complete independent root includes exact removals, beneficiary credits and unchanged unrelated entries"
 
+block captured_lifecycle_order:
+  # Opposite real host-call orders must remain distinguishable in separate immutable membership arrays.
+  for before in [false, true]:
+    let fixture = setup(envelope(create = not before, beforeCreate = before))
+    let actual = execute(fixture)
+    let current = actual.effects.effectContext(AccumulationDimension.Regular).value
+    assert current.effectCreatedAccountFactCount.value == 1
+    assert current.effectDeletedAccountFactCount.value == 1
+    let created = current.effectCreatedAccountFactAt(AccumulationCreatedAccountIndex(0)).value
+    let deleted = current.effectDeletedAccountFactAt(AccumulationDeletedAccountIndex(0)).value
+    assert uint64(created.ordinal) == (if before: 0'u64 else: 1'u64)
+    assert uint64(deleted.ordinal) == (if before: 1'u64 else: 0'u64)
+    var detached = created
+    detached.ordinal = AccumulationServiceLifecycleIndex(high(uint64))
+    assert uint64(current.effectCreatedAccountFactAt(AccumulationCreatedAccountIndex(
+        0)).value.ordinal) ==
+      (if before: 0'u64 else: 1'u64), "a detached observation cannot rewrite producer order"
+
 for checkpoint in [false, true]:
   for panic in [false, true]:
     let fixture = setup(envelope(checkpoint, panic, repeat = true), two = true)
@@ -219,6 +237,11 @@ for checkpoint in [false, true]:
     let selected = normalizeAccumulationOutcome(first).value.outcomeContext.value
     let removed = if panic: (if checkpoint: @[77'u32] else: newSeq[uint32](0)) else: @[77'u32, 78]
     assert selected.effectDeletedAccountCount.value == removed.len, "checkpoint selects the exact deletion proof and reclaimed balance"
+    # Successful ejections have contiguous shared positions; checkpoint selection retains only its original prefix.
+    for i in 0..<removed.len:
+      assert uint64(selected.effectDeletedAccountFactAt(AccumulationDeletedAccountIndex(uint64(
+          i))).value.ordinal) == uint64(i)
+
     assert first.effects.effectContext(AccumulationDimension.Regular).value.effectDeletedAccountCount.value == 2,
       "both real regular ejections retain their independent target keys"
     let plan = prepare(fixture, first, second).value
@@ -276,6 +299,14 @@ block budgets_and_defaults:
       0)).value.service) == 77
   assert normalizeAccumulationOutcome(disabled).value.outcomeContext.value.effectDeletedAccountFactCount.error ==
       AccumulationEffectError.DeletedAccountsDisabled
+  assert independent.effectDeletedAccountStateAt(AccumulationDeletedAccountIndex(high(
+      uint64))).error == AccumulationEffectError.InvalidIndex
+  assert default(AccumulationEffectContext).effectDeletedAccountStateAt(
+      AccumulationDeletedAccountIndex(0)).error == AccumulationEffectError.Uninitialized
+  let disabledState = normalizeAccumulationOutcome(
+      disabled).value.outcomeContext.value.effectDeletedAccountStateAt(
+      AccumulationDeletedAccountIndex(0))
+  assert disabledState.error == AccumulationEffectError.DeletedAccountsDisabled
   assert independent.effectDeletedAccountFactAt(AccumulationDeletedAccountIndex(high(
       uint64))).error == AccumulationEffectError.InvalidIndex
   let foreign = setup(envelope(repeat = true), two = true)
@@ -348,6 +379,19 @@ block recreate_prior_target:
       let second = execute(fixture, 1)
       assert uint64(machineInfo(first.value.machine).value.registers[7]) == 77,
         "guest really recreated the ejected reserved target before terminal selection"
+      let regular = first.effects.effectContext(AccumulationDimension.Regular).value
+      assert uint64(regular.effectDeletedAccountFactAt(AccumulationDeletedAccountIndex(
+          0)).value.ordinal) == 0
+      assert uint64(regular.effectCreatedAccountFactAt(AccumulationCreatedAccountIndex(
+          0)).value.ordinal) == 1
+      let barrier = regular.effectDeletedAccountStateAt(AccumulationDeletedAccountIndex(0)).value
+      assert barrier.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77))).error ==
+          StateStoreError.MissingKey
+      assert regular.effectAccounts.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
+          77))).error == StateStoreError.None
+      let chosen = normalizeAccumulationOutcome(first).value.outcomeContext.value
+      assert chosen.effectCreatedAccountFactCount.value == (if panic: 0 else: 1)
+      assert chosen.effectDeletedAccountFactCount.value == (if panic and not checkpoint: 0 else: 1)
       let recreated = not panic
       let removed = if panic and checkpoint: @[77'u32] else: newSeq[uint32](0)
       let plan = prepare(fixture, first, second).value
@@ -419,6 +463,25 @@ let fixture = setup(envelope(provide = true))
 let first = execute(fixture)
 let second = execute(fixture, 1)
 let plan = prepare(fixture, first, second).value
+block ejection_capture_failure:
+  # The original prepared owner admits capture before hashing; failed atomic ejection exposes no snapshot prefix.
+  let initial = prepareAccumulationEffects(first.effects.effectsSource.value,
+    deletedAccounts = ElementLimit(2)).value
+  let prior = initial.effectContext(AccumulationDimension.Regular).value.effectAccounts.value
+  failHash(1)
+  let refused = recordAccumulationEject(initial, AccumulationEjectTarget(77), profile())
+  assert refused.error == AccumulationEffectError.BackendFailure
+  failHash(0)
+  let context = initial.effectContext(AccumulationDimension.Regular).value
+  assert context.effectDeletedAccountFactCount.value == 0
+  assert context.effectDeletedAccountStateAt(AccumulationDeletedAccountIndex(0)).error ==
+      AccumulationEffectError.InvalidIndex
+  assert sameStateSnapshot(prior, context.effectAccounts.value)
+  let recovered = recordAccumulationEject(initial, AccumulationEjectTarget(77), profile()).value
+  let barrier = recovered.effectContext(AccumulationDimension.Regular).value.effectDeletedAccountStateAt(
+      AccumulationDeletedAccountIndex(0)).value
+  assert barrier.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77))).error ==
+      StateStoreError.MissingKey
 block stale_and_backend:
   var state = fixture.state
   discard applyAccumulationBatch(state, plan).value
@@ -440,16 +503,20 @@ block stale_and_backend:
 block detached_owner:
   var owned = default(PreparedAccumulationBatch)
   var state = default(StateStore)
+  var barrier = default(StateStoreSnapshot)
   block sources:
     let local = setup(envelope())
     let first = execute(local)
     let context = normalizeAccumulationOutcome(first).value.outcomeContext.value
+    barrier = context.effectDeletedAccountStateAt(AccumulationDeletedAccountIndex(0)).value
     var copied = context.effectDeletedAccountAt(AccumulationDeletedAccountIndex(0)).value
     copied.service = ServiceIndex(0)
     assert uint32(context.effectDeletedAccountAt(AccumulationDeletedAccountIndex(
         0)).value.service) == 77, "copied facts cannot mutate deletion proof backing"
     owned = prepare(local, first, execute(local, 1)).value
     state = local.state # All caller execution/context owners disappear before application.
+  assert barrier.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77))).error ==
+      StateStoreError.MissingKey
   discard applyAccumulationBatch(state, owned).value
   assert state.snapshot.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       77))).error == StateStoreError.MissingKey, "plan retains target deletion after caller sources leave scope"

@@ -77,3 +77,16 @@ producer/context observations and retained checkpoint/proof/original-current rev
 changes, later preserved continuation, both disk layouts and detached outputs. This remains supplied
 matching, not a jointly designed producer mutation certificate. Original normative parity and
 untouched-key/ordered-operation/rollback provenance gates above remain open.
+
+## Subsequent producer-backed namespace continuation
+
+Bounded [storage](storage-logical-continuation.md), [request](request-logical-continuation.md),
+[service lifecycle](service-logical-continuation.md) and [request-bound preimage](preimage-logical-continuation.md)
+consumers now reconstruct supported namespace changes from genuine selected producer facts and
+then qualify the complete successor. [Retired service namespaces](service-namespace-retirement.md)
+include ordered later-entry reuse and atomic same-invocation ejection barriers, with post-birth
+identity phases. Explicit [CLI policy](current-namespace-policy.md), [source refresh](current-logical-source-refresh.md)
+and [joined shutdown receipts](current-logical-shutdown.md) compose those bounded contracts through
+actual authenticated adoption and durable restart. These implementations supersede historical
+next-consumer status for their named paths. They do not provide a general caller-supplied mutation
+certificate or close the independent source, current Thin VRF or privilege-policy gates above.

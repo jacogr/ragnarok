@@ -174,6 +174,25 @@ bench-pvm: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fmt --manifest-path tests/performance/polkavm/Cargo.toml -- --check
 	$(PYTHON) tools/pvm_benchmark.py
 
+# Frozen real guest; normal setup installs no historical guest compiler or experimental backend.
+.PHONY: bench-pvm-sieve
+bench-pvm-sieve: setup
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fmt --manifest-path tests/performance/polkavm/Cargo.toml -- --check
+	$(PYTHON) tools/pvm_sieve_benchmark.py
+
+# Broader frozen real guests share strict full-state interpreted controls; historical guest compilers stay unused.
+.PHONY: bench-pvm-guests
+bench-pvm-guests: setup
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fmt --manifest-path tests/performance/polkavm/Cargo.toml -- --check
+	$(PYTHON) tools/pvm_guest_benchmark.py
+
+# Native host byte-range API throughput is separate from interpreter backend comparisons.
+.PHONY: bench-pvm-memory
+bench-pvm-memory: setup
+	$(PYTHON) tools/pvm_memory_benchmark.py
+
 # Coverage-guided byte fuzzing owns its native adapter, finite controls and retained corpus; it never runs from ordinary unit or E2E checks.
 fuzz-pvm-program: toolchain check-inventory
 	$(PYTHON) tools/fuzz_pvm_program.py
@@ -353,6 +372,7 @@ help:
 	  'make bench-storage  Compare validated memory, journal and managed storage' \
 	  'make bench-storage-growth  Measure sustained storage growth and SDK IO' \
 	  'make bench-pvm      Measure validated PVM workloads against PolkaVM backends' \
+	  'make bench-pvm-guests  Compare frozen checked indirect-call and memory-fill guests' \
 	  'make check-pvm-reference  Run pinned PolkaVM probes and matching native suites' \
 	  'make model-tools   Build the pinned verification-only tlanif' \
 	  'make check-models  Check bounded models, mutants and reachability' \

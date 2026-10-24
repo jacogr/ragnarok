@@ -20,12 +20,13 @@ type
     else:
       # Failures contain no cost or partial pipeline progress.
       discard
-  # ALU, load, store, multiply and divide resources, in the normative tuple order.
-  Units = array[5, int]
+  # ALU/load/store occupancy never exceeds4, multiply/divide never exceeds1; signed bytes retain exact nonnegative counters.
+  Units = array[5, int8]
   # Register sets are thirteen-bit masks; all indices come from the validated decoder.
   Profile = object
     sources, destinations: uint16
-    cycles, slots: int
+    cycles: int8 # The exhaustive profile table grants0..100 cycles; execution only decrements positive latency.
+    slots: int
     units: Units
   # Retired entries are removed only from the prefix after a simultaneous cycle transition.
   Stage {.pure.} = enum
@@ -33,7 +34,7 @@ type
   # At most 32 active entries; dependency bits refer to positions in this compact buffer.
   Entry = object
     stage: Stage
-    left: int
+    left: int8 # Copied profile latency stays within0..100 throughout execution.
     dependencies: uint32
     clobbers: uint16
     units: Units
@@ -51,7 +52,7 @@ func bit(index: RegisterIndex): uint16 = 1'u16 shl int(byte(index))
 # Derive all syntactically read/written registers, including conditional-move fallbacks.
 func profile(item: Instruction): Profile =
   result = Profile(sources: 0, destinations: 0, cycles: 1, slots: 1,
-    units: [1, 0, 0, 0, 0])
+    units: [1'i8, 0'i8, 0'i8, 0'i8, 0'i8])
   let a = bit(item.a)
   let b = bit(item.b)
   let d = bit(item.d)
@@ -220,12 +221,13 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
     return GasResult(status: GasError.InvalidStart)
   var rob = default(array[32, Entry])
   var count = 0
+  var busy = 0'u32 # A bit is set exactly while that active entry has nonzero remaining latency.
   var pc = uint64(start)
   var ended = false
   var cycles = 0'u64
   var slots = 4
   var starts = 5
-  var available: Units = [4, 4, 4, 1, 1]
+  var available: Units = [4'i8, 4'i8, 4'i8, 1'i8, 1'i8]
   # Each transition decodes a bounded instruction, starts one entry, or advances a bounded cycle.
   while true:
     if not ended and count < 32:
@@ -264,6 +266,7 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
             rob[i].clobbers = rob[i].clobbers and not cost.destinations
           rob[count] = Entry(stage: Stage.Decoding, left: cost.cycles,
             dependencies: deps, clobbers: cost.destinations, units: cost.units)
+          if cost.cycles != 0: busy = busy or (1'u32 shl count) # The enclosing count<32 guard proves this shift.
           inc count
         ended = terminatesBlock(item.opcode)
         pc += 1 + uint64(item.skip)
@@ -273,11 +276,8 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
       var selected = -1
       for i in 0..<count:
         if rob[i].stage == Stage.Waiting and fits(rob[i].units, available):
-          var ready = true
-          for j in 0..<count:
-            if (rob[i].dependencies and (1'u32 shl j)) != 0 and rob[j].left != 0:
-              ready = false
-          if ready:
+          if (rob[i].dependencies and busy) == 0:
+            # One bounded mask intersection replaces rescanning every retained dependency on each issue attempt.
             selected = i
             break
       if selected >= 0:
@@ -312,6 +312,7 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
         if rob[i].left == 1:
           # Release resources on the transition to zero remaining latency.
           for j in 0..<5: available[j] += rob[i].units[j]
+          busy = busy and not (1'u32 shl i) # Readiness changes at the same one-to-zero latency transition, before the next issue cycle.
         if rob[i].left > 0:
           dec rob[i].left
         else:
@@ -322,4 +323,8 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
       for i in retired..<count:
         rob[i - retired] = rob[i]
         rob[i - retired].dependencies = rob[i].dependencies shr retired
+      if retired == 32:
+        busy = 0 # A complete buffer retirement must never shift by the word width.
+      else:
+        busy = busy shr retired # Active entry indices move by the same retired prefix as their dependency masks.
       count -= retired

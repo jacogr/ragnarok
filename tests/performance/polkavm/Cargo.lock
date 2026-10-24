@@ -56,6 +56,7 @@ version = "0.37.0"
 name = "ragnarok-pvm-benchmark"
 version = "0.0.0"
 dependencies = [
+ "libc",
  "picosimd",
  "polkavm",
  "polkavm-common",

@@ -5,7 +5,8 @@
 import std/[assertions, syncio, envvars, strutils, os]
 import std/posix/posix
 import ../../support/[current_logical_cli_context, current_namespace_policy_context,
-    current_namespace_execution_context, current_application_context, current_consecutive_context,
+    current_namespace_execution_context, current_service_replacement_context,
+    current_application_context, current_consecutive_context,
     current_consecutive_download_context,
     current_services_disk_samples, managed_storage_samples, current_namespace_transition_context,
     current_download_command_context, block_download_transport]
@@ -13,9 +14,13 @@ import ../../support/pvm_accumulation_program
 import ../../../src/pvm/machine
 import ../../../src/app/[current_logical_startup, current_logical_download, current_download_policy,
     current_download_command, options, services, chain]
-import ../../../src/codec/[bounded, block_codec, report_owned, state_composition, state_accounts, state_service_values]
+import ../../../src/codec/[bounded, block_codec, report_owned, state_composition, state_accounts,
+    composite, state_service_values]
 import ../../../src/chain/[provider, genesis]
-import ../../../src/state/[store, parent_logical, accumulation_current_update, block_admission, report_admission]
+import ../../support/accumulation_current_candidate_context
+import ../../../src/state/service_identity_history
+import ../../../src/state/[accumulation_effects, store, parent_logical, accumulation_current_update,
+    block_admission, report_admission]
 import ../../../src/storage/managed_manifest
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Canonical lexical failures must perform no primitive work.
@@ -157,8 +162,12 @@ proc sourceChecks(fixture: NamespaceExecutionFixture) =
       CurrentLogicalStartupError.GlobalsFailure
 proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false, omitted = false,
     refuse = false, namespaces = false, refresh = false, partial = false,
-        unwritable = false, keyBytes = 0) {.raises.} =
+        unwritable = false, keyBytes = 0, replacement = false, omitMembership = false,
+            sequential = false, retired = false, unsupported = false,
+        replacementLength = 1, replacementHash = default(array[32, byte]),
+            postBirth = false) {.raises.} =
   ## Actual command sockets, worker collection and adoption use explicit files; strict disk restart reconstructs a fresh physical logical owner.
+  let refused = refuse or omitMembership or unsupported
   var chainPath = "pvm-logical-cli-chain"
   var policyPath = "pvm-logical-cli-policy"
   var sourcePath = "pvm-logical-cli-source"
@@ -181,6 +190,30 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     policy.candidate.completion.execution.initial.guests.copyBytes = MemoryByteLimit(8192)
     policy.candidate.completion.execution.execution.round.guests.copyBytes = MemoryByteLimit(
         8192) # Read the actual long zero-filled writable/heap span under explicit original policies.
+  if sequential: policy.candidate.round.blockGas = Gas(
+      200000) # Same original affordable-prefix policy as the signed fixture.
+  if retired:
+    # Original cleanup touches metadata, two storage keys, three requests and three preimages before retirement.
+    policy.candidate.completion.execution.initial.guests.accountWriteFacts = ElementLimit(16)
+    policy.candidate.completion.execution.initial.accounts.writes.writes = ElementLimit(16)
+  if postBirth:
+    # Actual same-invocation provide is independently bounded in guest retention and selected provision publication.
+    policy.candidate.completion.execution.execution.round.guests.provisions = AccumulationProvisionLimits(
+      items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+    policy.candidate.completion.execution.execution.round.provisions.values = PreimageLimits(
+      items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+    policy.candidate.completion.execution.execution.round.provisions.encodedBytes = ByteLimit(128)
+    policy.candidate.completion.execution.initial.guests.provisions = AccumulationProvisionLimits(
+      items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+    policy.candidate.completion.execution.initial.provisions.values = PreimageLimits(
+      items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+    policy.candidate.completion.execution.initial.provisions.encodedBytes = ByteLimit(128)
+  if replacement:
+    # Host capacities and selected history limits are separate original execution policies.
+    policy.candidate.completion.execution.initial.guests.createdAccounts = ElementLimit(4)
+    policy.candidate.completion.execution.initial.guests.deletedAccounts = ElementLimit(4)
+    policy.candidate.completion.execution.execution.round.guests.createdAccounts = ElementLimit(4)
+    policy.candidate.completion.execution.execution.round.guests.deletedAccounts = ElementLimit(4)
   writeFile(policyPath, encodeCurrentDownloadPolicy(policy))
   var limits = logicalStartupTestLimits()
   if keyBytes > 0:
@@ -209,7 +242,9 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
   var heads = @[fixture.parent.bestBlock.value, model.chainView.bestBlock.value]
   var children = @[first]
   for index in 0..<2:
-    let child = currentEmptyChild(model.chainView.bestBlock.value)
+    let parent = model.chainView.bestBlock.value
+    let child = if retired: currentSameEpochBodyChild(parent, [0'u8, 0, 0, 0, 0, 0, 0])
+      else: currentEmptyChild(parent) # Later-epoch expiry fixtures use the existing explicitly bounded signer.
     let update = phaseCurrentUpdate(model, child, [], policy.candidate)
     model.installPrepared(update)
     children.add(child)
@@ -218,6 +253,11 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
   if refresh: extra.add("--download-update-logical-source") # Only explicit opt-in may replace the previously qualified input file.
   if namespaces:
     var namespacePolicy = namespacePolicyTestLimits()
+    if replacement and not omitMembership:
+      namespacePolicy.services = ServiceIdentityHistoryLimits(entries: ElementLimit(8),
+        outcomes: ElementLimit(16), creations: ElementLimit(16), deletions: ElementLimit(16),
+        bytes: ByteLimit(65536)) # Selected evidence remains distinct from enabled host capture.
+
     if keyBytes > 0:
       namespacePolicy.initial.storage.perKey = ByteLimit(8192)
       namespacePolicy.initial.storage.totalKeyBytes = ByteLimit(8192)
@@ -241,7 +281,7 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     responses.add(currentConsecutiveResponse(children[i]))
   if partial: responses[1] = @[0'u8, 0, 0, 0] # The second authenticated response is genuinely empty; one attempt must exhaust after the first adopted child.
   let firstCount = if unwritable or keyBytes > CurrentLogicalSourceKeyBytes: 1 elif malformed or
-      omitted or refuse or partial or (namespaces and not refresh) or layout == 0: 3 else: 1
+      omitted or refused or partial or (namespaces and not refresh) or layout == 0: 3 else: 1
   let exchanged = logicalCommandExchange(chainPath, policyPath, sourcePath, logicalPolicyPath,
       requests, responses, firstCount, extra)
   if malformed or omitted:
@@ -259,19 +299,26 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
   elif partial:
     assert exchanged.outcome.error == CurrentDownloadCommandResult.Exhausted
     assert exchanged.outcome.adoptedBlocks == 1 and exchanged.secondRequests == 2
-  elif refuse:
+  elif refused:
     assert exchanged.outcome.error == CurrentDownloadCommandResult.Exhausted
     assert exchanged.outcome.adoptedBlocks == 0 and exchanged.secondRequests == 1
+    assert readFile(actualSourcePath) == text, "refusal retains the original identity source"
   else:
     assert exchanged.outcome.error == CurrentDownloadCommandResult.Adopted
     assert exchanged.outcome.adoptedBlocks == firstCount and exchanged.secondRequests == firstCount
-  if refresh and not malformed and not omitted and not refuse and not unwritable and keyBytes <= CurrentLogicalSourceKeyBytes:
+  if refresh and not malformed and not omitted and not refused and not unwritable and keyBytes <= CurrentLogicalSourceKeyBytes:
     let updated = readFile(actualSourcePath)
     if keyBytes > 0:
       var key = newSeq[byte](keyBytes)
       key[0] = 9
       assert updated != text and ("k=" & logicalHex(key) & "\n") in
           updated # The exact maximum source key remains restartable.
+    elif replacement:
+      assert updated != text and "s=99\n" in updated
+      let length = if sequential: 0 else: replacementLength
+      let expected = "r=" & logicalHex(replacementHash) & ":" & $length & "\n"
+      assert expected in updated, "new-generation code request survives source export"
+      if postBirth: assert "k=05\n" in updated # Only a producer touch after creation certifies the old raw name.
     elif namespaces:
       assert updated != text and "k=07\n" in updated # Exported raw identity comes only from the actual qualified adopted source.
     else: assert updated == text # Strict identity preservation exports the same canonical declarations after actual adoption.
@@ -279,7 +326,7 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     assert not fileExists(database) and not dirExists(
         database) # Lexical refusal precedes Services or database startup.
   elif layout != 0:
-    if not omitted and not refuse and not unwritable and keyBytes <=
+    if not omitted and not refused and not unwritable and keyBytes <=
         CurrentLogicalSourceKeyBytes and (not namespaces or refresh):
       var nextRequests: seq[array[42, byte]] = @[]
       var nextResponses: seq[seq[byte]] = @[]
@@ -292,7 +339,7 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
     var owner = default(Services)
     let options = currentDiskOptions(chainPath, database, layout == 2, 0)
     assert owner.start(options, "strict CLI logical final reopen")
-    assert owner.chainView.retainedCount == (if omitted or refuse: 1 elif unwritable or keyBytes >
+    assert owner.chainView.retainedCount == (if omitted or refused: 1 elif unwritable or keyBytes >
         CurrentLogicalSourceKeyBytes: 2 else: 4)
     for i in 0..<owner.chainView.retainedCount:
       equalCurrentDiskMap(owner.chainView.retainedBlockAt(RetainedBlockIndex(uint64(
@@ -329,7 +376,88 @@ proc main() {.raises.} =
   let oversizedKey = longKeyFixture(decodeOwnedReport(bytes, 2).value,
       CurrentLogicalSourceKeyBytes+1)
   sourceChecks(fixture)
+  let replacement = namespaceReplacementFixture(decodeOwnedReport(bytes, 2).value)
+  var sequentialPolicy = currentCandidateLimits()
+  sequentialPolicy.round.blockGas = Gas(200000)
+  let sequential = namespaceSequentialReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    sequentialPolicy).toNamespaceExecutionFixture
+
+  var retirementPolicy = currentCandidateLimits()
+  retirementPolicy.completion.execution.initial.guests.accountWriteFacts = ElementLimit(16)
+  retirementPolicy.completion.execution.initial.accounts.writes.writes = ElementLimit(16)
+  let retired = namespaceRetiredReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    retirementPolicy).toNamespaceExecutionFixture
+  let reusedOrigin = namespaceRetiredReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    retirementPolicy, reuse = true)
+  let reused = reusedOrigin.toNamespaceExecutionFixture
+  let oldCode = reusedOrigin.services[1].metadata.codeHash
+  let oldLength = int(uint32(reusedOrigin.services[1].requests[^1].length))
+  let orphan = namespaceRetiredReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    retirementPolicy, orphan = true).toNamespaceExecutionFixture
+  var postBirthPolicy = retirementPolicy
+  postBirthPolicy.completion.execution.execution.round.guests.provisions = AccumulationProvisionLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  postBirthPolicy.completion.execution.execution.round.provisions.values = PreimageLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  postBirthPolicy.completion.execution.execution.round.provisions.encodedBytes = ByteLimit(128)
+  let postBirth = namespaceRetiredReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    postBirthPolicy, postBirth = true).toNamespaceExecutionFixture
+  var checkpointPolicy = retirementPolicy
+  checkpointPolicy.completion.execution.initial.guests.provisions = AccumulationProvisionLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  checkpointPolicy.completion.execution.initial.provisions.values = PreimageLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  checkpointPolicy.completion.execution.initial.provisions.encodedBytes = ByteLimit(128)
+  let checkpoint = namespaceAtomicReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    checkpointPolicy).toNamespaceExecutionFixture
+  let withoutCheckpoint = namespaceAtomicReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    checkpointPolicy, checkpoint = false).toNamespaceExecutionFixture
+  let afterBirthCheckpoint = namespaceAtomicReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    checkpointPolicy, late = true).toNamespaceExecutionFixture
+  let orphanRetirement = namespaceAtomicReplacementFixture(decodeOwnedReport(bytes, 2).value,
+    checkpointPolicy, orphan = true).toNamespaceExecutionFixture
   for layout in 0..2:
+    command(checkpoint, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0)
+    command(checkpoint, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0, partial = true)
+    command(checkpoint, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0, omitMembership = true)
+    for supported in [withoutCheckpoint, afterBirthCheckpoint]:
+      # Atomic ejection evidence survives independently of guest checkpoint placement.
+      command(supported, layout, namespaces = true, refresh = true, replacement = true,
+        retired = true, postBirth = true, replacementLength = 0)
+    command(orphanRetirement, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0, unsupported = true)
+    command(postBirth, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0)
+    command(postBirth, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0, partial = true)
+    command(postBirth, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, postBirth = true, replacementLength = 0, omitMembership = true)
+    command(retired, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, replacementLength = 0)
+    command(reused, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, replacementLength = oldLength, replacementHash = array[32, byte](oldCode))
+    command(reused, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, partial = true, replacementLength = oldLength, replacementHash = array[32,
+          byte](oldCode))
+    command(orphan, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, unsupported = true)
+    command(retired, layout, namespaces = true, refresh = true, replacement = true,
+      retired = true, omitMembership = true)
+    command(sequential, layout, namespaces = true, refresh = true, replacement = true,
+        sequential = true)
+    command(sequential, layout, namespaces = true, refresh = true, partial = true,
+        replacement = true, sequential = true)
+    command(replacement, layout, namespaces = true, refresh = true, replacement = true)
+    command(replacement, layout, namespaces = true, refresh = true, partial = true,
+        replacement = true)
+    command(replacement, layout, namespaces = true, refresh = true, refuse = true,
+        replacement = true)
+    command(replacement, layout, namespaces = true, refresh = true, omitMembership = true,
+        replacement = true)
+
     command(fixture, layout)
     command(fixture, layout, refresh = true)
     command(fixture, layout, true)

@@ -323,3 +323,64 @@ remain independent copies. See [publication memory and IO evidence](../../spec/s
 Prepared images and file owners expose `update(proofs, forgottenKeys)` for atomic
 combined changes. This replaces evidence at exact capacity in one publication, with
 no visible eviction prefix. See [atomic evidence batches](../../spec/storage-light-atomic-batches.md).
+
+The [light churn baseline](../../spec/storage-light-churn.md) measures real one-key evidence
+forget/admit publication, strict reopen, completed write extents, durability calls and ARC
+retirement with producer memory excluded. It motivates bounded incremental light persistence;
+its local timings do not establish cold-cache or physical-device behavior.
+
+`light_delta.nim` encodes bounded canonical proof-cache edits with exact chain/root,
+predecessor/successor checksums and expected local sequence. Opaque results retain an immutable
+successor; consuming decode transfers bytes only after complete verification. See
+[authenticated update frames](../../spec/storage-light-deltas.md). Durable journal ownership
+and partial-tail recovery remain separate work.
+
+`light_journal_manifest.nim` selects a positive physical light-journal epoch and its checkpoint
+sequence using a distinct `CURRENT` schema. A checksummed journal anchor binds that exact
+selection; old light-image and full-state formats have no fallback. See the
+[selection and anchor contract](../../spec/storage-light-journal-selection.md).
+
+`light_journal_replay.nim` strictly verifies a bounded selected checkpoint/anchor/frame stream
+before exposing its final immutable image. Separate explicit partial-tail plans bind only a
+fully authenticated prefix to all original journal bytes and selection; complete corruption
+never yields salvage authority. See [replay and tail planning](../../spec/storage-light-journal-replay.md).
+
+`light_journal_cache.nim` owns a separate locked light directory, synchronized checkpoint/anchor
+bootstrap and strict replay on reopen. Opaque authenticated updates append only a bounded frame;
+uncertain I/O refuses fresh observations until explicit close and strict reopen. See the
+[durable journal lifecycle](../../spec/storage-light-journal-cache.md).
+
+Explicit `LightJournalRecovery` inspection holds the selected journal inode and directory
+lease. Repair revalidates CURRENT, checkpoint, exact original bytes and selected inode/extent
+before synchronized prefix truncation transfers one writable owner. Complete corruption is
+never salvaged. See [held-inode repair](../../spec/storage-light-journal-repair.md).
+
+Prepared light journal compaction binds an exact epoch/sequence/image, writes a new synchronized
+checkpoint and empty anchor, then atomically selects that epoch without advancing update sequence.
+A confirmed receipt reports old-handle retirement separately; old files remain untouched. See
+[atomic checkpoint compaction](../../spec/storage-light-journal-compaction.md).
+
+Explicit light journal reclamation revalidates the exact selected checkpoint and held journal
+before removing earlier canonical epochs or fixed staging. Prepared abandoned candidates must
+match every expected canonical prefix before any unlink; idempotent retries synchronize even
+already absent names. See [guarded reclamation](../../spec/storage-light-journal-reclamation.md).
+
+Grouped [replacement process-crash qualification](../../spec/storage-light-replacement-crashes.md)
+checks every observed compaction and cleanup boundary, exact old/new selection, forensic bytes,
+lease release and explicit synchronized cleanup/retry before the next authenticated append.
+
+The maintained [matched light churn panel](../../spec/storage-light-journal-churn.md) compares
+full-image publication and journal append on identical query/proof workloads, including actual
+write/barrier work, strict reopen, retained-reader lifetime and fresh-process peak memory.
+
+Managed journal [attachment and bounded windows](../../spec/storage-held-journal-ranges.md)
+retain the exact append inode without loading the entire log. Caller-owned reads recheck
+selected name/inode/extent and actual EOF, with explicit uncertainty and retirement.
+
+Strict light [streaming reopen](../../spec/storage-light-streaming-reopen.md) shares immutable
+anchor/frame verification with whole-buffer replay, sizes buffers from checked headers, and
+publishes its owner only after the complete held extent and final EOF revalidate.
+
+Prepared [light journal update batches](../../spec/storage-light-journal-batches.md) authenticate
+bounded consecutive edits privately, retain only their final image, and publish with one append
+barrier. Interrupted groups preserve complete earlier frames for explicit prefix recovery.

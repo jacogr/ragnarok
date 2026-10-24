@@ -1,0 +1,54 @@
+(stmts#Copyright (c) 2026 Ragnarök contributors
+SPDX-License-Identifier: MIT OR Apache-2.0
+Serialized host admissions with preparation/proof/disk roles 1/2/3 and two distinct RPC tokens.
+phase 0 Idle, 1 paused before submit, 2 Queued, 3 executing, 4 Done; role 0 absent.
+epoch 1/2 are distinct retained token identities, never pointer-address reuse; old is the first retired token.
+Hypothesis: foreign stop, stale token or failed admission resumes/leaks another job's lease.
+Source: src/app/services.nim finishStateProof/beginPreparation/tick/stopPreparation/stopStateProofs/
+stopDiskPublication; src/rpc/server.nim pauseChain/resumeChain. Join correctness is checked separately.#
+  (variables :phase.0. :role.0. :epoch.0. :rpc.0. :old.0.)
+  (assign Mut.0. 0)
+  (assign Witness.0. (false))
+  (def :Init.0.
+    (and (prime phase.0. 0) (prime role.0. 0) (prime epoch.0. 0)
+         (prime rpc.0. 0) (prime old.0. 0)))
+  (def :Pause.0.#Admission: scalar exclusion and pause precede successful native submission.#
+    (and (eq phase.0. 0) (eq rpc.0. 0) (lt epoch.0. 2)
+         (prime phase.0. 1) (prime epoch.0. (plus epoch.0. 1))
+         (prime rpc.0. (plus epoch.0. 1))
+         (or (prime role.0. 1) (prime role.0. 2) (prime role.0. 3))))
+  (def :Submit.0.#Successful submit: RPC stays paused while the worker owns its graph lease.#
+    (and (eq phase.0. 1) (prime phase.0. 2)))
+  (def :Refuse.0.#Failed submit: no native borrow exists; resume only this attempt's exact token.#
+    (and (eq phase.0. 1) (prime phase.0. 0) (prime role.0. 0)
+         (prime old.0. (if (eq old.0. 0) epoch.0. old.0.))
+         (prime rpc.0. (if (eq Mut.0. 4) rpc.0. 0))))
+  (def :Run.0.#Worker dispatch owns the same graph and token throughout native execution.#
+    (and (eq phase.0. 2) (prime phase.0. 3)))
+  (def :Done.0.#Scalar Done observation alone retains the service role and RPC pause.#
+    (and (eq phase.0. 3) (prime phase.0. 4)))
+  (def :Retire.0.#Matching Done collection, or joined unstarted shutdown, releases this role's token.#
+    (and (or (eq phase.0. 2) (eq phase.0. 4))
+         (prime phase.0. 0) (prime role.0. 0) (prime rpc.0. 0)
+         (prime old.0. (if (eq old.0. 0) epoch.0. old.0.))))
+  (def :ForeignStop.0.#Other service stop methods cannot resume the active role's token.#
+    (and (ge phase.0. 2)
+         (exists :target.0 (set 1 2 3)
+           (and (neq target.0 role.0.)
+                (prime rpc.0. (if (eq Mut.0. 1) 0 rpc.0.))))))
+  (def :StaleResume.0.#resumeChain: a retained earlier token must compare unequal to the current lease.#
+    (and (ge phase.0. 2) (gt old.0. 0) (gt rpc.0. 0) (neq old.0. rpc.0.)
+         (prime rpc.0. (if (eq Mut.0. 2) 0 rpc.0.))))
+  (def :NestedPause.0.#pauseChain: an existing lease returns no second token or replacement identity.#
+    (and (ge phase.0. 2) (gt rpc.0. 0) (prime rpc.0. (if (eq Mut.0. 3) 3 rpc.0.))))
+  (def :Next.0.
+    (or Pause.0. Submit.0. Refuse.0. Run.0. Done.0. Retire.0.
+        ForeignStop.0. StaleResume.0. NestedPause.0.))
+  (def :Safe.0.
+    (and (or (eq phase.0. 0) (eq rpc.0. epoch.0.))
+         (or (neq phase.0. 0) (and (eq role.0. 0) (eq rpc.0. 0)))))
+  (def :Reached.0.
+    (and (eq epoch.0. 2) (eq old.0. 1) (eq role.0. 2) (eq phase.0. 4) (eq rpc.0. 2)))
+  (spec (always-stutter Init.0. Next.0.
+    (tuple phase.0. role.0. epoch.0. rpc.0. old.0.)))
+  (check (if Witness.0. (not Reached.0.) Safe.0.)))

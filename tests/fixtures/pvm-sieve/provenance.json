@@ -1,0 +1,43 @@
+{
+  "artifact_sha256": "70519567c4eb3eb0c04ff27b819cc25b95beadfe970d714d45a50aba7f2de43d",
+  "attribution": "PolkaVM bench-prime-sieve; upstream README credits PrimeRust solution_1 at708075dd82f5f1aa92c56c5cfd15338f524f03c0",
+  "checked_entry_sha256": "0986eab008024b24cad400076567e6bd9947f7a8e74b8f2b5b6b180d6379497e",
+  "guest_command": [
+    "cargo",
+    "build",
+    "--release",
+    "--locked",
+    "--offline",
+    "-Z",
+    "build-std=core,alloc",
+    "--target",
+    "<pinned-target-json>",
+    "--bin",
+    "bench-prime-sieve"
+  ],
+  "guest_lock_sha256": "79997da62eb5aabc3f42678bf2797bc4d882b9ac03ca236d40f6a3396e20d568",
+  "guest_profile": {
+    "codegen_units": 1,
+    "debug": true,
+    "lto": "fat",
+    "opt_level": 3,
+    "panic": "abort"
+  },
+  "guest_rust": "rustc 1.89.0-nightly (dcecb9917 2025-05-09)",
+  "guest_target": "crates/polkavm-linker/targets/legacy/riscv64emac-unknown-none-polkavm.json",
+  "guest_toolchain": "nightly-2025-05-10",
+  "host_rust": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "instruction_set": "JamV1",
+  "linker_profile": "pinned public program_from_elf; default Config; JamV1",
+  "polkavm_commit": "69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa",
+  "schema": 1,
+  "upstream_sources": {
+    "Cargo.lock": "85ab439c30fc410415fd7d8bf06f7f69ce743096eba170755518d1ede3ff30e8",
+    "crates/polkavm-linker/targets/legacy/riscv64emac-unknown-none-polkavm.json": "d880185c2a4880455a0bca81d0030be05c5e7fdba497d1558bc5eb173b1d1569",
+    "guest-programs/Cargo.lock": "3f74fbd63678ebd5d94c016b20e9f76981b604436aabd9c32bd57a5aa5f2ecab",
+    "guest-programs/bench-common.rs": "80e5f13521dfe638e71bf7c61d90021abbfad9cb53ff21d2a82609fa1750b25b",
+    "guest-programs/bench-prime-sieve/src/main.rs": "e6bfff3168c60c281e461bf0c494ebd0768065db797645294dd8a1f7f1211c04",
+    "guest-programs/bench-prime-sieve/src/unrolled.rs": "a45b7e6d205295146383aec9f69f7e7cdc69bf1edc99fcf9bb76bd9346db3c78",
+    "guest-programs/bench-prime-sieve/src/unrolled_extreme.rs": "d21a082266d523ff0d414051044daabb2c3f31489c3a3bb7d50bd8ab84336943"
+  }
+}

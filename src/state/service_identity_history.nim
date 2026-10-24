@@ -3,8 +3,8 @@
 
 ## Freeze selected creation and ejection membership from a genuine completed current sequence; separate fixed arrays preserve source positions without interpreting an operation log.
 import ./[accumulation_current_driver, accumulation_current_sequence, accumulation_coverage,
-  accumulation_annulment, accumulation_effects]
-import ../codec/bounded
+  accumulation_annulment, accumulation_effects, accumulation_outcome, store]
+import ../codec/[bounded, state_layout]
 type
   ServiceIdentityHistoryLimits* = object ## Original coverage and each selected fixed-array extent are independently admitted.
     entries*, outcomes*, creations*, deletions*: ElementLimit
@@ -19,6 +19,7 @@ type
     entry*: CurrentSequenceEntryIndex
     outcome*: AccumulationAnnulmentIndex
     fact*: AccumulationDeletedAccount
+    local: AccumulationDeletedAccountIndex # Private original invocation position binds a selected fact to its retained atomic map.
   ServiceIdentityHistoryInfo* = object ## Exact selected membership is distinct from final service presence or payload values.
     entries*, outcomes*, creations*, deletions*: int
     bytes*: uint64
@@ -30,7 +31,7 @@ type
     info: ServiceIdentityHistoryInfo
   ServiceIdentityHistoryError* {.pure.} = enum ## Disabled capture never masquerades as initialized empty membership.
     Uninitialized, None, InvalidSource, LimitExceeded, CreatedAccountsDisabled,
-    DeletedAccountsDisabled, InvalidIndex
+    DeletedAccountsDisabled, InvalidIndex, InvalidRetirement
   ServiceIdentityHistoryResult*[T] = object ## No successful prefix escapes default or refused capture.
     case status: ServiceIdentityHistoryError
     of None: completed: T
@@ -107,6 +108,7 @@ proc captureServiceIdentityHistory*(source: CompletedCurrentAccumulationSequence
         inc c # Complete preflight bounds every selected creation write.
       for k in 0..<selected.annulmentSelectedDeletedAccountFactCountAt(ordinal).value:
         deletedRows[d] = ServiceDeletionRow(entry: entry, outcome: ordinal,
+          local: AccumulationDeletedAccountIndex(uint64(k)),
           fact: selected.annulmentSelectedDeletedAccountFactAt(ordinal,
               AccumulationDeletedAccountIndex(uint64(k))).value)
         inc d # Complete preflight bounds every selected deletion write.
@@ -153,3 +155,36 @@ proc serviceIdentityDeletionAt*(history: ServiceIdentityHistory,
         status: ServiceIdentityHistoryError.InvalidIndex)
   ServiceIdentityHistoryResult[ServiceDeletionRow](status: ServiceIdentityHistoryError.None,
     completed: history.deletions[int(uint64(index))])
+
+proc serviceIdentityRetirementAt*(history: ServiceIdentityHistory,
+    creationIndex: ServiceCreationIndex,
+    deletionIndex: ServiceDeletionIndex): ServiceIdentityHistoryResult[StateStoreSnapshot] =
+  ## Resolve only the authentic atomic post-ejection state before same-invocation recreation.
+  ## The consumer must still prove every original namespace key absent in this exact immutable map.
+  template fail(reason: ServiceIdentityHistoryError) =
+    return ServiceIdentityHistoryResult[StateStoreSnapshot](status: reason)
+  let created = history.serviceIdentityCreationAt(creationIndex)
+  if created.error != ServiceIdentityHistoryError.None: fail(created.error)
+  let deleted = history.serviceIdentityDeletionAt(deletionIndex)
+  if deleted.error != ServiceIdentityHistoryError.None: fail(deleted.error)
+  let birth = created.value
+  let death = deleted.value
+  if uint32(birth.fact.service) != uint32(death.fact.service) or
+      uint64(birth.entry) != uint64(death.entry) or
+      uint64(birth.outcome) != uint64(death.outcome) or
+      uint64(death.fact.ordinal) >= uint64(birth.fact.ordinal):
+    fail(ServiceIdentityHistoryError.InvalidRetirement) # Parallel positions cannot establish a local barrier.
+  let selected = history.source.completedSequenceSource.value.currentSequenceCoverageAt(
+    birth.entry).value.coverageAnnulment.value
+  if selected.annulmentDecisionAt(birth.outcome).value.annulled:
+    fail(ServiceIdentityHistoryError.InvalidRetirement) # Cancelled original history is never selected evidence.
+  let context = selected.annulmentOriginalOutcomeAt(birth.outcome).value.outcomeContext.value
+  let retired = context.effectDeletedAccountStateAt(death.local)
+  if retired.error != AccumulationEffectError.None:
+    fail(ServiceIdentityHistoryError.InvalidRetirement) # Only the terminal-selected context may bind the retained original position.
+  let accounts = retired.value
+  if accounts.lookup(chapterServiceKey(StateChapter(255), birth.fact.service)).error !=
+      StateStoreError.MissingKey:
+    fail(ServiceIdentityHistoryError.InvalidRetirement) # Ejection must genuinely remove metadata in the retained atomic map.
+  ServiceIdentityHistoryResult[StateStoreSnapshot](status: ServiceIdentityHistoryError.None,
+    completed: accounts)

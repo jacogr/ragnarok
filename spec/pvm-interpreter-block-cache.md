@@ -106,3 +106,37 @@ Matched eleven-guest binaries show approximately 87% less alternating-block time
 interpreter ratios are in the benchmark contract. No pipeline equation, opcode fee,
 profile, pin or runtime check changed. M1 framing remains scoped completion; full
 STF/JAM parity is still open. Fuzzing and compiled comparison remain deferred.
+
+
+## Bounded secondary working set, 2026-10-23
+
+The October23 compiler baseline (`4724f66c2`) still spends most sampled sieve time
+in pipeline pricing. A separately instrumented copy of ordinary public execution
+records353856 unpaid-block visits across1015 distinct starts at sieve limit100000.
+Offline replay gives252310 misses for the first-plus-three policy, versus1721 for
+an eight-set/two-way LRU experiment. These are trace-policy diagnostics, not elapsed
+time or a claim that the final insertion policy has the same exact miss count.
+
+Execution retains its original pinned first price and three recent hot prices.
+Only a miss reaches a non-inlined secondary lookup with sixteen scalar entries in
+eight two-way sets. Wrapping multiplicative address mixing selects the top three
+bits; checked array accesses remain enabled and complete address tags decide hits.
+Successful simulation fills the hot ring and one secondary way, alternating that
+set's insertion slot. Hits remain read-only; no replacement counter grows with guest
+work. The table uses fixed invocation-owned stack storage, no allocation, global
+state, owner reference, program preparation pass or new caller resource default.
+The twenty total slots may contain duplicate prices across the hot and secondary
+levels. Capacity and mixing are private implementation choices.
+
+Every actual visit still checks/debits the current gas balance. Interior unpaid
+entry still resolves the containing start; failures never insert. The program,
+profile and cycle limit remain fixed across host replies, and new/nested invocations
+start empty. Gas/step refusals and source/host/fault ownership contracts are unchanged.
+
+Literal starts9/30/64/85/98/119 all collide in one secondary set and exceed both hot
+and secondary capacity. Different dependent-multiply blocks recur four times;
+complete public-single-step CPU/gas parity and the exact step refusal remain required.
+Twenty-four recurrent blocks exceed all slots, including across the independently
+framed two-byte code length. Existing exact-gas, interior-entry, lower-limit,
+new-owner, callback and retry tests remain controls, with1000 balanced ARC cycles.
+The benchmark contract records repeated real/small-workload measurements and costs.

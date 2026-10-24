@@ -1,0 +1,42 @@
+{
+  "cases": [
+    {
+      "name": "base",
+      "role": "base",
+      "assignments": {},
+      "expected": "pass"
+    },
+    {
+      "name": "repeated-close-erases-journal",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "1"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "restart-before-acknowledgement",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "2"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "retirement-only-error-forgotten",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "3"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "reachable-completion-and-retirement-error",
+      "role": "witness",
+      "assignments": {
+        "Witness": "(true)"
+      },
+      "expected": "violated"
+    }
+  ]
+}

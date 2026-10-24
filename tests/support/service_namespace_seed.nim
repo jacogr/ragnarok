@@ -10,10 +10,12 @@ type ServiceNamespaceSeed* = object ## Author only children; original executable
   storage*: seq[StateStorageItem]
   preimages*: seq[StatePreimageItem]
   requests*: seq[StateRequestItem]
-proc seedServiceNamespaces*(entries: var seq[StateEntry], seeds: openArray[ServiceNamespaceSeed]) =
+proc seedServiceNamespaces*(entries: var seq[StateEntry], seeds: openArray[ServiceNamespaceSeed],
+    perValue = ByteLimit(65)) =
   ## Tiny trusted fixture bounds prove footprint arithmetic; duplicate physical keys still fail the real store constructor.
   assert seeds.len <= 2
-  let values = ServiceEntryLimits(keyBytes: ByteLimit(65), valueBytes: ByteLimit(65))
+  assert uint64(perValue) <= 65536 # Trusted fixture values retain a small proved native/footprint extent.
+  let values = ServiceEntryLimits(keyBytes: ByteLimit(65), valueBytes: perValue)
   let requests = RequestEntryConfig(keyBytes: ByteLimit(32), history: RequestHistoryConfig(
       items: ElementLimit(3), maxBytes: ByteLimit(13)))
   for seed in seeds:
@@ -21,7 +23,7 @@ proc seedServiceNamespaces*(entries: var seq[StateEntry], seeds: openArray[Servi
     assert seed.storage.len <= 16 and seed.preimages.len <= 16 and seed.requests.len <= 16
     var octets = 0'u64
     for item in seed.storage:
-      assert item.key.len <= 65 and item.value.len <= 65
+      assert item.key.len <= 65 and uint64(item.value.len) <= uint64(perValue)
       octets+=34'u64+uint64(item.key.len)+uint64(item.value.len)
     for item in seed.requests:
       assert uint32(item.length) <= 65536
@@ -43,7 +45,7 @@ proc seedServiceNamespaces*(entries: var seq[StateEntry], seeds: openArray[Servi
     for item in seed.storage:
       entries.add(serviceStorageEntry(seed.service, item.key, item.value, values).value)
     for item in seed.preimages:
-      assert item.value.len <= 65
+      assert uint64(item.value.len) <= uint64(perValue)
       entries.add(servicePreimageEntry(seed.service, item.hash, item.value, values).value)
     for item in seed.requests:
       entries.add(serviceRequestEntry(seed.service, item.hash, item.length, item.history,

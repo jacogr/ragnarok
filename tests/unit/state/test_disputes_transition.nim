@@ -219,8 +219,9 @@ proc main() {.raises.} =
         let marker = if parts[12] == "-": newSeq[byte](0) else: unhex(parts[12]) # Empty output remains empty.
         assert plan.newOffenderCount*32 == marker.len
         for i in 0..<plan.newOffenderCount:
-          assert @(array[32, byte](plan.newOffenderAt(i).value)) == marker[
-              i*32..i*32+31] # Exact sequence, not sorted union.
+          let offender = array[32, byte](plan.newOffenderAt(i).value)
+          for index in 0..<32:
+            assert offender[index] == marker[i*32+index] # Every octet retains exact marker order, not sorted union.
         var keys = newSeq[HeaderEdKey](plan.newOffenderCount)
         for i in 0..<keys.len:
           keys[i] = HeaderEdKey(array[32, byte](plan.newOffenderAt(i).value)) # Exact published marker bytes.

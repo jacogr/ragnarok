@@ -1,0 +1,42 @@
+{
+  "cases": [
+    {
+      "name": "base",
+      "role": "base",
+      "assignments": {},
+      "expected": "pass"
+    },
+    {
+      "name": "close-releases-before-join",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "1"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "joined-close-drops-receipt",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "2"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "queued-close-fabricates-success",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "3"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "reachable-uncertain-joined-receipt",
+      "role": "witness",
+      "assignments": {
+        "Witness": "(true)"
+      },
+      "expected": "violated"
+    }
+  ]
+}

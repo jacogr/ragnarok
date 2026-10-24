@@ -1,0 +1,55 @@
+(stmts#Copyright (c) 2026 Ragnarök contributors
+SPDX-License-Identifier: MIT OR Apache-2.0
+Two capacity-one preparation/proof admissions; optional closed/restarted worker between jobs.
+phase 0 Idle, 1 Queued, 2 Running, 3 Done; next 0/1/2 distinct generations, owner 1/2 distinct startup identities.
+The first ticket is retained as owner=1 generation=1; foreign ticket has owner=3 and the current generation.
+requested is a history monitor for current-generation cancellation; only submit resets it.
+Hypothesis: stale/foreign tickets affect a reused slot, or previous cancellation contaminates the next job.
+Source: src/app/preparation_worker.nim and proof_worker.nim start/submit/matches/cancel/collect/close.
+Close/join ordering is delegated to the preparation lifecycle model; this model closes only an idle worker.#
+  (variables :phase.0. :next.0. :owner.0. :started.0. :cancelled.0. :requested.0. :err.0.)
+  (assign Mut.0. 0)
+  (assign Witness.0. (false))
+  (def :Init.0.
+    (and (prime phase.0. 0) (prime next.0. 0) (prime owner.0. 1)
+         (prime started.0. (true)) (prime cancelled.0. (false))
+         (prime requested.0. (false)) (prime err.0. 0)))
+  (def :Submit.0.#submit: increment the retained generation and reset cancellation for the new slot.#
+    (and started.0. (eq phase.0. 0) (lt next.0. 2)
+         (prime phase.0. 1) (prime next.0. (plus next.0. 1))
+         (prime requested.0. (false))
+         (prime cancelled.0. (if (eq Mut.0. 3) cancelled.0. (false)))))
+  (def :Run.0.#run: claim under the mutex, execute outside it, then publish Done.#
+    (and (eq phase.0. 1) (prime phase.0. 2)))
+  (def :Done.0.#run: all aliases retire before the host can acknowledge Done.#
+    (and (eq phase.0. 2) (prime phase.0. 3)))
+  (def :Cancel.0.#cancel: a matching current ticket marks only this occupied slot.#
+    (and started.0. (neq phase.0. 0)
+         (prime cancelled.0. (true)) (prime requested.0. (true))))
+  (def :Collect.0.#collect: matching Done returns once; the next submit, not collect, resets cancellation.#
+    (and started.0. (eq phase.0. 3) (prime phase.0. 0)))
+  (def :OldTicket.0.#matches: the first generation cannot cancel a second slot in the same namespace.#
+    (and started.0. (eq next.0. 2) (neq phase.0. 0) (eq owner.0. 1)
+         (prime err.0. (if (eq Mut.0. 1) 1 0))
+         (prime cancelled.0. (if (eq Mut.0. 1) (true) cancelled.0.))))
+  (def :ForeignTicket.0.#matches: even an equal numeric generation from another worker is inert.#
+    (and started.0. (neq phase.0. 0)
+         (prime err.0. (if (eq Mut.0. 2) 2 0))
+         (prime cancelled.0. (if (eq Mut.0. 2) (true) cancelled.0.))))
+  (def :Close.0.#close: already idle joined retirement leaves the generation counter intact.#
+    (and started.0. (eq phase.0. 0) (eq next.0. 1) (eq owner.0. 1)
+         (prime started.0. (false))))
+  (def :Restart.0.#start: create fresh namespace identity while preserving the nonwrapping counter.#
+    (and (not started.0.) (prime started.0. (true)) (prime owner.0. 2)))
+  (def :Next.0.
+    (and (eq err.0. 0)
+         (or Submit.0. Run.0. Done.0. Cancel.0. Collect.0. OldTicket.0. ForeignTicket.0.
+             Close.0. Restart.0.)))
+  (def :Safe.0.
+    (and (eq err.0. 0) (or (eq phase.0. 0) (not cancelled.0.) requested.0.)))
+  (def :Reached.0.
+    (and started.0. (eq owner.0. 2) (eq next.0. 2) (eq phase.0. 3)
+         (not cancelled.0.) (not requested.0.)))
+  (spec (always-stutter Init.0. Next.0.
+    (tuple phase.0. next.0. owner.0. started.0. cancelled.0. requested.0. err.0.)))
+  (check (if Witness.0. (not Reached.0.) Safe.0.)))

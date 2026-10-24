@@ -9,7 +9,9 @@ corpora establish a useful common subset before timing. This is the first limite
 baseline, not a declaration that all PVM/JAM correctness gates are closed.
 
 One consolidated comparison covers all workloads. The maintainer currently selects
-Ragnarök versus the PolkaVM interpreter; compiled comparison is explicitly deferred
+Ragnarök with dynamic pricing, optional [complete plans](pvm-gas-plans.md) and
+[lazy memos](pvm-gas-memos.md) versus the PolkaVM
+interpreter; compiled comparison is explicitly deferred
 until the interpreter baseline is competitive. No compiler backend process is started
 by `make bench-pvm`, and no CI kernel settings are changed. The
 independent fixture generator encodes original guest bytes and derives complete
@@ -24,7 +26,7 @@ pricing reuse. All use finite gas and local native step limits.
 ## Build and measurement contract
 
 The native driver uses pinned Nimony 0.6.3 nightly
-`5b51edfedb4d0dbd9028d9e57ac61d69dffe9410`, ARC, Clang, LTO and checked release
+`4724f66c2e01b17810c844f26575b2317995fda2`, ARC, Clang, LTO and checked release
 with bounds/assertion contracts enabled. The optional reference crate uses pinned
 Rust 1.99.0 and the exact upstream release profile: LTO, one codegen unit and debug
 symbols. Its transitive versions/checksums match the pinned upstream lock. Default
@@ -571,3 +573,207 @@ These are local macOS observations without CPU isolation or deterministic counte
 no Linux, compiled-backend or whole JAM throughput result follows. Fuzzing remains
 deferred. Documented M1 framing completion remains scoped; full STF/JAM parity is
 open. Work pauses after this review unit until the maintainer resumes after merging.
+
+
+## Secondary block-price working set, 2026-10-23
+
+A fresh baseline on master `cdc9dc7a` uses the October23 Nimony pin `4724f66c2`.
+Historical tables above retain their original compiler identity; current comparisons
+use matched checked release ARC/Clang ThinLTO binaries, unchanged Rust/PolkaVM pins
+and the exact same linked sieve/input and eleven synthetic fixtures.
+
+The chosen tiered cache preserves the original first-plus-three hot lookup and
+consults a sixteen-entry two-way secondary table only on misses. Only successful
+prices enter either level, exact tags protect collisions, and every visit still
+checks/debits gas. A separate original-source diagnostic trace and policy replay
+identify working-set pressure; their instrumented durations never enter these tables.
+The final insertion policy alternates ways without mutating lookup hits, rather
+than claiming the offline LRU experiment's exact miss count.
+
+Two reversed-order comparisons (an isolated candidate and its final production
+integration) validate thirteen invocations per engine/pass, discarding only the
+three declared warmups from timing summaries. Full terminal registers, all mapped
+bytes/permissions, exact gas, prime count9592 and unchanged source snapshots are
+checked on every native invocation. Assertion-failure controls pass before timing.
+Each comparison retains twenty measured process-CPU samples per engine:
+
+| Sieve limit100000 | Baseline CPU (ms) | Candidate CPU (ms) | PolkaVM interpreted CPU (ms) |
+| --- | ---: | ---: | ---: |
+| First matched comparison | 122.054 | 27.328 | 6.223 |
+| Production confirmation | 119.472 | 26.831 | 5.965 |
+
+This is approximately77.5% less execution CPU time, or4.5× faster than the matched
+baseline. The remaining sieve gap is about4.4–4.5× to interpreted PolkaVM. This
+fixture has an extra checked prime-count export; it is not directly comparable to
+stock published sieve scores. No10-million-input result follows.
+
+The larger cache has explicit small-workload costs. Matched synthetic comparisons
+show arithmetic4.2–5.9% slower and mixed bits8.4–13.6% slower. Memory/sparse changes
+range from near-flat to about7.5% slower; hosts vary in both directions within about4%.
+Alternating blocks range from flat to2.1% slower. Sub-microsecond calls remain too
+sensitive to timing granularity for a broad claim. A direct replacement cache and
+an outlined lookup without the hot ring were measured and rejected for larger
+small-workload regressions. No samples are removed to conceal these tradeoffs.
+
+Raw reports, source/fixture/binary identities and rejected experiments remain under
+`build/pvm10/baseline`, `price-working-set-final`, `price-working-set-tier-paired`,
+`price-working-set-final-paired` and `sieve-probe`. Existing synthetic fixtures remain
+byte-identical. The scope remains local Apple M1 Max/macOS without affinity/frequency
+isolation or deterministic hardware counters. No Linux, compiled or whole JAM
+throughput claim follows; full STF/JAM parity remains open and fuzzing is deferred.
+
+
+## Decoder working set after secondary pricing, 2026-10-23
+
+The post-pricing sieve profile ranks execution and instruction decoding ahead of
+pricing. A separate fully validated diagnostic copy records1166742 decoder lookups
+to13417 distinct PCs at limit100000. Offline replay of the exact replacement policy
+finds561880 misses at16 results,96933 at32 and78964 at64. Multiplicative indexing
+at16/32 gives312318/100606 misses, so natural paired32 remains the selected small
+bounded policy. These are untimed trace diagnostics; no deterministic hardware
+counter claim follows. An isolated64-result variant did not establish a compelling
+additional timing benefit to justify twice the selected storage.
+
+Both the isolated32-result candidate and its production integration are measured
+against preserved PR1345 parent binaries with the same checked ARC/Clang ThinLTO,
+October23 Nimony pin, exact linked sieve/input and explicit PolkaVM interpreter:
+
+| Sieve limit100000 | Parent CPU (ms) |32-result CPU (ms) | PolkaVM interpreted CPU (ms) |
+| --- | ---: | ---: | ---: |
+| First matched comparison |27.453 |22.636 |6.200 |
+| Production confirmation |26.675 |22.091 |6.018 |
+
+Execution CPU falls17.2–17.5%, leaving about3.7× to interpreted PolkaVM. Every
+warmup/measured invocation retains full register/gas/mapped-memory/permission checks,
+known prime count9592, source-snapshot preservation and assertion controls. Two
+reversed orders retain twenty measured samples per engine, without discarded
+outliers. Preparation/validation and the separate trace are excluded from timing.
+
+Synthetic paired comparisons show arithmetic2.6–3.1% slower. Mixed bits varies
+from5.1% slower to flat; other substantial rows vary by about3%, with no broad
+small-workload gain established. Very short calls remain sensitive to sub-microsecond
+timer resolution. All eleven fixtures pass unchanged; raw values, source/binary
+identities and32/64 experiments remain under `build/pvm10/decoder-probe`,
+`decoder-slots32-paired`, `decoder-slots64-paired`, `decoder-final` and
+`decoder-final-paired`. Local macOS/no-isolation limits, compiled/fuzzing deferral
+and open full STF/JAM parity remain unchanged.
+
+
+## Pipeline dependency readiness, 2026-10-23
+
+After the decoder working-set change, a separate161-invocation sieve profile still
+ranks pipeline simulation prominently. Dependency-ready selection previously
+rescanned up to32 retained entries for each waiting candidate. The private busy
+mask replaces that inner scan with one intersection while preserving producer
+renaming, resources, simultaneous transitions, retirement and exact cycle limits.
+A pending-frontend-decode experiment is excluded after direct-corpus regression.
+
+Pricing is measured directly over the current1796 independently frozen blocks,
+including12 new complete/partial retirement and producer-renaming witnesses. Program
+capture, fixture parsing, result validation and output are outside process-CPU timing;
+every returned price is checked against its independent golden value afterward.
+Each comparison uses three warmups and ten measured samples per pass, reverses
+binary order, and checks assertion-failure controls before timing. Two confirmations
+use the same preserved parent binary and the final checked ARC/Clang ThinLTO binary:
+
+| Entire independent gas corpus | Parent CPU (ms) | Busy-mask CPU (ms) | Less CPU time |
+| --- | ---: | ---: | ---: |
+| First confirmation |10.141 |8.265 |18.5% |
+| Second confirmation |10.093 |8.108 |19.7% |
+
+The canonical corpus hash is
+`555c02cf0b14e692fc5e3f981c1550cf37b0076deb196145b37c7addc5a3b7c2`;
+the original1784 records retain their original payload hash. These final results
+use fresh canonical inputs rather than an earlier historical build-directory corpus.
+Raw samples, commands, identities and exact prices remain under
+`build/pvm10/pipeline-probe/gas-final-comparison.json` and associated logs.
+
+Sieve comparisons observe21.994→21.353ms and22.312→21.612ms, about3% less process
+CPU, with pinned interpreted PolkaVM around6.0ms. This small end-to-end difference
+does not establish a broad interpreter gain. Synthetic results and all warmups/
+outliers remain under `pipeline-final`, `pipeline-final-paired` and the isolated
+experiment directories. Only the repeated direct-kernel gain is claimed. Bounds,
+assertions, fee tables, public budgets and all pins remain unchanged; no Linux,
+compiled or whole-client result follows. Full STF/JAM parity remains open and
+fuzzing is still deferred.
+
+
+## Chunk-aware scalar gathering, 2026-10-23
+
+Generated C and the current profile identify memory read/preflight overhead. Explicit
+root-borrow annotations remove ARC operations but do not establish a useful execution
+gain, so production keeps its existing ownership. The accepted change instead gathers
+an admitted scalar from one immutable chunk into a zero-initialized private word,
+with full preflight, checked extents and portable chunk-crossing/host-order fallback.
+
+Two matched eleven-guest comparisons on the same checked ARC/Clang ThinLTO profile
+show the following execution-time reductions, with every raw sample retained:
+
+| Memory guest,1000 iterations | First comparison | Production confirmation |
+| --- | ---: | ---: |
+| Aligned |10.4% |8.3% |
+| Crossing |5.8% |6.7% |
+| Sparse aligned |10.8% |13.8% |
+| Sparse crossing |6.9% |7.8% |
+
+Other rows vary: hosts range from small regressions to a large provisional gain,
+and arithmetic/bits/alternating blocks move in both directions by a few percent.
+No broad host or CPU-only gain is claimed; short-call observations remain sensitive
+to timer granularity and load. The full pinned eleven-guest comparison passes with
+unchanged fixture bytes. Sieve observations21.713→20.845ms and21.895→21.147ms are
+only about3–4% less CPU; no broad real-guest speedup follows from those small differences.
+Pinned interpreted PolkaVM remains around6.1ms on that exact linked guest/input.
+
+The accepted source and binary identities, full-state checks, rejected borrow variant,
+sanitizer output and all samples remain under `build/pvm10/memory-probe`,
+`memory-gather-paired`, `memory-final` and `memory-final-paired`. Native results retain
+complete registers/gas/memory/permissions, source aliases and assertion controls.
+No affinity/frequency isolation or hardware-counter claim is added. Full STF/JAM
+parity remains open; compiled comparison and fuzzing stay deferred.
+
+
+## Retained register-coordinate proofs, 2026-10-23
+
+The decoder captures bounded A/B/D coordinates alongside the unchanged nominal
+operands, and the arithmetic/memory/control kernels consume the same genuine result.
+A successful scalar write applies through its private bounded index. Normal bounds
+and assertions stay enabled; proven coordinates remove redundant guards without an
+assumption, unchecked mode, new owner or larger cached instruction/write record.
+Opcode-class and combined experiments are retained separately and excluded from
+this feature after their real-sieve results failed to establish a stronger choice.
+
+Two matched eleven-guest comparisons of the complete coordinate path retain the
+following execution-time reductions on the recorded Apple M1 Max:
+
+| Guest | First comparison | Production confirmation |
+| --- | ---: | ---: |
+| Arithmetic,10000 iterations |14.5% |16.0% |
+| Mixed bits,1000 iterations |14.1% |14.2% |
+| Aligned memory,1000 iterations |7.8% |4.9% |
+| Crossing memory,1000 iterations |7.4% |5.7% |
+| Alternating blocks,1000 iterations |14.2% |15.6% |
+
+Other hosts/sparse rows range from flat to gains of a few percent; no broad claim
+follows for those smaller differences or sub-microsecond short calls. All eleven
+pinned interpreter fixtures pass byte-identically, with complete state/source checks.
+Sieve observes22.288→20.838ms in the isolated comparison and20.478→20.273ms in
+production confirmation. The latter is only about1%, so no consistent real-sieve
+gain is established. The pinned reference remains around6.0ms. All outliers and
+per-pass values stay in `build/pvm10/execution-probe`, `execution-slots-all-paired`,
+`coordinates-final` and `coordinates-final-paired`; prototype metadata distinguishes
+parent checkout sources from actual copied candidate sources.
+
+The compiler/layout control confirms unchanged56-byte instructions and24-byte
+write results on this host. Exact negative/positive query/application controls,
+private-field rejection, independent arithmetic/destination cases and full execution/
+host/retry consumers accompany the feature. Checked ARC/Clang ThinLTO, pins and
+normal error/capability gates remain unchanged. Local timing/no-isolation limits,
+open full STF/JAM parity, deferred compiled comparison and deferred fuzzing remain.
+
+The opt-in [maintained real-sieve comparison](pvm-sieve-benchmark.md) complements these
+synthetic guests with a frozen linked upstream program and complete terminal-state checks.
+
+The lazy memo synthetic host specialization is built separately with `pvmBenchmarkMemo` while
+retaining the same checked ARC/Clang ThinLTO flags and fixture. This prevents its additional generic
+instantiation from changing legacy host-loop code generation. Both binaries reject wrong pricing
+labels before producing samples; exact binaries and build defines remain in the report.

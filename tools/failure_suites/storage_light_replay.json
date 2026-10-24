@@ -1,0 +1,202 @@
+{
+  "source": "tests/native/storage_light_replay_results.nim",
+  "build_name": "storage-light-replay-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-light-replay-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light replay result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-light-replay-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light replay result failed guard"
+    },
+    {
+      "identity": {
+        "member": "delta",
+        "origin": "default"
+      },
+      "arguments": [
+        "delta",
+        "default"
+      ],
+      "name": "storage-light-replay-delta-default",
+      "diagnostic": "outcome.status == InvalidDelta",
+      "description": "Light replay delta default guard"
+    },
+    {
+      "identity": {
+        "member": "delta",
+        "origin": "failed"
+      },
+      "arguments": [
+        "delta",
+        "failed"
+      ],
+      "name": "storage-light-replay-delta-failed",
+      "diagnostic": "outcome.status == InvalidDelta",
+      "description": "Light replay delta failed guard"
+    },
+    {
+      "identity": {
+        "member": "delta",
+        "origin": "success"
+      },
+      "arguments": [
+        "delta",
+        "success"
+      ],
+      "name": "storage-light-replay-delta-success",
+      "diagnostic": "outcome.status == InvalidDelta",
+      "description": "Light replay delta success guard"
+    },
+    {
+      "identity": {
+        "member": "reason",
+        "origin": "default"
+      },
+      "arguments": [
+        "reason",
+        "default"
+      ],
+      "name": "storage-light-replay-reason-default",
+      "diagnostic": "outcome.status == InvalidSelection",
+      "description": "Light replay reason default guard"
+    },
+    {
+      "identity": {
+        "member": "reason",
+        "origin": "failed"
+      },
+      "arguments": [
+        "reason",
+        "failed"
+      ],
+      "name": "storage-light-replay-reason-failed",
+      "diagnostic": "outcome.status == InvalidSelection",
+      "description": "Light replay reason failed guard"
+    },
+    {
+      "identity": {
+        "member": "reason",
+        "origin": "success"
+      },
+      "arguments": [
+        "reason",
+        "success"
+      ],
+      "name": "storage-light-replay-reason-success",
+      "diagnostic": "outcome.status == InvalidSelection",
+      "description": "Light replay reason success guard"
+    },
+    {
+      "identity": {
+        "member": "snapshot",
+        "origin": "default"
+      },
+      "arguments": [
+        "snapshot",
+        "default"
+      ],
+      "name": "storage-light-replay-snapshot-default",
+      "diagnostic": "replay.ready",
+      "description": "Light replay snapshot default guard"
+    },
+    {
+      "identity": {
+        "member": "sequence",
+        "origin": "default"
+      },
+      "arguments": [
+        "sequence",
+        "default"
+      ],
+      "name": "storage-light-replay-sequence-default",
+      "diagnostic": "replay.ready",
+      "description": "Light replay sequence default guard"
+    },
+    {
+      "identity": {
+        "member": "count",
+        "origin": "default"
+      },
+      "arguments": [
+        "count",
+        "default"
+      ],
+      "name": "storage-light-replay-count-default",
+      "diagnostic": "replay.ready",
+      "description": "Light replay count default guard"
+    },
+    {
+      "identity": {
+        "member": "length",
+        "origin": "default"
+      },
+      "arguments": [
+        "length",
+        "default"
+      ],
+      "name": "storage-light-replay-length-default",
+      "diagnostic": "replay.ready",
+      "description": "Light replay length default guard"
+    },
+    {
+      "identity": {
+        "member": "prefix",
+        "origin": "default"
+      },
+      "arguments": [
+        "prefix",
+        "default"
+      ],
+      "name": "storage-light-replay-prefix-default",
+      "diagnostic": "plan.ready",
+      "description": "Light replay prefix default guard"
+    },
+    {
+      "identity": {
+        "member": "total",
+        "origin": "default"
+      },
+      "arguments": [
+        "total",
+        "default"
+      ],
+      "name": "storage-light-replay-total-default",
+      "diagnostic": "plan.ready",
+      "description": "Light replay total default guard"
+    },
+    {
+      "identity": {
+        "member": "selection",
+        "origin": "default"
+      },
+      "arguments": [
+        "selection",
+        "default"
+      ],
+      "name": "storage-light-replay-selection-default",
+      "diagnostic": "plan.ready",
+      "description": "Light replay selection default guard"
+    }
+  ]
+}

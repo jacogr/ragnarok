@@ -148,7 +148,7 @@ access. Local benchmark evidence and limits are recorded in the
 
 ## Invocation-scoped decoded instructions
 
-Bounded execution retains sixteen scalar decoder results in eight paired sets. The natural
+Bounded execution retains thirty-two scalar decoder results in sixteen paired sets. The natural
 address-modulo-sixteen slot is checked first, preserving ordinary direct hits; toggling index bit
 three selects its alternative. Complete instruction addresses tag both ways. A successful miss
 fills a free natural/paired entry, or alternates replacement between two occupied residents.
@@ -268,3 +268,49 @@ zero-gas precedence, plus invalid static load-and-jump mutation. Program/step/ga
 independent mixed-program, memory, host, metered fault/retry and cache/ARC controls
 pass under the pinned checked release configuration. Default/failed result access
 and private-field rejection have separate negative controls.
+
+
+## Larger bounded price working sets, 2026-10-23
+
+The first-plus-three hot price memo now has a fixed sixteen-entry secondary table.
+Only hot misses consult its two-way tagged sets; only successful simulation fills
+both levels. Complete start-address tags preserve correctness under collisions,
+and every visit retains its gas debit and fixed invocation cycle-limit contract.
+No program-global cache or unbounded preparation is introduced. The block-cache
+contract records replacement/storage bounds and literal collision/capacity tests;
+the benchmark contract records the larger real-guest gain and small-loop tradeoffs.
+
+
+## Larger bounded decoder working sets, 2026-10-23
+
+The paired decoder memo now retains32 genuine results in16 sets. Natural address
+slots still get the first comparison, then their paired way; exact full-PC tags
+and successful-result checks precede use. Only successful new decodes replace a
+resident, alternating the two ways on pressure. No default/failed result can fill
+or evict. Fixed scalar stack storage doubles from16 results, with no heap allocation,
+program preparation, owner back-reference or caller-visible resource default.
+
+The invocation still fixes program/profile, and host replies preserve that owner.
+New/nested invocations start empty; mutable operand copies cannot rebind sealed
+validation facts. Existing PC0/16/32 pressure still shares one paired set. The
+independent over-capacity trace now has37 additions plus decrement/branch, exceeding
+all32 results; three iterations must produce111 in the accumulator and stop after
+exactly118 attempts. The24-block pricing trace additionally pressures both memos.
+Complete public-step CPU/gas parity, source retention, final conditional/low-gas
+ordering, callback nesting and1000 ARC cycles remain controls.
+
+
+## Reusing register-coordinate proofs, 2026-10-23
+
+Arithmetic, memory and control evaluation reuse the genuine decoded result's bounded
+register coordinates. Memory and conditional helpers now accept that same result,
+keeping operands and captured facts together. Dynamic jump base selection uses a
+bounded coordinate before the same wrapping address calculation; load-and-jump
+still writes A at the original point, including specified terminal mutations.
+All sources are read before aliased destinations change.
+
+Capability checks, gas-before-mutation ordering, both conditional targets, scalar
+preflight, budgets and final target validation retain their existing behavior.
+No opcode-class optimization is included. The bounded decoded cache retains the
+same size and lifetime; all metadata is scalar and no program/CPU/memory owner is
+added. Local refusals and observable guest exits retain their prior snapshot rules.

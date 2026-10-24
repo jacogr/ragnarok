@@ -37,7 +37,8 @@ proc namespaceEjectCode*(): seq[byte] =
   for octet in guestEnvelope([registerImmediate(7, 99), @[10'u8, 23], @[50'u8, 0]]): result.add(octet)
 proc namespaceTransitionFixture*(base: OwnedReport, options: ExecutionFixtureConfig,
     deleted = ElementLimit(0), policy = currentCandidateLimits(),
-    parameters = currentChainSettings()): CurrentNamespaceTransition =
+    parameters = currentChainSettings(),
+    secondCodeHistory = availableHistory(RequestSlot(1))): CurrentNamespaceTransition =
   ## Complete original namespaces/code requests enter roots and signatures before actual execution under explicit deletion and composition policies.
   var config = options
   assert config.signed.extra.len == 0 and config.signed.serviceNamespaces.len == 2
@@ -49,8 +50,8 @@ proc namespaceTransitionFixture*(base: OwnedReport, options: ExecutionFixtureCon
     if endings[i] != ExecutionEnding.Missing:
       let hash = ServicePreimageHash(array[32, byte](blake2b256(codes[i]).value))
       seeds[i].requests.add(StateRequestItem(hash: hash, length: RequestLength(uint32(codes[
-          i].len)), history: availableHistory(RequestSlot(
-          1)))) # Code already added by ExecutionFixture is declared, never duplicated.
+          i].len)), history: (if i == 1: secondCodeHistory else: availableHistory(RequestSlot(
+              1))))) # Code already added by ExecutionFixture is declared, never duplicated.
   config.signed.serviceNamespaces = seeds
   config.signed.completeState = true
   config.signed.extra = @[activityParentEntry()]

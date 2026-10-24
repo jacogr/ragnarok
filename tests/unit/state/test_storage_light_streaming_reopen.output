@@ -1,0 +1,1 @@
+PASS light streaming reopen: bounded frames, every prefix and byte mutation, whole-buffer parity, IO refusal and ARC retirement

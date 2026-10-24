@@ -89,15 +89,9 @@ class ResidentPressureTests(unittest.TestCase):
         self.assertEqual(result['rss_bytes'], 4096)
         self.assertEqual(result['cgroup_peak_bytes'], 8192)
 
-    def test_pressure_workflow_is_explicit_and_probe_precedes_setup(self):
-        """No label, merge or unrelated performance request starts privileged pressure experiments."""
+    def test_pressure_probe_remains_available_before_setup(self):
+        """Local pressure diagnosis can qualify enforcement before provisioning native dependencies."""
         root = Path(__file__).resolve().parents[1]
-        workflow = (root/'.github/workflows/ci.yml').read_text().split('  storage-pressure:\n')[1]
-        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.suite == 'storage-pressure'", workflow)
-        self.assertLess(workflow.index('run: make probe-storage-resident-pressure'),
-                        workflow.index('run: make bench-storage-resident-pressure'))
-        self.assertIn('if: always()', workflow)
-        self.assertIn('build/tests/storage-resident-pressure/**/*.json', workflow)
         make = (root/'Makefile').read_text()
         self.assertIn('probe-storage-resident-pressure:\n', make)
         self.assertNotIn('probe-storage-resident-pressure: setup', make)

@@ -207,3 +207,34 @@ The scalar-writer suite checks all scalar widths across chunk/page boundaries,
 retained source and multiple published generations, shared writer identity,
 refused cross-page writes and invalid owners. A thousand complete ownership cycles
 return to baseline. Compiler probes keep mutation helpers and page storage private.
+
+
+## Checked chunk-aware scalar reads, 2026-10-23
+
+Immutable and staged scalar loads still complete the existing full-width preflight
+before reading either page. They now gather each admitted page span with one private
+helper, selecting the active writer page once per span. Within one512-byte chunk,
+a little-endian host copies exactly the admitted1–8 bytes into an initialized private
+uint64. This uses the pinned stdlib's unaligned-safe `copyMem`; source and destination
+are disjoint, and no raw chunk pointer or borrowed view escapes the call. Ownership,
+reference counts, immutable snapshots and write epochs retain their existing rules.
+
+The helper requires a positive count no greater than8, an offset within4096 bytes,
+and `count <=4096-offset`. The chunk-local check `within <=512-count` proves the
+complete copy extent before taking its address; a private native word supplies at
+least8 destination bytes. The word starts at zero, so partial reads zero-extend.
+A two-byte host-order observation chooses the fast copy only for little-endian hosts;
+big-endian hosts and chunk-crossing spans retain the original byte/shift equation.
+Single-byte loads retain their direct byte read. A remaining second-page suffix
+proves the first span is below8 bytes, keeping its assembly shift below64.
+Instruction-specific sign extension remains in the evaluator.
+
+Tests independently assemble expected words for all four widths around chunk/page
+boundaries, including unaligned and partial-word reads. They compare inactive/active
+writers, frozen epochs, later overlapping writes and unchanged source aliases.
+Constructor-only memory/writer temporaries remain alive through reads, and repeated
+8-byte then narrow loads check zero extension. These cases join1000 balanced ARC
+cycles. Existing full fault/permission/overflow ordering and public-step references
+remain controls. A separate checked-release AddressSanitizer run of this source-owned
+suite passes; it is additional local evidence, not a substitute for ownership proofs.
+No public mutable backing, resource default, protocol byte or runtime check changes.

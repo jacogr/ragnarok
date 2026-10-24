@@ -7,16 +7,20 @@
 import std/[assertions, syncio, envvars]
 import ../../support/[collected_native_context, collected_logical_context,
   current_namespace_transition_context, current_namespace_execution_context,
+  current_service_replacement_context,
   current_namespace_context, current_namespace_refresh_context,
   accumulation_execution_context, accumulation_current_candidate_context,
   current_identity_context, application_download_chain, pvm_accumulation_program, arc_evidence]
 import ../../../src/app/[chain, candidate, preparation_worker, current_block_input]
-import ../../../src/state/[logical_continuation, service_identity_history,
+import ../../../src/state/[accumulation_current_driver, accumulation_current_sequence,
+   logical_continuation,
+  service_identity_history,
   accumulation_current_update, accumulation_storage_history, request_identity_history,
   accumulation_effects, accumulation_round, accumulation_queue, report_admission,
   block_transition, block_admission, current_logical, current_identities,
   supplied_logical_inventory, supplied_services, store]
-import ../../../src/codec/[bounded, state_accounts, state_layout, state_requests]
+import ../../../src/codec/[bounded, composite, report_owned, state_accounts, state_layout,
+    state_requests, state_service_values]
 import ../../../src/chain/[provider, genesis]
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Early planning ceilings must refuse independently of crypto availability.
@@ -69,13 +73,16 @@ proc prepare(origin: CurrentNamespaceTransition, members = true): PreparedCurren
   assert receipt.kind == PreparationCompletionKind.CurrentCompleted and
       receipt.currentValue.error == CurrentBlockInputError.None
   receipt.currentValue.value
-proc fixture(eject = false, checkpoint = false, panic = false): Fixture {.raises.} =
+proc fixture(eject = false, checkpoint = false, panic = false,
+    replace = false): Fixture {.raises.} =
   ## Author complete original namespaces and programs before roots/signatures, including a genuinely empty eligible ejection target.
   var options = executionFixtureConfig()
-  options.firstProgram = if eject: namespaceEjectCode() else: program(checkpoint, panic)
+  options.firstProgram = if replace: namespaceReplacementCode(checkpoint, panic)
+    elif eject: namespaceEjectCode() else: program(checkpoint, panic)
   options.secondProgram = namespaceHaltCode()
   options.signed.serviceNamespaces = namespaceSeeds()
-  if eject:
+  if replace: options.registrar = 42 # Authored authority enters the original signed state, never a completed update.
+  if eject or replace:
     options.second = ExecutionEnding.Missing
     options.secondSupervisor = 42
     options.signed.serviceNamespaces[1].storage = @[]
@@ -98,6 +105,138 @@ proc check(source: Fixture, count: int): CurrentLogicalState =
 proc main() {.raises.} =
   if getEnv("RAGNAROK_STATE_REPORT").len == 0:
     putEnv("RAGNAROK_STATE_REPORT", "tests/fixtures/state-report.bin") # Supported unit runs retain an explicit absolute fixture binding.
+  for checkpoint in [false, true]:
+    for panic in [false, true]:
+      # Terminal selection uses genuine producer owners: halt retains replacement, panic selects the old or ejected generation.
+      let source = fixture(checkpoint = checkpoint, panic = panic, replace = true)
+      let count = if panic and checkpoint: 1 else: 2
+      let logical = check(source, count)
+      let history = source.update.currentUpdateServiceIdentityHistory
+      assert history.serviceIdentityHistoryInfo.value.creations == (if panic: 0 else: 1)
+      assert history.serviceIdentityHistoryInfo.value.deletions == (if panic and
+          not checkpoint: 0 else: 1)
+      if not panic:
+        let missing = prepare(source.origin, members = false)
+        assert continueCurrentNamespaces(source.origin.parent, missing, policy()).error ==
+          LogicalContinuationError.UnsupportedChange, "unchanged ID still needs lifecycle evidence for a new incarnation"
+        let services = copySuppliedServices(logical.currentLogicalInventory.value, policy().projection).value
+        var found = false
+        for service in services:
+          if uint32(service.service) == 99:
+            assert service.storage.len == 0 and service.preimages.len == 0 and
+                service.requests.len == 1
+            assert service.requests[0].history.state == RequestState.Requested
+            found = true
+        assert found, "the replacement carries its genuine new code request"
+        let created = history.serviceIdentityCreationAt(ServiceCreationIndex(0)).value
+        let deleted = history.serviceIdentityDeletionAt(ServiceDeletionIndex(0)).value
+        assert uint32(created.fact.service) == 99 and uint32(deleted.fact.service) == 99
+        assert uint64(created.fact.ordinal) > uint64(deleted.fact.ordinal)
+  var sequentialPolicy = candidatePolicy()
+  sequentialPolicy.round.blockGas = Gas(200000)
+  let sequential = namespaceSequentialReplacementFixture(nativeBase(), sequentialPolicy)
+  let selected = sequential.update.currentUpdateServiceIdentityHistory
+  assert selected.serviceIdentityHistoryInfo.value.creations == 1
+  assert selected.serviceIdentityHistoryInfo.value.deletions == 1
+  let producer = selected.serviceIdentityHistorySource.value
+  assert producer.completedSequenceInfo.value.entries == 2
+  let creation = selected.serviceIdentityCreationAt(ServiceCreationIndex(0)).value
+  let deletion = selected.serviceIdentityDeletionAt(ServiceDeletionIndex(0)).value
+  assert uint64(deletion.entry) < uint64(creation.entry)
+  let continuedSequence = check(Fixture(origin: sequential, update: sequential.update), 2)
+  let declarations = copySuppliedServices(continuedSequence.currentLogicalInventory.value, policy().projection).value
+  var selectedReplacement = false
+  for service in declarations:
+    if uint32(service.service) == 99:
+      assert service.requests.len == 1 and service.preimages.len == 0 and service.storage.len == 0
+      assert uint32(service.requests[0].length) == 0
+      assert service.requests[0].history.state == RequestState.Requested
+      selectedReplacement = true
+  assert selectedReplacement
+  assert continueCurrentStorage(sequential.parent, sequential.update, policy()).error ==
+      LogicalContinuationError.UnsupportedChange
+  var missingPolicy = sequentialPolicy
+  missingPolicy.serviceIdentities = default(ServiceIdentityHistoryLimits)
+  let missingSequence = namespaceSequentialReplacementFixture(nativeBase(), missingPolicy)
+  let missingContinuation = continueCurrentNamespaces(missingSequence.parent,
+    missingSequence.update, policy())
+  assert missingContinuation.error == LogicalContinuationError.UnsupportedChange
+  var retirementPolicy = candidatePolicy()
+  retirementPolicy.completion.execution.initial.guests.accountWriteFacts = ElementLimit(16)
+  retirementPolicy.completion.execution.initial.accounts.writes.writes = ElementLimit(16)
+  let retired = namespaceRetiredReplacementFixture(nativeBase(), retirementPolicy)
+  let retiredHistory = retired.update.currentUpdateServiceIdentityHistory
+  assert retiredHistory.serviceIdentityHistoryInfo.value.creations == 1
+  assert retiredHistory.serviceIdentityHistoryInfo.value.deletions == 1
+  assert retiredHistory.serviceIdentityHistorySource.value.completedSequenceInfo.value.entries == 3
+  let death = retiredHistory.serviceIdentityDeletionAt(ServiceDeletionIndex(0)).value
+  let birth = retiredHistory.serviceIdentityCreationAt(ServiceCreationIndex(0)).value
+  assert uint64(death.entry) == 1 and uint64(birth.entry) == 2
+  discard check(Fixture(origin: retired, update: retired.update), 2)
+  let reused = namespaceRetiredReplacementFixture(nativeBase(), retirementPolicy, reuse = true)
+  discard check(Fixture(origin: reused, update: reused.update), 2)
+  let orphan = namespaceRetiredReplacementFixture(nativeBase(), retirementPolicy, orphan = true)
+  let rejectedOrphan = continueCurrentNamespaces(orphan.parent, orphan.update, policy())
+  assert rejectedOrphan.error == LogicalContinuationError.UnsupportedChange
+  var postBirthPolicy = retirementPolicy
+  postBirthPolicy.completion.execution.execution.round.guests.provisions = AccumulationProvisionLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  postBirthPolicy.completion.execution.execution.round.provisions.values = PreimageLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  postBirthPolicy.completion.execution.execution.round.provisions.encodedBytes = ByteLimit(128)
+  let postBirth = namespaceRetiredReplacementFixture(nativeBase(), postBirthPolicy,
+      postBirth = true)
+  let postLogical = check(Fixture(origin: postBirth, update: postBirth.update), 2)
+  let postServices = copySuppliedServices(postLogical.currentLogicalInventory.value, policy().projection).value
+  var postFound = false
+  for service in postServices:
+    if uint32(service.service) == 99:
+      assert service.storage.len == 1 and service.preimages.len == 1 and service.requests.len == 2
+      assert service.storage[0].key == @[5'u8] and service.storage[0].value == @[8'u8]
+      assert service.preimages[0].value == @[77'u8]
+      postFound = true
+  assert postFound
+  var checkpointPolicy = retirementPolicy
+  checkpointPolicy.completion.execution.initial.guests.provisions = AccumulationProvisionLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  checkpointPolicy.completion.execution.initial.provisions.values = PreimageLimits(
+    items: ElementLimit(1), perBlob: ByteLimit(1), totalBlobBytes: ByteLimit(1))
+  checkpointPolicy.completion.execution.initial.provisions.encodedBytes = ByteLimit(128)
+  let checkpoint = namespaceAtomicReplacementFixture(nativeBase(), checkpointPolicy)
+  let checkpointHistory = checkpoint.update.currentUpdateServiceIdentityHistory
+  assert checkpointHistory.serviceIdentityHistorySource.value.completedSequenceInfo.value.entries == 1
+  let barrier = checkpointHistory.serviceIdentityRetirementAt(ServiceCreationIndex(0),
+      ServiceDeletionIndex(0))
+  assert barrier.error == ServiceIdentityHistoryError.None
+  assert barrier.value.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(99))).error ==
+      StateStoreError.MissingKey
+  assert checkpointHistory.serviceIdentityRetirementAt(ServiceCreationIndex(high(uint64)),
+      ServiceDeletionIndex(0)).error == ServiceIdentityHistoryError.InvalidIndex
+  assert default(ServiceIdentityHistory).serviceIdentityRetirementAt(ServiceCreationIndex(0),
+      ServiceDeletionIndex(0)).error == ServiceIdentityHistoryError.InvalidSource
+  let checkpointLogical = check(Fixture(origin: checkpoint, update: checkpoint.update), 2)
+  let checkpointServices = copySuppliedServices(checkpointLogical.currentLogicalInventory.value,
+      policy().projection).value
+  var checkpointFound = false
+  for service in checkpointServices:
+    # Coalesced old identities need refreshed phase evidence and genuine absence in the earlier checkpoint.
+    if uint32(service.service) == 99:
+      assert service.storage.len == 1 and service.preimages.len == 1 and service.requests.len == 2
+      assert service.storage[0].key == @[5'u8] and service.storage[0].value == @[8'u8]
+      assert service.preimages[0].value == @[77'u8]
+      checkpointFound = true
+  assert checkpointFound
+  for kind in 0..<3:
+    # A selected atomic ejection map permits reuse without a guest checkpoint or with a later checkpoint; an orphan still refuses.
+    let unsupported = namespaceAtomicReplacementFixture(nativeBase(), checkpointPolicy,
+      checkpoint = kind != 0, late = kind == 1, orphan = kind == 2)
+    let refusal = continueCurrentNamespaces(unsupported.parent, unsupported.update, policy())
+    if kind == 2:
+      assert refusal.error == LogicalContinuationError.UnsupportedChange # Metadata removal cannot erase the orphan identity.
+    else:
+      assert refusal.error == LogicalContinuationError.None # Genuine ejection is the barrier independently of guest checkpoint placement.
+  let checkpointPanic = namespaceAtomicReplacementFixture(nativeBase(), checkpointPolicy, panic = true)
+  discard check(Fixture(origin: checkpointPanic, update: checkpointPanic.update), 1)
   let grown = fixture()
   let continued = check(grown, 3)
   let created = grown.update.currentUpdateServiceIdentityHistory.serviceIdentityCreationAt(
@@ -158,7 +297,13 @@ proc main() {.raises.} =
   assert copySuppliedServices(repeated.value.currentLogicalInventory.value, policy().projection).value.len == 4
   for i in 0..<25: discard continueCurrentNamespaces(grown.origin.parent, grown.update, policy()).value # Warm complete roster reconstruction/current qualification.
   let before = getOccupiedMem()
-  for i in 0..<1000: discard continueCurrentNamespaces(grown.origin.parent, grown.update, policy()).value
+  for i in 0..<1000:
+    # Both ordinary additions and retired-generation aliases must release every temporary owner.
+    discard continueCurrentNamespaces(grown.origin.parent, grown.update, policy()).value
+    discard continueCurrentNamespaces(retired.parent, retired.update, policy()).value
+    discard continueCurrentNamespaces(reused.parent, reused.update, policy()).value
+    discard continueCurrentNamespaces(postBirth.parent, postBirth.update, policy()).value
+    discard continueCurrentNamespaces(checkpoint.parent, checkpoint.update, policy()).value
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("service_logical_continuation", 1000, before, after)
