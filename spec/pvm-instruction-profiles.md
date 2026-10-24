@@ -38,3 +38,32 @@ never binaries, snapshots or compiler/dependency trees. Artifacts expire after30
 
 This diagnostic changes no production semantics or representation. Documented M1
 framing completion does not imply full state serialization or whole-block/JAM parity.
+
+
+## Linux qualification, 2026-10-24
+
+[CI40108049548](https://github.com/jacogr/ragnarok/actions/runs/40108049548)
+passes selected-scope and absent-scope calibration, the checked native assertion
+refusal, all three full-state guest profiles, annotations and frozen identity
+checks. This measures tool/runtime head `1f836706` above the qualified register
+expansion; publication adds only this contract evidence. The exact command,
+source/compiler/input/binary identities and raw call graphs remain in the CI
+artifact and `build/pvm12/ci-40108049548/`.
+
+| Guest | Pricing | Native instructions |
+| --- | --- | ---: |
+| Pinky one frame | Dynamic | 7,450,778,277 |
+| Pinky one frame | Complete plan | 7,071,091,949 |
+| Sieve100000 | Complete plan | 212,964,058 |
+
+The planned Pinky self-cost annotation attributes64.69% to the inlined execution
+body,11.78% to writer scalar loads,7.86% to scalar instruction dispatch,7.84%
+to writer stores and2.62% to memory-owner destruction. These identify the next
+investigation; instruction percentages are not CPU-time percentages. The parser
+accepts Callgrind's omitted trailing zero costs only with matching header/footer
+totals. Actual Linux ThinLTO retains public execution symbols while inlining the
+private loop, so collection deliberately uses the public execution boundary.
+
+Local verification passes52 focused Python checks, workflow YAML parsing,
+verification inventory and the compiled C calibration positive process. Linux
+CI supplies the real instrumented calibration and native full-state evidence.
