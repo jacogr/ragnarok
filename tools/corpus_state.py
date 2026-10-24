@@ -435,5 +435,28 @@ def current_stf_reporting_corpus(compiler, report, checks, libraries):
     return corpus
 
 
+@CORPORA.case
+def current_stf_report_guests_corpus(compiler, report, checks, libraries):
+    """Compare report-driven real guest execution against independently calculated complete maps."""
+    from current_stf_report_guests_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_effects', 'current_stf_report_guests', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # All mathematical guest effects, gas charges, signed children and roots precede native execution.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-report-guests-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-report-guests', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  reference='mathematical Thin, OpenSSL Ed25519, literal guest semantics and independent GP gas')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-report-guests-corpus', expected)
+    announce('independent report-driven guest whole STF maps', corpus['passed'])
+    return corpus
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
