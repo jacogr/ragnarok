@@ -4,7 +4,7 @@
 ## Invocation-local decoded operands survive collisions, capacity pressure and host resumptions without crossing programs or callback nesting.
 # @@Verification={"arc": "pvm_execution_cache_arc_release"}
 import std/[assertions, syncio]
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
 import ../../support/arc_evidence
 
 type
@@ -344,6 +344,111 @@ proc finalFallthrough() =
   owner = default(Program)
   assert not instructionHasFallthrough(final) and instructionHasFallthrough(retained)
 
+type
+  JumpContext = object ## Reentrant guests use another immutable jump table while the outer invocation retains exact target tags.
+    nested: Machine
+    previous: RegisterFile
+    calls, count, expectedHost: int
+    terminal: uint64
+
+proc jumpReply(context: var JumpContext, stopped: StepOutcome): HostResponse {.raises: [].} =
+  ## Independently known block prices and alternating host identities expose wrong-target hits before terminal normalization.
+  let cpu = machineInfo(stopped.machine).value
+  assert uint64(stopped.hostCall) == uint64(context.expectedHost)
+  assert uint64(cpu.pc) == (if context.expectedHost == 1: 0'u64 else: 4'u64)
+  assert uint64(cpu.gas) == uint64((context.count-context.calls-1)*100+7)
+  assert cpu.blockCharged and uint64(cpu.gasDeficit) == 0
+  for i in 0..<13: assert uint64(cpu.registers[i]) == uint64(context.previous[i])
+  let nested = execute(context.nested, ExecutionStepLimit(2), GasCycleLimit(103))
+  assert nested.error == StepError.None and nested.value.exit == StepExit.Panic
+  same(machineInfo(nested.value.machine).value, compareSteps(context.nested, 2))
+  assert uint64(machineInfo(context.nested).value.pc) == 0
+  inc context.calls
+  var registers = cpu.registers
+  if context.calls == context.count:
+    registers[8] = RegisterValue(0x1234567800000000'u64 or context.terminal)
+  else:
+    # Ordinals0/4 collide; repeated hits and ordinal3 exercise separate slots. Upper bits are discarded by the existing address rule.
+    let indices = [0'u64, 0, 4, 4, 0, 4, 3, 3]
+    let index = indices[(context.calls-1) mod indices.len]
+    registers[8] = RegisterValue(0x1234567800000000'u64 or (2*(index+1)))
+    context.expectedHost = if index == 0: 1 else: 2
+  context.previous = registers
+  HostResponse(action: HostAction.Continue, gas: cpu.gas, registers: registers,
+    memory: memoryOf(stopped.machine).value)
+
+proc jumpReplyFallible(context: var JumpContext, stopped: StepOutcome): HostResult[
+    Reason] {.raises: [].} =
+  ## Both public host callback forms must retain the same program-local facts and synchronous reentry isolation.
+  hostSuccess[Reason](jumpReply(context, stopped))
+
+proc dynamicTargets(count = 64, full = true) =
+  ## Literal table entries include colliding valid blocks, an operand byte, an out-of-code target and an absent ordinal.
+  let decoded = decodeProgram(@[5'u8, 1, 8, 0, 1, 255, 4, 4, 10, 1, 50, 8, 10, 2, 50, 8, 0x55],
+    CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(5))
+  let other = decodeProgram(@[1'u8, 1, 3, 2, 50, 8, 0, 5], CodeAddress(0),
+    ProgramByteLimit(64), JumpCountLimit(1))
+  assert decoded.error == ProgramError.None and other.error == ProgramError.None
+  let owner = decoded.value
+  var original = default(RegisterFile)
+  for i in 0..<13: original[i] = RegisterValue(uint64(500+i))
+  original[8] = RegisterValue(2)
+  let empty = captureMemory([], PageLimit(0)).value
+  let cpu = MachineInfo(pc: CodeAddress(0), gas: MachineGas(uint64(count*100+7)),
+    registers: original, blockCharged: false)
+  let source = captureMachine(owner, empty, cpu).value
+  var nestedCpu = cpu
+  nestedCpu.gas = MachineGas(1000)
+  let nested = captureMachine(other.value, empty, nestedCpu).value
+  let prepared = newGasPlan(owner, GasPlanLimits(blocks: GasPlanBlockLimit(2),
+    bytes: GasPlanByteLimit(64), cycles: GasCycleLimit(103)))
+  let learned = newGasMemo(owner, GasMemoLimits(bytes: GasMemoByteLimit(64), cycles: GasCycleLimit(103)))
+  assert prepared.error == GasPlanError.None and learned.error == GasMemoError.None
+  let plan = prepared.value
+  let memo = learned.value
+  # Independent pipeline simulation gives100gas/103cycles for each host-plus-indirect-jump block.
+  assert uint64(blockGas(owner, CodeAddress(0), GasCycleLimit(103)).value) == 100
+  assert uint64(blockGas(owner, CodeAddress(4), GasCycleLimit(103)).value) == 100
+  for policy in 0..<(if full: 3 else: 1):
+    for terminal in [0xffff0000'u64, 4, 6, 18, 0, 3]:
+      for fallible in [false, true]:
+        var context = JumpContext(nested: nested, previous: original,
+          calls: 0, count: count, expectedHost: 1, terminal: terminal)
+        var outcome = default(StepOutcome)
+        template run(selected: untyped) =
+          # Static selection preserves the public overload and distinct failure result types.
+          if fallible:
+            let stopped = executeWithHost(source, context, jumpReplyFallible, ExecutionStepLimit(
+                uint64(count*2)),
+              HostCallLimit(uint64(count)), selected)
+            assert stopped.error == HostExecutionError.None
+            outcome = stopped.value
+          else:
+            let stopped = executeWithHost(source, context, jumpReply, ExecutionStepLimit(uint64(
+                count*2)),
+              HostCallLimit(uint64(count)), selected)
+            assert stopped.error == StepError.None
+            outcome = stopped.value
+        case policy
+        of 0: run(GasCycleLimit(103)) # Dynamic simulation still checks affordability at every block visit.
+        of 1: run(plan) # Complete pricing does not change target-cache identity.
+        else: run(memo) # Lazy prices may survive calls; target facts must not.
+        assert context.calls == count
+        assert outcome.exit == (if terminal == 0xffff0000'u64: StepExit.Halt else: StepExit.Panic)
+        var expected = cpu
+        expected.gas = MachineGas(7)
+        expected.blockCharged = true
+        expected.registers = context.previous
+        same(machineInfo(outcome.machine).value, expected)
+        same(machineInfo(source).value, cpu)
+  # One-less cycle limit refuses pricing before any callback or target cache lookup.
+  var context = JumpContext(nested: nested, previous: original,
+    calls: 0, count: count, expectedHost: 1, terminal: 0xffff0000'u64)
+  let refused = executeWithHost(source, context, jumpReply, ExecutionStepLimit(uint64(count*2)),
+    HostCallLimit(uint64(count)), GasCycleLimit(102))
+  assert refused.error == StepError.GasCycleLimitExceeded and context.calls == 0
+
+dynamicTargets()
 collisions()
 threeWayPressure()
 alternatingPrices()
@@ -361,6 +466,7 @@ for cycle in 0..<1000:
   pricePressure()
   collidingPrices()
   finalFallthrough()
+  dynamicTargets(8, false)
   hosts() # Both bounded memos and all observable/nested snapshot owners retire after each complete invocation group.
 let after = getOccupiedMem()
 assert before == after
