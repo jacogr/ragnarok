@@ -314,3 +314,6 @@ preflight, budgets and final target validation retain their existing behavior.
 No opcode-class optimization is included. The bounded decoded cache retains the
 same size and lifetime; all metadata is scalar and no program/CPU/memory owner is
 added. Local refusals and observable guest exits retain their prior snapshot rules.
+
+Independent control-path gas/prefix qualification and raw/JAM warm target loops are recorded
+in [control policy reference](pvm-control-policy-reference.md).

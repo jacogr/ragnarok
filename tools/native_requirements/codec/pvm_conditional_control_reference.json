@@ -2,7 +2,8 @@
   "defines": [],
   "directory": "codec",
   "fixtures": [
-    "pvm_control"
+    "pvm_control",
+    "pvm_control_pricing"
   ],
   "includes": [],
   "libraries": [],
