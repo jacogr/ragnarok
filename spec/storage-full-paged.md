@@ -385,3 +385,43 @@ Linux amd64 under Docker emulation on this aarch64 host. Source hashes are compa
 qualification image; both profiles retain the pristine pinned compiler/provider and runtime checks. These tests establish implemented process-
 death behavior only; fsync success and process death do not establish hardware/filesystem power-
 loss qualification. Populated Linux working-set qualification and consumer adoption remain open.
+
+## Populated Linux no-swap qualification
+
+Make's build-storage-full-paged-resources target builds the checked ARC/Clang probe; the optional
+full-paged-resources Docker target provisions the same pinned tools. With its image selected,
+FULL_PAGED_STORAGE_IMAGE=<image> make bench-storage-full-paged-resources runs the strict panel.
+The Python observer, compiler/provenance inspection and resident complete-map/reference artifact
+construction remain outside pressure. Each measured writer uses one bounded on-disk descriptor/
+record producer; no resident source map, graph or full index enters the measured native exec.
+Each target is freshly authored inside one persistent private64MiB no-swap cgroup, preserving
+selected-file cache charges through separate fresh reader processes. Input fixtures are read-only
+inside pressure and fixed-buffer hashes verify them again afterward. No filesystem cache is dropped.
+
+Four complete datasets exercise maximum depth248 (250 physical nodes), a shallow eight-entry map,
+72 entries with1MiB values, and2048 entries with36KiB values/4148 physical nodes. Each retains one
+present-empty final leaf. Every treatment inherits the same1MiB per-value,4096-entry/16384-node,
+200MB artifact, one-root,16MiB logical-workspace and32KiB scratch policy; only page cache0/1 differs.
+The largest two canonical selected artifacts are76,586,976 and78,180,320 bytes, each larger than
+the67,108,864-byte enforced memory allowance. Independent complete-map roots are cross-checked
+against the full trie, and an explicit-domain reference tree defines every selected artifact byte.
+Writers/readers must match its exact data/CURRENT SHA-256; strict readers leave LOCK and all selected
+bytes unchanged. Every reader verifies spread values byte-for-byte, present-empty, complete absence
+and exact UnknownRoot refusal after complete graph admission.
+
+All16 fresh writer/reader phases pass on Linux amd64 under Docker emulation on this aarch64 host.
+Maximum native process peak RSS is17,608,704 bytes; retained Nim owner heap is exactly25,072 bytes
+for writers and8608 for readers across all sizes/depths/cache treatments. Writers include the source
+file in their five-descriptor live delta; readers retain two. Every native phase returns heap and
+descriptors exactly to baseline. The persistent cgroup's largest observed memory.current snapshot
+is66,293,760 bytes, swap max/current stay zero and final OOM/OOM-kill counters remain zero. The
+memory-limit event counter reaches20,152, witnessing actual reclaim pressure. This kernel lacks
+optional memory.peak; reports record null rather than inventing a cgroup peak. Process getrusage
+peaks and actual cgroup max/current/swap/events remain mandatory. Complete source, compiler,
+provider, observer and native binary identities are frozen and verified before/after execution.
+
+These observations qualify the concrete storage profile and workloads above, including newly
+charged selected-file cache. They do not establish a throughput result, deployment-wide ceiling,
+resident StateStore/execution bound, complete JAM serialization or hardware power-loss durability.
+The selected Python receipt controls reject false identity/geometry/depth, leaked heap/descriptors,
+omitted graph work/queries and over-limit RSS. Full/light consumer integration remains open.

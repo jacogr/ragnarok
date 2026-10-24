@@ -162,7 +162,11 @@ def run_docker(image):
                        raw={name: read(group+'/'+name) for name in FILES})
         controls(receipt, MEMORY)
         # Optional kernel peaks are observations, never substitutes for actual max/swap/event controls.
-        receipt['peak'] = read(group+'/memory.peak').strip()
+        available = execute(['docker', 'exec', container, 'test', '-f', group+'/memory.peak'],
+                            'kernel-peak-'+str(len(report['commands'])), required=False)
+        if available.returncode not in (0, 1):
+            raise RuntimeError('Kernel peak availability probe failed')
+        receipt['peak'] = read(group+'/memory.peak').strip() if available.returncode == 0 else None
         return receipt
     def transfer_hash(owner, path, name):
         """Stream selected bytes into a host64KiB buffer; no resident image or Python observer lives inside pressure."""
