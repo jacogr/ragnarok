@@ -95,7 +95,9 @@ def cost(raw, code, pc, definitions):
     row = row.replace('$\\mathfrak{m}$', '25')
     if '$\\mathfrak{b}$' in row:
         # Pinned PolkaVM wraps decoded offsets to u32 before pricing the raw target byte.
-        target = (pc + int.from_bytes(raw[-4:], 'little', signed=True)) % (1 << 32)
+        displacement_at = 2+min(4, (raw[1]//16)%8) if raw[0] <= 90 else 2
+        displacement = raw[displacement_at:displacement_at+4]
+        target = (pc + int.from_bytes(displacement, 'little', signed=True)) % (1 << 32)
         fetch = lambda at:code[at] if at < len(code) else 0
         latency = 1 if {fetch(pc+len(raw)), fetch(target)} & {0, 2} else 20
         row = row.replace('$\\mathfrak{b}$', str(latency))

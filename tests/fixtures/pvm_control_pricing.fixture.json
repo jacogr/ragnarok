@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_PVM_CONTROL_PRICING",
+  "files": {
+    "pvm-control-pricing.bin": "d3d370bd93486c26a6866fc44c2debdca27c008f9260a7e9679312b7c9ddd72b"
+  },
+  "target": "pvm-control-pricing.bin"
+}
