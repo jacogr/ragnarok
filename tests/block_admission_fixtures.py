@@ -73,6 +73,37 @@ def prepare(folder):
     return path, evidence
 
 
+def current_admission_rows():
+    """Link independent Thin children to explicit opaque parent headers and declared component maps."""
+    from safrole_current_fixtures import cases
+    from bandersnatch_thin_oracle import sign
+    from state_layout_oracle import chapter_key
+    from state_history_oracle import wire as history_wire
+    from state_trie_oracle import tree
+    rows = []
+    empty = dict(tickets=[], preimages=[], guarantees=[], assurances=[],
+                 disputes=dict(verdicts=[], culprits=[], faults=[]))
+    extrinsic_root, _ = commitment(empty, 2)
+    for case in cases():
+        source, expected = dict(case['source']), case['expected']
+        previous = source[11]
+        target = int.from_bytes(case['header'][96:100], 'little')
+        parent = case['header'][:96]+previous+case['header'][100:]
+        parent_hash = hashlib.blake2b(parent, digest_size=32).digest()
+        source.update({1: bytes(2), 3: history_wire(([(parent_hash+bytes(64)+previous, b'')], [])),
+                       5: bytes(4), 10: bytes(2), 14: bytes(12), 15: bytes(12)})
+        root, _ = tree([(chapter_key(k), value) for k, value in source.items()])
+        unsigned = parent_hash+root+extrinsic_root+case['header'][96:-96]
+        crossing = int.from_bytes(previous, 'little')//12 != target//12
+        entropy = source[6][64:96] if crossing else source[6][96:128]
+        seal, _ = sign(1, b'jam_fallback_seal'+entropy, unsigned)
+        block = unsigned+seal+b''.join(child_wires(empty, 2))
+        entries = ','.join(chapter_key(k).hex()+'='+value.hex() for k, value in sorted(source.items()))
+        rows.append(' '.join([case['name'], block.hex(), parent.hex(), entries,
+                    *(expected[k].hex() for k in (4, 6, 8, 9, 11)), source[5].hex(), root.hex()]))
+    return rows
+
+
 # Real full-state maps anchor root checks; posterior fields remain expected outputs, not stage inputs.
 def prepare_admission(folder):
     pins = json.loads((ROOT/'spec/pins.json').read_text())['vectors']
@@ -104,9 +135,13 @@ def prepare_admission(folder):
                 parent.hex(), entries, *(after[chapter_key(c)].hex() for c in chapters),
                 after[chapter_key(5)].hex(), before['state_root'][2:]]))
     assert len(rows) == 10
+    rows.extend(current_admission_rows())
+    assert len(rows) == 13
     path = folder/'block-admission.txt'
     path.write_text('\n'.join(rows)+'\n')
-    evidence = dict(cases=10, sources=sources, vector_commit=pins['commit'],
+    evidence = dict(cases=13, published_incompatible=10, current_authored=3,
+                    published_signed_trace_parity=False, current_component_maps=True,
+                    sources=sources, vector_commit=pins['commit'],
                     fixture_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     (folder/'block-admission.json').write_text(json.dumps(evidence, indent=2)+'\n')
     return path, evidence

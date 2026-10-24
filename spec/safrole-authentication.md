@@ -75,13 +75,20 @@ The history needed for seal verification is a fixed rotation of parent words and
 first. The eventual coordinator must similarly derive schedule/admission history without committing
 an unauthenticated accumulator, then publish canonical state only after all stages succeed.
 
-The context suite checks all twenty published records even with malformed/absent staged entropy
-and time, binds exact causes for required parent/posterior chapter damage, checks preflight ceilings,
-first/second native refusal, complete map/root stability, zero store hashing and historical header/
-map lifetimes. A separate correctly staged working map consumes the authenticated output through
-`advanceEntropyTimeState`, reproducing each complete published posterior C(6) and target C(11)
-while preserving schedule, active keys and unrelated state. Other state transitions are supplied
+The context suite rejects all twenty unchanged historical trace credentials as `InvalidSeal`,
+with exactly one ordinary verification, zero store hashing and unchanged parent/staged maps.
+Three independently authored current Thin contexts authenticate with malformed/absent staged
+entropy and time. Those positive contexts retain the required parent/posterior chapter damage
+checks, preflight ceilings, first/second native refusal, complete map/root stability and retained
+header/map lifetimes. A correctly staged working map consumes each authenticated output through
+`advanceEntropyTimeState`, reproducing the independent posterior C(6) and target C(11) while
+preserving schedule, active keys and unrelated state. Other state transitions are supplied
 projections, not claimed as executed by this component suite.
+
+The GP/Thin pin migration updated fixture preparation and the core authentication suite but
+missed this state-context consumer. Master CI run 40088339613, unit shard 11/16, exposed its stale
+20-case successful-authentication assumption. The focused repair accepts the complete 23-case
+transport and preserves both historical refusals and current positive state-publication checks.
 
 The complete-map storage contract remains full-node specific. Future light-node context must use
 its own verified state/proof contract; these operations do not compute roots over partial maps or
@@ -96,3 +103,19 @@ now combines the rotation, admission, schedule, marker and authentication pieces
 slice binds block admission to parent/header/extrinsic commitments.
 Parent/extrinsic commitments, wall-clock admission and complete block execution remain separate
 checks. Component authentication does not itself establish prior stage lineage or full JAM parity.
+
+## Related block and report consumers
+
+The same master run also failed `block_admission` and `report_admission` in unit
+shards 6/16 and 9/16. Their ten unchanged historical blocks retain exact commitment,
+parent linkage and root checks, then assert current-profile refusal: `safrole/12`
+and `safrole/13` fail ticket admission with `InvalidProof`; the other eight fail
+seal authentication with `InvalidSeal`. Failure preserves every original state entry.
+
+Three independently signed Thin blocks provide positive block/state/report paths.
+Their explicit parent headers are opaque historical inputs; current child seals
+bind those exact parents, independently Merklized component maps and empty-body
+commitments. Same-epoch and epoch-crossing expected Safrole chapters come from
+the existing mathematical reference. These component maps do not claim complete
+JAM state or historical trace parity. Existing commitment-tampering, ticket ceiling,
+backend refusal, staged disputes rollback, lifetime and ARC witnesses remain active.

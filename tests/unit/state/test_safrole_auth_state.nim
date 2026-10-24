@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Published authentication against immutable parent/staged maps before entropy publication; no
+## Current Thin authentication and historical refusals against immutable parent/staged maps; no
 ## state mutation or trust in staged entropy.
 ##
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
@@ -108,12 +108,12 @@ proc damage(before, after: seq[StateEntry], header: OwnedHeader, config: Safrole
         unchanged(staged, (if parentSide == 0: broken else: after), stagedRoot)
   failHash(0)
 
-## Every selected published credential authenticates with stale/absent staged entropy/time, then feeds real atomic advancement.
+## Historical credentials refuse unchanged; current Thin cases authenticate before entropy/time publication.
 proc published(text: string) =
   let lines = text.splitLines()
-  assert lines.len == 21
+  assert lines.len == 24
   let config = policy()
-  for i in 0..<20:
+  for i in 0..<23:
     let f = lines[i].splitWhitespace()
     assert f.len == 7
     let header = capture(unhex(f[1]), config)
@@ -137,6 +137,15 @@ proc published(text: string) =
     reset(0)
     failHash(1)
     let outcome = authenticateSafroleHeaderState(parent, staged, header, config)
+    if i < 20:
+      # Unchanged upstream trace credentials use the older profile and must refuse without state writes or hashing.
+      assert not f[0].startsWith("authored/")
+      assert outcome.error == SafroleAuthError.InvalidSeal and verifications() == 1 and hashes() == 0
+      unchanged(parent, before, oldRoot)
+      unchanged(staged, after, stagedRoot)
+      failHash(0)
+      continue
+    assert f[0].startsWith("authored/") # Independent current-profile cases retain all positive context checks below.
     assert outcome.error == SafroleAuthError.None and verifications() == 2 and hashes() == 0
     unchanged(parent, before, oldRoot)
     unchanged(staged, after, stagedRoot)
@@ -167,7 +176,7 @@ proc published(text: string) =
           SafroleAuthError.LimitExceeded
       assert verifications() == 0 and hashes() == 0
     failHash(0)
-    if i == 0: damage(before, after, header, config) # Required chapter shape errors are independent of signature validity.
+    if i == 20: damage(before, after, header, config) # Required chapter shape errors are independent of signature validity.
     # A pre-entropy working map can omit C(6)/C(11); the authenticated output then advances a correctly staged map atomically.
     let ready = @[after[0], after[1], before[0], before[1], after[4]]
     working = newStateStore(ready, limits()).value
@@ -193,7 +202,7 @@ proc published(text: string) =
   failHash(0)
 
 try:
-  published(readFile(getEnv("RAGNAROK_SAFROLE_AUTHENTICATION"))) # Missing/changed public credentials must fail preparation, never reduce coverage.
+  published(readFile(getEnv("RAGNAROK_SAFROLE_AUTHENTICATION"))) # Missing/changed credential transport must fail preparation, never reduce coverage.
 except:
   quit(2) # No partial credential corpus is accepted as a completed context suite.
-echo "PASS Safrole auth state: twenty published contexts, pre-entropy ordering and immutable rollback"
+echo "PASS Safrole auth state: twenty incompatible trace refusals, three Thin contexts, pre-entropy ordering and immutable rollback"
