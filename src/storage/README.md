@@ -469,3 +469,9 @@ generation while rewriting authenticated pages into a new epoch. Explicit replay
 bootstrap resume compare complete independent target/staging prefixes before removal, with a separate
 anonymous replay disk ceiling and fresh capture after uncertainty. Explicit trusted-manifest epoch
 readers recover old pins and exact reclamation receipts after restart. Consumer adoption remains open.
+
+The optional full build-storage-full-paged-resources / bench-storage-full-paged-resources
+Make targets and full-paged-resources Docker target qualify fresh full writers/readers separately
+from resident fixture preparation. The [full paged contract](../../spec/storage-full-paged.md)
+records the concrete64MiB no-swap profile, populated/deep cases, source/provider identities and
+observed native/cgroup measurements. Resident StateStore/execution memory is a separate contract.

@@ -300,6 +300,14 @@ inspect-storage-reopen-pair:
 	$(PYTHON) tools/paired_storage_reopens.py --config "$${REOPEN_PAIR_CONFIG:?Set REOPEN_PAIR_CONFIG}"
 
 # Build outside pressure first; the optional panel refuses absent kernel no-swap controls.
+# Full fixture preparation stays outside the fresh native writer/reader no-swap cgroup.
+.PHONY: build-storage-full-paged-resources bench-storage-full-paged-resources
+build-storage-full-paged-resources: setup
+	$(PYTHON) tools/storage_full_paged_resources.py --build-only
+
+bench-storage-full-paged-resources:
+	$(PYTHON) tools/storage_full_paged_resources.py --docker "$${FULL_PAGED_STORAGE_IMAGE}"
+
 build-storage-paged-resources: setup
 	$(PYTHON) tools/storage_paged_resources.py --build-only
 
