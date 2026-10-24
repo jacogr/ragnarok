@@ -88,14 +88,18 @@ proc supervisedHandoffCode*(mode: int): seq[byte] =
   result = @[0'u8]
   for octet in guestEnvelope(instructions, @[7'u8, 9, 8, 7]): result.add(octet)
 
-proc authorizationAssignCode*(mode: int): seq[byte] =
-  ## Ordered80-hash replacement and handoff run through real host17 with an explicit2560-byte input.
-  var memory: seq[byte] = @[]
+proc authorizationQueue(): seq[byte] =
+  ## Share exact literal positional inputs while every caller owns its copied VM memory.
+  result = @[]
   for index in 0..<80:
     var source: seq[byte] = @[] # Keep each positional hash input independent and explicitly ordered.
     for octet in "authorization queue A": source.add(byte(octet))
     source.add(byte(index))
-    for octet in array[32, byte](blake2b256(source).value): memory.add(octet)
+    for octet in array[32, byte](blake2b256(source).value): result.add(octet)
+
+proc authorizationAssignCode*(mode: int): seq[byte] =
+  ## Ordered80-hash replacement and handoff run through real host17 with an explicit2560-byte input.
+  let memory = authorizationQueue()
   let core = if mode == 110: 2'u64 else: 1'u64
   let nominee = if mode == 111: 4294967338'u64 else: 42'u64
   var instructions = @[registerImmediate(7, core), registerImmediate(8, 196608), registerImmediate(
@@ -105,5 +109,25 @@ proc authorizationAssignCode*(mode: int): seq[byte] =
       registerImmediate(9, if mode == 111: nominee else: 99'u64), @[10'u8, 17]]:
     instructions.add(instruction) # A later host call must observe the current assigner, never its original privilege.
   instructions.add(if mode in [108, 109]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc precedenceAssignerCode*(mode: int): seq[byte] =
+  ## The original42 assigner selects its queue even when the manager redirects the posterior role elsewhere.
+  var instructions = @[registerImmediate(7, 1), registerImmediate(8, 196608), registerImmediate(9,
+      99), @[10'u8, 17]]
+  instructions.add(if mode == 117: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, authorizationQueue()): result.add(octet)
+
+proc precedenceManagerCode*(mode: int): seq[byte] =
+  ## Empty allowance maps make original-manager versus original-assigner precedence unambiguous under GP R.
+  var memory = newSeq[byte](8)
+  memory[0] = 42
+  if mode == 114: memory[4] = 42 # Keeping the old role defers to the original assigner's own proposal.
+  var instructions = @[registerImmediate(7, 99), registerImmediate(8, 196608), registerImmediate(9, 0),
+    registerImmediate(10, 0), registerImmediate(11, 196616), registerImmediate(12, 0), @[10'u8, 16]]
+  if mode == 116: instructions.add(@[10'u8, 19]) # Retain the manager proposal before exceptional termination.
+  instructions.add(if mode in [115, 116]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)

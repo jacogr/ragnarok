@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ROLE_PRECEDENCE",
+  "files": {
+    "current-stf-role-precedence.json": "71d7618a40306bd72018522643d29c84ebd0b75954685477ef5e829f31a99d76"
+  },
+  "target": "current-stf-role-precedence.json"
+}
