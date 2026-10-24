@@ -92,3 +92,12 @@ proc provisionCode*(mode: int, hash: array[32, byte]): seq[byte] =
   instructions.add(if mode in [68, 69]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc ejectionCode*(mode: int): seq[byte] =
+  ## Retire a declared empty old junior and make the selected two-pool liquid refund visible in the full map.
+  let target = if mode == 76: 88'u64 else: 77'u64
+  var instructions = @[registerImmediate(7, target), @[10'u8, 23]]
+  if mode == 74: instructions.add(@[10'u8, 19]) # Deletion and refund belong to the same exceptional implication.
+  instructions.add(if mode in [73, 74]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, newSeq[byte](0)): result.add(octet)
