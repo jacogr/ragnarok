@@ -420,3 +420,10 @@ manifest codecs, constant-space index ordering/coverage scans, proof framing and
 digest paths. Decoding CURRENT before opening an epoch and explicit header binding keep selection
 metadata separate from complete artifact/proof admission. It owns no files or resident dataset;
 streamed construction, paged lookups and native publication remain pending.
+
+`paged_stream.nim` adds synchronous replay-bound append construction, complete root-bound artifact
+admission and authenticated binary-search lookups through borrowed exact-read/EOF callbacks. It
+keeps zero/one-page cache modes, one-proof transport and fixed tree carry scratch under explicit
+workspace and operation budgets. Returned metadata owns no callbacks/files; verified lookup values
+are independently owned. Native sealed artifacts, publication, pinned readers, uncertainty owners
+and Linux resource qualification remain pending in the [paged contract](../../spec/storage-paged-working-set.md).
