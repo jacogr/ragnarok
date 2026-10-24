@@ -71,14 +71,15 @@ proc failure(outcome: CurrentCandidateResult): string =
             else: discard # Other actual typed guest failures retain their direct reason.
 
 
-proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]]) =
+proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
   let codes = [namespaceHaltCode(), guest(mode)]
   var seeds = namespaceSeeds()
   for index in 0..<2:
     let codeHash = ServicePreimageHash(array[32, byte](blake2b256(codes[index]).value))
     seeds[index].requests.add(StateRequestItem(hash: codeHash, length: RequestLength(uint32(
-        codes[index].len)), history: availableHistory(RequestSlot(1))))
+        codes[index].len)), history: (if missingCode and index == 1: requestedHistory(
+      ) else: availableHistory(RequestSlot(1)))))
     let payload = @[byte(if index == 0: 73 else: 81)]
     seeds[index].requests.add(StateRequestItem(hash: ServicePreimageHash(array[32, byte](
         blake2b256(payload).value)), length: RequestLength(1), history: requestedHistory()))
@@ -87,6 +88,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]]) =
         1'u8, 2, 3, 4, 5] else: @[1'u8, 2]))) # Original replacement/deletion footprints are genuine parent inputs.
   var options = executionFixtureConfig()
   options.empty = true
+  if missingCode: options.second = ExecutionEnding.Missing # Code is honestly absent until a requested preimage extrinsic fulfills it.
   options.firstProgram = codes[0]
   options.secondProgram = codes[1]
   options.secondBalance = 1000000
@@ -116,6 +118,11 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]]) =
   limits.completion.composition.statistics.operands = ElementLimit(5)
   limits.completion.composition.finalization.history.reports = ElementLimit(5)
   limits.completion.composition.finalization.history.queues.perSlot = ElementLimit(5)
+  # Whole guest-code preimages retain explicit byte limits independent of operand payload bounds.
+  limits.completion.composition.validators.preimageBytes = ByteLimit(512)
+  limits.completion.composition.activity.preimages.perBlob = ByteLimit(512)
+  limits.completion.composition.activity.preimages.totalBlobBytes = ByteLimit(512)
+  limits.completion.composition.preimages.bytes = ByteLimit(512)
   var ancestors: seq[OwnedHeader] = @[]
   for body in bodies:
     # Exact independent extrinsics enter a real seal against the selected canonical parent.
@@ -137,7 +144,20 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]]) =
     for index in 0..<2:
       # Original code/request identities remain explicit; unfulfilled payload requests stay untouched.
       let hash = ServicePreimageHash(array[32, byte](blake2b256(codes[index]).value))
-      services[index].preimages.add(StatePreimageItem(hash: hash, value: codes[index]))
+      let codeKey = servicePreimageKey(services[index].service, hash, ByteLimit(32)).value
+      let codeStored = snapshot.lookup(codeKey)
+      if codeStored.error == StateStoreError.None:
+        services[index].preimages.add(StatePreimageItem(hash: hash, value: codes[index]))
+      else: assert missingCode and index == 1 and codeStored.error == StateStoreError.MissingKey
+      for ordinal in 0..<services[index].requests.len:
+        # Declared identities are fixed; actual canonical histories must match the full candidate map.
+        let item = services[index].requests[ordinal]
+        let requestKey = serviceRequestKey(services[index].service, item.hash, item.length,
+            ByteLimit(32)).value
+        let history = decodeRequestHistory(snapshot.lookup(requestKey).value.bytes,
+            RequestHistoryConfig(items: ElementLimit(3), maxBytes: ByteLimit(13)))
+        assert history.error == RequestError.None
+        services[index].requests[ordinal].history = history.value.history
     let storageKey = serviceStorageKey(ServiceIndex(99), @[7'u8], ByteLimit(32)).value
     let stored = snapshot.lookup(storageKey)
     services[1].storage = @[]
@@ -174,13 +194,16 @@ proc main() {.raises.} =
   for index, octet in raw: bytes[index] = byte(octet)
   let base = decodeOwnedReport(bytes, 2).value
   var mode = -1
+  var missingCode = false
   var bodies: seq[seq[byte]] = @[]
   for line in readFile(paramStr(2)).splitLines:
     if line.len == 0: continue # The final transport newline contains no request.
     let fields = line.splitWhitespace()
-    assert fields.len == 2
+    assert fields.len in [2, 3]
     if fields[0] == "C":
-      if mode >= 0: run(base, mode, bodies) # Finish the complete chain before selecting another original.
+      if mode >= 0: run(base, mode, bodies, missingCode) # Finish the complete chain before selecting another original.
+      missingCode = fields.len == 3
+      if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
       assert mode >= 0 and mode < 5
       bodies = @[]
@@ -188,7 +211,7 @@ proc main() {.raises.} =
       assert fields[0] == "B" and mode >= 0
       bodies.add(unhex(fields[1]))
   assert mode == 4 and bodies.len > 0 # Strict independent output comparison binds each complete chain length.
-  run(base, mode, bodies)
+  run(base, mode, bodies, missingCode)
 
 try:
   main() # I/O, compilation, guest, publication or qualification failure fails the complete corpus.

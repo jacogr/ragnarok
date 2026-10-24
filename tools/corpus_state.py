@@ -522,5 +522,26 @@ def current_stf_gas_exits_corpus(compiler, report, checks, libraries):
     return corpus
 
 
+@CORPORA.case
+def current_stf_late_code_corpus(compiler, report, checks, libraries):
+    """Compare late code-preimage phase ordering against independently calculated full maps."""
+    from current_stf_late_code_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_late_code', 'current_stf_report_guests', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-late-code-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-late-code', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent missing-code skips, late fulfillment and literal guest implications')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-late-code-corpus', expected)
+    announce('independent late-code whole STF maps', corpus['passed'])
+    return corpus
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run

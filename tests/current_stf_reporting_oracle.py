@@ -94,15 +94,17 @@ def assurances(parent, count, bits):
                  signature=signed(index+1, b'jam_available', target)[1]) for index in range(count)]
 
 
-def body(guarantees, assurances):
+def body(guarantees, assurances, preimages=()):
     """Commit only normative guarantee report hashes and assurance raw tuples, with all other families empty."""
     guarantees_part = guarantees_wire(guarantees)
     assurances_part = natural(len(assurances))+b''.join(item['anchor']+bytes([item['bits']])
                         +item['index'].to_bytes(2, 'little')+item['signature'] for item in assurances)
     guaranteed_hashes = natural(len(guarantees))+b''.join(digest(item['report'])+item['slot'].to_bytes(4, 'little')
         +natural(len(item['credentials']))+b''.join(i.to_bytes(2, 'little')+sig for i, sig in item['credentials']) for item in guarantees)
-    raw = bytes(2)+guarantees_part+assurances_part+bytes(3)
-    commitment = digest(2*digest(b'\0')+digest(guaranteed_hashes)+digest(assurances_part)+digest(bytes(3)))
+    supplied = natural(len(preimages))+b''.join(sid.to_bytes(4, 'little')+natural(len(value))+value for sid, value in preimages)
+    projection = natural(len(preimages))+b''.join(sid.to_bytes(4, 'little')+digest(value) for sid, value in preimages)
+    raw = b'\0'+supplied+guarantees_part+assurances_part+bytes(3)
+    commitment = digest(digest(b'\0')+digest(projection)+digest(guaranteed_hashes)+digest(assurances_part)+digest(bytes(3)))
     return raw, commitment
 
 
