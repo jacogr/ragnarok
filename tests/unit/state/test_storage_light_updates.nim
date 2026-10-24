@@ -224,6 +224,46 @@ proc files(trie: FullStateTrie, root: StateRoot) {.raises.} =
   assert posix.unlink(current.toCString()) == 0
   assert posix.unlink(lock.toCString()) == 0
   assert posix.rmdir(directory.toCString()) == 0
+proc retainedSpans() =
+  ## Variable payload widths exercise first/middle/last source spans against independent complete-image preparation.
+  resetHash(0)
+  const Widths = [0, 1, 31, 32, 63, 64, 65, 255, 1024]
+  var entries = newSeq[StateEntry](27)
+  for index in 0..<entries.len:
+    var value = newSeq[byte](Widths[index mod Widths.len])
+    for offset in 0..<value.len: value[offset] = byte((index+offset) mod 256)
+    entries[index] = StateEntry(key: key(byte(index*9)), value: value)
+  let bounds = StateTrieLimits(items: ElementLimit(27), nodes: TrieNodeLimit(10000),
+    perValue: ByteLimit(1024), totalValueBytes: ByteLimit(27648))
+  let root = stateTrieRoot(entries, bounds).value.root
+  let trie = newFullStateTrie(entries, FullStateTrieLimits(trie: bounds)).value
+  let limits = LightSnapshotLimits(bytes: ByteLimit(1048576), cache: LightCacheLimits(
+    items: ElementLimit(27), writes: ElementLimit(2), valueBytes: ByteLimit(27648),
+    proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(1024))))
+  var proofs = newSeq[LightStateProof](entries.len)
+  for index, entry in entries:
+    proofs[index] = LightStateProof(key: entry.key, proof: trie.prove(entry.key,
+        limits.cache.proof).value)
+  let initial = prepareLightSnapshot(default(StorageChainId), root, proofs, limits).value
+  let heldBytes = initial.bytes
+  let reader = initial.cache
+  for removed in 0..<proofs.len:
+    # Removing each ordinal covers a zero prefix/suffix and every intervening cursor alignment and payload width.
+    var expected: seq[LightStateProof] = @[]
+    for index, proof in proofs:
+      if index != removed: expected.add(proof)
+    let next = initial.forget([proofs[removed].key]).value
+    let canonical = prepareLightSnapshot(default(StorageChainId), root, expected, limits).value
+    assert next.encodedBytes == canonical.encodedBytes
+    assert next.cache.lookup(proofs[removed].key).error == LightCacheError.UnknownKey
+    let restored = next.admit([proofs[removed]]).value
+    assert restored.encodedBytes == heldBytes and initial.encodedBytes == heldBytes
+    for index, entry in entries:
+      # Both old and rebuilt cache values retain independent fixture bytes after the copy and checksum complete.
+      assert restored.cache.lookup(entry.key).value.bytes == entry.value
+      assert reader.lookup(entry.key).value.bytes == entry.value
+    let decoded = restoreLightSnapshot(next.encodedBytes, default(StorageChainId), root, limits).value
+    assert decoded.encodedBytes == canonical.encodedBytes
 proc main() {.raises.} =
   ## The independent flat map establishes the complete root before any partial-cache operation.
   resetHash(0)
@@ -232,6 +272,7 @@ proc main() {.raises.} =
     perValue: ByteLimit(33), totalValueBytes: ByteLimit(33))
   let root = stateTrieRoot(entries, bounds).value.root
   let trie = newFullStateTrie(entries, FullStateTrieLimits(trie: bounds)).value
+  retainedSpans()
   edits(trie, root)
   model(trie, root)
   files(trie, root)
