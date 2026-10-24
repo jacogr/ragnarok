@@ -467,4 +467,5 @@ root unions and captured, exclusively pinned epoch reclamation now separate logi
 physical file lifetime. Source-derived full compaction preserves exact history and ordinary
 generation while rewriting authenticated pages into a new epoch. Explicit replay cleanup and
 bootstrap resume compare complete independent target/staging prefixes before removal, with a separate
-anonymous replay disk ceiling and fresh capture after uncertainty. Consumer adoption remains open.
+anonymous replay disk ceiling and fresh capture after uncertainty. Explicit trusted-manifest epoch
+readers recover old pins and exact reclamation receipts after restart. Consumer adoption remains open.
