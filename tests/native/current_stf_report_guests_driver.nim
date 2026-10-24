@@ -16,7 +16,7 @@ import ../../src/chain/[provider, genesis, parameters]
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
   state_requests, state_service_values, state_layout, state_safrole, composite]
 import ../../src/crypto/primitives
-import ../../src/state/[trace_step, trace_state]
+import ../../src/state/[trace_step, trace_state, trace_file]
 import ../../src/state/safrole_transition
 import ../../src/state/[store, checkpoint, accumulation_current_update,
   accumulation_current_completion,
@@ -186,7 +186,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
 
 
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
-    uint32] = @[], reload = false, exchange = false, traceMode = false) =
+    uint32] = @[], reload = false, exchange = false, traceMode = false, fileMode = false) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
   let replacement = if mode in 171..175: supervisedWriteCode(82) elif mode in
       92..96: supervisedReplacementCode() else: namespaceHaltCode()
@@ -430,11 +430,20 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     var imported = default(TraceStep)
     if traceMode:
       # Full independently signed TraceStep bytes enter unchanged under explicit actual-chain structural limits.
-      let decoded = decodeTraceStep(body, TraceStepLimits(frame: limits.reporting.admission.frame,
-          state: reportContext.limits(), bytes: ByteLimit(1000000)))
-      assert decoded.error == TraceStepError.None
-      assert decoded.value.traceStepBytes.value == body.len
-      imported = decoded.value
+      let policy = TraceStepLimits(frame: limits.reporting.admission.frame,
+          state: reportContext.limits(), bytes: ByteLimit(1000000))
+      if fileMode:
+        var path = newString(body.len)
+        for index in 0..<body.len: path[index] = char(body[
+            index]) # The request transport carries an explicitly authored UTF-8 path, not an unbounded file buffer.
+        let loaded = loadTraceStepFile(path, policy)
+        assert loaded.error == TraceFileError.None
+        imported = loaded.value
+      else:
+        let decoded = decodeTraceStep(body, policy)
+        assert decoded.error == TraceStepError.None
+        assert decoded.value.traceStepBytes.value == body.len
+        imported = decoded.value # Inline trace callers retain their existing strict whole-request contract.
     let child = if traceMode: imported.traceBlock.value
       elif slots.len > 0 and slots[bodyIndex] > 0:
         epoch.child(before, slots[bodyIndex], @[], @[], limits = limits, bodyWire = body)
@@ -705,6 +714,7 @@ proc main() {.raises.} =
   var reload = false
   var exchange = false
   var traceMode = false
+  var fileMode = false
   var bodies: seq[seq[byte]] = @[]
   var slots: seq[uint32] = @[]
   for line in readFile(paramStr(2)).splitLines:
@@ -713,9 +723,10 @@ proc main() {.raises.} =
     assert fields.len in [2, 3]
     if fields[0] == "C":
       if mode >= 0: run(base, mode, bodies, missingCode,
-          slots, reload, exchange, traceMode) # Finish the complete chain before selecting another original.
+          slots, reload, exchange, traceMode, fileMode) # Finish the complete chain before selecting another original.
       missingCode = fields.len == 3 and fields[2] == "missing"
-      traceMode = fields.len == 3 and fields[2] == "trace"
+      fileMode = fields.len == 3 and fields[2] == "trace-file"
+      traceMode = fileMode or (fields.len == 3 and fields[2] == "trace")
       exchange = traceMode or (fields.len == 3 and fields[2] == "exchange")
       reload = exchange or (fields.len == 3 and fields[2] == "reload")
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
@@ -724,13 +735,13 @@ proc main() {.raises.} =
       bodies = @[]
       slots = @[]
     else:
-      assert fields[0] == (if traceMode: "T" else: "B") and mode >= 0
+      assert fields[0] == (if fileMode: "F" elif traceMode: "T" else: "B") and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
       106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160, 165, 170, 175, 182, 189]
-  run(base, mode, bodies, missingCode, slots, reload, exchange, traceMode)
+  run(base, mode, bodies, missingCode, slots, reload, exchange, traceMode, fileMode)
 
 try:
   main() # I/O, compilation, guest, publication or qualification failure fails the complete corpus.

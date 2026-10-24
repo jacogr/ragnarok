@@ -1474,5 +1474,40 @@ def current_stf_trace_import_corpus(compiler, report, checks, libraries):
 
 
 
+@CORPORA.case
+def current_stf_trace_files_corpus(compiler, report, checks, libraries):
+    """Compare exact bounded file-backed current STF imports and independent complete-map/refusal observations."""
+    from current_stf_trace_files_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_trace_files', 'current_stf_transfers', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest # Frozen independent evidence precedes materialization and native execution.
+    requests, expected, evidence = expected_observations()
+    files = checks.folder/'current-stf-trace-inputs'
+    files.mkdir(exist_ok=True)
+    invoke = []
+    ordinal = 0
+    for line in requests:
+        if line.startswith('T '):
+            path = files/('step-'+str(ordinal).zfill(4)+'.bin')
+            path.write_bytes(bytes.fromhex(line[2:]))
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == evidence['traces']['file_sha256'][ordinal]
+            invoke.append('F '+str(path.resolve()).encode().hex())
+            ordinal += 1 # A hexadecimal path transport preserves spaces without inventing another trace file encoding.
+        else:
+            invoke.append(line) # Actual original-mode declarations preserve the exact explicitly configured profile.
+    assert ordinal == evidence['files']
+    source = checks.folder/'current-stf-trace-files-requests.txt'
+    source.write_text('\n'.join(invoke)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-trace-files', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent exact published files, signed STF blocks/complete maps and refusal isolation')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-trace-files-corpus', expected)
+    announce('independent bounded-file current STF whole maps', corpus['passed'])
+    return corpus
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
