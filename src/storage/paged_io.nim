@@ -561,6 +561,14 @@ proc lookupFile*(file: var PagedFile, checked: CheckedPagedArtifact, query: Stat
   let found = lookupPaged(checked, input(data), query, budget)
   latch(data, found.error)
   found
+proc proofFile*(file: var PagedFile, checked: CheckedPagedArtifact, query: StateKey,
+    budget: PagedWorkLimits): PagedStreamResult[PagedProofLookup] =
+  ## Exact native identity/pin checks cover the same bounded source reads as ordinary value lookup.
+  let data = file.data
+  if data == nil or not data.active: return lookupPagedProof(checked, default(PagedInput), query, budget)
+  let found = lookupPagedProof(checked, input(data), query, budget)
+  latch(data, found.error)
+  found
 proc appender(data: FileData): PagedAppend =
   ## Capture a statically non-nil stable file state in a synchronous-only append callback.
   proc append(bytes: openArray[byte]): bool {.closure.} =
