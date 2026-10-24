@@ -74,6 +74,8 @@ history eviction, MMR carries, authorizer-pool saturation, Thin entropy, statist
 service namespaces. The [nonempty-extrinsic and guest-effect goldens](../spec/current-stf-effects-goldens.md)
 extend complete-map parity to requested preimages, storage create/replace/delete, yield and panic
 rollback/checkpoint retention across ten more actual transitions. Broader full STF parity remains open.
+The [epoch/ticket goldens](../spec/current-stf-epoch-goldens.md) add twenty-two complete transitions
+covering roster rotation, ticket contests, cutoff markers, ticket/fallback sealing and epoch skips.
 
 See the source contracts for [current globals](../spec/state-current-globals.md),
 [current serialization](../spec/state-current-state.md),

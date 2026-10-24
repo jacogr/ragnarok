@@ -81,4 +81,6 @@ Linux CI is separate.
 This is complete-map parity for these literal guests and preimage-only nonempty extrinsics.
 General PVM execution, reports/guarantees/assurances/disputes/tickets, epoch changes, transfers,
 service lifecycle and all other host effects need additional independent whole-map cases.
+The [epoch/ticket goldens](current-stf-epoch-goldens.md) now cover selected ticket admission,
+epoch/marker/sealing paths and multi-epoch skipping separately from these literal guests.
 The separately documented published signed-trace and metadata limitations remain open.

@@ -63,6 +63,8 @@ establish guest-effect, epoch-change, ticket/dispute/report admission or general
 The [nonempty-extrinsic and guest-effect goldens](current-stf-effects-goldens.md) add selected
 preimage/storage/yield/checkpoint chains; broader cases retain their focused native checks and
 need further independent whole-map coverage.
+The [epoch/ticket goldens](current-stf-epoch-goldens.md) additionally cover complete rotation,
+ticket admission, cutoff markers, ticket/fallback sealing and multi-epoch skipping.
 Published signed traces at the selected vector pin still have the separately recorded mixed-profile
 credentials and historical metadata limitations; these authored cases do not repair those sources.
 The conflicting-allowance `AmbiguousPrivileges` guard remains unchanged.
