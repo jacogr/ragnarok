@@ -145,7 +145,19 @@ func pageScalar(page: PageData, offset, count: int): uint64 {.inline,
     var tag = default(array[2, byte])
     copyMem(addr tag[0], addr endian, 2)
     if tag[0] == 1:
-      copyMem(addr result, unsafeAddr page.chunks[chunk].bytes[within], count)
+      case count
+      of 2:
+        # Fixed admitted widths lower to unaligned-safe native loads without a variable copy call.
+        copyMem(addr result, unsafeAddr page.chunks[chunk].bytes[within], 2)
+      of 4:
+        # Copy the complete half-register span after the same permission and chunk preflight.
+        copyMem(addr result, unsafeAddr page.chunks[chunk].bytes[within], 4)
+      of 8:
+        # A full register still reads exactly eight bytes, including unaligned offsets.
+        copyMem(addr result, unsafeAddr page.chunks[chunk].bytes[within], 8)
+      else:
+        # Page-fragment widths retain the original bounded byte-count copy.
+        copyMem(addr result, unsafeAddr page.chunks[chunk].bytes[within], count)
       return # Little-endian hosts now hold the exact zero-extended guest word.
   for index in 0..<count:
     # Big-endian hosts and chunk-crossing spans retain the portable byte-wise equation.
@@ -191,7 +203,19 @@ proc setPageScalar(page: PageData, offset, count: int, value: uint64) {.inline,
     copyMem(addr tag[0], addr endian, 2)
     if tag[0] == 1:
       var word = value
-      copyMem(addr page.chunks[chunk].bytes[within], addr word, count)
+      case count
+      of 2:
+        # Fixed admitted widths permit native unaligned-safe stores after private-chunk preparation.
+        copyMem(addr page.chunks[chunk].bytes[within], addr word, 2)
+      of 4:
+        # Only the low four little-endian bytes replace this proven private extent.
+        copyMem(addr page.chunks[chunk].bytes[within], addr word, 4)
+      of 8:
+        # The full register replaces exactly the admitted eight-byte span.
+        copyMem(addr page.chunks[chunk].bytes[within], addr word, 8)
+      else:
+        # Cross-page fragments retain their original exact-width copy.
+        copyMem(addr page.chunks[chunk].bytes[within], addr word, count)
       return
   for index in 0..<count:
     # Big-endian and chunk-crossing writes retain byte-wise little-endian semantics.
