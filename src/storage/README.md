@@ -399,3 +399,8 @@ owned integration work.
 `planLightRetention` and `admitRetained` provide opt-in deterministic quota eviction, protecting
 incoming queries and applying one atomic immutable update under the original root and hard policy.
 See [bounded evidence retention](../../spec/storage-light-retention.md).
+
+Journal `prepareLightRetainedUpdate` and `admitRetained` authenticate automatic quota eviction
+and admission in one ordinary frame and one barrier. Prepared groups bind every journal policy
+scalar as well as their exact physical predecessor; strict reopen and explicit tail repair retain
+their existing uncertainty contracts.

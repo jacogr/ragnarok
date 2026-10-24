@@ -48,3 +48,33 @@ before/after. Four runtime guards, three real successful controls and two strict
 rejections pass. Existing incremental-update, atomic-batch and selective-export suites pass.
 Full pinned formatting and inventory pass. These results are local macOS arm64 evidence;
 exact-head Linux checks and hardware power-loss qualification remain distinct.
+
+## Durable journal retention
+
+`prepareLightRetainedUpdate(owner, proofs, limits)` returns an ordinary opaque one-frame
+`PreparedLightJournalBatch`. Remaining frame/sequence/journal byte capacities precede planning;
+exact combined admit/forget frame limits precede crypto. No mutable incoming proof batch is
+retained. The canonical frame is identical to manually requesting the independently chosen
+admissions/removals, and final knowledge remains private until one append barrier succeeds.
+`admitRetained(owner, proofs, limits)` prepares and appends this frame synchronously.
+
+Prepared batches bind the physical epoch, selected manifest, predecessor image, sequence,
+frame count, byte extent, snapshot policy and every journal policy scalar. Reopening under a
+changed journal policy returns InvalidBatch before IO; same-image physical/root return cycles
+remain stale. Existing ordinary batch preparation captures the same exact policy. Root switches
+still require the separately supplied independent destination root and fresh proof replacement.
+
+An empty request follows ordinary journal-update semantics: even a fitting no-op consumes one
+sequence/frame and durability barrier. Retention does not silently compact, retry an uncertain
+append or delete abandoned files. Complete written frames can strictly replay after an uncertain
+barrier; incomplete frames require explicit held-inode repair before retry. Retained old readers
+remain independent; no failed append exposes a fresh confirmed image or eviction receipt.
+
+Durable local evidence passes exact manually authored frame bytes, one append/write barrier
+without destination rehash, nine changed-policy reopen cases (all journal scalars and snapshot
+mutation policy), same-image physical/root return cycles, pre-crypto capacities, each observed
+provider failure and three consumed IO failures. Four real completion controls and ten exact
+stopped-child kill/reap boundaries cover whole/64-byte writes and barriers, retained LOCK,
+strict complete-frame reopen, explicit partial-tail repair, exact retry and a following update.
+One thousand prepared/copy/late-checksum-failure cycles retain 14,816/14,816 ARC bytes. Existing
+batch, batch-process-crash and root-advancement suites pass on the changed owner module.
