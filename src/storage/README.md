@@ -364,3 +364,7 @@ Explicit light journal reclamation revalidates the exact selected checkpoint and
 before removing earlier canonical epochs or fixed staging. Prepared abandoned candidates must
 match every expected canonical prefix before any unlink; idempotent retries synchronize even
 already absent names. See [guarded reclamation](../../spec/storage-light-journal-reclamation.md).
+
+Grouped [replacement process-crash qualification](../../spec/storage-light-replacement-crashes.md)
+checks every observed compaction and cleanup boundary, exact old/new selection, forensic bytes,
+lease release and explicit synchronized cleanup/retry before the next authenticated append.
