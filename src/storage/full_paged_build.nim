@@ -4,7 +4,7 @@
 ## Replay-bound full-state artifact construction uses one record, fixed pages and a bounded digest stack.
 ## Successful construction includes complete graph admission; borrowed producer/output/scratch never escape.
 import std/assertions
-import ./[full_paged_codec, full_paged_stream, paged_codec, paged_stream, node_records]
+import ./[full_paged_codec, full_paged_stream, paged_codec, paged_stream, node_records, managed_manifest]
 import ../codec/bounded
 import ../crypto/primitives
 
@@ -17,6 +17,9 @@ type
   FullPagedBuildLimits* = object ## Construction budgets are separate from final full-admission work budgets.
     admission*: FullPagedStreamLimits
     producerCalls*, ioCalls*, hashes*: ElementLimit
+    readBytes*, writeBytes*: ByteLimit
+  FullPagedCompactionLimits* = object ## Source-page and target-tree work share these finite construction counters.
+    ioCalls*, hashes*: ElementLimit
     readBytes*, writeBytes*: ByteLimit
   FullPagedBuildError* {.pure.} = enum ## Failed authoring preserves only forensic bytes and a selected cause.
     Uninitialized, None, LimitExceeded, IOFailure, ProducerFailure, ChangedInput, CodecFailure, GraphFailure
@@ -288,4 +291,70 @@ header: FullPagedHeader, limits: FullPagedBuildLimits): FullPagedBuildResult =
     return FullPagedBuildResult(status: FullPagedBuildError.ChangedInput)
   FullPagedBuildResult(status: FullPagedBuildError.None,
     completed: FullPagedBuildReceipt(checked: admitted.value, calls: work.calls, io: work.io,
+      hashes: work.hashes, read: work.read, written: work.written))
+
+proc compactFullPaged*(output: PagedOutput, source: PagedInput, scratch: FullPagedScratch,
+    checked: CheckedFullPagedArtifact, target: FullPagedHeader,
+    limits: FullPagedCompactionLimits): FullPagedBuildResult =
+  ## Exact source-derived physical rewrite changes only epoch and local digests; no caller producer or history replacement exists.
+  if not checked.initialized or not target.initialized:
+    return FullPagedBuildResult(status: FullPagedBuildError.Uninitialized)
+  let original = checked.header
+  if uint64(original.epoch) == high(uint64):
+    return FullPagedBuildResult(status: FullPagedBuildError.LimitExceeded)
+  if uint64(target.epoch) != uint64(original.epoch)+1:
+    return FullPagedBuildResult(status: FullPagedBuildError.ChangedInput)
+  let prior = original.bytes
+  let next = target.bytes
+  for index in 0..<PagedPageBytes:
+    # All canonical header bytes except the positive physical epoch must remain exactly identical.
+    if (index < 64 or index >= 72) and prior[index] != next[index]:
+      return FullPagedBuildResult(status: FullPagedBuildError.ChangedInput)
+  let inherited = checked.limits
+  var work = Build(status: FullPagedBuildError.None,
+    limits: FullPagedBuildLimits(admission: inherited, ioCalls: limits.ioCalls,
+      hashes: limits.hashes, readBytes: limits.readBytes, writeBytes: limits.writeBytes))
+  let shape = original.geometry
+  if shape.byteLength > uint64(limits.writeBytes):
+    return FullPagedBuildResult(status: FullPagedBuildError.LimitExceeded)
+  if not scratch.input.checkExtent(shape.entries*2, work): return work.refused
+  if not source.checkExtent(shape.byteLength, work): return work.refused
+  if not output.source.checkExtent(0, work): return work.refused
+  for ordinal in 0'u64..<shape.dataPages:
+    # Full authenticated source pages retain exact index/payload padding and every complete physical child bit.
+    let depth = uint64(shape.treeDepth)
+    if not work.charge(Channel.IO, depth+3): return work.refused
+    if not work.charge(Channel.Hash, depth+1): return work.refused
+    if not work.charge(Channel.Read, 4096+depth*32): return work.refused
+    let fetched = fetchFullPagedPage(source, checked, PageOrdinal(ordinal))
+    if work.status != FullPagedBuildError.None: return work.refused
+    if fetched.error != FullPagedStreamError.None:
+      let reason = if fetched.error == FullPagedStreamError.CodecFailure: fetched.codecError else:
+        FullPagedError.Uninitialized
+      return FullPagedBuildResult(status: FullPagedBuildError.GraphFailure,
+        graphCause: fetched.error, graphCodec: reason)
+    if ordinal == 0:
+      # Source header still binds the captured checked position before any target byte is appended.
+      if fetched.value != prior: return FullPagedBuildResult(
+          status: FullPagedBuildError.ChangedInput)
+      if not output.appendRaw(next, work): return work.refused
+    else:
+      if not output.appendRaw(fetched.value, work): return work.refused
+  if not source.checkExtent(shape.byteLength, work): return work.refused
+  if not output.source.checkExtent(uint64(shape.treeOffset), work): return work.refused
+  let root = output.emitTree(shape, 0, shape.treeLeaves, work)
+  if work.status != FullPagedBuildError.None: return work.refused
+  if not output.source.checkExtent(shape.byteLength, work): return work.refused
+  let selected = encodeFullPagedManifest(target, root)
+  if not work.codec(selected.error): return work.refused
+  let admitted = validateFullPaged(output.source, scratch, target, selected.value, inherited)
+  if admitted.error != FullPagedStreamError.None:
+    let reason = if admitted.error == FullPagedStreamError.CodecFailure: admitted.codecError else:
+      FullPagedError.Uninitialized
+    return FullPagedBuildResult(status: FullPagedBuildError.GraphFailure,
+      graphCause: admitted.error, graphCodec: reason)
+  if array[32, byte](admitted.value.fingerprint) != array[32, byte](checked.fingerprint):
+    return FullPagedBuildResult(status: FullPagedBuildError.ChangedInput)
+  FullPagedBuildResult(status: FullPagedBuildError.None,
+    completed: FullPagedBuildReceipt(checked: admitted.value, io: work.io,
       hashes: work.hashes, read: work.read, written: work.written))

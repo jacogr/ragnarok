@@ -131,26 +131,13 @@ proc counterExhaustion(source: FullPagedFixture) =
     let root = branch(leaf(0, @[7'u8]), leaf(128, @[]))
     let full = fixture(source.records, root, source.roots, epoch, generation)
     let directory = path("exhausted-" & $exhausted)
-    var owner = default(PagedDirectory)
     var writer = default(FullPagedWriter)
     var candidate = default(FullPagedCandidate)
     defer:
       resetHash(0)
       if candidate.opened: discard candidate.close
       if writer.opened: discard writer.close
-      if owner.opened: discard owner.close
-    assert openDirectory(owner, directory, true, true) == FileError.None
-    assert owner.close == FileError.None
-    var body = newString(full.io.bytes.len)
-    for index in 0..<body.len: body[index] = char(full.io.bytes[index]) # Independent complete fixture bytes.
-    let raw = full.manifest.bytes.value
-    var selection = newString(raw.len)
-    for index in 0..<raw.len: selection[index] = char(raw[index]) # Fixed full CURRENT.
-    try:
-      writeFile(directory & "/" & epochName(epoch).value, body)
-      writeFile(directory & "/CURRENT", selection)
-    except:
-      assert false, "counter fixture write failed"
+    seedOracle(directory, full)
     assert openFullPagedWriter(writer, directory, source.config).error == FullPagedNativeError.None
     resetHash(0)
     let refused = prepareFullPagedReplacement(writer, candidate, source.header.root, source.roots,

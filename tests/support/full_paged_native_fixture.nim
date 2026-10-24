@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared native full-paged fixtures preserve independent complete-map roots and finite caller-owned producers.
-import std/assertions
+import std/[assertions, syncio]
 import ./full_paged_reference
 import ../../src/storage/[full_paged_codec, full_paged_stream, full_paged_build,
-  full_paged_store, node_records, durability, file_errors]
+  full_paged_store, paged_io, managed_manifest, node_repository, node_records, durability, file_errors]
 import ../../src/codec/[bounded, state_layout, state_trie]
 
 proc producer*(records: seq[TrieRecord]): FullPagedProducer =
@@ -50,3 +50,45 @@ proc sample*(value: byte): FullPagedFixture =
   assert expected.error == StateTrieError.None
   assert array[32, byte](expected.value.root) == array[32, byte](root.digest)
   fixture(@[left, right, root], root, @[claim(root, 2, 3, 1)])
+
+proc historySample*(prior, next: byte): FullPagedFixture =
+  ## Two independently cross-checked complete maps share the unchanged right leaf in an exact retained union.
+  assert prior != next
+  let before = sample(prior)
+  let after = sample(next)
+  let a = leaf(0, @[prior])
+  let b = leaf(0, @[next])
+  let right = leaf(128, @[])
+  let oldRoot = branch(a, right)
+  let newRoot = branch(b, right)
+  assert array[32, byte](before.header.root) == array[32, byte](oldRoot.digest)
+  assert array[32, byte](after.header.root) == array[32, byte](newRoot.digest)
+  fixture(@[a, b, right, oldRoot, newRoot], newRoot,
+    @[claim(oldRoot, 2, 3, 1), claim(newRoot, 2, 3, 1)])
+proc reposition*(source: FullPagedFixture, epoch: ManagedEpoch,
+    generation: RepositoryGeneration): FullPagedFixture =
+  ## Independent oracle changes only scalar physical position before rebuilding the complete local tree.
+  var selected = default(TrieRecord)
+  var found = false
+  for record in source.records:
+    # Sorted fixture inventory contains the selected complete physical root exactly once.
+    if array[32, byte](record.digest) == array[32, byte](source.header.root):
+      selected = record
+      found = true
+  assert found
+  fixture(source.records, selected, source.roots, epoch, generation)
+proc seedOracle*(directory: string, source: FullPagedFixture) =
+  ## Real locked namespace plus independent oracle bytes supports exact-counter fixtures without claiming a publication receipt.
+  var owner = default(PagedDirectory)
+  assert openDirectory(owner, directory, true, true) == FileError.None
+  assert owner.close == FileError.None
+  var body = newString(source.io.bytes.len)
+  for index in 0..<body.len: body[index] = char(source.io.bytes[index]) # Complete reference bytes.
+  let raw = source.manifest.bytes.value
+  var selected = newString(raw.len)
+  for index in 0..<raw.len: selected[index] = char(raw[index]) # Exact fixed-width CURRENT.
+  try:
+    writeFile(directory & "/" & epochName(source.header.epoch).value, body)
+    writeFile(directory & "/CURRENT", selected)
+  except:
+    assert false, "full paged oracle write failed"
