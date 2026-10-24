@@ -108,7 +108,8 @@ proc failure(outcome: CurrentCandidateResult): string =
             else: discard # Other actual typed guest failures retain their direct reason.
 
 
-proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): array[2, seq[byte]] =
+proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, staging: seq[
+    byte] = @[]): array[2, seq[byte]] =
   ## Keep literal family selection explicit and independent of the growing original/namespace construction workflow.
   var first = namespaceHaltCode()
   if mode in 113..117:
@@ -121,6 +122,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): 
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 118..122: second = designationCode(mode, staging) # Staging publication becomes pending and then active across two epochs.
   of 113..117: second = precedenceManagerCode(mode) # GP R preserves the manager proposal only when it actually changes the old role.
   of 107..112: second = authorizationAssignCode(mode) # Real ordered queue replacement and original-assigner publication.
   of 102..106: second = supervisedHandoffCode(mode) # Foreign role assignment changes immediate authority but keeps prior-based M selection.
@@ -159,7 +161,14 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   let replacement = if mode in 92..96: supervisedReplacementCode() else: namespaceHaltCode()
   let replacementHash = array[32, byte](blake2b256(replacement).value)
   let requestHash = ServicePreimageHash(array[32, byte](blake2b256([82'u8]).value))
-  let codes = fixtureCodes(mode, replacementHash, uint32(replacement.len))
+  var staged: seq[byte] = @[]
+  if mode in 118..122:
+    # This maintained fixture authors the exact original ring-witness membership used independently by the reference.
+    let source = epoch.original(base)
+    let encoded = source.stateSnapshot.lookup(chapterKey(StateChapter(7))).value.bytes
+    assert encoded.len == 2017 and encoded[0] == 6
+    for index in 1..<encoded.len: staged.add(encoded[index])
+  let codes = fixtureCodes(mode, replacementHash, uint32(replacement.len), staged)
   var seeds = namespaceSeeds()
   for index in 0..<2:
     let codeHash = ServicePreimageHash(array[32, byte](blake2b256(codes[index]).value))
@@ -228,6 +237,8 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   if mode in 113..117:
     options.assigner = 42 # Original assigner, not the later manager-selected role, supplies the queue.
     options.manager = 99
+  if mode in 118..122:
+    options.delegator = (if mode == 122: 42'u32 else: 99'u32) # A real original role determines selected staging authority.
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -239,7 +250,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     options.signed.extra.add(serviceMetadataEntry(ServiceIndex(77), donor, ByteLimit(105)).value)
   let fixture = executionFixture(base, options)
   var chainParameters = currentChainSettings()
-  if mode in 107..117 and mode != 112:
+  if mode in 107..122 and mode != 112:
     # This authored larger-code profile admits the real queue-bearing program; mode112 retains512 as its eligibility control.
     var wire = chainParameters.encodeParameters
     for index in 0..<4: wire[98+index] = byte((4096'u32 shr (8*index)) and 255)
@@ -292,7 +303,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
     limits.completion.execution.initial.guests.deletedAccounts = ElementLimit(1)
     limits.completion.execution.execution.round.guests.deletedAccounts = ElementLimit(1)
-  if mode in 107..117:
+  if mode in 107..122:
     # Whole code includes the actual2560-byte queue; bounded code/initialization/copy policies admit this exact authored size.
     limits.completion.composition.validators.preimageBytes = ByteLimit(4096)
     limits.completion.composition.activity.preimages.perBlob = ByteLimit(4096)
@@ -488,7 +499,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 118
+      assert mode >= 0 and mode < 123
       bodies = @[]
       slots = @[]
     else:
@@ -497,7 +508,7 @@ proc main() {.raises.} =
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
-      106, 111, 112, 117]
+      106, 111, 112, 117, 122]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:
