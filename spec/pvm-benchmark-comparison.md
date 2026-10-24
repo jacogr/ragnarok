@@ -9,7 +9,8 @@ corpora establish a useful common subset before timing. This is the first limite
 baseline, not a declaration that all PVM/JAM correctness gates are closed.
 
 One consolidated comparison covers all workloads. The maintainer currently selects
-Ragnarök with dynamic and optional [planned pricing](pvm-gas-plans.md) versus the PolkaVM
+Ragnarök with dynamic pricing, optional [complete plans](pvm-gas-plans.md) and
+[lazy memos](pvm-gas-memos.md) versus the PolkaVM
 interpreter; compiled comparison is explicitly deferred
 until the interpreter baseline is competitive. No compiler backend process is started
 by `make bench-pvm`, and no CI kernel settings are changed. The
@@ -771,3 +772,8 @@ open full STF/JAM parity, deferred compiled comparison and deferred fuzzing rema
 
 The opt-in [maintained real-sieve comparison](pvm-sieve-benchmark.md) complements these
 synthetic guests with a frozen linked upstream program and complete terminal-state checks.
+
+The lazy memo synthetic host specialization is built separately with `pvmBenchmarkMemo` while
+retaining the same checked ARC/Clang ThinLTO flags and fixture. This prevents its additional generic
+instantiation from changing legacy host-loop code generation. Both binaries reject wrong pricing
+labels before producing samples; exact binaries and build defines remain in the report.

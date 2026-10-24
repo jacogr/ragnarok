@@ -1,0 +1,94 @@
+{
+  "build_name": "pvm-gas-memo-results",
+  "cases": [
+    {
+      "arguments": [
+        "cycle-price"
+      ],
+      "description": "PVM gas memo cycle-price",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "cycle-price"
+      },
+      "name": "pvm-gas-memo-cycle-price"
+    },
+    {
+      "arguments": [
+        "default-info"
+      ],
+      "description": "PVM gas memo default-info",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "default-info"
+      },
+      "name": "pvm-gas-memo-default-info"
+    },
+    {
+      "arguments": [
+        "default-price"
+      ],
+      "description": "PVM gas memo default-price",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "default-price"
+      },
+      "name": "pvm-gas-memo-default-price"
+    },
+    {
+      "arguments": [
+        "default-result"
+      ],
+      "description": "PVM gas memo default-result",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "default-result"
+      },
+      "name": "pvm-gas-memo-default-result"
+    },
+    {
+      "arguments": [
+        "default-source"
+      ],
+      "description": "PVM gas memo default-source",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "default-source"
+      },
+      "name": "pvm-gas-memo-default-source"
+    },
+    {
+      "arguments": [
+        "invalid-price"
+      ],
+      "description": "PVM gas memo invalid-price",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "invalid-price"
+      },
+      "name": "pvm-gas-memo-invalid-price"
+    },
+    {
+      "arguments": [
+        "invalid-result"
+      ],
+      "description": "PVM gas memo invalid-result",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "invalid-result"
+      },
+      "name": "pvm-gas-memo-invalid-result"
+    },
+    {
+      "arguments": [
+        "limited-result"
+      ],
+      "description": "PVM gas memo limited-result",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "limited-result"
+      },
+      "name": "pvm-gas-memo-limited-result"
+    }
+  ],
+  "source": "tests/native/pvm_gas_memo_results.nim"
+}

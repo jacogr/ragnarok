@@ -1,8 +1,8 @@
 # Maintained real-sieve interpreter comparison
 
 `make bench-pvm-sieve` runs the checked-in upstream prime-sieve guest on Ragnarök and pinned
-PolkaVM's **Interpreter**, JamV1, synchronous Full/L2Hit gas profile. Ragnarök runs both
-dynamic and optional [planned pricing](pvm-gas-plans.md), with complete state checks in each mode. It builds the host runners
+PolkaVM's **Interpreter**, JamV1, synchronous Full/L2Hit gas profile. Ragnarök runs
+dynamic, optional [complete plans](pvm-gas-plans.md) and [lazy memos](pvm-gas-memos.md), with complete state checks in each mode. It builds the host runners
 through normal setup; it installs no historical guest compiler and invokes no compiled backend.
 The existing `make bench-pvm` eleven-workload comparison remains separate; its frozen guests are unchanged.
 
@@ -31,8 +31,9 @@ removing observations. This is not host isolation or a statistical significance 
 
 Planned mode additionally emits one strict preparation record with CPU/wall duration, code bytes,
 block count, table payload and fixed cycle ceiling. Both process orders and both guest sizes must
-agree on resource identity. The summary shows preparation and reuse amortization separately; a
-cold invocation pays that additional cost.
+agree on resource identity. The summary shows preparation and reuse amortization separately. Memo mode additionally requires
+a final bounded occupancy witness and shows first-cold execution alongside initialization, because
+that first execution performs lazy pricing. A cold invocation pays those costs before reuse helps.
 
 Before measurement, each engine/pricing mode must fail its assertion sentinel, reject a
 truncated initial machine, and reject a corrupted expected register. Every measured invocation
