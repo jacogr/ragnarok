@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_SUPERVISED_HANDOFF",
+  "files": {
+    "current-stf-supervised-handoff.json": "23074d255248327e4813b4071ed647fd9d174dd9be386c0c424712b5a5c73d54"
+  },
+  "target": "current-stf-supervised-handoff.json"
+}
