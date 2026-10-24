@@ -86,3 +86,6 @@ observations (124752 and 17664 occupied bytes respectively). The complete integr
 runner passes all ten declared reference/native pairs. Ten focused Python tests,
 inventory and pinned formatting checks pass. Evidence is local macOS checked release
 ARC/Clang LTO and pinned Rust release; remote Linux CI has not been requested.
+
+Full invocation policies and paid page-by-page fault repair now reuse these unchanged frozen
+expectations; see [scalar policy reference](pvm-scalar-policy-reference.md).
