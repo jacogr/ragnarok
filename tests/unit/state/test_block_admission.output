@@ -1,1 +1,1 @@
-PASS block admission: ten signed blocks, complete parent roots and atomic same-block Safrole
+PASS block admission: ten historical refusals, three Thin blocks, complete parent roots and atomic same-block Safrole

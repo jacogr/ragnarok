@@ -18,7 +18,7 @@ import ../../../src/codec/[block_codec, header, bounded, guarantees, assurances,
   state_workqueues, state_authorization, tickets, report_owned, owned, work_report, composite]
 import ../../../src/crypto/[primitives, extrinsic_commitment]
 import ../../../src/bandersnatch/bandersnatch
-import ../../support/[report_context, arc_evidence]
+import ../../support/[report_context, arc_evidence, safrole_historical_refusal]
 
 ## Controlled backend refusal never replaces successful verification.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -194,7 +194,7 @@ proc boundaries(base: OwnedReport) =
   assert before == after
   recordArcRelease("report_admission", 1000, before, after)
 
-## Reuse unchanged published signed blocks, explicitly limited to their empty report batches.
+## Reject unchanged historical blocks before report work; independent Thin blocks retain empty-report publication checks.
 proc published() {.raises.} =
   var count = 0
   for line in readFile(getEnv("RAGNAROK_BLOCK_ADMISSION")).splitLines:
@@ -218,6 +218,17 @@ proc published() {.raises.} =
     let parent = decodeHeader(unhex(fields[2]), config().ancestors.header).value.owner
     let original = state
     let staged = stage(state, candidate, parent)
+    if not fields[0].startsWith("authored/"):
+      # Historical credentials cannot authorize report planning or publication under the current Thin profile.
+      assert staged.error == BlockTransitionError.SafroleFailure, fields[0] & " " & $staged.error
+      checkHistoricalRefusal(fields[0], staged.safroleError)
+      let failed = advanceBlockReports(state, candidate, parent, [], transitionConfig())
+      assert failed.error == BlockReportError.StageFailure
+      assert failed.stageError.error == BlockTransitionError.SafroleFailure
+      checkHistoricalRefusal(fields[0], failed.stageError.safroleError)
+      unchanged(original.snapshot.value, state.snapshot.value)
+      inc count
+      continue
     assert staged.error == BlockTransitionError.None
     let outcome = planBlockReports(staged, [], config())
     assert outcome.error == ReportAdmissionError.None, fields[0] & " " & $outcome.error
@@ -227,7 +238,7 @@ proc published() {.raises.} =
     assert published.error == BlockReportError.None, fields[0] & " publication " & $published.error
     unchanged(staged.value.snapshot, published.value.snapshot) # Empty reports add no C(10) change.
     inc count
-  assert count == 10
+  assert count == 13
 
 ## Missing fixtures fail, rather than quietly skipping authored or external evidence.
 proc main() {.raises.} =

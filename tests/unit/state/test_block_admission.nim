@@ -19,7 +19,7 @@ import ../../../src/crypto/[primitives, extrinsic_commitment]
 from ../../../src/codec/disputes import Disputes, DisputeHash, Culprit, DisputeSignature,
     DisputeConfig, DisputeError, encodeDisputes
 from ../../../src/codec/disputes import OffenderKey
-import ../../support/[validator_rotation_fixture, arc_evidence]
+import ../../support/[validator_rotation_fixture, arc_evidence, safrole_historical_refusal]
 
 ## Reset exact ordinary/ring/setup counters between fully retired invocations.
 proc reset(flags: cint) {.importc: "bo_reset", cdecl.}
@@ -381,12 +381,12 @@ proc stagedDisputesRollback(source: seq[StateEntry], raw: seq[byte], candidate: 
   assert verifications() == 0 # Wrong literal marker cannot reach ordinary seal verification.
   clearSeed(seed)
 
-## Published parent linkage, complete-state roots, exact block commitments and actual Safrole outputs agree together.
+## Historical blocks retain exact binding/refusal evidence; independent Thin blocks retain successful stage and rollback checks.
 proc cases(text: string) =
   let lines = text.splitLines()
-  assert lines.len == 11
+  assert lines.len == 14
   var emptyFamilies = default(OwnedExtrinsic)
-  for index in 0..<10:
+  for index in 0..<13:
     let fields = lines[index].splitWhitespace()
     assert fields.len == 11
     let raw = unhex(fields[1])
@@ -395,8 +395,10 @@ proc cases(text: string) =
     var parent = parentHeader(parentRaw)
     let source = entries(fields[3])
     let punished = offenders(unhex(fields[9]))
-    composed(source, raw, candidate, parent, unhex(fields[9]))
-    if index == 0: stagedDisputesRollback(source, raw, candidate,
+    if index >= 10:
+      composed(source, raw, candidate, parent, unhex(fields[
+          9])) # Current Thin positives retain full atomic-stage checks.
+    if index == 10: stagedDisputesRollback(source, raw, candidate,
         parent) # One deliberately altered signed template verifies rollback, not acceptance.
     reset(0)
     failHash(0)
@@ -419,15 +421,50 @@ proc cases(text: string) =
           BlockAdmissionError.BackendFailure
       assert hashes() == cint(prefix+1) and verifications() == 0 and setups() == 0
       unchanged(before, source, root)
-    if index == 0:
+    if index == 10:
       contextBoundaries(original, source, raw, parentRaw,
           punished) # One full mapping exercises independent context and ownership boundaries.
     elif index == 5:
       stricterTickets(original, candidate, parent, source,
           punished) # The first Safrole trace carries real submitted proofs.
+    reject(original, candidateBlock(changed(raw, 0)), parent, source, punished, policy(),
+        BlockAdmissionError.InvalidParentHash)
+    reject(original, candidateBlock(changed(raw, 32)), parent, source, punished, policy(),
+        BlockAdmissionError.InvalidStateRoot)
+    reject(original, candidateBlock(changed(raw, 64)), parent, source, punished, policy(),
+        BlockAdmissionError.InvalidExtrinsicHash)
+    reject(original, candidate, parentHeader(changed(parentRaw, parentRaw.len-1)), source, punished,
+        policy(), BlockAdmissionError.InvalidParentHash)
+    for kind in 0..<2:
+      var small = policy()
+      if kind == 0:
+        small.frame.maxBytes = ByteLimit(uint64(raw.len-1)) # Whole block is bounded before recapture or commitment hashing.
+      else:
+        small.maxParentHeaderBytes = ByteLimit(uint64(
+            parentRaw.len-1)) # Full sealed parent is separately bounded.
+      reject(original, candidate, parent, source, punished, small,
+          BlockAdmissionError.LimitExceeded)
+    if index == 0:
+      emptyFamilies = blockExtrinsic(candidate).value # Original empty body remains an explicit substitution witness.
+    elif index == 5:
+      var swapped = newSeq[byte](raw.len)
+      let written = encodeBlock(Block(header: blockHeader(candidate).value,
+          extrinsic: emptyFamilies), policy().frame, swapped)
+      assert written.error == FrameError.None
+      swapped.setLen(written.value)
+      reject(original, candidateBlock(swapped), parent, source, punished, policy(),
+          BlockAdmissionError.InvalidExtrinsicHash) # Historical tickets still bind to their exact signed commitment.
     reset(0)
     failHash(0)
     let result = advanceBlockSafrole(original, candidate, parent, punished, policy(), stagePolicy())
+    if index < 10:
+      # Original published bytes bind correctly but cannot authenticate under the current profile.
+      assert result.error == BlockSafroleError.SafroleFailure, fields[0] & " " & $result.error
+      checkHistoricalRefusal(fields[0], result.safroleError)
+      assert liveSetups() == 0
+      unchanged(original.snapshot.value, source, root)
+      continue
+    assert fields[0].startsWith("authored/")
     assert result.error == BlockSafroleError.None and verifications() == 2 and liveSetups() == 0
     let totalHashes = hashes()
     for i, chapter in [4, 6, 8, 9, 11]:
@@ -461,32 +498,6 @@ proc cases(text: string) =
     assert refused.safroleError.error == SafroleTransitionError.PublicationFailure
     assert refused.safroleError.publicationError == StateStoreError.BackendFailure
     unchanged(last.snapshot.value, source, root)
-    reject(last, candidateBlock(changed(raw, 0)), parent, source, punished, policy(),
-        BlockAdmissionError.InvalidParentHash)
-    reject(last, candidateBlock(changed(raw, 32)), parent, source, punished, policy(),
-        BlockAdmissionError.InvalidStateRoot)
-    reject(last, candidateBlock(changed(raw, 64)), parent, source, punished, policy(),
-        BlockAdmissionError.InvalidExtrinsicHash)
-    reject(last, candidate, parentHeader(changed(parentRaw, parentRaw.len-1)), source, punished,
-        policy(), BlockAdmissionError.InvalidParentHash)
-    for kind in 0..<2:
-      var small = policy()
-      if kind == 0:
-        small.frame.maxBytes = ByteLimit(uint64(raw.len-1)) # Whole block is bounded before recapture or commitment hashing.
-      else:
-        small.maxParentHeaderBytes = ByteLimit(uint64(
-            parentRaw.len-1)) # Full sealed parent is separately bounded.
-      reject(last, candidate, parent, source, punished, small, BlockAdmissionError.LimitExceeded)
-    if index == 0:
-      emptyFamilies = blockExtrinsic(candidate).value # Used later to prove another block's tickets cannot be substituted.
-    elif index == 5:
-      var swapped = newSeq[byte](raw.len)
-      let written = encodeBlock(Block(header: blockHeader(candidate).value,
-          extrinsic: emptyFamilies), policy().frame, swapped)
-      assert written.error == FrameError.None
-      swapped.setLen(written.value)
-      reject(last, candidateBlock(swapped), parent, source, punished, policy(),
-          BlockAdmissionError.InvalidExtrinsicHash)
     reset(0)
     failHash(0)
     candidate = default(OwnedBlock)
@@ -504,4 +515,4 @@ try:
   cases(readFile(getEnv("RAGNAROK_BLOCK_ADMISSION"))) # Missing or modified pinned evidence is never a skipped integration suite.
 except:
   quit(2) # An incomplete source corpus must fail the native runner.
-echo "PASS block admission: ten signed blocks, complete parent roots and atomic same-block Safrole"
+echo "PASS block admission: ten historical refusals, three Thin blocks, complete parent roots and atomic same-block Safrole"
