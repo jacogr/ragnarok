@@ -20,4 +20,5 @@ proc executeSieve*(invocation: SieveInvocation, stepLimit: ExecutionStepLimit,
   var remaining = uint64(stepLimit)
   var prices = initBlockChargeCache()
   var unusedCursor = default(ExecutionCursor) # Preserve the ordinary fresh-invocation validation path.
-  executeBudget(invocation.source, remaining, gasLimit, prices, invocation.cache, unusedCursor, false)
+  executeBudget[false](invocation.source, remaining, gasLimit, prices, invocation.cache,
+      unusedCursor, false)

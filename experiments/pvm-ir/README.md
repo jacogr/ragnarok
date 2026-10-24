@@ -104,7 +104,7 @@ scalar memory operations; other widths, fallible callbacks and Linux remain gate
 
 ## Upstream sieve comparison
 
-The [merged-master sieve results](SIEVE_MERGED_RESULTS.md) refresh the earlier
+The [latest merged-master sieve results](SIEVE_MERGED_RESULTS.md#all-performance-merges-2026-10-24) refresh the earlier
 [sieve results](SIEVE_RESULTS.md). They compare **PolkaVM interpreted**, a frozen master
 interpreter and the prepared-table experiment on identical linked guest bytes. This
 uses PolkaVM's actual `bench-prime-sieve` Rust implementation, rather than a hand-written
@@ -130,8 +130,8 @@ lockfiles, refuses registry versions/checksums outside those lockfiles, and buil
 `--locked --offline`. All copied/generated sources, lockfiles and targets stay under
 `build/pvm-ir-experiment/sieve/`. Existing tools and upstream sources are not patched.
 
-Master defaults to commit `cdc9dc7a73f61768c09286ac98828240d5e1f9f7`, frozen from
-`origin/master` after the PVM and October 23 Nimony updates. The earlier result page
+Master defaults to commit `8ec989d66b378ef0d877bc73388794182912b97a`, frozen from
+`origin/master` after the final PVM performance merges on October 24 (using the October 23 Nimony pin). The earlier result page
 retains its original baseline and toolchain identities. Set `PVM_SIEVE_MASTER` to another local Git ref to
 compare a different baseline explicitly. The driver archives its actual sources and
 builds a separate baseline binary, checking that its Nimony pin matches the candidate.

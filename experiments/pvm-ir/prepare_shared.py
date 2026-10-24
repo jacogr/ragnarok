@@ -18,9 +18,9 @@ def generate_shared(root: Path, build: Path):
     lookup: seq[uint16]
   InstructionCache = nil CacheData ## Default execution paths retain the original decoder fallback.
 """ + original[end:]
-    old_import = 'import ./[program, machine, registers, gas]'
+    old_import = 'import ./[program, machine, registers, gas, gas_plan, gas_memo]'
     assert generated.count(old_import) == 1
-    generated = generated.replace(old_import, 'import std/assertions\nimport ../../src/pvm/[program, machine, registers, gas]')
+    generated = generated.replace(old_import, 'import std/assertions\nimport ../../src/pvm/[program, machine, registers, gas, gas_plan, gas_memo]')
     assert generated.count('proc cachedInstruction(') == 1
     start = generated.index('proc cachedInstruction(')
     end = generated.index('# Evaluate recursive Psi iteratively', start)
@@ -36,28 +36,34 @@ def generate_shared(root: Path, build: Path):
 
 ''' + generated[end:]
     # Neither the execution scheduler nor its decoder may mutate a prepared program table.
-    assert generated.count('instructions: var InstructionCache') == 3
+    assert generated.count('instructions: var InstructionCache') == 9
     generated = generated.replace('instructions: var InstructionCache', 'instructions: InstructionCache')
     generated += '\n' + (root / 'experiments/pvm-ir/shared_api.nim.inc').read_text()
-    # Copy the response-only host scheduler verbatim, substituting only source/cache binding.
-    anchor = 'proc executeWithHost*[Context](source: Machine, context: var Context,'
-    assert original.count(anchor) == 1
-    host = original[original.index(anchor):]
-    host = host.replace(anchor, '''proc executeSharedWithHost*[Context](plan: PreparedProgram, memory: Memory,
-    info: MachineInfo, context: var Context,''', 1)
-    anchor = '  var remaining = uint64(stepLimit)'
+    # Reuse the exact current response-only transition template, changing only cache binding.
+    start = original.index('template runHostBody[')
+    end = original.index('proc runHost[', start)
+    host = original[start:end]
+    host = host.replace('template runHostBody[', 'template runSharedHostBody[', 1)
+    anchor = 'plan: GasPlan, memo: GasMemo): StepResult ='
     assert host.count(anchor) == 1
-    host = host.replace(anchor, '''  let retained = plan.cache
+    host = host.replace(anchor, 'plan: GasPlan, memo: GasMemo, preparedCache: InstructionCache): StepResult =')
+    anchor = 'var instructions = default(InstructionCache)'
+    assert host.count(anchor) == 1
+    host = host.replace(anchor, 'let instructions = preparedCache')
+    generated += '\n' + host + """
+proc executeSharedWithHost*[Context](plan: PreparedProgram, memory: Memory,
+    info: MachineInfo, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit, gasLimit: GasCycleLimit): StepResult =
+  ## Bind the prepared program and pass its immutable operands through the unchanged host template.
+  let retained = plan.cache
   if retained == nil: return StepResult(status: StepError.InvalidMachine)
   let table: CacheData = retained
   let captured = captureTerminalMachine(table.owner, memory, info)
   if captured.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
-  let source = captured.value
-''' + anchor, 1)
-    anchor = 'var instructions = default(InstructionCache)'
-    assert host.count(anchor) == 1
-    host = host.replace(anchor, 'let instructions = plan.cache', 1)
-    generated += '\n' + host
+  runSharedHostBody[Context, false, false](captured.value, context, handler, stepLimit,
+    hostLimit, gasLimit, default(GasPlan), default(GasMemo), retained)
+"""
     path = build / 'shared_step.nim'
     path.write_text(generated)
     (build / 'shared-step.diff').write_text(''.join(difflib.unified_diff(

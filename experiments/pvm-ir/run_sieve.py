@@ -20,7 +20,7 @@ from prepare_shared import generate_shared
 from run import BUILD, HERE, ROOT, digest
 
 OUT = BUILD / 'sieve'
-MASTER = 'cdc9dc7a73f61768c09286ac98828240d5e1f9f7'
+MASTER = '8ec989d66b378ef0d877bc73388794182912b97a'
 LIMITS = [1000, 10000, 100000, 10000000]
 
 
@@ -81,6 +81,9 @@ def generate():
 def build():
     """Freeze master, verify supplied pristine dependencies, and build the three engines and guest."""
     OUT.mkdir(parents=True, exist_ok=True)
+    for name in ['results.json', 'summary.md', 'partial.json', 'build-identity.json']:
+        # A setup failure must not leave an earlier passing verdict or build identity.
+        (OUT / name).unlink(missing_ok=True)
     upstream = Path(os.environ.get('POLKAVM_SOURCE', ROOT / 'vendor/polkavm')).resolve()
     pins = json.loads((ROOT / 'spec/polkavm-pins.json').read_text())
     assert output(['git', 'rev-parse', 'HEAD'], upstream) == pins['commit']
@@ -152,7 +155,8 @@ debug = true
     for crate in ['polkavm', 'polkavm-common']:
         manifest = manifest.replace('"../../../vendor/polkavm/crates/' + crate + '"',
                                     json.dumps(str(upstream / 'crates' / crate)))
-    manifest = manifest.replace('[dependencies]', '[dependencies]\nlibc = "=0.2.154"\npolkavm-linker = { path = ' +
+    assert tomllib.loads(manifest)['dependencies']['libc'] == '=0.2.154'
+    manifest = manifest.replace('[dependencies]', '[dependencies]\npolkavm-linker = { path = ' +
                                 json.dumps(str(upstream / 'crates/polkavm-linker')) + ' }')
     (host / 'Cargo.toml').write_text(manifest)
     shutil.copyfile(HERE / 'sieve/host.rs', host / 'src/main.rs')
@@ -201,12 +205,12 @@ debug = true
 
 def measure():
     """Run sequential reversed-order passes, discarding warmups and checking every timed output."""
+    for name in ['results.json', 'summary.md', 'partial.json']:
+        # Reject changed builds without retaining a successful verdict from an earlier run.
+        (OUT / name).unlink(missing_ok=True)
     identity = json.loads((OUT / 'build-identity.json').read_text())
     for name, checksum in identity['sources'].items():
         assert digest(ROOT / name) == checksum, 'Rebuild changed source: ' + name
-    for name in ['results.json', 'summary.md']:
-        # Failed attempts cannot leave a passing result at the final report path.
-        (OUT / name).unlink(missing_ok=True)
     samples, preparation = [], []
     for run in range(2):
         for limit in LIMITS:

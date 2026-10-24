@@ -73,4 +73,4 @@ proc executeShared*(plan: PreparedProgram, memory: Memory, info: MachineInfo,
   var remaining = uint64(stepLimit)
   var prices = initBlockChargeCache()
   var unusedCursor = default(ExecutionCursor) # Preserve the ordinary fresh-invocation validation path.
-  executeBudget(captured.value, remaining, gasLimit, prices, plan.cache, unusedCursor, false)
+  executeBudget[false](captured.value, remaining, gasLimit, prices, plan.cache, unusedCursor, false)

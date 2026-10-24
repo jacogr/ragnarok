@@ -91,7 +91,7 @@ proc runDecode(f: Fixture, rounds: int, cpu: var RegisterFile) {.noinline.} =
     for pc in f.pcs: apply(instruction(f.owner, pc), cpu)
 
 proc runCache(f: Fixture, rounds: int, cpu: var RegisterFile) {.noinline.} =
-  ## Retain the original direct-mapped model; current production now pairs its sixteen slots.
+  ## Retain the original sixteen-slot direct-mapped model; production uses a wider paired cache.
   var entries = default(array[16, ProgramResult[Instruction]])
   var valid = default(array[16, bool])
   for repeat in 0..<rounds:

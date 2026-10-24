@@ -13,9 +13,9 @@ def generate(root: Path, build: Path):
     start = original.index('  InstructionCache = object')
     end = original.index('  HostCallId*', start)
     generated = original[:start] + '  InstructionCache = seq[ProgramResult[Instruction]] ## Experiment-only dense immutable byte-PC table.\n' + original[end:]
-    old_import = 'import ./[program, machine, registers, gas]'
+    old_import = 'import ./[program, machine, registers, gas, gas_plan, gas_memo]'
     assert generated.count(old_import) == 1
-    generated = generated.replace(old_import, 'import std/assertions\nimport ../../src/pvm/[program, machine, registers, gas]')
+    generated = generated.replace(old_import, 'import std/assertions\nimport ../../src/pvm/[program, machine, registers, gas, gas_plan, gas_memo]')
     generated = generated.replace('Fixed-size scalar-only decoder memo belongs to one program invocation, including its host resumptions.', 'Experiment-only dense decoded table, immutable after preparation.')
     start = generated.index('proc cachedInstruction(')
     end = generated.index('# Evaluate recursive Psi iteratively', start)
@@ -28,13 +28,9 @@ def generate(root: Path, build: Path):
   instruction(program, address)
 
 ''' + generated[end:]
-    # A read-only cache parameter prevents ARC from duplicating the entire prepared sequence.
-    begin = generated.index('proc executeBudget(')
-    stop = generated.index('  let original = machineInfo(source)', begin)
-    header = generated[begin:stop]
-    assert header.count('instructions: var InstructionCache') == 1
-    generated = (generated[:begin] + header.replace('instructions: var InstructionCache',
-                 'instructions: InstructionCache') + generated[stop:])
+    # The shared production templates only read the immutable prepared cache.
+    assert generated.count('instructions: var InstructionCache') == 9
+    generated = generated.replace('instructions: var InstructionCache', 'instructions: InstructionCache')
     generated += '''
 
 type PreparedExecution* = object ## Immutable decoded table bound to its exact source snapshot.
@@ -63,7 +59,7 @@ proc executePrepared*(plan: PreparedExecution, stepLimit: ExecutionStepLimit,
   var remaining = uint64(stepLimit)
   var prices = initBlockChargeCache()
   var unusedCursor = default(ExecutionCursor) # Keep current master's ordinary source-validation path.
-  executeBudget(plan.source, remaining, gasLimit, prices, plan.instructions, unusedCursor, false)
+  executeBudget[false](plan.source, remaining, gasLimit, prices, plan.instructions, unusedCursor, false)
 
 proc preparedBytes*(plan: PreparedExecution): int =
   ## Dense PC lookup is intentionally simple; operand bytes consume empty slots in this probe.

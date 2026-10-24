@@ -125,3 +125,91 @@ are under `build/pvm-ir-experiment/sieve/`. Earlier local evidence was preserved
 `build/pvm-ir-experiment/sieve-pre-master-refresh/`; committed earlier result pages remain
 unchanged. Linux evidence, general fault/opcode coverage and a production preparation
 policy remain outside this refresh.
+
+## All performance merges, 2026-10-24
+
+Latest baseline: master `8ec989d6`, full revision
+`8ec989d66b378ef0d877bc73388794182912b97a`.
+This includes the wider paired instruction cache, secondary block-price cache,
+reusable gas plans, lazy memos, additional memory improvements and the maintained
+real-guest benchmark pack. Nimony remains pinned to `4724f66c`.
+
+The generated experiment now shares the current generic budget and host transition
+bodies, with read-only decoded-table arguments. The response-only host wrapper expands
+an exact copy of the production transition template, changing only prepared-cache
+binding. Both timed Nim paths use the default **dynamic pricing** interface. Optional
+complete plans and lazy memos are separate production APIs; they are not activated
+in this three-engine comparison. No production source or new optimization is added.
+
+The rebuilt guest matches the maintained `tests/fixtures/pvm-sieve/sieve.polkavm`
+artifact byte-for-byte (SHA-256 `70519567c4eb3eb0c04ff27b819cc25b95beadfe970d714d45a50aba7f2de43d`).
+The four sizes, warmups, two reversed-order passes, validation and build profiles follow
+the method above: twenty measured samples per small case, four at ten million. All
+252 invocations pass full result and unchanged-source checks.
+
+| Limit | Engine | CPU ms median (min–max) | Samples | Master / engine |
+| ---: | --- | ---: | ---: | ---: |
+| 1,000 | polkavm | 0.488 (0.479–0.557) | 20 | 1.211× |
+| 1,000 | master | 0.591 (0.540–0.835) | 20 | 1.000× |
+| 1,000 | prepared | 0.609 (0.587–0.738) | 20 | 0.971× |
+| 10,000 | polkavm | 2.053 (1.962–3.058) | 20 | 1.926× |
+| 10,000 | master | 3.954 (3.753–5.427) | 20 | 1.000× |
+| 10,000 | prepared | 4.317 (4.190–6.662) | 20 | 0.916× |
+| 100,000 | polkavm | 6.184 (5.888–6.644) | 20 | 3.043× |
+| 100,000 | master | 18.819 (18.483–19.840) | 20 | 1.000× |
+| 100,000 | prepared | 20.744 (20.540–21.178) | 20 | 0.907× |
+| 10,000,000 | polkavm | 369.993 (367.845–372.204) | 4 | 4.092× |
+| 10,000,000 | master | 1514.082 (1496.849–1599.255) | 4 | 1.000× |
+| 10,000,000 | prepared | 1676.474 (1667.183–1687.073) | 4 | 0.903× |
+
+| Limit | Engine | Pass 1 CPU median, ms | Pass 2 CPU median, ms |
+| ---: | --- | ---: | ---: |
+| 1,000 | polkavm | 0.485 | 0.492 |
+| 1,000 | master | 0.596 | 0.583 |
+| 1,000 | prepared | 0.606 | 0.612 |
+| 10,000 | polkavm | 2.064 | 2.022 |
+| 10,000 | master | 3.973 | 3.840 |
+| 10,000 | prepared | 4.349 | 4.274 |
+| 100,000 | polkavm | 6.283 | 6.057 |
+| 100,000 | master | 18.802 | 18.828 |
+| 100,000 | prepared | 20.634 | 20.805 |
+| 10,000,000 | polkavm | 367.952 | 372.065 |
+| 10,000,000 | master | 1548.052 | 1514.082 |
+| 10,000,000 | prepared | 1677.128 | 1676.474 |
+
+Preparation/binding median wall time is 1.170 ms
+(range 1.095–1.233 ms). The decoded table still retains 2.66 MiB
+of logical payload, excluding sequence/allocator metadata and the existing program owner.
+
+The prepared variant takes about **10.2% more CPU time at 100,000** and **10.7% more
+at ten million**. The regression appears in both process passes. Smaller cases have
+overlapping spreads or visible noise; no broad claim follows from them. These results
+give no performance case for this exact decoded-table layout on sieve. They do not
+settle whether a more complete reusable execution representation could be useful.
+The representation and whole compiled module change together, so these timings alone
+do not isolate a particular lookup, cache-locality or compiler-layout cost.
+
+The merged default interpreter is about 3.0× slower than PolkaVM interpreted at
+100,000 and 4.1× at ten million on this run. Earlier tables and profiles remain
+historical observations of their recorded source/compiler combinations.
+
+### Current verification
+
+All focused checks pass on this baseline: 252 complete sieve invocations; 7,203
+guest-loop boundary scenarios per process against both engines; 1,685 shared effects
+cases per process; a separate AddressSanitizer run of all effects cases and workload
+assertions; and the original kernel oracle/timing checks. The host/effects coverage
+remains response-only, and this refresh does not extend general opcode/fault coverage.
+Both stale-verdict failure controls, pinned formatting, Python syntax, whitespace and
+final measured source/artifact identity checks pass. Instrumented timings are discarded.
+
+The driver also consumes the production host manifest's existing pinned `libc`
+dependency instead of duplicating it. Setup and measurement now invalidate older
+success reports before checking inputs, so failed setup cannot leave a stale verdict.
+Failure controls exercise this invalidation independently of the performance run.
+
+Reproduce through the same experiment Make targets. Raw evidence is retained at
+`build/pvm-ir-experiment/sieve/`; the preceding local refresh was archived under
+`build/pvm-ir-experiment/sieve-before-final-pvm-merges/`. The preceding sections
+retain their original measurements. Current master's maintained dynamic/plan/memo
+comparison is separately documented in [the sieve contract](../../spec/pvm-sieve-benchmark.md).
