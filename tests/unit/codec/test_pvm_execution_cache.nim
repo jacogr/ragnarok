@@ -21,18 +21,23 @@ proc code(parts: openArray[seq[byte]]): Program =
   for part in parts:
     starts.add(bytes.len)
     for octet in part: bytes.add(octet)
-  assert bytes.len > 0 and bytes.len < 16384
+  assert bytes.len > 0 and bytes.len < 65536
   var wire = @[0'u8, 0]
   if bytes.len < 128:
     wire.add(byte(bytes.len)) # The original fixtures retain their canonical one-byte length.
-  else:
-    wire.add(byte(128+(bytes.len shr 8))) # Independent two-byte JAM framing covers bounded capacity-pressure programs.
+  elif bytes.len < 16384:
+    wire.add(byte(128+(bytes.len shr 8))) # Independent two-byte JAM framing covers the original capacity-pressure programs.
     wire.add(byte(bytes.len and 255))
+  else:
+    # Three-byte JAM framing admits the wider fixed pressure corpus without production encoding helpers.
+    wire.add(192'u8)
+    wire.add(byte(bytes.len and 255))
+    wire.add(byte(bytes.len shr 8))
   for octet in bytes: wire.add(octet)
   var mask = newSeq[byte]((bytes.len+7) div 8)
   for start in starts: mask[start div 8] = mask[start div 8] or (1'u8 shl (start mod 8))
   for octet in mask: wire.add(octet)
-  let captured = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(32768), JumpCountLimit(0))
+  let captured = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(131072), JumpCountLimit(0))
   assert captured.error == ProgramError.None
   captured.value
 proc input(program: Program, count: uint64, charged = false): Machine =
@@ -284,7 +289,7 @@ proc expandedPriceCollisions() =
       StepError.StepLimitExceeded
 
 proc denseSource(delta = 1, hosted = false): Machine =
-  ##4500 distinct additions exceed both cache capacities; ten rounds cross the32768-successful-miss allocation threshold.
+  ##4500 distinct additions pressure the small cache; ten rounds cross the32768-successful-miss allocation threshold.
   assert delta in [1, 8]
   var parts: seq[seq[byte]] = @[]
   for index in 0..<4500:
@@ -302,11 +307,11 @@ proc denseSource(delta = 1, hosted = false): Machine =
     parts.add(@[0'u8]) # Guest-only callers retain a literal terminal trap after the ten completed rounds.
   input(code(parts), 10)
 
-proc densePolicies(source: Machine): tuple[plan: GasPlan, memo: GasMemo] =
+proc densePolicies(source: Machine, byteBudget = 262144'u64): tuple[plan: GasPlan, memo: GasMemo] =
   ## Both fixed-source policies admit the independently bounded large program; no partial policy is extracted on refusal.
   let plan = newGasPlan(programOf(source).value, GasPlanLimits(blocks: GasPlanBlockLimit(8),
-    bytes: GasPlanByteLimit(262144), cycles: GasCycleLimit(100000)))
-  let memo = newGasMemo(programOf(source).value, GasMemoLimits(bytes: GasMemoByteLimit(262144),
+    bytes: GasPlanByteLimit(byteBudget), cycles: GasCycleLimit(100000)))
+  let memo = newGasMemo(programOf(source).value, GasMemoLimits(bytes: GasMemoByteLimit(byteBudget),
     cycles: GasCycleLimit(100000)))
   assert plan.error == GasPlanError.None and memo.error == GasMemoError.None
   (plan.value, memo.value)
@@ -320,7 +325,7 @@ proc denseRun(source: Machine, mode: int, plan: GasPlan, memo: GasMemo,
   else: execute(source, ExecutionStepLimit(attempts), memo)
 
 proc denseGuestPressure() =
-  ## Cold/warm policies, pressure beyond4128 positions and local refusals retain complete single-step CPU/gas parity.
+  ## Cold/warm policies, sustained decode pressure and local refusals retain complete single-step CPU/gas parity.
   let source = denseSource()
   let original = machineInfo(source).value
   let expected = compareSteps(source, 45021, StepExit.Panic, GasCycleLimit(100000))
@@ -352,6 +357,35 @@ proc denseGuestPressure() =
       assert done.error == StepError.None
       same(machineInfo(done.value.machine).value, expected)
   assert getOccupiedMem() == occupied
+
+proc widerDecodedPressure() =
+  ##17000 literal additions exceed16416 total decoded positions; three rounds activate and replace entries before the final trap.
+  var parts: seq[seq[byte]] = @[]
+  var sum = 0'u64
+  for index in 0..<17000:
+    # Distinct PCs and alternating immediate values expose stale or truncated cache tags.
+    let delta = uint64(1+index mod 7)
+    sum = sum+delta
+    parts.add(@[149'u8, 17, byte(delta)])
+  parts.add(@[149'u8, 0, 255])
+  let backward = 0x100000000'u64-51003
+  parts.add(@[82'u8, 16, 0, byte(backward and 255), byte((backward shr 8) and 255),
+    byte((backward shr 16) and 255), byte(backward shr 24)])
+  parts.add(@[0'u8])
+  let source = input(code(parts), 3)
+  let original = machineInfo(source).value
+  let expected = compareSteps(source, 51007, StepExit.Panic, GasCycleLimit(100000))
+  assert uint64(expected.registers[0]) == 0 and uint64(expected.registers[1]) == sum*3
+  let policies = densePolicies(source, 1048576)
+  for mode in 0..<3:
+    for repetition in 0..<2:
+      # Complete and cold/warm lazy policies cannot supply operands from another invocation or publish a partial execution.
+      let done = denseRun(source, mode, policies.plan, policies.memo, 51007)
+      assert done.error == StepError.None and done.value.exit == StepExit.Panic
+      same(machineInfo(done.value.machine).value, expected)
+      same(machineInfo(source).value, original)
+    assert denseRun(source, mode, policies.plan, policies.memo, 51006).error ==
+        StepError.StepLimitExceeded
 
 type DenseContext = object ## Expected CPU values and a separately owned nested source never grant access to either private decoder cache.
   expected: array[2, MachineInfo]
@@ -835,6 +869,7 @@ proc absentControlSuccessors() =
     same(machineInfo(source).value, cpu)
 
 denseGuestPressure()
+widerDecodedPressure()
 denseHostPressure()
 let denseOccupied = getOccupiedMem()
 for repetition in 0..<4: denseHostPressure()

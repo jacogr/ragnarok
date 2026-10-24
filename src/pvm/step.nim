@@ -31,8 +31,8 @@ type
     secondary: nil SecondaryPrices
     targets: array[4, DynamicTargetEntry]
   DecodedSpill = ref object ## One bounded invocation-local spill retains copied scalar results, never a program or mutable machine.
-    entries: array[4096, ProgramResult[Instruction]]
-    replaceUpper: array[2048, bool]
+    entries: array[16384, ProgramResult[Instruction]]
+    replaceUpper: array[8192, bool]
   InstructionCache = object ## Thirty-two genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
     entries: array[32, ProgramResult[Instruction]]
     replaceUpper: array[16, bool]
@@ -827,8 +827,8 @@ proc stepOnce*(source: Machine, plan: GasPlan): StepResult =
 
 proc rememberSpill(table: DecodedSpill, address: CodeAddress, decoded: ProgramResult[Instruction]) =
   ## Only the private successful-decode path calls this insertion; replacement is bounded and never retains source ownership.
-  let bucket = int((uint64(address)*11400714819323198485'u64) shr 53)
-  let destination = if table.replaceUpper[bucket]: bucket+2048 else: bucket
+  let bucket = int((uint64(address)*11400714819323198485'u64) shr 51)
+  let destination = if table.replaceUpper[bucket]: bucket+8192 else: bucket
   table.entries[destination] = decoded
   table.replaceUpper[bucket] = not table.replaceUpper[bucket]
 
@@ -842,8 +842,8 @@ proc decodeInstructionMiss(program: Program, address: CodeAddress,
         inc cache.misses # Saturating successful-miss progress never wraps with guest work.
       else:
         # Only sustained pressure pays one fixed allocation; the existing small-program path remains allocation-free.
-        let table = DecodedSpill(entries: default(array[4096, ProgramResult[Instruction]]),
-          replaceUpper: default(array[2048, bool]))
+        let table = DecodedSpill(entries: default(array[16384, ProgramResult[Instruction]]),
+          replaceUpper: default(array[8192, bool]))
         for entry in cache.entries:
           if entry.error == ProgramError.None: rememberSpill(table, entry.value.address, entry)
         cache.spill = table
@@ -875,13 +875,13 @@ proc cachedInstruction(program: Program, address: CodeAddress,
   let table {.cursor.} = cache.spill # The invocation owns this immutable-program fact table through the callback-free lookup.
   if table != nil:
     # Exact PC tags permit copied scalar results only; misses alone enter the allocating cold path.
-    let bucket = int((uint64(address)*11400714819323198485'u64) shr 53)
+    let bucket = int((uint64(address)*11400714819323198485'u64) shr 51)
     if table.entries[bucket].error == ProgramError.None and uint64(table.entries[
         bucket].value.address) == uint64(address):
       return table.entries[bucket]
-    if table.entries[bucket+2048].error == ProgramError.None and uint64(table.entries[
-        bucket+2048].value.address) == uint64(address):
-      return table.entries[bucket+2048]
+    if table.entries[bucket+8192].error == ProgramError.None and uint64(table.entries[
+        bucket+8192].value.address) == uint64(address):
+      return table.entries[bucket+8192]
   decodeInstructionMiss(program, address, cache, slot, alternative)
 
 # Evaluate recursive Psi iteratively over an already validated program and captured machine.
