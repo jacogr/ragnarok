@@ -317,3 +317,46 @@ added. Local refusals and observable guest exits retain their prior snapshot rul
 
 Independent control-path gas/prefix qualification and raw/JAM warm target loops are recorded
 in [control policy reference](pvm-control-policy-reference.md).
+
+
+## Expanding checked control dispatch, 2026-10-24
+
+The private control mutation helper is now a typed template returning a scoped
+`StepExit` expression. Trap/unlikely alternatives complete that expression rather
+than returning from the enclosing evaluator. Other control transfers share the
+original target calculation, static/fallthrough proofs and exact dynamic-target
+cache. No public API, instruction representation, retained owner or gas policy changes.
+
+Whole-block charging still precedes every mutation. Both conditional successors
+must be valid before selection. Dynamic halt retains priority over jump-table
+bounds/content. Load-and-jump still reads all original operands and applies its
+specified load even on panic/halt; only a continued transfer selects a new block
+and clears the paid flag. Fault/local-error publication and attempt budgets retain
+their existing contracts.
+
+Selected `pvm_step`, `pvm_conditional_control_reference`, `pvm_execution_cache`,
+`pvm_host_memory_reentry_reference` and `pvm_mixed_program_reference` suites pass,
+including 1000 balanced ownership cycles in the relevant groups. Qualification
+uses CI paired guest/synthetic comparisons and a separate identical-source control;
+all 21 real-guest and 33 synthetic cells, both orders and cold observations remain.
+M1 framing remains complete only in its documented scope; full-JAM parity is open.
+
+
+Two complete attempts of [CI40105379172](https://github.com/jacogr/ragnarok/actions/runs/40105379172)
+compare runtime `d9c78943339293c32629c494a7b2f4a10c25446f` against direct-lookup
+parent `3a3776d1a58186e0206bd1bd1f9a1dd0ec156da4` on AMD EPYC7763 runners.
+Each passes2808 paired state-checked invocations,2808 identical-source controls,
+assertion controls and the pinned interpreted reference pack. First/repeat CPU
+changes are planned sieve100000 -7.9/-7.6%, memo sieve -6.2/-6.4%, and memset100000
+-6.3/-6.3% dynamic, -5.8/-5.3% planned and -6.4/-6.3% memo. Pinky changes are
+-3.7/-4.5% dynamic, -0.3/-0.2% planned and -2.9/-4.0% memo; planned Pinky has
+no established improvement. Long planned indirect calls are1.0/1.7% slower.
+
+First-run dynamic synthetic hosts regress7.7/8.4% while their identical-source
+controls vary4.6/4.5%; the repeat changes to -2.5/-2.1%. No host gain is claimed.
+Tiny memo arithmetic changes direction and moves by about40–75ns on repeat;
+several other small cells overlap noise. All54 cells, per-order samples, cold
+observations and regressions remain in both CI artifacts. This supports the
+repeated sieve/memset gains, not a universal speed claim. Reports are retained
+under `build/pvm12/ci-40105379172/` and its `-attempt2` sibling. Publication adds
+only this feature-contract evidence to the measured runtime.
