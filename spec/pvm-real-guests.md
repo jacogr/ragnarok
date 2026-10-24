@@ -183,3 +183,11 @@ The trace also showed a three-page indirect working set, but four-slot MRU, stab
 compact-hint prototypes did not pass the timing threshold despite reducing simulated misses.
 The production writer retains its two slots. A bytewise partial-store fallback intended to prevent
 Clang merging fixed-width stores also failed to establish a gain and was reverted.
+
+## Invocation-local indirect targets
+
+The [dynamic target cache](pvm-dynamic-target-cache.md) retains four validated ordinals per
+invocation. Two checked, opposite-order comparisons retained the unchanged three-family full-state
+contracts; large indirect-call CPU improved roughly3–5% across pricing modes. Dynamic memory-fill
+was approximately neutral and remains an explicit control. Its feature record preserves complete
+small/large evidence, cache isolation tests, cold samples and limits on performance attribution.

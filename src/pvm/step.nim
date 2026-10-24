@@ -15,7 +15,11 @@ type
     valid: bool
     start: CodeAddress
     charge: BlockGas
-  BlockChargeCache = object ## Retain the first/three recent prices on the hot path, with a bounded sixteen-entry secondary table for larger working sets.
+  DynamicTargetEntry = object ## A validated dynamic ordinal/target fact belongs only to this invocation's immutable program.
+    valid: bool
+    index: JumpIndex
+    target: CodeAddress
+  ExecutionCache = object ## Invocation-local prices retain their policy; four exact-tagged dynamic targets never certify paid gas.
     valid: bool
     start: CodeAddress
     charge: BlockGas
@@ -23,6 +27,7 @@ type
     next: range[0..2]
     entries: array[16, BlockChargeEntry]
     replaceUpper: array[8, bool]
+    targets: array[4, DynamicTargetEntry]
   InstructionCache = object ## Thirty-two genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
     entries: array[32, ProgramResult[Instruction]]
     replaceUpper: array[16, bool]
@@ -260,13 +265,14 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
 func memoryOpcode(opcode: byte): bool =
   opcode in {30'u8..33'u8, 52'u8..62'u8, 70'u8..73'u8, 120'u8..130'u8}
 
-func initBlockChargeCache(): BlockChargeCache =
+func initExecutionCache(): ExecutionCache =
   ## New invocation/limit pairs explicitly start with no valid hot/secondary entries or inherited replacement progress.
-  BlockChargeCache(valid: false, start: CodeAddress(0), charge: BlockGas(0),
+  ExecutionCache(valid: false, start: CodeAddress(0), charge: BlockGas(0),
     recent: default(array[3, BlockChargeEntry]), next: 0,
-    entries: default(array[16, BlockChargeEntry]), replaceUpper: default(array[8, bool]))
+    entries: default(array[16, BlockChargeEntry]), replaceUpper: default(array[8, bool]),
+    targets: default(array[4, DynamicTargetEntry]))
 
-proc cachedSecondaryCharge(cache: BlockChargeCache, start: CodeAddress,
+proc cachedSecondaryCharge(cache: ExecutionCache, start: CodeAddress,
     needed: var uint64): bool {.noinline.} =
   ## A bounded secondary table handles larger working sets without expanding the primary/recent hot loop.
   let slot = int((uint64(start)*11400714819323198485'u64) shr 61)
@@ -278,7 +284,7 @@ proc cachedSecondaryCharge(cache: BlockChargeCache, start: CodeAddress,
     return true
   false # Full address tags prevent a collision from authorizing the wrong price.
 
-proc cachedCharge(cache: BlockChargeCache, start: CodeAddress,
+proc cachedCharge(cache: ExecutionCache, start: CodeAddress,
     needed: var uint64): bool {.inline.} =
   ## Only exact starts from successful owned simulations grant a price; at most three secondary scalar entries are inspected.
   if cache.valid and uint64(cache.start) == uint64(start):
@@ -290,7 +296,7 @@ proc cachedCharge(cache: BlockChargeCache, start: CodeAddress,
       return true
   cachedSecondaryCharge(cache, start, needed) # Cold misses alone consult the larger bounded table.
 
-proc rememberCharge(cache: var BlockChargeCache, start: CodeAddress, charge: BlockGas) =
+proc rememberCharge(cache: var ExecutionCache, start: CodeAddress, charge: BlockGas) =
   ## Preserve the first successful block; later successful misses fill the hot ring and one tagged secondary way.
   if not cache.valid:
     cache.valid = true
@@ -416,6 +422,21 @@ proc blockTarget(program: Program, address: CodeAddress): bool =
   let checked = basicBlockStart(program, address)
   checked.error == ProgramError.None and checked.value
 
+proc cachedDynamicTarget(cache: var ExecutionCache, program: Program, index: JumpIndex,
+    target: var CodeAddress): bool =
+  ## Only a complete table lookup and block-membership check supplies a positive exact-ordinal fact.
+  let slot = int(uint64(index) mod uint64(cache.targets.len))
+  if cache.targets[slot].valid and uint64(cache.targets[slot].index) == uint64(index):
+    target = cache.targets[slot].target # Full ordinal tags reject colliding entries without truncation.
+    return true
+  let found = jumpTarget(program, index)
+  if found.error != ProgramError.None: return false # Failed lookups never replace a resident or grant a target.
+  let resolved = found.value
+  if not blockTarget(program, resolved): return false # Nonblock and out-of-code table contents remain guest panics.
+  cache.targets[slot] = DynamicTargetEntry(valid: true, index: index, target: resolved)
+  target = resolved
+  true
+
 # Compare signed 64-bit bit patterns by flipping their sign bits, avoiding checked casts.
 func signedLess(a, b: uint64): bool =
   (a xor 0x8000000000000000'u64) < (b xor 0x8000000000000000'u64)
@@ -462,7 +483,7 @@ func branchCondition(decoded: ProgramResult[Instruction], registers: RegisterFil
 # Apply control mutations after gas charging; panic/halt still retain explicit load mutations.
 # All operands are read before writes, including aliased load-and-dynamic-jump registers.
 proc controlMutation(program: Program, decoded: ProgramResult[Instruction],
-    info: var MachineInfo): StepExit =
+    info: var MachineInfo, cache: var ExecutionCache): StepExit =
   let item = decoded.value # The private caller supplies this machine's genuine result; payload and validation facts cannot separate.
   let indices = instructionRegisters(decoded)
   let pc = uint64(info.pc)
@@ -491,14 +512,7 @@ proc controlMutation(program: Program, decoded: ProgramResult[Instruction],
       outcome = StepExit.Panic
     else:
       # Division avoids overflow in a table-length times alignment check.
-      let found = jumpTarget(program, JumpIndex(address div 2 - 1))
-      if found.error != ProgramError.None:
-        # An out-of-table address is a guest panic, not a local failure.
-        outcome = StepExit.Panic
-      else:
-        # Table entries themselves must name valid block starts.
-        target = found.value
-        valid = blockTarget(program, target)
+      valid = cachedDynamicTarget(cache, program, JumpIndex(address div 2 - 1), target)
   else:
     # Static offsets are mathematical integers; never wrap a negative destination into code.
     if item.opcode != 1:
@@ -535,7 +549,7 @@ proc controlMutation(program: Program, decoded: ProgramResult[Instruction],
 # Mutate only invocation-owned CPU values and a checked private memory workspace; observable exits publish immutable roots.
 template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info: var MachineInfo,
     memory: var WorkingMemory, limit: GasCycleLimit, control, memoryAccess, hostCalls: bool,
-    cache: var BlockChargeCache, decoded: ProgramResult[Instruction], plan: GasPlan,
+    cache: var ExecutionCache, decoded: ProgramResult[Instruction], plan: GasPlan,
     memo: GasMemo): InstructionEvaluation =
   ## Share checked transitions while erasing unused pricing ownership at compile time.
   if uint64(info.gasDeficit) != 0:
@@ -646,7 +660,7 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
     info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
   else:
     # This path is reachable only for explicitly supported control/no-op instructions.
-    outcome = controlMutation(program, decoded, info)
+    outcome = controlMutation(program, decoded, info, cache)
   if outcome notin {StepExit.Panic, StepExit.Halt}:
     if not terminatesBlock(item.opcode):
       # Every admitted nonterminator advances by the decoded skip, except a failed scalar access retaining its genuine causing PC.
@@ -666,7 +680,7 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
   InstructionEvaluation(status: StepError.None, effect: InstructionEffect(kind: outcome))
 proc evaluateInstruction[UsePlan: static[bool]](program: Program, info: var MachineInfo,
     memory: var WorkingMemory, limit: GasCycleLimit, control, memoryAccess, hostCalls: bool,
-        cache: var BlockChargeCache,
+        cache: var ExecutionCache,
     decoded: ProgramResult[Instruction], plan: GasPlan = default(GasPlan)): InstructionEvaluation =
   ## Expand the shared checked transition with the original legacy helper interface.
   instructionBody[UsePlan, false](program, info, memory, limit, control, memoryAccess, hostCalls,
@@ -674,7 +688,7 @@ proc evaluateInstruction[UsePlan: static[bool]](program: Program, info: var Mach
 
 proc memoEvaluateInstruction(program: Program, info: var MachineInfo,
     memory: var WorkingMemory, limit: GasCycleLimit, control, memoryAccess, hostCalls: bool,
-        cache: var BlockChargeCache,
+        cache: var ExecutionCache,
     decoded: ProgramResult[Instruction], memo: GasMemo): InstructionEvaluation =
   ## Use the same checked transition with an exclusively borrowed lazy pricing handle.
   instructionBody[false, true](program, info, memory, limit, control, memoryAccess, hostCalls,
@@ -707,7 +721,7 @@ proc publishInstruction(program: Program, memory: var WorkingMemory, info: Machi
   publishInstruction(program, memory.current, info, effect, terminal)
 
 proc stepDecoded[UsePlan: static[bool]](source: Machine, limit: GasCycleLimit, control,
-    memoryAccess, hostCalls: bool, cache: var BlockChargeCache, decoded: ProgramResult[Instruction],
+    memoryAccess, hostCalls: bool, cache: var ExecutionCache, decoded: ProgramResult[Instruction],
         plan: GasPlan = default(GasPlan)): StepResult =
   ## Single-step APIs retain their exact immutable-snapshot boundary and capability/refusal semantics.
   let captured = machineInfo(source)
@@ -728,7 +742,7 @@ proc stepDecoded[UsePlan: static[bool]](source: Machine, limit: GasCycleLimit, c
 # Single-step calls never inherit cached work across owners, scopes or local simulation limits.
 proc stepImpl[UsePlan: static[bool]](source: Machine, limit: GasCycleLimit, control, memoryAccess,
     hostCalls: bool, plan: GasPlan = default(GasPlan)): StepResult =
-  var cache = initBlockChargeCache()
+  var cache = initExecutionCache()
   let owner = programOf(source)
   let current = machineInfo(source)
   if owner.error != MachineError.None or current.error != MachineError.None:
@@ -806,7 +820,7 @@ proc cachedInstruction(program: Program, address: CodeAddress,
 # The shared remaining budget counts attempted instructions, including the exiting instruction.
 # Each gas simulation is independently bounded by gasLimit. Local failures expose no partial progress.
 template evaluateSelected[UsePlan, UseMemo: static[bool]](program: Program, info: var MachineInfo,
-    memory: var WorkingMemory, gasLimit: GasCycleLimit, chargeCache: var BlockChargeCache,
+    memory: var WorkingMemory, gasLimit: GasCycleLimit, chargeCache: var ExecutionCache,
     decoded: ProgramResult[Instruction], plan: GasPlan, memo: GasMemo): InstructionEvaluation =
   ## Select the priced evaluator without changing ordinary call frames.
   when UseMemo:
@@ -816,7 +830,7 @@ template evaluateSelected[UsePlan, UseMemo: static[bool]](program: Program, info
         decoded, plan)
 
 template budgetBody[UsePlan, UseMemo: static[bool]](source: Machine, remaining: var uint64,
-    gasLimit: GasCycleLimit, chargeCache: var BlockChargeCache, instructions: var InstructionCache,
+    gasLimit: GasCycleLimit, chargeCache: var ExecutionCache, instructions: var InstructionCache,
     cursor: var ExecutionCursor, resumed: bool, plan: GasPlan, memo: GasMemo): StepResult =
   ## Share checked transitions while erasing unused pricing ownership at compile time.
   var program = default(Program)
@@ -873,14 +887,14 @@ template budgetBody[UsePlan, UseMemo: static[bool]](source: Machine, remaining: 
       return published
   StepResult(status: StepError.StepLimitExceeded) # Bounded exhaustion grants no machine or resumable prefix.
 proc executeBudget[UsePlan: static[bool]](source: Machine, remaining: var uint64,
-    gasLimit: GasCycleLimit, chargeCache: var BlockChargeCache, instructions: var InstructionCache,
+    gasLimit: GasCycleLimit, chargeCache: var ExecutionCache, instructions: var InstructionCache,
         cursor: var ExecutionCursor, resumed: bool, plan: GasPlan = default(GasPlan)): StepResult =
   ## Keep ordinary CPU and memory frames while expanding the common budget loop.
   budgetBody[UsePlan, false](source, remaining, gasLimit, chargeCache, instructions, cursor,
       resumed, plan, default(GasMemo))
 
 proc memoBudget(source: Machine, remaining: var uint64,
-    gasLimit: GasCycleLimit, chargeCache: var BlockChargeCache, instructions: var InstructionCache,
+    gasLimit: GasCycleLimit, chargeCache: var ExecutionCache, instructions: var InstructionCache,
         cursor: var ExecutionCursor, resumed: bool, memo: GasMemo): StepResult =
   ## Use the common budget loop with source-bound lazy facts and no new legacy frame fields.
   budgetBody[false, true](source, remaining, gasLimit, chargeCache, instructions, cursor, resumed,
@@ -890,7 +904,7 @@ proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycle
   ## Execute a guest-only segment with a fresh local instruction budget; Host is returned to the caller.
   var remaining = uint64(stepLimit)
   # A direct execution has its own memo, never inherited from another program or local policy.
-  var chargeCache = initBlockChargeCache()
+  var chargeCache = initExecutionCache()
   var instructions = default(InstructionCache) # Fresh explicit empty memo prevents cross-program or cross-invocation operand reuse.
   var unusedCursor = default(ExecutionCursor) # Ordinary execution uses source validation and its original loop-local CPU storage.
   executeBudget[false](source, remaining, gasLimit, chargeCache, instructions, unusedCursor, false)
@@ -898,7 +912,7 @@ proc execute*(source: Machine, stepLimit: ExecutionStepLimit, gasLimit: GasCycle
 proc execute*(source: Machine, stepLimit: ExecutionStepLimit, plan: GasPlan): StepResult =
   ## Reuse immutable complete prices while all CPU, attempt budgets and memory staging stay invocation-local.
   var remaining = uint64(stepLimit)
-  var chargeCache = initBlockChargeCache()
+  var chargeCache = initExecutionCache()
   var instructions = default(InstructionCache)
   var unusedCursor = default(ExecutionCursor)
   let settings = gasPlanInfo(plan)
@@ -917,7 +931,7 @@ func executionResult[Reason: enum](evaluated: StepResult): HostExecutionResult[R
 # Advance a shared invocation budget to the next dispatch or terminal result.
 # Dispatch credit is consumed before callbacks, identically for both public callback forms.
 template budgetSelected[UsePlan, UseMemo: static[bool]](remaining: var uint64,
-    gasLimit: GasCycleLimit, chargeCache: var BlockChargeCache, instructions: var InstructionCache,
+    gasLimit: GasCycleLimit, chargeCache: var ExecutionCache, instructions: var InstructionCache,
     cursor: var ExecutionCursor, plan: GasPlan, memo: GasMemo): StepResult =
   ## Resume through the selected pricing implementation with the same attempt budget.
   when UseMemo:
@@ -927,7 +941,7 @@ template budgetSelected[UsePlan, UseMemo: static[bool]](remaining: var uint64,
         true, plan)
 
 template hostAdvanceBody[UsePlan, UseMemo: static[bool]](cursor: var ExecutionCursor,
-    remaining, calls: var uint64, gasLimit: GasCycleLimit, chargeCache: var BlockChargeCache,
+    remaining, calls: var uint64, gasLimit: GasCycleLimit, chargeCache: var ExecutionCache,
     instructions: var InstructionCache, plan: GasPlan, memo: GasMemo): StepResult =
   ## Share checked transitions while erasing unused pricing ownership at compile time.
   ## Both callback forms share the ordinary transition loop and reserve dispatch credit before external code.
@@ -939,14 +953,14 @@ template hostAdvanceBody[UsePlan, UseMemo: static[bool]](cursor: var ExecutionCu
     dec calls
   evaluated
 proc nextHost[UsePlan: static[bool]](cursor: var ExecutionCursor, remaining, calls: var uint64,
-    gasLimit: GasCycleLimit, chargeCache: var BlockChargeCache, instructions: var InstructionCache,
+    gasLimit: GasCycleLimit, chargeCache: var ExecutionCache, instructions: var InstructionCache,
         plan: GasPlan = default(GasPlan)): StepResult =
   ## Reserve callback credit through the common scheduler and original pricing interface.
   hostAdvanceBody[UsePlan, false](cursor, remaining, calls, gasLimit, chargeCache, instructions,
       plan, default(GasMemo))
 
 proc memoNextHost(cursor: var ExecutionCursor, remaining, calls: var uint64,
-    gasLimit: GasCycleLimit, chargeCache: var BlockChargeCache, instructions: var InstructionCache,
+    gasLimit: GasCycleLimit, chargeCache: var ExecutionCache, instructions: var InstructionCache,
         memo: GasMemo): StepResult =
   ## Reserve callback credit through the same scheduler with the retained memo policy.
   hostAdvanceBody[false, true](cursor, remaining, calls, gasLimit, chargeCache, instructions,
@@ -965,7 +979,7 @@ proc applyCursorResponse(cursor: var ExecutionCursor, response: HostResponse,
   InstructionEvaluation(status: StepError.None, effect: InstructionEffect(kind: exit))
 
 template hostSelected[UsePlan, UseMemo: static[bool]](cursor: var ExecutionCursor,
-    remaining, calls: var uint64, gasLimit: GasCycleLimit, chargeCache: var BlockChargeCache,
+    remaining, calls: var uint64, gasLimit: GasCycleLimit, chargeCache: var ExecutionCache,
     instructions: var InstructionCache, plan: GasPlan, memo: GasMemo): StepResult =
   ## Share callback scheduling without retaining a memo in legacy host execution.
   when UseMemo:
@@ -994,7 +1008,7 @@ template runFallibleHostBody[Context; Reason: enum; UsePlan, UseMemo: static[boo
         status: StepError.InvalidGasMemo))
   # Host responses preserve this invocation's program and fixed simulation limit.
   # Scalar cached prices retain neither context nor callbacks and disappear on every return.
-  var chargeCache = initBlockChargeCache()
+  var chargeCache = initExecutionCache()
   var instructions = default(InstructionCache) # Host replies preserve the program, so scalar decoder hits remain valid until this invocation returns.
   while true:
     # Publish the next actual callback observation from this invocation's validated continuation.
@@ -1065,7 +1079,7 @@ template runHostBody[Context; UsePlan, UseMemo: static[bool]](source: Machine,
         status: StepError.InvalidGasMemo)
   # Host responses preserve this invocation's program and fixed simulation limit.
   # Scalar cached prices retain neither context nor callbacks and disappear on every return.
-  var chargeCache = initBlockChargeCache()
+  var chargeCache = initExecutionCache()
   var instructions = default(InstructionCache) # Host replies preserve the program, so scalar decoder hits remain valid until this invocation returns.
   while true:
     # All scheduling and charging happens in the same helper used by fallible callbacks.
@@ -1140,7 +1154,7 @@ proc execute*(source: Machine, stepLimit: ExecutionStepLimit, memo: GasMemo): St
   let settings = gasMemoInfo(memo)
   if settings.error != GasMemoError.None: return StepResult(status: StepError.InvalidGasMemo)
   var remaining = uint64(stepLimit)
-  var prices = initBlockChargeCache()
+  var prices = initExecutionCache()
   var instructions = default(InstructionCache)
   var cursor = default(ExecutionCursor)
   memoBudget(source, remaining, settings.value.cycleLimit, prices, instructions,
