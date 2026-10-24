@@ -1,5 +1,9 @@
 # Whole-map STF goldens for verdicts and faults
 
+The [guarantee/assurance extension](current-stf-guarantee-assurance-goldens.md) adds complete-map
+report admission, availability, replacement, timeout and unresolved ready-ring cases. These
+verdict/fault fixtures and expected outputs remain unchanged.
+
 Scope: three authored complete-state chains, twelve actual candidate transitions and twenty
 structurally valid, correctly sealed negative controls. Pins remain Gray Paper
 `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, Draft35 Thin v1/ark-vrf0.6.0 and vectors
