@@ -103,7 +103,11 @@ def plan(parent, mode, slot, ass, reports):
         budget -= consumed; remaining = remaining[count:]
     selected = {wire[:32] for wire in processed}
     posterior = [edit(row, selected) for row in rows]
-    posterior[position] = edit(deferred, selected) # Consecutive time expires exactly the current ring row.
+    elapsed = slot-int.from_bytes(parent[chapter_key(11)], 'little')
+    assert elapsed > 0
+    for offset in range(min(elapsed, 12)):
+        posterior[(position-offset) % 12] = [] # Final expiry clears all crossed rows after Q/actual processing.
+    posterior[position] = edit(deferred, selected)
     encoded = [[(wire, b''.join(sorted(dependencies))) for wire, dependencies in row] for row in posterior]
     return dict(available=available, processed=processed, batches=batches, ready=encoded,
                 reports=reports, waves=waves, prefixes=prefixes, remaining_gas=budget)

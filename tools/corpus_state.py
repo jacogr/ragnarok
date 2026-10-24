@@ -564,5 +564,26 @@ def current_stf_epoch_drain_corpus(compiler, report, checks, libraries):
     return corpus
 
 
+@CORPORA.case
+def current_stf_ready_expiry_corpus(compiler, report, checks, libraries):
+    """Compare skipped-time ready expiry after actual execution against independently calculated full maps."""
+    from current_stf_ready_expiry_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_ready_expiry', 'current_stf_epoch_drain', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-ready-expiry-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-ready-expiry', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent GP Q/accseq then elapsed-slot expiry and mathematical epoch headers')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-ready-expiry-corpus', expected)
+    announce('independent ready-expiry whole STF maps', corpus['passed'])
+    return corpus
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
