@@ -179,3 +179,18 @@ proc childReadinessCode*(mode: int, hash: array[32, byte], childCode: seq[byte])
   instructions.add(if mode in [132, 133, 134]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc preimageAgingCode*(mode: int, hash: array[32, byte]): seq[byte] =
+  ## Literal request calls run against an available stored preimage and explicit strict-expiry profile.
+  var instructions: seq[seq[byte]] = @[]
+  let operations = if mode == 137: @[25'u8, 26] else: @[26'u8]
+  for operation in operations:
+    # Every host response clobbers r7, so restore self and the same explicit request identity.
+    instructions.add(registerImmediate(7, high(uint64)))
+    instructions.add(registerImmediate(8, 196608))
+    instructions.add(registerImmediate(9, 1))
+    instructions.add(@[10'u8, operation])
+  if mode == 140: instructions.add(@[10'u8, 19]) # Capture the deletion prefix before panic.
+  instructions.add(if mode in [139, 140]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, @hash): result.add(octet)
