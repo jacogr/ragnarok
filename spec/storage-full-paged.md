@@ -338,3 +338,25 @@ changed producer refusal and every observed preparation/removal read/write/flock
 unlink/ftruncate failure with strict reopen and fresh replay.1000 repeated capture/discard cycles
 retain73,024 ->73,024 occupied bytes in the checked ARC profile. Process-death and populated Linux
 working-set panels, followed by consumer integration, remain open.
+
+## Explicit immutable epoch reopen
+
+`openFullPagedEpochReader` shares the same complete-graph admission and independent shared-pin
+path as strict CURRENT readers, but binds one independently supplied full manifest and expected
+chain/root. It never reads a root or history identity from a directory scan. Explicit immutable
+epoch reads do not follow CURRENT and need no current-selection race check: the exact file stays
+pinned throughout complete admission and native identity checks. Strict `openFullPagedReader`
+retains its original CURRENT capture/reread behavior. Neither API repairs any namespace entry.
+
+A caller can persist/reconstruct its independently trusted manifest, retire every original owner,
+then reopen that immutable epoch and capture a fresh passive `epochReceipt`. This permits safe
+physical reclamation after process restart under the normal strict current writer and exclusive
+old-epoch checks. It also permits explicit historical reads while newer CURRENT roots are selected;
+missing or substituted epochs, wrong expected roots and default manifests refuse. An explicit
+epoch reader never constitutes authority to replace CURRENT or infer a corrupted startup head.
+
+`storage_full_paged_epoch_reopen` covers fresh owner incarnations, retained-root lookup, actual
+shared/exclusive reclamation exclusion, owned value lifetime, new-current history after old-file
+removal, default/wrong-root refusals and every observed read/write/flock/close/ftruncate admission
+fault.1000 independent open/close cycles retain42,512 ->42,512 occupied bytes. Existing current
+reader and retention suites remain regression controls for the shared admission path.
