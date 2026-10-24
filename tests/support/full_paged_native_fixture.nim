@@ -19,6 +19,7 @@ proc producer*(records: seq[TrieRecord]): FullPagedProducer =
 func config*(fixture: FullPagedFixture): FullPagedNativeConfig =
   ## Independent expected root and finite construction/admission policies never derive from CURRENT.
   FullPagedNativeConfig(chain: fixture.header.chainId, root: fixture.header.root, limits: policy(),
+    replayBytes: ByteLimit(1000000),
     construction: FullPagedConstructionLimits(producerCalls: ElementLimit(10000),
       ioCalls: ElementLimit(10000), hashes: ElementLimit(10000), readBytes: ByteLimit(1000000),
       writeBytes: ByteLimit(1000000)))
