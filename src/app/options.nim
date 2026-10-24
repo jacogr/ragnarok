@@ -346,8 +346,15 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
   if candidate.telemetry or candidate.rpc or candidate.ui or candidate.state or
       candidate.management:
     if candidate.positional.len == 0 or candidate.positional[0] notin ["server", "client", "mesh",
-        "download", "download-current"]:
-      return false # Socket services belong to network commands, never no-socket selftests.
+        "download", "download-current", "check-traces"]:
+      return false # Explicit state/service activation belongs only to supported command shapes.
+  let traceCommand = candidate.positional.len > 0 and candidate.positional[0] == "check-traces"
+  if traceCommand:
+    if not candidate.state or candidate.positional.len < 4 or candidate.positional.len > 259:
+      return false # One explicit policy, Genesis and1..256 consecutive steps define a finite offline workload.
+    for control in seen:
+      if control notin ["--with-state", "--chain", "--state-writes", "--state-write-bytes"]:
+        return false # Offline validation accepts only its explicit trust/state budgets; no listener, disk, recovery or download control is silently ignored.
   if downloadCommand:
     if not candidate.state or candidate.telemetry: return false # Downloads require explicit canonical state; outgoing telemetry is not wired yet.
   if candidate.ancestorFiles.len > 0 or "--download-blocks" in seen or candidate.localAncestors or
