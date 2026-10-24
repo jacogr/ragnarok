@@ -170,10 +170,11 @@ No speculative public delta API is introduced here.
 
 Full current-pin STF qualification still needs independent complete current-schema pre/post source
 material, actual selected producer integration and the outstanding normative/crypto gates. The
-[current Bandersnatch pin record](../spec/bandersnatch-pins.json) preserves release-reference IETF
-verification separately from adopted current Thin VRF parity. Conflicting bless allowances retain
+[current Bandersnatch pin record](../spec/bandersnatch-pins.json) now selects the qualified
+Draft 35 Thin v1 profile and aligned vector revision; historical IETF evidence is archived separately. Conflicting bless allowances retain
 `AmbiguousPrivileges` under the [existing integration contract](../spec/pvm-accumulation-integration.md).
-No pins, compatibility fallback, RPC root/schema policy or storage API/format are changed. M1 framing
+This continuation API introduces no compatibility fallback, RPC root/schema policy or storage
+API/format change. The separate Thin migration advances crypto/vector pins. M1 framing
 and current request namespace completion do not imply complete state serialization/STF or JAM parity.
 
 ## Explicit supplied successors and retained consumers

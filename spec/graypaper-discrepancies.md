@@ -687,3 +687,31 @@ filing an unlinked duplicate. The [maintainer draft](graypaper-discrepancy-issue
 asks whether candidates temporarily range over integers or whether debit
 sufficiency should be stated before constructing a balance-typed successor.
 Nothing has been posted upstream by this work.
+
+## GP-VRF-001: Draft 35 hash-to-curve prefix wording
+
+The adopted Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` cites
+Draft 35 `122f52fb63c6e8eb887aa7416f869aba5075519b`. Appendix A.2 names
+RFC9380 without stating that its executable vectors use a 48-byte SHA-512
+expansion zero prefix instead of the RFC's 128 bytes. Ark-vrf 0.6.0
+`dfb696dfb92425009af80dbbb403e647f6c9e3e4` preserves that v1 suite and exposes
+RFC padding separately as v2. Draft 36 `c32f7a9f38667ba2cda3c4e44bba78dc0a73224e`
+explicitly documents the deviation and says the RFC prefix cannot reproduce its
+constants/vectors. Follow the adopted published vector profile without a fallback;
+this is not literal RFC equivalence. The qualification reproduces all seven Thin
+known answers and verifies all seven ring vectors. See [the exact matrix](bandersnatch-thin-qualification.md).
+This is distinct from the archived draft-29 challenge-width discrepancy.
+
+## GP-VRF-002: aligned vector source retains incompatible trace credentials
+
+At the aligned vector pin `23061ae1f9b51171c01387e7dde0f15794c98e24`,
+Safrole stage RingVRF proofs verify under Draft35/ark-vrf0.6.0. In contrast,
+`traces/fallback/00000001.json`, SHA-256
+`d4c48b72483c0dda92d490d60d1fef1aab49dd50e0db87d3a3671129c0f38b52`,
+has nonsquares in both ordinary proofs' Thin R positions. Its entropy proof is
+unchanged from the former vector pin. All twenty selected current-pin headers
+fail native authentication as `InvalidSeal`; their original bytes are preserved.
+The mathematical reference and native authored positives pass. No alternate
+profile or repaired upstream credentials are accepted. This is an external
+published-trace compatibility gate, not a new Gray Paper ambiguity or permission
+to stop current-schema authored STF work. See [the consumer evidence](bandersnatch.md).

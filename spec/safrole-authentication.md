@@ -1,9 +1,9 @@
 # Safrole author, seal and entropy authentication
 
-Target: Gray Paper **0.8.0**, revision `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Target: Gray Paper **0.8.0**, revision `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 `text/safrole.tex` equations `ticketconditiontrue`, `ticketconditionfalse` and `vrfsigcheck`,
-and `text/header.tex` posterior-active author-index definition. The source/vector revisions and
-ark-vrf 0.2.2 dependency remain unchanged; twenty newly consumed trace JSON blobs are SHA-256 pinned.
+and `text/header.tex` posterior-active author-index definition. The aligned gp-next vector revision and ark-vrf 0.6.0 Thin v1 backend are recorded
+in [the primitive contract](bandersnatch.md); all twenty consumed trace JSON blobs are SHA-256 pinned.
 
 ## Core contract
 
@@ -38,32 +38,28 @@ then signs the final exact unsigned header. Production verification checks the c
 and uses **only its verified output** to authenticate entropy. The returned `EntropyInput` can feed
 `advanceEntropyTime`; a caller-supplied posterior accumulator is not trusted to authenticate itself.
 
-## Evidence
+## Current evidence and reproduction
 
-The native profile authenticates twenty selected published tiny trace records: blocks
-1, 11, 12, 13, 24, 25, 48, 49, 99 and 100 from both `traces/fallback` and `traces/safrole` at
-`d3c089c9a1d5352ad353626d7a2db8589f137b2a`. The first/eleventh records are identical across families
-(eighteen unique blobs); eighteen selected schedules are fallback; Safrole blocks **48 and 49 are ticket-sealed**.
-Both ordinary signatures verify for both modes, and
-actual entropy advancement reproduces each complete recorded posterior C(6). The Python helper
-only transports pinned header/state fields using existing independent serialization equations.
+The aligned gp-next revision `23061ae1f9b51171c01387e7dde0f15794c98e24`
+contains current Safrole stage proofs, but the twenty selected signed tiny traces
+retain incompatible ordinary credentials. The first fallback header's seal and
+entropy proof have nonsquares in the Thin R position. All twenty unmodified
+headers are required to fail as `InvalidSeal` after one verification attempt;
+there is no historical verifier fallback or successful entropy handoff claim.
 
-Real authored ticket/fallback signatures complement the external credentials for both modes. They cover
-same-epoch, adjacent and skipped-epoch history, E1 attempt 200, signed-header tampering, invalid
-schedule key/ticket identifiers, bad author population, dollar-prefixed domains, nonempty entropy
-additional data, another entropy key and first/second backend refusal. A scoped 1,000-call ARC
-workload retires temporary rejected candidates. Test-only ordinary-verification observation is
-separate from RingVRF counters and leaves successful production output and dependency sources
-unchanged. Two result privacy checks and two runtime extraction probes protect authentication.
-A failure-only result factory lets the context adapter preserve reasons without duplicating successful
-payloads. Its success-forgery precondition is checked both by a compiler rejection and an isolated
-runtime probe (the pinned diagnostic is `not reason == None`). Full-profile authored credentials
-also cover E600 phase 599 and active index 1022 in a 1,023-record population. Non-author keys
-and non-selected schedule entries differ from the valid selected ones, so wrong indexing cannot
-pass through repeated-key fixtures.
+Three current Thin positives use a separate mathematical hash-to-curve/signature
+oracle, verified against all seven complete Draft 35 vectors. They cover slots
+0→1, 1→7 and 11→12 with independently encoded expected C(6), complete signed
+headers, schedule and active records. They are component maps, not full JAM states.
+The existing authored native ticket/fallback, wrong-domain/AD/key/index, ceiling,
+backend-refusal and full-population boundary cases remain active. The 1000-cycle
+checked ARC measurement retains equal before/after occupancy.
 
-Run `make check-modules check-unit check-failures check-guards check-python`; reports and fixture
-hashes remain under ignored `build/tests/`. Cryptographic success is not a backend security audit.
+Run `make unit SUITE=safrole_authentication`; source hashes and refusal scope are
+preserved in preparation evidence. `tests/test_safrole_current_fixtures.py`
+independently freezes the current output anchors, component-scope limits and
+exact source incompatibility witness. Historical twenty-positive IETF results
+belong to the earlier `d3c089c...`/0.2.2 profile, not current Thin evidence.
 
 ## Read-only store context and entropy handoff
 

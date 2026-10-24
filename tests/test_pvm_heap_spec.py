@@ -35,13 +35,13 @@ class HeapSpecificationAdoption(unittest.TestCase):
                          pins['vectors']['files']['vendor/jamtestvectors/CHANGELOG.md'])
 
     def test_recorded_merge_adoption(self):
-        """Exact merged revisions record narrow grow_heap adoption, with unchanged vector pins."""
+        """Exact merged revisions retain the historical vector pin at the time of grow_heap adoption."""
         record = json.loads((ROOT / 'spec/pvm-grow-heap-adoption.json').read_text())
         self.assertEqual([(fix['pr'], fix['commit']) for fix in record['fixes']], [
             (533, '0c0664eb52ba92afd8d21cef96c0e1da506eddfe'),
             (538, 'b76e637c0901f1beb6fc7a63f4e64f8707b94baf')])
         self.assertEqual(record['vectors_commit'],
-                         json.loads((ROOT / 'spec/pins.json').read_text())['vectors']['commit'])
+                         json.loads((ROOT / 'spec/pins.json').read_text())['vectors']['base_release_commit'])
         self.assertIn('grow_heap only', record['scope'])
 
     def test_pinned_gas_discrepancy(self):

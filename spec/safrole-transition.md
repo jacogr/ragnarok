@@ -1,6 +1,6 @@
 # Atomic authenticated Safrole stage
 
-Target: Gray Paper **0.8.0**, revision `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Target: Gray Paper **0.8.0**, revision `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 `text/safrole.tex`: validator rotation/blacklist filtering, historical entropy rotation, ticket
 admission, slot-sealer selection, epoch/winning-ticket markers, seal/entropy authentication and
 entropy advancement. Existing source, vector and primitive dependency pins are unchanged.
@@ -42,28 +42,25 @@ state requires its own verified state/proof contract and must not be treated as 
 
 ## Evidence and reproduction
 
-The native `safrole_transition` profile executes twenty signed tiny trace records already pinned
-for [authentication](safrole-authentication.md): blocks 1, 11, 12, 13, 24, 25, 48, 49, 99 and 100 in
-both `traces/fallback` and `traces/safrole`, at vector revision
-`d3c089c9a1d5352ad353626d7a2db8589f137b2a`. Eighteen use fallback seals and two use ticket seals.
-The helper transports original parent chapters, actual ticket proofs, the supplied posterior
-disputes chapter and five expected posterior chapters. It implements no transition algorithm.
-The native test supplies no posterior roster, ring, schedule or entropy projection to the stage.
+`make unit SUITE=safrole_transition` executes three independently authored current
+Thin component cases: slots 0→1, 1→7 and 11→12. The mathematical VRF reference
+supplies credentials; independent byte/hash equations supply markers, expected
+entropy/time and all five posterior chapter encodings. Parent C(4)/C(6)/C(7)/C(8)/
+C(9)/C(11) plus an unrelated sentinel are retained. This is Safrole component
+publication, explicitly not complete sixteen-chapter state/STF parity.
 
-Every complete changed chapter matches the published posterior bytes. Input maps retain C(7) and
-an unrelated sentinel; the tests verify parent immutability, replay rejection, retained snapshots
-and first/second ordinary-verification plus first/last digest refusal. Additional cases reject every
-missing/truncated/suffixed required chapter, bad epoch markers, tampered signed commitments,
-noncanonical/over-budget offenders, malformed/refused RingVRF proofs and setup/commit refusal.
-Exact/one-short final write count and aggregate byte budgets distinguish complete success from
-atomic resource refusal. Native setup owners retire on all exercised paths. Nine compiler privacy rejections and nine isolated runtime probes protect success and every
-selected stage-reason accessor. A scoped 1,000-call first-verification-refusal workload requires
-identical before/after live Nim allocation occupancy; this is workload-specific ARC evidence.
-These projected complete maps do not claim to reproduce a whole-block
-post-state root: other JAM transitions are intentionally outside this bounded stage.
+Every expected chapter byte is compared. Parent immutability, replay rejection,
+retained results, exact/one-short write budgets, malformed/missing state, marker
+and signed-message damage, early/late digest refusal and first/second ordinary
+verification refusal remain tested, including within-epoch and crossing rollback.
+The first/last digest and 1000-cycle ARC checks retain no staged state on failure.
 
-Run `make check-modules check-unit check-failures check-guards check-python`; native profiles,
-exact source/fixture hashes and logs remain under ignored `build/`. Live networking is unchanged.
+The advanced published traces cannot supply current positive credentials: their
+Thin R positions are incompatible, as recorded by [authentication](safrole-authentication.md)
+and [the primitive contract](bandersnatch.md). No fixture repair or synthesized
+published post-state is made. The earlier twenty IETF trace passes remain
+historical evidence; current upstream complete signed-trace parity is blocked by
+that exact source defect, separately from current component execution.
 
 ## Next bounded work
 

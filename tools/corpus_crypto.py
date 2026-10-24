@@ -26,7 +26,7 @@ def bandersnatch_corpus(compiler, report, checks, libraries):
     BUILD = checks.folder
     build, command = checks.build, checks.command
     bs_library = libraries['bandersnatch']
-    # Replay the unchanged release-reference proof oracle through the production library, without observer interposition.
+    # Replay the pinned Draft 35 Thin/ring proof oracle through the production library, without observer interposition.
     from test_bandersnatch import suite as bs_suite, generated_proofs as bs_generated, bridge_checks as bs_bridge, official_sources as bs_official
     bs_official(False)
     compiled, binary = build(compiler, ROOT/'tests/native/bandersnatch_driver.nim', 'bandersnatch-context',
