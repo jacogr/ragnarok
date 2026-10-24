@@ -194,3 +194,24 @@ proc preimageAgingCode*(mode: int, hash: array[32, byte]): seq[byte] =
   instructions.add(if mode in [139, 140]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, @hash): result.add(octet)
+
+proc childRetirementCode*(mode: int, hash: array[32, byte], codeLength: uint32): seq[byte] =
+  ## A genuine reserved child is emptied before eject; current-slot protection and later refunds use actual metadata.
+  var memory = newSeq[byte](60)
+  for index, octet in hash: memory[index] = octet
+  let length = uint32(codeLength)
+  for index in 0..<4: memory[32+index] = byte((length shr (8*index)) and 255)
+  memory[36] = 100
+  memory[44] = 19
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 77),
+    registerImmediate(9, uint64(if mode <= 144: mode-141 else: 0)), registerImmediate(10, 196608),
+        @[10'u8, 20],
+    registerImmediate(7, 77), registerImmediate(8, 196608), registerImmediate(9, uint64(
+        codeLength)), @[10'u8, 26]]
+  if mode == 146: instructions.add(@[10'u8, 19]) # Retain cleanup while excluding a later retirement/refund.
+  instructions.add(registerImmediate(7, 77))
+  instructions.add(@[10'u8, 23])
+  if mode == 147: instructions.add(@[10'u8, 19]) # Deletion and refund belong to one retained implication.
+  instructions.add(if mode in [145, 146, 147]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)
