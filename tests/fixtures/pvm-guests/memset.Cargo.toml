@@ -1,0 +1,26 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Reviewed fixture rebuild manifest; upstream algorithm attribution is in README.md.
+[package]
+name = "bench-memset"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "bench_memset"
+path = "src/main.rs"
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "bench-memset"
+path = "src/main.rs"
+
+[dependencies]
+picoalloc = { workspace = true }
+
+[target.'cfg(target_env = "polkavm")'.dependencies]
+polkavm-derive = { path = "@POLKAVM_ROOT@/crates/polkavm-derive" }
+
+[lints]
+workspace = true

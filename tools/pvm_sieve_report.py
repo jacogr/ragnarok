@@ -55,9 +55,13 @@ def validate_memo_preparation(item):
         raise ValueError('Invalid gas-memo resource/occupancy identity')
 
 
-def parse_process_output(output,engine,limit):
+def parse_process_output(output,engine,limit,guest='sieve'):
     """Require complete policy-specific initialization/occupancy framing in addition to every measured execution."""
+    if guest not in ('sieve','minimal','memset'):raise ValueError('Unknown checked guest family')
     preparation=None;lines=output.splitlines()
+    if guest!='sieve':
+        # A mandatory first witness prevents cross-family reuse or relabeling of valid samples.
+        if not lines or lines.pop(0)!='GUEST,'+guest:raise ValueError('Missing or foreign guest family')
     if engine=='ragnarok_planned':
         fields=lines.pop(0).split(',') if lines else []
         if len(fields)!=7 or fields[0]!='GAS_PLAN' or any(re.fullmatch(r'[1-9][0-9]{0,18}',v) is None for v in fields[1:]):
@@ -78,7 +82,7 @@ def parse_process_output(output,engine,limit):
         preparation=dict(cpu_ns=cpu,wall_ns=wall,code_bytes=code,payload_bytes=payload,
                          cycle_limit=cycles,priced_blocks=int(tail[1]))
         validate_memo_preparation(preparation)
-    return dict(samples=parse_output('\n'.join(lines),engine,limit),preparation=preparation)
+    return dict(guest=guest,samples=parse_output('\n'.join(lines),engine,limit),preparation=preparation)
 
 
 def validate_samples(rows):
@@ -92,13 +96,18 @@ def validate_samples(rows):
 
 def summarize(report):
     """Show warmed runtime plus initialization/first-cold costs without hiding lazy work in discarded warmups."""
+    guest=report.get('guest','sieve')
+    if guest not in ('sieve','minimal','memset'):raise ValueError('Unknown checked guest family')
+    title={'sieve':'Sieve','minimal':'Indirect calls','memset':'Memory fill'}[guest]
     if report['status']!='checks-passed':
-        return 'Sieve comparison: '+report['status']+'. '+report.get('error','')+'\n'
+        return title+' comparison: '+report['status']+'. '+report.get('error','')+'\n'
+    if any(p.get('guest','sieve')!=guest for p in report['passes']):
+        raise ValueError('Missing or foreign structured guest family')
     identities=[(p['limit'],p['engine'],p['pass_index']) for p in report['passes']]
     if (any(type(p['limit']) is not int or type(p['pass_index']) is not int for p in report['passes'])
             or len(identities)!=len(set(identities)) or set(identities)!={(limit,engine,p) for limit in LIMITS for engine in ENGINES for p in range(2)}):
         raise ValueError('Missing or duplicate sieve report pass')
-    lines=['Sieve interpreter comparison (process CPU medians; all samples retained).','',
+    lines=[title+' interpreter comparison (process CPU medians; all samples retained).','',
            '| Limit | Dynamic ms | Immutable plan ms | Lazy memo ms | PolkaVM ms | Dynamic/ref | Plan/ref | Memo/ref | Quality |',
            '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |']
     if any(p.get('preparation') is not None for p in report['passes'] if p['engine'] not in ('ragnarok_planned','ragnarok_memo')):
@@ -145,5 +154,5 @@ def summarize(report):
             'Initialization CPU below clock resolution may be zero; positive wall duration remains recorded.',
             'Common source capture/reset and full result validation are outside execution timing.',
             'Checked release ARC/Clang ThinLTO; PolkaVM Interpreter JamV1 Sync/Full/L2Hit.',
-            'These two guests do not establish general interpreter or full JAM performance.']
+            'These two input sizes do not establish general interpreter or full JAM performance.']
     return '\n'.join(lines)+'\n'

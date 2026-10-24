@@ -32,23 +32,44 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def verify_fixture(folder=ROOT/'tests/fixtures',upstream=None):
+def verify_fixture(folder=ROOT/'tests/fixtures',upstream=None,guest='sieve'):
     """Check every declared member, guest provenance and already-pinned host dependencies."""
-    _,target,files=load_fixture_contracts(folder)['pvm_sieve']
+    if guest not in ('sieve','minimal','memset'):raise ValueError('Unknown checked guest family')
+    _,target,files=load_fixture_contracts(folder)['pvm_sieve' if guest=='sieve' else 'pvm_guests']
     for path,expected in files:
         # A directory fixture must pass every member, including its licenses and provenance.
         if digest(path)!=expected:raise ValueError('Changed sieve fixture: '+str(path))
-    provenance=json.loads((target/'provenance.json').read_text())
+    provenance=json.loads((target/('provenance.json' if guest=='sieve' else guest+'.provenance.json')).read_text())
     pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text())
     if provenance['schema']!=1 or provenance['polkavm_commit']!=pins['commit']:
         raise ValueError('Sieve provenance pin mismatch')
-    for name,key in (('sieve.polkavm','artifact_sha256'),('checked_entry.rs.inc','checked_entry_sha256'),
+    for name,key in ((('sieve' if guest=='sieve' else guest)+'.polkavm','artifact_sha256'),(('checked_entry' if guest=='sieve' else guest+'.checked_entry')+'.rs.inc','checked_entry_sha256'),
                      ('guest-Cargo.lock','guest_lock_sha256')):
         if digest(target/name)!=provenance[key]:raise ValueError('Sieve provenance digest mismatch')
+    if guest!='sieve':
+        # Even offline fixture-only checks bind family identity and every declared build input.
+        if provenance.get('guest')!=guest:raise ValueError('Guest provenance family mismatch')
+        for name,expected in provenance['build_inputs'].items():
+            if digest(target/name)!=expected:raise ValueError('Changed guest build manifest')
     if upstream is not None:
         # Public reference source and every registry package stay at their pristine existing pins.
         for name,expected in {**pins['source_sha256'],**provenance['upstream_sources']}.items():
             if digest(upstream/name)!=expected:raise ValueError('Changed upstream source: '+name)
+        if guest!='sieve':
+            # Adapted source prefixes and normalized manifests are declared, never silently patched.
+            if provenance.get('guest')!=guest:raise ValueError('Guest provenance family mismatch')
+            prefix=provenance.get('upstream_prefix')
+            if prefix:
+                raw=(upstream/prefix['path']).read_bytes()[:prefix['bytes']]
+                if hashlib.sha256(raw).hexdigest()!=prefix['sha256']:raise ValueError('Changed guest source prefix')
+            for name,expected in provenance['build_inputs'].items():
+                if digest(target/name)!=expected:raise ValueError('Changed guest build manifest')
+            known_guest={tuple(p.get(k) for k in ('name','version','source','checksum'))
+                for lock in (upstream/'Cargo.lock',upstream/'guest-programs/Cargo.lock')
+                for p in tomllib.loads(lock.read_text())['package']}
+            for package in tomllib.loads((target/'guest-Cargo.lock').read_text())['package']:
+                if tuple(package.get(k) for k in ('name','version','source','checksum')) not in known_guest:
+                    raise ValueError('Unpinned guest dependency: '+package['name'])
         fields=('name','version','source','checksum')
         known={tuple(p.get(k) for k in fields) for p in tomllib.loads((upstream/'Cargo.lock').read_text())['package']}
         for package in tomllib.loads((CRATE/'Cargo.lock').read_text())['package']:
@@ -57,23 +78,24 @@ def verify_fixture(folder=ROOT/'tests/fixtures',upstream=None):
     return provenance
 
 
-def run():
+def run(guest='sieve',build=None):
     """Build checked engines, reject bad controls, then retain two reversed complete passes."""
-    BUILD.mkdir(parents=True,exist_ok=True)
+    destination=Path(build) if build is not None else BUILD
+    destination.mkdir(parents=True,exist_ok=True)
     for name in ('samples.csv','summary.md'):
         # Failed reruns cannot expose a downloadable earlier success.
-        (BUILD/name).unlink(missing_ok=True)
-    report=dict(status='running',checks=[],passes=[])
-    checks=NativeChecks(BUILD)
+        (destination/name).unlink(missing_ok=True)
+    report=dict(status='running',guest=guest,checks=[],passes=[])
+    checks=NativeChecks(destination)
 
     def save():
         """Persist partial evidence as it becomes available, including failed runs."""
-        (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')
+        (destination/'results.json').write_text(json.dumps(report,indent=2)+'\n')
 
     def command(arguments,name,environment=None,failure=None):
         """Retain strict process status and diagnostics; negative controls require real failures."""
         row=checks.command(arguments,name,environment=environment,timeout=900)
-        output=row.pop('output');row['benchmark_environment']={key:environment[key] for key in ('RAGNAROK_PVM_PRICING','RAGNAROK_PVM_SIEVE_ASSERT_PROBE','RAGNAROK_PVM_SIEVE_INPUT','RAGNAROK_PVM_SIEVE_EXPECTED','RAGNAROK_PVM_SIEVE_SAMPLES') if environment and key in environment};report['checks'].append(row);save()
+        output=row.pop('output');row['benchmark_environment']={key:environment[key] for key in ('RAGNAROK_PVM_GUEST','RAGNAROK_PVM_PRICING','RAGNAROK_PVM_SIEVE_ASSERT_PROBE','RAGNAROK_PVM_SIEVE_INPUT','RAGNAROK_PVM_SIEVE_EXPECTED','RAGNAROK_PVM_SIEVE_SAMPLES') if environment and key in environment};report['checks'].append(row);save()
         if failure is None:
             if row['exit_code']!=0:raise RuntimeError(name+' failed: '+row['log'])
         elif row['exit_code']==0 or (failure and failure not in output):
@@ -83,11 +105,14 @@ def run():
     save()
     try:
         pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text())
-        provenance=verify_fixture(upstream=require_submodule(pins))
+        provenance=verify_fixture(upstream=require_submodule(pins),guest=guest)
+        fixture=ROOT/'tests/fixtures'/('pvm-sieve' if guest=='sieve' else 'pvm-guests')
+        artifact=fixture/(guest+'.polkavm')
         compiler,_=installed();rust=json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
         sources=[*sorted((ROOT/'src/pvm').glob('*.nim')),*sorted(CRATE.glob('src/*.rs')),
                  CRATE/'Cargo.toml',CRATE/'Cargo.lock',ROOT/'spec/toolchain.json',ROOT/'Makefile',
-                 ROOT/'tools/pvm_sieve_benchmark.py',ROOT/'tools/pvm_sieve_report.py',
+                 ROOT/'tools/pvm_sieve_benchmark.py',ROOT/'tools/pvm_sieve_report.py',ROOT/'tools/pvm_guest_benchmark.py',
+                 ROOT/'tools/pvm_benchmark.py',ROOT/'tools/pvm_benchmark_report.py',
                  ROOT/'tests/performance/pvm_sieve.nim',ROOT/'tests/performance/pvm_sieve_clock.h']
         report.update(provenance=provenance,sources={str(p.relative_to(ROOT)):digest(p) for p in sources},
             head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
@@ -112,16 +137,16 @@ def run():
         report['binaries']={str(p.relative_to(ROOT)):digest(p) for p in (binary,reference)}
         for limit in LIMITS:
             # Reference preparation is untimed and freezes the same initial/final state for both engines.
-            folder=BUILD/str(limit);folder.mkdir(exist_ok=True)
-            prepared=command([reference,'--sieve-prepare',FIXTURE/'sieve.polkavm',folder,limit,1],f'prepare-{limit}')
-            if not prepared.startswith('SIEVE_PREPARED,'+str(limit)+','):
+            folder=destination/str(limit);folder.mkdir(exist_ok=True)
+            prepared=command([reference,'--sieve-prepare',artifact,folder,limit,1],f'prepare-{limit}',dict(os.environ,RAGNAROK_PVM_GUEST=guest))
+            if not prepared.startswith(('SIEVE_PREPARED,' if guest=='sieve' else 'GUEST_PREPARED,'+guest+',')+str(limit)+','):
                 raise ValueError('Invalid reference preparation output')
             data=folder/f'input-{limit}.bin';expected=folder/f'expected-{limit}.bin'
             immutable={path:digest(path) for path in (data,expected)}
-            environment=dict(os.environ,RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0',RAGNAROK_PVM_SIEVE_INPUT=str(data),
+            environment=dict(os.environ,RAGNAROK_PVM_GUEST=guest,RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0',RAGNAROK_PVM_SIEVE_INPUT=str(data),
                              RAGNAROK_PVM_SIEVE_EXPECTED=str(expected),RAGNAROK_PVM_SIEVE_SAMPLES='13')
             arguments={'ragnarok':[binary],'ragnarok_planned':[binary],'ragnarok_memo':[binary],'polkavm_interpreter':
-                       [reference,'--sieve',FIXTURE/'sieve.polkavm',folder,limit,13]}
+                       [reference,'--sieve',artifact,folder,limit,13]}
             for engine in ENGINES:
                 # Release assertions must remain live in both executables.
                 probe=dict(environment,RAGNAROK_PVM_SIEVE_ASSERT_PROBE='1',RAGNAROK_PVM_PRICING=native_pricing_mode(engine))
@@ -137,19 +162,25 @@ def run():
                         command(arguments[engine],f'{name}-{limit}-{engine}',dict(environment,RAGNAROK_PVM_PRICING=native_pricing_mode(engine)),'')
                 finally:
                     path.write_bytes(original)
+            if guest!='sieve':
+                # Every measured embedding must reject a foreign family on these same frozen bytes.
+                foreign='memset' if guest=='minimal' else 'minimal'
+                for engine in ENGINES:
+                    command(arguments[engine],f'foreign-{limit}-{engine}',
+                        dict(environment,RAGNAROK_PVM_GUEST=foreign,RAGNAROK_PVM_PRICING=native_pricing_mode(engine)),'')
             for pass_index,order in enumerate((ENGINES,tuple(reversed(ENGINES)))):
                 for engine in order:
                     for path,identity in immutable.items():
                         if digest(path)!=identity:raise ValueError('Changed prepared sieve input')
                     mode=dict(environment,RAGNAROK_PVM_PRICING=native_pricing_mode(engine))
-                    observed=parse_process_output(command(arguments[engine],f'pass{pass_index}-{limit}-{engine}',mode),engine,limit)
+                    observed=parse_process_output(command(arguments[engine],f'pass{pass_index}-{limit}-{engine}',mode),engine,limit,guest=guest)
                     for path,identity in immutable.items():
                         if digest(path)!=identity:raise ValueError('Sieve runner changed frozen data')
                     report['passes'].append(dict(limit=limit,engine=engine,pass_index=pass_index,
                         inputs={str(p.relative_to(ROOT)):sha for p,sha in immutable.items()},**observed));save()
         report['status']='checks-passed';report['hardware']['load_average_end']=os.getloadavg()
         text=summarize(report)
-        with (BUILD/'samples.csv').open('w',newline='') as output:
+        with (destination/'samples.csv').open('w',newline='') as output:
             writer=csv.writer(output);writer.writerow(('limit','engine','pass','sample','warmup','wall_ns','cpu_ns'))
             for item in report['passes']:
                 for row in item['samples']:
@@ -157,9 +188,9 @@ def run():
         print(text)
     except Exception as error:
         # Partial successful timings never constitute a successful comparison.
-        report.update(status='failed',error=str(error));(BUILD/'samples.csv').unlink(missing_ok=True);raise
+        report.update(status='failed',error=str(error));(destination/'samples.csv').unlink(missing_ok=True);raise
     finally:
-        save();(BUILD/'summary.md').write_text(summarize(report))
+        save();(destination/'summary.md').write_text(summarize(report))
 
 
 if __name__=='__main__':

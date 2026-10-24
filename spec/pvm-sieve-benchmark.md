@@ -55,3 +55,7 @@ and reject optimizations whose correctness or representative workload cost outwe
 
 M1 framing is implemented in its documented scope; complete state serialization and full JAM/STF
 execution remain open. Fuzzing remains deferred pending maintainer Daybreak access.
+
+The same maintained adapters also serve the separate [real-guest pack](pvm-real-guests.md),
+which adds indirect calls and memory fill at two checked sizes. Each new process carries an
+explicit family witness; the default sieve command keeps its existing framing and fixture.
