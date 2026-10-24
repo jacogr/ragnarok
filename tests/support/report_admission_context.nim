@@ -150,6 +150,7 @@ type SignedBlockFixtureConfig* = object ## Authored signed-parent/block data is 
   withDispute*: bool               ## Include genuine new-offender evidence.
   withAvailable*: bool             ## Assure a previously assigned report.
   extra*: seq[StateEntry]          ## Additional original-parent entries, committed before signing.
+  accountTransferGas*: uint64      ## Explicit original recipient threshold; default preserves historical fixtures.
   accountCode*: seq[byte]          ## Optional code preimage bound to signed reports and the account.
   ready*: ReadyRow                 ## Original parent ready row.
   preimageWire*: seq[byte]         ## Exact child preimage extrinsic, including intentional malformed cases.
@@ -171,7 +172,8 @@ type SignedBlockFixtureConfig* = object ## Authored signed-parent/block data is 
 proc signedBlockFixtureConfig*(): SignedBlockFixtureConfig =
   ## Preserve the existing tiny signed profile and resource defaults in one place.
   SignedBlockFixtureConfig(mode: 0, reports: 2, maxWriteBytes: 1000000'u64, withDispute: false,
-      withAvailable: false, extra: @[], accountCode: @[], ready: @[], preimageWire: @[],
+      withAvailable: false, extra: @[], accountTransferGas: high(uint64), accountCode: @[],
+          ready: @[], preimageWire: @[],
       poolCopies: 1, namespaceValueBytes: 65, accumulationGas: 10'u64, refinementGas: high(uint64),
           historyPeaks: @[], targetSlot: 0'u32,
       withTicket: false, shiftPending: false, guaranteeSlot: 0'u32, refinement: @[], parentPools: @[],
@@ -215,7 +217,7 @@ proc authored*(base: OwnedReport, options = signedBlockFixtureConfig()): Context
   let selectedBase = if options.accountCode.len == 0: base
     else: withCode(base, options.accountCode) # Bind optional authored code to every signed report and account.
   let sample = reportFor(selectedBase, 0, [options.accumulationGas])
-  var entries = entriesFor([sample])
+  var entries = entriesFor([sample], transferMinimum = options.accountTransferGas)
   var pools = newSeq[AuthorizerRow](2)
   assert options.poolCopies >= 1 and options.poolCopies <=
       8 # Authored duplicates stay inside the protocol's pool cardinality.
