@@ -749,7 +749,7 @@ proc dynamicTargets(count = 64, full = true, wide = false) =
   assert uint64(blockGas(owner, CodeAddress(0), GasCycleLimit(103)).value) == 100
   assert uint64(blockGas(owner, CodeAddress(4), GasCycleLimit(103)).value) == 100
   for policy in 0..<(if full: 3 else: 1):
-    for terminal in [0xffff0000'u64, 4, 6, (if wide: 516'u64 else: 18'u64), 0, 3]:
+    for terminal in [0xffff0000'u64, 4, 6, (if wide: 516'u64 else: 18'u64), 0, 3, 0xfffffffe'u64]:
       for fallible in [false, true]:
         var context = JumpContext(nested: nested, previous: original,
           calls: 0, count: count, expectedHost: 1, terminal: terminal, wide: wide)

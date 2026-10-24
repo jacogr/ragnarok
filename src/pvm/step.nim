@@ -16,9 +16,8 @@ type
     valid: bool
     start: CodeAddress
     charge: BlockGas
-  DynamicTargetEntry = object ## A validated dynamic ordinal/target fact belongs only to this invocation's immutable program.
-    valid: bool
-    index: JumpIndex
+  DynamicTargetEntry = object ## A complemented full ordinal and copied PC certify one validated target; zero tags are empty.
+    tag: uint64 # Successful ordinals are below the admitted jump count, so high(uint64) can never produce a valid zero tag.
     target: CodeAddress
   DynamicTargetSpill = ref object ## Sustained successful target misses justify one fixed exact-tagged child, never input-sized growth.
     entries: array[256, DynamicTargetEntry]
@@ -39,7 +38,7 @@ type
     secondary: nil SecondaryPrices
     targets: array[4, DynamicTargetEntry]
     targetSpill: nil DynamicTargetSpill
-    targetPressure: range[0..128]
+    targetPressure: range[0'u8..128'u8]
   DecodedSpill = ref object ## One bounded direct-mapped invocation spill retains copied scalar results, never a program or mutable machine.
     entries: array[16384, ProgramResult[Instruction]]
   InstructionCache = object ## Thirty-two genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
@@ -300,7 +299,7 @@ func initExecutionCache(): ExecutionCache =
   ExecutionCache(valid: false, start: CodeAddress(0), charge: BlockGas(0),
     recent: default(array[3, BlockChargeEntry]), next: 0,
     secondary: nil,
-    targets: default(array[4, DynamicTargetEntry]), targetSpill: nil, targetPressure: 0)
+    targets: default(array[4, DynamicTargetEntry]), targetSpill: nil, targetPressure: 0'u8)
 
 proc cachedSecondaryCharge(cache: ExecutionCache, start: CodeAddress,
     needed: var uint64): bool {.noinline.} =
@@ -501,33 +500,34 @@ proc rememberDynamicTarget(cache: var ExecutionCache, index: JumpIndex,
     target: CodeAddress) {.noinline.} =
   ## Only successful checked misses advance bounded pressure; small working sets retain the original allocation-free path.
   if cache.targetSpill == nil:
-    if cache.targetPressure < 128:
+    if cache.targetPressure < 128'u8:
       inc cache.targetPressure # The checked bound prevents overflow and unsuccessful targets never reach this helper.
       return
     # The129th successful miss seeds genuine resident facts before recording the new full ordinal.
     var expanded = DynamicTargetSpill(entries: default(array[256, DynamicTargetEntry]))
     for entry in cache.targets:
-      if entry.valid:
-        expanded.entries[int(uint64(entry.index) and 255)] = entry
+      if entry.tag != 0:
+        expanded.entries[int((not entry.tag) and 255)] = entry
     cache.targetSpill = expanded
   # The retained invocation cache fixes this child throughout this callback-free scalar insertion.
   let table {.cursor.} = cache.targetSpill
   if table != nil:
-    table.entries[int(uint64(index) and 255)] = DynamicTargetEntry(valid: true,
-      index: index, target: target)
+    table.entries[int(uint64(index) and 255)] = DynamicTargetEntry(tag: not uint64(index),
+        target: target)
 
 proc cachedDynamicTarget(cache: var ExecutionCache, program: Program, index: JumpIndex,
     target: var CodeAddress): bool =
   ## Only a complete table lookup and block-membership check supplies a positive exact-ordinal fact.
+  let tag = not uint64(index) # Complementing is reversible without arithmetic; zero remains an unconditionally invalid fact.
   let slot = int(uint64(index) mod uint64(cache.targets.len))
-  if cache.targets[slot].valid and uint64(cache.targets[slot].index) == uint64(index):
+  if cache.targets[slot].tag != 0 and cache.targets[slot].tag == tag:
     target = cache.targets[slot].target # Full ordinal tags reject colliding entries without truncation.
     return true
   # Retain the original four-slot hit path without a spill probe; only a small-cache miss visits the child.
   let table {.cursor.} = cache.targetSpill
   if table != nil:
     let entry = table.entries[int(uint64(index) and 255)]
-    if entry.valid and uint64(entry.index) == uint64(index):
+    if entry.tag != 0 and entry.tag == tag:
       target = entry.target # A direct-map collision never authorizes a different ordinal's destination.
       return true
   let found = jumpTarget(program, index)
@@ -535,7 +535,7 @@ proc cachedDynamicTarget(cache: var ExecutionCache, program: Program, index: Jum
   let resolved = found.value
   if not blockTarget(program, resolved): return false # Nonblock and out-of-code table contents remain guest panics.
   rememberDynamicTarget(cache, index, resolved)
-  cache.targets[slot] = DynamicTargetEntry(valid: true, index: index, target: resolved)
+  cache.targets[slot] = DynamicTargetEntry(tag: tag, target: resolved)
   target = resolved
   true
 

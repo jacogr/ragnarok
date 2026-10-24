@@ -333,7 +333,7 @@ successful miss allocates that fixed child, seeds valid residents and inserts th
 fact. Failed table lookups and nonblock destinations never advance pressure or replace
 entries. Every hit checks the complete ordinal and validity tag; collisions are misses.
 Facts contain only copied ordinals and code addresses, never program/machine owners,
-instructions, gas prices or mutable host state. The fixed payload is6144 bytes on the
+instructions, gas prices or mutable host state. The fixed payload is4096 bytes on the
 checked64-bit target, plus its ARC header; input size cannot grow it further.
 
 The invocation owns the child across host continuations because responses cannot change
@@ -348,5 +348,13 @@ instruction refusal, and1000 balanced ARC promotion/retirement cycles. A257-ordi
 guest deliberately collides ordinals0/256 with different destinations after promotion;
 both callback forms, all pricing policies, nested different programs, invalid operand/
 out-of-code/absent targets and halt priority retain independently checked state and gas.
+The proposed128-miss adaptive policy replays22508 validations and738921 spill hits.
+Facts use a reversible complemented full-ordinal tag and copied PC, occupying16 bytes
+instead of the original24-byte bool/ordinal/PC layout. Zero is always invalid; a valid
+lookup can never select ordinal high(uint64) because admitted jump counts are bounded.
+This avoids a separate validity field while retaining full tags and valid targetPC0.
+Even with its optional child/counter, the complete target workspace occupies less stack
+space than the original four24-byte entries. The first wider-fact CI layout regressed
+dynamic memory fill about7% despite a3–5% dynamic Pinky gain; it was not accepted.
 Performance acceptance requires the incremental paired Linux comparison and its unchanged
 synthetic, identical-source, assertion and interpreted reference controls.
