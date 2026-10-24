@@ -317,3 +317,27 @@ interpreter measurements, without CPU affinity/frequency isolation; they establi
 neither exact-head Linux performance nor compiled-backend or whole-JAM throughput.
 M1 framing remains scoped completion; full state serialization and STF/JAM parity
 remain open, and fuzzing remains paused pending the maintainer's Daybreak access.
+
+## Borrowing synchronous metadata owners, 2026-10-24
+
+The read-only secondary-price lookup borrows its existing small and expanded
+owners with explicit cursors. Its caller retains the invocation cache throughout
+the synchronous call; neither owner is replaced, no callback runs and only a
+copied price can escape. Exact start tags, success-only insertion, promotion,
+capacity and per-visit affordability remain unchanged.
+
+The public `jumpTarget` and `basicBlockStart` scalar queries similarly borrow
+their captured immutable program owner after the existing owner checks. The
+caller retains that program through the complete query; no storage or mutable
+view escapes. Index bounds, logical zero-width jump tables, opcode/address
+validation, block membership and typed refusal reasons remain in their original
+order. Public signatures and returned copied values remain unchanged.
+
+Linux profiling attributes3.52% of dynamic Pinky instructions to secondary-price
+lookup and1.50% of planned Pinky instructions to block membership. Generated C
+shows transient retains/releases in these read paths; the cursor prototype
+removes the corresponding owner operations. These percentages are instruction
+attribution, not timing predictions. Independent program/control/gas, cache,
+plan/memo, mixed-program and nested-host suites qualify semantic and lifetime
+behavior; paired CI must establish any performance gain. No new representation,
+disabled contract or protocol/compiler/dependency pin change is introduced.

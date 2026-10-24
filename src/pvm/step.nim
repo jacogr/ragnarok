@@ -301,7 +301,7 @@ func initExecutionCache(): ExecutionCache =
 proc cachedSecondaryCharge(cache: ExecutionCache, start: CodeAddress,
     needed: var uint64): bool {.noinline.} =
   ## Four-hot-price invocations allocate nothing; an exact-tagged two-way spill retains only successful owned prices.
-  let table = cache.secondary
+  let table {.cursor.} = cache.secondary # The caller retains the invocation cache through this callback-free lookup.
   if table == nil: return false
   let slot = int((uint64(start)*11400714819323198485'u64) shr 58)
   if table.entries[slot].valid and uint64(table.entries[slot].start) == uint64(start):
@@ -311,7 +311,7 @@ proc cachedSecondaryCharge(cache: ExecutionCache, start: CodeAddress,
       uint64(start):
     needed = uint64(table.entries[slot+64].charge)
     return true
-  let expanded = table.expanded
+  let expanded {.cursor.} = table.expanded # This read never replaces either retained cache owner.
   if expanded != nil:
     # Promotion changes only the bounded table; complete original start tags still decide every hit.
     let slot = int((uint64(start)*11400714819323198485'u64) shr 53)

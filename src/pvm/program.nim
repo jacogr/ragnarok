@@ -235,8 +235,8 @@ proc jumpTarget*(program: Program, index: JumpIndex): ProgramResult[CodeAddress]
   ## Read a table entry by ordinal, including implicit zero values in a zero-width table.
   # A default handle has no validated storage to inspect.
   if program.data == nil: return ProgramResult[CodeAddress](status: ProgramError.InvalidOwner)
-  let data = program.data
-  # Table indexing uses logical count, which may exceed host int for width zero.
+  let data {.cursor.} = program.data # The caller retains this immutable program through the complete scalar query.
+ # Table indexing uses logical count, which may exceed host int for width zero.
   if uint64(index) >= data.jumps: return ProgramResult[CodeAddress](
       status: ProgramError.InvalidIndex)
   var target = 0'u64
@@ -447,7 +447,7 @@ proc basicBlockStart*(program: Program, address: CodeAddress): ProgramResult[boo
   let decoded = instructionOpcode(program, address)
   # Preserve address failures instead of treating invalid positions as ordinary block members.
   if decoded.error != ProgramError.None: return ProgramResult[bool](status: decoded.error)
-  let data = program.data
+  let data {.cursor.} = program.data # The caller retains this immutable program through the complete scalar query.
   ProgramResult[bool](status: ProgramError.None, completed: startsBlock(data, int(uint64(address))))
 
 proc instructionByte*(program: Program, address: CodeAddress): ProgramResult[byte] =

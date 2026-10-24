@@ -198,3 +198,12 @@ On the recorded ARM64 host the three-byte coordinates occupy existing padding:
 `Instruction` remains56 bytes and the scalar write result remains24 bytes.
 No cache capacity, preparation pass, resource default, protocol pin or runtime-check
 flag changes. Timing and full composition coverage are recorded separately.
+
+## Synchronous scalar control queries, 2026-10-24
+
+`jumpTarget` and `basicBlockStart` borrow the caller-retained immutable program
+owner during their callback-free scalar queries. Existing owner/index/address
+checks precede the same bounded byte and block-membership equations; results
+still contain copied addresses/booleans or only a typed refusal. No borrow or
+storage view escapes, and no public signature changes. Profiled ownership and
+paired qualification are recorded with [metadata reuse](pvm-interpreter-block-cache.md).
