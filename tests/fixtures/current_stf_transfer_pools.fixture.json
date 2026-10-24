@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_TRANSFER_POOLS",
+  "files": {
+    "current-stf-transfer-pools.json": "099c2706af53de28994c73fd15ecd0f378f7a39b6540286db3cb37a855df804b"
+  },
+  "target": "current-stf-transfer-pools.json"
+}
