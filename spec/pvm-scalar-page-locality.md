@@ -106,6 +106,25 @@ changes. Source, writer aliases and sealed snapshots retain their own strong own
 
 Existing writer alias/epoch/chunk tests, the independent4050-row access corpus,
 boundary ordering, metered cross-page repair, nested host reentry and execution
-ARC/cache suites qualify correctness. Paired Linux CPU/synthetic/noise comparison
-must establish the performance result; instruction attribution alone is not a
-speed claim. M1 framing remains scoped, and full-JAM parity remains open.
+ARC/cache suites qualify correctness. Seven selected native suites pass with
+1000 balanced ARC cycles in the declared writer, memory-step, execution-cache
+and nested-host groups. M1 framing remains scoped, and full-JAM parity remains open.
+
+[CI40109130958](https://github.com/jacogr/ragnarok/actions/runs/40109130958)
+qualifies runtime `bb00e6d3` against its promoted-lookup parent on AMD EPYC9V45.
+It passes2808 paired full-state invocations,2808 identical-source controls,
+assertion controls and the interpreted reference pack. Pinky CPU changes are
+-4.9% dynamic, -5.7% planned and -3.3% memo. Dynamic orders agree at -5.21/-4.62%,
+planned at -3.91/-6.55%; memo varies -0.42/-4.83%. Memset100000 improves3.7/6.1/4.5%
+in dynamic/planned/memo modes, with both orders improving. Planned indirect100000
+changes -6.15/+5.97% per order despite its favorable aggregate, so that cell is
+not an established gain. Planned sieve also has material control variation.
+
+Tiny memo arithmetic1 is7.8% slower, about20ns, against19% same-source variation;
+memo synthetic hosts are1.8/2.2% slower against roughly7% same-source variation.
+Several memo synthetic improvements also move with the run phase. All21 real and33
+synthetic cells, cold rows, both orders and noise data remain in the CI artifact
+and `build/pvm12/ci-40109130958/`. The supported result is the repeated-order
+Pinky dynamic/planned and memory-fill improvement, not a universal claim.
+Publication adds only contract evidence to the measured runtime; exact source,
+driver, build and pin equality is checked across native documentation restacking.
