@@ -47,7 +47,8 @@ proc normal(old, union, fresh: FullPagedFixture) =
   let busy = writer.reclaim(one, writer.selected.value)
   assert busy.error == FullPagedNativeError.FileFailure and busy.fileError == FileError.Busy
   assert writer.reclaim(one, prior).error == FullPagedNativeError.StaleView
-  assert writer.reclaim(default(FullPagedEpochReceipt), writer.selected.value).error == FullPagedNativeError.InvalidCandidate
+  assert writer.reclaim(default(FullPagedEpochReceipt), writer.selected.value).error ==
+      FullPagedNativeError.InvalidCandidate
   assert first.close == FileError.None
   let removed = writer.reclaim(one, writer.selected.value)
   assert removed.error == FullPagedNativeError.None and not removed.value.alreadyAbsent
@@ -91,7 +92,8 @@ proc maxRoots() =
   let refused = openFullPagedReader(reader, directory, narrow)
   assert refused.error == FullPagedNativeError.GraphFailure and not reader.opened
   assert refused.graphError == FullPagedStreamError.LimitExceeded
-proc prepared(writer: var FullPagedWriter, directory: string, old: FullPagedFixture): FullPagedEpochReceipt =
+proc prepared(writer: var FullPagedWriter, directory: string,
+    old: FullPagedFixture): FullPagedEpochReceipt =
   ## Capture epoch one under SH, advance independently to epoch two, then release old readers before cleanup tests.
   writer.seed(directory, old)
   var reader = default(FullPagedReader)
@@ -176,7 +178,8 @@ proc policyBinding(old: FullPagedFixture) =
   writer.prepare(candidate, old)
   assert writer.publish(candidate).error == FullPagedNativeError.None
   for receipt in receipts:
-    assert writer.reclaim(receipt, writer.selected.value).error == FullPagedNativeError.InvalidCandidate
+    assert writer.reclaim(receipt, writer.selected.value).error ==
+        FullPagedNativeError.InvalidCandidate
 proc renameNative(source, target: cstring): cint {.importc: "rename", cdecl, header: "<stdio.h>".}
   ## Test-only namespace substitution uses the real SDK to replace an old path with an independently created inode.
 proc identities(old: FullPagedFixture) =
