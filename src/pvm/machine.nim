@@ -671,7 +671,7 @@ proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
     width: AccessWidth): MachineResult[RegisterValue] =
   ## Read the writer's latest scalar state; nil/default-invalid builders never imply a zero-filled address space.
   if writer == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
-  let source = writer.base.data
+  let source {.cursor.} = writer.base.data # The retained writer fixes this immutable base throughout the callback-free operation.
   if source == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
   let checked = scalarSpan[true, false](writer.base, address, width, writer.recent)
   if checked.error != MachineError.None: return failure[RegisterValue, ScalarSpan](checked)
@@ -688,7 +688,7 @@ proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: Acces
     value: RegisterValue): MachineResult[bool] =
   ## Commit one atomic private scalar write; failures preserve all previous successful writes and expose only their reason.
   if writer == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
-  let source = writer.base.data
+  let source {.cursor.} = writer.base.data # The retained writer fixes this immutable base throughout the callback-free operation.
   if source == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
   let checked = scalarSpan[true, true](writer.base, address, width, writer.recent)
   if checked.error != MachineError.None: return failure[bool, ScalarSpan](checked)
