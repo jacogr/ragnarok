@@ -3,6 +3,7 @@
 
 ## Literal foreign-account programs exercise authority and selected publication through genuine current guests.
 import ./pvm_accumulation_program
+import ../../src/crypto/primitives
 
 proc supervisedWriteCode*(mode: int): seq[byte] =
   ## Target42 receives a distinct raw storage key; later current account selection must publish only the selected context.
@@ -86,3 +87,23 @@ proc supervisedHandoffCode*(mode: int): seq[byte] =
   instructions.add(if mode in [105, 106]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, @[7'u8, 9, 8, 7]): result.add(octet)
+
+proc authorizationAssignCode*(mode: int): seq[byte] =
+  ## Ordered80-hash replacement and handoff run through real host17 with an explicit2560-byte input.
+  var memory: seq[byte] = @[]
+  for index in 0..<80:
+    var source: seq[byte] = @[] # Keep each positional hash input independent and explicitly ordered.
+    for octet in "authorization queue A": source.add(byte(octet))
+    source.add(byte(index))
+    for octet in array[32, byte](blake2b256(source).value): memory.add(octet)
+  let core = if mode == 110: 2'u64 else: 1'u64
+  let nominee = if mode == 111: 4294967338'u64 else: 42'u64
+  var instructions = @[registerImmediate(7, core), registerImmediate(8, 196608), registerImmediate(
+      9, nominee), @[10'u8, 17]]
+  if mode == 109: instructions.add(@[10'u8, 19]) # Queue and assigner join one actual exceptional implication.
+  for instruction in [registerImmediate(7, core), registerImmediate(8, 196608),
+      registerImmediate(9, if mode == 111: nominee else: 99'u64), @[10'u8, 17]]:
+    instructions.add(instruction) # A later host call must observe the current assigner, never its original privilege.
+  instructions.add(if mode in [108, 109]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)

@@ -132,6 +132,9 @@ def advance(parent, initial, mode, slot, gs, ass, *, plan=None):
     for core in range(2):
         if old[core] is not None and (votes[core] >= 5 or slot >= old[core]['registered']+5): old[core] = None
     pools, rows = Reader(parent[chapter_key(1)]), []
+    # GP authorization consumes the posterior queue; callers that change it provide independently selected bytes.
+    queues = parent[chapter_key(2)] if plan is None else plan.get('authorization_queues', parent[chapter_key(2)])
+    assert len(queues) == 2*80*32
     for core in range(2):
         row = [pools.take(32) for _ in range(pools.count())]
         for item in gs:
@@ -139,7 +142,9 @@ def advance(parent, initial, mode, slot, gs, ass, *, plan=None):
                 assert old[core] is None and item['layout']['authorizer'] in row
                 old[core] = dict(guarantee={k: item[k] for k in ('report', 'slot', 'credentials')}, registered=slot)
                 row.remove(item['layout']['authorizer'])
-        rows.append(natural(len((row+[bytes(32)])[-8:]))+b''.join((row+[bytes(32)])[-8:]))
+        offset = (core*80+slot % 80)*32
+        selected = queues[offset:offset+32]
+        rows.append(natural(len((row+[selected])[-8:]))+b''.join((row+[selected])[-8:]))
     result[chapter_key(1)] = b''.join(rows)
     result[chapter_key(10)] = availability_wire(old)
     blocks, peaks = history(result[chapter_key(3)])

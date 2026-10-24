@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_AUTHORIZATION_ASSIGN",
+  "files": {
+    "current-stf-authorization-assign.json": "4e104b2dbbe89f3b4834e897a6340a0294d843efa03a54321f6115b370df92f6"
+  },
+  "target": "current-stf-authorization-assign.json"
+}

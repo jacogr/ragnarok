@@ -4,11 +4,12 @@
 ## Immediate available reports drive genuine guests, grouped operands and complete current-state publication.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/header
+import ../../src/pvm/[initialize, machine]
 import ../support/current_stf_epoch_context as epoch
 import ../support/report_context as reportContext
 import ../support/[current_stf_transfer_context, current_stf_lifecycle_context, current_stf_supervised_context]
 import ../../src/app/[chain, candidate]
-import ../../src/chain/[provider, genesis]
+import ../../src/chain/[provider, genesis, parameters]
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
   state_requests, state_service_values, state_layout, state_safrole, composite]
 import ../../src/crypto/primitives
@@ -118,6 +119,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): 
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 107..112: second = authorizationAssignCode(mode) # Real ordered queue replacement and original-assigner publication.
   of 102..106: second = supervisedHandoffCode(mode) # Foreign role assignment changes immediate authority but keeps prior-based M selection.
   of 97..101: second = supervisorConflictCode(mode) # Selected foreign membership drives real N/M decisions.
   of 92..96: second = supervisedUpgradeCode(mode, replacement) # Foreign metadata affects a later independently admitted42 report.
@@ -218,6 +220,8 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # Authority is original and incarnation-bound; stale/missing nominees fall back to target self supervision.
     options.signed.accountSupervisor = (if mode == 86: 77'u32 else: 99'u32)
     options.signed.accountSupervisorCreated = (if mode in [85, 96, 101]: 1'u32 else: 0'u32)
+  if mode in 107..112:
+    options.assigner = 99 # Genuine original roles authorize both cores before any signed child.
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -228,7 +232,13 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       parent: ServiceIndex(99), supervisor: ServiceIndex(if mode == 75: 42 else: 99))
     options.signed.extra.add(serviceMetadataEntry(ServiceIndex(77), donor, ByteLimit(105)).value)
   let fixture = executionFixture(base, options)
-  var chain = initApplicationChain(fixture.executionNamespaceParent).value
+  var chainParameters = currentChainSettings()
+  if mode in 107..111:
+    # This authored larger-code profile admits the real queue-bearing program; mode112 retains512 as its eligibility control.
+    var wire = chainParameters.encodeParameters
+    for index in 0..<4: wire[98+index] = byte((4096'u32 shr (8*index)) and 255)
+    chainParameters = decodeParameters(wire).value
+  var chain = initApplicationChain(fixture.executionNamespaceParent(chainParameters)).value
   let original = checkpointHex(chain.stateSnapshot.value)
   echo "P ", original
   var limits = currentConsecutiveLimits()
@@ -276,6 +286,18 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
     limits.completion.execution.initial.guests.deletedAccounts = ElementLimit(1)
     limits.completion.execution.execution.round.guests.deletedAccounts = ElementLimit(1)
+  if mode in 107..112:
+    # Whole code includes the actual2560-byte queue; bounded code/initialization/copy policies admit this exact authored size.
+    limits.completion.composition.validators.preimageBytes = ByteLimit(4096)
+    limits.completion.composition.activity.preimages.perBlob = ByteLimit(4096)
+    limits.completion.composition.activity.preimages.totalBlobBytes = ByteLimit(4096)
+    limits.completion.composition.preimages.bytes = ByteLimit(4096)
+    limits.completion.execution.initial.guests.preimageBytes = ByteLimit(4096)
+    limits.completion.execution.initial.guests.initialization.envelope = InitializationByteLimit(4096)
+    limits.completion.execution.initial.guests.copyBytes = MemoryByteLimit(2560)
+    limits.completion.execution.execution.round.guests.preimageBytes = ByteLimit(4096)
+    limits.completion.execution.execution.round.guests.initialization.envelope = InitializationByteLimit(4096)
+    limits.completion.execution.execution.round.guests.copyBytes = MemoryByteLimit(2560)
   var children: seq[ServiceIndex] = @[]
   var ancestors: seq[OwnedHeader] = @[]
   for bodyIndex, body in bodies:
@@ -418,7 +440,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       assert restored.error == CheckpointError.None
       assert sameStateStorePolicy(selected.stateSnapshot, restored.value.snapshot.value)
       let captured = captureBlockSnapshot(currentChainBytes(selected.header),
-          restored.value.snapshot.value, currentChainSettings())
+          restored.value.snapshot.value, chainParameters)
       assert captured.error == GenesisError.None
       let view = genesisView(captured).finalizeView(captured.value.blockHash)
       assert view.error == ViewFinalizeError.None
@@ -460,7 +482,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 107
+      assert mode >= 0 and mode < 113
       bodies = @[]
       slots = @[]
     else:
@@ -468,7 +490,8 @@ proc main() {.raises.} =
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
-  assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101, 106]
+  assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
+      106, 111, 112]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:
