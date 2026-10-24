@@ -8,7 +8,7 @@ import ../../src/pvm/[initialize, machine]
 import ../support/current_stf_epoch_context as epoch
 import ../support/report_context as reportContext
 import ../support/[current_stf_transfer_context, current_stf_lifecycle_context,
-    current_stf_supervised_context, current_stf_privileges_context, current_stf_incarnation_context]
+    current_stf_supervised_context, current_stf_privileges_context, current_stf_incarnation_context, current_stf_foreign_funding_context]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[provider, genesis, parameters]
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
@@ -126,7 +126,10 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
       true) # The scheduled service is a real independently authored manager program.
   if mode in 171..175: first = incarnationRebindCode(
       mode) # Actual later self rebinding changes only the recorded supervisor incarnation.
+  if mode in 176..182: first = foreignFundingJuniorCode() # A real parallel self-write competes with the selected foreign funding debit.
   case mode
+  of 176..182: second = foreignCreationCode(mode, replacement,
+      codeLength) # Exact original source authority chooses the funding pool.
   of 171..175: second = incarnationCreatorCode(mode, replacement,
       staging) # Exact known foreign-write bytes become the new77 code.
   of 166..170: second = allowanceEligibilityCode(mode) # Real zero/exact free budgets retain explicit dictionary membership.
@@ -285,6 +288,14 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   if mode in 171..175:
     options.registrar = 99
     options.signed.accountSupervisor = 77 # The original42 genuinely points to old77 creation0.
+  if mode in 176..182:
+    options.registrar = 99
+    options.secondBalance = 10000
+    options.signed.accountSupervisor = 99
+    options.signed.accountSupervisorCreated = (if mode == 180: 1'u32 else: 0'u32)
+    options.signed.accountBalance = (if mode in [177, 179]: 0'u64 else: 1000000'u64)
+    options.signed.accountProtectedBalance = (if mode in [177,
+        179]: 1000000'u64 else: 0'u64) # Only the selected foreign source pool is funded.
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -306,7 +317,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     var wire = chainParameters.encodeParameters
     for index in 74..<78: wire[index] = 0
     chainParameters = decodeParameters(wire).value
-  if mode in 123..130 or mode in 141..154:
+  if mode in 123..130 or mode in 141..154 or mode in 176..182:
     # Author a distinct nonzero deposit schedule; existing zero-deposit profiles and all protocol checks remain intact.
     var wire = chainParameters.encodeParameters
     for field, value in [7'u64, 1'u64, 100'u64]:
@@ -372,7 +383,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     limits.completion.execution.execution.round.guests.preimageBytes = ByteLimit(4096)
     limits.completion.execution.execution.round.guests.initialization.envelope = InitializationByteLimit(4096)
     limits.completion.execution.execution.round.guests.copyBytes = MemoryByteLimit(2560)
-  if mode in 123..130 or mode in 141..154:
+  if mode in 123..130 or mode in 141..154 or mode in 176..182:
     # The complete prior may contain the one reserved child on later blocks; creation/debit facts keep their original bounds.
     limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)
     limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
@@ -445,7 +456,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       for service in children:
         assert before.stateSnapshot.lookup(chapterServiceKey(StateChapter(255), service)).error ==
             StateStoreError.MissingKey
-    if mode in 123..130 or mode in 141..154 or mode in 171..175:
+    if mode in 123..130 or mode in 141..154 or mode in 171..182:
       # Reserved77 is a fixed authored identity at any absolute birth/retirement slot, including epoch-boundary recreation.
       children = @[]
       let stored = snapshot.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77)))
@@ -625,7 +636,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 176
+      assert mode >= 0 and mode < 183
       bodies = @[]
       slots = @[]
     else:
@@ -634,7 +645,7 @@ proc main() {.raises.} =
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
-      106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160, 165, 170, 175]
+      106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160, 165, 170, 175, 182]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:
