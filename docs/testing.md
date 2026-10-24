@@ -83,7 +83,7 @@ not claim the deferred groups passed. Master pushes/merges always request full v
 newer master runs supersede older ones.
 
 For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
-choose `smoke`, `unit`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `compare-pvm`, `bench-storage`, `bench-storage-growth` or `full`
+choose `smoke`, `unit`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `compare-pvm`, `profile-pvm`, `bench-storage`, `bench-storage-growth` or `full`
 (the default). `interop` runs all Interop jobs; `perf` runs all Perf jobs. The existing
 `ref-pvm` and `bench-pvm` selections remain available for individual PVM jobs.
 **Perf / PVM** also runs automatically on master pushes. Its validated interpreted
@@ -117,6 +117,12 @@ master requests. Manual requests accept `pvm_compare_base` as a local ref in the
 ```sh
 gh workflow run ci.yml --ref <branch> -f suite=compare-pvm -f pvm_compare_base=<baseline-sha>
 ```
+
+The manual `profile-pvm` choice runs checked Linux Callgrind diagnostics separately
+from timing jobs. It attributes native execution instructions on one state-checked
+invocation per selected guest/policy; instrumented clocks establish no speed claim.
+Use `make profile-pvm-guests` on a provisioned Linux x86-64 host with the pinned
+Valgrind tools. See [the profile contract](../spec/pvm-instruction-profiles.md).
 
 Use the PR labels when PR-associated checks are needed. Manual branch dispatch is separate
 verification and may not satisfy required PR checks. If branch protection is introduced, require

@@ -232,6 +232,12 @@ census-pvm-guests: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_guest_census.py
 
+# Explicit Linux Callgrind diagnostics use one state-checked invocation per selected guest/policy, without timing claims.
+.PHONY: profile-pvm-guests
+profile-pvm-guests: setup
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/pvm_instruction_profile.py
+
 # Coverage-guided byte fuzzing owns its native adapter, finite controls and retained corpus; it never runs from ordinary unit or E2E checks.
 fuzz-pvm-program: toolchain check-inventory
 	$(PYTHON) tools/fuzz_pvm_program.py

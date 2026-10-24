@@ -58,7 +58,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [opened, reopened, synchronize, labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, compare-pvm, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, compare-pvm, profile-pvm, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
@@ -155,6 +155,27 @@ class NimonyCISafeguards(unittest.TestCase):
                 self.assertEqual([row['group'] for row in selected_families(
                     text, job, event_context('workflow_dispatch', suite=suite))], wanted if job == owner else [])
         self.assertNotIn('github.event.pull_request.labels', text)
+
+    def test_instruction_profiles_are_manual_and_isolated(self):
+        """Diagnostic instruction collection never joins ordinary/master/full timing or unit checks."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        condition = job_condition(text, 'profile-pvm')
+        for event, expected in [(event_context(), False),
+                (event_context('workflow_dispatch', suite='profile-pvm'), True),
+                (event_context('workflow_dispatch', suite='compare-pvm'), False),
+                (event_context('workflow_dispatch', suite='perf'), False),
+                (event_context('workflow_dispatch', suite='full'), False),
+                (event_context('pull_request', 'labeled', 'ci:pvm-compare'), False)]:
+            # Only the explicit diagnostic choice can allocate the profiling runner.
+            self.assertEqual(bool(expression(condition, event)), expected)
+        section = job_section(text, 'profile-pvm')
+        self.assertIn('runs-on: ubuntu-24.04', section)
+        self.assertIn('valgrind=1:3.22.0-0ubuntu3', section)
+        self.assertIn('run: make profile-pvm-guests', section)
+        self.assertNotIn('continue-on-error', section)
+        self.assertNotIn('needs:', section)
+        self.assertIn('build/tests/pvm-instruction-profile/*.callgrind', section)
+        self.assertNotIn('/snapshot/', section)
 
     def test_paired_pvm_is_explicit_and_uses_exact_endpoints(self):
         """Only the requested revision experiment runs, with literal refs and a separate control output."""
