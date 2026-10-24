@@ -344,3 +344,8 @@ selection; old light-image and full-state formats have no fallback. See the
 before exposing its final immutable image. Separate explicit partial-tail plans bind only a
 fully authenticated prefix to all original journal bytes and selection; complete corruption
 never yields salvage authority. See [replay and tail planning](../../spec/storage-light-journal-replay.md).
+
+`light_journal_cache.nim` owns a separate locked light directory, synchronized checkpoint/anchor
+bootstrap and strict replay on reopen. Opaque authenticated updates append only a bounded frame;
+uncertain I/O refuses fresh observations until explicit close and strict reopen. See the
+[durable journal lifecycle](../../spec/storage-light-journal-cache.md).

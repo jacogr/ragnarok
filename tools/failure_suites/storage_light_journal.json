@@ -1,0 +1,72 @@
+{
+  "source": "tests/native/storage_light_journal_results.nim",
+  "build_name": "storage-light-journal-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-light-journal-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light journal result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-light-journal-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light journal result failed guard"
+    },
+    {
+      "identity": {
+        "member": "retire",
+        "origin": "unclosed"
+      },
+      "arguments": [
+        "retire",
+        "unclosed"
+      ],
+      "name": "storage-light-journal-retire-unclosed",
+      "diagnostic": "owner.data == nil",
+      "description": "Light journal retire unclosed guard"
+    },
+    {
+      "identity": {
+        "member": "image",
+        "origin": "default"
+      },
+      "arguments": [
+        "image",
+        "default"
+      ],
+      "name": "storage-light-journal-image-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Prepared journal image default result guard"
+    },
+    {
+      "identity": {
+        "member": "image",
+        "origin": "failed"
+      },
+      "arguments": [
+        "image",
+        "failed"
+      ],
+      "name": "storage-light-journal-image-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Prepared journal image failed result guard"
+    }
+  ]
+}
