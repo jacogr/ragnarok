@@ -181,7 +181,7 @@ proc pricePressure() =
       StepError.StepLimitExceeded
 
 proc collidingPrices() =
-  ## Six literal recurrent starts9/30/64/85/98/119 share set4 and exceed both the three hot entries and two secondary ways.
+  ## Historical eight-set collisions retain six unequal recurrent prices and exceed the three hot entries.
   var first = @[40'u8, 9, 0, 0, 0]
   while first.len < 9: first.add(0) # Ignored suffix places the first recurrent block at the independently chosen PC9.
   var parts = @[first]
@@ -212,21 +212,71 @@ proc collidingPrices() =
   assert execute(source, ExecutionStepLimit(89), GasCycleLimit(10000)).error ==
       StepError.StepLimitExceeded
 
-proc largerPriceWorkingSet() =
-  ## Twenty-four recurrent blocks exceed all twenty retained price slots; full public-step CPU/gas parity survives bounded replacement.
+proc largerPriceWorkingSet(blocks = 24) =
+  ## Both the historical24-block case and144 recurrent blocks check exact replacement through complete public-step parity.
+  assert blocks in [24, 144]
   var parts: seq[seq[byte]] = @[]
-  for blockIndex in 0..<24:
-    for index in 0..<(1+blockIndex mod 4): parts.add(@[150'u8, 119, 2])
+  var pc = 0
+  var instructions = 0
+  for blockIndex in 0..<blocks:
+    for index in 0..<(1+blockIndex mod 4):
+      parts.add(@[150'u8, 119, 2])
+      pc += 3
+      inc instructions
     parts.add(@[1'u8]) # A terminating fallthrough creates each next literal block boundary.
+    inc pc
+    inc instructions
   parts.add(@[149'u8, 0, 255])
-  parts.add(@[82'u8, 16, 0, 49, 255]) # PC207 minus207 returns to PC0 with a signed two-byte displacement.
+  pc += 3
+  let backwards = 65536-pc # Both bounded programs fit a signed two-byte displacement back to their exact PC0.
+  parts.add(@[82'u8, 16, 0, byte(backwards and 255), byte(backwards shr 8)])
   parts.add(@[0'u8])
+  let attempts = uint64((instructions+2)*3+1)
   let source = input(code(parts), 3)
-  let run = execute(source, ExecutionStepLimit(259), GasCycleLimit(10000))
+  let run = execute(source, ExecutionStepLimit(attempts), GasCycleLimit(10000))
   assert run.error == StepError.None and run.value.exit == StepExit.Panic
-  same(machineInfo(run.value.machine).value, compareSteps(source, 259))
+  same(machineInfo(run.value.machine).value, compareSteps(source, int64(attempts)))
   assert uint64(machineInfo(source).value.registers[0]) == 3
-  assert execute(source, ExecutionStepLimit(258), GasCycleLimit(10000)).error ==
+  assert execute(source, ExecutionStepLimit(attempts-1), GasCycleLimit(10000)).error ==
+      StepError.StepLimitExceeded
+
+proc expandedPriceCollisions() =
+  ## Literal starts9/64/153/208/297/352 share new set35; six unequal prices exceed both secondary ways and three recent entries.
+  let starts = [9, 64, 153, 208, 297, 352]
+  let multiplies = [1, 3, 2, 1, 3]
+  var parts = @[@[40'u8, 9, 0, 0, 0]]
+  var pc = 5
+  for blockIndex in 0..<6:
+    while pc < starts[blockIndex]:
+      parts.add(@[0'u8]) # Unexecuted padding has explicit instruction masks, never an oversized operand partition.
+      inc pc
+    if blockIndex < 5:
+      for index in 0..<multiplies[blockIndex]:
+        parts.add(@[150'u8, 119, 2])
+        pc += 3
+      let distance = starts[blockIndex+1]-pc
+      parts.add(@[40'u8, byte(distance), 0, 0, 0])
+      pc += 5
+  for index in 0..<5: parts.add(@[150'u8, 119, 2])
+  pc += 15
+  parts.add(@[131'u8, 170, 1])
+  pc += 3
+  let backwards = 0x100000000'u64-uint64(pc-starts[0])
+  parts.add(@[83'u8, 74, 4, 0, 0, 0, byte(backwards and 255), byte((backwards shr 8) and 255),
+    byte((backwards shr 16) and 255), byte(backwards shr 24)])
+  parts.add(@[50'u8, 2])
+  let owner = code(parts)
+  let base = input(owner, 0)
+  var cpu = machineInfo(base).value
+  cpu.registers[7] = RegisterValue(1)
+  let source = captureMachine(owner, memoryOf(base).value, cpu).value
+  let run = execute(source, ExecutionStepLimit(90), GasCycleLimit(10000))
+  assert run.error == StepError.None and run.value.exit == StepExit.Halt
+  same(machineInfo(run.value.machine).value, compareSteps(source, 90, StepExit.Halt))
+  assert uint64(machineInfo(run.value.machine).value.registers[7]) == 1'u64 shl 60
+  assert uint64(machineInfo(run.value.machine).value.registers[10]) == 4
+  same(machineInfo(source).value, cpu)
+  assert execute(source, ExecutionStepLimit(89), GasCycleLimit(10000)).error ==
       StepError.StepLimitExceeded
 
 proc respond(context: var Context, stopped: StepOutcome): HostResponse {.raises: [].} =
@@ -623,6 +673,8 @@ alternatingPrices()
 pricePressure()
 collidingPrices()
 largerPriceWorkingSet()
+largerPriceWorkingSet(144)
+expandedPriceCollisions()
 staticConditions()
 hosts()
 finalFallthrough()

@@ -140,3 +140,83 @@ Twenty-four recurrent blocks exceed all slots, including across the independentl
 framed two-byte code length. Existing exact-gas, interior-entry, lower-limit,
 new-owner, callback and retry tests remain controls, with1000 balanced ARC cycles.
 The benchmark contract records repeated real/small-workload measurements and costs.
+
+## Larger working sets with a bounded lazy owner, 2026-10-24
+
+The maintained Pinky frame executes32,055,270 PVM instructions. A fresh uninstrumented
+macOS sample of merged master`32d1e9c4` attributes most dynamic execution samples to
+whole-block simulation, while complete-plan execution spends most samples decoding.
+These are separate costs; this increment changes only invocation-local price reuse.
+
+The first successful price remains pinned and three recent prices remain inline.
+After the fifth distinct successful miss, execution allocates one private secondary
+owner with128 scalar entries in64 two-way sets and64 replacement flags. It seeds the
+three preceding recent facts before replacement, then inserts the new successful price.
+Invocations using at most four distinct prices allocate no secondary owner. Complete
+plan execution bypasses this cache; lazy memo execution retains its existing front
+cache semantics. Each secondary lookup checks both validity and the full original
+address. Multiplicative hashing selects six bits; insertion alternates the two fixed
+ways and has no growing guest-controlled counter.
+
+This replaces the old sixteen-entry stack secondary table. The new scalar payload
+is roughly3.1KiB before ARC/allocator overhead on the measured profile, once per
+invocation under pressure. The reference contains no program, machine, memory, host
+context or balance. Its only owners are the private invocation cache and synchronous
+local temporaries; there are no cycles or exported aliases. It remains alive across
+host replies and is destroyed on every successful or failed invocation return.
+The local retained lookup owner is intentional: removing that retain with a cursor
+reduced generated C bookkeeping but regressed the representative sieve measurement.
+
+All existing admission, fixed-program/cycle-limit, paid-entry, per-visit debit,
+callback/fault and source-snapshot contracts remain unchanged. Only complete successful
+prices enter the table; a simulation refusal neither allocates nor inserts a new fact.
+New/nested invocations start empty. There is no new prepared representation or public API.
+
+The cache suite retains its historical24-block case and adds144 recurrent blocks,
+exceeding the132 total hot/secondary positions even before duplicates. Six literal
+starts9/64/153/208/297/352 all share secondary set35 and repeatedly execute different
+multiply-dependent prices. Complete public-single-step CPU/gas parity, exact final
+registers, one-less step refusal and retained sources check both cases. Existing
+thousand-cycle ARC controls exercise spill creation and every ordinary host/refusal
+boundary; all occupied memory must be released.
+
+An initial fixed128-entry stack layout reduced dynamic Pinky time but repeatedly
+regressed memo-priced sieve by12–14%. A cursor lookup and a separately specialized
+dynamic/memo policy also regressed that control. Those variants were rejected; neither
+lower ARC operation counts nor a larger table alone establishes a speed improvement.
+Raw rejected and accepted-candidate measurements, sources and binaries remain under
+`build/pvm12/`; the uninstrumented profile is under`build/pvm12/baseline/`.
+
+The final checked ARC/Clang ThinLTO comparison retains two opposite process orders,
+three warmups and ten measured samples per process on all seven bounded real-guest
+inputs and all three pricing modes:1,092 complete-state-checked invocations. CPU
+medians in milliseconds (preparation excluded) on M1 Max/macOS:
+
+| Input | Pricing | Parent | Lazy secondary | Change |
+| --- | --- | ---: | ---: | ---: |
+| Sieve100,000 | Dynamic | 16.001 | 14.971 | -6.4% |
+| Sieve100,000 | Complete plan | 10.714 | 10.883 | +1.6% |
+| Sieve100,000 | Lazy memo | 11.383 | 11.358 | -0.2% |
+| Memory fill100,000 | Dynamic | 12.149 | 11.315 | -6.9% |
+| Memory fill100,000 | Complete plan | 10.854 | 10.830 | -0.2% |
+| Memory fill100,000 | Lazy memo | 11.967 | 11.271 | -5.8% |
+| Pinky frame | Dynamic | 4,673.302 | 2,718.181 | -41.8% |
+| Pinky frame | Complete plan | 665.548 | 665.848 | +0.0% |
+| Pinky frame | Lazy memo | 754.733 | 744.114 | -1.4% |
+
+Two additional opposite-order control comparisons on the six non-Pinky inputs each
+retain936 full-state invocations. They reproduce dynamic sieve improvements of5.6–6.5%
+and memory-fill improvements of5.8–7.2% for dynamic/memo pricing. Indirect-call changes,
+complete-plan differences and smaller Pinky memo differences are unproven. This is
+local interpreter evidence with no CPU affinity/frequency isolation, not exact-head
+Linux, compiled-backend, whole-JAM throughput or a universal pricing-policy result.
+
+Selected cache, host-memory-reentry and mixed-policy reference suites pass. Cache
+and host reentry each retain1,000 balanced ARC cycles, including spill allocation
+and callback/nested invocation retirement. Two complete synthetic comparisons each
+pass1,716 validated invocations; smaller planned-workload differences vary by a few
+percent (some individual cells reach3–4%), so no general synthetic gain is claimed.
+The unchanged calibrated census still passes429 invocations, nine affected Python
+instrumentation/guard tests and pinned formatting pass. The accepted raw comparison
+is`build/pvm12/charge-lazy-final-paired.json`; the additional controls and rejected
+variants are retained alongside it.
