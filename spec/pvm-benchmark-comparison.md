@@ -619,3 +619,39 @@ Raw reports, source/fixture/binary identities and rejected experiments remain un
 byte-identical. The scope remains local Apple M1 Max/macOS without affinity/frequency
 isolation or deterministic hardware counters. No Linux, compiled or whole JAM
 throughput claim follows; full STF/JAM parity remains open and fuzzing is deferred.
+
+
+## Decoder working set after secondary pricing, 2026-10-23
+
+The post-pricing sieve profile ranks execution and instruction decoding ahead of
+pricing. A separate fully validated diagnostic copy records1166742 decoder lookups
+to13417 distinct PCs at limit100000. Offline replay of the exact replacement policy
+finds561880 misses at16 results,96933 at32 and78964 at64. Multiplicative indexing
+at16/32 gives312318/100606 misses, so natural paired32 remains the selected small
+bounded policy. These are untimed trace diagnostics; no deterministic hardware
+counter claim follows. An isolated64-result variant did not establish a compelling
+additional timing benefit to justify twice the selected storage.
+
+Both the isolated32-result candidate and its production integration are measured
+against preserved PR1345 parent binaries with the same checked ARC/Clang ThinLTO,
+October23 Nimony pin, exact linked sieve/input and explicit PolkaVM interpreter:
+
+| Sieve limit100000 | Parent CPU (ms) |32-result CPU (ms) | PolkaVM interpreted CPU (ms) |
+| --- | ---: | ---: | ---: |
+| First matched comparison |27.453 |22.636 |6.200 |
+| Production confirmation |26.675 |22.091 |6.018 |
+
+Execution CPU falls17.2–17.5%, leaving about3.7× to interpreted PolkaVM. Every
+warmup/measured invocation retains full register/gas/mapped-memory/permission checks,
+known prime count9592, source-snapshot preservation and assertion controls. Two
+reversed orders retain twenty measured samples per engine, without discarded
+outliers. Preparation/validation and the separate trace are excluded from timing.
+
+Synthetic paired comparisons show arithmetic2.6–3.1% slower. Mixed bits varies
+from5.1% slower to flat; other substantial rows vary by about3%, with no broad
+small-workload gain established. Very short calls remain sensitive to sub-microsecond
+timer resolution. All eleven fixtures pass unchanged; raw values, source/binary
+identities and32/64 experiments remain under `build/pvm10/decoder-probe`,
+`decoder-slots32-paired`, `decoder-slots64-paired`, `decoder-final` and
+`decoder-final-paired`. Local macOS/no-isolation limits, compiled/fuzzing deferral
+and open full STF/JAM parity remain unchanged.

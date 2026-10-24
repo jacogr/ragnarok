@@ -80,16 +80,16 @@ proc collisions() =
   assert execute(source, ExecutionStepLimit(47), GasCycleLimit(0)).error ==
       StepError.GasCycleLimitExceeded
   var parts: seq[seq[byte]] = @[]
-  for index in 0..<21: parts.add(@[149'u8, 17, 1]) # Twenty-one additions plus decrement/branch exceed the fixed decoder memo capacity.
+  for index in 0..<37: parts.add(@[149'u8, 17, 1]) # Thirty-seven additions plus decrement/branch exceed the thirty-two-result decoder memo.
   parts.add(@[149'u8, 0, 255])
-  parts.add(@[82'u8, 16, 0, 190]) # Literal minus66 targets the original block start after all twenty-two mutations.
+  parts.add(@[82'u8, 16, 0, 142]) # Literal minus114 targets the original block start after all thirty-eight mutations.
   parts.add(@[0'u8])
   let crowded = input(code(parts), 3)
-  let completed = execute(crowded, ExecutionStepLimit(70), GasCycleLimit(10000))
+  let completed = execute(crowded, ExecutionStepLimit(118), GasCycleLimit(10000))
   assert completed.error == StepError.None and completed.value.exit == StepExit.Panic
-  same(machineInfo(completed.value.machine).value, compareSteps(crowded, 70))
+  same(machineInfo(completed.value.machine).value, compareSteps(crowded, 118))
   assert uint64(machineInfo(completed.value.machine).value.registers[0]) == 0
-  assert uint64(machineInfo(completed.value.machine).value.registers[1]) == 63
+  assert uint64(machineInfo(completed.value.machine).value.registers[1]) == 111
 proc threeWayPressure() =
   ## PCs0/16/32 share one bucket but have different mutations/control; rotating replacements must retain exact address tags.
   var decrement = @[149'u8, 0, 255, 255, 255, 255]
