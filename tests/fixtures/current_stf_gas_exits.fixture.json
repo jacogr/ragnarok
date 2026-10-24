@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_GAS_EXITS",
+  "files": {
+    "current-stf-gas-exits.json": "768b5fc70a78cd4b7a5bb8cc4efa0dd14e803e491d896eceda4480a06d8c36a7"
+  },
+  "target": "current-stf-gas-exits.json"
+}

@@ -501,5 +501,26 @@ def current_stf_budget_retention_corpus(compiler, report, checks, libraries):
     return corpus
 
 
+@CORPORA.case
+def current_stf_gas_exits_corpus(compiler, report, checks, libraries):
+    """Compare gas-limited guest exits and pooled operands against independently calculated full maps."""
+    from current_stf_gas_exits_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_gas_exits', 'current_stf_report_guests', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-gas-exits-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-gas-exits', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent prepaid-block/host gas, pooled budgets and literal guest implications')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-gas-exits-corpus', expected)
+    announce('independent gas-exits whole STF maps', corpus['passed'])
+    return corpus
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
