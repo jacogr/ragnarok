@@ -448,6 +448,174 @@ proc dynamicTargets(count = 64, full = true) =
     HostCallLimit(uint64(count)), GasCycleLimit(102))
   assert refused.error == StepError.GasCycleLimitExceeded and context.calls == 0
 
+
+proc controlOwner(opcode: byte, alias = false, tableTarget = 7'u8): Program =
+  ## Seven-byte literal partitions make all successful taken/fallthrough destinations PC7; table contents stay independently authored.
+  if opcode == 50 or opcode == 180:
+    var wire = @[1'u8, 1, 8, tableTarget]
+    let part = if opcode == 50: @[50'u8, 8, 0, 0, 0, 0, 0]
+      else: @[180'u8, byte(if alias: 0x88 else: 0x80), 1, 99, 0, 0, 0]
+    for octet in part: wire.add(octet)
+    wire.add(0) # The only following instruction is a marked trap at PC7.
+    wire.add(0x81)
+    let parsed = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(1))
+    assert parsed.error == ProgramError.None
+    return parsed.value
+  let part = if opcode == 1: @[1'u8, 0, 0, 0, 0, 0, 0]
+    elif opcode == 40: @[40'u8, 7, 0, 0, 0, 0, 0]
+    else: @[opcode, byte(if opcode >= 170: 16 else: 0), 7, 0, 0, 0, 0]
+  code([part, @[0'u8]])
+
+proc controlRun(source: Machine, mode: int, attempts: uint64, plan: GasPlan,
+    memo: GasMemo): StepResult =
+  ## Exercise the actual dynamic, complete and lazy public overloads under one shared instruction-attempt contract.
+  case mode
+  of 0: execute(source, ExecutionStepLimit(attempts), GasCycleLimit(25))
+  of 1: execute(source, ExecutionStepLimit(attempts), plan)
+  else: execute(source, ExecutionStepLimit(attempts), memo)
+
+proc controlSuccessors() =
+  ## Every nontrapping control family must select a real instruction before a local budget can stop the next attempt.
+  let memory = captureMemory([], PageLimit(0)).value
+  for opcode in [1'u8, 40, 50, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90,
+      170, 171, 172, 173, 174, 175, 180]:
+    for alias in [false, true]:
+      if alias and opcode != 180: continue # Only load-and-jump has an explicit destination that can alias its target source.
+      let owner = controlOwner(opcode, alias)
+      let prepared = newGasPlan(owner, GasPlanLimits(blocks: GasPlanBlockLimit(2),
+        bytes: GasPlanByteLimit(64), cycles: GasCycleLimit(25)))
+      let learned = newGasMemo(owner, GasMemoLimits(bytes: GasMemoByteLimit(64),
+          cycles: GasCycleLimit(25)))
+      assert prepared.error == GasPlanError.None and learned.error == GasMemoError.None
+      let plan = prepared.value
+      let memo = learned.value
+      # Independent pipeline simulation of these exact raw partitions gives2/15/22/1 gas; the following trap costs2.
+      let price = if opcode == 1: 2'u64 elif opcode == 40 or opcode == 80: 15'u64
+        elif opcode == 50 or opcode == 180: 22'u64 else: 1'u64
+      for word in [0'u64, 1, high(uint64), 0x8000000000000000'u64]:
+        for prepaid in [false, true]:
+          var registers = default(RegisterFile)
+          for i in 0..<13: registers[i] = RegisterValue(uint64(500+i))
+          registers[0] = RegisterValue(word)
+          registers[1] = RegisterValue(not word)
+          if opcode == 50 or opcode == 180: registers[8] = RegisterValue(0x1234567800000002'u64)
+          let cpu = MachineInfo(pc: CodeAddress(0), gas: MachineGas(29+(
+              if prepaid: 0'u64 else: price)),
+            gasDeficit: GasDeficit(0), blockCharged: prepaid, registers: registers)
+          let source = captureMachine(owner, memory, cpu).value
+          var expected = cpu
+          expected.pc = CodeAddress(7)
+          expected.gas = MachineGas(29)
+          expected.blockCharged = false
+          if opcode == 80: expected.registers[0] = RegisterValue(0)
+          elif opcode == 180: expected.registers[if alias: 8 else: 0] = RegisterValue(99)
+          for planned in [false, true]:
+            # Public stepping still publishes and validates the complete literal successor snapshot.
+            let once = if planned: stepOnce(source, plan) else: stepOnce(source, GasCycleLimit(25))
+            assert once.error == StepError.None and once.value.exit == StepExit.Continued
+            same(machineInfo(once.value.machine).value, expected)
+            assert instructionOpcode(owner, expected.pc).error == ProgramError.None
+          for mode in 0..<3:
+            # One attempt refuses locally; two attempts execute the selected trap with its independent price and final PC normalization.
+            assert controlRun(source, mode, 1, plan, memo).error == StepError.StepLimitExceeded
+            let completed = controlRun(source, mode, 2, plan, memo)
+            assert completed.error == StepError.None and completed.value.exit == StepExit.Panic
+            var final = expected
+            final.pc = CodeAddress(0)
+            final.gas = MachineGas(27)
+            final.blockCharged = true
+            same(machineInfo(completed.value.machine).value, final)
+            same(machineInfo(source).value, cpu)
+  for alias in [false, true]:
+    for failure in 0..<6:
+      # Operand/out-of-code/missing targets, zero/odd addresses and halt precedence retain the load-and-jump register mutation.
+      let tableTarget = if failure == 0: 1'u8 elif failure == 1: 8'u8 else: 7'u8
+      let addresses = [2'u64, 2, 4, 0, 3, 0xffff0000'u64]
+      let owner = controlOwner(180, alias, tableTarget)
+      let prepared = newGasPlan(owner, GasPlanLimits(blocks: GasPlanBlockLimit(2),
+        bytes: GasPlanByteLimit(64), cycles: GasCycleLimit(25)))
+      let learned = newGasMemo(owner, GasMemoLimits(bytes: GasMemoByteLimit(64),
+          cycles: GasCycleLimit(25)))
+      assert prepared.error == GasPlanError.None and learned.error == GasMemoError.None
+      let plan = prepared.value
+      let memo = learned.value
+      for prepaid in [false, true]:
+        var registers = default(RegisterFile)
+        for i in 0..<13: registers[i] = RegisterValue(uint64(900+i))
+        registers[8] = RegisterValue(0x1234567800000000'u64 or addresses[failure])
+        let cpu = MachineInfo(pc: CodeAddress(0), gas: MachineGas(if prepaid: 7'u64 else: 29'u64),
+          gasDeficit: GasDeficit(0), blockCharged: prepaid, registers: registers)
+        let source = captureMachine(owner, memory, cpu).value
+        var expected = cpu
+        expected.gas = MachineGas(7)
+        expected.blockCharged = true
+        expected.registers[if alias: 8 else: 0] = RegisterValue(99)
+        for mode in 0..<3:
+          let stopped = controlRun(source, mode, 1, plan, memo)
+          assert stopped.error == StepError.None
+          assert stopped.value.exit == (if failure == 5: StepExit.Halt else: StepExit.Panic)
+          same(machineInfo(stopped.value.machine).value, expected)
+          same(machineInfo(source).value, cpu)
+          var shortage = cpu
+          shortage.gas = MachineGas(21)
+          shortage.blockCharged = false
+          let poor = captureMachine(owner, memory, shortage).value
+          let refused = controlRun(poor, mode, 1, plan, memo)
+          assert refused.error == StepError.None and refused.value.exit == StepExit.OutOfGas
+          same(machineInfo(refused.value.machine).value, shortage)
+
+
+proc absentControlSuccessors() =
+  ## A valid taken target cannot authorize an absent conditional fallthrough; unconditional back edges remain executable.
+  for opcode in [1'u8, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 170, 171, 172, 173, 174, 175]:
+    let owner = code([@[opcode, byte(if opcode >= 170: 16 else: 0), 0, 0, 0, 0, 0]])
+    let decoded = instruction(owner, CodeAddress(0))
+    assert decoded.error == ProgramError.None and not instructionHasFallthrough(decoded)
+    let prepared = newGasPlan(owner, GasPlanLimits(blocks: GasPlanBlockLimit(1),
+      bytes: GasPlanByteLimit(64), cycles: GasCycleLimit(25)))
+    let learned = newGasMemo(owner, GasMemoLimits(bytes: GasMemoByteLimit(64),
+        cycles: GasCycleLimit(25)))
+    assert prepared.error == GasPlanError.None and learned.error == GasMemoError.None
+    for word in [0'u64, 1, high(uint64), 0x8000000000000000'u64]:
+      for prepaid in [false, true]:
+        # Independent single-instruction prices are two for fallthrough and one for every conditional.
+        let price = if opcode == 1: 2'u64 else: 1'u64
+        let original = input(owner, word, prepaid)
+        var cpu = machineInfo(original).value
+        cpu.gas = MachineGas(7+(if prepaid: 0'u64 else: price))
+        let source = captureMachine(owner, memoryOf(original).value, cpu).value
+        var expected = cpu
+        expected.gas = MachineGas(7)
+        expected.blockCharged = true
+        for mode in 0..<3:
+          # Missing successors panic after charging regardless of the predicate, preserving the causing PC and every register.
+          let stopped = controlRun(source, mode, 1, prepared.value, learned.value)
+          assert stopped.error == StepError.None and stopped.value.exit == StepExit.Panic
+          same(machineInfo(stopped.value.machine).value, expected)
+          same(machineInfo(source).value, cpu)
+  let loop = code([@[40'u8, 0]])
+  let prepared = newGasPlan(loop, GasPlanLimits(blocks: GasPlanBlockLimit(1),
+    bytes: GasPlanByteLimit(64), cycles: GasCycleLimit(25)))
+  let learned = newGasMemo(loop, GasMemoLimits(bytes: GasMemoByteLimit(64), cycles: GasCycleLimit(25)))
+  assert prepared.error == GasPlanError.None and learned.error == GasMemoError.None
+  let original = input(loop, 99)
+  var cpu = machineInfo(original).value
+  cpu.gas = MachineGas(37)
+  let source = captureMachine(loop, memoryOf(original).value, cpu).value
+  for mode in 0..<3:
+    # A final unconditional self-jump needs no sequential successor and pays again on each completed back edge.
+    assert controlRun(source, mode, 2, prepared.value, learned.value).error ==
+        StepError.StepLimitExceeded
+    let stopped = controlRun(source, mode, 3, prepared.value, learned.value)
+    assert stopped.error == StepError.None and stopped.value.exit == StepExit.OutOfGas
+    var expected = cpu
+    expected.gas = MachineGas(7)
+    same(machineInfo(stopped.value.machine).value, expected)
+    same(machineInfo(source).value, cpu)
+
+controlSuccessors()
+absentControlSuccessors()
+
 dynamicTargets()
 collisions()
 threeWayPressure()
