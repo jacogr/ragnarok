@@ -1,0 +1,105 @@
+{
+  "build_name": "pvm-gas-plan-results",
+  "cases": [
+    {
+      "arguments": [
+        "cycle-result"
+      ],
+      "description": "PVM gas plan cycle-result",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "cycle-result"
+      },
+      "name": "pvm-gas-plan-cycle-result"
+    },
+    {
+      "arguments": [
+        "default-info"
+      ],
+      "description": "PVM gas plan default-info",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "default-info"
+      },
+      "name": "pvm-gas-plan-default-info"
+    },
+    {
+      "arguments": [
+        "default-price"
+      ],
+      "description": "PVM gas plan default-price",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "default-price"
+      },
+      "name": "pvm-gas-plan-default-price"
+    },
+    {
+      "arguments": [
+        "default-result"
+      ],
+      "description": "PVM gas plan default-result",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "default-result"
+      },
+      "name": "pvm-gas-plan-default-result"
+    },
+    {
+      "arguments": [
+        "default-source"
+      ],
+      "description": "PVM gas plan default-source",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "default-source"
+      },
+      "name": "pvm-gas-plan-default-source"
+    },
+    {
+      "arguments": [
+        "invalid-price"
+      ],
+      "description": "PVM gas plan invalid-price",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "invalid-price"
+      },
+      "name": "pvm-gas-plan-invalid-price"
+    },
+    {
+      "arguments": [
+        "invalid-result"
+      ],
+      "description": "PVM gas plan invalid-result",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "invalid-result"
+      },
+      "name": "pvm-gas-plan-invalid-result"
+    },
+    {
+      "arguments": [
+        "limited-result"
+      ],
+      "description": "PVM gas plan limited-result",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "limited-result"
+      },
+      "name": "pvm-gas-plan-limited-result"
+    },
+    {
+      "arguments": [
+        "partial-result"
+      ],
+      "description": "PVM gas plan partial-result",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "origin": "partial-result"
+      },
+      "name": "pvm-gas-plan-partial-result"
+    }
+  ],
+  "source": "tests/native/pvm_gas_plan_results.nim"
+}

@@ -52,8 +52,14 @@ def run():
         result.write_text(json.dumps(report,indent=2)+'\n')
 
     # Preserve strict command status and complete logs, including timeout process-group cleanup.
-    def checked(arguments,name,timeout=900):
-        evidence=command(arguments,name,BUILD,timeout)
+    def checked(arguments,name,timeout=900,environment=None):
+        if environment is None:
+            evidence=command(arguments,name,BUILD,timeout)
+        else:
+            # Measured interpreter processes spawn no children; retain their explicit native policy selection.
+            evidence=NativeChecks(BUILD).command(arguments,name,environment=environment,timeout=timeout)
+            evidence.pop('output',None)
+            evidence['benchmark_environment']={key:environment[key] for key in ('RAGNAROK_PVM_BENCHMARK','RAGNAROK_PVM_PRICING') if key in environment}
         report['checks'].append(evidence);save()
         if evidence['exit_code']!=0:raise RuntimeError(name+' failed; see '+evidence['log'])
         return Path(evidence['log']).read_text()
@@ -104,7 +110,7 @@ def run():
         if build['exit_code']!=0:raise RuntimeError('Native benchmark build failed: '+build['log'])
         checked(['rustup','run',rust,'cargo','build','--release','--locked','--offline',
             '--manifest-path',CRATE/'Cargo.toml','--target-dir',TARGET],'rust-build')
-        arguments={'ragnarok':[binary],
+        arguments={'ragnarok':[binary],'ragnarok_planned':[binary],
                    'polkavm_interpreter':[TARGET/'release/ragnarok-pvm-benchmark',fixture,'interpreter']}
         os.environ['RAGNAROK_PVM_BENCHMARK']=str(fixture)
         for pass_index,order in enumerate((ACTIVE_ENGINES,tuple(reversed(ACTIVE_ENGINES)))):
@@ -112,7 +118,8 @@ def run():
             # Deferral is policy metadata, never a backend probe or substituted interpreter sample.
             observations={'polkavm_compiler':[dict(samples=[],reason=DEFERRED_COMPILER,deferred=True) for _ in NAMES]}
             for engine in order:
-                output=checked(arguments[engine],f'pass{pass_index}-{engine}',timeout=300)
+                mode=dict(os.environ,RAGNAROK_PVM_BENCHMARK=str(fixture),RAGNAROK_PVM_PRICING='planned' if engine=='ragnarok_planned' else 'dynamic')
+                output=checked(arguments[engine],f'pass{pass_index}-{engine}',timeout=300,environment=mode)
                 observations[engine]=parse_output(output,engine)
             report['passes'].append(observations);save()
         report['cases']=aggregate(report['passes']);report['status']='checks-passed'

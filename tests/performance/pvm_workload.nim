@@ -4,7 +4,7 @@
 ## Measure only execution of independently specified PVM workloads; validate outside the timed region.
 
 import std/[assertions, syncio, envvars, monotimes]
-import ../../src/pvm/[program, machine, gas, step]
+import ../../src/pvm/[program, machine, gas, gas_plan, step]
 
 type HostContext = object ## Plain host progress is included in both embeddings' execution time.
   calls: uint64
@@ -31,6 +31,9 @@ proc respond(context: var HostContext, suspension: StepOutcome): HostResponse {.
   HostResponse(action: HostAction.Continue, gas: cpu.gas, gasDeficit: GasDeficit(0),
     registers: registers, memory: memoryOf(suspension.machine).value)
 
+let pricing = getEnv("RAGNAROK_PVM_PRICING")
+assert pricing in ["", "dynamic", "planned"]
+let plannedMode = pricing == "planned"
 var data = ""
 try:
   # Missing input is a setup error and must never yield an empty timing result.
@@ -89,7 +92,18 @@ for row in 0..<11:
   let source = captureMachine(program, memory, MachineInfo(pc: CodeAddress(0),
     gas: MachineGas(iterations * (price+secondPrice) + haltPrice + 7), blockCharged: false,
         registers: registers)).value
+  var plan = default(GasPlan)
+  if plannedMode:
+    # Complete immutable prices are prepared once per captured program and included in its native setup observation.
+    let created = newGasPlan(program, GasPlanLimits(blocks: GasPlanBlockLimit(100000),
+      bytes: GasPlanByteLimit(8*1024*1024), cycles: GasCycleLimit(cycles)))
+    assert created.error == GasPlanError.None
+    plan = created.value
   let prepareNs = getMonoTime().ticks - preparation
+  if plannedMode:
+    let info = gasPlanInfo(plan).value
+    echo "gas-plan\t", row, "\t", prepareNs, "\t", info.codeBytes, "\t", info.blockCount,
+      "\t", info.payloadBytes, "\t", uint64(info.cycleLimit)
   assert uint64(blockGas(program, CodeAddress(0), GasCycleLimit(cycles)).value) == price
   assert uint64(blockGas(program, CodeAddress(halt), GasCycleLimit(cycles)).value) == haltPrice
   if kind == 5:
@@ -101,9 +115,14 @@ for row in 0..<11:
     var context = HostContext(calls: 0)
     let start = getMonoTime().ticks
     let evaluated = if kind == 2:
-      executeWithHost(source, context, respond, ExecutionStepLimit(perLoop * iterations + 1),
-        HostCallLimit(2 * iterations), GasCycleLimit(cycles))
-      else: execute(source, ExecutionStepLimit(perLoop * iterations + 1), GasCycleLimit(cycles))
+      (if plannedMode: executeWithHost(source, context, respond, ExecutionStepLimit(perLoop *
+          iterations + 1),
+        HostCallLimit(2 * iterations), plan)
+      else: executeWithHost(source, context, respond, ExecutionStepLimit(perLoop * iterations + 1),
+        HostCallLimit(2 * iterations), GasCycleLimit(cycles)))
+      else:
+        (if plannedMode: execute(source, ExecutionStepLimit(perLoop * iterations + 1), plan)
+        else: execute(source, ExecutionStepLimit(perLoop * iterations + 1), GasCycleLimit(cycles)))
     let elapsed = getMonoTime().ticks - start
     # Complete result validation happens after the clock stops; failed outcomes never emit a sample.
     assert evaluated.error == StepError.None and evaluated.value.exit == StepExit.Halt

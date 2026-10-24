@@ -1,0 +1,9 @@
+{
+  "defines": [],
+  "directory": "codec",
+  "includes": [],
+  "libraries": [],
+  "observers": [],
+  "prepared": true,
+  "provider": "pvm_gas"
+}

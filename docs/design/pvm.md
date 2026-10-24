@@ -25,6 +25,13 @@ and [host execution](../../spec/pvm-host-execution.md) contracts. The
 [readiness map](../../spec/pvm-interpreter-readiness.md) records current interpreter
 comparisons and remaining JAM/specification gates.
 
+## Reusable execution policy
+
+An optional immutable `GasPlan` retains one captured program and a complete bounded table of
+existing block prices. Preparation has explicit payload, block-count and per-block cycle limits;
+execution keeps CPU, memory staging, attempt budgets and callbacks local to each invocation.
+The dynamic-pricing API remains available. See [the ownership, refusal and measurement contract](../../spec/pvm-gas-plans.md).
+
 ## Accumulation successor boundary
 
 Execution owns stopped continuation/reentry selection and the immutable

@@ -1,9 +1,10 @@
 # Maintained real-sieve interpreter comparison
 
 `make bench-pvm-sieve` runs the checked-in upstream prime-sieve guest on Ragnarök and pinned
-PolkaVM's **Interpreter**, JamV1, synchronous Full/L2Hit gas profile. It builds the host runners
+PolkaVM's **Interpreter**, JamV1, synchronous Full/L2Hit gas profile. Ragnarök runs both
+dynamic and optional [planned pricing](pvm-gas-plans.md), with complete state checks in each mode. It builds the host runners
 through normal setup; it installs no historical guest compiler and invokes no compiled backend.
-The existing `make bench-pvm` eleven-workload comparison remains separate and unchanged.
+The existing `make bench-pvm` eleven-workload comparison remains separate; its frozen guests are unchanged.
 
 The frozen guest and complete source/compiler/linker/license record live in
 [the fixture directory](../tests/fixtures/pvm-sieve/README.md). A checked export returns the prime
@@ -20,7 +21,7 @@ measurement. They compare final gas, all thirteen registers, and every mapped pa
 timing, plus the independent prime count. Ragnarök additionally checks terminal PC, charged-block
 state, deficit, access permissions and preservation of the original CPU/page snapshot.
 
-Each engine runs thirteen fresh executions per pass: three warmups and ten measured observations.
+Each engine/pricing mode runs thirteen fresh executions per pass: three warmups and ten measured observations.
 Two passes reverse engine order. Both process CPU and monotonic wall time surround execution only;
 module decoding, instance creation and full state validation remain outside the interval. Strict
 sample framing rejects missing, reordered, duplicate, foreign and nonpositive rows. Process CPU is
@@ -28,7 +29,12 @@ the primary summary metric; all raw CPU/wall observations, including warmups, re
 Differences between pass medians above 25%, or a central sample spread above 2x, flag noise without
 removing observations. This is not host isolation or a statistical significance claim.
 
-Before measurement, both actual release executables must fail their assertion sentinel, reject a
+Planned mode additionally emits one strict preparation record with CPU/wall duration, code bytes,
+block count, table payload and fixed cycle ceiling. Both process orders and both guest sizes must
+agree on resource identity. The summary shows preparation and reuse amortization separately; a
+cold invocation pays that additional cost.
+
+Before measurement, each engine/pricing mode must fail its assertion sentinel, reject a
 truncated initial machine, and reject a corrupted expected register. Every measured invocation
 checks frozen input hashes before and after execution. Build/process errors or invalid observations
 fail the complete command, replace its verdict, and remove stale successful sample downloads.
