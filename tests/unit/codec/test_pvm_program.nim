@@ -81,6 +81,36 @@ assert read(minimal, high(uint64)).error == ProgramError.InvalidInstruction
 assert decodeProgram(minimal, CodeAddress(0), ProgramByteLimit(4), JumpCountLimit(0)).error ==
     ProgramError.LimitExceeded
 
+# Literal arithmetic families distinguish unary D, immediate A and three-register D without production classification.
+assert default(RegisterSlots).destinationIndex == 0
+assert sizeof(RegisterSlots) == 4
+when sizeof(int) == 8:
+  # A private field moves into prior padding; the spill's instruction/result stride must not grow.
+  assert sizeof(Instruction) == 56 and sizeof(ProgramResult[Instruction]) == 64
+for opcode in [20, 51, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110,
+    131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145,
+    146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160,
+    161, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203,
+    204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218,
+    219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230]:
+  # Descriptor low A/D=2 and high A/B=15 distinguish saturated sources from the second descriptor's D=1.
+  let bytes = blob([byte(opcode), 0xf2, 1, 0, 0, 0, 0, 0, 0, 0, 0], [0, 10])
+  var owner = read(bytes).value
+  let decoded = instruction(owner, CodeAddress(0))
+  assert decoded.error == ProgramError.None
+  let slots = instructionRegisters(decoded)
+  let unary = opcode >= 100 and opcode <= 110
+  let three = opcode >= 190
+  assert slots.aIndex == (if unary: 12 else: 2)
+  assert slots.bIndex == (if three or opcode >= 131 and opcode <= 161: 12 else: 0)
+  assert slots.dIndex == (if three: 1 elif unary: 2 else: 0)
+  assert slots.destinationIndex == (if three: 1 else: 2)
+  var copy = decoded.value
+  copy.a = RegisterIndex(11)
+  copy.d = RegisterIndex(10) # Extracted operand edits do not rebind the genuine captured coordinates.
+  owner = default(Program)
+  assert instructionRegisters(decoded).destinationIndex == (if three: 1 else: 2)
+
 # Exhaust the opcode space using an independent literal table of published ranges.
 for op in 0..255:
   let expected = op in 0..2 or op == 10 or op == 20 or op in 30..33 or op == 40 or

@@ -49,17 +49,17 @@ type
     RegisterImmediate, RegisterTwoImmediates, RegisterImmediateOffset, TwoRegisters,
     TwoRegistersImmediate, TwoRegistersOffset, TwoRegistersTwoImmediates, ThreeRegisters
   RegisterSlots* = object ## Copied bounded host coordinates retain no program/machine owner; only genuine instruction queries bind them to operands.
-    aSlot, bSlot, dSlot: range[0'u8..12'u8]
+    aSlot, bSlot, dSlot, writeSlot: range[0'u8..12'u8]
   Instruction* = object ## Copied decoded operands use the GP names A/B/D and X/Y; unused fields are zero.
  ## Offsets remain signed displacements: resolving a target must not wrap a negative address.
     address*: CodeAddress
     opcode*: byte
     shape*: OperandShape
+    targetStartsBlock: bool # Owner-bound static control membership is never writable through extracted operands.
     skip*: range[0..24]
     a*, b*, d*: RegisterIndex
     fallthroughPresent: bool # Only the owner decoder grants this immutable v_blob-chain fact; copied operands cannot forge a tagged result.
     registerSlots: RegisterSlots # Saturated coordinates remain private facts of the captured operand decode.
-    targetStartsBlock: bool # Owner-bound static control membership is never writable through extracted operands.
     x*, y*: Immediate
     displacement*: int64
 
@@ -91,9 +91,12 @@ func bIndex*(slots: RegisterSlots): range[0..12] {.inline.} =
 func dIndex*(slots: RegisterSlots): range[0..12] {.inline.} =
   ## Read the decoded destination coordinate without exposing mutable backing.
   int(slots.dSlot)
+func destinationIndex*(slots: RegisterSlots): range[0..12] {.inline.} =
+  ## Read the arithmetic destination; non-register instructions/default copied coordinates report zero, never a write authorization.
+  int(slots.writeSlot)
 func instructionRegisters*(decoded: ProgramResult[Instruction]): RegisterSlots {.inline,
     requires: decoded.status == ProgramError.None.} =
-  ## Only a genuine successful decode binds these coordinates to its immutable operand values.
+  ## Only a genuine successful decode binds A/B/D and arithmetic-destination coordinates to immutable operand values.
   decoded.completed.registerSlots
 func boundedRegister(value: byte): range[0'u8..12'u8] {.inline.} =
   ## GP operands saturate at12; separate returns preserve the explicit narrowing proof.
@@ -330,6 +333,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     item.shape = OperandShape.ExtendedImmediate
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
+    item.registerSlots.writeSlot = item.registerSlots.aSlot # Extended load writes its decoded A.
     item.x = Immediate(unsignedOperand(data, pc + 2, 8))
   of 30..33:
     # The prefix chooses X width; remaining skipped bytes choose Y width.
@@ -346,6 +350,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     item.shape = OperandShape.RegisterImmediate
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
+    if opcode == 51: item.registerSlots.writeSlot = item.registerSlots.aSlot # Only load_imm is register arithmetic in this family.
     item.x = Immediate(extended(data, pc + 2, min(4, max(0, int(skip) - 1))))
   of 70..73, 80..90:
     # These groups share X and register decoding; Y is immediate or signed offset.
@@ -367,6 +372,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     item.shape = OperandShape.TwoRegisters
     item.registerSlots.dSlot = boundedRegister(byte(first mod 16))
     item.d = RegisterIndex(byte(item.registerSlots.dSlot))
+    item.registerSlots.writeSlot = item.registerSlots.dSlot # Unary/three-register arithmetic writes its explicit D.
     item.registerSlots.aSlot = boundedRegister(byte(first div 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
   of 120..161, 170..175:
@@ -379,6 +385,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     if opcode <= 161:
       # Arithmetic and indirect memory instructions use a sign-extended immediate.
       item.shape = OperandShape.TwoRegistersImmediate
+      if opcode >= 131: item.registerSlots.writeSlot = item.registerSlots.aSlot # Immediate arithmetic writes A; indirect memory retains zero.
       item.x = Immediate(extended(data, pc + 2, width))
     else:
       # Register comparisons use a signed static branch displacement.
@@ -405,6 +412,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     let destination = encoded mod 16
     item.registerSlots.dSlot = boundedRegister(byte(destination))
     item.d = RegisterIndex(byte(item.registerSlots.dSlot))
+    item.registerSlots.writeSlot = item.registerSlots.dSlot # Unary/three-register arithmetic writes its explicit D.
   else:
     # A valid owner cannot contain another marked opcode; retain an explicit failure alternative.
     return ProgramResult[Instruction](status: ProgramError.InvalidInstruction)

@@ -198,3 +198,29 @@ On the recorded ARM64 host the three-byte coordinates occupy existing padding:
 `Instruction` remains56 bytes and the scalar write result remains24 bytes.
 No cache capacity, preparation pass, resource default, protocol pin or runtime-check
 flag changes. Timing and full composition coverage are recorded separately.
+
+## Decoded arithmetic destination candidate, 2026-10-24
+
+A genuine RegisterSlots copy now retains its bounded arithmetic destination as
+well as the original A/B/D coordinates. destinationIndex returns that0..12 value;
+non-register instructions and default coordinate copies return zero and never
+authorize a write. instructionRegisters still requires a successful genuine
+instruction result. The register evaluator still checks success and supported
+opcode scope before using the coordinate. Public A/B/D coordinates and operand
+semantics are unchanged, including saturation and source/destination aliases.
+
+Each existing decoder family assigns A or D at its established operand decode,
+removing repeated destination classification from computeRegisterWrite. The private
+writeSlot stays inaccessible to callers. Moving the private targetStartsBlock byte
+into existing instruction padding preserves the supported64-bit host's56-byte
+Instruction and64-byte result/cache stride; RegisterSlots grows from3 to4 bytes.
+No owner, allocation, dispatch representation or mutable program state is added.
+
+Literal witnesses cover all85 arithmetic opcodes with distinct saturated source
+and destination nibbles, unchanged A/B/D coordinates, extracted-copy tampering and
+source retirement. A source-owned compiler rejection protects writeSlot. Existing
+independent arithmetic/dependency references, register mutation, cached execution,
+control and host consumers must pass, followed by paired complete-state CI.
+The profile attributes roughly1.7% of planned Pinky instructions to repeated
+arithmetic destination selection, but this candidate makes no timing claim before
+qualification.

@@ -107,10 +107,8 @@ template computeRegisterWrite*(decoded: ProgramResult[Instruction], registers: R
         let a = uint64(registers[indices.aIndex])
         let b = uint64(registers[indices.bIndex])
         let x = uint64(item.x)
-        var destination = indices.dIndex
-        # Immediate forms write A; the other forms write D, as specified by each operand table.
-        if item.opcode == 20 or item.opcode == 51 or item.opcode in 131'u8..161'u8:
-          destination = indices.aIndex
+        # Genuine decoding sealed the arithmetic destination alongside saturated A/B/D coordinates.
+        let destination = indices.destinationIndex
         var answer = uint64(registers[destination])
         var supported = true
         # Each alternative applies the named GP mutation using unsigned bit patterns.
