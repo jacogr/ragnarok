@@ -43,14 +43,16 @@ env:
 # Independent groups run concurrently on separate VMs; no job requires another job's artifacts.
 jobs:
   # Complete source import graph plus peer main and read-only formatting; no native linking or fixture setup.
-  smoke:
+  compile:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke') }}
     name: Compile / ${{ matrix.family.name }}
-    timeout-minutes: 10
+    timeout-minutes: ${{ matrix.family.minutes }}
     strategy:
+      fail-fast: false
       matrix:
-        family: [{name: Smoke}]
-    runs-on: ubuntu-latest
+        os: &ci-os [ubuntu-latest]
+        family: ${{ fromJSON((github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) && '[{"name":"Smoke","group":"smoke","minutes":10},{"name":"Source","group":"modules","minutes":30},{"name":"Reference & Tooling","group":"python","minutes":15},{"name":"Rejection Guards","group":"guards","minutes":30}]' || '[{"name":"Smoke","group":"smoke","minutes":10}]') }}
+    runs-on: ${{ matrix.os }}
     steps:
       - &checkout
         name: Checkout
@@ -62,10 +64,14 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      - name: Validate verification inventory
+        if: ${{ matrix.family.group != 'smoke' }}
+        run: &inventory-run make check-inventory
       - name: Check all formatting and smoke-compile all production modules
+        if: ${{ matrix.family.group == 'smoke' }}
         run: make check-smoke
       - name: Retain smoke diagnostics
-        if: always()
+        if: ${{ always() && matrix.family.group == 'smoke' }}
         uses: &upload-artifact actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: smoke-${{ github.run_attempt }}
@@ -75,33 +81,15 @@ jobs:
             build/ci/*.log
             build/tests/smoke/*.log
             build/tests/smoke/results.json
-
-  modules:
-    if: &requested ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
-    name: Compile / ${{ matrix.family.name }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: &ci-os [ubuntu-latest]
-        family: [{name: Source}]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - *checkout
-      - *python
-      # Fail missing or inconsistent verification inputs before any native setup.
-      - &inventory
-        name: Validate verification inventory
-        run: make check-inventory
       - name: Compile source
+        if: ${{ matrix.family.group == 'modules' }}
         run: make check-modules
-      - &summary
-        name: Show verification coverage
-        if: always()
-        run: make summary-${{ github.job }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      - name: Show verification coverage
+        if: ${{ always() && matrix.family.group == 'modules' }}
+        run: make summary-${{ matrix.family.group }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
-        if: always()
+        if: ${{ always() && matrix.family.group == 'modules' }}
         uses: *upload-artifact
         with:
           name: ${{ matrix.os }}-modules-${{ github.run_attempt }}
@@ -111,27 +99,15 @@ jobs:
             build/ci/*.log
             build/tests/modules/*.log
             build/tests/modules/results.json
-
-  python:
-    if: *requested
-    name: Compile / ${{ matrix.family.name }}
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: *ci-os
-        family: [{name: Reference & Tooling}]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - *checkout
-      - *python
-      - *inventory
       - name: Compile reference & tooling
+        if: ${{ matrix.family.group == 'python' }}
         run: make check-python
-      - *summary
+      - name: Show verification coverage
+        if: ${{ always() && matrix.family.group == 'python' }}
+        run: make summary-${{ matrix.family.group }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
-        if: always()
+        if: ${{ always() && matrix.family.group == 'python' }}
         uses: *upload-artifact
         with:
           name: ${{ matrix.os }}-python-${{ github.run_attempt }}
@@ -141,27 +117,15 @@ jobs:
             build/ci/*.log
             build/tests/python/*.log
             build/tests/python/results.json
-
-  guards:
-    if: *requested
-    name: Compile / ${{ matrix.family.name }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: *ci-os
-        family: [{name: Rejection Guards}]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - *checkout
-      - *python
-      - *inventory
       - name: Compile rejection guards
+        if: ${{ matrix.family.group == 'guards' }}
         run: make check-guards
-      - *summary
+      - name: Show verification coverage
+        if: ${{ always() && matrix.family.group == 'guards' }}
+        run: make summary-${{ matrix.family.group }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
-        if: always()
+        if: ${{ always() && matrix.family.group == 'guards' }}
         uses: *upload-artifact
         with:
           name: ${{ matrix.os }}-guards-${{ github.run_attempt }}
@@ -174,10 +138,9 @@ jobs:
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
 
-  # Automatic updates require Smoke; complete Compile requests additionally require every full check.
   compile-status:
     name: Compile
-    needs: [smoke, modules, python, guards]
+    needs: compile
     if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke')) }}
     strategy: &os-strategy
       fail-fast: false
@@ -185,17 +148,13 @@ jobs:
         os: *ci-os
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Require requested Compile jobs
+      - name: Require every Compile family
         env:
-          FULL_COMPILE_REQUEST: *requested
-          SMOKE_RESULT: ${{ needs.smoke.result }}
-          MODULES_RESULT: ${{ needs.modules.result }}
-          PYTHON_RESULT: ${{ needs.python.result }}
-          GUARDS_RESULT: ${{ needs.guards.result }}
-        run: test "$SMOKE_RESULT" = success && { test "$FULL_COMPILE_REQUEST" = false || { test "$MODULES_RESULT" = success && test "$PYTHON_RESULT" = success && test "$GUARDS_RESULT" = success; }; }
+          SHARDS_RESULT: ${{ needs.compile.result }}
+        run: test "$SHARDS_RESULT" = success
 
   models:
-    if: *requested
+    if: &requested ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
     name: Model verification
     timeout-minutes: 15
     strategy: *os-strategy
@@ -203,10 +162,14 @@ jobs:
     steps:
       - *checkout
       - *python
-      - *inventory
+      - name: Validate verification inventory
+        run: *inventory-run
       - name: Check lifecycle safety, mutants and reachability
         run: make check-models
-      - *summary
+      - name: Show verification coverage
+        if: always()
+        run: make summary-${{ github.job }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       # Retain only replayable models and diagnostics, never compiler/dependency trees.
       - name: Retain model verification evidence
         if: always()
@@ -240,10 +203,14 @@ jobs:
     steps:
       - *checkout
       - *python
-      - *inventory
+      - name: Validate verification inventory
+        run: *inventory-run
       - name: Native unit and codec tests
         run: make check-unit
-      - *summary
+      - name: Show verification coverage
+        if: always()
+        run: make summary-${{ github.job }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
         if: always()
@@ -291,10 +258,14 @@ jobs:
     steps:
       - *checkout
       - *python
-      - *inventory
+      - name: Validate verification inventory
+        run: *inventory-run
       - name: Runtime failure and contract tests
         run: make check-failures
-      - *summary
+      - name: Show verification coverage
+        if: always()
+        run: make summary-${{ github.job }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
         if: always()
@@ -345,10 +316,14 @@ jobs:
     steps:
       - *checkout
       - *python
-      - *inventory
+      - name: Validate verification inventory
+        run: *inventory-run
       - name: E2E Networking
         run: make check-e2e
-      - *summary
+      - name: Show verification coverage
+        if: always()
+        run: make summary-${{ github.job }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
+      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
         if: always()
@@ -402,28 +377,36 @@ jobs:
 
   # Keep Interop jobs adjacent; group requests run every implementation comparison.
   # Pinned public-API comparisons remain distinct from frozen native fixtures and future fuzzing.
-  pvm-reference:
+  interop:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
     name: Interop / ${{ matrix.family.name }}
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.family.minutes }}
     strategy:
+      fail-fast: false
       matrix:
-        family: [{name: PVM}]
-    runs-on: ubuntu-latest
-    env:
-      RAGNAROK_PVM_REFERENCE_BACKEND: interpreter
+        os: *ci-os
+        family: ${{ fromJSON(inputs.suite == 'ref-pvm' && '[{"name":"PVM","group":"pvm-reference","minutes":45}]' || '[{"name":"PVM","group":"pvm-reference","minutes":45},{"name":"Telemetry","group":"telemetry-interop","minutes":60}]') }}
+    runs-on: ${{ matrix.os }}
     steps:
       - *checkout
       - *python
-      - *inventory
+      - name: Validate verification inventory
+        run: *inventory-run
       - name: Compare pinned PolkaVM and native PVM fixtures
+        if: ${{ matrix.family.group == 'pvm-reference' }}
+        env:
+          RAGNAROK_PVM_REFERENCE_BACKEND: interpreter
         run: make check-pvm-reference
       # Retain diagnostics even if provisioning failed before results.json could be created.
       - name: Show PVM comparison summary
-        if: always()
+        if: ${{ always() && matrix.family.group == 'pvm-reference' }}
+        env:
+          RAGNAROK_PVM_REFERENCE_BACKEND: interpreter
         run: make summary-pvm-reference SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       - name: Retain PVM comparison evidence
-        if: always()
+        if: ${{ always() && matrix.family.group == 'pvm-reference' }}
+        env:
+          RAGNAROK_PVM_REFERENCE_BACKEND: interpreter
         uses: *upload-artifact
         with:
           name: pvm-reference-${{ github.run_attempt }}
@@ -436,26 +419,12 @@ jobs:
             build/tests/pvm-reference/summary.md
             build/tests/native/selected/pvm_*.log
             build/tests/native/preparation/selected-pvm_*.json
-
-  telemetry-interop:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
-    name: Interop / ${{ matrix.family.name }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        os: *ci-os
-        family: [{name: Telemetry}]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - *checkout
-      - *python
-      - *inventory
       - name: Build pinned collector and verify real peer events
+        if: ${{ matrix.family.group == 'telemetry-interop' }}
         run: make check-telemetry-interop-ci
       # Keep diagnostics on setup/build/test failures; exclude fixture keys and dependency trees.
       - name: Retain interoperability evidence
-        if: always()
+        if: ${{ always() && matrix.family.group == 'telemetry-interop' }}
         uses: *upload-artifact
         with:
           name: ${{ matrix.os }}-telemetry-interop-${{ github.run_attempt }}
@@ -470,34 +439,37 @@ jobs:
             build/bandersnatch/cargo-features.log
             build/quic/build.log
 
-  # Require the whole requested group, including failed, cancelled or skipped children.
   interop-status:
     name: Interop
-    needs: [pvm-reference, telemetry-interop]
+    needs: interop
     if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Require every Interop job
+      - name: Require every Interop family
         env:
-          PVM_REFERENCE_RESULT: ${{ needs.pvm-reference.result }}
-          TELEMETRY_INTEROP_RESULT: ${{ needs.telemetry-interop.result }}
-        run: test "$PVM_REFERENCE_RESULT" = success && test "$TELEMETRY_INTEROP_RESULT" = success
+          SHARDS_RESULT: ${{ needs.interop.result }}
+        run: test "$SHARDS_RESULT" = success
 
-  # Build locally and execute the final image; no registry credentials or image publishing.
-  docker:
+  build:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
-    name: Build / Docker
-    timeout-minutes: 30
-    runs-on: ubuntu-latest
+    name: Build / ${{ matrix.family.name }}
+    timeout-minutes: ${{ matrix.family.minutes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        family: ${{ fromJSON(inputs.suite == 'docker' && '[{"name":"Docker","group":"docker","minutes":30,"os":"ubuntu-latest","platform":""}]' || '[{"name":"Docker","group":"docker","minutes":30,"os":"ubuntu-latest","platform":""},{"name":"Linux","group":"binary","minutes":45,"os":"ubuntu-24.04","platform":"linux-amd64"},{"name":"macOS","group":"binary","minutes":45,"os":"macos-15","platform":"macos-arm64"}]') }}
+    runs-on: ${{ matrix.family.os }}
     steps:
       - *checkout
       - *python
-      - *inventory
+      - name: Validate verification inventory
+        run: *inventory-run
       - name: Build and smoke-test Docker image
+        if: ${{ matrix.family.group == 'docker' }}
         run: make check-docker
       - name: Retain Docker build diagnostics
-        if: always()
+        if: ${{ always() && matrix.family.group == 'docker' }}
         uses: *upload-artifact
         with:
           name: docker-${{ github.run_attempt }}
@@ -506,39 +478,24 @@ jobs:
           path: |
             build/ci/docker-build.log
             build/ci/docker-smoke.log
-
-  # Build only the host families with pinned compiler distributions and maintained native ABIs.
-  binary:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
-    name: Build / ${{ matrix.target.name }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - {os: ubuntu-24.04, name: Linux, platform: linux-amd64}
-          - {os: macos-15, name: macOS, platform: macos-arm64}
-    runs-on: ${{ matrix.target.os }}
-    steps:
-      - *checkout
-      - *python
-      - *inventory
       - name: Build, package and smoke-test relocated peer
+        if: ${{ matrix.family.group == 'binary' }}
         run: make package-binary
       - name: Retain downloadable binary archive
+        if: ${{ matrix.family.group == 'binary' }}
         uses: *upload-artifact
         with:
-          name: ragnarok-${{ matrix.target.platform }}-${{ github.run_attempt }}
+          name: ragnarok-${{ matrix.family.platform }}-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: error
           path: |
-            build/dist/ragnarok-${{ matrix.target.platform }}.tar.gz
-            build/dist/ragnarok-${{ matrix.target.platform }}.tar.gz.sha256
+            build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz
+            build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz.sha256
       - name: Retain binary build diagnostics
-        if: always()
+        if: ${{ always() && matrix.family.group == 'binary' }}
         uses: *upload-artifact
         with:
-          name: binary-${{ matrix.target.platform }}-diagnostics-${{ github.run_attempt }}
+          name: binary-${{ matrix.family.platform }}-diagnostics-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -548,44 +505,46 @@ jobs:
             build/bandersnatch/cargo-features.log
             build/quic/build.log
 
-  # A complete Build request requires the image and both native binary archives.
   build-status:
     name: Build
-    needs: [docker, binary]
+    needs: build
     if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full')) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Require every Build job
+      - name: Require every Build family
         env:
-          DOCKER_RESULT: ${{ needs.docker.result }}
-          BINARY_RESULT: ${{ needs.binary.result }}
-        run: test "$DOCKER_RESULT" = success && test "$BINARY_RESULT" = success
+          SHARDS_RESULT: ${{ needs.build.result }}
+        run: test "$SHARDS_RESULT" = success
 
-  # Perf jobs publish validated measurements on master pushes and explicit group/full requests.
-  bench-pvm:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+  perf:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-storage' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
     name: Perf / ${{ matrix.family.name }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.family.minutes }}
     strategy:
+      fail-fast: false
       matrix:
-        family: [{name: PVM}]
+        family: ${{ fromJSON(inputs.suite == 'bench-pvm' && '[{"name":"PVM","group":"bench-pvm","minutes":30}]' || inputs.suite == 'bench-storage' && '[{"name":"Storage","group":"bench-storage","minutes":30}]' || inputs.suite == 'bench-storage-growth' && '[{"name":"Storage Growth","group":"bench-storage-growth","minutes":30}]' || '[{"name":"PVM","group":"bench-pvm","minutes":30},{"name":"Storage","group":"bench-storage","minutes":30},{"name":"Storage Growth","group":"bench-storage-growth","minutes":30}]') }}
     runs-on: ubuntu-latest
     steps:
       - *checkout
       - *python
-      - *inventory
+      - name: Validate verification inventory
+        run: *inventory-run
       - name: Measure validated PVM workloads
+        if: ${{ matrix.family.group == 'bench-pvm' }}
         run: make bench-pvm
       - name: Measure validated real sieve
+        if: ${{ matrix.family.group == 'bench-pvm' }}
         run: make bench-pvm-sieve
       - name: Measure validated minimal, memory-fill and Pinky guests
+        if: ${{ matrix.family.group == 'bench-pvm' }}
         run: make bench-pvm-guests
       - name: Show speed comparison table
-        if: always()
+        if: ${{ always() && matrix.family.group == 'bench-pvm' }}
         run: make summary-pvm-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       - name: Show real-guest speed comparison tables
-        if: always()
+        if: ${{ always() && matrix.family.group == 'bench-pvm' }}
         run: |
           for report in build/tests/pvm-sieve/summary.md build/tests/pvm-guests/summary.md; do
             # Missing reports follow a failed/skipped runner; never substitute old successful evidence.
@@ -594,7 +553,7 @@ jobs:
             fi
           done
       - name: Retain raw benchmark evidence
-        if: always()
+        if: ${{ always() && matrix.family.group == 'bench-pvm' }}
         uses: *upload-artifact
         with:
           name: bench-pvm-${{ github.run_attempt }}
@@ -618,37 +577,26 @@ jobs:
             build/tests/pvm-guests/*/summary.md
             build/pvm-benchmark/native-build.log
             build/ci/*.log
-
-  # Keep storage adjacent to other Perf jobs and use the same group/full request policy.
-  bench-storage:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-storage' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
-    name: Perf / ${{ matrix.family.name }}
-    timeout-minutes: 30
-    strategy:
-      matrix:
-        family: [{name: Storage}]
-    runs-on: ubuntu-latest
-    steps:
-      - *checkout
-      - *python
-      - *inventory
       - name: Compare validated memory and durable storage workloads
+        if: ${{ matrix.family.group == 'bench-storage' }}
         run: make bench-storage
       - name: Measure checked storage resource panels
+        if: ${{ matrix.family.group == 'bench-storage' }}
         run: make bench-storage-resources bench-storage-allocations bench-storage-lifetimes bench-storage-deployment bench-storage-fresh-reopen bench-storage-file-cache
       - name: Measure child-local storage memory ceilings
+        if: ${{ matrix.family.group == 'bench-storage' }}
         run: make bench-storage-memory-ceilings
       - name: Show storage speed comparison
-        if: always()
+        if: ${{ always() && matrix.family.group == 'bench-storage' }}
         run: make summary-storage-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       - name: Show storage resource evidence
-        if: always()
+        if: ${{ always() && matrix.family.group == 'bench-storage' }}
         run: make summary-storage-resources SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       - name: Show child-local storage memory ceilings
-        if: always()
+        if: ${{ always() && matrix.family.group == 'bench-storage' }}
         run: make summary-storage-memory-ceilings SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       - name: Retain storage speed evidence
-        if: always()
+        if: ${{ always() && matrix.family.group == 'bench-storage' }}
         uses: *upload-artifact
         with:
           name: bench-storage-${{ github.run_attempt }}
@@ -690,27 +638,14 @@ jobs:
             build/tests/storage-memory-ceilings/status.md
             build/tests/storage-resource-summary.md
             build/ci/*.log
-
-  # Sustained growth keeps all repetitions on its own runner, independent of other storage panels.
-  bench-storage-growth:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
-    name: Perf / ${{ matrix.family.name }}
-    timeout-minutes: 30
-    strategy:
-      matrix:
-        family: [{name: Storage Growth}]
-    runs-on: ubuntu-latest
-    steps:
-      - *checkout
-      - *python
-      - *inventory
       - name: Measure sustained storage growth and SDK IO
+        if: ${{ matrix.family.group == 'bench-storage-growth' }}
         run: make bench-storage-growth
       - name: Show sustained storage growth
-        if: always()
+        if: ${{ always() && matrix.family.group == 'bench-storage-growth' }}
         run: make summary-storage-growth SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
       - name: Retain sustained storage evidence
-        if: always()
+        if: ${{ always() && matrix.family.group == 'bench-storage-growth' }}
         uses: *upload-artifact
         with:
           name: bench-storage-growth-${{ github.run_attempt }}
@@ -728,22 +663,18 @@ jobs:
             build/tests/storage-growth-benchmark/growth/io/calls.csv
             build/ci/*.log
 
-  # Require the whole requested group, including failed, cancelled or skipped children.
   perf-status:
     name: Perf
-    needs: [bench-pvm, bench-storage, bench-storage-growth]
+    needs: perf
     if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full'))) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Require every Perf job
+      - name: Require every Perf family
         env:
-          BENCH_PVM_RESULT: ${{ needs.bench-pvm.result }}
-          BENCH_STORAGE_RESULT: ${{ needs.bench-storage.result }}
-          BENCH_STORAGE_GROWTH_RESULT: ${{ needs.bench-storage-growth.result }}
-        run: test "$BENCH_PVM_RESULT" = success && test "$BENCH_STORAGE_RESULT" = success && test "$BENCH_STORAGE_GROWTH_RESULT" = success
+          SHARDS_RESULT: ${{ needs.perf.result }}
+        run: test "$SHARDS_RESULT" = success
 
-  # Original upstream campaigns and the JAM bridge have separate verdicts and failure artifacts.
   pvm-fuzz:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full')) }}
     name: Fuzz / ${{ matrix.family.name }}
@@ -757,7 +688,8 @@ jobs:
     steps:
       - *checkout
       - *python
-      - *inventory
+      - name: Validate verification inventory
+        run: *inventory-run
       - name: Run pinned upstream campaigns and JAM bridge
         run: make fuzz-pvm-upstream
       - name: Show fuzz coverage and bridge accounting
