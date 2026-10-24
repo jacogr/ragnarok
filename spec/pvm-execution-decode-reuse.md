@@ -194,3 +194,66 @@ Pinky/memory-budget tradeoff, not a universal win. Reports are under
 `decoder-16384-synthetic/`. Pinned formatting covers the changed Nim files;
 production sources match the measured prototype exactly after native restacking.
 Complete-JAM parity remains open.
+
+## Direct-mapped bounded lookup qualification, 2026-10-24
+
+The selected spill keeps16,384 genuine instruction results and indexes one slot
+with the low fourteen PC bits. A complete successful-result/full-PC comparison
+still decides every hit; truncating the index never truncates the authority tag.
+Successful misses replace exactly that slot. The original32-entry natural/paired
+lookup remains first, and the32,768-successful-miss promotion threshold is retained.
+The invocation owns all facts through synchronous reads and host continuations;
+new/nested invocations retain separate owners and immutable source snapshots.
+
+This removes the per-request multiplicative hash, second spill-way probe and8192
+replacement flags. At the qualified64-byte result layout, spill payload changes
+from1,056,768 bytes (1032KiB) to1,048,576 bytes (1024KiB), with the same16,416 total
+small/spill positions. Ordinary invocations still allocate no spill. Collisions
+fall back to the existing checked decoder, and failed decodes never replace facts.
+All instruction attempts, gas/capability checks and host/fault boundaries remain.
+
+A source-frozen diagnostic preserves all32,055,270 Pinky requests and complete
+reference state. The earlier two-way mapping makes41,256 actual decodes and
+3,737,260 second-way hits; the selected direct mapping makes75,048 decodes,
+about0.23% of requests, while eliminating the second probe. Larger direct32,768/
+65,536-position prototypes make38,920/38,689 decodes at twice/four times the result
+payload. The selected mapping keeps the existing position budget. These are
+algorithmic counts, with instrumentation timings discarded; snapshots and all six
+mapping observations are under`build/pvm12/decoder-lookup-study/`.
+
+Two complete CI attempts compare runtime candidate`d95fdc9e` with parent`b518cac1`
+on Ubuntu24.04, using the same current drivers, pinned checked ARC/Nimony/Clang
+ThinLTO profiles, frozen inputs and two reversed process orders. Both attempts
+pass2,808 real/synthetic invocations, another2,808 identical-source controls, six
+exact assertion controls per comparison and the complete candidate/PolkaVM
+interpreted real-guest pack. Source/input/compiler/binary identities are rechecked.
+Pinky process-CPU median changes are:
+
+| Pricing | First attempt | Repeat |
+| --- | ---: | ---: |
+| Dynamic | -12.6% | -17.8% |
+| Complete plan | -12.8% | -17.2% |
+| Lazy memo | -15.4% | -14.7% |
+
+The runners report AMD EPYC9V74 and9V45 respectively. Each ratio compares binaries
+within its own job; absolute times across those machines are not compared. All21
+real-guest and33 synthetic workload/policy cells remain in the raw tables. Smaller
+cells have explicit tradeoffs: first-attempt memo synthetic arithmetic/host loops
+slow about5–7%, while those cells are neutral/faster in the repeat. Repeat planned
+aligned/sparse-memory controls slow about8–9%, with near-neutral first-attempt
+values. Identical-source controls also retain several-percent small-cell variation.
+The supported speed claim is the repeated large decoded-working-set improvement;
+smaller workload and code-layout/microarchitecture sensitivities remain visible.
+Cold samples and plan/memo preparation costs are retained without outlier removal.
+
+The native cache suite covers17,000 distinct additions, exact/one-less budgets,
+cold/warm policies, complete CPU/gas/source parity, nested hosts and invalid entry.
+Direct-slot aliases retain distinct full PC tags and operands. All1,000 ARC cycles
+remain balanced at238720 occupied bytes before/after. Selected host-memory-reentry
+and mixed-policy reference suites pass. Production pins and public APIs retain
+their established contracts; this adds no prepared instruction representation.
+
+CI evidence: [run40102267534, both attempts](https://github.com/jacogr/ragnarok/actions/runs/40102267534).
+Local downloaded reports are under`build/pvm12/ci-40102267534/` and
+`build/pvm12/ci-40102267534-attempt2/`. Broader whole-JAM performance, full state
+serialization/parity and compiled execution remain outside this qualification.
