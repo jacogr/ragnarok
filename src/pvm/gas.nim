@@ -20,12 +20,13 @@ type
     else:
       # Failures contain no cost or partial pipeline progress.
       discard
-  # ALU, load, store, multiply and divide resources, in the normative tuple order.
-  Units = array[5, int]
+  # ALU/load/store occupancy never exceeds4, multiply/divide never exceeds1; signed bytes retain exact nonnegative counters.
+  Units = array[5, int8]
   # Register sets are thirteen-bit masks; all indices come from the validated decoder.
   Profile = object
     sources, destinations: uint16
-    cycles, slots: int
+    cycles: int8 # The exhaustive profile table grants0..100 cycles; execution only decrements positive latency.
+    slots: int
     units: Units
   # Retired entries are removed only from the prefix after a simultaneous cycle transition.
   Stage {.pure.} = enum
@@ -33,7 +34,7 @@ type
   # At most 32 active entries; dependency bits refer to positions in this compact buffer.
   Entry = object
     stage: Stage
-    left: int
+    left: int8 # Copied profile latency stays within0..100 throughout execution.
     dependencies: uint32
     clobbers: uint16
     units: Units
@@ -51,7 +52,7 @@ func bit(index: RegisterIndex): uint16 = 1'u16 shl int(byte(index))
 # Derive all syntactically read/written registers, including conditional-move fallbacks.
 func profile(item: Instruction): Profile =
   result = Profile(sources: 0, destinations: 0, cycles: 1, slots: 1,
-    units: [1, 0, 0, 0, 0])
+    units: [1'i8, 0'i8, 0'i8, 0'i8, 0'i8])
   let a = bit(item.a)
   let b = bit(item.b)
   let d = bit(item.d)
@@ -226,7 +227,7 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
   var cycles = 0'u64
   var slots = 4
   var starts = 5
-  var available: Units = [4, 4, 4, 1, 1]
+  var available: Units = [4'i8, 4'i8, 4'i8, 1'i8, 1'i8]
   # Each transition decodes a bounded instruction, starts one entry, or advances a bounded cycle.
   while true:
     if not ended and count < 32:
