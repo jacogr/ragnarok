@@ -137,3 +137,28 @@ all header truncations and trailing reserved bytes, exact/one-short geometry/val
 strict/sticky index coverage and ordering, every manifest-byte corruption, primitive failure,
 empty/long values and complete physical left-bit retention. This is format evidence only.
 Complete-graph admission, native owners and consumer integration remain subsequent units.
+
+
+## Bounded graph engine
+
+`full_paged_stream.nim` supplies complete artifact admission and retained-root lookup through
+synchronous borrowed byte callbacks. Checked metadata retains only the fixed header, captured
+page root and inherited policies. Every stored postorder digest is checked; subsequent index/
+payload reads authenticate complete pages against that captured root. Strict ordering/coverage,
+canonical section padding and every record hash precede complete graph traversal.
+
+The first engine supports zero/one cached page and a conservative 4 MiB fixed logical workspace
+reservation plus four per-value transports. This is an admission bound, not an RSS measurement.
+Per-root seen and retained-union membership use two byte-addressed N-byte disk scratch tables.
+Both are explicitly initialized; only seen is reset between roots. Final union membership must
+cover every physical record. IO/hash/visit/byte quotas charge before work; source/scratch EOF
+are rechecked at successful completion. Scratch is private disposable trusted IO, never authority
+for a selected head, and its exact extent must be independently admitted before traversal.
+
+The selected `storage_full_paged_graph` suite uses an independent domain/tree byte oracle and
+reseals locally valid hostile graphs. It covers wrong routes, repeated subtrees, missing full
+children including masked-bit aliases, unreachable records, lying counts, multi-root sharing,
+empty graphs/values, cross-page values, unknown roots, owned lookup bytes, exact/one-short work
+ceilings and every observed source/scratch callback refusal. Checked ARC retains exactly
+21,712 bytes before/after 1000 admission/lookup cycles in the small fixture. Native disk owners,
+construction/publication and populated Linux resource qualification remain subsequent work.
