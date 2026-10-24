@@ -7,6 +7,7 @@ Exposes GasReferenceTests for unittest discovery; direct invocation validates ge
 import hashlib
 import json
 import re
+import struct
 import unittest
 import tempfile
 from dependencies import require_submodule
@@ -31,12 +32,23 @@ class GasReferenceTests(unittest.TestCase):
         data, count = fixtures()
         self.assertGreater(count, 1000)
         self.assertEqual(hashlib.sha256(data).hexdigest(),
-                         '9c048aa7dbe706ce8072047473203a45e6db16900a4330dc0c4127ecf1ec1797')
+                         '555c02cf0b14e692fc5e3f981c1550cf37b0076deb196145b37c7addc5a3b7c2')
         with tempfile.TemporaryDirectory() as folder:
             # Native input is generated under a caller-owned build directory, never checked in.
             path, evidence = prepare(folder)
             self.assertEqual(data, path.read_bytes())
             self.assertEqual(evidence['fixture_sha256'], hashlib.sha256(data).hexdigest())
+
+    # Existing original records remain byte-identical when new retirement/rename witnesses are appended.
+    def test_original_fixture_records_preserved(self):
+        data, count = fixtures()
+        cursor = 12
+        for _ in range(1784):
+            length = struct.unpack_from('<I', data, cursor+20)[0]
+            cursor += 24+length
+        self.assertGreater(count, 1784)
+        self.assertEqual(hashlib.sha256(data[12:cursor]).hexdigest(),
+                         'd416437566215d4ea523c3a0da3546fe8e0fcb809660d653e58533b4cd4bfecc')
 
     # Selected timelines use compatible register-only costs, excluding PolkaVM's four-cycle L1 loads.
     def test_upstream_timelines(self):

@@ -67,7 +67,7 @@ target-byte selection and does not select a different cache/cost model.
 
 ## Independent evidence
 
-The generated `build/` gas fixture contains **1,776** blocks. A Python test-only
+The generated `build/` gas fixture contains **1,796** blocks. A Python test-only
 reference reads numeric opcode mutations and cost macros directly from the pinned
 TeX, then simulates with unbounded historical entries, dependency sets and separate
 next-state copies. Production code uses handwritten profiles and a compact fixed
@@ -111,3 +111,34 @@ Memory faults preserve the paid block charge for repair/retry. The bounded
 Branch pricing follows the approved PolkaVM adoption; the
 [readiness map](pvm-interpreter-readiness.md) retains the remaining specification
 and full JAM conformance gates.
+
+
+## Bounded dependency readiness, 2026-10-23
+
+A private uint32 mask now summarizes which of the32 active reorder-buffer entries
+have nonzero remaining latency. An issue candidate is dependency-ready exactly when
+its captured dependency mask has empty intersection with that mask. Oldest eligible
+selection and the memberwise resource check remain unchanged; no pipeline transition,
+fee, issue/decode capacity, cycle limit or public result contract changes.
+
+Successful insertion sets its bit when latency is nonzero, under the existing
+`count <32` bound. Executing latency1 clears its bit at the same transition that
+releases resources and decrements latency to zero. A compacted prefix shifts both
+active positions and the readiness mask. Complete32-entry retirement clears the
+mask explicitly, avoiding any word-width shift. Zero-latency move elimination still
+creates no reorder entry and only changes producer ownership. All state is bounded
+stack storage initialized afresh; no cached partial simulation survives a refusal.
+
+Twelve appended independent-model fixtures cover long oldest producers and complete
+buffer retirement,31/32/33/65-length rename chains, overwritten producer aliases,
+short dependent consumers, partial compaction and resource starts. The existing1784
+records remain byte-identical under a separate original-payload hash check. The full
+1796-row native corpus checks each exact price, its minimum cycle limit, one-less
+refusal and maximum-limit completion. The independent model retains historical
+producer identities and set-based dependencies, rather than mirroring the compact
+mask implementation. The fixture hash is
+`555c02cf0b14e692fc5e3f981c1550cf37b0076deb196145b37c7addc5a3b7c2`.
+
+Timing evidence belongs to the interpreter comparison contract. The separate
+pending-frontend-decode experiment regressed the direct corpus and is excluded;
+this change retains the established frontend behavior and all runtime checks.
