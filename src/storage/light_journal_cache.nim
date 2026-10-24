@@ -401,3 +401,109 @@ proc repair*(recovery: var LightJournalRecovery, owner: var LightJournalCache): 
   recovery.data = nil
   LightJournalResult[StorageDurability](status: FileError.None,
       completed: StorageDurability.FileAndDirectorySynced)
+
+type
+  CompactionData = ref object ## Prepared replacement retains immutable evidence and fixed transport, never a native lease or predecessor chain.
+    image: PreparedLightSnapshot
+    selected: LightJournalManifest
+    anchor: seq[byte]
+    prior: StorageChecksum
+    priorEpoch: ManagedEpoch
+    sequence: LightDeltaSequence
+  PreparedLightCompaction* = object ## Opaque canonical candidate binds physical replacement to one exact confirmed epoch/sequence/image.
+    data: nil CompactionData
+  LightCompactionReceipt* = object ## Passive copied diagnostics are never accepted as storage publication authority.
+    previousEpoch*: ManagedEpoch ## Old files remain unselected forensic/reclamation candidates after confirmed selection.
+    epoch*: ManagedEpoch          ## The new checkpoint epoch is selected and its namespace barriers completed.
+    sequence*: LightDeltaSequence ## Compaction preserves the global proof-update sequence.
+    retirement*: FileError ## Old-handle retirement is separate from confirmed selection; non-None requires explicit close/reopen.
+func initialized*(prepared: PreparedLightCompaction): bool =
+  ## Default plans safely report that they carry no candidate authority.
+  prepared.data != nil
+proc epoch*(prepared: PreparedLightCompaction): ManagedEpoch {.requires: prepared.data != nil.} =
+  ## Inspect the exact checked next physical epoch without exporting mutable plan backing.
+  let data = prepared.data
+  assert data != nil
+  data.selected.epoch
+proc sequence*(prepared: PreparedLightCompaction): LightDeltaSequence {.requires: prepared.data != nil.} =
+  ## Inspect the unchanged checkpoint baseline bound to this candidate.
+  let data = prepared.data
+  assert data != nil
+  data.sequence
+proc prepareLightCompaction*(owner: LightJournalCache, expectedEpoch: ManagedEpoch,
+    expectedSequence: LightDeltaSequence): LightJournalResult[PreparedLightCompaction] =
+  ## Prepare exact checkpoint selection and anchor before IO, checking stale position and epoch exhaustion before arithmetic or hashes.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return fail[PreparedLightCompaction](reason)
+  assert data != nil
+  if uint64(expectedEpoch) != uint64(data.selected.epoch) or
+      uint64(expectedSequence) != uint64(data.sequence): return fail[PreparedLightCompaction](
+          FileError.StaleView)
+  if uint64(data.selected.epoch) == high(uint64): return fail[PreparedLightCompaction](
+      FileError.EpochExhausted)
+  let next = ManagedEpoch(uint64(data.selected.epoch)+1)
+  let selected = prepareLightJournalManifest(data.image, next, data.sequence, ByteLimit(LightJournalManifestBytes))
+  if selected.error != LightSelectionError.None: return fail[PreparedLightCompaction](
+      selectionReason(selected.error))
+  let anchor = encodeLightJournalAnchor(selected.value, data.config.journal.bytes)
+  if anchor.error != LightSelectionError.None: return fail[PreparedLightCompaction](selectionReason(anchor.error))
+  LightJournalResult[PreparedLightCompaction](status: FileError.None,
+    completed: PreparedLightCompaction(data: CompactionData(image: data.image,
+      selected: selected.value,
+      anchor: anchor.value, prior: data.selected.checksum, priorEpoch: data.selected.epoch,
+      sequence: data.sequence)))
+proc compact*(owner: var LightJournalCache, prepared: PreparedLightCompaction): LightJournalResult[
+    LightCompactionReceipt] =
+  ## Write/sync a new checkpoint and empty journal, atomically select them, then separately report retirement of the old append handle.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return fail[LightCompactionReceipt](reason)
+  assert data != nil
+  let plan = prepared.data
+  if plan == nil: return fail[LightCompactionReceipt](FileError.Uninitialized)
+  let checked = binding(plan.image, data.config)
+  if checked != FileError.None: return fail[LightCompactionReceipt](checked)
+  if uint64(data.selected.epoch) != uint64(plan.priorEpoch) or
+      uint64(data.sequence) != uint64(plan.sequence) or
+      array[32, byte](data.selected.checksum) != array[32, byte](plan.prior) or
+      array[32, byte](data.image.checksum) != array[32, byte](plan.image.checksum):
+    return fail[LightCompactionReceipt](FileError.StaleView)
+  if uint64(plan.anchor.len) > uint64(data.config.journal.bytes): return fail[
+      LightCompactionReceipt](FileError.LimitExceeded)
+  var journal = default(ManagedJournal)
+  defer:
+    if journal.opened: discard journal.close # Refused staging always releases its candidate inode before the selected owner's lease retires.
+  var staged = createManagedFile(data.directory, ManagedFileKind.Snapshot, plan.selected.epoch,
+    plan.image.encodedBytes, data.config.snapshot.bytes)
+  if staged == FileError.None:
+    staged = createManagedFile(data.directory, ManagedFileKind.Journal, plan.selected.epoch,
+        plan.anchor, data.config.journal.bytes)
+  if staged != FileError.None:
+    # Existing candidate names cause no selected-file uncertainty; other IO refusals require strict reopen.
+    if staged != FileError.AlreadyExists: data.poisoned = true
+    return fail[LightCompactionReceipt](staged)
+  var loaded = openManagedJournal(journal, data.directory, plan.selected.epoch,
+      data.config.journal.bytes)
+  if loaded.error != FileError.None:
+    data.poisoned = true
+    return fail[LightCompactionReceipt](loaded.error)
+  var input = loaded.takeValue
+  if input != plan.anchor:
+    data.poisoned = true
+    return fail[LightCompactionReceipt](FileError.InvalidJournal)
+  let selected = replaceManagedManifest(data.directory, plan.selected.bytes, ByteLimit(LightJournalManifestBytes))
+  if selected != FileError.None:
+    # Post-rename uncertainty never grants confirmed epoch or compaction receipt; the old reader is retained only by prior callers.
+    data.poisoned = true
+    return fail[LightCompactionReceipt](selected)
+  let prior = data.selected.epoch
+  let closed = data.journal.close
+  let moved = moveManagedJournal(data.journal, journal)
+  data.selected = plan.selected
+  data.frames = 0
+  let retirement = if closed != FileError.None: closed else: moved
+  if retirement != FileError.None: data.poisoned = true
+  LightJournalResult[LightCompactionReceipt](status: FileError.None,
+    completed: LightCompactionReceipt(previousEpoch: prior, epoch: plan.selected.epoch,
+      sequence: data.sequence, retirement: retirement))

@@ -354,3 +354,8 @@ Explicit `LightJournalRecovery` inspection holds the selected journal inode and 
 lease. Repair revalidates CURRENT, checkpoint, exact original bytes and selected inode/extent
 before synchronized prefix truncation transfers one writable owner. Complete corruption is
 never salvaged. See [held-inode repair](../../spec/storage-light-journal-repair.md).
+
+Prepared light journal compaction binds an exact epoch/sequence/image, writes a new synchronized
+checkpoint and empty anchor, then atomically selects that epoch without advancing update sequence.
+A confirmed receipt reports old-handle retirement separately; old files remain untouched. See
+[atomic checkpoint compaction](../../spec/storage-light-journal-compaction.md).
