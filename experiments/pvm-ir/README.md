@@ -149,3 +149,14 @@ before timing, matching the other engines' invocation setup boundary. Execution 
 the existing semantic bodies; every opcode needed by this guest is available through
 them. This is prepared interpretation, with no new native backend or specialized sieve
 instructions.
+
+## Complete prepared lifecycle and profiling
+
+The [complete model and profiling report](FULL_RESULTS.md) covers all instruction
+families, both pricing policies, scoped single stepping, both host callback forms,
+resource admission, ownership, and repair/retry. It remains an opt-in generated module.
+Run `make full` for correctness controls followed by the six-engine real-sieve comparison.
+After that, `make full-profile PROFILE_ARGS=--sample` compares the original and borrowed
+lookup against master with the same complete pricing and captures separate macOS CPU
+profiles. Omit `PROFILE_ARGS` for timing without macOS sampling. Set `NIMONY` and
+`POLKAVM_SOURCE` as above. Results include setup costs separately from reused execution.
