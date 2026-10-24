@@ -448,3 +448,16 @@ reentry and mixed policies, with declared1000 balanced ARC lifetimes. Generated 
 retains direct named enum comparisons in every affected predicate. Raw evidence is
 under `build/pvm12/ci-40130795676/`; publication adds only documentation above the
 measured runtime, with production, driver, build and pins unchanged.
+
+### Deterministic terminal-profile confirmation
+
+CI40131669246 retains the same inputs, scope, build commands and clock policy as
+profile40125948163; their recorded source identities differ only in step.nim and
+its frozen snapshot. All scope/assertion controls and three complete-state profiles
+pass. Planned Pinky decreases from5,646,231,310 to5,323,559,981 native instructions
+(-5.715%); dynamic Pinky6,165,875,878 to5,676,199,554 (-7.942%), and planned
+sieve100000186,299,926 to176,015,342 (-5.520%). Writer load/store and memoryMutation
+self-counts stay identical in the planned profile. Instrumented clocks are discarded;
+these deterministic counts support the separate paired timing result and do not
+predict other workloads. Captured generated C, checksums and source annotations
+remain under `build/pvm12/ci-40131669246/`.
