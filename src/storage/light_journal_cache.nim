@@ -754,3 +754,192 @@ proc discardUnselectedCompaction*(owner: var LightJournalCache,
   let checkpoint = removeManagedFile(data.directory, ManagedFileKind.Snapshot, plan.selected.epoch)
   if checkpoint != FileError.None: return checkpoint
   data.directory.synchronize
+
+type
+  RootAdvanceData = ref object ## Immutable target and exact source policy/position carry no native lease or predecessor image chain.
+    image: PreparedLightSnapshot
+    selected: LightJournalManifest
+    anchor: seq[byte]
+    source: LightJournalConfig
+    prior, priorImage: StorageChecksum
+    priorEpoch: ManagedEpoch
+    sequence: LightDeltaSequence
+    frames, bytes: uint64
+  PreparedLightRootAdvance* = object ## Opaque root selection authenticates replacement evidence without supplying root provenance.
+    data: nil RootAdvanceData
+  LightRootAdvanceReceipt* = object ## Passive confirmed selection and retirement diagnostics never grant new root trust or publication authority.
+    previousRoot*, root*: StateRoot ## Both roots were independently selected by the caller, not inferred from transport.
+    previousEpoch*, epoch*: ManagedEpoch ## Retired source files remain until explicit guarded reclamation.
+    sequence*: LightDeltaSequence ## Root selection preserves the ordinary proof-update sequence.
+    retirement*: FileError ## Non-None preserves confirmed selection but poisons fresh owner access until explicit retirement/reopen.
+func initialized*(prepared: PreparedLightRootAdvance): bool =
+  ## Default plans safely report that they carry no publication candidate.
+  prepared.data != nil
+proc epoch*(prepared: PreparedLightRootAdvance): ManagedEpoch {.requires: prepared.data != nil.} =
+  ## Inspect only the exact checked destination physical epoch.
+  let data = prepared.data
+  assert data != nil
+  data.selected.epoch
+proc sequence*(prepared: PreparedLightRootAdvance): LightDeltaSequence {.requires: prepared.data != nil.} =
+  ## The new checkpoint baseline preserves the source's confirmed ordinary-update sequence.
+  let data = prepared.data
+  assert data != nil
+  data.sequence
+proc root*(prepared: PreparedLightRootAdvance): StateRoot {.requires: prepared.data != nil.} =
+  ## Return the explicit independently accepted destination root without granting provenance.
+  let data = prepared.data
+  assert data != nil
+  data.image.root
+proc snapshot*(prepared: PreparedLightRootAdvance): PreparedLightSnapshot {.requires: prepared.data != nil.} =
+  ## Retain only the immutable verified replacement knowledge, independently of any native owner.
+  let data = prepared.data
+  assert data != nil
+  data.image
+func sameJournalPolicy(left, right: LightReplayLimits): bool =
+  ## A prepared root request cannot silently adopt different replay/append capacities after close/reopen.
+  uint64(left.bytes) == uint64(right.bytes) and uint64(left.frames) == uint64(right.frames) and
+    uint64(left.frame.bytes) == uint64(right.frame.bytes) and uint64(left.frame.items) == uint64(
+        right.frame.items)
+proc rootAdvanceSource(data: JournalOwner, plan: RootAdvanceData, cleanup: bool): FileError =
+  ## Exact publication requires the original head; cleanup may tolerate only later ordinary appends in that same physical selection.
+  if uint64(data.selected.epoch) != uint64(plan.priorEpoch) or
+      array[32, byte](data.selected.checksum) != array[32, byte](plan.prior) or
+      array[32, byte](data.config.chain) != array[32, byte](plan.source.chain) or
+      array[32, byte](data.config.root) != array[32, byte](
+          plan.source.root): return FileError.StaleView
+  if not samePolicy(data.config.snapshot, plan.source.snapshot) or
+      not sameJournalPolicy(data.config.journal, plan.source.journal): return FileError.InvalidBatch
+  let extent = managedJournalBytes(data.journal)
+  if extent.error != FileError.None: return extent.error
+  if cleanup:
+    # Append position is monotonic within one unchanged selected manifest; no later physical selection is admitted above.
+    if uint64(data.sequence) < uint64(plan.sequence) or data.frames < plan.frames or extent.value < plan.bytes:
+      return FileError.StaleView
+  else:
+    let sameImage = array[32, byte](data.image.checksum) == array[32, byte](plan.priorImage)
+    if uint64(data.sequence) != uint64(plan.sequence) or data.frames != plan.frames or
+        extent.value != plan.bytes or not sameImage: return FileError.StaleView
+  FileError.None
+proc prepareLightRootAdvance*(owner: LightJournalCache, expectedEpoch: ManagedEpoch,
+    expectedSequence: LightDeltaSequence, destinationRoot: StateRoot,
+    image: PreparedLightSnapshot): LightJournalResult[PreparedLightRootAdvance] =
+  ## Bind separately verified destination knowledge to an explicit root argument and one exact confirmed source, without IO.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return fail[PreparedLightRootAdvance](reason)
+  assert data != nil
+  if uint64(expectedEpoch) != uint64(data.selected.epoch) or uint64(expectedSequence) != uint64(data.sequence):
+    return fail[PreparedLightRootAdvance](FileError.StaleView)
+  if uint64(data.selected.epoch) == high(uint64): return fail[PreparedLightRootAdvance](
+      FileError.EpochExhausted)
+  if not image.initialized: return fail[PreparedLightRootAdvance](FileError.Uninitialized)
+  if array[32, byte](image.chainId) != array[32, byte](data.config.chain) or
+      array[32, byte](image.root) != array[32, byte](destinationRoot):
+    return fail[PreparedLightRootAdvance](FileError.WrongIdentity)
+  if array[32, byte](destinationRoot) == array[32, byte](data.config.root) or
+      not samePolicy(image.limits, data.config.snapshot): return fail[PreparedLightRootAdvance](
+          FileError.InvalidBatch)
+  let extent = managedJournalBytes(data.journal)
+  if extent.error != FileError.None: return fail[PreparedLightRootAdvance](extent.error)
+  let selected = prepareLightJournalManifest(image, ManagedEpoch(uint64(data.selected.epoch)+1),
+      data.sequence,
+    ByteLimit(LightJournalManifestBytes))
+  if selected.error != LightSelectionError.None: return fail[PreparedLightRootAdvance](
+      selectionReason(selected.error))
+  let anchor = encodeLightJournalAnchor(selected.value, data.config.journal.bytes)
+  if anchor.error != LightSelectionError.None: return fail[PreparedLightRootAdvance](
+      selectionReason(anchor.error))
+  LightJournalResult[PreparedLightRootAdvance](status: FileError.None,
+    completed: PreparedLightRootAdvance(data: RootAdvanceData(image: image,
+      selected: selected.value,
+      anchor: anchor.value, source: data.config, prior: data.selected.checksum,
+      priorImage: data.image.checksum,
+      priorEpoch: data.selected.epoch, sequence: data.sequence, frames: data.frames,
+      bytes: extent.value)))
+proc advanceRoot*(owner: var LightJournalCache, prepared: PreparedLightRootAdvance): LightJournalResult[
+    LightRootAdvanceReceipt] =
+  ## Synchronize replacement evidence/anchor before selecting the new root; only confirmed selection changes the owner's root binding.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return fail[LightRootAdvanceReceipt](reason)
+  assert data != nil
+  let plan = prepared.data
+  if plan == nil: return fail[LightRootAdvanceReceipt](FileError.Uninitialized)
+  let checked = rootAdvanceSource(data, plan, false)
+  if checked != FileError.None: return fail[LightRootAdvanceReceipt](checked)
+  var journal = default(ManagedJournal)
+  defer:
+    if journal.opened: discard journal.close # An unselected candidate never retains a native lease after a refused publication.
+  var staged = createManagedFile(data.directory, ManagedFileKind.Snapshot, plan.selected.epoch,
+    plan.image.encodedBytes, data.config.snapshot.bytes)
+  if staged == FileError.None:
+    staged = createManagedFile(data.directory, ManagedFileKind.Journal, plan.selected.epoch,
+      plan.anchor,
+      data.config.journal.bytes)
+  if staged != FileError.None:
+    # Existing unselected children are preserved; other partial IO makes fresh observations uncertain.
+    if staged != FileError.AlreadyExists: data.poisoned = true
+    return fail[LightRootAdvanceReceipt](staged)
+  var loaded = openManagedJournal(journal, data.directory, plan.selected.epoch,
+      data.config.journal.bytes)
+  if loaded.error != FileError.None:
+    data.poisoned = true
+    return fail[LightRootAdvanceReceipt](loaded.error)
+  var input = loaded.takeValue
+  if input != plan.anchor:
+    data.poisoned = true
+    return fail[LightRootAdvanceReceipt](FileError.InvalidJournal)
+  let selected = replaceManagedManifest(data.directory, plan.selected.bytes, ByteLimit(LightJournalManifestBytes))
+  if selected != FileError.None:
+    # CURRENT may have changed after rename; no source/destination root is selected from forensic bytes on this path.
+    data.poisoned = true
+    return fail[LightRootAdvanceReceipt](selected)
+  let priorEpoch = data.selected.epoch
+  let priorRoot = data.config.root
+  let closed = data.journal.close
+  let moved = moveManagedJournal(data.journal, journal)
+  data.selected = plan.selected
+  data.image = plan.image
+  data.config.root = plan.image.root
+  data.frames = 0
+  let retirement = if closed != FileError.None: closed else: moved
+  if retirement != FileError.None: data.poisoned = true
+  LightJournalResult[LightRootAdvanceReceipt](status: FileError.None,
+    completed: LightRootAdvanceReceipt(previousRoot: priorRoot, root: plan.image.root,
+      previousEpoch: priorEpoch,
+      epoch: plan.selected.epoch, sequence: data.sequence, retirement: retirement))
+proc discardUnselectedRootAdvance*(owner: var LightJournalCache,
+    prepared: PreparedLightRootAdvance): FileError =
+  ## Validate the selected source and all candidate prefixes before deleting only this plan's immediate unselected epoch.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return reason
+  assert data != nil
+  let plan = prepared.data
+  if plan == nil: return FileError.Uninitialized
+  if uint64(plan.selected.epoch) <= uint64(data.selected.epoch): return FileError.InvalidRetention
+  if uint64(data.selected.epoch) == high(uint64): return FileError.EpochExhausted
+  if uint64(plan.selected.epoch) != uint64(data.selected.epoch)+1: return FileError.StaleView
+  let source = rootAdvanceSource(data, plan, true)
+  if source != FileError.None: return source
+  let checked = validateSelectedHead(data)
+  if checked != FileError.None:
+    data.poisoned = true
+    return checked
+  var candidate = validateManagedFilePrefix(data.directory, ManagedFileKind.Snapshot,
+    plan.selected.epoch,
+    plan.image.encodedBytes, data.config.snapshot.bytes)
+  if candidate == FileError.None:
+    candidate = validateManagedFilePrefix(data.directory, ManagedFileKind.Journal,
+      plan.selected.epoch,
+      plan.anchor, data.config.journal.bytes)
+  if candidate == FileError.None:
+    candidate = validateManagedPendingPrefix(data.directory, plan.selected.bytes, ByteLimit(LightJournalManifestBytes))
+  if candidate != FileError.None: return candidate # Unknown unselected content preserves every candidate and the confirmed source.
+  let pending = discardManagedPending(data.directory)
+  if pending != FileError.None: return pending
+  let journal = removeManagedFile(data.directory, ManagedFileKind.Journal, plan.selected.epoch)
+  if journal != FileError.None: return journal
+  let checkpoint = removeManagedFile(data.directory, ManagedFileKind.Snapshot, plan.selected.epoch)
+  if checkpoint != FileError.None: return checkpoint
+  data.directory.synchronize
