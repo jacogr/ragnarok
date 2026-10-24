@@ -7,7 +7,7 @@
 # @@Verification={"arc": "pvm_step_arc_release"}
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, registers, gas, step]
+import ../../../src/pvm/[program, machine, registers, gas, gas_plan, step]
 import ../../support/arc_evidence
 
 # Read independently serialized little-endian fixture integers after checking their enclosing extent.
@@ -159,6 +159,42 @@ for op in 0..255:
       if not terminatesBlock(byte(op)) and op != 2:
         # Memory and host operations remain unsupported by the broader entry point too.
         assert stepControl(source, GasCycleLimit(0)).error == StepError.UnsupportedInstruction
+      same(machineInfo(source).value, info)
+
+# All valid opcode families retain their public capability boundary before affordability; the literal dispatch table must not add or omit a permission.
+for opcode in 0..255:
+  if not validOpcode(byte(opcode)): continue # Reserved bytes have no captured instruction to classify.
+  let owner = smallProgram([byte(opcode), 0], 3)
+  let prepared = newGasPlan(owner, GasPlanLimits(blocks: GasPlanBlockLimit(2),
+    bytes: GasPlanByteLimit(16), cycles: GasCycleLimit(10000)))
+  assert prepared.error == GasPlanError.None
+  let plan = prepared.value
+  let info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(0), blockCharged: false,
+    registers: default(RegisterFile))
+  let source = captureMachine(owner, memory, info).value
+  for planned in [false, true]:
+    for scope in 0..<4:
+      # The public capability hierarchy follows the instruction families, independently of the production classification bytes.
+      let allowed = registerOnlyOpcode(byte(opcode)) or
+        (scope >= 1 and (terminatesBlock(byte(opcode)) or opcode == 2)) or
+        (scope >= 2 and (opcode in 30..33 or opcode in 52..62 or opcode in 70..73 or opcode in
+            120..130)) or
+        (scope == 3 and opcode == 10)
+      var answer = default(StepResult)
+      template advance(policy: untyped) =
+        # Exercise each real public overload; no private classification accessor supplies the expected result.
+        case scope
+        of 0: answer = stepRegisters(source, policy)
+        of 1: answer = stepControl(source, policy)
+        of 2: answer = stepMemory(source, policy)
+        else: answer = stepOnce(source, policy)
+      if planned: advance(plan) # A matching complete plan does not authorize a broader evaluator scope.
+      else: advance(GasCycleLimit(10000)) # Dynamic pricing must preserve the same rejection-before-debit ordering.
+      if allowed:
+        assert answer.error == StepError.None and answer.value.exit == StepExit.OutOfGas
+        same(machineInfo(answer.value.machine).value, info)
+      else:
+        assert answer.error == StepError.UnsupportedInstruction
       same(machineInfo(source).value, info)
 
 # Whole-block scanning prices a later wrapped negative target before committing the first register mutation.

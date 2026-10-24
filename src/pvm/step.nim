@@ -261,9 +261,23 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
     return StepResult(status: StepError.InvalidHostResponse) # Failed capture never exposes a partially applied response.
   StepResult(status: StepError.None, completed: StepOutcome(kind: exit, machine: captured.value))
 
-# Exact scalar load/store instruction set; host response application executes no instruction.
-func memoryOpcode(opcode: byte): bool =
-  opcode in {30'u8..33'u8, 52'u8..62'u8, 70'u8..73'u8, 120'u8..130'u8}
+const executionClasses = # Immutable byte metadata: r registers, m memory, h host, c control, - unsupported.
+  "ccc-------h-----" & # Opcodes0..15.
+  "----r---------mm" & # Opcodes16..31.
+  "mm------c-------" & # Opcodes32..47.
+  "--crmmmmmmmmmmm-" & # Opcodes48..63.
+  "------mmmm------" & # Opcodes64..79.
+  "ccccccccccc-----" & # Opcodes80..95.
+  "----rrrrrrrrrrr-" & # Opcodes96..111.
+  "--------mmmmmmmm" & # Opcodes112..127.
+  "mmmrrrrrrrrrrrrr" & # Opcodes128..143.
+  "rrrrrrrrrrrrrrrr" & # Opcodes144..159.
+  "rr--------cccccc" & # Opcodes160..175.
+  "----c---------rr" & # Opcodes176..191.
+  "rrrrrrrrrrrrrrrr" & # Opcodes192..207.
+  "rrrrrrrrrrrrrrrr" & # Opcodes208..223.
+  "rrrrrrr---------" & # Opcodes224..239.
+  "----------------"   # Opcodes240..255.
 
 func initExecutionCache(): ExecutionCache =
   ## New invocation/limit pairs explicitly start with no valid hot/secondary entries or inherited replacement progress.
@@ -560,9 +574,11 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
   if decoded.error != ProgramError.None: return InstructionEvaluation(
       status: StepError.InvalidMachine)
   let item = decoded.value
-  if not registerOnlyOpcode(item.opcode) and
-      not (control and (terminatesBlock(item.opcode) or item.opcode == 2)) and
-      not (memoryAccess and memoryOpcode(item.opcode)) and not (hostCalls and item.opcode == 10):
+  let category = executionClasses[int(item.opcode)]
+  if category == '-' or
+      (category == 'c' and not control) or
+      (category == 'm' and not memoryAccess) or
+      (category == 'h' and not hostCalls):
     # Capability rejection precedes evaluation and never fabricates a guest trap or gas debit.
     return InstructionEvaluation(status: StepError.UnsupportedInstruction)
   if not info.blockCharged:
@@ -628,7 +644,7 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
       return InstructionEvaluation(status: StepError.InvalidMachine)
   var outcome = StepExit.Continued
   var failedPage = PageAddress(0)
-  if registerOnlyOpcode(item.opcode):
+  if category == 'r':
     # Register-only execution retains its existing scope and copied-register semantics.
     let mutation = evaluateRegisterWrite(decoded, info.registers)
     if mutation.error != RegisterError.None:
@@ -636,7 +652,7 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
       return InstructionEvaluation(status: StepError.UnsupportedInstruction)
     applyRegisterWrite(info.registers, mutation)
     info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
-  elif memoryOpcode(item.opcode):
+  elif category == 'm':
     # Memory exceptions retain the charged gas/flag but never publish partial CPU or memory writes.
     case memoryMutation(decoded, info, memory, failedPage)
     of MachineError.None:
@@ -654,7 +670,7 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
     else:
       # Decoded widths and captured owners make other scalar API failures unreachable.
       return InstructionEvaluation(status: StepError.InvalidMachine)
-  elif item.opcode == 10:
+  elif category == 'h':
     # Psi_1 ecalli inherits the default PC increment and leaves the current block prepaid.
     outcome = StepExit.Host
     info.pc = CodeAddress(uint64(info.pc) + 1 + uint64(item.skip))
