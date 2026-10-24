@@ -110,6 +110,12 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]]) =
   limits.completion.execution.initial.guests.fetch.operand.outputBytes = ByteLimit(2)
   limits.completion.execution.initial.guests.fetch.operand.authBytes = ByteLimit(5)
   limits.completion.execution.initial.guests.fetch.operand.totalBlobBytes = ByteLimit(7)
+  # Continuation dispatch captures the same bounded report payloads after the first affordable prefix.
+  limits.completion.execution.execution.round.guests.fetch = limits.completion.execution.initial.guests.fetch
+  # One release resolves five authored reports across two batches, all retained in one processed row.
+  limits.completion.composition.statistics.operands = ElementLimit(5)
+  limits.completion.composition.finalization.history.reports = ElementLimit(5)
+  limits.completion.composition.finalization.history.queues.perSlot = ElementLimit(5)
   var ancestors: seq[OwnedHeader] = @[]
   for body in bodies:
     # Exact independent extrinsics enter a real seal against the selected canonical parent.
@@ -162,7 +168,7 @@ proc unhex(value: string): seq[byte] =
     result[index] = octet
 
 proc main() {.raises.} =
-  ## Five independent chains use checked production libraries and strictly fail on any partial run.
+  ## Authored independent chains use checked production libraries and fail on any partial run.
   let raw = readFile(paramStr(1))
   var bytes = newSeq[byte](raw.len)
   for index, octet in raw: bytes[index] = byte(octet)

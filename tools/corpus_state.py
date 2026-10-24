@@ -458,5 +458,27 @@ def current_stf_report_guests_corpus(compiler, report, checks, libraries):
     return corpus
 
 
+@CORPORA.case
+def current_stf_dependency_waves_corpus(compiler, report, checks, libraries):
+    """Compare deferred E/Q priority waves, cycles and gas continuation against complete independent maps."""
+    from current_stf_dependency_waves_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_effects', 'current_stf_report_guests', 'current_stf_dependency_waves', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # Shared genuine driver consumes only bodies; independent E/Q/accseq maps and traces already exist.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-dependency-waves-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-dependency-waves', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent GP E/Q/accseq, literal guest semantics, mathematical Thin and OpenSSL Ed25519')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-dependency-waves-corpus', expected)
+    announce('independent deferred dependency-wave whole STF maps', corpus['passed'])
+    return corpus
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run

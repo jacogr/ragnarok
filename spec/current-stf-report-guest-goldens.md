@@ -69,3 +69,6 @@ This extends the authored current-profile STF evidence, not full JAM parity or r
 traces. The earlier thirty-five typed report/assurance refusal controls remain applicable. Deferred
 prerequisite resolution across priority waves, transfer/re-entry effects and execution across epoch
 boundaries remain subsequent whole-map work. The AmbiguousPrivileges guard remains unchanged.
+
+Deferred resolution and actual-gas continuation are covered by
+[the dependency-wave whole-map cases](current-stf-dependency-wave-goldens.md).
