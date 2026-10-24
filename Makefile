@@ -28,6 +28,7 @@ export FUZZ_RUNS ?= 100000
 export FUZZ_CLANG ?= clang
 export FUZZ_LIBFUZZER ?=
 export FUZZ_REPLAY ?=
+export PAGED_STORAGE_IMAGE ?= ragnarok:paged-probe
 export SUITE ?=
 # Select one independent E2E family; an empty value retains complete local verification.
 export E2E_GROUP ?=
@@ -37,7 +38,7 @@ DOCKER ?= docker
 DOCKER_IMAGE ?= ragnarok:local
 DOCKER_PLATFORM ?= linux/amd64
 
-.PHONY: summary-storage-reopen-pair bench-storage-reopen-pair inspect-storage-reopen-pair bench-storage-growth summary-storage-growth probe-storage-resident-pressure bench-storage-resident-pressure diagnose-storage-aborts summary-storage-memory-ceilings bench-storage-memory-ceilings summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm fuzz-pvm-program summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
+.PHONY: build-storage-paged-resources bench-storage-paged-resources summary-storage-reopen-pair bench-storage-reopen-pair inspect-storage-reopen-pair bench-storage-growth summary-storage-growth probe-storage-resident-pressure bench-storage-resident-pressure diagnose-storage-aborts summary-storage-memory-ceilings bench-storage-memory-ceilings summary-storage-resources bench-storage-fresh-reopen bench-storage-file-cache bench-storage-deployment bench-storage-lifetimes bench-storage-allocations bench-storage-resources bench-storage summary-storage-benchmark bench-pvm fuzz-pvm-program summary-pvm-benchmark summary-pvm-reference check-pvm-reference ui-minifier build-info browser-tools check-ui web-toolchain ui-assets check-telemetry-interop-ci telemetry-interop-collector check-telemetry-interop telemetry-interop-python build setup sources host-tools toolchain rust-tools clean check test check-inventory check-python check-modules check-unit check-failures check-guards check-e2e unit modules runtime format format-check summary-unit summary-failures summary-runtime summary-modules summary-python summary-guards summary-e2e help
 
 # Build the authenticated proof peer with both maintained features after provisioning dependencies.
 build: setup
@@ -297,6 +298,14 @@ bench-storage-reopen-pair:
 # Inspect caller-selected frozen local artifacts without rebuilding or executing them.
 inspect-storage-reopen-pair:
 	$(PYTHON) tools/paired_storage_reopens.py --config "$${REOPEN_PAIR_CONFIG:?Set REOPEN_PAIR_CONFIG}"
+
+# Build outside pressure first; the optional panel refuses absent kernel no-swap controls.
+build-storage-paged-resources: setup
+	$(PYTHON) tools/storage_paged_resources.py --build-only
+
+# Deliberately avoid setup/compiler work inside the already constrained resource scope.
+bench-storage-paged-resources:
+	$(PYTHON) tools/storage_paged_resources.py --docker "$${PAGED_STORAGE_IMAGE}"
 
 bench-storage-fresh-reopen: setup
 	$(PYTHON) tools/storage_fresh_reopen.py

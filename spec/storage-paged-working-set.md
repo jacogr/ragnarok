@@ -1,8 +1,11 @@
 # Paged storage and bounded working sets
 
 Status: storage-only codecs, streamed construction/admission/lookup and native immutable epoch
-ownership/publication with pinned readers and explicit captured retired-epoch reclamation.
-Process/resource qualification and application adoption remain pending. The backend is a disk-indexed **light-evidence** store designed for selected datasets
+ownership/publication with pinned readers, captured retired-epoch reclamation, source-derived
+compaction, explicit replay cleanup/bootstrap resume and process-death qualification.
+Controlled Linux resource qualification is complete for the current provider and the measured
+profile below. Application
+adoption and full-node paging remain separately gated. The backend is a disk-indexed **light-evidence** store designed for selected datasets
 that may exceed RAM while its
 private working set remains explicitly bounded. Existing complete-image/cache and full-node
 repository APIs keep their current contracts.
@@ -603,3 +606,112 @@ process death on the tested filesystem, including all actually observed operatio
 does not simulate power loss, device caches or storage reordering. The serial fresh-process Linux
 RSS/descriptor/cache panel and populated dataset larger than enforced no-swap RAM remain the
 remaining working-set completion gate. Consumer adoption remains separately gated.
+
+
+## Serial populated-data resource panel
+
+`make build-storage-paged-resources` builds the optional checked ARC/Clang ThinLTO probe.
+The dedicated Docker `paged-resources` target provisions the same pinned tools and frozen
+probe without building unrelated transport code. `make bench-storage-paged-resources` runs the
+host observer against `PAGED_STORAGE_IMAGE` (default `ragnarok:paged-probe`). Python, compiler
+verification and full provenance checks remain outside pressure; only native storage processes
+and a tiny persistent native supervisor live in the constrained container. This optional panel
+stays outside ordinary CI defaults and speed benchmarks.
+
+The observer resolves an immutable image ID, verifies its complete source/compiler/provider/
+observer/binary closure outside pressure and compares every source identity with this checkout.
+It creates a randomly named private Linux cgroup2 container with exactly 64 MiB memory.max and
+zero swap allowance. Actual exec membership, mount roots, memory controls/current usage/events,
+Docker state and bounded native RSS/fault observations remain raw report evidence. Missing
+controls, typed native refusal, OOM and timeout cannot produce a successful result. Cleanup stops
+only that owned container after retaining available failure evidence. A local direct run using
+`--run-only --local` records measurements without Linux/larger-than-RAM claims.
+
+The source plan runs 16,384 and 327,680 records with both zero and one page of backend cache under
+the same 65,536-byte logical workspace and finite dataset/proof/work budgets. An independently
+computed complete two-entry nonempty JAM map anchors three constant-size proof templates. One
+present value has 4,097 bytes and crosses pages; a separate present-empty leaf and spread absent
+queries cover positive/empty/negative evidence. A numeric sorted producer changes only each
+query key, with no dataset-sized sequence, resident index or complete proof batch.
+
+Each private selected namespace is first written inside the same persistent constrained cgroup
+that later admits it, preserving page-cache charge ownership across fresh native writer/reader
+processes. The writer fully verifies/publishes, closes and exits before the fresh reader starts.
+Strict admission verifies the whole populated artifact; 1,028 deterministic spread/cyclic queries
+check retained presence/absence, plus present-empty and unretained UnknownKey. Selected bytes
+remain identical through fixed 64 KiB streamed SHA-256 comparisons on the external observer.
+The small artifact has 3,895,264 bytes/935 body pages; the large artifact has 78,458,848 bytes/18,643
+body pages, exceeding the enforced 67,108,864-byte no-swap allowance.
+
+Native receipts record selected bytes/pages, actual IO/crypto calls, ARC live bytes, descriptors,
+and SDK getrusage RSS/fault samples after all storage work and retirement, before final receipt
+formatting. The kernel hard limit also covers that fixed telemetry postlude. Every measured heap
+allocation and descriptor must retire, and retained native heap stays below the same fixed bound
+at both cardinalities. Native RSS includes runtime/provider/translator resources; it is separate
+from ARC, logical scratch/cache reservations and kernel file cache. Fresh processes establish a
+cold backend cache; OS/device caches remain unchanged. The report records observer and Docker
+engine/target architectures. Emulated Linux results establish no bare-metal speed or deployment
+ceiling, and successful process-death tests do not establish power-loss durability.
+
+To reproduce from the current checkout:
+
+```sh
+docker build --platform linux/amd64 --target paged-resources -t ragnarok:paged-probe .
+make bench-storage-paged-resources PAGED_STORAGE_IMAGE=ragnarok:paged-probe
+```
+
+Raw commands, exact frozen inputs, native receipts, kernel context, file hashes and success/failure
+reports are retained in a unique `build/tests/storage-paged-resources/docker-*/` folder. Full image
+build and provenance verification run outside the constrained scope; build failures must be fixed
+before the measurement. The initial attempt placing Python inside 64 MiB was correctly classified
+as OOM before measurements; it grants no successful resource claim. The native-only design retains
+the original backend limits and populated workload while excluding observer overhead.
+
+## Measured Linux completion evidence
+
+The complete serial panel passed on Linux cgroup2, with x86-64 ELF execution under QEMU on an
+aarch64 Docker engine. Ubuntu/Rust/Nimony/provider pins and checked ARC/Clang ThinLTO flags stayed
+unchanged. A separate bounded positive allocation completed; an isolated 128 MiB allocation under
+64 MiB produced both exit 137 and a confirmed Docker OOMKilled receipt. The earlier Python-inside-
+pressure attempt was an observed OOM before storage measurements and is excluded from success.
+
+| Records | Backend cache pages | Selected file bytes | Writer sampled peak RSS bytes | Reader sampled peak RSS bytes |
+| ---: | ---: | ---: | ---: | ---: |
+| 16,384 | 0 | 3,895,264 | 11,526,144 | 11,325,440 |
+| 16,384 | 1 | 3,895,264 | 12,783,616 | 13,205,504 |
+| 327,680 | 0 | 78,458,848 | 11,988,992 | 13,004,800 |
+| 327,680 | 1 | 78,458,848 | 12,693,504 | 12,832,768 |
+
+Every native process ran in the same persistent 67,108,864-byte cgroup with zero swap allowance/
+usage and no OOM events. Independent SDK stat observations confirmed all four physical selected
+file extents, including both files larger than the imposed RAM allowance. Actual memory.max
+pressure events increased during the larger cases; the final observed cumulative max-event count
+was 6,610, with oom/oom_kill both zero. Each selected namespace stayed byte-identical across writer
+retirement and fresh strict reader admission. All 1,028 spread/cyclic queries plus present-empty
+and UnknownKey checks passed in every reader.
+
+Writer retained ARC occupancy was 10,480 bytes and reader occupancy 1,168 bytes at both
+cardinalities/cache settings. Native descriptor counts went 3→7→3 for writers and 3→5→3 for readers;
+all measured heap bytes returned exactly to baseline after complete retirement. These are observed
+profile results, not arbitrary caller/concurrency RSS promises, cold-device measurements or
+bare-metal speed/deployment ceilings. Backend IO/crypto counters and complete raw kernel receipts
+remain attached to each native phase. The checked current-provider process-death suite also passed on Linux and macOS. Its numeric
+macOS receipt records 32 completion controls and 306 exact stopped-child kill/reap cases.
+
+Evidence for this run is retained under
+`build/tests/storage-paged-resources/docker-5e5f391bcc92472ab7e424376bb94b9a/`, with the frozen image
+`sha256:4dc9653eb1a9770a7c6c29dca425d01b96c68b9b4726e60c7c2caa525bd2c305`.
+Independent physical extents, interpreter identity, OOM/positive controls and Linux crash logs
+are retained under `build/storage-db5-current-*` and `build/storage-db5-linux-*`. Source/compiler/provider/observer/binary identities
+were checked before and after the panel, including exact host/image source agreement.
+
+After an upstream restack refreshed the provider, the complete panel and all five affected
+native suites were rerun. Selected-file SHA-256 values stayed identical across the refresh. The
+earlier frozen profile remains under `docker-7eba57de21f04f839055ebb2bd3745c7/`; the table above
+and current image identify the refreshed provider, rather than assuming old measurements carry
+over to changed native libraries.
+
+The outstanding storage-only paged implementation/qualification gates are complete for this
+recorded profile. StateStore/PVM/checkpoint/application adoption, full-node graph paging and
+hardware/filesystem power-loss qualification remain separate work. Documented M1 framing
+completion remains distinct from complete JAM state serialization and whole-client parity.
