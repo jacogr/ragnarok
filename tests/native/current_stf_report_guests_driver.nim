@@ -126,8 +126,10 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
       true) # The scheduled service is a real independently authored manager program.
   if mode in 171..175: first = incarnationRebindCode(
       mode) # Actual later self rebinding changes only the recorded supervisor incarnation.
-  if mode in 176..182: first = foreignFundingJuniorCode() # A real parallel self-write competes with the selected foreign funding debit.
+  if mode in 176..189: first = foreignFundingJuniorCode() # A real parallel self-write competes with the selected foreign funding debit.
   case mode
+  of 183..189: second = foreignDirectTransferCode(
+      mode) # Foreign debit and direct self credit share original context and atomic selection.
   of 176..182: second = foreignCreationCode(mode, replacement,
       codeLength) # Exact original source authority chooses the funding pool.
   of 171..175: second = incarnationCreatorCode(mode, replacement,
@@ -288,14 +290,15 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   if mode in 171..175:
     options.registrar = 99
     options.signed.accountSupervisor = 77 # The original42 genuinely points to old77 creation0.
-  if mode in 176..182:
+  if mode in 176..189:
     options.registrar = 99
     options.secondBalance = 10000
     options.signed.accountSupervisor = 99
-    options.signed.accountSupervisorCreated = (if mode == 180: 1'u32 else: 0'u32)
-    options.signed.accountBalance = (if mode in [177, 179]: 0'u64 else: 1000000'u64)
-    options.signed.accountProtectedBalance = (if mode in [177,
-        179]: 1000000'u64 else: 0'u64) # Only the selected foreign source pool is funded.
+    options.signed.accountSupervisorCreated = (if mode in [180, 187]: 1'u32 else: 0'u32)
+    let protectedFunding = mode in [177, 179, 184, 186]
+    options.signed.accountBalance = (if protectedFunding: 0'u64 else: 1000000'u64)
+    options.signed.accountProtectedBalance = (if protectedFunding: 1000000'u64 else: 0'u64) # Exactly one selected source pool is funded.
+  if mode in 183..189: options.registrar = 0 # Direct authority comes from actual supervision, without a registrar role.
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -317,7 +320,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     var wire = chainParameters.encodeParameters
     for index in 74..<78: wire[index] = 0
     chainParameters = decodeParameters(wire).value
-  if mode in 123..130 or mode in 141..154 or mode in 176..182:
+  if mode in 123..130 or mode in 141..154 or mode in 176..189:
     # Author a distinct nonzero deposit schedule; existing zero-deposit profiles and all protocol checks remain intact.
     var wire = chainParameters.encodeParameters
     for field, value in [7'u64, 1'u64, 100'u64]:
@@ -636,7 +639,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 183
+      assert mode >= 0 and mode < 190
       bodies = @[]
       slots = @[]
     else:
@@ -645,7 +648,7 @@ proc main() {.raises.} =
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
-      106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160, 165, 170, 175, 182]
+      106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160, 165, 170, 175, 182, 189]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:
