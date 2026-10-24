@@ -67,3 +67,29 @@ proc admissionTransferCode*(mode: int): seq[byte] =
     registerImmediate(12, memo), @[10'u8, 22], @[50'u8, 0]]
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable = newSeq[byte](128)): result.add(octet)
+
+proc memoSenderCode*(): seq[byte] =
+  ## Every memo octet has a distinct literal value, so encoding/truncation changes affect the recipient's committed state.
+  var memory = newSeq[byte](128)
+  for index in 0..<128: memory[index] = byte(index)
+  let instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 42),
+    registerImmediate(9, 0), registerImmediate(10, 7), registerImmediate(11, 10000),
+    registerImmediate(12, 196608), @[10'u8, 22], @[50'u8, 0]]
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc memoReceiverCode*(mode: int): seq[byte] =
+  ## Fetch real incoming bytes into initialized RAM, store/yield exactly32 bytes, then select regular or checkpoint effects.
+  var memory = newSeq[byte](64)
+  for index in 0..<32: memory[index] = 170 # A clamped copy must retain the untouched tail of its destination buffer.
+  memory[32] = 7
+  let offset = if mode == 46: 131'u64 elif mode == 43: 18'u64 else: 19'u64
+  var instructions = @[registerImmediate(7, 196608), registerImmediate(8, offset),
+    registerImmediate(9, 32), registerImmediate(10, (if mode == 43: 15'u64 else: 14'u64)),
+    registerImmediate(11, 0), @[10'u8, 2], registerImmediate(7, high(uint64)),
+    registerImmediate(8, 196640), registerImmediate(9, 1), registerImmediate(10, 196608),
+    registerImmediate(11, 32), @[10'u8, 5], registerImmediate(7, 196608), @[10'u8, 27]]
+  if mode == 45: instructions.add(@[10'u8, 19]) # Exceptional selection retains the genuinely fetched write/yield prefix.
+  instructions.add(if mode in [44, 45]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)

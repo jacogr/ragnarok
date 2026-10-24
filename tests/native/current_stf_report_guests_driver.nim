@@ -87,9 +87,10 @@ proc failure(outcome: CurrentCandidateResult): string =
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
     uint32] = @[]) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
-  let codes = [(if mode in 15..19: forwardingCode(mode) else: namespaceHaltCode()),
-    (if mode >= 28: admissionTransferCode(mode) elif mode >= 20: poolTransferCode(mode)
-      elif mode >= 5: transferCode(mode) else: guest(mode))]
+  let codes = [(if mode >= 42: memoReceiverCode(mode) elif mode in 15..19: forwardingCode(mode)
+    else: namespaceHaltCode()),
+    (if mode >= 42: memoSenderCode() elif mode >= 28: admissionTransferCode(mode)
+    elif mode >= 20: poolTransferCode(mode) elif mode >= 5: transferCode(mode) else: guest(mode))]
   var seeds = namespaceSeeds()
   for index in 0..<2:
     let codeHash = ServicePreimageHash(array[32, byte](blake2b256(codes[index]).value))
@@ -188,15 +189,19 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
             RequestHistoryConfig(items: ElementLimit(3), maxBytes: ByteLimit(13)))
         assert history.error == RequestError.None
         services[index].requests[ordinal].history = history.value.history
-    let storageKey = serviceStorageKey(ServiceIndex(99), @[7'u8], ByteLimit(32)).value
-    let stored = snapshot.lookup(storageKey)
-    services[1].storage = @[]
-    for item in seeds[1].storage:
-      if item.key != @[7'u8]: services[1].storage.add(item) # Preserve all other declared original identities.
-    if stored.error == StateStoreError.None:
-      services[1].storage.add(StateStorageItem(key: @[7'u8], value: stored.value.bytes))
-    else:
-      assert stored.error == StateStoreError.MissingKey # Deletion/rollback does not fabricate an empty stored value.
+    for index in 0..<2:
+      # Both explicit services may write raw key7; all other original namespace identities remain declared.
+      let service = ServiceIndex(if index == 0: 42 else: 99)
+      let storageKey = serviceStorageKey(service, @[7'u8], ByteLimit(32)).value
+      let stored = snapshot.lookup(storageKey)
+      services[index].storage = @[]
+      for item in seeds[index].storage:
+        if item.key != @[7'u8]: services[index].storage.add(
+            item) # Preserve every unrelated original storage identity.
+      if stored.error == StateStoreError.None:
+        services[index].storage.add(StateStorageItem(key: @[7'u8], value: stored.value.bytes))
+      else:
+        assert stored.error == StateStoreError.MissingKey # Deletion/rollback cannot fabricate an empty stored value.
     assert qualifyCurrentState(globals, services, inventoryCaptureLimits).error ==
         CurrentStateError.None
     assert checkpointHex(before.stateSnapshot) == saved
@@ -237,14 +242,14 @@ proc main() {.raises.} =
       missingCode = fields.len == 3
       if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 42
+      assert mode >= 0 and mode < 47
       bodies = @[]
       slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert mode in [4, 9, 14, 19, 27, 41] and bodies.len >
+  assert mode in [4, 9, 14, 19, 27, 41, 46] and bodies.len >
       0 # Strict independent output comparison binds each complete chain length.
   run(base, mode, bodies, missingCode, slots)
 

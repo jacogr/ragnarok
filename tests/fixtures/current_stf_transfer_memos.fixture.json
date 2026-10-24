@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_TRANSFER_MEMOS",
+  "files": {
+    "current-stf-transfer-memos.json": "8ed5e3158419245ef5c80d72835a707d632eec928f70a8f71d23c49a118d50dd"
+  },
+  "target": "current-stf-transfer-memos.json"
+}
