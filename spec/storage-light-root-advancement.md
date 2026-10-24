@@ -1,7 +1,7 @@
 # Storage-only light-root advancement
 
-Status: standalone durable implementation with native IO/ownership qualification. Grouped
-process-crash qualification follows as a separate implementation unit. This contract does not
+Status: standalone durable implementation with native IO/ownership and grouped real-process
+crash qualification. This contract does not
 authorize StateStore, PVM, startup, networking or consensus integration.
 
 ## Authority and meaning
@@ -148,7 +148,7 @@ roots differ from the current one; validation still uses the current independent
    a following destination-root append. Process death is distinct from hardware power loss.
 
 The contract, feature with supporting qualification, and grouped process-crash evidence are
-planned as three substantive additions to native stack #1395. The existing four layers count
+implemented as three substantive additions to native stack #1395. The existing four layers count
 toward the maintainer's maximum of 15 PRs. Each ready unit is published before the next begins.
 M1 framing and complete JAM state serialization remain separate milestones.
 
@@ -175,6 +175,23 @@ compaction, reclamation, streaming-reopen and batch consumers pass, retaining th
 ARC witnesses. Logs remain under `build/storage-db5-root-*`.
 
 Evidence is checked ARC/Clang ThinLTO macOS arm64 with pinned Nimony
-`4724f66c2e01b17810c844f26575b2317995fda2`. Exact-head Linux CI, process-crash completion
-and hardware power-loss behavior are distinct; none is inferred from successful syscall fault
-injection. Root provenance and application adoption remain external.
+`4724f66c2e01b17810c844f26575b2317995fda2`. The implementation head's automatic Linux Smoke check passes; full native Linux qualification
+and hardware power-loss behavior remain separate. Root provenance and application adoption
+remain external.
+
+`make unit SUITE=storage_light_root_crashes` passes nine actual completion controls and 47
+stopped-child SIGKILL/reap boundaries, including 19 real 64-byte write boundaries. Root selection
+covers three normal writes, eight synchronization calls, one rename and four closes. Unselected
+candidate cleanup covers three unlinks and four synchronization calls; retired old-root cleanup
+covers two unlinks and three synchronization calls. Each boundary uses a fresh namespace and a
+verified Busy contender while the stopped child retains LOCK.
+
+The source includes an ordinary update before advancement. Independently authored manifests,
+checkpoint and anchor bytes prove exact selection, write extents, candidate-prefix contents,
+cleanup-only deletion order and unchanged selected files before strict reopen. Both independently
+accepted test roots receive strict reopen checks: the wrong expected root refuses without byte
+changes or fallback, and the correct expected root retains sequence one. Explicit cleanup retries
+synchronize even when all target names are already absent. Destination evidence still distinguishes
+changed values, present-empty, authenticated absence and omitted Unknown keys; the following ordinary
+update advances exactly once to sequence two and strictly reopens. Held source readers and unknown
+siblings survive all operations. These are local macOS process-death results, not power-loss evidence.
