@@ -8,6 +8,7 @@ The Montgomery coefficients follow from the Edwards a=-5,d constants. Arkworks 0
 configuration supplies Z=5 and the specified square-branch sign convention. This slow reference
 never handles production secrets and never invokes the native backend.
 """
+from functools import lru_cache
 import hashlib
 from test_bandersnatch_thin_reference import (Q, D, G, ORDER, SUITE, IDENTITY, add, multiply,
                                             encode, square_root, squeeze)
@@ -54,6 +55,16 @@ def sign(secret, data, ad):
     """Produce one test signature and output from an explicit public fixture scalar, never a seed."""
     if not 0 < secret < ORDER:
         raise ValueError('fixture scalar outside nonzero canonical domain')
+    # Only exact immutable fixture inputs enter the bounded process-local cache. Other accepted
+    # bytes-like inputs retain their original calculation and errors, including after mutation.
+    if type(secret) is int and type(data) is bytes and type(ad) is bytes:
+        return _sign(secret, data, ad)
+    return _sign.__wrapped__(secret, data, ad)
+
+
+@lru_cache(maxsize=4096)
+def _sign(secret, data, ad):
+    """Memoize deterministic public-fixture results; no native output or production secret enters this cache."""
     h = input_point(data)
     o, pk = multiply(h, secret), multiply(G, secret)
     t = (SUITE+b'\1'+(2).to_bytes(8, 'little')+encode(G)+encode(pk)+encode(h)+encode(o)

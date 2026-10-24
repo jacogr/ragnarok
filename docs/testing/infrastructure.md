@@ -273,6 +273,13 @@ missing/duplicate verdicts and duplicate task/report keys are errors. All indepe
 values, trace coverage predicates, build refusals and exact output/hash comparisons remain in
 the owning corpus task.
 
+The independent Python Thin-signing reference memoizes deterministic public-fixture signatures in
+an invocation-local LRU cache of at most 4,096 entries. Keys include the scalar, input bytes and
+additional-data bytes; results are immutable proof/output bytes computed by the same independent
+mathematical equations. Scalar validation still runs before lookup, mutable buffers bypass the
+cache, and native observations never supply expected values. Expected-output comparisons and all
+corpus cases remain unchanged; this cache only avoids repeating identical reference calculations.
+
 E2E orchestration uses `tools/e2e_plan.py`: ordered callable declarations supply both execution
 and pre-execution completeness expectations. Setup tasks retain shared peer-build dependencies;
 workload functions publish their returned verdict under their own name, and selftests retain

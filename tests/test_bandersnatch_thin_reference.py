@@ -163,6 +163,44 @@ class ThinReferenceTests(unittest.TestCase):
                 self.assertEqual(proof.hex(), vector['gamma']+vector['proof_r']+vector['proof_s'])
                 self.assertEqual(output.hex(), vector['beta'])
 
+    def test_sign_cache_binds_all_inputs(self):
+        """Caching retains exact independent equations and keys on scalar, input and additional data."""
+        from bandersnatch_thin_oracle import sign, _sign
+        _sign.cache_clear()
+        self.addCleanup(_sign.cache_clear)
+        cases = ((1, b'input', b'ad'), (2, b'input', b'ad'),
+                 (1, b'other', b'ad'), (1, b'input', b'other'))
+        answers = [sign(*case) for case in cases]
+        self.assertEqual(len(set(answers)), len(cases))
+        for case, answer in zip(cases, answers):
+            # Compare the cached result with the unchanged mathematical implementation, not native output.
+            self.assertEqual(answer, _sign.__wrapped__(*case))
+            self.assertEqual(answer, sign(*case))
+        self.assertEqual((_sign.cache_info().misses, _sign.cache_info().hits), (4, 4))
+        self.assertEqual(_sign.cache_info().maxsize, 4096)
+
+    def test_sign_validation_and_mutable_inputs(self):
+        """Warm entries cannot bypass scalar rejection or reuse stale mutable-buffer contents."""
+        from bandersnatch_thin_oracle import sign, _sign
+        _sign.cache_clear()
+        self.addCleanup(_sign.cache_clear)
+        expected = sign(1, b'input', b'ad')
+        for scalar in (0, -1, ORDER, ORDER+1):
+            with self.subTest(scalar=scalar), self.assertRaises(ValueError):
+                sign(scalar, b'input', b'ad')
+        with self.assertRaises(TypeError):
+            # A float equal to a cached integer must retain the original arithmetic type failure.
+            sign(1.0, b'input', b'ad')
+        data, ad = bytearray(b'input'), bytearray(b'ad')
+        self.assertEqual(sign(1, data, ad), expected)
+        data[0] = ord('I')
+        changed = sign(1, data, ad)
+        self.assertNotEqual(changed, expected)
+        self.assertEqual(changed, _sign.__wrapped__(1, data, ad))
+        ad[0] = ord('A')
+        self.assertNotEqual(sign(1, data, ad), changed)
+        self.assertEqual(_sign.cache_info().currsize, 1)
+
     def test_additional_data_is_bound(self):
         """The same points with different AD cannot retain the deterministic proof."""
         with self.assertRaises(AssertionError):
