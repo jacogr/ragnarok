@@ -553,69 +553,72 @@ func branchCondition(decoded: ProgramResult[Instruction], registers: RegisterFil
 
 # Apply control mutations after gas charging; panic/halt still retain explicit load mutations.
 # All operands are read before writes, including aliased load-and-dynamic-jump registers.
-proc controlMutation(program: Program, decoded: ProgramResult[Instruction],
+template controlMutation(program: Program, decoded: ProgramResult[Instruction],
     info: var MachineInfo, cache: var ExecutionCache): StepExit =
-  let item = decoded.value # The private caller supplies this machine's genuine result; payload and validation facts cannot separate.
-  let indices = instructionRegisters(decoded)
-  let pc = uint64(info.pc)
-  let next = CodeAddress(pc + 1 + uint64(item.skip))
-  var target = next
-  var valid = true
-  var outcome = StepExit.Continued
-  if item.opcode == 0:
-    # Trap inherits the table's default PC increment even at the end of code in Psi_1.
-    info.pc = next
-    return StepExit.Panic
-  elif item.opcode == 2:
-    # Unlikely is a nonterminating no-op, preserving the prepaid block flag.
-    info.pc = next
-    return StepExit.Continued
-  elif item.opcode in {50'u8, 180'u8}:
-    # Dynamic addresses use original operands, wrapping to 32 bits after addition.
-    let base = (if item.opcode == 50: indices.aIndex else: indices.bIndex)
-    let offset = (if item.opcode == 50: item.x else: item.y)
-    let address = (uint64(info.registers[base]) + uint64(offset)) and 0xffffffff'u64
-    if address == 0xffff0000'u64:
-      # The halt sentinel takes precedence over table bounds or table contents.
-      outcome = StepExit.Halt
-    elif address == 0 or (address and 1) != 0:
-      # Zero and unaligned dynamic addresses cannot index the table.
-      outcome = StepExit.Panic
+  ## Expand checked control transitions at the private dispatch site; no per-instruction helper call is required.
+  block:
+    let item = decoded.value # The private caller supplies this machine's genuine result; payload and validation facts cannot separate.
+    let indices = instructionRegisters(decoded)
+    let pc = uint64(info.pc)
+    let next = CodeAddress(pc + 1 + uint64(item.skip))
+    if item.opcode == 0:
+      # Trap inherits the table's default PC increment even at the end of code in Psi_1.
+      info.pc = next
+      StepExit.Panic
+    elif item.opcode == 2:
+      # Unlikely is a nonterminating no-op, preserving the prepaid block flag.
+      info.pc = next
+      StepExit.Continued
     else:
-      # Division avoids overflow in a table-length times alignment check.
-      valid = cachedDynamicTarget(cache, program, JumpIndex(address div 2 - 1), target)
-  else:
-    # Static offsets are mathematical integers; never wrap a negative destination into code.
-    if item.opcode != 1:
-      if item.displacement < 0 and uint64(-item.displacement) > pc:
-        # A negative static target is outside the basic-block set.
-        valid = false
-      elif item.displacement < 0:
-        # Subtract only after proving the magnitude fits the current PC.
-        target = CodeAddress(pc - uint64(-item.displacement))
+      var target = next
+      var valid = true
+      var outcome = StepExit.Continued
+      if item.opcode in {50'u8, 180'u8}:
+        # Dynamic addresses use original operands, wrapping to 32 bits after addition.
+        let base = (if item.opcode == 50: indices.aIndex else: indices.bIndex)
+        let offset = (if item.opcode == 50: item.x else: item.y)
+        let address = (uint64(info.registers[base]) + uint64(offset)) and 0xffffffff'u64
+        if address == 0xffff0000'u64:
+          # The halt sentinel takes precedence over table bounds or table contents.
+          outcome = StepExit.Halt
+        elif address == 0 or (address and 1) != 0:
+          # Zero and unaligned dynamic addresses cannot index the table.
+          outcome = StepExit.Panic
+        else:
+          # Division avoids overflow in a table-length times alignment check.
+          valid = cachedDynamicTarget(cache, program, JumpIndex(address div 2 - 1), target)
       else:
-        # Validated PC is host-int bounded and the displacement is at most signed 32 bits.
-        target = CodeAddress(pc + uint64(item.displacement))
-    valid = valid and instructionTargetStartsBlock(
-        decoded) # This result binds the target fact to the exact decoded operands.
-    if item.opcode in {81'u8..90'u8, 170'u8..175'u8}:
-      # Both successors must be valid, even when the condition would avoid the invalid one.
-      valid = valid and instructionHasFallthrough(
-          decoded) # A present successor after this terminating conditional is a validated block start.
-      if not branchCondition(decoded, info.registers):
-        # Only the selected PC changes; validation above still considered the taken target.
-        target = next
-  if not valid:
-    # Invalid static or table destinations retain the instruction's original PC.
-    outcome = StepExit.Panic
-  if item.opcode in {80'u8, 180'u8}:
-    # The instruction table specifies this mutation even when the jump panics or halts.
-    info.registers[indices.aIndex] = RegisterValue(uint64(item.x))
-  if outcome == StepExit.Continued:
-    # Every successful control transfer enters a block that must be charged next time.
-    info.pc = target
-    info.blockCharged = false
-  outcome
+        # Static offsets are mathematical integers; never wrap a negative destination into code.
+        if item.opcode != 1:
+          if item.displacement < 0 and uint64(-item.displacement) > pc:
+            # A negative static target is outside the basic-block set.
+            valid = false
+          elif item.displacement < 0:
+            # Subtract only after proving the magnitude fits the current PC.
+            target = CodeAddress(pc - uint64(-item.displacement))
+          else:
+            # Validated PC is host-int bounded and the displacement is at most signed 32 bits.
+            target = CodeAddress(pc + uint64(item.displacement))
+        valid = valid and instructionTargetStartsBlock(
+            decoded) # This result binds the target fact to the exact decoded operands.
+        if item.opcode in {81'u8..90'u8, 170'u8..175'u8}:
+          # Both successors must be valid, even when the condition would avoid the invalid one.
+          valid = valid and instructionHasFallthrough(
+              decoded) # A present successor after this terminating conditional is a validated block start.
+          if not branchCondition(decoded, info.registers):
+            # Only the selected PC changes; validation above still considered the taken target.
+            target = next
+      if not valid:
+        # Invalid static or table destinations retain the instruction's original PC.
+        outcome = StepExit.Panic
+      if item.opcode in {80'u8, 180'u8}:
+        # The instruction table specifies this mutation even when the jump panics or halts.
+        info.registers[indices.aIndex] = RegisterValue(uint64(item.x))
+      if outcome == StepExit.Continued:
+        # Every successful control transfer enters a block that must be charged next time.
+        info.pc = target
+        info.blockCharged = false
+      outcome
 
 # Mutate only invocation-owned CPU values and a checked private memory workspace; observable exits publish immutable roots.
 template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info: var MachineInfo,
