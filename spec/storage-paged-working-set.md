@@ -3,7 +3,8 @@
 Status: storage-only codecs, streamed construction/admission/lookup and native immutable epoch
 ownership/publication with pinned readers, captured retired-epoch reclamation, source-derived
 compaction, explicit replay cleanup/bootstrap resume and process-death qualification.
-Controlled Linux resource qualification is complete for the measured profile below. Application
+Controlled Linux resource qualification is complete for the current provider and the measured
+profile below. Application
 adoption and full-node paging remain separately gated. The backend is a disk-indexed **light-evidence** store designed for selected datasets
 that may exceed RAM while its
 private working set remains explicitly bounded. Existing complete-image/cache and full-node
@@ -676,16 +677,16 @@ pressure attempt was an observed OOM before storage measurements and is excluded
 
 | Records | Backend cache pages | Selected file bytes | Writer sampled peak RSS bytes | Reader sampled peak RSS bytes |
 | ---: | ---: | ---: | ---: | ---: |
-|16,384 |0 |3,895,264 |13,426,688 |11,616,256 |
-|16,384 |1 |3,895,264 |13,357,056 |11,759,616 |
-|327,680 |0 |78,458,848 |12,623,872 |12,247,040 |
-|327,680 |1 |78,458,848 |12,300,288 |12,587,008 |
+| 16,384 | 0 | 3,895,264 | 11,526,144 | 11,325,440 |
+| 16,384 | 1 | 3,895,264 | 12,783,616 | 13,205,504 |
+| 327,680 | 0 | 78,458,848 | 11,988,992 | 13,004,800 |
+| 327,680 | 1 | 78,458,848 | 12,693,504 | 12,832,768 |
 
 Every native process ran in the same persistent 67,108,864-byte cgroup with zero swap allowance/
 usage and no OOM events. Independent SDK stat observations confirmed all four physical selected
 file extents, including both files larger than the imposed RAM allowance. Actual memory.max
 pressure events increased during the larger cases; the final observed cumulative max-event count
-was 6,683, with oom/oom_kill both zero. Each selected namespace stayed byte-identical across writer
+was 6,610, with oom/oom_kill both zero. Each selected namespace stayed byte-identical across writer
 retirement and fresh strict reader admission. All 1,028 spread/cyclic queries plus present-empty
 and UnknownKey checks passed in every reader.
 
@@ -694,15 +695,21 @@ cardinalities/cache settings. Native descriptor counts went 3→7→3 for writer
 all measured heap bytes returned exactly to baseline after complete retirement. These are observed
 profile results, not arbitrary caller/concurrency RSS promises, cold-device measurements or
 bare-metal speed/deployment ceilings. Backend IO/crypto counters and complete raw kernel receipts
-remain attached to each native phase. The checked Linux process-death suite also passed all 32
-completion controls and 306 exact stopped-child kill/reap cases against the same production source.
+remain attached to each native phase. The checked current-provider process-death suite also passed on Linux and macOS. Its numeric
+macOS receipt records 32 completion controls and 306 exact stopped-child kill/reap cases.
 
 Evidence for this run is retained under
-`build/tests/storage-paged-resources/docker-7eba57de21f04f839055ebb2bd3745c7/`, with the frozen image
-`sha256:af51aa1d458a28241670707cd2686a33daf51248e59ec8c88eb4ea9f271fe9cb`.
+`build/tests/storage-paged-resources/docker-5e5f391bcc92472ab7e424376bb94b9a/`, with the frozen image
+`sha256:4dc9653eb1a9770a7c6c29dca425d01b96c68b9b4726e60c7c2caa525bd2c305`.
 Independent physical extents, interpreter identity, OOM/positive controls and Linux crash logs
-are retained under `build/storage-db5-linux-*`. Source/compiler/provider/observer/binary identities
+are retained under `build/storage-db5-current-*` and `build/storage-db5-linux-*`. Source/compiler/provider/observer/binary identities
 were checked before and after the panel, including exact host/image source agreement.
+
+After an upstream restack refreshed the provider, the complete panel and all five affected
+native suites were rerun. Selected-file SHA-256 values stayed identical across the refresh. The
+earlier frozen profile remains under `docker-7eba57de21f04f839055ebb2bd3745c7/`; the table above
+and current image identify the refreshed provider, rather than assuming old measurements carry
+over to changed native libraries.
 
 The outstanding storage-only paged implementation/qualification gates are complete for this
 recorded profile. StateStore/PVM/checkpoint/application adoption, full-node graph paging and
