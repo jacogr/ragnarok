@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from pvm_instruction_profile import (profile_counts, calibration_passed, run,
-    capture_generated_sources, verify_generated_sources, execution_source_files, source_annotation_passed)
+    capture_generated_sources, verify_generated_sources, execution_source_files, source_annotation_passed, machine_profile_counts, disassembly_passed)
 
 
 def profile(total=42, function='pvm_profile_selected'):
@@ -126,11 +126,35 @@ class InstructionProfileTests(unittest.TestCase):
             self.assertFalse(source_annotation_passed(result, [key]))
         self.assertFalse(source_annotation_passed(good, []))
 
+    def test_machine_trace_requires_positions_scope_and_equal_work(self):
+        """An instruction trace cannot substitute a different function, workload or source-only dump."""
+        raw = profile(function='execute_1_test').replace('version: 1', 'version: 1\npositions: instr line')
+        self.assertEqual(machine_profile_counts(raw, {'Ir': 42})['Ir'], 42)
+        for text, reference in [(raw, {'Ir': 43}), (raw.replace('instr line', 'line'), {'Ir': 42}),
+                (raw.replace('instr line', 'instr instr line'), {'Ir': 42}),
+                (raw.replace('execute_1_test', 'other'), {'Ir': 42}),
+                (raw.replace('positions: instr line', 'positions: instr line\npositions: instr line'), {'Ir': 42})]:
+            # Each independent mismatch retains valid footer counts, preventing generic-format fallback.
+            with self.subTest(text=text, reference=reference):
+                with self.assertRaises(ValueError):
+                    machine_profile_counts(text, reference)
+
+    def test_disassembly_requires_native_code_and_execution_symbol(self):
+        """A successful tool header, foreign architecture or symbol table alone is not disassembled execution."""
+        output = 'guest: file format elf64-x86-64\n00001000 <execute_1_test>:\n    1000: ret\n'
+        good = dict(exit_code=0, output=output)
+        self.assertTrue(disassembly_passed(good))
+        for result in [dict(good, exit_code=1), dict(good, output=output.replace('elf64-x86-64', 'elf64-aarch64')),
+                dict(good, output=output.replace('execute_1_test', 'other')),
+                dict(good, output=output.replace('    1000: ret\n', ''))]:
+            self.assertFalse(disassembly_passed(result))
+
     def test_refusal_retires_completed_reports(self):
         """An unsupported local host cannot leave an old successful aggregate available."""
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
-            for name in ('results.json', 'summary.md', 'generated-source-manifest.json'):
+            for name in ('results.json', 'summary.md', 'generated-source-manifest.json',
+                         'native-disassembly.log', 'pinky-1-planned-instructions.callgrind'):
                 (folder/name).write_text('stale success')
             with patch('pvm_instruction_profile.BUILD', folder), patch(
                     'pvm_instruction_profile.platform.system', return_value='unsupported'):
@@ -139,4 +163,6 @@ class InstructionProfileTests(unittest.TestCase):
             self.assertFalse((folder/'results.json').exists())
             self.assertFalse((folder/'summary.md').exists())
             self.assertFalse((folder/'generated-source-manifest.json').exists())
+            self.assertFalse((folder/'native-disassembly.log').exists())
+            self.assertFalse((folder/'pinky-1-planned-instructions.callgrind').exists())
             self.assertIn('failed', (folder/'partial.json').read_text())

@@ -138,13 +138,35 @@ def source_annotation_passed(result, sources):
                                      for source in sources))
 
 
-def collect(checks, binary, name, scope, environment, timeout):
+def machine_profile_counts(text, reference):
+    """Instruction positions and identical selected Ir bind the extra trace to its source-level invocation."""
+    positions = re.findall(r'^positions: (.+)$', text, re.M)
+    if (len(positions) != 1 or len(positions[0].split()) != 2
+            or set(positions[0].split()) != {'instr', 'line'}
+            or re.search(r'^fn=execute_[0-9]+_\w+', text, re.M) is None):
+        raise ValueError('missing native instruction positions or execution scope')
+    counts = profile_counts(text)
+    if counts['Ir'] != reference['Ir']:
+        raise ValueError('instruction/source profile counts disagree')
+    return counts
+
+
+def disassembly_passed(result):
+    """Require x86-64 ELF code, a selected execution symbol and actual decoded instruction rows."""
+    text = result['output']
+    return (result['exit_code'] == 0 and 'file format elf64-x86-64' in text
+            and re.search(r'^[0-9a-f]+ <execute_[0-9]+_\w+>:$', text, re.M) is not None
+            and re.search(r'^\s*[0-9a-f]+:\s+[a-z][a-z0-9]*\b', text, re.M) is not None)
+
+
+def collect(checks, binary, name, scope, environment, timeout, instructions=False):
     """Collect only the named native execution function; a new private output file cannot reuse stale counters."""
     output = checks.folder/(name+'.callgrind')
     output.unlink(missing_ok=True)
     result = checks.command(['valgrind', '--tool=callgrind', '--collect-atstart=no',
         '--toggle-collect='+scope, '--cache-sim=no', '--branch-sim=yes',
-        '--compress-strings=no', '--callgrind-out-file='+str(output),
+        '--compress-strings=no', *(['--dump-instr=yes'] if instructions else []),
+        '--callgrind-out-file='+str(output),
         '--log-file='+str(checks.folder/(name+'-valgrind.log')), binary], name,
         environment=environment, timeout=timeout)
     if not output.is_file():
@@ -155,7 +177,8 @@ def collect(checks, binary, name, scope, environment, timeout):
 def run():
     """Calibrate selection, freeze owned inputs, then publish complete state-checked profiles or explicit failure."""
     BUILD.mkdir(parents=True, exist_ok=True)
-    for name in ('results.json', 'partial.json', 'summary.md', 'generated-source-manifest.json'):
+    for name in ('results.json', 'partial.json', 'summary.md', 'generated-source-manifest.json',
+                 'native-disassembly.log', 'pinky-1-planned-instructions.callgrind'):
         # Refusals retire prior success before platform/tool/setup validation.
         (BUILD/name).unlink(missing_ok=True)
     report = dict(status='running', profiles=[], controls=[], builds=[],
@@ -163,7 +186,7 @@ def run():
     try:
         if platform.system() != 'Linux' or platform.machine() not in ('x86_64', 'amd64'):
             raise RuntimeError('instruction profiles require the Linux x86-64 CI runner')
-        if any(shutil.which(name) is None for name in ('valgrind', 'callgrind_annotate', 'nm')):
+        if any(shutil.which(name) is None for name in ('valgrind', 'callgrind_annotate', 'nm', 'objdump')):
             raise RuntimeError('missing Callgrind tools')
         checks = NativeChecks(BUILD)
         version = checks.command(['valgrind', '--version'], 'version')
@@ -249,6 +272,30 @@ def run():
             report['profiles'].append(dict(guest=guest, limit=limit, mode=mode, counts=counts,
                 run=result, profile_sha256=digest(output), state_checked=True,
                 source_files=source_files, source_annotation_log=source_annotation['log']))
+        # A separate trace preserves the five ordinary source annotations and adds positions for otherwise unattributed line-zero costs.
+        guest, limit, mode = 'pinky', 1, 'planned'
+        data, expected = inputs[guest, limit]
+        environment = dict(os.environ, RAGNAROK_PVM_GUEST=guest, RAGNAROK_PVM_PRICING=mode,
+            RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0', RAGNAROK_PVM_SIEVE_INPUT=str(data),
+            RAGNAROK_PVM_SIEVE_EXPECTED=str(expected), RAGNAROK_PVM_SIEVE_SAMPLES='1')
+        result, output = collect(checks, binary, 'pinky-1-planned-instructions', SCOPE,
+            environment, 900, instructions=True)
+        if result['exit_code']:
+            raise RuntimeError('native instruction trace failed')
+        parse_process_output(result['output'], 'ragnarok_planned', limit, guest, samples=1)
+        reference = next(row for row in report['profiles'] if
+            (row['guest'], row['limit'], row['mode']) == (guest, limit, mode))
+        counts = machine_profile_counts(output.read_text(), reference['counts'])
+        disassembly = checks.command(['objdump', '--disassemble', '--line-numbers',
+            '--no-show-raw-insn', binary], 'native-disassembly', timeout=30)
+        if not disassembly_passed(disassembly):
+            raise RuntimeError('native execution disassembly unavailable')
+        result.pop('output')
+        disassembly.pop('output')
+        report['machine_profile'] = dict(guest=guest, limit=limit, mode=mode, counts=counts,
+            state_checked=True, run=result, profile_sha256=digest(output),
+            disassembly=disassembly, disassembly_sha256=digest(ROOT/disassembly['log']),
+            binary_sha256=report['binary_sha256'])
         verify_generated_sources(generated_sources, ROOT, source_root)
         for path, expected in identities.items():
             # Concurrent source or fixture mutation cannot label a different executable as this profile.
@@ -263,7 +310,8 @@ def run():
             lines.append(f"| {item['guest']} | {item['limit']} | {item['mode']} | {item['counts']['Ir']} |")
         lines += ['', 'One full-state-checked invocation per cell; fixture preparation and full-state comparison are outside collection.',
                   'Raw call graphs and self-cost annotations retain helper attribution and inlined compiler symbols.',
-                  'Generated C, its checksums and source annotations retain executable line attribution.']
+                  'Generated C, its checksums and source annotations retain executable line attribution.',
+                  'An additional state-checked planned Pinky trace retains native instruction positions and disassembly; its Ir must match the source-level invocation.']
         (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
         (BUILD/'summary.md').write_text('\n'.join(lines)+'\n')
         print('\n'.join(lines))

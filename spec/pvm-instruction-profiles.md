@@ -137,3 +137,31 @@ executes199,920,934: execute62.34%, writer stores14.63%, memoryMutation9.91% and
 writer loads6.26%. These are scoped diagnostic counts, with instrumented clocks
 discarded. The larger call/return reference gap therefore includes substantial
 scalar-memory work; it must not be attributed solely to jump dispatch.
+
+
+## Native instruction attribution, 2026-10-25
+
+Generated source-line zero is unassigned debug information, not the final C line
+or proof of a particular operation. A substantial planned Pinky execute self-cost
+has this attribution, so the opt-in profiler retains an additional instruction-
+granularity planned Pinky invocation and textual x86-64 ELF disassembly. The raw
+Callgrind positions use its documented `--dump-instr=yes` mode; source attribution
+for the existing five profiles remains unchanged. See the
+[Callgrind manual](https://valgrind.org/docs/manual/cl-manual.html).
+
+The additional invocation uses the same guest binary, input/reference files,
+selected execution scope, one-sample setting and full-state driver checks. Its
+instruction total must exactly match the ordinary planned Pinky profile. Required
+instruction/line position columns, selected function identity, real native opcode
+rows, ELF architecture, binary/disassembly hashes and native assertion/scope controls
+prevent generic or unrelated output from certifying attribution. The retained raw
+positions, symbol log and disassembly support address inspection; no source line
+is guessed for unassigned costs and no instrumented clock becomes a timing.
+Only text and raw profiles are archived, with no binary or dependency checkout.
+
+Python guards cover missing/duplicate positions, wrong scope/counts/architecture,
+failed or empty disassembly, and stale-code-artifact retirement. Linux CI must
+qualify the added machine trace and every existing state/source profile before
+this evidence is considered complete. This extends the existing profiler review
+unit without changing guest source, build flags, pins, preparation or M1 scope;
+full-JAM parity remains open.
