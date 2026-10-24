@@ -1,0 +1,98 @@
+{
+  "source": "tests/native/storage_paged_stream_results.nim",
+  "build_name": "storage-paged-stream-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-paged-stream-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Paged stream result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-paged-stream-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Paged stream result failed guard"
+    },
+    {
+      "identity": {
+        "member": "artifact",
+        "origin": "default"
+      },
+      "arguments": [
+        "artifact",
+        "default"
+      ],
+      "name": "storage-paged-stream-artifact-default",
+      "diagnostic": "artifact.ready",
+      "description": "Paged stream artifact default guard"
+    },
+    {
+      "identity": {
+        "member": "lookup",
+        "origin": "default"
+      },
+      "arguments": [
+        "lookup",
+        "default"
+      ],
+      "name": "storage-paged-stream-lookup-default",
+      "diagnostic": "lookup.ready",
+      "description": "Paged stream lookup default guard"
+    },
+    {
+      "identity": {
+        "member": "counts",
+        "origin": "default"
+      },
+      "arguments": [
+        "counts",
+        "default"
+      ],
+      "name": "storage-paged-stream-counts-default",
+      "diagnostic": "counts.ready",
+      "description": "Paged stream counts default guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "default"
+      },
+      "arguments": [
+        "proof",
+        "default"
+      ],
+      "name": "storage-paged-stream-proof-default",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Paged stream proof default guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "failed"
+      },
+      "arguments": [
+        "proof",
+        "failed"
+      ],
+      "name": "storage-paged-stream-proof-failed",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Paged stream proof failed guard"
+    }
+  ]
+}

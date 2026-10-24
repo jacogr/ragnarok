@@ -1,7 +1,7 @@
 # Paged storage and bounded working sets
 
-Status: storage-only contract and pure paged-format codecs. No paged database reader/writer,
-memory qualification or application adoption is implemented. The first backend will be an
+Status: storage-only format codecs and synchronous streamed construction/admission/lookup algorithms.
+Native database readers/writers, memory qualification and application adoption remain pending. The first backend will be an
 immutable, disk-indexed **light-evidence** store whose selected dataset may exceed RAM while its
 private working set remains explicitly bounded. Existing complete-image/cache and full-node
 repository APIs keep their current contracts.
@@ -248,7 +248,7 @@ databases are outside this first layout.
 
 ## Completion and evidence gates
 
-The contract is the next substantive layer on native stack #1395, after its ten published layers.
+The contract formed layer eleven on native stack #1395, after ten earlier published layers.
 The total cap remains **15 PRs**, including this contract. Subsequent coherent units cover the
 paged codec/digest/index boundary, streamed construction and bounded reads, native publication/
 reader-pin lifetime, and grouped process/resource qualification. Supporting guards/tests/docs stay
@@ -318,8 +318,78 @@ The native suite includes 1,000 complete codec/release cycles with all transport
 ARC samples; observed live occupancy remains 192 bytes before/after in the checked ARC/Clang
 release build on macOS arm64. No Linux paging or above-RAM result follows.
 
-These codecs do **not** authenticate query proofs, validate an entire stored artifact, return
-UnknownKey/Absent/Present, open files or publish a head. A correctly hashed false proof still
-requires the later strict proof verifier to refuse it. Next work is replay-bound streamed
-construction and bounded reads with complete proof/index/tree/padding/EOF validation; native
-publication, reader pins, recovery and process/resource qualification remain separate gates.
+The format codecs establish scalar shape and local integrity. Complete query-proof and artifact
+admission belong to the dependent synchronous stream boundary below. Native publication, reader
+pins, recovery and process/resource qualification remain separate gates.
+
+## Implemented synchronous stream boundary
+
+`src/storage/paged_stream.nim` builds, completely validates and searches paged-light bytes through
+borrowed synchronous exact-read/actual-EOF callbacks and an append-only sink. No callback, native
+handle, directory, lease or resident descriptor inventory is retained in `CheckedPagedArtifact`.
+This opaque copied metadata binds complete admission, exact header/manifest, captured tree root
+and inherited policies; it is **not** a sealed native artifact, pinned reader or publication plan.
+
+Construction starts only from an empty sink and checked declared geometry. Pass zero writes the
+header and sorted descriptors; pass one writes canonical payload records. Each proof is verified,
+each pass has an exact explicit end marker, and consecutive proof extents cover the whole declared
+payload. Canonical padding and iterative postorder carry construction follow. The completed file
+is then completely re-read under the same finite operation budget before success. No temporary
+full image, sorting inventory, sparse reservation, header rewrite or random tree write is used.
+Failed construction preserves its emitted bytes and returns no partial artifact or implicit repair.
+
+The private producer fingerprint starts at zero; for each canonical record R, the next fingerprint
+is Blake2b-256(`RAGNAROK-LIGHT-PAGED-STREAM-V1\n` || previous[32] || Blake2b-256(R)[32]).
+Both producer passes **and the authenticated completed-file record stream** must agree. Equal
+complete-state roots alone cannot authorize a different retained knowledge set or changed proof
+transport. The fingerprint is private construction metadata, not another stored/network schema.
+
+Complete admission checks actual EOF, header/manifest binding, every descriptor in strict key
+order, exact consecutive coverage, every canonical proof at the independent root, all zero padding,
+every actual/synthetic leaf and stored postorder digest, the complete captured tree root and final
+actual EOF. Proof-scan bytes authenticate to that captured root **before** proof verification;
+a raw proof pass followed by a hash pass cannot combine inconsistent source views. One bounded
+record fingerprint buffer is allocated only after proof/verified-value temporaries retire.
+
+`lookupPaged` authenticates the captured header and fixed-row binary-search pages without loading
+the index. It returns UnknownKey only after a checked missing-key search and final EOF check.
+Located records are framed before allocation, reconstructed one at a time and fully proof-verified;
+owned results distinguish Present, present-empty and Absent and outlive all source callbacks.
+Changed bytes, read/EOF uncertainty and provider failures never become local missing data or
+protocol absence. Native wrappers must additionally enforce immutable file identity/pins and
+latch uncertainty; these synchronous metadata algorithms do not own a poisonable native resource.
+
+This first buffered engine explicitly supports zero or one private cache slot per operation;
+larger cache policies refuse. Zero means transient buffered IO, not unlimited retention. Every
+cache miss authenticates before installation. There is no cross-call cache or borrowed-page result.
+A conservative 32,768-byte logical fixed-workspace reservation plus
+`41 + 2*(64*proofNodes + rawValueBytes)` bounds algorithmic proof/transport payloads before their
+allocation. Runtime/object/allocator/provider overhead and caller-retained results remain separate;
+this reservation is not a measured native RSS ceiling. Dataset bytes/entries and per-proof bounds
+are independent from aggregate IO-call/read/write, producer-call, local-hash, proof/node and value
+work limits. Known dataset/total-write/fixed-workspace refusals precede IO; each later operation reserves
+its own quotas before the corresponding IO, allocation or cryptographic work. Successful passive
+counters separate local layout/record-binding hashes from proof-node/value cryptography.
+
+The `storage_paged_stream` native suite uses an independent resident test-only byte/tree oracle,
+an independent complete-map root and existing resident cache/image semantics. It covers empty and
+nonempty artifacts, present empty values, cross-page 4,097-byte values, actual 249-node proofs,
+250-node refusal, both supported cache policies and sorted fixtures through 1,000 queries.
+It rejects every proper prefix of the 12,512-byte absence fixture, extra EOF bytes, rehashed false
+proofs, malformed descriptors/counts/padding and every stored tree slot mutation. Changed producer
+knowledge and a different valid same-root on-disk knowledge set refuse. Hostile mixed proof/hash
+views cannot bypass admission. Every observed append/read/EOF boundary, positive short-append
+prefix and provider-hash failure is exercised, including missing-key search failures and final-EOF
+growth. Exact observed budgets pass and one-short positive channels refuse for build/admit/lookup;
+workspace exact/short and dataset refusal before IO have separate controls.
+
+Local verification uses `make unit SUITE=storage_paged_stream`, inventory/format checks and the
+selected strict runtime/privacy runners: seven runtime refusals, five actual successful controls
+and six private-field compiler rejections. The checked ARC/Clang release run on macOS arm64
+completes 1,000 build/admit/lookup/refuse/release cycles with live occupancy unchanged at 9,296
+bytes before/after, after all per-cycle source/callback/transport/lookup owners retire. Native IO
+syscall ownership, process crashes, publication,
+reader pins, replay-bound partial cleanup and controlled Linux working-set/RSS qualification are
+still required. Resident callback fixtures and successful algorithm tests do not establish disk
+lifetime, power-loss durability or larger-than-RAM operation. Existing M1 framing completion
+remains distinct from complete state serialization and whole-client parity.
