@@ -33,8 +33,9 @@ uses one invocation, so it includes cold invocation-owned caches.
 Source membership, frozen snapshot bytes, compiler command, executable, fixture
 and preparation identities accompany successful evidence. Changed bytes, failed
 full-state checks, invalid counters or annotation failures retain only partial
-JSON and raw diagnostics after retiring old success. CI uploads diagnostic files,
-never binaries, snapshots or compiler/dependency trees. Artifacts expire after30days.
+JSON and raw diagnostics after retiring old success. CI uploads diagnostics and
+the captured generated C subset, never binaries, full snapshots, object files,
+compiler executables or dependency checkouts. Artifacts expire after30days.
 
 This diagnostic changes no production semantics or representation. Documented M1
 framing completion does not imply full state serialization or whole-block/JAM parity.
@@ -67,3 +68,28 @@ private loop, so collection deliberately uses the public execution boundary.
 Local verification passes52 focused Python checks, workflow YAML parsing,
 verification inventory and the compiled C calibration positive process. Linux
 CI supplies the real instrumented calibration and native full-state evidence.
+
+
+## Generated source attribution, 2026-10-24
+
+The same opt-in diagnostic retains the guest compiler's generated C at its exact
+recorded repository-relative paths under `generated-source/`. A separate manifest
+records every captured file's byte length and SHA-256. Original and copied bytes
+must remain identical through all profile runs. Empty captures, escaping symlinks,
+missing files or later byte changes refuse a completed report.
+
+Each selected uncompressed `execute_*` function must map to a captured file.
+The profiler retains its existing function summary, then requests source annotation
+for those execution files from inside the captured source root. Relative DWARF
+paths therefore resolve against the retained copy, without relying on the original
+compiler cache. Success requires a real annotated-source section for every selected
+file; a function summary alone is insufficient. The per-profile JSON records the
+selected files and source-annotation log. These logs attribute inlined native work
+to generated C lines, not directly to Nim statements or CPU time.
+
+After downloading the artifact, the generated source tree and raw Callgrind file
+can reproduce attribution independently of the CI workspace: run annotation from
+`generated-source/`, supplying the absolute profile filename and the recorded
+`source_files` as positional source arguments. Existing collection scope, native
+assertion controls, input/reference checks, toolchain flags and discarded-clock
+policy remain unchanged. This improves attribution and makes no runtime speed claim.

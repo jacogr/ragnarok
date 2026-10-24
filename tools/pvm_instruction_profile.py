@@ -67,6 +67,75 @@ def calibration_passed(result, text, selected):
              and 'fn=pvm_profile_outside' not in text) if selected else counts['Ir'] == 0)
 
 
+
+def capture_generated_sources(folder, repository):
+    """Retain exact generated C at its recorded relative paths for offline source annotation."""
+    folder, repository = Path(folder).resolve(), Path(repository).resolve()
+    archive = folder/'generated-source'
+    if archive.is_symlink():
+        # An old archive cannot redirect new generated files outside this verification group.
+        raise ValueError('generated source archive is a symlink')
+    if archive.exists():
+        shutil.rmtree(archive)
+    archive.mkdir(parents=True)
+    manifest = {}
+    for source in sorted(folder.glob('compiler-*/guest-cache/c/**/*.c')):
+        # Compiler output must remain inside this group even if a cache contains symlinks.
+        if not source.resolve().is_relative_to(folder):
+            raise ValueError('generated C escapes the profile build')
+        relative = source.relative_to(repository).as_posix()
+        destination = archive/relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        manifest[relative] = dict(bytes=source.stat().st_size, sha256=digest(source))
+    if not manifest:
+        raise ValueError('native generated C unavailable for source attribution')
+    verify_generated_sources(manifest, repository, archive)
+    return archive, manifest
+
+
+def verify_generated_sources(manifest, repository, archive):
+    """A changed, missing or redirected original/copy cannot certify an annotated executable."""
+    repository, archive = Path(repository).resolve(), Path(archive).resolve()
+    for relative, identity in manifest.items():
+        path = Path(relative)
+        if path.is_absolute() or '..' in path.parts:
+            raise ValueError('invalid generated source identity')
+        for source, boundary in [(repository/path, archive.parent), (archive/path, archive)]:
+            # Validate both roots before reading; the archive alone must reproduce the original bytes.
+            if (not source.is_file() or not source.resolve().is_relative_to(boundary)
+                    or source.stat().st_size != identity['bytes']
+                    or digest(source) != identity['sha256']):
+                raise ValueError('generated source changed: '+relative)
+
+
+def execution_source_files(text, manifest):
+    """Bind each uncompressed selected execution symbol to one captured generated source."""
+    current = None
+    selected = set()
+    for line in text.splitlines():
+        # Calibrated collection disables string compression; never guess unknown file aliases.
+        if line.startswith('fl='):
+            current = line[3:]
+        elif re.fullmatch(r'fn=execute_[0-9]+_\w+', line):
+            if current not in manifest:
+                raise ValueError('selected execution source was not captured')
+            selected.add(current)
+    if not selected:
+        raise ValueError('profile lacks selected execution source')
+    return sorted(selected)
+
+
+def source_annotation_passed(result, sources):
+    """Function-summary success alone is insufficient: every selected file needs a source section."""
+    sections = re.findall(r'^(?:--\s*)?(?:User|Auto)-annotated source:\s*(.+)$',
+                          result['output'], re.M)
+    return (result['exit_code'] == 0 and 'PROGRAM TOTALS' in result['output']
+            and bool(sources) and all(any(section == source or section.startswith(source+' ')
+                                         for section in sections)
+                                     for source in sources))
+
+
 def collect(checks, binary, name, scope, environment, timeout):
     """Collect only the named native execution function; a new private output file cannot reuse stale counters."""
     output = checks.folder/(name+'.callgrind')
@@ -84,7 +153,7 @@ def collect(checks, binary, name, scope, environment, timeout):
 def run():
     """Calibrate selection, freeze owned inputs, then publish complete state-checked profiles or explicit failure."""
     BUILD.mkdir(parents=True, exist_ok=True)
-    for name in ('results.json', 'partial.json', 'summary.md'):
+    for name in ('results.json', 'partial.json', 'summary.md', 'generated-source-manifest.json'):
         # Refusals retire prior success before platform/tool/setup validation.
         (BUILD/name).unlink(missing_ok=True)
     report = dict(status='running', profiles=[], controls=[], builds=[],
@@ -131,6 +200,11 @@ def run():
             cflags=('-g', '-I'+str(frozen/'tests/performance')))
         report['builds'].append(row)
         report['binary_sha256'] = digest(binary)
+        source_root, generated_sources = capture_generated_sources(BUILD, ROOT)
+        report['generated_sources'] = generated_sources
+        report['generated_source_root'] = source_root.relative_to(BUILD).as_posix()
+        (BUILD/'generated-source-manifest.json').write_text(
+            json.dumps(generated_sources, indent=2)+'\n')
         symbols = checks.command(['nm', '--defined-only', binary], 'symbols')
         if symbols['exit_code'] or not re.search(r'\bexecute_[0-9]+_\w+', symbols['output']):
             raise RuntimeError('native execution symbol unavailable; no whole-process fallback')
@@ -159,13 +233,21 @@ def run():
             counts = profile_counts(text)
             if re.search(r'^fn=execute_[0-9]+_\w+', text, re.M) is None:
                 raise RuntimeError('profile lacks selected native execution')
+            source_files = execution_source_files(text, generated_sources)
             result.pop('output')
             annotation = checks.command(['callgrind_annotate', '--auto=no', '--inclusive=no',
                 '--threshold=95', '--show=Ir', output], name+'-annotation', timeout=30)
             if annotation['exit_code'] or 'PROGRAM TOTALS' not in annotation['output']:
                 raise RuntimeError('profile annotation failed: '+name)
+            source_annotation = checks.command(['callgrind_annotate', '--auto=no',
+                '--inclusive=no', '--threshold=95', '--show=Ir', output, *source_files],
+                name+'-source-annotation', cwd=source_root, timeout=30)
+            if not source_annotation_passed(source_annotation, source_files):
+                raise RuntimeError('selected source annotation failed: '+name)
             report['profiles'].append(dict(guest=guest, limit=limit, mode=mode, counts=counts,
-                run=result, profile_sha256=digest(output), state_checked=True))
+                run=result, profile_sha256=digest(output), state_checked=True,
+                source_files=source_files, source_annotation_log=source_annotation['log']))
+        verify_generated_sources(generated_sources, ROOT, source_root)
         for path, expected in identities.items():
             # Concurrent source or fixture mutation cannot label a different executable as this profile.
             if not path.is_file() or digest(path) != expected:
@@ -178,7 +260,8 @@ def run():
         for item in report['profiles']:
             lines.append(f"| {item['guest']} | {item['limit']} | {item['mode']} | {item['counts']['Ir']} |")
         lines += ['', 'One full-state-checked invocation per cell; fixture preparation and full-state comparison are outside collection.',
-                  'Raw call graphs and self-cost annotations retain helper attribution and inlined compiler symbols.']
+                  'Raw call graphs and self-cost annotations retain helper attribution and inlined compiler symbols.',
+                  'Generated C, its checksums and source annotations retain executable line attribution.']
         (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
         (BUILD/'summary.md').write_text('\n'.join(lines)+'\n')
         print('\n'.join(lines))
