@@ -139,3 +139,24 @@ The existing independent scalar boundary/writer/snapshot suites cover admitted w
 accesses, all page-split fragment lengths, chunk crossings, faults and retained predecessor bytes.
 Raw paired samples, exact source identities and diagnostic profile are retained under
 `build/pvm11/scalar-copy/` and `build/pvm11/profile/`. Local observations are distinct from Linux CI.
+
+## Single-page scalar preflight
+
+Scalar preflight now resolves a complete single-page access with one presence/permission decision.
+Only an actual page crossing enters the two-page path; its presence-before-permission ordering
+remains unchanged. Width, protected-prefix and exclusive-end overflow checks still precede both
+paths. The successful span retains the full checked width without a redundant page split.
+
+Against the fixed-copy parent, the final checked M1 Max two-pass comparison reduced large
+indirect-call dynamic/planned CPU medians from 32.776/31.733 to 31.206/30.438 ms (about 4–5%).
+Both pass orders improved. Memo indirect execution changed by less than 1% in the combined final
+median, and the smaller memory-fill/sieve changes remain unproven. An earlier equivalent candidate
+also improved dynamic/planned indirect execution, but its numbers are kept separately rather than
+pooled with the final source. Every final process retains initialization and first-cold samples;
+936 full-state executions passed. Independent scalar-access/boundary fixtures and writer ARC
+lifetimes passed. Raw evidence is `build/pvm11/scalar-copy/single-page-final-paired.json`.
+
+Rejected local experiments are retained under `build/pvm11/`: forcing preflight inline, specializing
+its read/write parameter and skipping already-dirty preparation did not establish broad gains.
+Explicit borrowed local owners removed reference-count operations in generated C but regressed
+representative workloads; that candidate was also reverted. None of those probes is production.
