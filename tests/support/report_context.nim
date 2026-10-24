@@ -121,7 +121,7 @@ proc certify*(reports: openArray[OwnedReport], slot = 12'u32, offenders: openArr
 
 
 proc entriesFor*(reports: openArray[OwnedReport], minimum = 10'u64, transferMinimum = high(
-    uint64)): seq[StateEntry] =
+    uint64), supervisor = 0'u32, supervisorCreated = 0'u32): seq[StateEntry] =
   ## Construct exact parent pool and independently keyed service metadata for authored reports.
   var rows = newSeq[AuthorizerRow](2)
   # Each report retains independent core identity and complete owned bytes.
@@ -133,7 +133,8 @@ proc entriesFor*(reports: openArray[OwnedReport], minimum = 10'u64, transferMini
   for i in 0..<ownedReportInfo(report).value.digestCount:
     let digest = ownedReportDigest(report, i).value
     let metadata = ServiceMetadata(codeHash: digest.codeHash, minimumAccumulationGas: Gas(minimum),
-      minimumTransferGas: Gas(transferMinimum))
+      minimumTransferGas: Gas(transferMinimum), supervisor: ServiceIndex(supervisor),
+      supervisorCreated: AccountSlot(supervisorCreated))
     result.add(serviceMetadataEntry(digest.service, metadata, ByteLimit(
         ServiceMetadataBytes)).value) # Transfer gas is deliberately unrelated.
 

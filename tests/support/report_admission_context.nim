@@ -150,6 +150,7 @@ type SignedBlockFixtureConfig* = object ## Authored signed-parent/block data is 
   withDispute*: bool               ## Include genuine new-offender evidence.
   withAvailable*: bool             ## Assure a previously assigned report.
   extra*: seq[StateEntry]          ## Additional original-parent entries, committed before signing.
+  accountSupervisor*, accountSupervisorCreated*: uint32 ## Explicit original supervisor incarnation for scheduling witnesses.
   accountTransferGas*: uint64      ## Explicit original recipient threshold; default preserves historical fixtures.
   accountCode*: seq[byte]          ## Optional code preimage bound to signed reports and the account.
   ready*: ReadyRow                 ## Original parent ready row.
@@ -217,7 +218,8 @@ proc authored*(base: OwnedReport, options = signedBlockFixtureConfig()): Context
   let selectedBase = if options.accountCode.len == 0: base
     else: withCode(base, options.accountCode) # Bind optional authored code to every signed report and account.
   let sample = reportFor(selectedBase, 0, [options.accumulationGas])
-  var entries = entriesFor([sample], transferMinimum = options.accountTransferGas)
+  var entries = entriesFor([sample], transferMinimum = options.accountTransferGas,
+      supervisor = options.accountSupervisor, supervisorCreated = options.accountSupervisorCreated)
   var pools = newSeq[AuthorizerRow](2)
   assert options.poolCopies >= 1 and options.poolCopies <=
       8 # Authored duplicates stay inside the protocol's pool cardinality.
