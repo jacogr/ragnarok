@@ -5,12 +5,14 @@
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/header
 import ../support/current_stf_epoch_context as epoch
+import ../support/report_context as reportContext
 import ../support/[current_stf_transfer_context, current_stf_lifecycle_context]
 import ../../src/app/[chain, candidate]
-import ../../src/chain/provider
+import ../../src/chain/[provider, genesis]
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
   state_requests, state_service_values, state_layout, state_safrole, composite]
 import ../../src/crypto/primitives
+import ../../src/state/safrole_transition
 import ../../src/state/[store, checkpoint, accumulation_current_update,
   accumulation_current_completion,
   accumulation_current_driver, accumulation_current_round, accumulation_block_guests,
@@ -21,6 +23,7 @@ import ../../src/state/[store, checkpoint, accumulation_current_update,
   current_globals, current_state, global_snapshot]
 import ../support/[accumulation_execution_context, accumulation_activity_context,
   current_namespace_execution_context, current_namespace_context, current_consecutive_context,
+  accumulation_current_chain_context,
   pvm_accumulation_program, pvm_accumulation_provision, state_inventory_context]
 
 proc hex(bytes: openArray[byte]): string =
@@ -57,7 +60,15 @@ proc failure(outcome: CurrentCandidateResult): string =
     let prefix = outcome.prefixFailure
     result.add("/" & $prefix.error)
     if prefix.error == ApplicationCandidateError.BlockFailure:
-      result.add("/" & $prefix.blockFailure.error)
+      let transition = prefix.blockFailure
+      result.add("/" & $transition.error)
+      if transition.error == BlockTransitionError.SafroleFailure:
+        let safrole = transition.safroleError
+        result.add("/" & $safrole.error)
+        if safrole.error == SafroleTransitionError.PublicationFailure: result.add("/" &
+            $safrole.publicationError)
+        if safrole.error == SafroleTransitionError.AuthenticationFailure: result.add("/" &
+            $safrole.authenticationError)
     if prefix.error == ApplicationCandidateError.ReportFailure:
       let reports = prefix.reportFailure
       result.add("/" & $reports.error)
@@ -128,7 +139,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): 
 
 
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
-    uint32] = @[]) =
+    uint32] = @[], reload = false) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
   let replacement = namespaceHaltCode()
   let replacementHash = array[32, byte](blake2b256(replacement).value)
@@ -361,6 +372,26 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     var next = @[before.header]
     for ancestor in ancestors: next.add(ancestor) # Retain actual selected ancestry for report lookup checks.
     ancestors = next
+    if reload:
+      # Decode into an independent full store, then recapture the exact selected header/profile before continuing admission.
+      let selected = chain.chainView.bestBlock.value
+      let encoded = encodeFullCheckpoint(selected.stateSnapshot, ByteLimit(100000))
+      assert encoded.error == CheckpointError.None
+      var checkpointPolicy = reportContext.limits()
+      checkpointPolicy.writes = ElementLimit(options.signed.storeWrites)
+      checkpointPolicy.writeValueBytes = ByteLimit(options.signed.maxWriteBytes)
+      let restored = decodeFullCheckpoint(encoded.value, checkpointPolicy, ByteLimit(100000))
+      assert restored.error == CheckpointError.None
+      assert sameStateStorePolicy(selected.stateSnapshot, restored.value.snapshot.value)
+      let captured = captureBlockSnapshot(currentChainBytes(selected.header),
+          restored.value.snapshot.value, currentChainSettings())
+      assert captured.error == GenesisError.None
+      let view = genesisView(captured).finalizeView(captured.value.blockHash)
+      assert view.error == ViewFinalizeError.None
+      let reopened = initApplicationChain(view.value)
+      assert reopened.error == ApplicationChainError.None
+      chain = reopened.value
+      assert checkpointHex(chain.stateSnapshot.value) == checkpointHex(selected.stateSnapshot)
     echo "O ", checkpointHex(chain.stateSnapshot.value)
   assert checkpointHex(fixture.state.snapshot.value) == original
 
@@ -381,6 +412,7 @@ proc main() {.raises.} =
   let base = decodeOwnedReport(bytes, 2).value
   var mode = -1
   var missingCode = false
+  var reload = false
   var bodies: seq[seq[byte]] = @[]
   var slots: seq[uint32] = @[]
   for line in readFile(paramStr(2)).splitLines:
@@ -389,9 +421,10 @@ proc main() {.raises.} =
     assert fields.len in [2, 3]
     if fields[0] == "C":
       if mode >= 0: run(base, mode, bodies, missingCode,
-          slots) # Finish the complete chain before selecting another original.
-      missingCode = fields.len == 3
-      if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
+          slots, reload) # Finish the complete chain before selecting another original.
+      missingCode = fields.len == 3 and fields[2] == "missing"
+      reload = fields.len == 3 and fields[2] == "reload"
+      if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
       assert mode >= 0 and mode < 82
       bodies = @[]
@@ -400,9 +433,9 @@ proc main() {.raises.} =
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81] and bodies.len >
+  assert (reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81]) and bodies.len >
       0 # Strict independent output comparison binds each complete chain length.
-  run(base, mode, bodies, missingCode, slots)
+  run(base, mode, bodies, missingCode, slots, reload)
 
 try:
   main() # I/O, compilation, guest, publication or qualification failure fails the complete corpus.
