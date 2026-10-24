@@ -4,6 +4,19 @@
     {
       "arguments": [
         "default",
+        "apply"
+      ],
+      "description": "PVM scalar register write default apply",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "member": "apply",
+        "origin": "default"
+      },
+      "name": "pvm-register-write-default-apply"
+    },
+    {
+      "arguments": [
+        "default",
         "destination"
       ],
       "description": "PVM scalar register write default destination",
@@ -30,6 +43,19 @@
     {
       "arguments": [
         "invalid",
+        "apply"
+      ],
+      "description": "PVM scalar register write invalid apply",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "member": "apply",
+        "origin": "invalid"
+      },
+      "name": "pvm-register-write-invalid-apply"
+    },
+    {
+      "arguments": [
+        "invalid",
         "destination"
       ],
       "description": "PVM scalar register write invalid destination",
@@ -52,6 +78,19 @@
         "origin": "invalid"
       },
       "name": "pvm-register-write-invalid-value"
+    },
+    {
+      "arguments": [
+        "unsupported",
+        "apply"
+      ],
+      "description": "PVM scalar register write unsupported apply",
+      "diagnostic": "r.status == None",
+      "identity": {
+        "member": "apply",
+        "origin": "unsupported"
+      },
+      "name": "pvm-register-write-unsupported-apply"
     },
     {
       "arguments": [

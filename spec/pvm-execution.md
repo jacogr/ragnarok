@@ -298,3 +298,19 @@ all32 results; three iterations must produce111 in the accumulator and stop afte
 exactly118 attempts. The24-block pricing trace additionally pressures both memos.
 Complete public-step CPU/gas parity, source retention, final conditional/low-gas
 ordering, callback nesting and1000 ARC cycles remain controls.
+
+
+## Reusing register-coordinate proofs, 2026-10-23
+
+Arithmetic, memory and control evaluation reuse the genuine decoded result's bounded
+register coordinates. Memory and conditional helpers now accept that same result,
+keeping operands and captured facts together. Dynamic jump base selection uses a
+bounded coordinate before the same wrapping address calculation; load-and-jump
+still writes A at the original point, including specified terminal mutations.
+All sources are read before aliased destinations change.
+
+Capability checks, gas-before-mutation ordering, both conditional targets, scalar
+preflight, budgets and final target validation retain their existing behavior.
+No opcode-class optimization is included. The bounded decoded cache retains the
+same size and lifetime; all metadata is scalar and no program/CPU/memory owner is
+added. Local refusals and observable guest exits retain their prior snapshot rules.

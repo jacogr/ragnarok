@@ -5,7 +5,7 @@
 ## not advance PC, charge gas or publish a machine execution step.
 ##
 ## Exposes registerOnlyOpcode, evaluateRegisterWrite, evaluateRegisters and guarded scalar/array results
-## for the implemented arithmetic/logic instruction subset.
+## and applyRegisterWrite for caller-owned register arrays in the implemented arithmetic/logic subset.
 
 import ./[program, machine]
 
@@ -25,7 +25,7 @@ type
     case status: RegisterError
     of None:
       # Only the evaluator can create a validated write from an owned decoded instruction.
-      completedIndex: RegisterIndex
+      completedIndex: range[0..12]
       completedValue: RegisterValue
     else:
       # Default/invalid/unsupported alternatives contain no writable register selection.
@@ -37,11 +37,16 @@ func error*(r: RegisterWriteResult): RegisterError =
 func destination*(r: RegisterWriteResult): RegisterIndex {.inline, requires: r.status ==
     RegisterError.None.} =
   ## Select success before obtaining the evaluator's bounded destination index.
-  r.completedIndex
+  RegisterIndex(byte(r.completedIndex))
 func writeValue*(r: RegisterWriteResult): RegisterValue {.inline, requires: r.status ==
     RegisterError.None.} =
   ## Return a copied register-width bit pattern only for a successful evaluation.
   r.completedValue
+
+proc applyRegisterWrite*(registers: var RegisterFile, r: RegisterWriteResult) {.inline,
+    requires: r.status == RegisterError.None.} =
+  ## Apply exactly one successful copied write to caller-owned registers; no failed/default payload can authorize mutation.
+  registers[r.completedIndex] = r.completedValue
 
 func error*(r: RegisterResult): RegisterError =
   ## Inspect the reason without permitting result retagging.
@@ -148,13 +153,14 @@ proc evaluateRegisterWrite*(decoded: ProgramResult[Instruction],
   # The implemented set excludes control flow, host calls and all memory instructions.
   if not registerOnlyOpcode(item.opcode):
     return RegisterWriteResult(status: RegisterError.UnsupportedInstruction)
-  let a = uint64(registers[int(byte(item.a))])
-  let b = uint64(registers[int(byte(item.b))])
+  let indices = instructionRegisters(decoded)
+  let a = uint64(registers[indices.aIndex])
+  let b = uint64(registers[indices.bIndex])
   let x = uint64(item.x)
-  var destination = int(byte(item.d))
+  var destination = indices.dIndex
   # Immediate forms write A; the other forms write D, as specified by each operand table.
   if item.opcode == 20 or item.opcode == 51 or item.opcode in 131'u8..161'u8:
-    destination = int(byte(item.a))
+    destination = indices.aIndex
   var answer = uint64(registers[destination])
   # Each alternative applies the named GP mutation using unsigned bit patterns.
   case item.opcode
@@ -421,7 +427,7 @@ proc evaluateRegisterWrite*(decoded: ProgramResult[Instruction],
   else:
     # Keep scope rejection explicit even though the supported set was checked above.
     return RegisterWriteResult(status: RegisterError.UnsupportedInstruction)
-  RegisterWriteResult(status: RegisterError.None, completedIndex: RegisterIndex(byte(destination)),
+  RegisterWriteResult(status: RegisterError.None, completedIndex: destination,
     completedValue: RegisterValue(answer))
 
 proc evaluateRegisters*(decoded: ProgramResult[Instruction],
@@ -431,7 +437,7 @@ proc evaluateRegisters*(decoded: ProgramResult[Instruction],
   if written.error != RegisterError.None:
     return RegisterResult(status: written.error) # Failed scalar results carry no destination or value.
   var copied = registers
-  copied[int(byte(written.destination))] = written.writeValue
+  applyRegisterWrite(copied, written)
   RegisterResult(status: RegisterError.None, completed: copied)
 
 proc evaluateRegisters*(program: Program, pc: CodeAddress,

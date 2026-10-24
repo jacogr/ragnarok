@@ -7,7 +7,7 @@
 ## Exposes Program snapshots and nominal address/index/limit types, decodeProgram/decodeJamProgram,
 ## instruction/opcode/jump lookup, raw instruction-byte lookup with zero padding, and block-boundary
 ## and containing-block queries. Genuine instruction results additionally expose success-guarded
-## instructionHasFallthrough/TargetStartsBlock without publishing mutable validation metadata.
+## instructionHasFallthrough/TargetStartsBlock and instructionRegisters without publishing mutable validation metadata.
 
 import ../codec/natural
 
@@ -48,6 +48,8 @@ type
     NoArguments, OneImmediate, ExtendedImmediate, TwoImmediates, OneOffset,
     RegisterImmediate, RegisterTwoImmediates, RegisterImmediateOffset, TwoRegisters,
     TwoRegistersImmediate, TwoRegistersOffset, TwoRegistersTwoImmediates, ThreeRegisters
+  RegisterSlots* = object ## Copied bounded host coordinates retain no program/machine owner; only genuine instruction queries bind them to operands.
+    aSlot, bSlot, dSlot: range[0'u8..12'u8]
   Instruction* = object ## Copied decoded operands use the GP names A/B/D and X/Y; unused fields are zero.
  ## Offsets remain signed displacements: resolving a target must not wrap a negative address.
     address*: CodeAddress
@@ -56,6 +58,7 @@ type
     skip*: range[0..24]
     a*, b*, d*: RegisterIndex
     fallthroughPresent: bool # Only the owner decoder grants this immutable v_blob-chain fact; copied operands cannot forge a tagged result.
+    registerSlots: RegisterSlots # Saturated coordinates remain private facts of the captured operand decode.
     targetStartsBlock: bool # Owner-bound static control membership is never writable through extracted operands.
     x*, y*: Immediate
     displacement*: int64
@@ -78,6 +81,24 @@ func instructionTargetStartsBlock*(decoded: ProgramResult[Instruction]): bool {.
   ## Report valid static control destination membership in the same immutable program; dynamic/noncontrol instructions report false.
   ## Invalid mathematical targets remain successful decodes with a false fact, preserving gas-first guest panic ordering.
   decoded.completed.targetStartsBlock
+
+func aIndex*(slots: RegisterSlots): range[0..12] {.inline.} =
+  ## Widen a bounded scalar coordinate without losing its array-index proof.
+  int(slots.aSlot)
+func bIndex*(slots: RegisterSlots): range[0..12] {.inline.} =
+  ## Read the second bounded coordinate; default copied coordinates are ordinary zero indices.
+  int(slots.bSlot)
+func dIndex*(slots: RegisterSlots): range[0..12] {.inline.} =
+  ## Read the decoded destination coordinate without exposing mutable backing.
+  int(slots.dSlot)
+func instructionRegisters*(decoded: ProgramResult[Instruction]): RegisterSlots {.inline,
+    requires: decoded.status == ProgramError.None.} =
+  ## Only a genuine successful decode binds these coordinates to its immutable operand values.
+  decoded.completed.registerSlots
+func boundedRegister(value: byte): range[0'u8..12'u8] {.inline.} =
+  ## GP operands saturate at12; separate returns preserve the explicit narrowing proof.
+  if value > 12: return 12'u8
+  value
 
 func validOpcode*(opcode: byte): bool =
   ## Exact set U from the 0.8.0 instruction tables, including unlikely (2).
@@ -293,7 +314,8 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
   var item = Instruction(address: address, opcode: opcode, skip: skip,
     shape: OperandShape.NoArguments, a: RegisterIndex(0), b: RegisterIndex(0),
     d: RegisterIndex(0), x: Immediate(0), y: Immediate(0), displacement: 0,
-    fallthroughPresent: uint64(skip) < uint64(data.codeLength)-pc-1, targetStartsBlock: false)
+    fallthroughPresent: uint64(skip) < uint64(data.codeLength)-pc-1, targetStartsBlock: false,
+        registerSlots: default(RegisterSlots))
   # Each branch corresponds to one complete operand shape in the pinned instruction tables.
   case opcode
   of 0..2:
@@ -306,7 +328,8 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
   of 20:
     # Extended immediates always read eight bytes, independently of skip.
     item.shape = OperandShape.ExtendedImmediate
-    item.a = RegisterIndex(min(12, first mod 16))
+    item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
+    item.a = RegisterIndex(byte(item.registerSlots.aSlot))
     item.x = Immediate(unsignedOperand(data, pc + 2, 8))
   of 30..33:
     # The prefix chooses X width; remaining skipped bytes choose Y width.
@@ -321,11 +344,13 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
   of 50..62:
     # Register nibbles saturate at 12; they are not rejected or reduced modulo 13.
     item.shape = OperandShape.RegisterImmediate
-    item.a = RegisterIndex(min(12, first mod 16))
+    item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
+    item.a = RegisterIndex(byte(item.registerSlots.aSlot))
     item.x = Immediate(extended(data, pc + 2, min(4, max(0, int(skip) - 1))))
   of 70..73, 80..90:
     # These groups share X and register decoding; Y is immediate or signed offset.
-    item.a = RegisterIndex(min(12, first mod 16))
+    item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
+    item.a = RegisterIndex(byte(item.registerSlots.aSlot))
     let xlen = min(4, (first div 16) mod 8)
     let ylen = min(4, max(0, int(skip) - xlen - 1))
     item.x = Immediate(extended(data, pc + 2, xlen))
@@ -340,12 +365,16 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
   of 100..110:
     # This group uniquely names the low nibble D and the high nibble A.
     item.shape = OperandShape.TwoRegisters
-    item.d = RegisterIndex(min(12, first mod 16))
-    item.a = RegisterIndex(min(12, first div 16))
+    item.registerSlots.dSlot = boundedRegister(byte(first mod 16))
+    item.d = RegisterIndex(byte(item.registerSlots.dSlot))
+    item.registerSlots.aSlot = boundedRegister(byte(first div 16))
+    item.a = RegisterIndex(byte(item.registerSlots.aSlot))
   of 120..161, 170..175:
     # Both groups decode low A and high B; the last operand determines their shape.
-    item.a = RegisterIndex(min(12, first mod 16))
-    item.b = RegisterIndex(min(12, first div 16))
+    item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
+    item.a = RegisterIndex(byte(item.registerSlots.aSlot))
+    item.registerSlots.bSlot = boundedRegister(byte(first div 16))
+    item.b = RegisterIndex(byte(item.registerSlots.bSlot))
     let width = min(4, max(0, int(skip) - 1))
     if opcode <= 161:
       # Arithmetic and indirect memory instructions use a sign-extended immediate.
@@ -358,19 +387,24 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
   of 180:
     # Dynamic load-and-jump has a second descriptor byte before its two immediates.
     item.shape = OperandShape.TwoRegistersTwoImmediates
-    item.a = RegisterIndex(min(12, first mod 16))
-    item.b = RegisterIndex(min(12, first div 16))
+    item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
+    item.a = RegisterIndex(byte(item.registerSlots.aSlot))
+    item.registerSlots.bSlot = boundedRegister(byte(first div 16))
+    item.b = RegisterIndex(byte(item.registerSlots.bSlot))
     let xlen = min(4, int(codeByte(data, pc + 2)) mod 8)
     item.x = Immediate(extended(data, pc + 3, xlen))
     item.y = Immediate(extended(data, pc + 3 + uint64(xlen), min(4, max(0, int(skip) - xlen - 2))))
   of 190..230:
     # PR554: every current-paper owner masks the third-register destination to its low nibble.
     item.shape = OperandShape.ThreeRegisters
-    item.a = RegisterIndex(min(12, first mod 16))
-    item.b = RegisterIndex(min(12, first div 16))
+    item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
+    item.a = RegisterIndex(byte(item.registerSlots.aSlot))
+    item.registerSlots.bSlot = boundedRegister(byte(first div 16))
+    item.b = RegisterIndex(byte(item.registerSlots.bSlot))
     let encoded = int(codeByte(data, pc + 2))
     let destination = encoded mod 16
-    item.d = RegisterIndex(min(12, destination))
+    item.registerSlots.dSlot = boundedRegister(byte(destination))
+    item.d = RegisterIndex(byte(item.registerSlots.dSlot))
   else:
     # A valid owner cannot contain another marked opcode; retain an explicit failure alternative.
     return ProgramResult[Instruction](status: ProgramError.InvalidInstruction)
