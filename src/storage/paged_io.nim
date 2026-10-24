@@ -6,7 +6,7 @@
 import std/assertions
 import std/posix/posix
 import ./[paged_codec, paged_stream, managed_manifest, file_errors, database_identity,
-    full_paged_codec, full_paged_stream]
+    full_paged_codec, full_paged_stream, full_paged_build]
 import ../codec/[bounded, state_layout, state_trie]
 
 type
@@ -646,14 +646,14 @@ proc pendingAbsent*(directory: PagedDirectory): FileError =
   if named(data.fd, "CURRENT.next", metadata): return FileError.AlreadyExists
   if posix.errno() != missing: return FileError.IoFailure
   FileError.None
-proc replaceCurrent*(directory: PagedDirectory, bytes: openArray[byte],
+proc replaceSelection(directory: PagedDirectory, bytes: openArray[byte], width: int,
     beforeRename: proc(): FileError {.closure.}): FileError =
   ## Stage/fsync/close/rename/fsync the exact bounded manifest; uncertain publication never grants a receipt.
   let checked = directory.pendingAbsent
   if checked != FileError.None: return checked
   let data = directory.data
   assert data != nil
-  if not data.writer or bytes.len != PagedManifestBytes: return FileError.WrongIdentity
+  if not data.writer or bytes.len != width: return FileError.WrongIdentity
   var pending = "CURRENT.next"
   var fd = openAt(data.fd, pending.toCString(), O_RDWR or O_CREAT or O_EXCL or O_CLOEXEC or
       noFollow, 0o600)
@@ -673,6 +673,14 @@ proc replaceCurrent*(directory: PagedDirectory, bytes: openArray[byte],
       0: return FileError.IoFailure
   if sync(data.fd) != 0: return FileError.PublishedUnsynced
   FileError.None
+proc replaceCurrent*(directory: PagedDirectory, bytes: openArray[byte],
+    beforeRename: proc(): FileError {.closure.}): FileError =
+  ## Existing light publication keeps its exact schema width and native ordering.
+  replaceSelection(directory, bytes, PagedManifestBytes, beforeRename)
+proc replaceFullCurrent*(directory: PagedDirectory, bytes: openArray[byte],
+    beforeRename: proc(): FileError {.closure.}): FileError =
+  ## Full publication uses the same guarded barriers with its distinct fixed-width selection.
+  replaceSelection(directory, bytes, FullPagedManifestBytes, beforeRename)
 proc epochExists*(directory: PagedDirectory, epoch: ManagedEpoch): PagedIoResult[bool] =
   ## Probe only one explicitly requested canonical epoch; absence never authorizes a directory sweep.
   let checked = directory.check
@@ -816,3 +824,35 @@ proc lookupFullFile*(file: var PagedFile, checked: CheckedFullPagedArtifact, roo
   if found.error in {FullPagedStreamError.IOFailure, FullPagedStreamError.ChangedInput}:
     if not identity(data): data.poisoned = true
   found
+
+proc buildFullFile*(file: var PagedFile, directory: PagedDirectory, producer: nil FullPagedProducer,
+    header: FullPagedHeader, limits: FullPagedBuildLimits): PagedIoResult[FullPagedBuildResult] =
+  ## Author only a fresh exclusive empty target; complete graph admission precedes native sealing.
+  let data = file.data
+  if data == nil or not data.active or data.poisoned or data.sealed or not data.exclusive:
+    return PagedIoResult[FullPagedBuildResult](status: FileError.RecoveryRequired)
+  if not header.initialized or not directory.sameDirectory(file):
+    return PagedIoResult[FullPagedBuildResult](status: FileError.WrongIdentity)
+  if header.geometry.entries > uint64(limits.admission.scratchBytes) div 2:
+    return PagedIoResult[FullPagedBuildResult](status: FileError.LimitExceeded)
+  var temporary = default(PagedFile)
+  defer:
+    # An uncertain workspace close cannot grant a sealed-artifact receipt.
+    if temporary.opened and temporary.close != FileError.None:
+      result = PagedIoResult[FullPagedBuildResult](status: FileError.IoFailure)
+  let opened = openGraphScratch(temporary, directory, header.geometry.entries*2,
+      limits.admission.scratchBytes)
+  if opened != FileError.None: return PagedIoResult[FullPagedBuildResult](status: opened)
+  let workspace = temporary.data
+  assert workspace != nil
+  let built = buildFullPaged(PagedOutput(source: input(data), append: appender(data)),
+    graphScratch(workspace), producer, header, limits)
+  if built.error == FullPagedBuildError.None:
+    # A fresh stat captures the complete target's immutable version; later equal-size mutation refuses.
+    var metadata = default(Stat)
+    if posix.fstat(data.fd, metadata) != 0:
+      data.poisoned = true
+      return PagedIoResult[FullPagedBuildResult](status: FileError.IoFailure)
+    data.identity = metadata
+    data.sealed = true
+  PagedIoResult[FullPagedBuildResult](status: FileError.None, completed: built)

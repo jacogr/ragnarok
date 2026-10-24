@@ -136,7 +136,8 @@ The selected `storage_full_paged_codec` native suite verifies independent fixed-
 all header truncations and trailing reserved bytes, exact/one-short geometry/value quotas,
 strict/sticky index coverage and ordering, every manifest-byte corruption, primitive failure,
 empty/long values and complete physical left-bit retention. This is format evidence only.
-Complete-graph admission, native owners and consumer integration remain subsequent units.
+Complete-graph admission, native readers/construction/publication are implemented by the units
+below. Retention/recovery, consumer adoption and full resource/crash panels remain open.
 
 
 ## Bounded graph engine
@@ -161,8 +162,8 @@ reseals locally valid hostile graphs. It covers wrong routes, repeated subtrees,
 children including masked-bit aliases, unreachable records, lying counts, multi-root sharing,
 empty graphs/values, cross-page values, unknown roots, owned lookup bytes, exact/one-short work
 ceilings and every observed source/scratch callback refusal. Checked ARC retains exactly
-21,712 bytes before/after 1000 admission/lookup cycles in the small fixture. Native disk owners,
-construction/publication and populated Linux resource qualification remain subsequent work.
+21,712 bytes before/after 1000 admission/lookup cycles in the small fixture. Native readers, construction and publication are implemented below; populated Linux resource
+qualification remains subsequent work.
 
 
 ## Replay-bound construction
@@ -185,8 +186,7 @@ rejects failed/early/late producers and valid same-root physical alias substitut
 one-short construction quota and every observed output callback refusal (including partial failed
 appends), and retires all closures/bytes/scratch after 1000 cycles (54,480 -> 54,480 occupied bytes).
 The shared test-only byte/tree oracle lives in `tests/support/full_paged_reference.nim`; it is
-resident reference material, not the production bounded path. Native durability and ownership
-remain the next implementation boundary.
+resident reference material, not the production bounded path. Native ownership and publication are implemented below; consumer adoption remains open.
 
 
 ## Native full-state readers
@@ -214,3 +214,35 @@ retry only idempotent still-owned operations.1000 complete open/read/close cycle
 heap from54,544 to54,544 bytes. The pristine compiler's top-level-defer limitation is avoided by
 procedure-scoped test cleanup. Writer publication, mutation/retention and crash/resource panels
 remain subsequent work; reader admission alone claims no durability receipt.
+
+
+## Native full-state publication
+
+`FullPagedWriter` owns one stable writer lease and a shared selected epoch pin. Initialization
+starts at physical epoch1, ordinary generation0 and a caller-selected complete root/inventory.
+Explicit complete replacement advances epoch and ordinary generation once. New-root trust is
+an independent caller argument; no destination root or retained history is inferred from bytes.
+The same inherited graph policy always governs source, authoring admission and target validation;
+construction work ceilings are separate scalar limits in the native configuration.
+
+A move-only `FullPagedCandidate` binds its exact source manifest, native file/version and original
+writer incarnation. Preparation completely admits the held source, constructs and fully validates
+the target, then synchronizes its file and directory before sealing. Failed authoring retains its
+forensic prefix and explicit close obligation. No failure automatically removes a database file.
+
+Publication checks live incarnation/source bindings, completely revalidates source and target,
+captures target identity, stages/fsyncs/closes CURRENT.next, rechecks source/target, renames CURRENT
+and fsyncs the directory. Uncertain publication returns no new selection receipt and poisons the
+writer until close/reopen. Once selection is confirmed, candidate/old-head retirement and shared
+new-head adoption report separately in `FullPagedPublication`; its new selected root remains
+confirmed when `writerUsable` is false. Shared adoption must match the exact captured target
+inode/version. Independent old reader pins and owned values remain valid after publication.
+
+`storage_full_paged_publication` qualifies normal bootstrap/root replacement and strict reopen,
+writer/candidate moves, stale writer incarnation, full-width epoch/generation exhaustion before
+any hashing, every observed bootstrap and publication read/write/fsync/rename/flock/ftruncate/
+close fault, old-or-new strict recovery and post-confirmation retirement diagnostics.1000 strict
+writer/reader lifetimes retain42,208 ->42,208 occupied bytes; an additional1000 actual publications
+retain their warmed occupied memory exactly while an old reader stays pinned. Physical epochs
+are deliberately left forensic/retained in this layer; captured reclamation and explicit replay
+cleanup follow. These OS barrier receipts do not establish hardware/filesystem power-loss durability.
