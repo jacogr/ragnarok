@@ -150,7 +150,8 @@ canonical section padding and every record hash precede complete graph traversal
 The first engine supports zero/one cached page and a conservative 4 MiB fixed logical workspace
 reservation plus four per-value transports. This is an admission bound, not an RSS measurement.
 Per-root seen and retained-union membership use two byte-addressed N-byte disk scratch tables.
-Both are explicitly initialized; only seen is reset between roots. Final union membership must
+Both are explicitly initialized; only seen is reset between roots. An exact2N-byte disk
+ceiling succeeds; one byte less refuses before scratch access. Final union membership must
 cover every physical record. IO/hash/visit/byte quotas charge before work; source/scratch EOF
 are rechecked at successful completion. Scratch is private disposable trusted IO, never authority
 for a selected head, and its exact extent must be independently admitted before traversal.

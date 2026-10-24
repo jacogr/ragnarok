@@ -250,6 +250,9 @@ block quotas:
     of 3: short.work.readBytes = ByteLimit(observed.readBytes-1)
     else: short.work.writeBytes = ByteLimit(observed.writeBytes-1)
     assert ordinary.check(short).error == FullPagedStreamError.LimitExceeded
+  var exactScratch = policy()
+  exactScratch.scratchBytes = ByteLimit(ordinary.header.geometry.entries*2)
+  assert ordinary.check(exactScratch).error == FullPagedStreamError.None, "exact2N scratch allowance"
   var shortScratch = policy()
   shortScratch.scratchBytes = ByteLimit(5)
   assert ordinary.check(shortScratch).error == FullPagedStreamError.LimitExceeded
