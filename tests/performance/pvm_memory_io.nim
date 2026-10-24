@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Measure complete native host byte-range calls; check all outcomes and original pages outside both clocks.
+## Measure native byte-range, page capture and image APIs; validate complete copied results outside both clocks.
 import std/[assertions, syncio, envvars, monotimes]
 import ../../src/pvm/machine
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
@@ -15,31 +15,44 @@ for side in 0..<32:
   for i in 0..<4096: image.bytes[i] = byte((65536+side*4096+i) mod 251)
   images.add(image)
 let source = captureMemory(images, PageLimit(32)).value
-for ordinal in 0..<6:
+for ordinal in 0..<9:
   # Reversing the bounded case order checks simple first/last bias in a separate process.
-  let identity = if getEnv("RAGNAROK_PVM_MEMORY_REVERSE") == "1": 5-ordinal else: ordinal
-  let sizes = [512, 4096, 65536]
-  let size = sizes[identity div 2]
-  let writing = identity mod 2 == 1
+  let identity = if getEnv("RAGNAROK_PVM_MEMORY_REVERSE") == "1": 8-ordinal else: ordinal
+  let sizes = [512, 512, 4096, 4096, 65536, 65536, 4096, 65536, 4096]
+  let kinds = ["read", "write", "read", "write", "read", "write", "capture", "capture", "image"]
+  let size = sizes[identity]
+  let kind = kinds[identity]
   var input = newSeq[byte](size)
   for index in 0..<size: input[index] = byte((index*17+41) mod 251)
   for sample in 0..<13:
     # Fresh result slots are initialized outside timing; each call retains its independently owned result.
     var reads = default(array[128, MachineResult[seq[byte]]])
     var writes = default(array[128, MachineResult[Memory]])
+    var observed = default(array[128, MachineResult[PageImage]])
     let wall = getMonoTime().ticks
     let cpu = cpuNanoseconds()
-    if writing:
+    if kind == "write":
       for repeat in 0..<128:
         writes[repeat] = writeBytes(source, MemoryAddress(65553), input, MemoryByteLimit(uint64(size)))
-    else:
+    elif kind == "read":
+      # Retain every independent copied byte result until validation and untimed retirement.
       for repeat in 0..<128:
         reads[repeat] = readBytes(source, MemoryAddress(65553), MemoryLength(uint64(size)),
             MemoryByteLimit(uint64(size)))
+    elif kind == "capture":
+      # Capture an explicitly bounded borrowed prefix; no caller-owned PageImage storage may escape.
+      for repeat in 0..<128:
+        writes[repeat] = captureMemory(images.toOpenArray(0, size div 4096-1), PageLimit(uint32(
+            size div 4096)))
+    else:
+      # Materialize one complete independently copied image, including all eight private chunks.
+      assert kind == "image"
+      for repeat in 0..<128:
+        observed[repeat] = pageImage(source, PageIndex(16))
     let cpuElapsed = cpuNanoseconds()-cpu
     let elapsed = getMonoTime().ticks-wall
     for repeat in 0..<128:
-      if writing:
+      if kind == "write":
         assert writes[repeat].error == MachineError.None
         for side in 0..<32:
           let image = pageImage(writes[repeat].value, PageIndex(uint32(16+side))).value
@@ -51,12 +64,29 @@ for ordinal in 0..<6:
                 position-17)*17+41) mod 251)
               else: byte((65536+position) mod 251)
             assert image.bytes[index] == expected
-      else:
+      elif kind == "read":
+        # Every returned byte has an independent original-address expectation.
         assert reads[repeat].error == MachineError.None
         let bytes = reads[repeat].value
         assert bytes.len == size
         for index in 0..<size: assert bytes[index] == byte((65553+index) mod 251)
+      elif kind == "capture":
+        # Validate every captured page and prove the borrowed prefix did not capture its neighboring source page.
+        assert writes[repeat].error == MachineError.None
+        for side in 0..<size div 4096:
+          let image = pageImage(writes[repeat].value, PageIndex(uint32(16+side))).value
+          assert image.access == PageAccess.ReadWrite
+          for index in 0..<4096: assert image.bytes[index] == byte((65536+side*4096+index) mod 251)
+        let absent = pageImage(writes[repeat].value, PageIndex(uint32(16+size div 4096))).value
+        assert absent.access == PageAccess.Inaccessible
+        for octet in absent.bytes: assert octet == 0
+      else:
+        # Public image materialization must copy both metadata and every byte exactly.
+        assert kind == "image" and observed[repeat].error == MachineError.None
+        let image = observed[repeat].value
+        assert uint32(image.index) == 16 and image.access == PageAccess.ReadWrite
+        for index in 0..<4096: assert image.bytes[index] == byte((65536+index) mod 251)
     for side in 0..<32:
       let image = pageImage(source, PageIndex(uint32(16+side))).value
       for index in 0..<4096: assert image.bytes[index] == byte((65536+side*4096+index) mod 251)
-    echo "RANGE,", (if writing: "write" else: "read"), ",", size, ",", sample, ",", elapsed, ",", cpuElapsed
+    echo "RANGE,", kind, ",", size, ",", sample, ",", elapsed, ",", cpuElapsed

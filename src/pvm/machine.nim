@@ -100,11 +100,11 @@ func failure[T, U](r: MachineResult[U]): MachineResult[T] {.requires: r.status !
     return MachineResult[T](status: MachineError.Fault, failedPage: r.failedPage)
   MachineResult[T](status: r.status)
 
-proc chunkFromImage(image: PageImage, first: int): PageChunk =
-  ## Copy one fixed admitted portion of a caller-owned page; only literal page offsets call this helper.
+proc chunkFromImage(image: PageImage, first: int): PageChunk {.requires:
+    first >= 0 and first <= 3584.} =
+  ## Copy one complete proven span into fresh private storage; no caller-owned backing address survives capture.
   result = PageChunk(bytes: default(array[512, byte]))
-  for index in 0..<512:
-    result.bytes[index] = image.bytes[first+index] # No caller-owned backing storage survives capture.
+  copyMem(addr result.bytes[0], unsafeAddr image.bytes[first], 512)
 
 proc pageFromImage(image: PageImage): PageData =
   ## Construct all eight non-nil chunk owners before publishing an immutable page header.
@@ -140,8 +140,9 @@ func pageScalar(page: PageData, offset, count: int): uint64 {.inline,
 proc imageFromPage(page: PageData): PageImage =
   ## Materialize the public copied image; chunk sharing never escapes through observation.
   result = PageImage(index: page.index, access: page.access, bytes: default(array[4096, byte]))
-  for index in 0..<4096:
-    result.bytes[index] = pageByte(page, index)
+  for slot in 0..<8:
+    # Each immutable chunk supplies exactly512 bytes to its disjoint fixed-array span in the fresh copied image.
+    copyMem(addr result.bytes[slot*512], unsafeAddr page.chunks[slot].bytes[0], 512)
 
 proc pageWithAccess(page: PageData, access: PageAccess): PageData =
   ## Permission-only successors share immutable chunks and cannot change predecessor access or bytes.

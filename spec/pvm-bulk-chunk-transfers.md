@@ -48,3 +48,5 @@ observations, not a real-sieve or whole-client speedup claim, exact-head Linux C
 No specification, toolchain/dependency pin, gas, ARC or checking policy changes. M1 framing remains
 complete in its scoped contract; complete state serialization and whole-block/JAM parity remain
 open. Fuzzing remains deferred pending Daybreak access.
+
+The maintained API workload also includes [bounded page capture and image materialization](pvm-page-image-transfers.md), with their copied-value ownership and independent full-page validation.
