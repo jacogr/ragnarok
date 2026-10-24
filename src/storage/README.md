@@ -328,3 +328,9 @@ The [light churn baseline](../../spec/storage-light-churn.md) measures real one-
 forget/admit publication, strict reopen, completed write extents, durability calls and ARC
 retirement with producer memory excluded. It motivates bounded incremental light persistence;
 its local timings do not establish cold-cache or physical-device behavior.
+
+`light_delta.nim` encodes bounded canonical proof-cache edits with exact chain/root,
+predecessor/successor checksums and expected local sequence. Opaque results retain an immutable
+successor; consuming decode transfers bytes only after complete verification. See
+[authenticated update frames](../../spec/storage-light-deltas.md). Durable journal ownership
+and partial-tail recovery remain separate work.

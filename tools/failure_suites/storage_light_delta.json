@@ -1,0 +1,150 @@
+{
+  "source": "tests/native/storage_light_delta_results.nim",
+  "build_name": "storage-light-delta-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-light-delta-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light delta result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-light-delta-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light delta result failed guard"
+    },
+    {
+      "identity": {
+        "member": "reason",
+        "origin": "default"
+      },
+      "arguments": [
+        "reason",
+        "default"
+      ],
+      "name": "storage-light-delta-reason-default",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Light delta reason default guard"
+    },
+    {
+      "identity": {
+        "member": "reason",
+        "origin": "success"
+      },
+      "arguments": [
+        "reason",
+        "success"
+      ],
+      "name": "storage-light-delta-reason-success",
+      "diagnostic": "outcome.status == ProofFailure",
+      "description": "Light delta reason success guard"
+    },
+    {
+      "identity": {
+        "member": "snapshot",
+        "origin": "default"
+      },
+      "arguments": [
+        "snapshot",
+        "default"
+      ],
+      "name": "storage-light-delta-snapshot-default",
+      "diagnostic": "not delta.owner == nil",
+      "description": "Light delta snapshot default guard"
+    },
+    {
+      "identity": {
+        "member": "sequence",
+        "origin": "default"
+      },
+      "arguments": [
+        "sequence",
+        "default"
+      ],
+      "name": "storage-light-delta-sequence-default",
+      "diagnostic": "not delta.owner == nil",
+      "description": "Light delta sequence default guard"
+    },
+    {
+      "identity": {
+        "member": "base",
+        "origin": "default"
+      },
+      "arguments": [
+        "base",
+        "default"
+      ],
+      "name": "storage-light-delta-base-default",
+      "diagnostic": "not delta.owner == nil",
+      "description": "Light delta base default guard"
+    },
+    {
+      "identity": {
+        "member": "checksum",
+        "origin": "default"
+      },
+      "arguments": [
+        "checksum",
+        "default"
+      ],
+      "name": "storage-light-delta-checksum-default",
+      "diagnostic": "not delta.owner == nil",
+      "description": "Light delta checksum default guard"
+    },
+    {
+      "identity": {
+        "member": "length",
+        "origin": "default"
+      },
+      "arguments": [
+        "length",
+        "default"
+      ],
+      "name": "storage-light-delta-length-default",
+      "diagnostic": "not delta.owner == nil",
+      "description": "Light delta length default guard"
+    },
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "default"
+      },
+      "arguments": [
+        "bytes",
+        "default"
+      ],
+      "name": "storage-light-delta-bytes-default",
+      "diagnostic": "not delta.owner == nil",
+      "description": "Light delta bytes default guard"
+    },
+    {
+      "identity": {
+        "member": "borrowed",
+        "origin": "default"
+      },
+      "arguments": [
+        "borrowed",
+        "default"
+      ],
+      "name": "storage-light-delta-borrowed-default",
+      "diagnostic": "not delta.owner == nil",
+      "description": "Light delta borrowed default guard"
+    }
+  ]
+}
