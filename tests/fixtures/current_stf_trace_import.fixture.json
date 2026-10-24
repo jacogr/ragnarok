@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_TRACE_IMPORT",
+  "files": {
+    "current-stf-trace-import.json": "6a3f942125e0b23cda2ec6f6f7167402925e456c915e8cf66a8fb15fb2f82000"
+  },
+  "target": "current-stf-trace-import.json"
+}
