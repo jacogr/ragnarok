@@ -74,3 +74,15 @@ proc supervisorConflictCode*(mode: int): seq[byte] =
   instructions.add(if mode in [98, 99]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, @[7'u8, 99]): result.add(octet)
+
+proc supervisedHandoffCode*(mode: int): seq[byte] =
+  ## Original-role selection must publish a changed foreign supervisor even after this invocation loses write authority.
+  let nominee = if mode == 103: 99'u64 elif mode == 104: 77'u64 else: 42'u64
+  var instructions = @[registerImmediate(7, 42), registerImmediate(8, nominee), @[10'u8, 29]]
+  if mode == 106: instructions.add(@[10'u8, 19]) # Retain the actual role change before exceptional selection.
+  for instruction in [registerImmediate(7, 42), registerImmediate(8, 196608), registerImmediate(9,
+      1), registerImmediate(10, 196609), registerImmediate(11, 3), @[10'u8, 5]]:
+    instructions.add(instruction) # The real second host call sees the earlier selected authority mutation.
+  instructions.add(if mode in [105, 106]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, @[7'u8, 9, 8, 7]): result.add(octet)

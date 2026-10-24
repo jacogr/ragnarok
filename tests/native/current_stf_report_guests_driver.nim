@@ -118,6 +118,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): 
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 102..106: second = supervisedHandoffCode(mode) # Foreign role assignment changes immediate authority but keeps prior-based M selection.
   of 97..101: second = supervisorConflictCode(mode) # Selected foreign membership drives real N/M decisions.
   of 92..96: second = supervisedUpgradeCode(mode, replacement) # Foreign metadata affects a later independently admitted42 report.
   of 87..91:
@@ -213,7 +214,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   if mode in 77..81:
     # Authority belongs to one actual original manager; other roles and all allowances remain empty.
     options.manager = (if mode == 81: 42'u32 else: 99'u32)
-  if mode in 82..101:
+  if mode in 82..106:
     # Authority is original and incarnation-bound; stale/missing nominees fall back to target self supervision.
     options.signed.accountSupervisor = (if mode == 86: 77'u32 else: 99'u32)
     options.signed.accountSupervisorCreated = (if mode in [85, 96, 101]: 1'u32 else: 0'u32)
@@ -459,7 +460,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 102
+      assert mode >= 0 and mode < 107
       bodies = @[]
       slots = @[]
     else:
@@ -467,7 +468,7 @@ proc main() {.raises.} =
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
-  assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101]
+  assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101, 106]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:
