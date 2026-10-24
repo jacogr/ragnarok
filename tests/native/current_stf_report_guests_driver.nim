@@ -122,6 +122,8 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 148..154: second = childRecreationCode(mode, replacement,
+      codeLength) # Real retirement clears the old incarnation before reserved-ID reuse.
   of 141..147: second = childRetirementCode(mode, replacement,
       codeLength) # Birth, cleanup, same-slot protection and later retirement share real invocations.
   of 136..140:
@@ -254,10 +256,10 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     options.manager = 99
   if mode in 118..122:
     options.delegator = (if mode == 122: 42'u32 else: 99'u32) # A real original role determines selected staging authority.
-  if mode in 123..130 or mode in 141..147:
+  if mode in 123..130 or mode in 141..154:
     options.registrar = 99
     options.signed.accountBalance = 10000 # The other original account remains funded under the nonzero deposit profile.
-    if mode in [124, 126, 142, 144]:
+    if mode in [124, 126, 142, 144, 149, 151]:
       options.secondBalance = 0
       options.secondSupervisorBalance = 1000000 # Protected source modes cannot borrow liquid funds.
     if mode == 130:
@@ -284,7 +286,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     var wire = chainParameters.encodeParameters
     for index in 74..<78: wire[index] = 0
     chainParameters = decodeParameters(wire).value
-  if mode in 123..130 or mode in 141..147:
+  if mode in 123..130 or mode in 141..154:
     # Author a distinct nonzero deposit schedule; existing zero-deposit profiles and all protocol checks remain intact.
     var wire = chainParameters.encodeParameters
     for field, value in [7'u64, 1'u64, 100'u64]:
@@ -320,7 +322,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # At most two children extend the explicit two-account prior; later empty blocks retain all four canonical records.
     limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)
     limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
-  if mode in 62..71 or mode in 87..91 or mode in 136..140 or mode in 141..147:
+  if mode in 62..71 or mode in 87..91 or mode in 136..140 or mode in 141..154:
     # One identity may be touched on both sides of a checkpoint; explicit observations retain the selected prefix.
     limits.completion.execution.initial.guests.requestFacts = ElementLimit(4)
     limits.completion.execution.execution.round.guests.requestFacts = ElementLimit(4)
@@ -350,7 +352,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     limits.completion.execution.execution.round.guests.preimageBytes = ByteLimit(4096)
     limits.completion.execution.execution.round.guests.initialization.envelope = InitializationByteLimit(4096)
     limits.completion.execution.execution.round.guests.copyBytes = MemoryByteLimit(2560)
-  if mode in 123..130 or mode in 141..147:
+  if mode in 123..130 or mode in 141..154:
     # The complete prior may contain the one reserved child on later blocks; creation/debit facts keep their original bounds.
     limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)
     limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
@@ -364,7 +366,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     limits.completion.execution.initial.provisions.encodedBytes = ByteLimit(64)
     limits.completion.execution.execution.round.guests.provisions = limits.completion.execution.initial.guests.provisions
     limits.completion.execution.execution.round.provisions = limits.completion.execution.initial.provisions
-  if mode in 141..147:
+  if mode in 141..154:
     # One real child may be retired; both initial and continuation passes retain exact deletion facts.
     limits.completion.execution.initial.guests.deletedAccounts = ElementLimit(1)
     limits.completion.execution.execution.round.guests.deletedAccounts = ElementLimit(1)
@@ -409,7 +411,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       for service in children:
         assert before.stateSnapshot.lookup(chapterServiceKey(StateChapter(255), service)).error ==
             StateStoreError.MissingKey
-    if (mode in 123..130 or mode in 141..147) and uint32(before.slot) == 3:
+    if (mode in 123..130 or mode in 141..154) and uint32(before.slot) == 3:
       # Only the explicitly requested reserved77 may be born; full-map comparison rejects any other identity or debit.
       let stored = snapshot.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77)))
       if stored.error == StateStoreError.None: children.add(ServiceIndex(77))
@@ -498,7 +500,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     for service in children:
       # New metadata and its sole empty code request remain independently constrained by the exact complete-map comparison.
       let value = snapshot.lookup(chapterServiceKey(StateChapter(255), service))
-      if mode in 141..147 and value.error == StateStoreError.MissingKey:
+      if mode in 141..154 and value.error == StateStoreError.MissingKey:
         continue # A later genuine ejection removes this independently declared child, including all namespace keys.
       assert value.error == StateStoreError.None
       let metadata = decodeServiceMetadata(value.value.bytes, ByteLimit(105))
@@ -515,7 +517,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
         declared.requests.add(StateRequestItem(hash: hash, length: RequestLength(uint32(
             replacement.len)), history: history.value.history))
       else:
-        assert mode in 141..147 and request.error ==
+        assert mode in 141..154 and request.error ==
             StateStoreError.MissingKey # A selected forget removes the actual pending reservation.
       let preimage = snapshot.lookup(servicePreimageKey(service, hash, ByteLimit(32)).value)
       if preimage.error == StateStoreError.None: declared.preimages.add(StatePreimageItem(
@@ -584,7 +586,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 148
+      assert mode >= 0 and mode < 155
       bodies = @[]
       slots = @[]
     else:
@@ -593,7 +595,7 @@ proc main() {.raises.} =
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
-      106, 111, 112, 117, 122, 130, 135, 140, 147]
+      106, 111, 112, 117, 122, 130, 135, 140, 147, 154]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:

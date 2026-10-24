@@ -1181,5 +1181,27 @@ def current_stf_child_retirement_corpus(compiler, report, checks, libraries):
 
 
 
+@CORPORA.case
+def current_stf_child_recreation_corpus(compiler, report, checks, libraries):
+    """Compare reserved-ID reuse after retirement with fresh incarnation metadata, Q membership and exact funding pools."""
+    from current_stf_child_recreation_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_child_recreation', 'current_stf_transfers', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-child-recreation-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-child-recreation', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent GP old-incarnation deletion, fresh creation/minima/reservations, funding and checkpoint selection')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-child-recreation-corpus', expected)
+    announce('independent child recreation whole STF maps', corpus['passed'])
+    return corpus
+
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
