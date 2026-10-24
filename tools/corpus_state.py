@@ -741,5 +741,27 @@ def current_stf_service_upgrades_corpus(compiler, report, checks, libraries):
 
 
 
+@CORPORA.case
+def current_stf_supervisor_lifecycle_corpus(compiler, report, checks, libraries):
+    """Compare supervisor reassignment and current protected-funding authority against independently calculated full maps."""
+    from current_stf_supervisor_lifecycle_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_supervisor_lifecycle', 'current_stf_transfers', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-supervisor-lifecycle-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-supervisor-lifecycle', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent self-supervisor mutation, protected funding, checkpoint selection and whole maps')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-supervisor-lifecycle-corpus', expected)
+    announce('independent supervisor-lifecycle whole STF maps', corpus['passed'])
+    return corpus
+
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
