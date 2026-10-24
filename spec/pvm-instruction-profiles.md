@@ -11,7 +11,8 @@ release optimization and bounds/assertion contracts. C debug information adds
 symbol attribution. A native assertion refusal must succeed before collection.
 The pinned interpreted reference prepares the same independently state-checked
 inputs as the paired comparison. Each profile executes one Pinky frame under
-dynamic and complete-plan pricing, plus sieve100000 under complete-plan pricing.
+dynamic and complete-plan pricing, plus sieve100000, indirect calls100000 and memory
+fill100000 under complete-plan pricing.
 All complete CPU/gas/page-state checks remain enabled.
 
 Callgrind collection begins and ends at genuine public `execute_?_*` native
@@ -108,3 +109,15 @@ change leaves production code and guest collection commands unchanged. Nine focu
 Python guards cover source copying/stability, path exclusion, exact file binding,
 real source sections and stale-manifest retirement; workflow syntax and inventory
 checks pass. Publication adds only this evidence record to the measured tool.
+
+## Long call/return and memory coverage, 2026-10-25
+
+The fixed profile matrix also includes planned indirect calls100000 and planned
+memory fill100000, using the same maintained preparer and independently checked
+input/expected-state owners as paired/reference timing. These short long-loop
+profiles expose their larger remaining interpreted-reference gaps without expanding
+the native collection scope, changing compiler flags or treating instrumented
+clocks as timings. The previous three profiles remain unchanged; all five require
+scope/assertion controls, complete CPU/gas/page-state checks, captured generated C,
+checksums and real source annotations. This extends the existing profiler review
+unit; it introduces no guest runtime or benchmark timing change.

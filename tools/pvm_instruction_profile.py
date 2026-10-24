@@ -23,7 +23,9 @@ from setup_nimony import installed
 
 
 BUILD = ROOT/'build/tests/pvm-instruction-profile'
-CASES = (('pinky', 1, 'dynamic'), ('pinky', 1, 'planned'), ('sieve', 100000, 'planned'))
+# Fixed bounded long loops expose call/return and memory costs alongside the real initialized frame.
+CASES = (('pinky', 1, 'dynamic'), ('pinky', 1, 'planned'), ('sieve', 100000, 'planned'),
+         ('minimal', 100000, 'planned'), ('memset', 100000, 'planned'))
 VERSION = 'valgrind-3.22.0'
 SCOPE = 'execute_?_*'
 
