@@ -825,6 +825,17 @@ proc lookupFullFile*(file: var PagedFile, checked: CheckedFullPagedArtifact, roo
     if not identity(data): data.poisoned = true
   found
 
+proc sealFull(data: FileData, built: FullPagedBuildResult): PagedIoResult[FullPagedBuildResult] =
+  ## Share exact final stat/sealing behavior for streamed construction and source-derived physical compaction.
+  if built.error == FullPagedBuildError.None:
+    # A fresh immutable version capture precedes any native sealed-artifact capability.
+    var metadata = default(Stat)
+    if posix.fstat(data.fd, metadata) != 0:
+      data.poisoned = true
+      return PagedIoResult[FullPagedBuildResult](status: FileError.IoFailure)
+    data.identity = metadata
+    data.sealed = true
+  PagedIoResult[FullPagedBuildResult](status: FileError.None, completed: built)
 proc buildFullFile*(file: var PagedFile, directory: PagedDirectory, producer: nil FullPagedProducer,
     header: FullPagedHeader, limits: FullPagedBuildLimits): PagedIoResult[FullPagedBuildResult] =
   ## Author only a fresh exclusive empty target; complete graph admission precedes native sealing.
@@ -847,12 +858,33 @@ proc buildFullFile*(file: var PagedFile, directory: PagedDirectory, producer: ni
   assert workspace != nil
   let built = buildFullPaged(PagedOutput(source: input(data), append: appender(data)),
     graphScratch(workspace), producer, header, limits)
-  if built.error == FullPagedBuildError.None:
-    # A fresh stat captures the complete target's immutable version; later equal-size mutation refuses.
-    var metadata = default(Stat)
-    if posix.fstat(data.fd, metadata) != 0:
-      data.poisoned = true
-      return PagedIoResult[FullPagedBuildResult](status: FileError.IoFailure)
-    data.identity = metadata
-    data.sealed = true
-  PagedIoResult[FullPagedBuildResult](status: FileError.None, completed: built)
+  sealFull(data, built)
+
+proc compactFullFile*(file: var PagedFile, source: var PagedFile, directory: PagedDirectory,
+    checked: CheckedFullPagedArtifact, target: FullPagedHeader,
+    limits: FullPagedCompactionLimits): PagedIoResult[FullPagedBuildResult] =
+  ## Independent immutable source and exclusive fresh target owners remain held throughout authenticated rewriting.
+  let data = file.data
+  let original = source.data
+  if data == nil or original == nil or not data.active or not original.active:
+    return PagedIoResult[FullPagedBuildResult](status: FileError.Uninitialized)
+  if data.poisoned or data.sealed or not data.exclusive or original.poisoned or not original.sealed:
+    return PagedIoResult[FullPagedBuildResult](status: FileError.RecoveryRequired)
+  if not checked.initialized or not directory.sameDirectory(file) or not directory.sameDirectory(source):
+    return PagedIoResult[FullPagedBuildResult](status: FileError.WrongIdentity)
+  let policy = checked.limits
+  let shape = checked.header.geometry
+  if shape.entries > uint64(policy.scratchBytes) div 2:
+    return PagedIoResult[FullPagedBuildResult](status: FileError.LimitExceeded)
+  var temporary = default(PagedFile)
+  defer:
+    # Workspace close uncertainty cannot produce a sealed native compaction receipt.
+    if temporary.opened and temporary.close != FileError.None:
+      result = PagedIoResult[FullPagedBuildResult](status: FileError.IoFailure)
+  let opened = openGraphScratch(temporary, directory, shape.entries*2, policy.scratchBytes)
+  if opened != FileError.None: return PagedIoResult[FullPagedBuildResult](status: opened)
+  let workspace = temporary.data
+  assert workspace != nil
+  let built = compactFullPaged(PagedOutput(source: input(data), append: appender(data)),
+    input(original), graphScratch(workspace), checked, target, limits)
+  sealFull(data, built)

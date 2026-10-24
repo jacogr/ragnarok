@@ -11,15 +11,6 @@ import ../../../src/codec/[bounded, state_layout, state_trie]
 proc path(label: string): string =
   ## Every suite namespace is isolated beneath the ignored native runner working directory.
   "full-paged-retention-" & $storageProcessId() & "-" & label
-proc retained(): FullPagedFixture =
-  ## Two independent complete roots share their unchanged right leaf in one exact five-record union.
-  let a = leaf(0, @[7'u8])
-  let b = leaf(0, @[9'u8])
-  let right = leaf(128, @[])
-  let oldRoot = branch(a, right)
-  let newRoot = branch(b, right)
-  fixture(@[a, b, right, oldRoot, newRoot], newRoot,
-    @[claim(oldRoot, 2, 3, 1), claim(newRoot, 2, 3, 1)])
 proc normal(old, union, fresh: FullPagedFixture) =
   ## Logical root retention is independent of physical epoch retention, reader pins and exact directory-sync receipts.
   let directory = path("normal")
@@ -212,7 +203,7 @@ proc main() =
   ## Native lifetime and exact-policy checks complement the shared publication/pin interleaving model.
   let old = sample(7)
   let fresh = sample(9)
-  normal(old, retained(), fresh)
+  normal(old, historySample(7, 9), fresh)
   maxRoots()
   policyBinding(old)
   identities(old)

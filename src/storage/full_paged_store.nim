@@ -371,10 +371,10 @@ func buildLimits(config: FullPagedNativeConfig): FullPagedBuildLimits =
     writeBytes: work.writeBytes)
 proc prepare(data: WriterData, candidate: var FullPagedCandidate, root: StateRoot,
     roots: openArray[FullPagedRoot], producer: nil FullPagedProducer, count, payload: uint64,
-    initial: bool): FullPagedNativeResult[StorageDurability] =
+    initial: bool, compaction = false): FullPagedNativeResult[StorageDurability] =
   ## Exact predecessor and writer incarnation bind each sealed complete target to one live publication authority.
   if candidate.opened: return fileFailed[StorageDurability](FileError.Busy)
-  if not data.active or producer == nil: return refused[StorageDurability](
+  if not data.active or (producer == nil and not compaction): return refused[StorageDurability](
       FullPagedNativeError.Uninitialized)
   if data.poisoned and not initial: return refused[StorageDurability](
       FullPagedNativeError.RecoveryRequired)
@@ -382,12 +382,14 @@ proc prepare(data: WriterData, candidate: var FullPagedCandidate, root: StateRoo
   var generation = 0'u64
   var source = default(FullPagedManifest)
   if not initial:
-    # Ordinary full-state replacement advances both physical epoch and local repository generation.
+    # Replacement advances generation; exact compaction preserves even its maximum while advancing physical epoch.
     let header = data.checked.header
-    if uint64(header.epoch) == high(uint64) or uint64(header.generation) == high(uint64):
+    if uint64(header.epoch) == high(uint64) or
+        (not compaction and uint64(header.generation) == high(uint64)):
       return refused[StorageDurability](FullPagedNativeError.CounterExhausted)
     epoch = uint64(header.epoch)+1
-    generation = uint64(header.generation)+1
+    generation = uint64(header.generation)
+    if not compaction: inc generation
     let checked = validateHead(data)
     if checked.error != FullPagedNativeError.None: return rejected[StorageDurability, bool](checked)
     source = data.checked.manifest
@@ -403,7 +405,7 @@ proc prepare(data: WriterData, candidate: var FullPagedCandidate, root: StateRoo
       count > uint64(data.config.limits.scratchBytes) div 2 or
       uint64(roots.len) > uint64(data.config.limits.roots):
     return fileFailed[StorageDurability](FileError.LimitExceeded)
-  if count >= high(uint64) div 2 or (count+1)*2 > uint64(limits.producerCalls):
+  if not compaction and (count >= high(uint64) div 2 or (count+1)*2 > uint64(limits.producerCalls)):
     return fileFailed[StorageDurability](FileError.LimitExceeded)
   let empty = data.directory.pendingAbsent
   if empty != FileError.None: return fileFailed[StorageDurability](empty)
@@ -417,7 +419,12 @@ proc prepare(data: WriterData, candidate: var FullPagedCandidate, root: StateRoo
     return fileFailed[StorageDurability](created)
   artifact.active = true
   candidate.data = artifact
-  let authored = buildFullFile(artifact.file, data.directory, producer, header.value, limits)
+  let authored = if compaction:
+    compactFullFile(artifact.file, data.head, data.directory, data.checked, header.value,
+      FullPagedCompactionLimits(ioCalls: limits.ioCalls, hashes: limits.hashes,
+        readBytes: limits.readBytes, writeBytes: limits.writeBytes))
+  else:
+    buildFullFile(artifact.file, data.directory, producer, header.value, limits)
   if authored.error != FileError.None: return fileFailed[StorageDurability](authored.error)
   if authored.value.error != FullPagedBuildError.None: return buildFailed[StorageDurability](authored.value)
   let synced = artifact.file.synchronize
@@ -435,6 +442,19 @@ proc prepareFullPagedReplacement*(writer: var FullPagedWriter, candidate: var Fu
   let data = writer.data
   if data == nil: return refused[StorageDurability](FullPagedNativeError.Uninitialized)
   prepare(data, candidate, root, roots, producer, count, payload, false)
+proc prepareFullPagedCompaction*(writer: var FullPagedWriter,
+    candidate: var FullPagedCandidate): FullPagedNativeResult[StorageDurability] =
+  ## Full root union, ordinary generation and physical bytes derive only from the held checked source.
+  let data = writer.data
+  if data == nil or not data.active: return refused[StorageDurability](FullPagedNativeError.Uninitialized)
+  if data.poisoned or not data.selected: return refused[StorageDurability](FullPagedNativeError.RecoveryRequired)
+  let source = data.checked.header
+  var roots = default(array[FullPagedMaxRoots, FullPagedRoot])
+  for index in 0..<source.len:
+    # The header already bounds the complete inventory to64 scalar claims.
+    roots[index] = source.retainedRoot(index)
+  prepare(data, candidate, source.root, roots.toOpenArray(0, source.len-1), nil,
+    source.geometry.entries, source.geometry.payloadBytes, false, true)
 proc commitGuard(data: WriterData, artifact: CandidateData): proc(): FileError {.closure.} =
   ## Capture stable exact source/target owners for the final post-staging, pre-rename identity check.
   proc beforeRename(): FileError {.closure.} =
