@@ -189,6 +189,14 @@ bench-pvm-guests: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fmt --manifest-path tests/performance/polkavm/Cargo.toml -- --check
 	$(PYTHON) tools/pvm_guest_benchmark.py
 
+# Paired local revisions share one current driver and frozen full-state interpreted inputs.
+.PHONY: compare-pvm-guests
+compare-pvm-guests: export RAGNAROK_PVM_COMPARE_BASE = $(PVM_COMPARE_BASE)
+compare-pvm-guests: export RAGNAROK_PVM_COMPARE_SCOPE = $(PVM_COMPARE_SCOPE)
+compare-pvm-guests: setup
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/pvm_guest_compare.py
+
 # Native host byte-range API throughput is separate from interpreter backend comparisons.
 .PHONY: bench-pvm-memory
 bench-pvm-memory: setup
