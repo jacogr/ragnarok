@@ -110,12 +110,15 @@ proc failure(outcome: CurrentCandidateResult): string =
 proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): array[2, seq[byte]] =
   ## Keep literal family selection explicit and independent of the growing original/namespace construction workflow.
   var first = namespaceHaltCode()
-  if mode in 42..46:
+  if mode in 97..101:
+    first = juniorConflictCode(mode) # The junior's own writes/yield/provision compete with its supervisor from one common prior.
+  elif mode in 42..46:
     first = memoReceiverCode(mode) # Only memo recipients consume incoming bytes into storage and yields.
   elif mode in 15..19:
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 97..101: second = supervisorConflictCode(mode) # Selected foreign membership drives real N/M decisions.
   of 92..96: second = supervisedUpgradeCode(mode, replacement) # Foreign metadata affects a later independently admitted42 report.
   of 87..91:
     # R's known hash selects one independently declared foreign request identity.
@@ -210,10 +213,10 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   if mode in 77..81:
     # Authority belongs to one actual original manager; other roles and all allowances remain empty.
     options.manager = (if mode == 81: 42'u32 else: 99'u32)
-  if mode in 82..96:
+  if mode in 82..101:
     # Authority is original and incarnation-bound; stale/missing nominees fall back to target self supervision.
     options.signed.accountSupervisor = (if mode == 86: 77'u32 else: 99'u32)
-    options.signed.accountSupervisorCreated = (if mode in [85, 96]: 1'u32 else: 0'u32)
+    options.signed.accountSupervisorCreated = (if mode in [85, 96, 101]: 1'u32 else: 0'u32)
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -258,7 +261,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # One identity may be touched on both sides of a checkpoint; explicit observations retain the selected prefix.
     limits.completion.execution.initial.guests.requestFacts = ElementLimit(4)
     limits.completion.execution.execution.round.guests.requestFacts = ElementLimit(4)
-  if mode in 67..71:
+  if mode in 67..71 or mode in 97..101:
     # One selected pair owns exactly one byte; union capture is explicit and shared by initial and continuation rounds.
     limits.completion.execution.initial.guests.provisions = provisionPolicy(items = 1, perBlob = 1, total = 1)
     limits.completion.execution.initial.provisions.values = PreimageLimits(items: ElementLimit(1),
@@ -331,6 +334,13 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       let stored = snapshot.lookup(servicePreimageKey(ServiceIndex(99), requestHash, ByteLimit(32)).value)
       if stored.error == StateStoreError.None:
         services[1].preimages.add(StatePreimageItem(hash: requestHash, value: @[82'u8]))
+      else: assert stored.error == StateStoreError.MissingKey
+    if mode in 97..101:
+      # I is the junior's original pending payload; selected provision may survive annulment even when its writes/yield do not.
+      let hash = ServicePreimageHash(array[32, byte](blake2b256([73'u8]).value))
+      let stored = snapshot.lookup(servicePreimageKey(ServiceIndex(42), hash, ByteLimit(32)).value)
+      if stored.error == StateStoreError.None:
+        services[0].preimages.add(StatePreimageItem(hash: hash, value: @[73'u8]))
       else: assert stored.error == StateStoreError.MissingKey
     for index in 0..<2:
       # Original code/request identities remain explicit; unfulfilled payload requests stay untouched.
@@ -449,7 +459,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 97
+      assert mode >= 0 and mode < 102
       bodies = @[]
       slots = @[]
     else:
@@ -457,7 +467,7 @@ proc main() {.raises.} =
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
-  assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96]
+  assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:

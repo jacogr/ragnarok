@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_SUPERVISED_CONFLICTS",
+  "files": {
+    "current-stf-supervised-conflicts.json": "b6390d9bfc62ee2a63bcf51b90dc5a770ffacbf881b3164e8268661c15b58521"
+  },
+  "target": "current-stf-supervised-conflicts.json"
+}
