@@ -672,3 +672,61 @@ proc buildPagedArtifact*(io: PagedOutput, producer: nil PagedProducer, header: P
     work.fail(PagedStreamError.ChangedInput)
     return refused[CheckedPagedArtifact](work)
   checked
+
+proc compactPagedArtifact*(io: PagedOutput, source: PagedInput, artifact: CheckedPagedArtifact,
+    target: PagedHeader): PagedStreamResult[CheckedPagedArtifact] =
+  ## Rewrite one pinned checked source through bounded authenticated pages, preserving exact knowledge and ordinary sequence.
+  if not artifact.ready or not target.initialized or source.read == nil or source.extent == nil or
+      io.source.read == nil or io.source.extent == nil or io.append == nil:
+    return PagedStreamResult[CheckedPagedArtifact](status: PagedStreamError.Uninitialized)
+  let original = artifact.header
+  let shape = original.geometry
+  let next = target.geometry
+  if uint64(original.epoch) == high(uint64):
+    return PagedStreamResult[CheckedPagedArtifact](status: PagedStreamError.LengthOverflow)
+  let identities = array[32, byte](target.chainId) == array[32, byte](original.chainId) and
+    array[32, byte](target.root) == array[32, byte](original.root)
+  let counters = uint64(target.epoch) == uint64(original.epoch)+1 and
+    uint64(target.sequence) == uint64(original.sequence)
+  let geometry = next.entries == shape.entries and next.payloadBytes == shape.payloadBytes
+  if not identities or not counters or not geometry:
+    return PagedStreamResult[CheckedPagedArtifact](status: PagedStreamError.ChangedInput)
+  var work = initWork(artifact.policy)
+  if work.status != PagedStreamError.None: return refused[CheckedPagedArtifact](work)
+  if shape.byteLength > uint64(work.limits.work.writeBytes):
+    work.fail(PagedStreamError.LimitExceeded)
+    return refused[CheckedPagedArtifact](work)
+  if not source.checkExtent(shape.byteLength, work): return refused[CheckedPagedArtifact](work)
+  if not io.source.checkExtent(0, work): return refused[CheckedPagedArtifact](work)
+  block:
+    # Source page zero must still match the captured complete header before any append.
+    var cache = default(PageCache)
+    if not source.fetch(shape, artifact.selected.pageRoot, 0, cache, work): return refused[
+        CheckedPagedArtifact](work)
+    if cache.bytes != original.bytes:
+      work.fail(PagedStreamError.ChangedInput)
+      return refused[CheckedPagedArtifact](work)
+    if not io.appendExact(target.bytes, work): return refused[CheckedPagedArtifact](work)
+    var page = 1'u64
+    while page < shape.dataPages:
+      # Exact index/payload pages, including canonical padding, survive with no decoded batch or sort.
+      if not source.fetch(shape, artifact.selected.pageRoot, page, cache, work): return refused[
+          CheckedPagedArtifact](work)
+      if not io.appendExact(cache.bytes, work): return refused[CheckedPagedArtifact](work)
+      inc page
+  if not source.checkExtent(shape.byteLength, work): return refused[CheckedPagedArtifact](work)
+  if not io.source.checkExtent(uint64(shape.treeOffset), work): return refused[
+      CheckedPagedArtifact](work)
+  let tree = walkTree(io, TreeMode.Append, next, work)
+  if tree.error != PagedStreamError.None: return refused[CheckedPagedArtifact](work)
+  if not work.hashBudget: return refused[CheckedPagedArtifact](work)
+  let selected = encodePagedManifest(target, tree.value, ByteLimit(PagedManifestBytes))
+  if selected.error != PagedCodecError.None:
+    work.fail(codecReason(selected.error))
+    return refused[CheckedPagedArtifact](work)
+  let checked = inspect(io.source, selected.value, work)
+  if checked.error != PagedStreamError.None: return checked
+  if array[32, byte](checked.value.stream) != array[32, byte](artifact.stream):
+    work.fail(PagedStreamError.ChangedInput)
+    return refused[CheckedPagedArtifact](work)
+  checked

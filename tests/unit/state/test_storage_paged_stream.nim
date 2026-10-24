@@ -557,6 +557,41 @@ proc cycle() =
       StateLookupKind.Absent
   assert lookupPaged(checked, memory.input, key(64), workLimits()).error ==
       PagedStreamError.UnknownKey
+proc compaction() =
+  ## Complete source bytes determine compaction; an independently valid same-root target knowledge change is refused.
+  let original = Memory(bytes: @[])
+  let artifact = build(Producer(records: emptyRecords()), original, default(StateRoot), policy()).value
+  let target = initPagedHeader(default(StorageChainId), default(StateRoot), ManagedEpoch(2),
+    LightDeltaSequence(0), artifact.header.geometry.entries, artifact.header.geometry.payloadBytes,
+        policy().dataset).value
+  let copied = Memory(bytes: @[])
+  let complete = compactPagedArtifact(copied.output, original.input, artifact, target)
+  assert complete.error == PagedStreamError.None
+  var reference = pagedReference(default(StorageChainId), default(StateRoot), emptyRecords())
+  reference.bytes.put(88, 2)
+  reference.recommit()
+  assert copied.bytes == reference.bytes
+  assert complete.value.manifest.bytes == reference.manifest
+  let mutated = Memory(bytes: @[], changeKnowledge: true)
+  assert compactPagedArtifact(mutated.output, original.input, artifact, target).error ==
+      PagedStreamError.ChangedInput
+  let wrong = initPagedHeader(default(StorageChainId), default(StateRoot), ManagedEpoch(2),
+    LightDeltaSequence(1), artifact.header.geometry.entries, artifact.header.geometry.payloadBytes,
+        policy().dataset).value
+  let untouched = Memory(bytes: @[])
+  assert compactPagedArtifact(untouched.output, original.input, artifact, wrong).error ==
+      PagedStreamError.ChangedInput
+  assert untouched.writes == 0 and untouched.bytes.len == 0
+  var limited = policy()
+  limited.work.writeBytes = ByteLimit(0)
+  let admitted = validatePagedArtifact(original.input, artifact.manifest, limited).value
+  assert compactPagedArtifact(untouched.output, original.input, admitted, target).error ==
+      PagedStreamError.LimitExceeded
+  assert untouched.writes == 0
+  original.bytes[4096] = 1
+  assert compactPagedArtifact(untouched.output, original.input, artifact, target).error ==
+      PagedStreamError.ChecksumMismatch
+
 proc main() =
   ## Checked native execution covers algorithms/callback faults; native pin/publication and RSS qualification remain separate.
   let data = fixture()
@@ -569,6 +604,7 @@ proc main() =
   providerFaults(data)
   deepestProof()
   growth()
+  compaction()
   let before = getOccupiedMem()
   for index in 0..<1000: cycle()
   recordArcRelease("storage_paged_stream", 1000, before, getOccupiedMem())
