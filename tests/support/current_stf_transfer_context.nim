@@ -27,3 +27,13 @@ proc forwardingCode*(mode: int): seq[byte] =
   instructions.add(if mode in [16, 17]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable = newSeq[byte](128)): result.add(octet)
+
+proc poolTransferCode*(mode: int): seq[byte] =
+  ## Four independent source/destination pool combinations run with a real memo or direct-credit sentinel.
+  let selection = uint64((mode-20) mod 4)
+  let memo = if mode >= 24: 0'u64 else: 196608'u64
+  let instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 42),
+    registerImmediate(9, selection), registerImmediate(10, 7), registerImmediate(11, 10000),
+    registerImmediate(12, memo), @[10'u8, 22], @[50'u8, 0]]
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, writable = newSeq[byte](128)): result.add(octet)

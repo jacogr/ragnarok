@@ -87,8 +87,8 @@ proc failure(outcome: CurrentCandidateResult): string =
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
     uint32] = @[]) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
-  let codes = [(if mode >= 15: forwardingCode(mode) else: namespaceHaltCode()), (if mode >=
-      5: transferCode(mode) else: guest(mode))]
+  let codes = [(if mode in 15..19: forwardingCode(mode) else: namespaceHaltCode()), (if mode >=
+      20: poolTransferCode(mode) elif mode >= 5: transferCode(mode) else: guest(mode))]
   var seeds = namespaceSeeds()
   for index in 0..<2:
     let codeHash = ServicePreimageHash(array[32, byte](blake2b256(codes[index]).value))
@@ -113,6 +113,12 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     options.signed.accountSupervisor = (if mode == 13: 77'u32 elif mode == 14: 42'u32 elif mode in [
         11, 12]: 99'u32 else: 0'u32)
     options.signed.accountSupervisorCreated = (if mode == 12: 1'u32 else: 0'u32)
+  if mode in 20..27:
+    # Protected-source originals have no liquid funding, proving the selected source pool independently.
+    if (mode-20) mod 4 in [1, 3]:
+      options.secondBalance = 0
+      options.secondSupervisorBalance = 1000000
+    if mode >= 24: options.signed.accountSupervisor = 99 # Direct credit requires actual destination authority.
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -230,14 +236,15 @@ proc main() {.raises.} =
       missingCode = fields.len == 3
       if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 20
+      assert mode >= 0 and mode < 28
       bodies = @[]
       slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert mode in [4, 9, 14, 19] and bodies.len > 0 # Strict independent output comparison binds each complete chain length.
+  assert mode in [4, 9, 14, 19, 27] and bodies.len >
+      0 # Strict independent output comparison binds each complete chain length.
   run(base, mode, bodies, missingCode, slots)
 
 try:

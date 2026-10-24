@@ -68,6 +68,7 @@ type ExecutionFixtureConfig* = object ## PVM guest choices own execution data an
   secondProgram*: seq[byte]         ## Optional complete second-service code preimage.
   allowanceGas*: uint64             ## Gas assigned to each ordinary always-accumulate service.
   secondSupervisor*: uint32         ## Genuine prior supervisor for conflict/provision integration witnesses.
+  secondSupervisorBalance*: uint64  ## Original protected balance for explicit source-pool witnesses.
   secondBalance*: uint64            ## Original balance of the second service.
   assigner*: uint32                 ## Original assigner service for both cores.
   authorizationQueue*: seq[byte]    ## Optional exact C(2), including malformed-state witnesses.
@@ -118,8 +119,10 @@ proc executionFixture*(base: OwnedReport, options = executionFixtureConfig()): E
     let hash = array[32, byte](blake2b256(raw).value)
     if ordinal == 1:
       entries.add(serviceMetadataEntry(service, ServiceMetadata(codeHash: CodeHash(hash),
-          balance: AccountBalance(options.secondBalance), supervisor: ServiceIndex(
-              options.secondSupervisor)), ByteLimit(ServiceMetadataBytes)).value)
+          balance: AccountBalance(options.secondBalance),
+          supervisorBalance: AccountBalance(options.secondSupervisorBalance),
+          supervisor: ServiceIndex(options.secondSupervisor)), ByteLimit(
+              ServiceMetadataBytes)).value)
     let ending = (if ordinal == 0: options.first else: options.second)
     if ending != ExecutionEnding.Missing:
       entries.add(servicePreimageEntry(service, ServicePreimageHash(hash), raw,
