@@ -5,7 +5,7 @@
 import std/[assertions, cmdline, syncio, monotimes]
 import std/posix/posix
 import ../../tests/support/storage_io
-import ../../src/storage/[managed_io, managed_manifest]
+import ../../src/storage/[managed_io, managed_manifest, light_journal_cache, light_journal_replay, light_delta]
 import ../../src/storage/[light_file_cache, light_snapshot, light_state_cache, full_state_trie,
   state_proof, database_identity, file_errors, durability]
 import ../../src/codec/[bounded, state_layout, state_trie]
@@ -212,6 +212,59 @@ proc churnCycle(source, target: string, size: int, expected: StateRoot): ChurnOb
   ChurnObservation(imageBytes: imageBytes, writtenBytes: written, writes: writes, syncs: syncs,
     renames: renames, updateHashes: hashes, reopenHashes: reopenHashes, updateNs: elapsed,
     reopenNs: reopenElapsed, before: before, after: after)
+proc journalCycle(source, target: string, size: int, expected: StateRoot): ChurnObservation =
+  ## Match the full-image workload exactly while sparse frames preserve every actual update and strict-reopen witness.
+  let prepared = load(source, size, expected)
+  let proof = LightStateProof(key: key(0), proof: prepared.prove(key(0), LightProofReadLimits(
+    entries: ElementLimit(1), proof: policy(size).cache.proof)).value)
+  let config = LightJournalConfig(root: expected, snapshot: policy(size),
+      journal: LightReplayLimits(
+    bytes: ByteLimit(131072), frames: ElementLimit(16), frame: LightDeltaLimits(
+      items: ElementLimit(1), bytes: ByteLimit(8192))))
+  var file = default(LightJournalCache)
+  assert initializeLightJournalCache(file, target, config, prepared).value ==
+      StorageDurability.FileAndDirectorySynced
+  let retained = file.snapshot.value
+  let imageBytes = uint64(prepared.byteLength)
+  resetIo()
+  resetHash(0)
+  let before = getOccupiedMem()
+  var written = 0'u64
+  let started = getMonoTime().ticks
+  for cycle in 0..<8:
+    # Each successful append extends the actual held journal by one canonical frame; report completed application bytes.
+    assert file.update([], [key(0)]).value == StorageDurability.FileAndDirectorySynced
+    assert file.snapshot.value.lookup(key(0)).error == LightCacheError.UnknownKey
+    assert file.update([proof], []).value == StorageDurability.FileAndDirectorySynced
+    assert uint64(file.preparedSnapshot.value.byteLength) == imageBytes
+    written = file.journalBytes.value-98
+  let elapsed = getMonoTime().ticks-started
+  let after = getOccupiedMem()
+  let writes = ioCalls(writeIo)
+  let syncs = ioCalls(syncIo)
+  let renames = ioCalls(renameIo)
+  let hashes = calls()
+  assert writes == 16 and syncs == 16 and renames == 0 and hashes == 176
+  assert written == uint64(8*(500+17*64+size)) and elapsed >= 0
+  assert file.close == FileError.None
+  resetHash(0)
+  let reopenStarted = getMonoTime().ticks
+  assert openLightJournalCache(file, target, config) == FileError.None
+  let reopenElapsed = getMonoTime().ticks-reopenStarted
+  let reopenHashes = calls()
+  assert reopenHashes == Count*18+179 and reopenElapsed >= 0
+  let final = file.preparedSnapshot.value
+  assert final.encodedBytes == prepared.encodedBytes
+  for index in 0..<Count:
+    # Independent fixture bytes and a retained pre-edit reader survive every publication and strict reopen.
+    let value = file.snapshot.value.lookup(key(index)).value.bytes
+    assert value.len == size and value[0] == byte(index and 255)
+    assert value[size-1] == byte((index+size-1) and 255)
+  assert retained.len == Count and retained.lookup(key(0)).value.bytes.len == size
+  assert file.close == FileError.None
+  ChurnObservation(imageBytes: imageBytes, writtenBytes: written, writes: writes, syncs: syncs,
+    renames: renames, updateHashes: hashes, reopenHashes: reopenHashes, updateNs: elapsed,
+    reopenNs: reopenElapsed, before: before, after: after)
 proc churn(source, target: string, size: int, expected: StateRoot) =
   ## Final ARC retirement is sampled after every result, proof, retained image and native owner leaves scope.
   let baseline = getOccupiedMem()
@@ -219,6 +272,18 @@ proc churn(source, target: string, size: int, expected: StateRoot) =
   let retired = getOccupiedMem()
   assert retired == baseline
   echo "churn\t", size, "\t8\t", observed.imageBytes, "\t", observed.writtenBytes, "\t",
+      observed.writes,
+    "\t", observed.syncs, "\t", observed.renames, "\t", observed.updateHashes, "\t",
+        observed.reopenHashes,
+    "\t", observed.updateNs, "\t", observed.reopenNs, "\t", baseline, "\t", observed.before,
+    "\t", observed.after, "\t", retired
+proc journal(source, target: string, size: int, expected: StateRoot) =
+  ## Final ARC retirement is sampled after every result, proof, retained image and native owner leaves scope.
+  let baseline = getOccupiedMem()
+  let observed = journalCycle(source, target, size, expected)
+  let retired = getOccupiedMem()
+  assert retired == baseline
+  echo "journal\t", size, "\t8\t", observed.imageBytes, "\t", observed.writtenBytes, "\t",
       observed.writes,
     "\t", observed.syncs, "\t", observed.renames, "\t", observed.updateHashes, "\t",
         observed.reopenHashes,
@@ -239,7 +304,8 @@ proc main() =
     assert paramCount() == 4
     consume(path, size, root(paramStr(4)))
   else:
-    assert mode in ["publish", "churn"] and paramCount() == 5
+    assert mode in ["publish", "churn", "journal"] and paramCount() == 5
     if mode == "publish": publish(path, paramStr(5), size, root(paramStr(4)))
-    else: churn(path, paramStr(5), size, root(paramStr(4)))
+    elif mode == "churn": churn(path, paramStr(5), size, root(paramStr(4)))
+    else: journal(path, paramStr(5), size, root(paramStr(4)))
 main()
