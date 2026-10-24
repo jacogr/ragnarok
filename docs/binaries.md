@@ -1,8 +1,8 @@
 # Binary CI archives
 
-The **Build Linux** and **Build macOS** jobs compile the production peer with the same pinned
+The **Build / Linux** and **Build / macOS** jobs compile the production peer with the same pinned
 Nimony, ARC, Clang, release/speed optimization, ThinLTO and runtime checks used by E2E.
-They run on native Linux x86-64 and macOS ARM64 hosts. **Build Docker** checks the container;
+They run on native Linux x86-64 and macOS ARM64 hosts. **Build / Docker** checks the container;
 the **Build** aggregate requires the image and both binary jobs to pass.
 
 Master pushes, `ci:full` requests and manual `build`/`full` requests run the complete Build group.

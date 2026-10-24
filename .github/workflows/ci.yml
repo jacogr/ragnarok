@@ -75,7 +75,7 @@ jobs:
 
   modules:
     if: &requested ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
-    name: Compile source
+    name: Compile / Source
     timeout-minutes: 30
     strategy: &os-strategy
       fail-fast: false
@@ -110,7 +110,7 @@ jobs:
 
   python:
     if: *requested
-    name: Compile reference & tooling
+    name: Compile / Reference & Tooling
     timeout-minutes: 15
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
@@ -136,7 +136,7 @@ jobs:
 
   guards:
     if: *requested
-    name: Compile rejection guards
+    name: Compile / Rejection Guards
     timeout-minutes: 30
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
@@ -208,7 +208,7 @@ jobs:
 
   unit:
     if: *requested
-    name: Unit shard ${{ matrix.shard }}
+    name: Unit / Shard (${{ matrix.shard }})
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -259,7 +259,7 @@ jobs:
 
   failures:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
-    name: Contract shard ${{ matrix.shard }}
+    name: Contract / Shard (${{ matrix.shard }})
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -310,7 +310,7 @@ jobs:
 
   e2e:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'e2e' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || github.event.label.name == 'ci:full')) }}
-    name: E2E ${{ matrix.family.name }}
+    name: E2E / ${{ matrix.family.name }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -386,7 +386,7 @@ jobs:
   # Pinned public-API comparisons remain distinct from frozen native fixtures and future fuzzing.
   pvm-reference:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
-    name: Interop PVM
+    name: Interop / PVM
     timeout-minutes: 45
     runs-on: ubuntu-latest
     env:
@@ -418,7 +418,7 @@ jobs:
 
   telemetry-interop:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
-    name: Interop Telemetry
+    name: Interop / Telemetry
     timeout-minutes: 60
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
@@ -462,7 +462,7 @@ jobs:
   # Build locally and execute the final image; no registry credentials or image publishing.
   docker:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
-    name: Build Docker
+    name: Build / Docker
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
@@ -485,7 +485,7 @@ jobs:
   # Build only the host families with pinned compiler distributions and maintained native ABIs.
   binary:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'build' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
-    name: Build ${{ matrix.target.name }}
+    name: Build / ${{ matrix.target.name }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -540,7 +540,7 @@ jobs:
   # Perf jobs publish validated measurements on master pushes and explicit group/full requests.
   bench-pvm:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
-    name: Perf PVM
+    name: Perf / PVM
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
@@ -594,7 +594,7 @@ jobs:
   # Keep storage adjacent to other Perf jobs and use the same group/full request policy.
   bench-storage:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-storage' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
-    name: Perf Storage
+    name: Perf / Storage
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
@@ -663,7 +663,7 @@ jobs:
   # Sustained growth keeps all repetitions on its own runner, independent of other storage panels.
   bench-storage-growth:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
-    name: Perf Storage Growth
+    name: Perf / Storage Growth
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
@@ -712,7 +712,7 @@ jobs:
   # Original upstream campaigns and the JAM bridge have separate verdicts and failure artifacts.
   pvm-fuzz:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full')) }}
-    name: Fuzz PVM
+    name: Fuzz / PVM
     timeout-minutes: 30
     runs-on: ubuntu-latest
     env:
