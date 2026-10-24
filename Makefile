@@ -198,6 +198,11 @@ bench-pvm-memory: setup
 bench-pvm-pricing: setup
 	$(PYTHON) tools/pvm_pricing_benchmark.py
 
+# Calibrated optional AddressSanitizer qualification reuses frozen native corpus contracts.
+.PHONY: check-pvm-asan
+check-pvm-asan: setup
+	$(PYTHON) tools/pvm_sanitizers.py
+
 # Coverage-guided byte fuzzing owns its native adapter, finite controls and retained corpus; it never runs from ordinary unit or E2E checks.
 fuzz-pvm-program: toolchain check-inventory
 	$(PYTHON) tools/fuzz_pvm_program.py
