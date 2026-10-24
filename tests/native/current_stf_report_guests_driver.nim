@@ -87,7 +87,8 @@ proc failure(outcome: CurrentCandidateResult): string =
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
     uint32] = @[]) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
-  let codes = [namespaceHaltCode(), (if mode >= 5: transferCode(mode) else: guest(mode))]
+  let codes = [(if mode >= 15: forwardingCode(mode) else: namespaceHaltCode()), (if mode >=
+      5: transferCode(mode) else: guest(mode))]
   var seeds = namespaceSeeds()
   for index in 0..<2:
     let codeHash = ServicePreimageHash(array[32, byte](blake2b256(codes[index]).value))
@@ -229,14 +230,14 @@ proc main() {.raises.} =
       missingCode = fields.len == 3
       if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 15
+      assert mode >= 0 and mode < 20
       bodies = @[]
       slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert mode in [4, 9, 14] and bodies.len > 0 # Strict independent output comparison binds each complete chain length.
+  assert mode in [4, 9, 14, 19] and bodies.len > 0 # Strict independent output comparison binds each complete chain length.
   run(base, mode, bodies, missingCode, slots)
 
 try:
