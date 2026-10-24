@@ -12,6 +12,9 @@ const FullPagedFixedBytes* = 4194304'u64 ## Conservative logical workspace, dist
 type
   FullPagedWrite* = proc(offset: PagedOffset, input: openArray[byte]): bool {.closure.}
     ## Write the complete scratch window or refuse; caller owns a private exact-sized scratch file.
+  FullPagedEntryVisitor* = proc(ordinal: uint64, key: StateKey, value: openArray[
+      byte]): bool {.closure.}
+    ## Borrow each sorted complete-root value only during this synchronous call; false refuses the whole stream.
   FullPagedScratch* = object ## Disposable trusted private IO, never a selected-state or graph authority.
     input*: PagedInput
     write*: nil FullPagedWrite
@@ -26,7 +29,7 @@ type
     work*: FullPagedWorkLimits
   FullPagedStreamError* {.pure.} = enum ## Missing physical nodes never become protocol-level absence.
     Uninitialized, None, CodecFailure, LimitExceeded, UnsupportedPolicy, IOFailure,
-    ChangedInput, MissingNode, InvalidGraph, CountMismatch, UnreachableRecord, UnknownRoot
+    ChangedInput, MissingNode, InvalidGraph, CountMismatch, UnreachableRecord, UnknownRoot, VisitorRefused
   FullPagedStreamResult*[T] = object ## Failed/default alternatives have no checked graph or partial value.
     case status: FullPagedStreamError
     of None: completed: T
@@ -554,3 +557,96 @@ proc fetchFullPagedPage*(io: PagedInput, checked: CheckedFullPagedArtifact,
   if not io.checkExtent(shape.byteLength, work): return refused[array[PagedPageBytes, byte]](work)
   FullPagedStreamResult[array[PagedPageBytes, byte]](status: FullPagedStreamError.None,
     completed: cache.bytes)
+
+proc streamBudget(inherited, requested: FullPagedWorkLimits): FullPagedWorkLimits =
+  ## Per-call ceilings can only tighten captured admission policy; dataset/trie/workspace limits remain inherited.
+  FullPagedWorkLimits(ioCalls: ElementLimit(min(uint64(inherited.ioCalls), uint64(
+      requested.ioCalls))),
+    hashes: ElementLimit(min(uint64(inherited.hashes), uint64(requested.hashes))),
+    visits: ElementLimit(min(uint64(inherited.visits), uint64(requested.visits))),
+    readBytes: ByteLimit(min(uint64(inherited.readBytes), uint64(requested.readBytes))),
+    writeBytes: ByteLimit(min(uint64(inherited.writeBytes), uint64(requested.writeBytes))))
+proc entries(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest,
+    digest: StateNodeHash, depth: int, prefix: array[31, byte], counts: var GraphCounts,
+    visitor: FullPagedEntryVisitor, cache: var PageCache, work: var Work) =
+  ## Captured complete graph authority permits a readonly fixed-depth walk without another visited table or resident index.
+  if work.status != FullPagedStreamError.None: return
+  if array[32, byte](digest) == default(array[32, byte]): return
+  if not work.charge(Counter.Visit, 1): return
+  let position = io.position(header, selected, digest, cache, work)
+  if work.status != FullPagedStreamError.None: return
+  if position == header.geometry.entries:
+    work.fail(FullPagedStreamError.MissingNode)
+    return
+  if counts.nodes >= uint64(work.limits.trie.nodes):
+    work.fail(FullPagedStreamError.LimitExceeded)
+    return
+  inc counts.nodes
+  let current = io.record(header, selected, position, cache, work)
+  if work.status != FullPagedStreamError.None: return
+  if current.kind == TrieRecordKind.Leaf:
+    # Recheck the complete routed prefix before lending any value, including depth248 terminal leaves.
+    let key = array[31, byte](current.key)
+    for bit in 0..<depth:
+      let mask = byte(128 shr (bit mod 8))
+      if (key[bit div 8] and mask) != (prefix[bit div 8] and mask):
+        work.fail(FullPagedStreamError.InvalidGraph)
+        return
+    let size = uint64(current.payload.len)
+    if counts.entries >= uint64(work.limits.trie.items):
+      work.fail(FullPagedStreamError.LimitExceeded)
+      return
+    if size > uint64(work.limits.trie.totalValueBytes)-counts.values:
+      work.fail(FullPagedStreamError.LimitExceeded)
+      return
+    let ordinal = counts.entries
+    inc counts.entries
+    counts.values += size
+    if not visitor(ordinal, current.key, current.payload):
+      work.fail(FullPagedStreamError.VisitorRefused)
+  else:
+    # Left-before-right traversal yields strict serialized key order; captured topology excludes repetition/cycles.
+    if depth >= 248:
+      work.fail(FullPagedStreamError.InvalidGraph)
+      return
+    let before = counts.entries
+    io.entries(header, selected, current.left, depth+1, prefix, counts, visitor, cache, work)
+    var right = prefix
+    right[depth div 8] = right[depth div 8] or byte(128 shr (depth mod 8))
+    io.entries(header, selected, current.right, depth+1, right, counts, visitor, cache, work)
+    if work.status == FullPagedStreamError.None and counts.entries-before < 2:
+      work.fail(FullPagedStreamError.InvalidGraph)
+proc streamFullPagedEntries*(io: PagedInput, checked: CheckedFullPagedArtifact,
+    root: StateRoot, visitor: nil FullPagedEntryVisitor,
+    budget: FullPagedWorkLimits): FullPagedStreamResult[FullPagedCounts] =
+  ## No callback/native owner escapes; only complete success exposes counters, never a successful delivered prefix.
+  if not checked.ready or visitor == nil:
+    return FullPagedStreamResult[FullPagedCounts](status: FullPagedStreamError.Uninitialized)
+  var policy = checked.policy
+  policy.work = streamBudget(policy.work, budget)
+  var work = initWork(policy)
+  if work.status != FullPagedStreamError.None: return refused[FullPagedCounts](work)
+  let header = checked.header
+  var claim = default(FullPagedRoot)
+  var found = false
+  for index in 0..<header.len:
+    # Root selection is an independent caller argument, never an inferred complete state from partial data.
+    let retained = header.retainedRoot(index)
+    if array[32, byte](retained.root) == array[32, byte](root):
+      claim = retained
+      found = true
+  if not found:
+    work.fail(FullPagedStreamError.UnknownRoot)
+    return refused[FullPagedCounts](work)
+  if not io.checkExtent(header.geometry.byteLength, work): return refused[FullPagedCounts](work)
+  var cache = default(PageCache)
+  var counts = default(GraphCounts)
+  io.entries(header, checked.selected, StateNodeHash(array[32, byte](root)), 0,
+    default(array[31, byte]), counts, visitor, cache, work)
+  if work.status != FullPagedStreamError.None: return refused[FullPagedCounts](work)
+  if counts.entries != claim.entries or counts.nodes != claim.nodes or counts.values !=
+      claim.valueBytes:
+    work.fail(FullPagedStreamError.CountMismatch)
+    return refused[FullPagedCounts](work)
+  if not io.checkExtent(header.geometry.byteLength, work): return refused[FullPagedCounts](work)
+  FullPagedStreamResult[FullPagedCounts](status: FullPagedStreamError.None, completed: work.used)

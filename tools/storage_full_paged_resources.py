@@ -62,12 +62,12 @@ def parse(raw, mode, count, cache, expected):
     """Require exact independent roots/extents, real graph work, owned queries and complete heap/descriptor retirement."""
     fields = raw.strip().split('\t')
     if (mode not in ('prepare', 'open') or (count, cache) not in CASES or expected['count'] != count or
-            len(fields) != 19 or fields[:4] != [mode, str(count), str(cache), expected['root']] or
+            len(fields) != 20 or fields[:4] != [mode, str(count), str(cache), expected['root']] or
             any(re.fullmatch(r'0|[1-9][0-9]{0,18}', value) is None for value in fields[4:])):
         raise ValueError('Invalid full native receipt identity')
     names = ('file_bytes', 'pages', 'baseline', 'opened', 'released', 'fd_baseline', 'fd_opened',
              'fd_released', 'read_calls', 'write_calls', 'hash_calls', 'queries', 'peak_rss_bytes',
-             'minor_faults', 'major_faults')
+             'minor_faults', 'major_faults', 'streamed_entries')
     row = dict(zip(names, map(int, fields[4:])))
     if (any(value >= 1 << 63 for value in row.values()) or
             (row['file_bytes'], row['pages']) != (expected['file_bytes'], expected['pages']) or
@@ -76,6 +76,7 @@ def parse(raw, mode, count, cache, expected):
             row['fd_opened']-row['fd_baseline'] != (5 if mode == 'prepare' else 2) or
             row['read_calls'] <= expected['records'] or row['write_calls'] <= expected['records'] or
             row['hash_calls'] <= expected['records'] or row['queries'] != (0 if mode == 'prepare' else 19) or
+            row['streamed_entries'] != (0 if mode == 'prepare' else count) or
             not 0 < row['peak_rss_bytes'] < MEMORY):
         raise ValueError('Invalid full native resource witnesses')
     validate_counters({name: row[name] for name in ('peak_rss_bytes', 'minor_faults', 'major_faults')})
@@ -135,7 +136,7 @@ def run_docker(image):
     fixtures.mkdir(parents=True)
     container = 'ragnarok-full-paged-'+uuid.uuid4().hex
     created = False
-    report = dict(status='running', commands=[], runs=[], observer_host=platform.platform(),
+    report = dict(status='running', schema_version=2, commands=[], runs=[], observer_host=platform.platform(),
                   cases=CASES, memory_bytes=MEMORY, per_value_bytes=VALUE_BYTES,
                   cache_policy='unchanged OS cache; outside-pressure immutable source fixtures; fresh selected files and native execs in one persistent no-swap cgroup')
     def save():

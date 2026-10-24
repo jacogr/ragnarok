@@ -902,3 +902,15 @@ proc compactFullFile*(file: var PagedFile, source: var PagedFile, directory: Pag
   let built = compactFullPaged(PagedOutput(source: input(data), append: appender(data)),
     input(original), graphScratch(workspace), checked, target, limits)
   sealFull(data, built)
+
+proc streamFullEntries*(file: var PagedFile, checked: CheckedFullPagedArtifact, root: StateRoot,
+    visitor: nil FullPagedEntryVisitor, budget: FullPagedWorkLimits): FullPagedStreamResult[
+        FullPagedCounts] =
+  ## Hold the exact immutable native file throughout synchronous value borrowing; no graph scratch or callbacks survive.
+  let data = file.data
+  if data == nil or not data.active:
+    return streamFullPagedEntries(default(PagedInput), checked, root, visitor, budget)
+  let streamed = streamFullPagedEntries(input(data), checked, root, visitor, budget)
+  if streamed.error in {FullPagedStreamError.IOFailure, FullPagedStreamError.ChangedInput}:
+    if not identity(data): data.poisoned = true
+  streamed
