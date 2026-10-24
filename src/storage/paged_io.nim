@@ -5,8 +5,9 @@
 ## Resources are explicit-close/move-only. Independent epoch directory descriptors survive writer retirement.
 import std/assertions
 import std/posix/posix
-import ./[paged_codec, paged_stream, managed_manifest, file_errors]
-import ../codec/[bounded, state_layout]
+import ./[paged_codec, paged_stream, managed_manifest, file_errors, database_identity,
+    full_paged_codec, full_paged_stream]
+import ../codec/[bounded, state_layout, state_trie]
 
 type
   PagedIoResult*[T] = object ## Failed/default native outcomes carry no bytes or directory authority.
@@ -316,14 +317,15 @@ proc openEpoch*(file: var PagedFile, directory: PagedDirectory, epoch: ManagedEp
   let name = epochName(epoch)
   if name.error != FileError.None: return name.error
   openNamed(file, directory, name.value, pin, limit)
-proc openScratch*(file: var PagedFile, directory: PagedDirectory, limit: ByteLimit): FileError =
+proc openTemporary(file: var PagedFile, directory: PagedDirectory, limit: ByteLimit,
+    appendOnly, writerRequired: bool): FileError =
   ## Anonymous replay transport uses a uniquely owned CLOEXEC descriptor and never creates a database candidate name.
   if file.opened: return FileError.Busy
   let checked = directory.check
   if checked != FileError.None: return checked
   let owner = directory.data
   assert owner != nil
-  if not owner.writer: return FileError.WrongIdentity
+  if writerRequired and not owner.writer: return FileError.WrongIdentity
   let stream = temporaryNative()
   if stream == nil: return FileError.IoFailure
   let original = descriptorNative(stream)
@@ -337,7 +339,9 @@ proc openScratch*(file: var PagedFile, directory: PagedDirectory, limit: ByteLim
     if parent >= 0 and closeNative(parent) != 0: result = FileError.IoFailure
   if retired != 0: return FileError.IoFailure
   let flags = duplicateNative(fd, getFlags, 0)
-  if flags < 0 or duplicateNative(fd, setFlags, flags or O_APPEND) != 0: return FileError.IoFailure
+  if flags < 0: return FileError.IoFailure
+  if appendOnly and duplicateNative(fd, setFlags, flags or O_APPEND) != 0:
+    return FileError.IoFailure
   var metadata = default(Stat)
   if posix.fstat(fd, metadata) != 0 or not S_ISREG(metadata.st_mode) or metadata.st_size != 0:
     return FileError.IoFailure
@@ -349,6 +353,9 @@ proc openScratch*(file: var PagedFile, directory: PagedDirectory, limit: ByteLim
   handle = -1
   parent = -1
   file.check
+proc openScratch*(file: var PagedFile, directory: PagedDirectory, limit: ByteLimit): FileError =
+  ## Preserve the writer-only append replay transport; graph workspace uses a private separate mode.
+  openTemporary(file, directory, limit, true, true)
 proc openPending*(file: var PagedFile, directory: PagedDirectory): PagedIoResult[bool] =
   ## Capture only the fixed optional staging file; no scan or unknown-prefix adoption is authorized.
   let checked = directory.check
@@ -363,7 +370,7 @@ proc openPending*(file: var PagedFile, directory: PagedDirectory): PagedIoResult
   let acquired = openNamed(file, directory, "CURRENT.next", PagedPin.Exclusive, ByteLimit(PagedManifestBytes))
   if acquired != FileError.None: return PagedIoResult[bool](status: acquired)
   PagedIoResult[bool](status: FileError.None, completed: true)
-proc readCurrent*(directory: PagedDirectory): PagedIoResult[seq[byte]] =
+proc readSelection(directory: PagedDirectory, width: int): PagedIoResult[seq[byte]] =
   ## CURRENT is bounded metadata, never a selected data-file fallback or whole-file image read.
   let checked = directory.check
   if checked != FileError.None: return PagedIoResult[seq[byte]](status: checked)
@@ -376,9 +383,9 @@ proc readCurrent*(directory: PagedDirectory): PagedIoResult[seq[byte]] =
     if fd >= 0 and closeNative(fd) != 0: result = PagedIoResult[seq[byte]](
         status: FileError.IoFailure)
   var metadata = default(Stat)
-  if posix.fstat(fd, metadata) != 0 or not S_ISREG(metadata.st_mode) or metadata.st_size != PagedManifestBytes:
+  if posix.fstat(fd, metadata) != 0 or not S_ISREG(metadata.st_mode) or metadata.st_size != width:
     return PagedIoResult[seq[byte]](status: FileError.UnsupportedLayout)
-  var bytes = newSeq[byte](PagedManifestBytes)
+  var bytes = newSeq[byte](width)
   var filled = 0
   while filled < bytes.len:
     let count = readNative(fd, addr bytes[filled], csize_t(bytes.len-filled))
@@ -397,6 +404,12 @@ proc readCurrent*(directory: PagedDirectory): PagedIoResult[seq[byte]] =
   fd = -1
   if closeNative(retiring) != 0: return PagedIoResult[seq[byte]](status: FileError.IoFailure)
   PagedIoResult[seq[byte]](status: FileError.None, completed: bytes)
+proc readCurrent*(directory: PagedDirectory): PagedIoResult[seq[byte]] =
+  ## Existing light CURRENT accepts only its exact versioned width.
+  readSelection(directory, PagedManifestBytes)
+proc readFullCurrent*(directory: PagedDirectory): PagedIoResult[seq[byte]] =
+  ## Full CURRENT has a separate fixed width/schema and cannot silently reopen light V1.
+  readSelection(directory, FullPagedManifestBytes)
 proc writeAll(fd: cint, bytes: openArray[byte]): bool =
   ## Genuine short progress advances; EINTR transfers no bytes and never repeats completed bytes.
   var offset = 0
@@ -703,3 +716,103 @@ proc matchesDirectory*(directory: PagedDirectory, receipt: PagedFileIdentity): b
   let data = directory.data
   if data == nil or not data.active or not receipt.ready: return false
   same(data.identity, receipt.directory)
+
+proc truncateNative(fd: cint, extent: int64): cint {.importc: "ftruncate", cdecl,
+    header: "<unistd.h>".}
+  ## Supported Linux/macOS SDKs supply 64-bit off_t for one private anonymous workspace file.
+proc openGraphScratch(file: var PagedFile, directory: PagedDirectory, extent: uint64,
+    limit: ByteLimit): FileError =
+  ## Sparse private extent reservation is constant-space; graph admission explicitly initializes every flag.
+  if extent > uint64(limit) or extent > uint64(high(int64)): return FileError.LimitExceeded
+  let created = openTemporary(file, directory, limit, false, false)
+  if created != FileError.None: return created
+  let data = file.data
+  assert data != nil
+  var status = -1.cint
+  while status != 0:
+    # Repeating the identical anonymous extent after EINTR is idempotent and never changes a selected file.
+    status = truncateNative(data.fd, int64(extent))
+    if status != 0 and posix.errno() != interrupted:
+      data.poisoned = true
+      return FileError.IoFailure
+  data.size = extent
+  file.check
+proc graphScratch(data: FileData): FullPagedScratch =
+  ## Internal random writes are exposed only synchronously to full admission, never as exported callbacks.
+  proc write(offset: PagedOffset, bytes: openArray[byte]): bool {.closure.} =
+    ## Scratch has one anonymous exclusive owner and never grows beyond its admitted exact extent.
+    let start = uint64(offset)
+    if not data.active or data.poisoned or not data.anonymous or data.sealed or not identity(data):
+      data.poisoned = true
+      return false
+    if start > data.size or uint64(bytes.len) > data.size-start: return false
+    if seekNative(data.fd, int64(start), SEEK_SET) != int64(start) or not writeAll(data.fd, bytes):
+      data.poisoned = true
+      return false
+    true
+  FullPagedScratch(input: input(data), write: write)
+proc readFullHeader*(file: var PagedFile, chain: StorageChainId, root: StateRoot,
+    limits: PagedLimits): PagedIoResult[FullPagedResult[FullPagedHeader]] =
+  ## One fixed header read precedes complete admission; source identity and EOF remain held by this owner.
+  let checked = file.check
+  if checked != FileError.None:
+    return PagedIoResult[FullPagedResult[FullPagedHeader]](status: checked)
+  let data = file.data
+  assert data != nil
+  if data.size < uint64(PagedPageBytes):
+    return PagedIoResult[FullPagedResult[FullPagedHeader]](status: FileError.UnsupportedLayout)
+  var raw = default(array[PagedPageBytes, byte])
+  let source = input(data)
+  assert source.read != nil
+  if not source.read(PagedOffset(0), raw):
+    return PagedIoResult[FullPagedResult[FullPagedHeader]](status: FileError.IoFailure)
+  PagedIoResult[FullPagedResult[FullPagedHeader]](status: FileError.None,
+    completed: decodeFullPagedHeader(raw, chain, root, limits))
+proc validateFullFile*(file: var PagedFile, directory: PagedDirectory, header: FullPagedHeader,
+    selected: FullPagedManifest, limits: FullPagedStreamLimits): PagedIoResult[
+        FullPagedStreamResult[CheckedFullPagedArtifact]] =
+  ## Anonymous scratch is freshly owned and always retired; checked metadata retains no descriptors or callbacks.
+  let data = file.data
+  if data == nil or not data.active or not header.initialized:
+    return PagedIoResult[FullPagedStreamResult[CheckedFullPagedArtifact]](
+        status: FileError.Uninitialized)
+  if not directory.sameDirectory(file):
+    return PagedIoResult[FullPagedStreamResult[CheckedFullPagedArtifact]](
+        status: FileError.WrongIdentity)
+  let policy = validateFullPagedPolicy(limits)
+  if policy != FullPagedStreamError.None:
+    let refused = validateFullPaged(default(PagedInput), default(FullPagedScratch), header,
+        selected, limits)
+    return PagedIoResult[FullPagedStreamResult[CheckedFullPagedArtifact]](status: FileError.None,
+      completed: refused)
+  if header.geometry.entries > uint64(limits.scratchBytes) div 2:
+    return PagedIoResult[FullPagedStreamResult[CheckedFullPagedArtifact]](
+        status: FileError.LimitExceeded)
+  var temporary = default(PagedFile)
+  defer:
+    # Native retirement uncertainty overrides a successful graph result before it can grant a retained reader.
+    if temporary.opened and temporary.close != FileError.None:
+      result = PagedIoResult[FullPagedStreamResult[CheckedFullPagedArtifact]](
+          status: FileError.IoFailure)
+  let opened = openGraphScratch(temporary, directory, header.geometry.entries*2,
+      limits.scratchBytes)
+  if opened != FileError.None:
+    return PagedIoResult[FullPagedStreamResult[CheckedFullPagedArtifact]](status: opened)
+  let workspace = temporary.data
+  assert workspace != nil
+  let admitted = validateFullPaged(input(data), graphScratch(workspace), header, selected, limits)
+  if admitted.error in {FullPagedStreamError.IOFailure, FullPagedStreamError.ChangedInput}:
+    # Source identity checks decide whether the held source also needs poisoning after a scratch-only failure.
+    if not identity(data): data.poisoned = true
+  PagedIoResult[FullPagedStreamResult[CheckedFullPagedArtifact]](status: FileError.None,
+      completed: admitted)
+proc lookupFullFile*(file: var PagedFile, checked: CheckedFullPagedArtifact, root: StateRoot,
+    key: StateKey): FullPagedStreamResult[FullPagedLookup] =
+  ## Independently owned lookup bytes survive retirement of this immutable native epoch pin.
+  let data = file.data
+  if data == nil or not data.active:
+    return lookupFullPaged(default(PagedInput), checked, root, key)
+  let found = lookupFullPaged(input(data), checked, root, key)
+  if found.error in {FullPagedStreamError.IOFailure, FullPagedStreamError.ChangedInput}:
+    if not identity(data): data.poisoned = true
+  found

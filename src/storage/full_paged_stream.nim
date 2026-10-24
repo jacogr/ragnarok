@@ -147,6 +147,9 @@ func initWork(limits: FullPagedStreamLimits): Work =
     result.status = FullPagedStreamError.LimitExceeded
   elif uint64(limits.cachePages) > 1:
     result.status = FullPagedStreamError.UnsupportedPolicy
+func validateFullPagedPolicy*(limits: FullPagedStreamLimits): FullPagedStreamError =
+  ## Native callers can reject unsupported resident/cache policies before allocating disk workspace.
+  initWork(limits).status
 proc readExact(io: PagedInput, offset: uint64, output: var openArray[byte], work: var Work): bool =
   ## No buffer or callback escapes synchronous complete-window reads.
   let callback = io.read

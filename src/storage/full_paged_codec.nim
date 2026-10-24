@@ -445,3 +445,37 @@ proc decodeFullPagedRecord*(input: openArray[byte], expected: StateNodeHash,
   let reason = recordHash(record)
   if reason != FullPagedError.None: return refused[TrieRecord](reason)
   FullPagedResult[TrieRecord](status: FullPagedError.None, completed: record)
+
+proc decodeFullPagedSelection*(input: openArray[byte], chain: StorageChainId, root: StateRoot,
+    limits: PagedLimits): FullPagedResult[FullPagedManifest] =
+  ## Bound untrusted CURRENT before opening its epoch; full header/graph binding remains mandatory.
+  if input.len != FullPagedManifestBytes or not magic(input, ManifestMagic):
+    return refused[FullPagedManifest](FullPagedError.InvalidFormat)
+  if hashAt(input, 32) != array[32, byte](chain):
+    return refused[FullPagedManifest](FullPagedError.WrongChain)
+  if hashAt(input, 64) != array[32, byte](root):
+    return refused[FullPagedManifest](FullPagedError.WrongRoot)
+  let epoch = number(input, 96)
+  let pages = number(input, 112)
+  let extent = number(input, 120)
+  let maximum = min(uint64(limits.bytes), uint64(high(int)))
+  if epoch == 0 or pages == 0: return refused[FullPagedManifest](FullPagedError.InvalidFormat)
+  if pages > maximum div 4096: return refused[FullPagedManifest](FullPagedError.LimitExceeded)
+  var leaves = 1'u64
+  while leaves < pages:
+    # Maximum signed byte extent already bounds page count, but doubling is proved independently.
+    if leaves > high(uint64) div 2: return refused[FullPagedManifest](FullPagedError.LengthOverflow)
+    leaves *= 2
+  if leaves > high(uint64) div 2: return refused[FullPagedManifest](FullPagedError.LengthOverflow)
+  let body = pages*4096
+  let slots = leaves+(leaves-1)
+  if slots > (maximum-body) div 32: return refused[FullPagedManifest](FullPagedError.LimitExceeded)
+  if extent != body+slots*32: return refused[FullPagedManifest](FullPagedError.InvalidFormat)
+  let sum = hashBytes(input.toOpenArray(0, 159))
+  if sum.error != FullPagedError.None: return refused[FullPagedManifest](sum.error)
+  if array[32, byte](sum.value) != hashAt(input, 160):
+    return refused[FullPagedManifest](FullPagedError.ChecksumMismatch)
+  FullPagedResult[FullPagedManifest](status: FullPagedError.None,
+    completed: FullPagedManifest(ready: true, chain: chain, selected: root,
+      physical: ManagedEpoch(epoch), ordinary: RepositoryGeneration(number(input, 104)),
+      pages: pages, extent: extent, tree: FullPagedDigest(hashAt(input, 128))))
