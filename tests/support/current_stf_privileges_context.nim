@@ -39,3 +39,15 @@ proc allowanceManagerCode*(mode: int, scheduled: bool): seq[byte] =
   instructions.add(if scheduled and mode in [162, 163]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc allowanceEligibilityCode*(mode: int): seq[byte] =
+  ## Raw dictionary budgets bracket one real halt block; a zero value must not be confused with an absent key.
+  let gas = [0'u64, 21, 22, 23, 100][mode-166]
+  var memory = newSeq[byte](20)
+  memory[8] = 42
+  for index in 0..<8: memory[12+index] = byte((gas shr (8*index)) and 255)
+  let instructions = @[registerImmediate(7, 99), registerImmediate(8, 196608), registerImmediate(9, 0),
+    registerImmediate(10, 0), registerImmediate(11, 196616), registerImmediate(12, 1), @[10'u8, 16],
+        @[50'u8, 0]]
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)
