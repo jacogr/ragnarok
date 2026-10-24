@@ -13,7 +13,9 @@ const
   PagedDescriptorBytes* = 64 ## Fixed disk-search rows contain one key and one payload-relative span.
   PagedManifestBytes* = 193  ## Exact CURRENT width, including its final local integrity checksum.
   HeaderMagic = "RAGNAROK-LIGHT-PAGED-V1\n"
+  ContextHeaderMagic = "RAGNAROK-LIGHT-PAGED-V2\n"
   ManifestMagic = "RAGNAROK-LIGHT-PAGED-MANIFEST-V1\n"
+  ContextManifestMagic = "RAGNAROK-LIGHT-PAGED-MANIFEST-V2\n"
   LeafDomain = "RAGNAROK-LIGHT-PAGED-LEAF-V1\n"
   PadDomain = "RAGNAROK-LIGHT-PAGED-PAD-V1\n"
   NodeDomain = "RAGNAROK-LIGHT-PAGED-NODE-V1\n"
@@ -34,7 +36,7 @@ type
     bytes*: ByteLimit
   PagedGeometry* = object ## Checked addressable extents; no allocation grows with these scalar totals.
     ready: bool
-    count, payload, indexPages, pages, leaves, slots, extent: uint64
+    count, payload, context, indexPages, pages, leaves, slots, extent: uint64
     height: int
   PagedHeader* = object ## Checked shape bound to caller identities, not an authenticated evidence store.
     ready: bool
@@ -50,6 +52,7 @@ type
     ordinary: LightDeltaSequence
     pages, extent: uint64
     tree, integrity: PagedDigest
+    contextual: bool
     ready: bool
   PagedDescriptor* = object ## One checked payload span; global ordering/coverage needs a complete index scan.
     ready: bool
@@ -94,8 +97,15 @@ func entries*(shape: PagedGeometry): uint64 {.requires: shape.ready.} =
 func payloadBytes*(shape: PagedGeometry): uint64 {.requires: shape.ready.} =
   ## Read the exact unpadded proof transport extent.
   shape.payload
+func contextBytes*(shape: PagedGeometry): uint64 {.requires: shape.ready.} =
+  ## Opaque context length is independent of proof/graph payload and physical padding.
+  shape.context
+func contextOffset*(shape: PagedGeometry): PagedOffset {.requires: shape.ready.} =
+  ## Geometry preflight bounds the subtraction and multiplication before any context address is exposed.
+  let pages = shape.context div 4096+uint64(shape.context mod 4096 != 0)
+  PagedOffset((shape.pages-pages)*4096)
 func dataPages*(shape: PagedGeometry): uint64 {.requires: shape.ready.} =
-  ## Include header, padded index and padded payload pages.
+  ## Include header, padded index, payload and optional authenticated context pages.
   shape.pages
 func treeLeaves*(shape: PagedGeometry): uint64 {.requires: shape.ready.} =
   ## Read the power-of-two leaf extent, including domain-separated padding leaves.
@@ -132,7 +142,8 @@ func pageTree(pages, maximum: uint64): PagedCodecResult[PagedGeometry] =
   PagedCodecResult[PagedGeometry](status: PagedCodecError.None,
     completed: PagedGeometry(ready: true, pages: pages, leaves: leaves, slots: slots,
       extent: body+slots*32, height: depth))
-func pagedGeometry*(count, payload: uint64, limits: PagedLimits): PagedCodecResult[PagedGeometry] =
+func pagedGeometry*(count, payload: uint64, limits: PagedLimits, context = 0'u64): PagedCodecResult[
+    PagedGeometry] =
   ## Separate scalar dataset ceilings from future working-set budgets; never allocate a dataset-sized object.
   if count > uint64(limits.entries): return refused[PagedGeometry](PagedCodecError.LimitExceeded)
   if (count == 0 and payload != 0) or count > payload div 41:
@@ -145,11 +156,16 @@ func pagedGeometry*(count, payload: uint64, limits: PagedLimits): PagedCodecResu
   let payloadPages = payload div 4096+uint64(payload mod 4096 != 0)
   if indexPages > high(uint64)-1 or payloadPages > high(uint64)-1-indexPages:
     return refused[PagedGeometry](PagedCodecError.LengthOverflow)
-  let checked = pageTree(1+indexPages+payloadPages, maximum)
+  let dataPages = 1+indexPages+payloadPages
+  let contextPages = context div 4096+uint64(context mod 4096 != 0)
+  if contextPages > high(uint64)-dataPages:
+    return refused[PagedGeometry](PagedCodecError.LengthOverflow) # All section sums are checked before tree growth.
+  let checked = pageTree(dataPages+contextPages, maximum)
   if checked.error != PagedCodecError.None: return checked
   var shape = checked.value
   shape.count = count
   shape.payload = payload
+  shape.context = context
   shape.indexPages = indexPages
   PagedCodecResult[PagedGeometry](status: PagedCodecError.None, completed: shape)
 func number(input: openArray[byte], offset: int, width = 8): uint64 =
@@ -197,10 +213,10 @@ func sequence*(header: PagedHeader): LightDeltaSequence {.requires: header.ready
   header.ordinary
 func initPagedHeader*(chain: StorageChainId, root: StateRoot, epoch: ManagedEpoch,
     sequence: LightDeltaSequence, count, payload: uint64,
-    limits: PagedLimits): PagedCodecResult[PagedHeader] =
+    limits: PagedLimits, context = 0'u64): PagedCodecResult[PagedHeader] =
   ## Prepare format metadata only; no proof-checked or sealed artifact can be manufactured here.
   if uint64(epoch) == 0: return refused[PagedHeader](PagedCodecError.InvalidFormat)
-  let checked = pagedGeometry(count, payload, limits)
+  let checked = pagedGeometry(count, payload, limits, context)
   if checked.error != PagedCodecError.None: return refused[PagedHeader](checked.error)
   PagedCodecResult[PagedHeader](status: PagedCodecError.None,
     completed: PagedHeader(ready: true, chain: chain, stateRoot: root, physical: epoch,
@@ -208,26 +224,36 @@ func initPagedHeader*(chain: StorageChainId, root: StateRoot, epoch: ManagedEpoc
 proc bytes*(header: PagedHeader): seq[byte] {.requires: header.ready.} =
   ## Allocate one fixed detached page; later mutation cannot alter scalar metadata.
   result = newSeq[byte](PagedPageBytes)
-  for index, character in HeaderMagic: result[index] = byte(character)
+  let label = if header.shape.context == 0: HeaderMagic else: ContextHeaderMagic
+  for index, character in label: result[index] = byte(character) # One explicit physical version.
   putHash(result, 24, array[32, byte](header.chain))
   putHash(result, 56, array[32, byte](header.stateRoot))
   put(result, 88, uint64(header.physical))
   put(result, 96, uint64(header.ordinary))
   put(result, 104, header.shape.count)
   put(result, 112, header.shape.payload)
+  put(result, 120, header.shape.context)
 func decodePagedHeader*(input: openArray[byte], chain: StorageChainId, root: StateRoot,
-    limits: PagedLimits): PagedCodecResult[PagedHeader] =
+    limits: PagedLimits, contextLimit = ByteLimit(0)): PagedCodecResult[PagedHeader] =
   ## Require exactly one canonical header page, independent identities and checked dataset geometry.
   if input.len != PagedPageBytes: return refused[PagedHeader](PagedCodecError.InvalidFormat)
-  if not magicMatches(input, HeaderMagic): return refused[PagedHeader](
+  let contextual = uint64(contextLimit) > 0
+  let label = if contextual: ContextHeaderMagic else: HeaderMagic
+  if not magicMatches(input, label): return refused[PagedHeader](
       PagedCodecError.InvalidFormat)
   let bound = identities(input, 24, chain, root)
   if bound != PagedCodecError.None: return refused[PagedHeader](bound)
-  for index in 120..<PagedPageBytes:
+  let context = number(input, 120)
+  if contextual and context == 0:
+    return refused[PagedHeader](PagedCodecError.InvalidFormat) # V2 cannot encode the V1 absence of context.
+  if contextual and context > uint64(contextLimit):
+    return refused[PagedHeader](PagedCodecError.LimitExceeded) # Context admission is separate from dataset bytes.
+  let padding = if contextual: 128 else: 120
+  for index in padding..<PagedPageBytes:
     # Every reserved byte is canonical, including the final page byte.
     if input[index] != 0: return refused[PagedHeader](PagedCodecError.InvalidFormat)
   initPagedHeader(chain, root, ManagedEpoch(number(input, 88)),
-    LightDeltaSequence(number(input, 96)), number(input, 104), number(input, 112), limits)
+    LightDeltaSequence(number(input, 96)), number(input, 104), number(input, 112), limits, context)
 func initialized*(manifest: PagedManifest): bool =
   ## Default manifests grant no selection metadata.
   manifest.ready
@@ -237,7 +263,9 @@ func pageRoot*(manifest: PagedManifest): PagedDigest {.requires: manifest.ready.
 proc manifestPrefix(manifest: PagedManifest): seq[byte] =
   ## Fixed scalar metadata leaves a final checksum slot; private callers ensure initialization.
   result = newSeq[byte](PagedManifestBytes)
-  for index, character in ManifestMagic: result[index] = byte(character)
+  let label = if manifest.contextual: ContextManifestMagic else: ManifestMagic
+  for index, character in label: result[index] = byte(
+      character) # V1 and V2 CURRENT never substitute for one another.
   putHash(result, 33, array[32, byte](manifest.chain))
   putHash(result, 65, array[32, byte](manifest.stateRoot))
   put(result, 97, uint64(manifest.physical))
@@ -255,7 +283,8 @@ proc encodePagedManifest*(header: PagedHeader, tree: PagedDigest,
   if not header.ready: return refused[PagedManifest](PagedCodecError.Uninitialized)
   if uint64(limit) < uint64(PagedManifestBytes): return refused[PagedManifest](
       PagedCodecError.LimitExceeded)
-  var manifest = PagedManifest(ready: true, chain: header.chain, stateRoot: header.stateRoot,
+  var manifest = PagedManifest(ready: true, contextual: header.shape.context > 0,
+    chain: header.chain, stateRoot: header.stateRoot,
     physical: header.physical, ordinary: header.ordinary, pages: header.shape.pages,
     extent: header.shape.extent, tree: tree)
   let encoded = manifestPrefix(manifest)
@@ -282,10 +311,12 @@ func byteLength*(manifest: PagedManifest): uint64 {.requires: manifest.ready.} =
   ## The selected exact EOF includes the complete digest tree.
   manifest.extent
 proc decodePagedManifest*(input: openArray[byte], chain: StorageChainId, root: StateRoot,
-    limits: PagedLimits, limit: ByteLimit): PagedCodecResult[PagedManifest] =
+    limits: PagedLimits, limit: ByteLimit, contextRequired = false): PagedCodecResult[
+        PagedManifest] =
   ## Decode CURRENT before opening its epoch file; count/payload policy is checked later against its header.
   if uint64(input.len) > uint64(limit): return refused[PagedManifest](PagedCodecError.LimitExceeded)
-  if input.len != PagedManifestBytes or not magicMatches(input, ManifestMagic):
+  let label = if contextRequired: ContextManifestMagic else: ManifestMagic
+  if input.len != PagedManifestBytes or not magicMatches(input, label):
     return refused[PagedManifest](PagedCodecError.InvalidFormat)
   let bound = identities(input, 33, chain, root)
   if bound != PagedCodecError.None: return refused[PagedManifest](bound)
@@ -302,7 +333,8 @@ proc decodePagedManifest*(input: openArray[byte], chain: StorageChainId, root: S
   if hashAt(input, 161) != array[32, byte](hashed.value):
     return refused[PagedManifest](PagedCodecError.ChecksumMismatch)
   PagedCodecResult[PagedManifest](status: PagedCodecError.None,
-    completed: PagedManifest(ready: true, chain: chain, stateRoot: root,
+    completed: PagedManifest(ready: true, contextual: contextRequired, chain: chain,
+      stateRoot: root,
       physical: ManagedEpoch(epoch), ordinary: LightDeltaSequence(number(input, 105)),
       pages: pages, extent: extent, tree: PagedDigest(hashAt(input, 129)),
       integrity: PagedDigest(hashAt(input, 161))))
@@ -313,6 +345,8 @@ func validatePagedBinding*(manifest: PagedManifest, header: PagedHeader): PagedC
       header.chain): return PagedCodecError.WrongChain
   if array[32, byte](manifest.stateRoot) != array[32, byte](
       header.stateRoot): return PagedCodecError.WrongRoot
+  if manifest.contextual != (header.shape.context > 0):
+    return PagedCodecError.InvalidFormat # Header and CURRENT must select the same explicit format.
   let epochChanged = uint64(manifest.physical) != uint64(header.physical)
   let sequenceChanged = uint64(manifest.ordinary) != uint64(header.ordinary)
   if epochChanged or sequenceChanged or manifest.pages != header.shape.pages or
@@ -334,7 +368,7 @@ proc decodePagedManifest*(input: openArray[byte], header: PagedHeader,
     return refused[PagedManifest](PagedCodecError.InvalidFormat)
   let limits = PagedLimits(entries: ElementLimit(header.shape.count), bytes: ByteLimit(
       header.shape.extent))
-  decodePagedManifest(input, header.chain, header.stateRoot, limits, limit)
+  decodePagedManifest(input, header.chain, header.stateRoot, limits, limit, header.shape.context > 0)
 func key*(descriptor: PagedDescriptor): StateKey {.requires: descriptor.ready.} =
   ## Return the detached serialized query identity.
   descriptor.query
