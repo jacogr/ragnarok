@@ -49,7 +49,26 @@ The maintainer confirmed the previous batch merged on2026-10-21 and lifted the
 publication hold. The crypto foundation and this upgrade begin the fresh stack with a30-PR limit.
 Complete the coordinated migration and required checks before publishing it.
 
-## Explicit incomplete capabilities during migration
+## Current whole-map accumulation evidence
+
+The current complete STF path implements bounded modified-account N/M selection
+and selected physical-write publication. Supervised storage, request, upgrade and
+handoff maps, conflict annulment with retained provision, privileged queues and
+funded service lifecycle cases now have independently calculated full-map witnesses.
+See [supervised conflicts](current-stf-supervised-conflicts.md),
+[current-profile checkpoint continuation](current-stf-profile-replay.md) and
+[epoch composition](current-stf-epoch-composition.md). These cases exercise real
+signed blocks and the current publication path. Legacy self-only batch/effect APIs
+retain their explicit Unsupported provenance refusal; those narrower APIs do not
+summarize current complete STF capability. Full published JAM wire parity remains
+separate, and historical fixtures are unchanged.
+
+## Earlier host-migration capability record
+
+The foreign publication gates described below record the earlier host-only stage.
+Current whole-map publication evidence is summarized above; existing legacy guards
+remain intact.
+
 
 The module catalogue and memory compilation path use the current refinement IDs9–15.
 Database-backed compilation now uses the retained historical source adapter,

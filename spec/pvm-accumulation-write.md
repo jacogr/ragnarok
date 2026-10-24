@@ -1,5 +1,16 @@
 # Accumulation storage write host
 
+## Current complete STF publication
+
+The complete current STF path now applies bounded modified-account conflict and
+account selection before publishing supervised effects. Independent signed
+whole-map cases cover this host and selected panic/checkpoint behavior; see
+[supervised conflicts](current-stf-supervised-conflicts.md) and
+[the coordinated current status](graypaper-unreleased-upgrade.md#current-whole-map-accumulation-evidence).
+The earlier host-only/legacy batch publication gates recorded below remain valid
+for those narrower APIs, whose Unsupported ancestry guards are unchanged. They do
+not describe the current complete STF path or establish full JAM wire parity.
+
 ## Current unreleased Gray Paper contract
 
 Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `pvm_invocations.tex`,
@@ -10,8 +21,8 @@ the target's effective supervisor and creation slot before namespace hashing, th
 update its counters and storage atomically. Funding uses that target's liquid and
 supervisor balances. Missing targets return WHO, unauthorized targets HUH and
 underfunded changes FULL after complete memory capture. Dynamic fees use the
-current length registers. Foreign ancestry remains Unsupported for parallel batch
-publication until modified-account conflict selection is implemented.
+current length registers. Legacy self-only batch APIs retain Unsupported foreign ancestry. The complete STF
+route uses bounded modified-account selection and selected-write proofs.
 
 Scope/completion: preserve the self-only API and bounded self-key trace; add an
 explicit nominal target overload. Check insert/replace/delete, target-only funding,

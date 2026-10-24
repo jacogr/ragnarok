@@ -56,22 +56,22 @@ def original(profile):
     return parent
 
 
-def effects(result,parent,profile,slot,budget):
-    """The old empty incarnation can retire only at6; fresh metadata/Q and an exact second funding debit replace it atomically."""
+def effects(result,parent,profile,slot,budget,*,creation_slot=4,retirement_slot=6):
+    """The old empty incarnation retires at the explicit later slot; fresh metadata/Q and a second funding debit replace it atomically."""
     key=chapter_service(255,99);code,wide,narrow=account_parse(parent[key],105);wide,narrow=list(wide),list(narrow)
-    child=chapter_service(255,77);kept=profile!='panic';retired=slot==6 and kept
+    child=chapter_service(255,77);kept=profile!='panic';retired=slot==retirement_slot and kept
     recreated=retired and profile!='checkpoint-before-recreate'
     mode=PROFILES.index(profile) if profile in PROFILES[:4] else 0
     source=1 if mode in (1,3) else 0;pools=(224,0) if mode in (0,1) else (0,224)
-    if slot==4 and kept:
+    if slot==creation_slot and kept:
         wide[source]-=224
-        result[child]=account_wire((digest(replacement()),(*pools,100,19,0,0),(0,4,0,99,99,0)))
+        result[child]=account_wire((digest(replacement()),(*pools,100,19,0,0),(0,creation_slot,0,99,99,0)))
     if retired:
         assert child in parent
         result.pop(child);wide[0]+=224
     if recreated:
         wide[source]-=224
-        result[child]=account_wire((digest(replacement()),(*pools,200,39,110,0),(2,6,0,99,99,0)))
+        result[child]=account_wire((digest(replacement()),(*pools,200,39,110,0),(2,retirement_slot,0,99,99,0)))
         result[request_key(77,digest(replacement()),len(replacement()))]=request_wire(())
     narrow[2]=slot;result[key]=account_wire((code,wide,narrow))
     instructions,_=program(profile)

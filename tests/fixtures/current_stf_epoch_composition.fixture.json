@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_EPOCH_COMPOSITION",
+  "files": {
+    "current-stf-epoch-composition.json": "aaf7124e25fc10aa927cb54e34cd148371225909cdd4d4b885544bdb0120d828"
+  },
+  "target": "current-stf-epoch-composition.json"
+}

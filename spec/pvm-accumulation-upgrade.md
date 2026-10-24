@@ -1,5 +1,16 @@
 # Accumulation upgrade host
 
+## Current complete STF publication
+
+The complete current STF path now applies bounded modified-account conflict and
+account selection before publishing supervised effects. Independent signed
+whole-map cases cover this host and selected panic/checkpoint behavior; see
+[supervised conflicts](current-stf-supervised-conflicts.md) and
+[the coordinated current status](graypaper-unreleased-upgrade.md#current-whole-map-accumulation-evidence).
+The earlier host-only/legacy batch publication gates recorded below remain valid
+for those narrower APIs, whose Unsupported ancestry guards are unchanged. They do
+not describe the current complete STF path or establish full JAM wire parity.
+
 ## Current unreleased pin
 
 The [coordinated upgrade](graypaper-unreleased-upgrade.md) targets
@@ -7,7 +18,8 @@ The [coordinated upgrade](graypaper-unreleased-upgrade.md) targets
 r7 selects the account (all ones means self), r8 points to the hash, r9/r10 carry
 the minimum accumulation/transfer gas. The self path preserves supervisor fields
 and current account-write proofs. Authorized foreign mutation now executes against
-the retained invocation map, while parallel batch publication remains explicitly gated. Underfunding drains gas to zero. The details and verification
+the retained invocation map, while the complete STF route publishes selected foreign effects through bounded
+modified-account proofs. Legacy self-only batch APIs remain gated. Underfunding drains gas to zero. The details and verification
 below retain the historical release argument layout.
 
 ## Supervised target execution
@@ -19,10 +31,10 @@ supervisor creation slot, then replaces exactly the code hash and two gas fields
 one atomic store successor. Self remains legal even when another service supervises it.
 The existing self-only API delegates to the same checked implementation.
 
-Foreign metadata marks account ancestry `Unsupported`; later self writes cannot
-reset it. This is an execution capability, not a claim of parallel publication:
-`accpar` requires modified-account conflict selection before foreign effects can be
-merged. Retain the batch gate until that selection and its provenance are implemented.
+In legacy self-only batch APIs, foreign metadata marks account ancestry
+`Unsupported`; later self writes cannot reset it. These guards remain unchanged.
+The complete current STF route separately implements bounded `accpar` conflict
+selection and selected-write publication, with whole-map evidence linked above.
 No complete state or block parity is claimed.
 
 Completion: upgrade/effects/dispatch and publication consumers; foreign success,

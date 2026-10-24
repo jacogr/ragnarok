@@ -55,15 +55,15 @@ def original(profile):
     return parent
 
 
-def effects(result,parent,profile,slot,budget):
+def effects(result,parent,profile,slot,budget,*,creation_slot=4,retirement_slot=6):
     """A newborn empty child survives same-slot eject; later eject refunds both pools into creator liquid exactly once."""
     key=chapter_service(255,99);code,wide,narrow=account_parse(parent[key],105);wide,narrow=list(wide),list(narrow)
-    child=chapter_service(255,77);created=slot==4 and profile!='panic';retired=slot==6 and profile not in ('panic','checkpoint-before-eject')
+    child=chapter_service(255,77);created=slot==creation_slot and profile!='panic';retired=slot==retirement_slot and profile not in ('panic','checkpoint-before-eject')
     mode=PROFILES.index(profile) if profile in PROFILES[:4] else 0
     if created:
         wide[1 if mode in (1,3) else 0]-=224
         pools=(224,0) if mode in (0,1) else (0,224)
-        result[child]=account_wire((digest(replacement()),(*pools,100,19,0,0),(0,4,0,99,99,0)))
+        result[child]=account_wire((digest(replacement()),(*pools,100,19,0,0),(0,creation_slot,0,99,99,0)))
     if retired:
         assert child in parent
         result.pop(child);wide[0]+=224 # Eject always consolidates both child pools into invoker liquid.
