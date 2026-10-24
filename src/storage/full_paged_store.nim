@@ -161,9 +161,9 @@ proc close*(reader: var FullPagedReader): FileError =
   data.active = false
   reader.data = nil
   if data.file.opened: data.file.close else: FileError.None
-proc openFullPagedReader*(reader: var FullPagedReader, path: string,
-    config: FullPagedNativeConfig): FullPagedNativeResult[bool] =
-  ## CURRENT read, independent shared pin, complete admission and CURRENT reread exclude selection races.
+proc openReader(reader: var FullPagedReader, path: string, config: FullPagedNativeConfig,
+    expected: FullPagedManifest, explicitEpoch: bool): FullPagedNativeResult[bool] =
+  ## One shared-pin admission path binds either exact CURRENT or an independently supplied complete epoch manifest.
   if reader.opened: return fileFailed[bool](FileError.Busy)
   var directory = default(PagedDirectory)
   var file = default(PagedFile)
@@ -174,9 +174,18 @@ proc openFullPagedReader*(reader: var FullPagedReader, path: string,
       result = fileFailed[bool](FileError.IoFailure)
   let opened = openDirectory(directory, path, false, false)
   if opened != FileError.None: return fileFailed[bool](opened)
-  let current = directory.readFullCurrent
-  if current.error != FileError.None: return fileFailed[bool](current.error)
-  let selected = decodeFullPagedSelection(current.value, config.chain, config.root,
+  var selection: seq[byte] = @[]
+  if explicitEpoch:
+    # Caller-known immutable manifest/root authority never follows disk-discovered history or CURRENT.
+    let encoded = expected.bytes
+    if encoded.error != FullPagedError.None: return codecFailed[bool](encoded.error)
+    for octet in encoded.value: selection.add(octet) # Exactly192 bytes, independent of dataset extent.
+  else:
+    # Ordinary startup captures the current selected bytes before acquiring its independent shared pin.
+    let current = directory.readFullCurrent
+    if current.error != FileError.None: return fileFailed[bool](current.error)
+    selection = current.value
+  let selected = decodeFullPagedSelection(selection, config.chain, config.root,
       config.limits.dataset)
   if selected.error != FullPagedError.None: return codecFailed[bool](selected.error)
   let pinned = openEpoch(file, directory, selected.value.epoch, PagedPin.Shared,
@@ -185,21 +194,31 @@ proc openFullPagedReader*(reader: var FullPagedReader, path: string,
   let header = file.readFullHeader(config.chain, config.root, config.limits.dataset)
   if header.error != FileError.None: return fileFailed[bool](header.error)
   if header.value.error != FullPagedError.None: return codecFailed[bool](header.value.error)
-  let binding = decodeFullPagedManifest(current.value, header.value.value)
+  let binding = decodeFullPagedManifest(selection, header.value.value)
   if binding.error != FullPagedError.None: return codecFailed[bool](binding.error)
   let admitted = file.validateFullFile(directory, header.value.value, selected.value, config.limits)
   if admitted.error != FileError.None: return fileFailed[bool](admitted.error)
   if admitted.value.error != FullPagedStreamError.None: return graphFailed[bool,
       CheckedFullPagedArtifact](admitted.value)
-  let again = directory.readFullCurrent
-  if again.error != FileError.None: return fileFailed[bool](again.error)
-  if current.value != again.value: return fileFailed[bool](FileError.StaleView)
+  if not explicitEpoch:
+    # Only current-selection readers need this race check; explicit old manifests stay bound to their pinned immutable file.
+    let again = directory.readFullCurrent
+    if again.error != FileError.None: return fileFailed[bool](again.error)
+    if selection != again.value: return fileFailed[bool](FileError.StaleView)
   let checked = file.check
   if checked != FileError.None: return fileFailed[bool](checked)
   let retired = directory.close
   if retired != FileError.None: return fileFailed[bool](retired)
   reader.data = ReaderData(file: move(file), checked: admitted.value.value, active: true)
   FullPagedNativeResult[bool](status: FullPagedNativeError.None, completed: true)
+proc openFullPagedReader*(reader: var FullPagedReader, path: string,
+    config: FullPagedNativeConfig): FullPagedNativeResult[bool] =
+  ## Strict CURRENT startup uses an independent shared pin, complete graph admission and exact selection reread.
+  openReader(reader, path, config, default(FullPagedManifest), false)
+proc openFullPagedEpochReader*(reader: var FullPagedReader, path: string,
+    config: FullPagedNativeConfig, expected: FullPagedManifest): FullPagedNativeResult[bool] =
+  ## Reopen one independently known immutable epoch after restart; no directory scan or inferred historical root is allowed.
+  openReader(reader, path, config, expected, true)
 proc selected*(reader: FullPagedReader): FullPagedNativeResult[FullPagedManifest] =
   ## A passive selected receipt describes this held reader, independent of later CURRENT changes.
   let data = reader.data
