@@ -257,3 +257,18 @@ CI evidence: [run40102267534, both attempts](https://github.com/jacogr/ragnarok/
 Local downloaded reports are under`build/pvm12/ci-40102267534/` and
 `build/pvm12/ci-40102267534-attempt2/`. Broader whole-JAM performance, full state
 serialization/parity and compiled execution remain outside this qualification.
+
+## Promoted-table probe order candidate, 2026-10-24
+
+After promotion, probe the existing direct table before the two small ways. The
+recorded direct-mapping study has30,763,791 spill hits among32,055,270 Pinky
+requests, so most of these requests can avoid two unsuccessful small-way checks.
+An unpromoted invocation performs one nil-table test before the unchanged small
+lookup. Promotion threshold, capacity, exact successful-result/full-PC tags,
+miss insertion/replacement and invocation ownership remain unchanged. A direct
+collision can still fall back to either genuine small-way result.
+
+Selected cache-pressure/full-state, step, host-reentry and mixed-policy suites
+qualify correctness and balanced ARC. Prior desktop spill-first screening on the
+old mapping was unproven; the changed direct mapping and Linux paired/noise job
+justify a fresh measurement. No speed claim is established until CI qualification.
