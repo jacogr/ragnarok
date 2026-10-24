@@ -751,18 +751,18 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
         callAddress: item.address))
   InstructionEvaluation(status: StepError.None, effect: InstructionEffect(kind: outcome))
 proc evaluateInstruction[UsePlan: static[bool]](program: Program, info: var MachineInfo,
-    memory: var WorkingMemory, limit: GasCycleLimit, control, memoryAccess, hostCalls: bool,
+    memory: var WorkingMemory, limit: GasCycleLimit, control, memoryAccess, hostCalls: static[bool],
         cache: var ExecutionCache,
     decoded: ProgramResult[Instruction], plan: GasPlan = default(GasPlan)): InstructionEvaluation =
-  ## Expand the shared checked transition with the original legacy helper interface.
+  ## Compile each literal capability scope separately; no runtime scope flags cross the private evaluator boundary.
   instructionBody[UsePlan, false](program, info, memory, limit, control, memoryAccess, hostCalls,
       cache, decoded, plan, default(GasMemo))
 
 proc memoEvaluateInstruction(program: Program, info: var MachineInfo,
-    memory: var WorkingMemory, limit: GasCycleLimit, control, memoryAccess, hostCalls: bool,
+    memory: var WorkingMemory, limit: GasCycleLimit, control, memoryAccess, hostCalls: static[bool],
         cache: var ExecutionCache,
     decoded: ProgramResult[Instruction], memo: GasMemo): InstructionEvaluation =
-  ## Use the same checked transition with an exclusively borrowed lazy pricing handle.
+  ## Compile the full literal scope with an exclusively borrowed lazy pricing handle.
   instructionBody[false, true](program, info, memory, limit, control, memoryAccess, hostCalls,
       cache, decoded, default(GasPlan), memo)
 
@@ -793,8 +793,8 @@ proc publishInstruction(program: Program, memory: var WorkingMemory, info: Machi
   publishInstruction(program, memory.current, info, effect, terminal)
 
 proc stepDecoded[UsePlan: static[bool]](source: Machine, limit: GasCycleLimit, control,
-    memoryAccess, hostCalls: bool, cache: var ExecutionCache, decoded: ProgramResult[Instruction],
-        plan: GasPlan = default(GasPlan)): StepResult =
+    memoryAccess, hostCalls: static[bool], cache: var ExecutionCache, decoded: ProgramResult[
+        Instruction], plan: GasPlan = default(GasPlan)): StepResult =
   ## Single-step APIs retain their exact immutable-snapshot boundary and capability/refusal semantics.
   let captured = machineInfo(source)
   let owner = programOf(source)
@@ -813,7 +813,7 @@ proc stepDecoded[UsePlan: static[bool]](source: Machine, limit: GasCycleLimit, c
 
 # Single-step calls never inherit cached work across owners, scopes or local simulation limits.
 proc stepImpl[UsePlan: static[bool]](source: Machine, limit: GasCycleLimit, control, memoryAccess,
-    hostCalls: bool, plan: GasPlan = default(GasPlan)): StepResult =
+    hostCalls: static[bool], plan: GasPlan = default(GasPlan)): StepResult =
   var cache = initExecutionCache()
   let owner = programOf(source)
   let current = machineInfo(source)
@@ -845,7 +845,7 @@ proc stepOnce*(source: Machine, limit: GasCycleLimit): StepResult =
   stepImpl[false](source, limit, true, true, true)
 
 proc stepWithPlan(source: Machine, plan: GasPlan, control, memoryAccess,
-    hostCalls: bool): StepResult =
+    hostCalls: static[bool]): StepResult =
   ## Validate the immutable policy once before entering the same scoped single-step evaluator.
   let configured = gasPlanInfo(plan)
   if configured.error != GasPlanError.None: return StepResult(status: StepError.InvalidGasPlan)
