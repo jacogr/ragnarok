@@ -911,3 +911,38 @@ proc resumeFullPagedInitialization*(writer: var FullPagedWriter, path: string,
   if not sameManifest(authored.checked.manifest, expected):
     return refused[FullPagedPublication](FullPagedNativeError.InvalidCandidate)
   writer.publish(candidate)
+
+proc rootInfo*(reader: FullPagedReader, root: StateRoot): FullPagedNativeResult[FullPagedRoot] =
+  ## Return copied completely admitted counts for an independently selected retained root, without granting chain/history trust.
+  let data = reader.data
+  if data == nil or not data.active: return refused[FullPagedRoot](
+      FullPagedNativeError.Uninitialized)
+  let held = data.file.check
+  if held != FileError.None: return fileFailed[FullPagedRoot](held)
+  let header = data.checked.header
+  for index in 0..<header.len:
+    # No mutable inventory backing storage or reader retirement authority escapes this metadata lookup.
+    let claim = header.retainedRoot(index)
+    if array[32, byte](claim.root) == array[32, byte](root):
+      return FullPagedNativeResult[FullPagedRoot](status: FullPagedNativeError.None,
+          completed: claim)
+  FullPagedNativeResult[FullPagedRoot](status: FullPagedNativeError.GraphFailure,
+    graphCause: FullPagedStreamError.UnknownRoot, graphCodec: FullPagedError.Uninitialized)
+proc visitEntries*(reader: var FullPagedReader, root: StateRoot, visitor: nil FullPagedEntryVisitor,
+    budget: FullPagedWorkLimits): FullPagedNativeResult[FullPagedCounts] =
+  ## Borrow sorted complete-root values synchronously under this reader's immutable pin; caller stages output until full success.
+  let data = reader.data
+  if data == nil or not data.active: return refused[FullPagedCounts](
+      FullPagedNativeError.Uninitialized)
+  let streamed = data.file.streamFullEntries(data.checked, root, visitor, budget)
+  if streamed.error != FullPagedStreamError.None:
+    return graphFailed[FullPagedCounts, FullPagedCounts](streamed)
+  FullPagedNativeResult[FullPagedCounts](status: FullPagedNativeError.None,
+      completed: streamed.value)
+proc visitEntries*(reader: var FullPagedReader, root: StateRoot,
+    visitor: nil FullPagedEntryVisitor): FullPagedNativeResult[FullPagedCounts] =
+  ## Default traversal retains the originally admitted finite work policy, never an unbounded producer allowance.
+  let data = reader.data
+  if data == nil or not data.active: return refused[FullPagedCounts](
+      FullPagedNativeError.Uninitialized)
+  reader.visitEntries(root, visitor, data.checked.limits.work)

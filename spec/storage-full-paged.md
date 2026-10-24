@@ -425,3 +425,35 @@ charged selected-file cache. They do not establish a throughput result, deployme
 resident StateStore/execution bound, complete JAM serialization or hardware power-loss durability.
 The selected Python receipt controls reject false identity/geometry/depth, leaked heap/descriptors,
 omitted graph work/queries and over-limit RSS. Full/light consumer integration remains open.
+
+## Complete selected-root entry transport
+
+Full reader rootInfo returns copied completely admitted per-root counts for an independently
+selected retained root. It grants no chain/history trust and exports no mutable inventory.
+visitEntries lends serialized-key-ordered values synchronously, with zero-based ordinals. Each
+borrow ends at callback return; callers must copy retained output and stage it until the entire
+operation succeeds. VisitorRefused is an explicit consumer refusal, distinct from file corruption.
+
+The stream walks only the captured complete graph through authenticated record/index reads.
+Its fixed-depth traversal rechecks routed keys, node/entry/value totals, subtree cardinality and
+final source extent. Complete prior admission and immutable captured-root reads exclude cycles/
+repeated subtrees, so this readonly walk needs no second visited table, disk scratch or resident
+index. Native file identity and shared pin checks remain active. Per-call IO/hash/visit/read/write
+ceilings can only tighten inherited policy; a zero IO ceiling refuses before source or visitor
+dispatch. Partial callback delivery never produces a successful whole-stream receipt.
+
+The storage_full_paged_entries suite covers selected/historical root separation and key order,
+empty roots, present-empty/cross-page values, depth248/250 nodes, owned callback copies, default/
+unknown roots, callback refusal, exact and one-short work limits, every observed source callback
+and native read failure, strict reopen after poisoned IO and zero native writes/scratch creation
+during streaming.1000 consumer capture/release cycles retain51,120 ->51,120 occupied bytes. The
+ordinary graph suite remains a regression control. The strict resource probe additionally walks
+every selected map entry byte-for-byte and records its complete count in a version2 native receipt.
+
+The version2 Linux panel passes all16 fresh phases with complete entry walks of every dataset
+under both cache settings, including the76,586,976/78,180,320-byte files in the same64MiB no-swap
+group. Maximum native RSS is18,141,184 bytes; retained writer/reader heap remains25,072/8608 bytes
+across every size/depth/cache case and every heap/descriptor sample retires exactly. Each open
+receipt records2,8,72 or2048 streamed entries as appropriate. Swap and OOM/OOM-kill counters remain
+zero; actual reclaim-limit events reach23,245. Source/provider/binary and exact selected-file
+identities are reverified. The same optional-kernel-peak and concrete-profile limitations apply.

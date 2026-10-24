@@ -24,7 +24,8 @@ class FullPagedResources(unittest.TestCase):
         """Complete native owner retention is fixed and every source/target descriptor retires."""
         values = (mode, reference['count'], cache, reference['root'], reference['file_bytes'],
                   reference['pages'], 700, 15000, 700, 3, 8 if mode == 'prepare' else 5, 3,
-                  1000, 1000, 1000, 0 if mode == 'prepare' else 19, 16000000, 80, 0)
+                  1000, 1000, 1000, 0 if mode == 'prepare' else 19, 16000000, 80, 0,
+                  0 if mode == 'prepare' else reference['count'])
         return '\t'.join(map(str, values))
 
     def test_valid_and_closed_cases(self):
@@ -60,7 +61,7 @@ class FullPagedResources(unittest.TestCase):
         fields = self.native(reference).split('\t')
         changes = {0: 'open', 1: '8', 2: '1', 3: '34'*32, 4: str(int(fields[4])+1),
                    5: str(int(fields[5])+1), 7: '70000', 8: '701', 9: '2', 10: '7', 11: '4',
-                   12: '0', 13: '0', 14: '0', 15: '19', 16: str(64*1024*1024), 17: '-1'}
+                   12: '0', 13: '0', 14: '0', 15: '19', 16: str(64*1024*1024), 17: '-1', 19: '1'}
         for index, value in changes.items():
             altered = fields.copy()
             altered[index] = value

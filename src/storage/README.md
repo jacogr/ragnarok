@@ -475,3 +475,8 @@ Make targets and full-paged-resources Docker target qualify fresh full writers/r
 from resident fixture preparation. The [full paged contract](../../spec/storage-full-paged.md)
 records the concrete64MiB no-swap profile, populated/deep cases, source/provider identities and
 observed native/cgroup measurements. Resident StateStore/execution memory is a separate contract.
+
+Full native readers also lend sorted complete-root entries through synchronous visitEntries
+callbacks, with copied rootInfo counts and per-call ceilings that only tighten inherited policy.
+This supports complete StateStore transport while preserving the native pin and bounded storage
+working set. Consumers stage and own their requested copies; partial delivery is never success.

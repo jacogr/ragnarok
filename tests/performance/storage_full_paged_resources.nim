@@ -149,6 +149,20 @@ proc producer(file: File, header: FullPagedHeader, perValue: ByteLimit): FullPag
     except:
       return FullPagedProducerStep.Failed # Source seek/IO uncertainty is never a successful producer end.
   next
+type StreamCheck = ref object ## Private bounded callback state retains no value bytes, physical records or native owner.
+  next: int
+proc entryVisitor(owner: StreamCheck, count: int): FullPagedEntryVisitor =
+  ## Verify every complete-root key/value in sorted order without materializing any map inside pressure.
+  proc visit(ordinal: uint64, selected: StateKey, value: openArray[byte]): bool {.closure.} =
+    ## Only a fully processed value advances the witness; borrowed bytes never outlive this synchronous callback.
+    assert ordinal == uint64(owner.next) and owner.next < count
+    assert array[31, byte](selected) == array[31, byte](key(ordinal, count))
+    let expected = if owner.next == count-1: 0 else: valueSize(count)
+    assert value.len == expected
+    for index in 0..<value.len: assert value[index] == byte((index+owner.next) mod 251) # Every selected map byte.
+    inc owner.next
+    true
+  visit
 proc run(mode, path, source: string, count, cache: int, root: StateRoot, records, payload: uint64) =
   ## One fresh native exec measures authoring or strict admission; all source/target descriptors and heap retire before receipt formatting.
   let policy = config(root, cache)
@@ -162,6 +176,7 @@ proc run(mode, path, source: string, count, cache: int, root: StateRoot, records
   var opened = baseline
   var openHandles = handles
   var queries = 0
+  var streamedEntries = 0
   resetIo()
   resetHash(0)
   block:
@@ -206,6 +221,11 @@ proc run(mode, path, source: string, count, cache: int, root: StateRoot, records
       assert missingRoot.error == FullPagedNativeError.GraphFailure
       assert missingRoot.graphError == FullPagedStreamError.UnknownRoot
       queries += 3
+      let streamed = StreamCheck()
+      let complete = reader.visitEntries(root, entryVisitor(streamed, count))
+      assert complete.error == FullPagedNativeError.None and complete.value.visits == records
+      assert streamed.next == count
+      streamedEntries = streamed.next
       assert reader.close == FileError.None
   let released = occupiedStorageBytes()
   let finalHandles = descriptors()
@@ -219,7 +239,7 @@ proc run(mode, path, source: string, count, cache: int, root: StateRoot, records
     "\t", header.geometry.dataPages, "\t", baseline, "\t", opened, "\t", released,
     "\t", handles, "\t", openHandles, "\t", finalHandles, "\t", ioCalls(readIo), "\t", ioCalls(
         writeIo),
-    "\t", hashCalls(), "\t", queries, "\t", rss, "\t", minor, "\t", major
+    "\t", hashCalls(), "\t", queries, "\t", rss, "\t", minor, "\t", major, "\t", streamedEntries
 proc main() {.raises.} =
   ## Finite shallow/deep cases prove all argument conversions and derived extents before native IO.
   assert paramCount() in [4, 8]
