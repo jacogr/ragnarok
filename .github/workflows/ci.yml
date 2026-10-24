@@ -712,7 +712,7 @@ jobs:
   # Original upstream campaigns and the JAM bridge have separate verdicts and failure artifacts.
   pvm-fuzz:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full')) }}
-    name: Fuzz PVM
+    name: Fuzz / PVM
     timeout-minutes: 30
     runs-on: ubuntu-latest
     env:
