@@ -782,7 +782,8 @@ proc graphScratch(data: FileData): FullPagedScratch =
     true
   FullPagedScratch(input: input(data), write: write)
 proc readFullHeader*(file: var PagedFile, chain: StorageChainId, root: StateRoot,
-    limits: PagedLimits): PagedIoResult[FullPagedResult[FullPagedHeader]] =
+    limits: PagedLimits, contextLimit = ByteLimit(0)): PagedIoResult[FullPagedResult[
+        FullPagedHeader]] =
   ## One fixed header read precedes complete admission; source identity and EOF remain held by this owner.
   let checked = file.check
   if checked != FileError.None:
@@ -797,7 +798,7 @@ proc readFullHeader*(file: var PagedFile, chain: StorageChainId, root: StateRoot
   if not source.read(PagedOffset(0), raw):
     return PagedIoResult[FullPagedResult[FullPagedHeader]](status: FileError.IoFailure)
   PagedIoResult[FullPagedResult[FullPagedHeader]](status: FileError.None,
-    completed: decodeFullPagedHeader(raw, chain, root, limits))
+    completed: decodeFullPagedHeader(raw, chain, root, limits, contextLimit))
 proc validateFullFile*(file: var PagedFile, directory: PagedDirectory, header: FullPagedHeader,
     selected: FullPagedManifest, limits: FullPagedStreamLimits): PagedIoResult[
         FullPagedStreamResult[CheckedFullPagedArtifact]] =
@@ -859,7 +860,8 @@ proc sealFull(data: FileData, built: FullPagedBuildResult): PagedIoResult[FullPa
     data.sealed = true
   PagedIoResult[FullPagedBuildResult](status: FileError.None, completed: built)
 proc buildFullFile*(file: var PagedFile, directory: PagedDirectory, producer: nil FullPagedProducer,
-    header: FullPagedHeader, limits: FullPagedBuildLimits): PagedIoResult[FullPagedBuildResult] =
+    header: FullPagedHeader, limits: FullPagedBuildLimits, context: openArray[byte] = [
+        ]): PagedIoResult[FullPagedBuildResult] =
   ## Author only a fresh exclusive empty target; complete graph admission precedes native sealing.
   let data = file.data
   if data == nil or not data.active or data.poisoned or data.sealed or not data.exclusive:
@@ -879,7 +881,7 @@ proc buildFullFile*(file: var PagedFile, directory: PagedDirectory, producer: ni
   let workspace = temporary.data
   assert workspace != nil
   let built = buildFullPaged(PagedOutput(source: input(data), append: appender(data)),
-    graphScratch(workspace), producer, header, limits)
+    graphScratch(workspace), producer, header, limits, context)
   sealFull(data, built)
 
 proc compactFullFile*(file: var PagedFile, source: var PagedFile, directory: PagedDirectory,
@@ -922,3 +924,15 @@ proc streamFullEntries*(file: var PagedFile, checked: CheckedFullPagedArtifact, 
   if streamed.error in {FullPagedStreamError.IOFailure, FullPagedStreamError.ChangedInput}:
     if not identity(data): data.poisoned = true
   streamed
+
+proc contextFullFile*(file: var PagedFile, checked: CheckedFullPagedArtifact,
+    budget: FullPagedWorkLimits): FullPagedStreamResult[FullPagedContext] =
+  ## Borrow the same captured immutable file identity/pin as point reads while copying opaque context privately.
+  let data = file.data
+  if data == nil or not data.active:
+    return readFullPagedContext(default(PagedInput), checked,
+        budget) # No native callback survives a closed owner.
+  let captured = readFullPagedContext(input(data), checked, budget)
+  if captured.error in {FullPagedStreamError.IOFailure, FullPagedStreamError.ChangedInput}:
+    if not identity(data): data.poisoned = true # Preserve native lifetime uncertainty exactly as ordinary full lookups.
+  captured

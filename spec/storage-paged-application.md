@@ -33,8 +33,8 @@ implicit database migration. Header and CURRENT versions must agree. Dataset byt
 entire padded context and tree, independently of the context byte ceiling. Overflow, hostile
 lengths and exact/one-short physical ceilings must refuse before allocation or cryptography.
 
-The initial codec layer does not enable native application startup. Existing native builders
-and graph admission explicitly refuse V2 until their bounded context implementations land.
+The initial codec layer does not enable native application startup. Unsupported native paths explicitly refuse V2 until their bounded context implementations land;
+the following sections record each enabled implementation.
 Later native authoring must require exact caller-supplied context, charge its IO/hash work,
 authenticate every context byte, preserve it exactly in compaction and bind native replay cleanup
 to the whole artifact. Context extraction returns owned bounded bytes, without file/pin aliases.
@@ -71,3 +71,44 @@ build/graph and light streaming regressions pass, including their1000-cycle rele
 All419 production modules and the peer entry point pass local semantic Smoke; source-owned
 inventory and separate stable pinned formatting checks pass. Native V2 context IO and application
 startup remain subsequent layers.
+
+## Full native V2 context
+
+FullPagedStreamLimits.contextBytes now selects full V1 at zero or requires full V2 under a finite
+positive opaque-context cap. Both ordinary CURRENT and explicit old-epoch readers enforce that
+choice before complete graph admission. Bootstrap and replacement require exact stable borrowed
+context bytes, validated before candidate acquisition; unsupported bootstrap context refuses before
+creating its directory/LOCK. Context and record/graph byte ceilings remain independent.
+
+Construction appends separately padded context before the existing page tree, accounting every
+write/hash/read. Complete admission authenticates all physical context pages and checks payload
+and context padding independently. Compaction copies authenticated source pages exactly, preserving
+opaque context without a resident context-sized buffer, producer or alternate context source.
+Header, CURRENT, root union and context are selected by the existing one-file publication barriers.
+V1 retains its previous bytes and construction IO schedule.
+
+readContext on a selected reader or writer returns an immutable FullPagedContext. It owns its exact
+captured manifest and opaque bytes, with no file, pin or callback alias. The guarded bytes getter
+returns detached mutable transport. Per-call work can only tighten captured admission policy.
+Extraction preflights a conservative four-context-transport working reservation before allocation,
+matching full-value reservation discipline. Failed/default captures expose no partial prefix.
+Application interpretation and independent checkpoint trust remain separate.
+
+Candidate cleanup/bootstrap replay receives exact independently supplied replacement context and
+reproduces the whole artifact before comparing every present forensic prefix. Source-derived
+compaction cleanup accepts no caller context substitution. Reclamation receipts bind all16
+admission-policy scalars, including the context cap; a mismatched policy remains InvalidCandidate
+under the existing contract. Old-epoch context captures survive native close and reclamation.
+
+The storage_full_paged_context suite passes on macOS ARM64 and Linux amd64 under Docker emulation
+with pinned checked ARC/Clang. Independent byte/tree oracles cover context lengths1,31,4095,4096,
+4097,65,537 and4,194,304 under cache0/1, retained complete roots, compaction, exact/one-short context/
+working/work limits, inherited-budget refusal and detached mutation. Native controls cover all
+observed context read and candidate write failures, unchanged CURRENT, unresealed corruption,
+resealed noncanonical padding, explicit replay with wrong/correct context, bootstrap resume,
+retained old-epoch reopen and exact context-policy reclamation.1000 successful captures plus late
+private-prefix IO failures and fresh close/reopen cycles retain83,888 ->83,888 occupied bytes on
+both platforms. The private context-backing compiler guard passes. Existing V1 publication,
+recovery, old-epoch, compaction and StateStore transport suites pass. All419 production modules
+and the peer entry point pass local Smoke, with stable pinned formatting and source inventory.
+Light native V2 and application startup remain the next integration layers.
