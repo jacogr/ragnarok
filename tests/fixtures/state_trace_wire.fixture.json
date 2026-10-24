@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_STATE_TRACE_WIRE",
+  "files": {
+    "state-trace-wire.json": "e78c7515923e294d8abd2a164863273a74a8391b91183e987644a90bf02c541a"
+  },
+  "target": "state-trace-wire.json"
+}

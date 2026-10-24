@@ -1422,6 +1422,20 @@ def current_stf_interchange_corpus(compiler, report, checks, libraries):
     return corpus
 
 
+@CORPORA.case
+def state_trace_wire_corpus(compiler, report, checks, libraries):
+    """Compare published RawState wire prefixes, complete current STF maps and typed malformed-input refusals."""
+    from state_trace_wire_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for path, digest in FIXTURE_CONTRACTS['state_trace_wire'][2]:
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == digest # Freeze independently calculated source and full-map evidence before execution.
+    requests, expected, evidence = expected_observations()
+    return run_corpus(checks.build, checks.command, compiler,
+        ROOT/'tests/native/state_trace_wire_driver.nim', 'state-trace-wire',
+        checks.folder/'state-trace-wire-requests.txt', requests, expected, 'state-trace-wire-corpus',
+        metadata=evidence, crypto_library=libraries['crypto'])
+
+
 
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
