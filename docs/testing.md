@@ -101,7 +101,8 @@ gh workflow run ci.yml --ref <branch> -f suite=full
 For revision experiments, add `ci:pvm-compare` to an open PR. **Perf / PVM Revisions**
 checks out the exact PR head and compares against its exact base SHA; this job is the exception
 to ordinary PR checks using the merge revision. It runs the paired seven-input/all-policy matrix,
-then an identical-source control, then the pinned PolkaVM interpreted real-guest comparison,
+plus paired synthetic host/memory/tiny controls, then an identical-source control, then the
+pinned PolkaVM interpreted real-guest comparison,
 sequentially on one Ubuntu 24.04 runner. Builds finish before each measured matrix. Raw state-checked
 samples, endpoint/compiler/input hashes, CPU identity and separate summaries are retained for 30 days.
 Noise controls and repeated runs qualify small differences; a fresh VM does not guarantee identical
