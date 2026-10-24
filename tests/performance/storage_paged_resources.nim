@@ -125,11 +125,34 @@ proc run(mode, path: string, count: uint64, cache: int) =
             for index, value in query.value.bytes: assert value == byte(index mod 251)
           else:
             assert query.value.kind == StateLookupKind.Absent
+          block:
+            # Exercise detached raw evidence under the same hard limit; only one bounded proof is retained at a time.
+            let captured = reader.readProof(key(ordinal), source.config.limits.work)
+            assert captured.error == PagedNativeError.None
+            let raw = captured.value.proof
+            let expected = if ordinal == 0: source.first.proof else: source.absent.proof
+            assert array[31, byte](raw.key) == array[31, byte](key(ordinal))
+            assert raw.proof.nodes.len == expected.nodes.len and raw.proof.value == expected.value
+            for index in 0..<raw.proof.nodes.len:
+              # Canonical fixed-width bytes establish path identity across nominal node wrappers.
+              assert array[64, byte](raw.proof.nodes[index]) == array[64, byte](expected.nodes[index])
           checked += 1
       assert reader.lookup(lastKey(), source.config.limits.work).value.kind ==
           StateLookupKind.Present
       assert reader.lookup(lastKey(), source.config.limits.work).value.bytes.len == 0
       assert reader.lookup(key(count+128), source.config.limits.work).error ==
+          PagedNativeError.UnknownKey
+      block:
+        # The present-empty witness remains a real owned proof rather than an unavailable-query sentinel.
+        let captured = reader.readProof(lastKey(), source.config.limits.work)
+        assert captured.error == PagedNativeError.None
+        let raw = captured.value.proof
+        assert raw.proof.nodes.len == source.last.proof.nodes.len
+        for index in 0..<raw.proof.nodes.len:
+          # Empty values still carry and preserve the complete authenticated witness path.
+          assert array[64, byte](raw.proof.nodes[index]) == array[64, byte](source.last.proof.nodes[index])
+        assert captured.value.proof.proof.value.len == 0
+      assert reader.readProof(key(count+128), source.config.limits.work).error ==
           PagedNativeError.UnknownKey
       assert reader.close == FileError.None
   let released = occupiedStorageBytes()

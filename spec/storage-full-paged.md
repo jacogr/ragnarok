@@ -499,3 +499,56 @@ ordinary retained memory views/forks, unknown roots, every observed native consu
 strict reopen and every initialization close boundary including confirmed retirement diagnostics.
 1000 prepare/restore/release cycles retain52,016 ->52,016 occupied bytes. Existing StateStore tests
 pass; compiler controls reject private transport/result fields and partial ProofView-as-full input.
+
+## Light proof-view consumer
+
+The separate state-layer paged_proof_view consumer accepts only PagedReader and an independently
+supplied expected root. readPagedProofView extracts the explicitly requested bounded witnesses,
+recaptures canonical node/value transport as state-layer proofs, re-verifies every proof under
+that expected root, and constructs an ordinary immutable ProofView. Storage verified lookups and
+state verified lookups remain distinct nominal types; no cast or complete-map conversion grants
+state authority. The result retains no native owner or callback and survives root advancement
+and reader/writer closure.
+
+PagedProofViewLimits separately bound query descriptors, per-proof nodes/value bytes, aggregate
+batch nodes/value bytes, retained view values and finite native work per requested query. Batch
+sums are checked before state proof copying. Duplicate queries and mismatched expected roots
+refuse before native lookups. Native readProof authenticates the same disk search and proof as
+ordinary lookup, then retains raw evidence alone; its guarded proof getter returns independent
+mutable transport arrays. Ordinary lookup retains verified values alone. Admission retires raw
+transport before allocating its separate canonical replay buffer, preserving the existing native
+working reservation. Consumer staging and retained ProofViews have their own explicit memory
+policy, separate from storage-only working-set qualification.
+
+Unknown stored queries produce MissingWitness, including a later missing query after earlier
+successful extraction. A proven absent query produces an ordinary absent verified lookup;
+a present-empty value remains present. Every failed batch withholds its entire private prefix.
+Native IO/proof corruption keeps its selected native cause rather than becoming a missing witness.
+The consumer does not change light logical-head selection, checkpoint trust or application startup.
+Full and light native readers remain incompatible at compile time; partial ProofViews cannot
+satisfy complete StateStore snapshot transport.
+
+The paged_proof_view suite covers exact/one-short independent quotas, unsorted requests,
+duplicate and wrong-root preflight, empty batches, missing evidence versus proven absence,
+present-empty values, detached proof mutation, retained old/new root views, default/closed readers,
+every observed native source read failure with strict reopen after poison, and1000 capture/release
+cycles with equal warmed occupied heap. Compiler controls cover private proof/result backing and
+full-reader-as-light rejection. Existing paged native/stream/cleanup and ordinary state ProofView
+suites are regression controls. The Linux native resource probe now also extracts and compares
+complete raw witness bytes for spread/cyclic queries and the present-empty witness under the
+same64MiB no-swap boundary; the complete consumer's retained views remain a separate contract.
+
+This fifteenth layer reaches the requested stack cap. Automatic paged application startup still
+needs an agreed checkpoint/head/history context binding and layout selection flags. The V1 paged
+selection does not supply that context, so these SDK consumers do not close that integration gap.
+Hardware/filesystem power-loss qualification and complete JAM serialization remain the later
+ordered work; none is claimed by this stack.
+
+The extended Linux amd64 resource panel passes all8 fresh writer/reader phases for16,384 and
+327,680 stored witnesses, with cache0/1, in one fixed64MiB no-swap group. The larger selected file
+is78,458,848 bytes. Maximum native RSS is13,737,984 bytes; retained writer/reader heap remains
+10,480/1168 bytes across every size/cache case, and every heap/descriptor sample retires exactly.
+Swap and OOM/OOM-kill counters remain zero; reclaim-limit events reach6,615. The frozen source,
+provider, binary and selected-file identities are rechecked. This qualifies this concrete native
+storage profile including raw-proof extraction, separately from resident state consumer retention
+and hardware/filesystem power-loss behavior.

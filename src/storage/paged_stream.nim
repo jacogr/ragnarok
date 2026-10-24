@@ -55,6 +55,16 @@ type
     policy: PagedStreamLimits
     used: PagedStreamCounts
     stream: PagedDigest
+  LoadedProof = object ## Private verified/raw pair exists only while one bounded proof is being decoded or selected.
+    checked: VerifiedStateLookup
+    record: LightStateProof
+  LocatedProof = object ## Private selection carries actual lookup work until the public result chooses one owned representation.
+    loaded: LoadedProof
+    used: PagedStreamCounts
+  PagedProofLookup* = object ## Owned immutable raw proof capture has no native resource or fabricated state-layer authority.
+    ready: bool
+    record: LightStateProof
+    used: PagedStreamCounts
   PagedLookup* = object ## Independent owned proof result survives the source callback and checked metadata.
     ready: bool
     checked: VerifiedStateLookup
@@ -297,27 +307,27 @@ proc checkProof(root: StateRoot, key: StateKey, proof: StateProof,
     work.fail(PagedStreamError.ProofFailure)
     work.proofCause = checked.error
   refused[VerifiedStateLookup](work)
-proc loadProof(io: PagedInput, header: PagedHeader, tree: PagedDigest, row: PagedDescriptor,
-    cache: var PageCache, work: var Work): PagedStreamResult[VerifiedStateLookup] =
+proc loadEvidence(io: PagedInput, header: PagedHeader, tree: PagedDigest, row: PagedDescriptor,
+    cache: var PageCache, work: var Work): PagedStreamResult[LoadedProof] =
   ## Authenticate framing before allocation, then reconstruct and verify just one bounded proof/value.
   let shape = header.geometry
   let start = uint64(shape.payloadOffset)+uint64(row.offset)
   var prefix = default(array[41, byte])
   if not io.authenticated(shape, tree, start, prefix, cache, work): return refused[
-      VerifiedStateLookup](work)
+      LoadedProof](work)
   let framed = decodePagedProofShape(prefix, row, work.limits.proof.nodes,
       work.limits.proof.valueBytes)
   if framed.error != PagedCodecError.None:
     work.fail(codecReason(framed.error))
-    return refused[VerifiedStateLookup](work)
+    return refused[LoadedProof](work)
   let record = framed.value
   let fixed = PagedStreamFixedBytes+41+2*uint64(record.nodes)*64
   let maximum = min(uint64(work.limits.workingBytes), uint64(high(int)))
   if fixed > maximum or record.valueBytes > (maximum-fixed) div 2:
     work.fail(PagedStreamError.LimitExceeded)
-    return refused[VerifiedStateLookup](work)
+    return refused[LoadedProof](work)
   if not chargeProof(uint64(record.nodes), record.valueBytes, work): return refused[
-      VerifiedStateLookup](work)
+      LoadedProof](work)
   var proof = StateProof(nodes: newSeq[EncodedStateNode](record.nodes), value: newSeq[byte](int(
       record.valueBytes)))
   var cursor = start+41
@@ -325,12 +335,23 @@ proc loadProof(io: PagedInput, header: PagedHeader, tree: PagedDigest, row: Page
     # Framing checked the exact row extent, so every complete node remains inside its payload span.
     var raw = default(array[64, byte])
     if not io.authenticated(shape, tree, cursor, raw, cache, work): return refused[
-        VerifiedStateLookup](work)
+        LoadedProof](work)
     proof.nodes[index] = EncodedStateNode(raw)
     cursor += 64
   if not io.authenticated(shape, tree, cursor, proof.value, cache, work): return refused[
-      VerifiedStateLookup](work)
-  checkProof(header.root, row.key, proof, work)
+      LoadedProof](work)
+  let verified = checkProof(header.root, row.key, proof, work)
+  if verified.error != PagedStreamError.None: return refused[LoadedProof](work)
+  PagedStreamResult[LoadedProof](status: PagedStreamError.None,
+    completed: LoadedProof(checked: verified.value, record: LightStateProof(key: row.key,
+        proof: proof)))
+proc loadProof(io: PagedInput, header: PagedHeader, tree: PagedDigest, row: PagedDescriptor,
+    cache: var PageCache, work: var Work): PagedStreamResult[VerifiedStateLookup] =
+  ## Ordinary admission retires raw evidence before allocating its separate canonical replay transport.
+  let loaded = loadEvidence(io, header, tree, row, cache, work)
+  if loaded.error != PagedStreamError.None: return refused[VerifiedStateLookup](work)
+  PagedStreamResult[VerifiedStateLookup](status: PagedStreamError.None,
+      completed: loaded.value.checked)
 proc zeroRange(io: PagedInput, shape: PagedGeometry, tree: PagedDigest, start, stop: uint64,
     cache: var PageCache, work: var Work): bool =
   ## Padding has at most one logical page; every inspected byte must also authenticate to the captured root.
@@ -505,27 +526,27 @@ func compare(a, b: StateKey): int =
     if left[index] < right[index]: return -1
     if left[index] > right[index]: return 1
   0
-proc lookupPaged*(artifact: CheckedPagedArtifact, io: PagedInput, query: StateKey,
-    budget: PagedWorkLimits): PagedStreamResult[PagedLookup] =
+proc locateProof(artifact: CheckedPagedArtifact, io: PagedInput, query: StateKey,
+    budget: PagedWorkLimits): PagedStreamResult[LocatedProof] =
   ## Authenticate binary-search pages and one proof against captured roots, with actual EOF checked before success/UnknownKey.
   if not artifact.ready or io.read == nil or io.extent == nil:
-    return PagedStreamResult[PagedLookup](status: PagedStreamError.Uninitialized)
+    return PagedStreamResult[LocatedProof](status: PagedStreamError.Uninitialized)
   var policy = artifact.policy
   policy.work = budget
   var work = initWork(policy)
-  if work.status != PagedStreamError.None: return refused[PagedLookup](work)
+  if work.status != PagedStreamError.None: return refused[LocatedProof](work)
   let selected = artifact.selected
   let shape = artifact.header.geometry
-  if not io.checkExtent(selected.byteLength, work): return refused[PagedLookup](work)
+  if not io.checkExtent(selected.byteLength, work): return refused[LocatedProof](work)
   var cache = default(PageCache)
-  if not io.fetch(shape, selected.pageRoot, 0, cache, work): return refused[PagedLookup](work)
+  if not io.fetch(shape, selected.pageRoot, 0, cache, work): return refused[LocatedProof](work)
   let header = decodePagedHeader(cache.bytes, selected.chainId, selected.root, policy.dataset)
   if header.error != PagedCodecError.None:
     work.fail(codecReason(header.error))
-    return refused[PagedLookup](work)
+    return refused[LocatedProof](work)
   if header.value.bytes != artifact.header.bytes:
     work.fail(PagedStreamError.ChangedInput)
-    return refused[PagedLookup](work)
+    return refused[LocatedProof](work)
   var first = 0'u64
   var stop = shape.entries
   while first < stop:
@@ -533,24 +554,57 @@ proc lookupPaged*(artifact: CheckedPagedArtifact, io: PagedInput, query: StateKe
     let middle = first+(stop-first) div 2
     var raw = default(array[PagedDescriptorBytes, byte])
     if not io.authenticated(shape, selected.pageRoot, 4096+middle*64, raw, cache,
-        work): return refused[PagedLookup](work)
+        work): return refused[LocatedProof](work)
     let decoded = decodePagedDescriptor(raw, shape)
     if decoded.error != PagedCodecError.None:
       work.fail(codecReason(decoded.error))
-      return refused[PagedLookup](work)
+      return refused[LocatedProof](work)
     let row = decoded.value
     let order = compare(query, row.key)
     if order == 0:
-      let checked = loadProof(io, artifact.header, selected.pageRoot, row, cache, work)
-      if checked.error != PagedStreamError.None: return refused[PagedLookup](work)
-      if not io.checkExtent(selected.byteLength, work): return refused[PagedLookup](work)
-      return PagedStreamResult[PagedLookup](status: PagedStreamError.None,
-        completed: PagedLookup(ready: true, checked: checked.value, used: work.used))
+      let checked = loadEvidence(io, artifact.header, selected.pageRoot, row, cache, work)
+      if checked.error != PagedStreamError.None: return refused[LocatedProof](work)
+      if not io.checkExtent(selected.byteLength, work): return refused[LocatedProof](work)
+      return PagedStreamResult[LocatedProof](status: PagedStreamError.None,
+        completed: LocatedProof(loaded: checked.value, used: work.used))
     elif order < 0: stop = middle
     else: first = middle+1
-  if not io.checkExtent(selected.byteLength, work): return refused[PagedLookup](work)
+  if not io.checkExtent(selected.byteLength, work): return refused[LocatedProof](work)
   work.fail(PagedStreamError.UnknownKey)
-  refused[PagedLookup](work)
+  refused[LocatedProof](work)
+func failed[T, U](outcome: PagedStreamResult[U]): PagedStreamResult[T] {.requires:
+    outcome.status != PagedStreamError.None.} =
+  ## Changing successful representation preserves only the selected failure and optional proof cause.
+  if outcome.status == PagedStreamError.ProofFailure:
+    return PagedStreamResult[T](status: PagedStreamError.ProofFailure,
+        proofCause: outcome.proofCause)
+  PagedStreamResult[T](status: outcome.status)
+proc lookupPaged*(artifact: CheckedPagedArtifact, io: PagedInput, query: StateKey,
+    budget: PagedWorkLimits): PagedStreamResult[PagedLookup] =
+  ## Ordinary lookups retain only verified values; unused raw proof bytes retire before returning.
+  let located = locateProof(artifact, io, query, budget)
+  if located.error != PagedStreamError.None: return failed[PagedLookup, LocatedProof](located)
+  PagedStreamResult[PagedLookup](status: PagedStreamError.None,
+    completed: PagedLookup(ready: true, checked: located.value.loaded.checked,
+        used: located.value.used))
+proc lookupPagedProof*(artifact: CheckedPagedArtifact, io: PagedInput, query: StateKey,
+    budget: PagedWorkLimits): PagedStreamResult[PagedProofLookup] =
+  ## Capture raw evidence only after the identical authenticated/verified lookup and final EOF checks.
+  let located = locateProof(artifact, io, query, budget)
+  if located.error != PagedStreamError.None: return failed[PagedProofLookup, LocatedProof](located)
+  PagedStreamResult[PagedProofLookup](status: PagedStreamError.None,
+    completed: PagedProofLookup(ready: true, record: located.value.loaded.record,
+        used: located.value.used))
+proc proof*(captured: PagedProofLookup): LightStateProof {.requires: captured.ready.} =
+  ## Detach mutable transport while respecting the existing two-node-array/two-value workspace reservation.
+  var nodes = newSeq[EncodedStateNode](captured.record.proof.nodes.len)
+  var value = newSeq[byte](captured.record.proof.value.len)
+  for index in 0..<nodes.len: nodes[index] = captured.record.proof.nodes[index] # Fixed canonical node copies.
+  for index in 0..<value.len: value[index] = captured.record.proof.value[index] # No private mutable bytes escape.
+  LightStateProof(key: captured.record.key, proof: StateProof(nodes: nodes, value: value))
+func counts*(captured: PagedProofLookup): PagedStreamCounts {.requires: captured.ready.} =
+  ## Report successful proof extraction work without retaining source IO or native lifetime.
+  captured.used
 proc put(output: var seq[byte], offset: int, number: uint64, width = 8) =
   ## One-proof preflight proves every fixed numeric write and complete detached transport extent.
   for index in 0..<width: output[offset+index] = byte((number shr (8*index)) and 255)

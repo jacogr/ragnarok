@@ -814,3 +814,22 @@ proc resumePagedInitialization*(writer: var PagedWriter, path: string, config: P
     return PagedNativeResult[PagedPublication](status: PagedNativeError.StreamFailure,
         streamCause: PagedStreamError.ChangedInput)
   writer.publish(candidate)
+
+proc readProof*(reader: var PagedReader, query: StateKey,
+    budget: PagedWorkLimits): PagedNativeResult[PagedProofLookup] =
+  ## No cache page or native owner escapes: only immutable bounded proof transport may outlive close.
+  let data = reader.data
+  if data == nil or not data.active: return refused[PagedProofLookup](
+      PagedNativeError.Uninitialized)
+  if data.poisoned: return refused[PagedProofLookup](PagedNativeError.RecoveryRequired)
+  let checked = proofFile(data.file, data.checked, query, budget)
+  if checked.error != PagedStreamError.None:
+    if data.file.check != FileError.None: data.poisoned = true
+    return streamFailed[PagedProofLookup, PagedProofLookup](checked)
+  PagedNativeResult[PagedProofLookup](status: PagedNativeError.None,
+      completed: checked.value)
+
+func failure*[T](outcome: PagedNativeResult[T]): PagedNativeResult[bool] {.requires:
+    outcome.status != PagedNativeError.None.} =
+  ## Composite consumers retain original selected causes without a successful native payload.
+  rejected[bool, T](outcome)

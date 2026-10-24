@@ -485,3 +485,11 @@ The state-layer paged_state consumer prepares immutable bounded full StateStore 
 restores ordinary complete maps from checked paged roots, with independent root recomputation.
 Native writer/candidate lifetimes stay explicit. Resident consumer copies and application
 checkpoint/head-context startup remain separate from the storage-only working-set qualification.
+
+The state-layer `paged_proof_view` consumer extracts explicitly requested light witnesses through
+`PagedReader.readProof`, recaptures and verifies state-layer proof transport, and returns an ordinary
+immutable partial `ProofView` under an independently supplied expected root. Missing evidence stays
+`MissingWitness`; authenticated absence and present-empty values retain their existing meanings.
+Independent batch/view policies bound resident consumer staging. Full native readers and complete
+StateStore snapshots remain separate types. See the [consumer contract](../../spec/storage-full-paged.md)
+for quotas, ownership, validation and the remaining application checkpoint/context startup gap.
