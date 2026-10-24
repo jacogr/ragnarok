@@ -28,6 +28,10 @@ COPY . .
 FROM sources AS paged-resources
 RUN make build-storage-paged-resources
 
+# Full graphs use independent outside-pressure fixture maps and fresh bounded native execs.
+FROM sources AS full-paged-resources
+RUN make build-storage-full-paged-resources
+
 # The ordinary peer builder retains its complete transport and packaging preparation.
 FROM sources AS builder
 RUN git rev-parse --verify HEAD && make build
