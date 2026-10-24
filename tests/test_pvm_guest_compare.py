@@ -4,6 +4,8 @@
 """Reject incomplete revision comparisons, stale aggregates and changed snapshot identities."""
 import copy
 import json
+import os
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -38,6 +40,48 @@ def complete_report():
 
 class GuestComparisonTests(unittest.TestCase):
     """One observed success must cover the exact matrix, modes, process orders and byte identities."""
+
+    def test_cli_keeps_control_evidence_separate(self):
+        """CI can select a private output directory without changing scope or interpolating a baseline ref."""
+        with patch.dict(compare.os.environ, {'RAGNAROK_PVM_COMPARE_BASE': 'literal;ref',
+                'RAGNAROK_PVM_COMPARE_SCOPE': '',
+                'RAGNAROK_PVM_COMPARE_OUTPUT': 'build/tests/pvm-guest-control'}), patch.object(compare, 'run') as run:
+            compare.main()
+        run.assert_called_once_with('literal;ref', scope='all', folder='build/tests/pvm-guest-control')
+        with patch.dict(compare.os.environ, {'RAGNAROK_PVM_COMPARE_BASE': 'HEAD',
+                'RAGNAROK_PVM_COMPARE_SCOPE': 'controls',
+                'RAGNAROK_PVM_COMPARE_OUTPUT': ''}), patch.object(compare, 'run') as run:
+            compare.main()
+        run.assert_called_once_with('HEAD', scope='controls', folder=None)
+
+    def test_make_exports_comparison_settings_literally(self):
+        """A workflow baseline ref containing Make syntax must reach Git as data rather than execute it."""
+        makefile = (compare.ROOT/'Makefile').read_text()
+        exports = [line for line in makefile.splitlines()
+                   if line.startswith('compare-pvm-guests: export RAGNAROK_PVM_COMPARE_')]
+        self.assertEqual(len(exports), 3)
+        names = ('BASE', 'SCOPE', 'OUTPUT')
+        values = {name: 'literal-$(shell echo expanded)-'+name for name in names}
+        probe = "import os,json; print(json.dumps({n:os.environ['RAGNAROK_PVM_COMPARE_'+n] for n in ['BASE','SCOPE','OUTPUT']}))"
+        source = '\n'.join(exports)+"\ncompare-pvm-guests:\n\t@python3 -c "+repr(probe)+"\n"
+        result = subprocess.run(['make', '--no-print-directory', '-f', '-'], input=source,
+            text=True, capture_output=True, check=True,
+            env=dict(os.environ, **{'PVM_COMPARE_'+key: value for key, value in values.items()}))
+        self.assertEqual(json.loads(result.stdout), values)
+
+    def test_control_output_cannot_escape_owned_build(self):
+        """An output setting cannot retire or create unrelated user directories before setup."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            foreign = root/'keep'
+            foreign.mkdir()
+            marker = foreign/'results.json'
+            marker.write_text('retain')
+            with patch.object(compare, 'ROOT', root), patch.object(compare, 'revision') as resolve:
+                with self.assertRaisesRegex(ValueError, 'owned build'):
+                    compare.run('HEAD', folder=foreign)
+            resolve.assert_not_called()
+            self.assertEqual(marker.read_text(), 'retain')
 
     def test_complete_summary_retains_regressions(self):
         """All unfavorable cells remain visible; summaries do not select only faster samples."""

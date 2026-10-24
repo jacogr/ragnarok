@@ -256,6 +256,12 @@ def run(base_ref, scope='all', folder=None):
         raise
 
 
-if __name__ == '__main__':
+def main():
+    """Keep paired/control CI evidence separate while retaining the owned-build output guard."""
     scope = os.environ.get('RAGNAROK_PVM_COMPARE_SCOPE', '') or 'all'
-    run(os.environ.get('RAGNAROK_PVM_COMPARE_BASE', ''), scope=scope)
+    output = os.environ.get('RAGNAROK_PVM_COMPARE_OUTPUT', '') or None
+    run(os.environ.get('RAGNAROK_PVM_COMPARE_BASE', ''), scope=scope, folder=output)
+
+
+if __name__ == '__main__':
+    main() # Imports remain inert for deterministic guards.
