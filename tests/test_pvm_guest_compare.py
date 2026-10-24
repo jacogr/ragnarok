@@ -6,6 +6,8 @@ import copy
 import json
 import os
 import subprocess
+import sys
+import native_checks
 from pathlib import Path
 import tempfile
 import unittest
@@ -68,6 +70,40 @@ class GuestComparisonTests(unittest.TestCase):
             text=True, capture_output=True, check=True,
             env=dict(os.environ, **{'PVM_COMPARE_'+key: value for key, value in values.items()}))
         self.assertEqual(json.loads(result.stdout), values)
+
+    def test_relative_control_output_supports_real_command_logs(self):
+        """A relative CLI directory must become absolute before NativeChecks records repository-relative logs."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            output = root/'build/control'
+            for name in compare.DRIVER:
+                # Only driver presence is needed before the deliberately stopped preparation call.
+                path = root/name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'driver fixture')
+
+            def prepare(checks, folder, cases):
+                """Exercise real process/log capture, then stop before any compiler or benchmark runs."""
+                self.assertTrue(checks.folder.is_absolute())
+                self.assertEqual(checks.folder, output.resolve())
+                result = checks.command([sys.executable, '-c', 'print("control output probe")'],
+                                        'output-probe', cwd=root)
+                self.assertEqual(result['exit_code'], 0)
+                self.assertEqual(result['log'], 'build/control/output-probe.log')
+                raise RuntimeError('stopped after real output probe')
+
+            with patch.object(compare, 'ROOT', root), patch.object(native_checks, 'ROOT', root), \
+                    patch.object(compare, 'revision', return_value='a'*40), \
+                    patch.object(compare, 'cpu_model', return_value='fixture CPU'), \
+                    patch.object(compare, 'installed', return_value=(root/'compiler', None)), \
+                    patch.object(compare, 'snapshot', return_value={}), \
+                    patch.object(compare, 'digest', return_value='b'*64), \
+                    patch.object(compare, 'prepare_inputs', side_effect=prepare):
+                with self.assertRaisesRegex(RuntimeError, 'stopped after real output probe'):
+                    compare.run('HEAD', folder=os.path.relpath(output, Path.cwd()))
+            self.assertEqual((output/'output-probe.log').read_text(), 'control output probe\n')
+            self.assertEqual(json.loads((output/'partial.json').read_text())['status'], 'failed')
+            self.assertFalse((output/'results.json').exists())
 
     def test_control_output_cannot_escape_owned_build(self):
         """An output setting cannot retire or create unrelated user directories before setup."""
