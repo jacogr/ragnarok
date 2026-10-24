@@ -77,6 +77,48 @@ proc scalarReadMatrix() =
       assert uint64(load(frozen, address, access).value) == (replacement and mask)
       assert uint64(load(alias, address, access).value) == wanted
 
+proc expectBytes(memory: Memory, expected: array[8192, byte]) =
+  ## Compare full independent page images, including every neighbor outside either overlapping scalar write.
+  for side in 0..<2:
+    let image = pageImage(memory, PageIndex(uint32(16+side))).value
+    assert image.access == PageAccess.ReadWrite
+    for offset in 0..<4096: assert image.bytes[offset] == expected[side*4096+offset]
+
+proc scalarWriteMatrix() =
+  ## Immutable stores and aliased writer epochs produce the same exact bytes at every chunk/page edge.
+  for width in [1, 2, 4, 8]:
+    for start in [0, 1, 3, 503, 504, 505, 506, 507, 508, 509, 510, 511,
+        512, 513, 1023, 2047, 3583, 4088, 4089, 4090, 4091, 4092, 4093, 4094, 4095]:
+      let original = initial()
+      let sourceAlias = original
+      let writer = newScalarMemoryWriter(original).value
+      let alias = writer
+      let address = MemoryAddress(uint64(65536+start))
+      let access = AccessWidth(byte(width))
+      let value = 0xfedcba9876543210'u64
+      var firstBytes = default(array[8192, byte])
+      for index in 0..<8192: firstBytes[index] = originalByte(index)
+      for index in 0..<width: firstBytes[start+index] = byte((value shr (8*index)) and 255)
+      let first = store(original, address, access, RegisterValue(value)).value
+      assert store(writer, address, access, RegisterValue(value)).value
+      let frozen = snapshotMemory(alias).value
+      expectBytes(first, firstBytes)
+      expectBytes(frozen, firstBytes)
+      let shifted = start+max(1, width div 2)
+      var secondBytes = firstBytes
+      for index in 0..<width: secondBytes[shifted+index] = byte(((not value) shr (8*index)) and 255)
+      let second = store(first, MemoryAddress(uint64(65536+shifted)), access, RegisterValue(
+          not value)).value
+      assert store(alias, MemoryAddress(uint64(65536+shifted)), access, RegisterValue(
+          not value)).value
+      expectBytes(second, secondBytes)
+      expectBytes(snapshotMemory(writer).value, secondBytes)
+      expectBytes(first, firstBytes)
+      expectBytes(frozen, firstBytes)
+      expect(sourceAlias, 0, 0, 0)
+  # A temporary source may retire after store returns; the result owns all modified and shared chunks.
+  expect(store(initial(), MemoryAddress(69629), AccessWidth(8), RegisterValue(17)).value, 4093, 8, 17)
+
 proc temporaryReadCycle() =
   ## Constructor-only owners survive each complete scalar read and release afterward; no copied chunk address or machine owner escapes.
   for start in [511, 4093]:
@@ -121,6 +163,7 @@ let empty = newScalarMemoryWriter(captureMemory([], PageLimit(0)).value).value
 assert load(empty, MemoryAddress(65536), AccessWidth(1)).error == MachineError.Fault
 assert pageImage(snapshotMemory(empty).value, PageIndex(16)).value.access == PageAccess.Inaccessible
 ownershipCycle()
+scalarWriteMatrix()
 scalarReadMatrix()
 temporaryReadCycle()
 let before = getOccupiedMem()
