@@ -187,3 +187,30 @@ appends), and retires all closures/bytes/scratch after 1000 cycles (54,480 -> 54
 The shared test-only byte/tree oracle lives in `tests/support/full_paged_reference.nim`; it is
 resident reference material, not the production bounded path. Native durability and ownership
 remain the next implementation boundary.
+
+
+## Native full-state readers
+
+`full_paged_store.nim` adds move-only explicit-close `FullPagedReader` owners. Strict open decodes
+only the full 192-byte CURRENT against an independent chain/root and bounded artifact geometry,
+acquires an independent shared epoch pin, reads/binds the fixed header, admits the complete graph
+with private anonymous scratch, rereads exact CURRENT and checks held identity before adoption.
+Directory retirement occurs before exposing the reader. Each epoch owns its own parent descriptor;
+readers retain no writer lease and owned lookup values survive reader close. One caller serializes
+operations on each owner; independent readers provide independent native seek cursors.
+
+`paged_io.nim` shares only directory-relative native ownership/IO. Existing light CURRENT and
+append-only writer scratch entry points retain their exact width and policy. Full graph scratch
+uses a separate private random-write anonymous descriptor, a bounded signed `ftruncate` extent
+and explicit graph-engine initialization. No database scratch name, selected-file truncation,
+resident index or callback escape is introduced. A failed scratch retirement prevents reader
+adoption. Native source identity/EOF checks remain active on every authenticated read.
+
+The selected `storage_full_paged_readers` suite verifies independent native bytes, full-graph
+refusal despite valid record/page hashes, full/light width separation, expected-root refusal,
+independent shared pins versus an actual exclusive open, move transfer and lookup lifetime.
+Every observed native read/write/flock/ftruncate/close failure refuses adoption; EINTR controls
+retry only idempotent still-owned operations.1000 complete open/read/close cycles return occupied
+heap from54,544 to54,544 bytes. The pristine compiler's top-level-defer limitation is avoided by
+procedure-scoped test cleanup. Writer publication, mutation/retention and crash/resource panels
+remain subsequent work; reader admission alone claims no durability receipt.
