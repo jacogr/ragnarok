@@ -54,11 +54,11 @@ def summarize(report, kind):
         return summarize_reference(report)
     elif kind == 'runtime':
         corpora = {key: value for key, value in report.items() if key.endswith('_corpus')}
-        scope = ''
+        scope = {'corpus': ' — corpus only', 'suites': ' — suites only'}.get(report.get('unit_scope'), '')
         if report.get('unit_shard') is not None:
             # A successful partition is not a claim that every other partition ran or passed.
             index, count = report['unit_shard']
-            scope = f' — shard {index}/{count}'
+            scope += f' — shard {index}/{count}'
             if report.get('shard_seed') is not None:
                 # Include the shared seed so an individual artifact can reproduce its randomized scope.
                 scope += ' (seed '+report['shard_seed']+')'

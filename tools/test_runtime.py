@@ -13,6 +13,7 @@ import hashlib
 import json
 import platform
 from pathlib import Path
+from contextlib import nullcontext
 import sys
 from native_checks import NativeChecks, announce
 from corpus_catalog import CORPUS_NAMES, run_corpora
@@ -33,7 +34,8 @@ command, build = checks.command, checks.build
 def unit_passed(report):
     try:
         # Every shard has a source-derived exact scope; partial data cannot claim full verification.
-        batches, corpora = unit_partition(report.get('unit_shard'), report.get('shard_seed'))
+        batches, corpora = unit_partition(report.get('unit_shard'), report.get('shard_seed'),
+                                         report.get('unit_scope', 'all'))
     except ValueError:
         return False
     expected = {name for _, members, _ in batches for name in members}
@@ -80,15 +82,15 @@ def failures_passed(report):
 
 
 # Execute ordinary Hastur suites and independent references with the existing fixture/linking contracts.
-def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard=None, seed=None):
-    with unit_cache_lock(compiler):
-        # A concurrent standalone run must not mutate the shared cache or retire active ARC evidence.
-        _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard, seed)
+def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard=None, seed=None, scope='all'):
+    with nullcontext() if scope == 'corpus' else unit_cache_lock(compiler):
+        # Only Hastur suites share ARC evidence; corpus-only runs use their own native build caches.
+        _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard, seed, scope)
 
 
-# Keep the complete execution order and corpus contracts within one compiler-cache lock.
-def _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard, seed):
-    batches, corpora = unit_partition(shard, seed)
+# Keep complete execution order; the corpus scope has private builds and no Hastur evidence to lock.
+def _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard, seed, scope):
+    batches, corpora = unit_partition(shard, seed, scope)
     for batch, members, target in batches:
         # Compatible codecs share one directory run; linked/resource profiles retain isolated runs.
         print('RUN '+batch+' (Hastur)', flush=True)
@@ -139,7 +141,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compiler', type=Path, required=True)
     parser.add_argument('--group', choices=('unit', 'failures'), default='unit')
-    parser.add_argument('--unit-shard', type=parse_unit_shard, default=os.environ.get('UNIT_SHARD'),
+    parser.add_argument('--unit-scope', choices=('all', 'suites', 'corpus'),
+                        default=os.environ.get('UNIT_SCOPE', 'all'),
+                        help='Run complete local verification, native suites only, or independent corpora only')
+    parser.add_argument('--unit-shard', type=parse_unit_shard, default=os.environ.get('UNIT_SHARD') or None,
                         help='Run one discovered unit partition, index/count (at most sixteen)')
     parser.add_argument('--failure-shard', type=parse_failure_shard, default=os.environ.get('FAILURE_SHARD'),
                         help='Run one discovered contract partition, index/count (at most six)')
@@ -155,8 +160,18 @@ def main():
     if args.failure_shard is not None and args.group != 'failures':
         # Ordinary unit/corpus verification must not inherit a contract-only partial selection.
         parser.error('--failure-shard applies only to the failures group')
-    # Private reports, caches and logs allow the two workloads to run on independent CI runners.
-    BUILD = ROOT/('build/tests/runtime' if args.group == 'unit' else 'build/tests/failures')
+    if args.unit_scope not in ('all', 'suites', 'corpus'):
+        # Argparse does not check choices for environment defaults; reject malformed inherited scope too.
+        parser.error('--unit-scope must be all, suites or corpus')
+    if args.unit_scope != 'all' and args.group != 'unit':
+        # Contract runs must not accept a unit-only workload selector.
+        parser.error('--unit-scope applies only to the unit group')
+    if args.unit_scope == 'corpus' and args.unit_shard is not None:
+        # A corpus-only green report must never hide a requested unit partition.
+        parser.error('--unit-shard cannot select corpus-only verification')
+    # Private reports, caches and logs allow the workloads to run on independent CI runners.
+    directory = 'corpus' if args.unit_scope == 'corpus' else 'runtime'
+    BUILD = ROOT/('build/tests/'+directory if args.group == 'unit' else 'build/tests/failures')
     checks = NativeChecks(BUILD, reuse_builds=True, lto=False)
     command, build = checks.command, checks.build
     compiler = args.compiler.resolve()
@@ -172,6 +187,7 @@ def main():
     if args.group == 'unit':
         # Unit evidence owns suites/corpora only; runtime contracts have a different report.
         report['suites'] = []
+        report['unit_scope'] = args.unit_scope
         if args.unit_shard is not None:
             # Summaries must identify subset evidence rather than presenting it as the full suite.
             report['unit_shard'] = args.unit_shard
@@ -196,9 +212,9 @@ def main():
     sys.path.insert(0, str(ROOT/'tests'))
     selected_suites = None
     needs_corpora = True
-    if args.group == 'unit' and args.unit_shard is not None:
+    if args.group == 'unit' and (args.unit_shard is not None or args.unit_scope != 'all'):
         # Provision only the union consumed by this partition; corpora retain their complete dependencies.
-        selected_batches, needs_corpora = unit_partition(args.unit_shard, args.shard_seed)
+        selected_batches, needs_corpora = unit_partition(args.unit_shard, args.shard_seed, args.unit_scope)
         selected_suites = [name for _, members, _ in selected_batches for name in members]
         from native_requirements import NATIVE_REQUIREMENTS
         required = {library for name in selected_suites for library in NATIVE_REQUIREMENTS[name]['libraries']}
@@ -217,7 +233,7 @@ def main():
         # Only independent corpora/failure verification need unconditional CE preparation.
         integration_wires, integration_reload, report['integration_fixtures'] = prepare_integration(BUILD)
     availability_fixture = composition_fixture = None
-    if args.group == 'unit' or specialized:
+    if (args.group == 'unit' and args.unit_scope != 'corpus') or (args.group == 'failures' and specialized):
         # Only the specialized contract owner consumes these independent refusal witnesses.
         from state_availability_oracle import record as availability_record
         availability_fixture = BUILD/'availability-report.bin'
@@ -230,7 +246,10 @@ def main():
         # Expensive state replay/rotation fixtures belong only to the ordinary native suites.
         # Every ordinary suite now has one native runner path; omitted/extra identities are a migration failure.
         assert len(UNIT_SUITES) == len(set(UNIT_SUITES))
-        if selected_suites is None:
+        if args.unit_scope == 'corpus':
+            # Corpus inputs have their own integration preparation; no ordinary suite fixture provider runs.
+            fixtures = {}
+        elif selected_suites is None:
             # Unsharded verification retains all historical fixture evidence fields and preparation order.
             fixtures, fixture_evidence = prepare_unit_fixtures(BUILD, quic_fixtures, integration_wires, integration_reload)
             report.update(fixture_evidence)
@@ -241,7 +260,7 @@ def main():
                 BUILD, selected_suites, quic_fixtures, integration)
             report['partition_fixture_preparation'] = fixture_evidence
         run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, args.unit_shard,
-                 args.shard_seed)
+                 args.shard_seed, args.unit_scope)
         step_passed = unit_passed(report)
     else:
         # Contract checks keep their diagnostic predicates and positive controls unchanged.
