@@ -4,7 +4,7 @@
 # Build the checked ThinLTO peer with Make; keep its toolchains available as the builder target.
 # Official image digests pin the bootstrap environments; application toolchain pins remain in spec/.
 FROM rust:1.99.0-slim-bookworm@sha256:2c3a22f0a5533ea2dd5a16627bc841228151faa2d4de2644ac9987e4a2f1f2fa AS rust-toolchain
-FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS builder
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS sources
 
 # Nimony currently ships a Linux x86-64 toolchain only; fail before provisioning another architecture.
 ARG TARGETARCH
@@ -23,6 +23,13 @@ ENV CARGO_HOME=/usr/local/cargo \
 WORKDIR /src
 # Retain only source Git objects/index/refs; Make initializes pristine pinned submodules itself.
 COPY . .
+
+# Optional storage-only resource probe: provision and compile before enforcing run-time RAM limits.
+FROM sources AS paged-resources
+RUN make build-storage-paged-resources
+
+# The ordinary peer builder retains its complete transport and packaging preparation.
+FROM sources AS builder
 RUN git rev-parse --verify HEAD && make build
 # C ABI libraries have absolute DT_NEEDED entries; package names and a binary-relative runpath.
 RUN apt-get update && apt-get install --no-install-recommends -y patchelf \

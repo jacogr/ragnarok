@@ -431,8 +431,9 @@ are independently owned.
 independent shared epoch pins, durable atomic CURRENT selection and captured retired-epoch
 reclamation through exclusive pins. Complete verification precedes publication; receipts separate
 confirmed selection from later native retirement diagnostics. Unknown staging/build files remain
-forensic and block conflicting operations. Process-death qualification covers successful native syscall boundaries; Linux resource qualification
-and consumer adoption remain gates in the
+forensic and block conflicting operations. Process-death qualification covers successful native syscall boundaries. The measured Linux
+resource panel qualifies both cache modes with populated selected data larger than an enforced
+64 MiB no-swap allowance; consumer adoption remains gated by the
 [paged contract](../../spec/storage-paged-working-set.md).
 
 
@@ -448,3 +449,10 @@ consumes those capabilities, or a live sealed candidate, with complete preflight
 absence. `resumePagedInitialization` explicitly recovers reproducible bootstrap prefixes only while
 CURRENT is absent under the existing persistent LOCK. Ordinary open preserves unknown files and
 never adopts staging; no recovery root or target shape is inferred from partial bytes.
+
+
+The optional `build-storage-paged-resources` / `bench-storage-paged-resources` Make targets
+freeze the checked probe outside pressure and then run fresh populated-data writer/reader
+processes under exact Linux no-swap controls. Source-owned receipts distinguish ARC, descriptors,
+whole-process RSS and kernel cache; see the paged contract for workload, reproduction and actual
+qualification evidence. This does not authorize consumer adoption.
