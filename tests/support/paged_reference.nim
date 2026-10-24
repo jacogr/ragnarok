@@ -49,7 +49,10 @@ proc recommit*(fixture: var PagedReference) =
   while leaves < fixture.pages: leaves *= 2
   let root = tree(fixture.bytes, body, fixture.pages, 0, leaves)
   var selected: seq[byte] = @[]
-  selected.text("RAGNAROK-LIGHT-PAGED-MANIFEST-V1\n")
+  if body["RAGNAROK-LIGHT-PAGED-V".len] == byte('2'):
+    selected.text("RAGNAROK-LIGHT-PAGED-MANIFEST-V2\n") # Explicit test V2 header selects exactly its matching CURRENT domain.
+  else:
+    selected.text("RAGNAROK-LIGHT-PAGED-MANIFEST-V1\n") # Existing V1 oracle remains byte-identical.
   for index in 24..<104: selected.add(body[index])
   let fields = selected.len
   selected.setLen(fields+16)
@@ -61,7 +64,8 @@ proc recommit*(fixture: var PagedReference) =
   assert selected.len == 193
   fixture.manifest = selected
 proc pagedReference*(chain: StorageChainId, root: StateRoot,
-    records: seq[LightStateProof]): PagedReference =
+    records: seq[LightStateProof], context: seq[byte] = @[], epoch = 1'u64,
+        sequence = 0'u64): PagedReference =
   ## Assemble exact header/index/payload independently, accepting malformed proof semantics intentionally for tests.
   var payload: seq[byte] = @[]
   var indexBytes = newSeq[byte](64*records.len)
@@ -82,16 +86,20 @@ proc pagedReference*(chain: StorageChainId, root: StateRoot,
     put(indexBytes, 64*ordinal+39, uint64(payload.len-start))
   let indexPages = (indexBytes.len+4095) div 4096
   let payloadPages = (payload.len+4095) div 4096
-  result = PagedReference(bytes: newSeq[byte]((1+indexPages+payloadPages)*4096),
-      pages: 1+indexPages+payloadPages)
-  let magic = "RAGNAROK-LIGHT-PAGED-V1\n"
+  let contextPages = (context.len+4095) div 4096
+  result = PagedReference(bytes: newSeq[byte]((1+indexPages+payloadPages+contextPages)*4096),
+      pages: 1+indexPages+payloadPages+contextPages)
+  let magic = if context.len > 0: "RAGNAROK-LIGHT-PAGED-V2\n" else: "RAGNAROK-LIGHT-PAGED-V1\n"
   for slot, c in magic: result.bytes[slot] = byte(c)
   for slot in 0..<32:
     result.bytes[24+slot] = array[32, byte](chain)[slot]
     result.bytes[56+slot] = array[32, byte](root)[slot]
-  put(result.bytes, 88, 1)
+  put(result.bytes, 88, epoch)
+  put(result.bytes, 96, sequence)
   put(result.bytes, 104, uint64(records.len))
   put(result.bytes, 112, uint64(payload.len))
+  put(result.bytes, 120, uint64(context.len))
+  for slot, octet in context: result.bytes[(1+indexPages+payloadPages)*4096+slot] = octet # Independent context placement.
   for slot, octet in indexBytes: result.bytes[4096+slot] = octet
   for slot, octet in payload: result.bytes[(1+indexPages)*4096+slot] = octet
   result.recommit()

@@ -112,3 +112,39 @@ both platforms. The private context-backing compiler guard passes. Existing V1 p
 recovery, old-epoch, compaction and StateStore transport suites pass. All419 production modules
 and the peer entry point pass local Smoke, with stable pinned formatting and source inventory.
 Light native V2 and application startup remain the next integration layers.
+
+## Light native V2 context
+
+PagedStreamLimits.contextBytes selects V1 at zero or requires V2 under a finite positive cap.
+Construction, ordinary readers, replacement and explicit root advancement require that physical
+format without inference or fallback. Bootstrap validates context presence and its ceiling before
+creating the namespace. Complete admission authenticates all context pages and independently
+checks proof payload padding and context padding. V1 bytes and construction IO remain unchanged.
+
+readContext returns an immutable owned PagedContext with its exact captured manifest. Detached
+bytes outlive reader retirement and reclamation; no file, pin or callback escapes. Extraction
+preflights four context transports plus fixed workspace before allocation and can only tighten
+all captured work limits. Context is opaque application metadata; it supplies no additional proof
+availability, complete-state authority or external checkpoint trust.
+
+Compaction copies all authenticated source data pages, including context, and preserves ordinary
+sequence. Replay of a same-root/same-sequence compaction requires exact proof knowledge and opaque
+context equality. Admission folds already visited context leaf digests under a separate local
+domain, with charged hash work and constant memory, so even a forensic prefix ending before the
+first context page cannot authorize substitution. Independently requested replacements and root
+advancements instead bind the caller's exact target context through complete replay and prefix
+comparison. Reclamation binds the additional context policy scalar with the existing policies.
+
+The storage_paged_context suite compares independent whole-artifact and CURRENT bytes at context
+lengths 1, 31, 4095, 4096, 4097, 65,537 and 4,194,304 with cache zero/one. It covers empty knowledge,
+exact/one-short work and working ceilings, inherited-budget refusal, detached getter mutation,
+retained readers, root advancement, compaction/replay, corruption and independently recommitted
+padding, bootstrap resume, V1/V2 refusal and all observed native context read/candidate write
+failure boundaries. The state ProofView bridge retains present-empty, authenticated absence and
+MissingWitness distinctions on V2. Checked macOS ARC/Clang passes 1,000 successful capture plus
+late private-prefix read failure and fresh close/reopen cycles with 35,504 -> 35,504 occupied bytes.
+The same suite passes on Linux amd64 under Docker emulation with the same 35,504 -> 35,504
+ARC result. The private backing compiler guard, affected V1 streaming/native/cleanup/compaction,
+context codec and state ProofView suites pass. Source inventory, stable pinned formatting and
+all 419 production modules plus the peer entry point pass local semantic Smoke. Application
+startup and actual device power-loss qualification remain separate completion gates.
