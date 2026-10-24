@@ -163,3 +163,27 @@ empty graphs/values, cross-page values, unknown roots, owned lookup bytes, exact
 ceilings and every observed source/scratch callback refusal. Checked ARC retains exactly
 21,712 bytes before/after 1000 admission/lookup cycles in the small fixture. Native disk owners,
 construction/publication and populated Linux resource qualification remain subsequent work.
+
+
+## Replay-bound construction
+
+`full_paged_build.nim` builds complete artifacts from a synchronous sorted physical-record
+producer. Pass zero writes the bounded index, pass one writes canonical record transport;
+a private chained fingerprint binds every complete physical byte across both passes, including
+JAM-masked left bits. Explicit end markers, exact count/coverage and output EOF are mandatory.
+Fixed-page buffering adds canonical padding, then a fixed-depth postorder pass rereads completed
+body pages and appends all full-format digests. Final complete graph admission is mandatory;
+failed replay or graph admission exposes no checked candidate and leaves only forensic bytes.
+Admission also fingerprints the exact authenticated on-disk record stream; construction compares
+that fingerprint with both producer passes before granting a checked artifact. Equal JAM roots
+never substitute for exact physical replay. Construction producer/IO/hash/read/write budgets
+are separate from admission work budgets.
+Dataset, scratch, resident policy and complete output extent are checked before authoring.
+
+`storage_full_paged_build` compares every output byte with the independent complete-tree oracle,
+rejects failed/early/late producers and valid same-root physical alias substitution, checks every
+one-short construction quota and every observed output callback refusal (including partial failed
+appends), and retires all closures/bytes/scratch after 1000 cycles (54,480 -> 54,480 occupied bytes).
+The shared test-only byte/tree oracle lives in `tests/support/full_paged_reference.nim`; it is
+resident reference material, not the production bounded path. Native durability and ownership
+remain the next implementation boundary.
