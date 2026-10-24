@@ -7,7 +7,7 @@
 ## interface.
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, registers]
+import ../../../src/pvm/[program, machine, registers, gas, gas_plan, gas_memo, step]
 
 # Decode a fixed little-endian fixture word; the fixture shape is checked before any access.
 proc word(data: string, at: int): uint64 =
@@ -53,6 +53,7 @@ var count = 0
 # The count is bounded by the checked file extent before any record is consumed.
 for i in 0..<4: count = count or (int(byte(data[8 + i])) shl (8 * i))
 assert count > 32000 and (data.len - 12) mod 51 == 0 and count == (data.len - 12) div 51
+let empty = captureMemory([], PageLimit(0)).value
 var seen: array[256, bool] = default(array[256, bool])
 # Every fixture runs through a real decoded program and compares all thirteen registers.
 for row in 0..<count:
@@ -103,6 +104,34 @@ for row in 0..<count:
       echo "register witness ", row, " opcode ", op, " register ", index
     assert uint64(output[index]) == wanted
     assert uint64(reused.value[index]) == wanted
+  let source = captureMachine(program, empty, MachineInfo(pc: CodeAddress(0), gas: MachineGas(7),
+    gasDeficit: GasDeficit(0), blockCharged: true, registers: original)).value
+  let prepared = newGasPlan(program, GasPlanLimits(blocks: GasPlanBlockLimit(1),
+    bytes: GasPlanByteLimit(512), cycles: GasCycleLimit(10000)))
+  let learned = newGasMemo(program, GasMemoLimits(bytes: GasMemoByteLimit(512),
+      cycles: GasCycleLimit(10000)))
+  assert prepared.error == GasPlanError.None and learned.error == GasMemoError.None
+  for mode in 0..<4:
+    # The same paid instruction/trap executes through each real dispatcher; deliberately warmed prices must not change paid gas or integer semantics.
+    if mode == 3:
+      let price = blockGas(learned.value, CodeAddress(0))
+      assert price.error == GasMemoError.None and uint64(price.value) > 0
+    let completed = if mode == 0: execute(source, ExecutionStepLimit(2), GasCycleLimit(0))
+      elif mode == 1: execute(source, ExecutionStepLimit(2), prepared.value)
+      else: execute(source, ExecutionStepLimit(2), learned.value)
+    assert completed.error == StepError.None and completed.value.exit == StepExit.Panic
+    let cpu = machineInfo(completed.value.machine).value
+    assert uint64(cpu.pc) == 0 and uint64(cpu.gas) == 7 and uint64(cpu.gasDeficit) == 0 and
+        cpu.blockCharged
+    assert memoryOf(completed.value.machine).value == empty
+    for index in 0..<13:
+      let wanted = if index == destination: expected else: uint64(original[index])
+      assert uint64(cpu.registers[index]) == wanted # Independent full-width arithmetic expectations also bind the actual invocation path.
+      assert uint64(machineInfo(source).value.registers[index]) == uint64(original[index])
+    let unchanged = machineInfo(source).value
+    assert uint64(unchanged.pc) == 0 and uint64(unchanged.gas) == 7 and unchanged.blockCharged
+    assert uint64(unchanged.gasDeficit) == 0 and memoryOf(source).value == empty
+    assert gasMemoInfo(learned.value).value.pricedBlocks == (if mode == 3: 1'u64 else: 0'u64)
   seen[int(op)] = true
 
 # All 85 implemented opcodes must have actual oracle coverage.

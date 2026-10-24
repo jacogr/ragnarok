@@ -51,3 +51,6 @@ Further composition still includes loops, mixed memory and richer host transitio
 these straight-line arithmetic/fallthrough chains complement the existing mixed
 loop matrix. They do not establish arbitrary-program equivalence or satisfy the
 separate complete upstream differential fuzzing obligation.
+
+The unchanged frozen scalar/chain oracles now qualify complete invocation policies and both
+callback forms; see [register policy reference](pvm-register-policy-reference.md).

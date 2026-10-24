@@ -4,9 +4,11 @@
 ## Replay dependent arithmetic checkpoints through charged host continuations and every block shortage.
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
 
 type
+  Refusal = enum ## Fallible callbacks use an independent local refusal domain; successful witnesses select only genuine responses.
+    Refused
   Checkpoint = object ## A frozen complete CPU observation after one arithmetic mutation.
     pc, start, charge: uint64
     registers: RegisterFile
@@ -37,6 +39,47 @@ proc respond(context: var Context, stopped: StepOutcome): HostResponse {.raises:
   inc context.calls
   HostResponse(action: HostAction.Continue, gas: cpu.gas, gasDeficit: GasDeficit(0),
     registers: cpu.registers, memory: memoryOf(stopped.machine).value)
+
+proc unchanged(source: Machine, initial: RegisterFile, budget: uint64, memory: Memory) =
+  ## Every completed or refused replay preserves its original CPU and immutable empty-memory owner.
+  let cpu = machineInfo(source).value
+  assert uint64(cpu.pc) == 0 and uint64(cpu.gas) == budget and uint64(cpu.gasDeficit) == 0
+  assert not cpu.blockCharged and memoryOf(source).value == memory
+  for i in 0..<13:
+    assert uint64(cpu.registers[i]) == uint64(initial[
+        i]) # Include registers not modified by the final checkpoint.
+
+proc respondFallible(context: var Context, stopped: StepOutcome): HostResult[Refusal] {.raises: [].} =
+  ## Both public callback forms observe the exact same independently frozen checkpoint contract.
+  hostSuccess[Refusal](respond(context, stopped))
+
+proc run(source: Machine, context: var Context, mode: int, plan: GasPlan, memo: GasMemo,
+    steps = ExecutionStepLimit(175), calls = HostCallLimit(85)): StepResult =
+  ## Select real policy overloads without changing shared instruction/dispatch budgets.
+  case mode
+  of 0: executeWithHost(source, context, respond, steps, calls, GasCycleLimit(10000))
+  of 1: executeWithHost(source, context, respond, steps, calls, plan)
+  else: executeWithHost(source, context, respond, steps, calls, memo)
+
+proc runFallible(source: Machine, context: var Context, mode: int, plan: GasPlan, memo: GasMemo,
+    steps = ExecutionStepLimit(175), calls = HostCallLimit(85)): HostExecutionResult[Refusal] =
+  ## Preserve the typed execution-failure alternative for exact local budget refusals.
+  case mode
+  of 0: executeWithHost(source, context, respondFallible, steps, calls, GasCycleLimit(10000))
+  of 1: executeWithHost(source, context, respondFallible, steps, calls, plan)
+  else: executeWithHost(source, context, respondFallible, steps, calls, memo)
+
+proc replay(source: Machine, context: var Context, mode: int, fallible: bool,
+    plan: GasPlan, memo: GasMemo): StepOutcome =
+  ## Only successful engine results grant the completed guest outcome; OOG is a guest outcome, not a local error.
+  if fallible:
+    let completed = runFallible(source, context, mode, plan, memo)
+    assert completed.error == HostExecutionError.None
+    completed.value
+  else:
+    let completed = run(source, context, mode, plan, memo)
+    assert completed.error == StepError.None
+    completed.value
 
 var data = ""
 try:
@@ -95,6 +138,12 @@ for row in 0..<8:
         prices[i]
     assert blockGas(program, CodeAddress(starts[i]), GasCycleLimit(cycles[i] - 1)).error ==
       GasError.CycleLimitExceeded
+  let prepared = newGasPlan(program, GasPlanLimits(blocks: GasPlanBlockLimit(5),
+    bytes: GasPlanByteLimit(16384), cycles: GasCycleLimit(10000)))
+  assert prepared.error == GasPlanError.None
+  for i in 0..<5:
+    assert uint64(blockGas(prepared.value, CodeAddress(starts[i])).value) == prices[
+        i] # The complete table must match every independent block price.
   for scenario in 0..<7:
     # Two terminal successes and five independently unaffordable block entries retain their own prefixes.
     let blocked = scenario - 2
@@ -106,29 +155,52 @@ for row in 0..<8:
     let source = captureMachine(program, memory, MachineInfo(pc: CodeAddress(0), gas: MachineGas(
         budget),
       blockCharged: false, registers: initial)).value
-    var context = Context(checkpoints: checkpoints, calls: 0, budget: budget)
-    let completed = executeWithHost(source, context, respond, ExecutionStepLimit(175),
-      HostCallLimit(85), GasCycleLimit(10000))
-    assert completed.error == StepError.None
-    let outcome = completed.value
-    let cpu = machineInfo(outcome.machine).value
-    let calls = if scenario < 2: 85 else: blocked * 17
-    assert context.calls == calls and uint64(cpu.gasDeficit) == 0
-    if scenario < 2:
-      # Final trap normalizes PC only at the recursive execution boundary.
-      assert outcome.exit == StepExit.Panic and uint64(cpu.pc) == 0 and cpu.blockCharged
-      assert uint64(cpu.gas) == budget - total
-    else:
-      # A refused block publishes no arithmetic or host prefix from that block.
-      assert outcome.exit == StepExit.OutOfGas and not cpu.blockCharged
-      assert uint64(cpu.pc) == starts[blocked] and uint64(cpu.gas) == prices[blocked] - 1
-    let wanted = if calls == 0: initial else: checkpoints[calls - 1].registers
-    for i in 0..<13:
-      # All completed prefixes and original aliases retain complete independent register expectations.
-      assert uint64(cpu.registers[i]) == uint64(wanted[i])
-      assert uint64(machineInfo(source).value.registers[i]) == uint64(initial[i])
-    assert uint64(machineInfo(source).value.gas) == budget and not machineInfo(
-        source).value.blockCharged
+    for fallible in [false, true]:
+      let learned = newGasMemo(program, GasMemoLimits(bytes: GasMemoByteLimit(16384),
+          cycles: GasCycleLimit(10000)))
+      assert learned.error == GasMemoError.None
+      for mode in 0..<4:
+        # A fresh memo starts cold for each scenario/callback form; the next replay retains exactly those successful source-bound facts.
+        var context = Context(checkpoints: checkpoints, calls: 0, budget: budget)
+        let outcome = replay(source, context, mode, fallible, prepared.value, learned.value)
+        let cpu = machineInfo(outcome.machine).value
+        let calls = if scenario < 2: 85 else: blocked * 17
+        assert context.calls == calls and uint64(cpu.gasDeficit) == 0
+        if scenario < 2:
+          # Final trap normalizes PC only at the recursive execution boundary.
+          assert outcome.exit == StepExit.Panic and uint64(cpu.pc) == 0 and cpu.blockCharged
+          assert uint64(cpu.gas) == budget - total
+        else:
+          # A refused block publishes no arithmetic or host prefix from that block.
+          assert outcome.exit == StepExit.OutOfGas and not cpu.blockCharged
+          assert uint64(cpu.pc) == starts[blocked] and uint64(cpu.gas) == prices[blocked] - 1
+        let wanted = if calls == 0: initial else: checkpoints[calls - 1].registers
+        for i in 0..<13:
+          # All completed prefixes and original aliases retain complete independent register expectations.
+          assert uint64(cpu.registers[i]) == uint64(wanted[i])
+          assert uint64(machineInfo(source).value.registers[i]) == uint64(initial[i])
+        assert uint64(machineInfo(source).value.gas) == budget and not machineInfo(
+            source).value.blockCharged
+        assert memoryOf(outcome.machine).value == memory
+        unchanged(source, initial, budget, memory)
+        assert gasMemoInfo(learned.value).value.pricedBlocks == (if mode < 2: 0'u64 elif scenario <
+            2: 5'u64 else: uint64(blocked+1))
+        if scenario == 0:
+          # Reusing warm prices never grants another instruction attempt or host dispatch; completed callback effects remain visible on local refusal.
+          for shortage in 0..<2:
+            var limited = Context(checkpoints: checkpoints, calls: 0, budget: budget)
+            let steps = ExecutionStepLimit(if shortage == 0: 174'u64 else: 175'u64)
+            let calls = HostCallLimit(if shortage == 0: 85'u64 else: 84'u64)
+            let wanted = if shortage == 0: StepError.StepLimitExceeded else: StepError.HostCallLimitExceeded
+            if fallible:
+              let refused = runFallible(source, limited, mode, prepared.value, learned.value, steps, calls)
+              assert refused.error == HostExecutionError.ExecutionFailure and
+                  refused.executionError == wanted
+            else:
+              let refused = run(source, limited, mode, prepared.value, learned.value, steps, calls)
+              assert refused.error == wanted
+            assert limited.calls == (if shortage == 0: 85 else: 84)
+            unchanged(source, initial, budget, memory)
 assert cursor == data.len
 
-echo "PVM dependent register chains passed: 8 programs, 56 gas scenarios"
+echo "PVM dependent register chains passed: 8 programs, 448 policy/callback scenarios"
