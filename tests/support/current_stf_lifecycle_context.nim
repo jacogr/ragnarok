@@ -101,3 +101,16 @@ proc ejectionCode*(mode: int): seq[byte] =
   instructions.add(if mode in [73, 74]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, newSeq[byte](0)): result.add(octet)
+
+proc managerCode*(mode: int): seq[byte] =
+  ## One authorized manager hands off the fixed roles with an empty, unambiguous allowance map.
+  let manager = if mode == 80: 99'u64 else: 42'u64
+  var instructions = @[registerImmediate(7, manager), registerImmediate(8, 196608),
+    registerImmediate(9, 0), registerImmediate(10, 0), registerImmediate(11, 196616),
+    registerImmediate(12, 0), @[10'u8, 16]]
+  if mode == 79: instructions.add(@[10'u8, 19]) # Capture role handoff before exceptional selection.
+  instructions.add(registerImmediate(7, 99))
+  instructions.add(@[10'u8, 16]) # A second attempt observes the manager already selected by the first host call.
+  instructions.add(if mode in [78, 79]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, newSeq[byte](8)): result.add(octet)

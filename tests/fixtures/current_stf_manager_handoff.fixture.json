@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_MANAGER_HANDOFF",
+  "files": {
+    "current-stf-manager-handoff.json": "805a6e5394c44275cde408ac33fef779062e9a96fdecff653c0a30860ed6df32"
+  },
+  "target": "current-stf-manager-handoff.json"
+}
