@@ -21,14 +21,16 @@ from test_codec import reference_encode as natural
 FIXTURE = Path(__file__).parent/'fixtures/current-stf-epoch.json'
 SLOTS = ((2, 3, 4, 5, 10, 11, 12, 13, 36, 37), (2, 3, 4, 5, 12, 13), (2, 3, 10, 11, 12, 13))
 NAMES = ('saturated-tail', 'skipped-tail', 'incomplete-tail')
-PUBLIC = {encode(multiply(G, secret)): secret for secret in range(1, 7)}
+PUBLIC = {encode(multiply(G, secret)): secret for secret in range(1, 10)}
+NULL_VALIDATOR = bytes(32)+b'\2'+bytes(303)
 
 
 def roster(data):
-    """Decode six opaque validator records without dropping Ed/BLS/metadata bytes."""
+    """Decode six/nine opaque validator records without dropping Ed/BLS/metadata bytes."""
     source = Reader(data)
-    assert source.count() == 6
-    records = [source.take(336) for _ in range(6)]
+    count = source.count()
+    assert count in (6, 9)
+    records = [source.take(336) for _ in range(count)]
     source.done()
     return records
 
@@ -36,8 +38,9 @@ def roster(data):
 def consensus(data):
     """Decode the complete C4 tuple and retain every schedule/attempt byte."""
     source = Reader(data)
-    assert source.count() == 6
-    pending = [source.take(336) for _ in range(6)]
+    count = source.count()
+    assert count in (6, 9)
+    pending = [source.take(336) for _ in range(count)]
     root = source.take(144)
     kind = source.take(1)[0]
     assert kind in (0, 1)
@@ -97,7 +100,8 @@ def submitted_for(slot, bank):
     return []
 
 
-def successor(parent, slot, submitted, bank, roots):
+def successor(parent, slot, submitted, bank, roots, *, cores=2, dispute_wire=bytes(3),
+              new_offenders=()):
     """Calculate each header, admitted contest, rotated state and entire successor independently."""
     previous = int.from_bytes(parent[chapter_key(11)], 'little')
     assert slot > previous
@@ -105,7 +109,13 @@ def successor(parent, slot, submitted, bank, roots):
     active = roster(parent[chapter_key(8)])
     entropy = [parent[chapter_key(6)][i:i+32] for i in range(0, 128, 32)]
     crossed = slot//12 > previous//12
-    post_pending = roster(parent[chapter_key(7)]) if crossed else pending
+    judgments = Reader(parent[chapter_key(5)])
+    sets = [[judgments.take(32) for _ in range(judgments.count())] for _ in range(4)]
+    judgments.done()
+    assert list(new_offenders) == sorted(set(new_offenders))
+    offenders = sorted(set(sets[3]) | set(new_offenders))
+    post_pending = [NULL_VALIDATOR if row[32:64] in offenders else row
+                    for row in roster(parent[chapter_key(7)])] if crossed else pending
     post_active = pending if crossed else active
     post_root = roots['staging'] if crossed else root
     # Current entropy[2] after a crossing is old eta1; the contest never uses freshly derived entropy.
@@ -129,7 +139,7 @@ def successor(parent, slot, submitted, bank, roots):
         else:
             post_kind = 1
             post_schedule = [post_active[int.from_bytes(digest(seed+i.to_bytes(4, 'little'))[:4],
-                                                        'little') % 6][:32] for i in range(12)]
+                                                        'little') % len(post_active)][:32] for i in range(12)]
     else:
         post_kind, post_schedule = kind, schedule
     epoch = None
@@ -148,27 +158,31 @@ def successor(parent, slot, submitted, bank, roots):
     else:
         secret = PUBLIC[selected]
         transcript = b'jam_fallback_seal'+entropy[2 if crossed else 3]
-    author = next(i for i, record in enumerate(post_active) if PUBLIC[record[:32]] == secret)
+    author = next(i for i, record in enumerate(post_active) if PUBLIC.get(record[:32]) == secret)
     _, seal_output = sign(secret, transcript, b'')
     if post_kind == 0:
         assert seal_output == selected[:32]
     entropy_proof, entropy_output = sign(secret, b'jam_entropy'+seal_output, b'')
     tickets = natural(len(submitted))+b''.join(bytes([item['attempt']])+bytes.fromhex(item['proof'])
                                               for item in submitted)
-    body = tickets+bytes(6)
-    commitment = digest(digest(tickets)+3*digest(b'\0')+digest(bytes(3)))
+    body = tickets+bytes(3)+dispute_wire
+    commitment = digest(digest(tickets)+3*digest(b'\0')+digest(dispute_wire))
     blocks, _ = history(parent[chapter_key(3)])
     source = dict(parent=blocks[-1][0][:32], parent_state_root=tree(list(parent.items()))[0],
                   extrinsic_hash=commitment, slot=slot, epoch_mark=epoch, tickets_mark=winners,
-                  author_index=author, entropy_source=entropy_proof, offenders_mark=[])
+                  author_index=author, entropy_source=entropy_proof, offenders_mark=list(new_offenders))
     source['seal'], _ = sign(secret, transcript, header_wire('U', source))
     header = header_wire('H', source)
-    result = advance_chapters(parent, header, slot, author, entropy_output, ticket_count=len(submitted))
+    result = advance_chapters(parent, header, slot, author, entropy_output,
+                              ticket_count=len(submitted), cores=cores)
     result[chapter_key(4)] = consensus_wire((b''.join(post_pending), post_root, post_kind,
                                             b''.join(post_schedule), b''.join(kept)))
     if crossed:
-        result[chapter_key(8)] = natural(6)+b''.join(post_active)
+        result[chapter_key(8)] = natural(len(post_active))+b''.join(post_active)
         result[chapter_key(9)] = parent[chapter_key(8)]
+    if new_offenders:
+        result[chapter_key(5)] = b''.join(natural(len(values))+b''.join(values)
+                                         for values in (*sets[:3], offenders))
     return header+body, result
 
 

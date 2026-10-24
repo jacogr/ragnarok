@@ -1,5 +1,9 @@
 # Whole-map STF goldens for epoch transitions and ticket admission
 
+The [offender/population/eviction extension](current-stf-population-eviction-goldens.md) adds
+signed culprit evidence, variable validator populations and saturated-contest replacement with
+independently calculated complete maps. These original cases and frozen inputs remain unchanged.
+
 Scope: three authored complete-state chains, twenty-two actual candidate transitions under the
 tiny profile (two cores, six validators, twelve-slot epochs, ticket cutoff10, at most three tickets
 per block). Pins remain Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, Draft35 Thin
