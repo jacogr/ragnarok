@@ -317,3 +317,36 @@ interpreter measurements, without CPU affinity/frequency isolation; they establi
 neither exact-head Linux performance nor compiled-backend or whole-JAM throughput.
 M1 framing remains scoped completion; full state serialization and STF/JAM parity
 remain open, and fuzzing remains paused pending the maintainer's Daybreak access.
+
+## Adaptive dynamic-target facts, 2026-10-24
+
+The Linux instruction profile in [CI40108049548](https://github.com/jacogr/ragnarok/actions/runs/40108049548)
+records780856 dynamic-target requests and776125 complete target validations for Pinky1.
+A separate bounded diagnostic trace reproduces both counts while passing the maintained
+full-state oracle. Its322 distinct ordinals overwhelm four entries: four-way FIFO/LRU
+and Fibonacci indexing still miss about776000 times. A direct256-entry replay misses22388.
+These are operation counts; all instrumented desktop timings are discarded.
+
+The invocation keeps its original four-entry exact-tagged hit path. Only small-cache
+misses probe a private256-entry child. After128 successful validation misses, the next
+successful miss allocates that fixed child, seeds valid residents and inserts the new
+fact. Failed table lookups and nonblock destinations never advance pressure or replace
+entries. Every hit checks the complete ordinal and validity tag; collisions are misses.
+Facts contain only copied ordinals and code addresses, never program/machine owners,
+instructions, gas prices or mutable host state. The fixed payload is6144 bytes on the
+checked64-bit target, plus its ARC header; input size cannot grow it further.
+
+The invocation owns the child across host continuations because responses cannot change
+the program. Nested executions create independent empty caches. Successful target reuse
+still performs the original gas, control and halt-sentinel ordering. Small working sets
+keep the original allocation-free fast path: the recorded minimal100000 requests contain
+only three misses, and sieve100000 has85 successful misses, below promotion.
+
+Native cache coverage adds130-ordinal repeated rounds against complete public single-step
+CPU/gas parity under dynamic, planned and cold/warm memo pricing, an exact one-less
+instruction refusal, and1000 balanced ARC promotion/retirement cycles. A257-ordinal host
+guest deliberately collides ordinals0/256 with different destinations after promotion;
+both callback forms, all pricing policies, nested different programs, invalid operand/
+out-of-code/absent targets and halt priority retain independently checked state and gas.
+Performance acceptance requires the incremental paired Linux comparison and its unchanged
+synthetic, identical-source, assertion and interpreted reference controls.

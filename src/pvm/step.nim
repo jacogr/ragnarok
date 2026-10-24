@@ -20,6 +20,8 @@ type
     valid: bool
     index: JumpIndex
     target: CodeAddress
+  DynamicTargetSpill = ref object ## Sustained successful target misses justify one fixed exact-tagged child, never input-sized growth.
+    entries: array[256, DynamicTargetEntry]
   ExpandedPrices = ref object ## Sustained successful pricing misses justify one fixed larger table, never input-sized growth.
     entries: array[4096, BlockChargeEntry]
     replaceUpper: array[2048, bool]
@@ -28,7 +30,7 @@ type
     replaceUpper: array[64, bool]
     expanded: nil ExpandedPrices
     pressure: range[0..128]
-  ExecutionCache = object ## Invocation-local prices retain their policy; four exact-tagged dynamic targets never certify paid gas.
+  ExecutionCache = object ## Invocation-local prices retain their policy; bounded exact-tagged dynamic targets never certify paid gas.
     valid: bool
     start: CodeAddress
     charge: BlockGas
@@ -36,6 +38,8 @@ type
     next: range[0..2]
     secondary: nil SecondaryPrices
     targets: array[4, DynamicTargetEntry]
+    targetSpill: nil DynamicTargetSpill
+    targetPressure: range[0..128]
   DecodedSpill = ref object ## One bounded direct-mapped invocation spill retains copied scalar results, never a program or mutable machine.
     entries: array[16384, ProgramResult[Instruction]]
   InstructionCache = object ## Thirty-two genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
@@ -296,7 +300,7 @@ func initExecutionCache(): ExecutionCache =
   ExecutionCache(valid: false, start: CodeAddress(0), charge: BlockGas(0),
     recent: default(array[3, BlockChargeEntry]), next: 0,
     secondary: nil,
-    targets: default(array[4, DynamicTargetEntry]))
+    targets: default(array[4, DynamicTargetEntry]), targetSpill: nil, targetPressure: 0)
 
 proc cachedSecondaryCharge(cache: ExecutionCache, start: CodeAddress,
     needed: var uint64): bool {.noinline.} =
@@ -493,6 +497,25 @@ proc blockTarget(program: Program, address: CodeAddress): bool =
   let checked = basicBlockStart(program, address)
   checked.error == ProgramError.None and checked.value
 
+proc rememberDynamicTarget(cache: var ExecutionCache, index: JumpIndex,
+    target: CodeAddress) {.noinline.} =
+  ## Only successful checked misses advance bounded pressure; small working sets retain the original allocation-free path.
+  if cache.targetSpill == nil:
+    if cache.targetPressure < 128:
+      inc cache.targetPressure # The checked bound prevents overflow and unsuccessful targets never reach this helper.
+      return
+    # The129th successful miss seeds genuine resident facts before recording the new full ordinal.
+    var expanded = DynamicTargetSpill(entries: default(array[256, DynamicTargetEntry]))
+    for entry in cache.targets:
+      if entry.valid:
+        expanded.entries[int(uint64(entry.index) and 255)] = entry
+    cache.targetSpill = expanded
+  # The retained invocation cache fixes this child throughout this callback-free scalar insertion.
+  let table {.cursor.} = cache.targetSpill
+  if table != nil:
+    table.entries[int(uint64(index) and 255)] = DynamicTargetEntry(valid: true,
+      index: index, target: target)
+
 proc cachedDynamicTarget(cache: var ExecutionCache, program: Program, index: JumpIndex,
     target: var CodeAddress): bool =
   ## Only a complete table lookup and block-membership check supplies a positive exact-ordinal fact.
@@ -500,10 +523,18 @@ proc cachedDynamicTarget(cache: var ExecutionCache, program: Program, index: Jum
   if cache.targets[slot].valid and uint64(cache.targets[slot].index) == uint64(index):
     target = cache.targets[slot].target # Full ordinal tags reject colliding entries without truncation.
     return true
+  # Retain the original four-slot hit path without a spill probe; only a small-cache miss visits the child.
+  let table {.cursor.} = cache.targetSpill
+  if table != nil:
+    let entry = table.entries[int(uint64(index) and 255)]
+    if entry.valid and uint64(entry.index) == uint64(index):
+      target = entry.target # A direct-map collision never authorizes a different ordinal's destination.
+      return true
   let found = jumpTarget(program, index)
   if found.error != ProgramError.None: return false # Failed lookups never replace a resident or grant a target.
   let resolved = found.value
   if not blockTarget(program, resolved): return false # Nonblock and out-of-code table contents remain guest panics.
+  rememberDynamicTarget(cache, index, resolved)
   cache.targets[slot] = DynamicTargetEntry(valid: true, index: index, target: resolved)
   target = resolved
   true

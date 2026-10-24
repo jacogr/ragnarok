@@ -681,6 +681,7 @@ type
     previous: RegisterFile
     calls, count, expectedHost: int
     terminal: uint64
+    wide: bool
 
 proc jumpReply(context: var JumpContext, stopped: StepOutcome): HostResponse {.raises: [].} =
   ## Independently known block prices and alternating host identities expose wrong-target hits before terminal normalization.
@@ -699,8 +700,9 @@ proc jumpReply(context: var JumpContext, stopped: StepOutcome): HostResponse {.r
   if context.calls == context.count:
     registers[8] = RegisterValue(0x1234567800000000'u64 or context.terminal)
   else:
-    # Ordinals0/4 collide; repeated hits and ordinal3 exercise separate slots. Upper bits are discarded by the existing address rule.
-    let indices = [0'u64, 0, 4, 4, 0, 4, 3, 3]
+    # Ordinals0/4 or0/256 collide; repeated hits and ordinal3 exercise separate slots. Upper bits are discarded by the existing address rule.
+    let indices = if context.wide: [0'u64, 0, 256, 256, 0, 256, 3, 3]
+      else: [0'u64, 0, 4, 4, 0, 4, 3, 3]
     let index = indices[(context.calls-1) mod indices.len]
     registers[8] = RegisterValue(0x1234567800000000'u64 or (2*(index+1)))
     context.expectedHost = if index == 0: 1 else: 2
@@ -713,10 +715,16 @@ proc jumpReplyFallible(context: var JumpContext, stopped: StepOutcome): HostResu
   ## Both public host callback forms must retain the same program-local facts and synchronous reentry isolation.
   hostSuccess[Reason](jumpReply(context, stopped))
 
-proc dynamicTargets(count = 64, full = true) =
+proc dynamicTargets(count = 64, full = true, wide = false) =
   ## Literal table entries include colliding valid blocks, an operand byte, an out-of-code target and an absent ordinal.
-  let decoded = decodeProgram(@[5'u8, 1, 8, 0, 1, 255, 4, 4, 10, 1, 50, 8, 10, 2, 50, 8, 0x55],
-    CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(5))
+  var wire = @[5'u8, 1, 8, 0, 1, 255, 4, 4, 10, 1, 50, 8, 10, 2, 50, 8, 0x55]
+  if wide:
+    # Independently frame257 width-one ordinals;0/256 collide in both cache sizes but select different host blocks.
+    wire = @[129'u8, 1, 1, 8]
+    for index in 0..256:
+      wire.add(byte(if index == 0: 0 elif index == 1: 1 elif index == 2: 255 else: 4))
+    for octet in [10'u8, 1, 50, 8, 10, 2, 50, 8, 0x55]: wire.add(octet)
+  let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(512), JumpCountLimit(257))
   let other = decodeProgram(@[1'u8, 1, 3, 2, 50, 8, 0, 5], CodeAddress(0),
     ProgramByteLimit(64), JumpCountLimit(1))
   assert decoded.error == ProgramError.None and other.error == ProgramError.None
@@ -741,10 +749,10 @@ proc dynamicTargets(count = 64, full = true) =
   assert uint64(blockGas(owner, CodeAddress(0), GasCycleLimit(103)).value) == 100
   assert uint64(blockGas(owner, CodeAddress(4), GasCycleLimit(103)).value) == 100
   for policy in 0..<(if full: 3 else: 1):
-    for terminal in [0xffff0000'u64, 4, 6, 18, 0, 3]:
+    for terminal in [0xffff0000'u64, 4, 6, (if wide: 516'u64 else: 18'u64), 0, 3]:
       for fallible in [false, true]:
         var context = JumpContext(nested: nested, previous: original,
-          calls: 0, count: count, expectedHost: 1, terminal: terminal)
+          calls: 0, count: count, expectedHost: 1, terminal: terminal, wide: wide)
         var outcome = default(StepOutcome)
         template run(selected: untyped) =
           # Static selection preserves the public overload and distinct failure result types.
@@ -774,10 +782,50 @@ proc dynamicTargets(count = 64, full = true) =
         same(machineInfo(source).value, cpu)
   # One-less cycle limit refuses pricing before any callback or target cache lookup.
   var context = JumpContext(nested: nested, previous: original,
-    calls: 0, count: count, expectedHost: 1, terminal: 0xffff0000'u64)
+    calls: 0, count: count, expectedHost: 1, terminal: 0xffff0000'u64, wide: wide)
   let refused = executeWithHost(source, context, jumpReply, ExecutionStepLimit(uint64(count*2)),
     HostCallLimit(uint64(count)), GasCycleLimit(102))
   assert refused.error == StepError.GasCycleLimitExceeded and context.calls == 0
+
+
+proc targetPressureSource(): Machine =
+  ## Three130-ordinal rounds cross promotion, fill previously missed facts and consume positive spill hits before a literal trap.
+  var wire = @[128'u8, 130, 1, 19]
+  for index in 0..<130:
+    wire.add(byte(if index == 129: 5 else: 0)) # Only the final ordinal leaves the increment-and-jump block.
+  for octet in [149'u8, 0x88, 2, 50, 8, 51, 8, 0, 149, 0, 255, 255, 255, 255,
+      82, 16, 0, 242, 0, 0x29, 0x41, 0x04]: wire.add(octet)
+  let parsed = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(512), JumpCountLimit(130))
+  assert parsed.error == ProgramError.None
+  let source = input(parsed.value, 3)
+  var cpu = machineInfo(source).value
+  cpu.registers[8] = RegisterValue(0)
+  captureMachine(parsed.value, memoryOf(source).value, cpu).value
+
+proc targetPressureArc(source: Machine, plan: GasPlan, expected: MachineInfo) =
+  ## Every invocation must release its promoted target child while retaining the input's immutable owners.
+  let stopped = execute(source, ExecutionStepLimit(790), plan)
+  assert stopped.error == StepError.None and stopped.value.exit == StepExit.Panic
+  same(machineInfo(stopped.value.machine).value, expected)
+  assert pageImage(memoryOf(source).value, PageIndex(0)).value.access == PageAccess.Inaccessible
+  assert pageImage(memoryOf(stopped.value.machine).value, PageIndex(0)).value.access ==
+      PageAccess.Inaccessible
+  assert uint64(machineInfo(source).value.registers[0]) == 3
+
+proc targetPressure() =
+  ## Independent single steps define complete CPU/gas parity for cold/warm policies and the exact one-less local refusal.
+  let source = targetPressureSource()
+  let expected = compareSteps(source, 790, StepExit.Panic, GasCycleLimit(100000))
+  assert uint64(expected.registers[0]) == 0 and uint64(expected.registers[8]) == 0
+  let policies = densePolicies(source, 3, 65536)
+  for mode in 0..<3:
+    for repetition in 0..<2:
+      let stopped = denseRun(source, mode, policies.plan, policies.memo, 790)
+      assert stopped.error == StepError.None and stopped.value.exit == StepExit.Panic
+      same(machineInfo(stopped.value.machine).value, expected)
+    assert denseRun(source, mode, policies.plan, policies.memo, 789).error ==
+        StepError.StepLimitExceeded
+    assert uint64(machineInfo(source).value.registers[0]) == 3
 
 
 proc controlOwner(opcode: byte, alias = false, tableTarget = 7'u8): Program =
@@ -959,6 +1007,8 @@ controlSuccessors()
 absentControlSuccessors()
 
 dynamicTargets()
+dynamicTargets(320, true, true)
+targetPressure()
 collisions()
 threeWayPressure()
 alternatingPrices()
@@ -977,8 +1027,13 @@ denseArc(denseArcSource, denseArcPlan, denseArcExpected)
 let adaptiveArcSource = adaptiveSource()
 let adaptiveArcExpected = compareSteps(adaptiveArcSource, 772, StepExit.Panic, GasCycleLimit(100000))
 adaptiveArc(adaptiveArcSource, adaptiveArcExpected)
+let targetArcSource = targetPressureSource()
+let targetArcPlan = densePolicies(targetArcSource, 3, 65536).plan
+let targetArcExpected = compareSteps(targetArcSource, 790, StepExit.Panic, GasCycleLimit(100000))
+targetPressureArc(targetArcSource, targetArcPlan, targetArcExpected)
 let before = getOccupiedMem()
 for cycle in 0..<1000:
+  targetPressureArc(targetArcSource, targetArcPlan, targetArcExpected)
   adaptiveArc(adaptiveArcSource, adaptiveArcExpected)
   denseArc(denseArcSource, denseArcPlan, denseArcExpected)
   collisions()
