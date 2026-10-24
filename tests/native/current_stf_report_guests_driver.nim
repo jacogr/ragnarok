@@ -111,7 +111,9 @@ proc failure(outcome: CurrentCandidateResult): string =
 proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): array[2, seq[byte]] =
   ## Keep literal family selection explicit and independent of the growing original/namespace construction workflow.
   var first = namespaceHaltCode()
-  if mode in 97..101:
+  if mode in 113..117:
+    first = precedenceAssignerCode(mode) # Both privileged actors execute from the same original role tuple.
+  elif mode in 97..101:
     first = juniorConflictCode(mode) # The junior's own writes/yield/provision compete with its supervisor from one common prior.
   elif mode in 42..46:
     first = memoReceiverCode(mode) # Only memo recipients consume incoming bytes into storage and yields.
@@ -119,6 +121,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): 
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 113..117: second = precedenceManagerCode(mode) # GP R preserves the manager proposal only when it actually changes the old role.
   of 107..112: second = authorizationAssignCode(mode) # Real ordered queue replacement and original-assigner publication.
   of 102..106: second = supervisedHandoffCode(mode) # Foreign role assignment changes immediate authority but keeps prior-based M selection.
   of 97..101: second = supervisorConflictCode(mode) # Selected foreign membership drives real N/M decisions.
@@ -222,6 +225,9 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     options.signed.accountSupervisorCreated = (if mode in [85, 96, 101]: 1'u32 else: 0'u32)
   if mode in 107..112:
     options.assigner = 99 # Genuine original roles authorize both cores before any signed child.
+  if mode in 113..117:
+    options.assigner = 42 # Original assigner, not the later manager-selected role, supplies the queue.
+    options.manager = 99
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -233,7 +239,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     options.signed.extra.add(serviceMetadataEntry(ServiceIndex(77), donor, ByteLimit(105)).value)
   let fixture = executionFixture(base, options)
   var chainParameters = currentChainSettings()
-  if mode in 107..111:
+  if mode in 107..117 and mode != 112:
     # This authored larger-code profile admits the real queue-bearing program; mode112 retains512 as its eligibility control.
     var wire = chainParameters.encodeParameters
     for index in 0..<4: wire[98+index] = byte((4096'u32 shr (8*index)) and 255)
@@ -286,7 +292,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
     limits.completion.execution.initial.guests.deletedAccounts = ElementLimit(1)
     limits.completion.execution.execution.round.guests.deletedAccounts = ElementLimit(1)
-  if mode in 107..112:
+  if mode in 107..117:
     # Whole code includes the actual2560-byte queue; bounded code/initialization/copy policies admit this exact authored size.
     limits.completion.composition.validators.preimageBytes = ByteLimit(4096)
     limits.completion.composition.activity.preimages.perBlob = ByteLimit(4096)
@@ -482,7 +488,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 113
+      assert mode >= 0 and mode < 118
       bodies = @[]
       slots = @[]
     else:
@@ -491,7 +497,7 @@ proc main() {.raises.} =
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
-      106, 111, 112]
+      106, 111, 112, 117]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:
