@@ -19,9 +19,14 @@ type
     valid: bool
     index: JumpIndex
     target: CodeAddress
-  SecondaryPrices = ref object ## A bounded private spill owner allocates only after four successful distinct dynamic prices.
+  ExpandedPrices = ref object ## Sustained successful pricing misses justify one fixed larger table, never input-sized growth.
+    entries: array[4096, BlockChargeEntry]
+    replaceUpper: array[2048, bool]
+  SecondaryPrices = ref object ## The original bounded spill keeps small hits first and owns at most one larger child under sustained pressure.
     entries: array[128, BlockChargeEntry]
     replaceUpper: array[64, bool]
+    expanded: nil ExpandedPrices
+    pressure: range[0..128]
   ExecutionCache = object ## Invocation-local prices retain their policy; four exact-tagged dynamic targets never certify paid gas.
     valid: bool
     start: CodeAddress
@@ -306,12 +311,30 @@ proc cachedSecondaryCharge(cache: ExecutionCache, start: CodeAddress,
       uint64(start):
     needed = uint64(table.entries[slot+64].charge)
     return true
+  let expanded = table.expanded
+  if expanded != nil:
+    # Promotion changes only the bounded table; complete original start tags still decide every hit.
+    let slot = int((uint64(start)*11400714819323198485'u64) shr 53)
+    if expanded.entries[slot].valid and uint64(expanded.entries[slot].start) == uint64(start):
+      needed = uint64(expanded.entries[slot].charge)
+      return true
+    elif expanded.entries[slot+2048].valid and uint64(expanded.entries[slot+2048].start) == uint64(start):
+      needed = uint64(expanded.entries[slot+2048].charge)
+      return true
+    return false
   false # Full address tags prevent a collision from authorizing the wrong price.
 
 proc insertSecondary(table: SecondaryPrices, start: CodeAddress, charge: BlockGas) =
   ## The exclusive invocation owner mutates at most one fixed set; no guest balances or failed simulations enter this table.
   let slot = int((uint64(start)*11400714819323198485'u64) shr 58)
   let destination = if table.replaceUpper[slot]: slot+64 else: slot
+  table.entries[destination] = BlockChargeEntry(valid: true, start: start, charge: charge)
+  table.replaceUpper[slot] = not table.replaceUpper[slot]
+
+proc insertExpanded(table: ExpandedPrices, start: CodeAddress, charge: BlockGas) =
+  ## Only the exclusive invocation's complete successful prices populate this fixed two-way table.
+  let slot = int((uint64(start)*11400714819323198485'u64) shr 53)
+  let destination = if table.replaceUpper[slot]: slot+2048 else: slot
   table.entries[destination] = BlockChargeEntry(valid: true, start: start, charge: charge)
   table.replaceUpper[slot] = not table.replaceUpper[slot]
 
@@ -335,13 +358,29 @@ proc rememberCharge(cache: var ExecutionCache, start: CodeAddress, charge: Block
     cache.charge = charge
   else:
     if cache.secondary == nil and cache.recent[cache.next].valid:
-      # The fifth distinct successful miss justifies one bounded allocation. Seed only the three genuine preceding hot facts.
+      # Four hot facts precede the first bounded spill; ordinary invocations retain their original lookup layout.
       let table = SecondaryPrices(entries: default(array[128, BlockChargeEntry]),
-        replaceUpper: default(array[64, bool]))
+        replaceUpper: default(array[64, bool]), expanded: nil, pressure: 0)
       for entry in cache.recent: insertSecondary(table, entry.start, entry.charge)
       cache.secondary = table
     let table = cache.secondary
-    if table != nil: insertSecondary(table, start, charge)
+    if table != nil:
+      if table.expanded == nil:
+        if table.pressure < 128:
+          inc table.pressure # Only successful misses advance this saturating progress; hits and failed simulations never do.
+        else:
+          # Copy genuine small facts once; retaining the small owner keeps its established lookup first for ordinary hits.
+          let expanded = ExpandedPrices(entries: default(array[4096, BlockChargeEntry]),
+            replaceUpper: default(array[2048, bool]))
+          for index in 0..<table.entries.len:
+            let entry = table.entries[index]
+            if entry.valid: insertExpanded(expanded, entry.start, entry.charge)
+          table.expanded = expanded
+      let expanded = table.expanded
+      if expanded != nil:
+        insertExpanded(expanded, start, charge)
+      else:
+        insertSecondary(table, start, charge)
     cache.recent[cache.next] = BlockChargeEntry(valid: true, start: start, charge: charge)
     if cache.next == 2: cache.next = 0
     else: inc cache.next # The 0..2 domain and branch prove the next index; no guest-length counter can wrap.
