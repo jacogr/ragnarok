@@ -45,8 +45,11 @@ jobs:
   # Complete source import graph plus peer main and read-only formatting; no native linking or fixture setup.
   smoke:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke') }}
-    name: Compile / Smoke
+    name: Compile / ${{ matrix.family.name }}
     timeout-minutes: 10
+    strategy:
+      matrix:
+        family: [{name: Smoke}]
     runs-on: ubuntu-latest
     steps:
       - &checkout
@@ -75,12 +78,13 @@ jobs:
 
   modules:
     if: &requested ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
-    name: Compile / Source
+    name: Compile / ${{ matrix.family.name }}
     timeout-minutes: 30
-    strategy: &os-strategy
+    strategy:
       fail-fast: false
       matrix:
         os: &ci-os [ubuntu-latest]
+        family: [{name: Source}]
     runs-on: ${{ matrix.os }}
     steps:
       - *checkout
@@ -110,9 +114,13 @@ jobs:
 
   python:
     if: *requested
-    name: Compile / Reference & Tooling
+    name: Compile / ${{ matrix.family.name }}
     timeout-minutes: 15
-    strategy: *os-strategy
+    strategy:
+      fail-fast: false
+      matrix:
+        os: *ci-os
+        family: [{name: Reference & Tooling}]
     runs-on: ${{ matrix.os }}
     steps:
       - *checkout
@@ -136,9 +144,13 @@ jobs:
 
   guards:
     if: *requested
-    name: Compile / Rejection Guards
+    name: Compile / ${{ matrix.family.name }}
     timeout-minutes: 30
-    strategy: *os-strategy
+    strategy:
+      fail-fast: false
+      matrix:
+        os: *ci-os
+        family: [{name: Rejection Guards}]
     runs-on: ${{ matrix.os }}
     steps:
       - *checkout
@@ -167,7 +179,10 @@ jobs:
     name: Compile
     needs: [smoke, modules, python, guards]
     if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke')) }}
-    strategy: *os-strategy
+    strategy: &os-strategy
+      fail-fast: false
+      matrix:
+        os: *ci-os
     runs-on: ${{ matrix.os }}
     steps:
       - name: Require requested Compile jobs
@@ -389,8 +404,11 @@ jobs:
   # Pinned public-API comparisons remain distinct from frozen native fixtures and future fuzzing.
   pvm-reference:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
-    name: Interop / PVM
+    name: Interop / ${{ matrix.family.name }}
     timeout-minutes: 45
+    strategy:
+      matrix:
+        family: [{name: PVM}]
     runs-on: ubuntu-latest
     env:
       RAGNAROK_PVM_REFERENCE_BACKEND: interpreter
@@ -421,9 +439,13 @@ jobs:
 
   telemetry-interop:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'interop' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full')) }}
-    name: Interop / Telemetry
+    name: Interop / ${{ matrix.family.name }}
     timeout-minutes: 60
-    strategy: *os-strategy
+    strategy:
+      fail-fast: false
+      matrix:
+        os: *ci-os
+        family: [{name: Telemetry}]
     runs-on: ${{ matrix.os }}
     steps:
       - *checkout
@@ -543,8 +565,11 @@ jobs:
   # Perf jobs publish validated measurements on master pushes and explicit group/full requests.
   bench-pvm:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
-    name: Perf / PVM
+    name: Perf / ${{ matrix.family.name }}
     timeout-minutes: 30
+    strategy:
+      matrix:
+        family: [{name: PVM}]
     runs-on: ubuntu-latest
     steps:
       - *checkout
@@ -597,8 +622,11 @@ jobs:
   # Keep storage adjacent to other Perf jobs and use the same group/full request policy.
   bench-storage:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-storage' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
-    name: Perf / Storage
+    name: Perf / ${{ matrix.family.name }}
     timeout-minutes: 30
+    strategy:
+      matrix:
+        family: [{name: Storage}]
     runs-on: ubuntu-latest
     steps:
       - *checkout
@@ -666,8 +694,11 @@ jobs:
   # Sustained growth keeps all repetitions on its own runner, independent of other storage panels.
   bench-storage-growth:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
-    name: Perf / Storage Growth
+    name: Perf / ${{ matrix.family.name }}
     timeout-minutes: 30
+    strategy:
+      matrix:
+        family: [{name: Storage Growth}]
     runs-on: ubuntu-latest
     steps:
       - *checkout
@@ -715,8 +746,11 @@ jobs:
   # Original upstream campaigns and the JAM bridge have separate verdicts and failure artifacts.
   pvm-fuzz:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full')) }}
-    name: Fuzz / PVM
+    name: Fuzz / ${{ matrix.family.name }}
     timeout-minutes: 30
+    strategy:
+      matrix:
+        family: [{name: PVM}]
     runs-on: ubuntu-latest
     env:
       FUZZ_RUNS: "10000"
