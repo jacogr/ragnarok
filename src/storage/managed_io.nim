@@ -485,6 +485,85 @@ proc sameJournal(directory: ManagedDirectory, epoch: ManagedEpoch,
       uint64(selected.st_size) != journal.size or uint64(held.st_size) != journal.size:
     return FileError.RecoveryMismatch
   FileError.None
+proc attachManagedJournal*(journal: var ManagedJournal, directory: ManagedDirectory,
+    epoch: ManagedEpoch, limit: ByteLimit): FileError =
+  ## Retain one bounded regular append inode without allocating or reading its entire encoded log; callers still authenticate its format.
+  if journal.active: return FileError.Busy
+  let state = directory.data
+  if state == nil or not state.active: return FileError.Uninitialized
+  if state.journals == high(int): return FileError.LimitExceeded
+  let named = managedFileName(ManagedFileKind.Journal, epoch)
+  if named.error != FileError.None: return named.error
+  var name = named.value
+  var descriptor = openAt(state.descriptor, name.toCString(), O_RDWR or O_APPEND or
+    O_CLOEXEC or O_NONBLOCK or noFollow, 0)
+  if descriptor < 0: return FileError.IoFailure
+  defer:
+    if descriptor >= 0: discard closeNative(descriptor)
+  var metadata = default(Stat)
+  if posix.fstat(descriptor, metadata) != 0 or not S_ISREG(metadata.st_mode) or
+      metadata.st_size < 0: return FileError.IoFailure
+  let size = uint64(metadata.st_size)
+  if size > uint64(limit) or size > uint64(high(int)): return FileError.LimitExceeded
+  var borrowed = ManagedJournal(descriptor: descriptor, size: size)
+  let before = sameJournal(directory, epoch, borrowed)
+  if before != FileError.None: return before
+  if syncFile(descriptor) != 0 or syncFile(state.descriptor) != 0: return FileError.IoFailure
+  let after = sameJournal(directory, epoch, borrowed)
+  if after != FileError.None: return after
+  journal.descriptor = descriptor
+  journal.state = state
+  journal.size = size
+  journal.limit = limit
+  journal.active = true
+  journal.poisoned = false
+  inc state.journals
+  descriptor = -1
+  FileError.None
+proc readManagedJournalRange*(journal: var ManagedJournal, directory: ManagedDirectory,
+    epoch: ManagedEpoch, offset: uint64, output: var openArray[byte]): ManagedIoResult[int] =
+  ## Fill at most the caller-owned bounded window from the held inode; uncertainty poisons the journal and leaves output unspecified.
+  if not journal.active: return ManagedIoResult[int](status: FileError.Uninitialized)
+  if journal.poisoned: return ManagedIoResult[int](status: FileError.RecoveryRequired)
+  if not directory.opened or directory.data != journal.state:
+    return ManagedIoResult[int](status: FileError.WrongIdentity)
+  if offset > journal.size: return ManagedIoResult[int](status: FileError.LimitExceeded)
+  let before = sameJournal(directory, epoch, journal)
+  if before != FileError.None:
+    journal.poisoned = true
+    return ManagedIoResult[int](status: before)
+  if seekNative(journal.descriptor, int64(offset), 0) != int64(offset):
+    journal.poisoned = true
+    return ManagedIoResult[int](status: FileError.IoFailure)
+  let wanted = int(min(uint64(output.len), journal.size-offset))
+  var filled = 0
+  while filled < wanted:
+    # Every native read is bounded by the actual caller-owned writable span, including genuine short progress.
+    let requested = min(wanted-filled, 4096)
+    let count = readNative(journal.descriptor, addr output[filled], csize_t(requested))
+    if count < 0 and posix.errno() == interrupted: continue
+    if count <= 0 or count > requested:
+      journal.poisoned = true
+      return ManagedIoResult[int](status: (if count ==
+          0: FileError.RecoveryMismatch else: FileError.IoFailure))
+    filled += int(count)
+  if uint64(filled) == journal.size-offset:
+    # At the known end, actual EOF must agree with metadata; never silently accept post-stat growth.
+    var extra = default(array[1, byte])
+    while true:
+      let count = readNative(journal.descriptor, addr extra[0], 1)
+      if count < 0 and posix.errno() == interrupted: continue
+      if count != 0:
+        journal.poisoned = true
+        return ManagedIoResult[int](status: (if count >
+            0: FileError.RecoveryMismatch else: FileError.IoFailure))
+      break
+  let after = sameJournal(directory, epoch, journal)
+  if after != FileError.None:
+    journal.poisoned = true
+    return ManagedIoResult[int](status: after)
+  ManagedIoResult[int](status: FileError.None, completed: filled)
+
 proc readHeldManagedJournal*(journal: var ManagedJournal, directory: ManagedDirectory,
     epoch: ManagedEpoch): ManagedIoResult[seq[byte]] =
   ## Revalidate name/inode/extent before and after a bounded read of the actual held append descriptor for explicit repair.

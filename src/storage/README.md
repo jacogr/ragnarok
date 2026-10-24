@@ -372,3 +372,7 @@ lease release and explicit synchronized cleanup/retry before the next authentica
 The maintained [matched light churn panel](../../spec/storage-light-journal-churn.md) compares
 full-image publication and journal append on identical query/proof workloads, including actual
 write/barrier work, strict reopen, retained-reader lifetime and fresh-process peak memory.
+
+Managed journal [attachment and bounded windows](../../spec/storage-held-journal-ranges.md)
+retain the exact append inode without loading the entire log. Caller-owned reads recheck
+selected name/inode/extent and actual EOF, with explicit uncertainty and retirement.
