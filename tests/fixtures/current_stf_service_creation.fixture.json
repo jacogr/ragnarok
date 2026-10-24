@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_SERVICE_CREATION",
+  "files": {
+    "current-stf-service-creation.json": "2ce2a028873c116da07cc3df417d7b623dcd226dcd5055829884882673ad26ef"
+  },
+  "target": "current-stf-service-creation.json"
+}
