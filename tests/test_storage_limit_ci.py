@@ -5,7 +5,7 @@
 from pathlib import Path
 import sys
 import unittest
-from workflow_fixtures import event_context, selected_families, family_section
+from workflow_fixtures import family_section
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"tools"))
 class LimitCITests(unittest.TestCase):
     """Memory ceilings remain in the existing opt-in Storage family with always-run reporting."""
@@ -14,9 +14,7 @@ class LimitCITests(unittest.TestCase):
         root=Path(__file__).resolve().parents[1]
         workflow=(root/'.github/workflows/ci.yml').read_text()
         section=family_section(workflow, 'perf', 'bench-storage')
-        family=next(row for row in selected_families(workflow, 'perf', event_context())
-                    if row['group'] == 'bench-storage')
-        self.assertEqual(family['minutes'],30)
+        self.assertIn('timeout-minutes: *ci-job-timeout',section)
         self.assertIn('run: make bench-storage-memory-ceilings\n',section)
         self.assertIn('run: make bench-storage\n',section)
         self.assertIn("if: ${{ always() && matrix.family.group == 'bench-storage' }}\n        run: make summary-storage-memory-ceilings SUMMARY_OUTPUT=\"$GITHUB_STEP_SUMMARY\"",section)

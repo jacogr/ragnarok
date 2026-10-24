@@ -103,7 +103,7 @@ on the same source revision with `CI_SHARD_SEED=<run-id> UNIT_SHARD=3/16 make ch
 `--shard-seed` on the underlying runner). Unseeded local partitions keep their historical lexical
 assignment; plain `make check-unit` remains complete and keeps its original execution order.
 Exact expected identities are reconstructed from the recorded seed, and the aggregate check
-requires every shard to succeed. Job and individual command timeouts remain unchanged.
+requires every shard to succeed. CI jobs share a 60-minute limit; individual command timeouts remain unchanged.
 
 `make check-inventory` loads these profiles before provisioning. New suites add their own file;
 no shared manifest entry or central provenance-path addition is needed.
@@ -175,8 +175,8 @@ Each partition requires its exact predeclared identities and diagnostic predicat
 contract check requires all partitions to pass. Reproduce a seeded scope on the same revision with
 `CI_SHARD_SEED=<run-id> FAILURE_SHARD=2/6 make check-failures`. Unseeded local partitions retain their
 historical assignment; plain `make check-failures` remains complete. Ordinary partitions prepare
-only their declared native providers; the specialized owner retains full setup. Job and command
-timeouts are unchanged, and summaries identify the shard and seed.
+only their declared native providers; the specialized owner retains full setup. CI jobs share a 60-minute limit; command
+timeouts remain unchanged, and summaries identify the shard and seed.
 
 Production and test adapters share `tools/build_crypto.py`, `tools/build_bandersnatch.py` and
 `tools/build_quic.py`. `tools/native_dependencies.py` owns pristine submodule checks and logged
@@ -293,7 +293,7 @@ ten-second termination grace, and any failed index makes setup fail. Installatio
 after a successful update; package configuration retains its normal completion semantics.
 Both stages save stdout/stderr in `build/ci/host-tools-{update,install}.log`, covered by the existing
 CI artifact globs even when compiler setup never starts. Provisioned and non-APT hosts skip this
-path. The workflow's overall job limits are unchanged.
+path. The workflow uses one shared 60-minute limit for every job.
 
 E2E builds opt into the same serial, source-epoch/native-ABI/profile-isolated compiler cache,
 retaining ThinLTO, runtime checks and separate production feature defines. Current-sequence,
@@ -313,7 +313,7 @@ native dependencies, fresh fixtures, reports and uniquely named evidence artifac
 `E2E_GROUP=<group> make check-e2e` runs one complete family; plain `make check-e2e` retains the
 complete serial plan. Reports and summaries explicitly identify partial group scope and require
 all that group's declared verdicts. The stable **E2E** aggregate requires every
-matrix job to succeed, including refusal of skipped/cancelled groups. Job timeouts are unchanged.
+matrix job to succeed, including refusal of skipped/cancelled groups. All jobs use the shared 60-minute timeout.
 
 The automatic PR **Smoke** gate runs `make check-smoke`: complete read-only pinned Nim/Rust
 formatting, real UI asset generation and an unoptimized (`--opt:none`, no release/LTO) semantic

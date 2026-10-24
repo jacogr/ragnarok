@@ -101,7 +101,20 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('SHARDS_RESULT: ${{ needs.compile.result }}', gate)
         families = selected_families(text, 'compile', event_context('pull_request', 'synchronize'))
         self.assertEqual([row['group'] for row in families], ['smoke'])
-        self.assertEqual(families[0]['minutes'], 10)
+        self.assertNotIn('minutes', families[0])
+
+    def test_every_job_uses_shared_timeout(self):
+        """Randomized workload variance has one 60-minute safety limit across all CI jobs."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        jobs = re.findall(r'^  ([\w-]+):\n', text.split('jobs:\n', 1)[1], re.MULTILINE)
+        self.assertEqual(text.count('&ci-job-timeout 60'), 1)
+        for job in jobs:
+            # Aggregate and future jobs must opt into the same bound rather than inherit six hours.
+            section = job_section(text, job)
+            expected = '&ci-job-timeout 60' if job == 'compile' else '*ci-job-timeout'
+            self.assertIn('timeout-minutes: '+expected+'\n', section)
+            self.assertEqual(section.count('    timeout-minutes:'), 1)
+            self.assertNotIn('"minutes":', section)
 
     # Scope guards must act on the label addition, never on persistent PR labels or a branch name.
     def test_ci_request_scopes(self):
@@ -253,8 +266,8 @@ class NimonyCISafeguards(unittest.TestCase):
         binary = [row for row in rows if row['group'] == 'binary']
         pins = json.loads((ROOT/'spec/toolchain.json').read_text())
         self.assertEqual({row['platform'] for row in binary}, {name.replace('_', '-') for name in pins['platforms']})
-        self.assertEqual([(row['name'], row['os'], row['minutes']) for row in rows],
-                         [('Docker', 'ubuntu-latest', 30), ('Linux', 'ubuntu-24.04', 45), ('macOS', 'macos-15', 45)])
+        self.assertEqual([(row['name'], row['os']) for row in rows],
+                         [('Docker', 'ubuntu-latest'), ('Linux', 'ubuntu-24.04'), ('macOS', 'macos-15')])
         self.assertIn('fail-fast: false', section)
         self.assertIn('name: Build / ${{ matrix.family.name }}', section)
         self.assertIn('run: make package-binary', section)
@@ -374,7 +387,7 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertIn(trigger,growth)
         self.assertEqual(growth.count('run: make bench-storage-growth\n'),1)
         self.assertIn('summary-storage-growth SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"',growth)
-        self.assertEqual(next(row['minutes'] for row in selected_families(text, 'perf', event_context()) if row['group'] == 'bench-storage-growth'), 30)
+        self.assertIn('timeout-minutes: *ci-job-timeout',growth)
         self.assertIn('always()',growth)
         self.assertIn('name: bench-storage-growth-${{ github.run_attempt }}',growth)
         for name in ('results.json','summary.md','growth/results.json','growth/samples.csv',

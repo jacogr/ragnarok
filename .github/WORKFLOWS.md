@@ -23,7 +23,8 @@ PR opening, reopening and source updates automatically run **Compile / Smoke**: 
 and the production peer main. Heavy
 checks still require a maintainer label (`ci:unit`, `ci:e2e`, `ci:interop`, `ci:perf` or `ci:full`).
 Automatic smoke runs have their own cancellation group, separate from explicit heavy requests.
-The workflow also supports manual dispatch with a selected scope.
+The workflow also supports manual dispatch with a selected scope. Every job, including aggregate
+checks, uses the shared `ci-job-timeout` anchor set to 60 minutes; families have no timeout overrides.
 
 Jobs publish summaries and retain diagnostic logs and reports from `build/`. See
 [requesting CI](../docs/testing.md#requesting-ci) for label scopes, reruns and revision semantics.
