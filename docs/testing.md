@@ -70,8 +70,10 @@ Unit and Contract use 16 and 6 shards respectively. Each run shuffles discovered
 shared GitHub run ID, without historical timing weights or maintained assignments. Unit batches
 are first stratified by their unique transitive project-module count, spreading similarly weighted
 work across shards before randomizing execution order. Reports and summaries retain the seed for
-[local reproduction](testing/infrastructure.md). Dependency-ordered codec,
-corpus and specialized-control bundles stay intact, with their owning shard randomized too.
+[local reproduction](testing/infrastructure.md). The dependency-ordered codec and specialized-control
+bundles retain randomized shard ownership. Independent corpora run once in `Unit / Corpus`, alongside
+the unit shards, preserving shared-driver order. The Unit gate requires both scopes to pass.
+Local `make check-unit` still runs both; `make check-corpus` selects only independent corpora.
 
 New smoke updates cancel older smoke runs for that PR, without cancelling labeled heavy CI.
 A new heavy request cancels an older heavy run for the same PR; unrelated labels schedule no runners and

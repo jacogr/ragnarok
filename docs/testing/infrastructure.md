@@ -101,15 +101,18 @@ Using `CI_SHARD_SEED=${{ github.run_id }}`, the planner randomizes ties, sorts b
 and forms blocks with one item per shard. Each block is independently dealt to random distinct
 shards, including the final partial block, then each shard's execution order is shuffled. The codec
 directory remains one batch, weighted by its members' combined unique dependencies. The corpus
-bundle remains an unweighted placeholder with randomized ownership; its shared-driver dependency
-order stays intact. Both bundles execute once. Shards prepare only their selected native dependencies
-and fixture providers.
+work runs once in a separate `Unit / Corpus` matrix job alongside all sixteen suite-only shards;
+its shared-driver dependency order stays intact. Shards prepare only their selected native dependencies
+and fixture providers. The Unit aggregate requires every shard and the corpus job to succeed.
+Corpus logs, caches and results live under `build/tests/corpus/`, separately from native shard reports.
 
 Every runner uses the same seed, retained as `shard_seed` in results, logs and summaries. Rerunning
 the same GitHub run preserves its assignment; a new run ID reshuffles it. Reproduce a partition
-on the same source revision with `CI_SHARD_SEED=<run-id> UNIT_SHARD=3/16 make check-unit` (or
+on the same source revision with `CI_SHARD_SEED=<run-id> UNIT_SHARD=3/16 UNIT_SCOPE=suites make check-unit` (or
 `--shard-seed` on the underlying runner). Unseeded local partitions keep their historical lexical
 assignment; plain `make check-unit` remains complete and keeps its original execution order.
+Use `make check-corpus` for the independent corpus scope only; neither scope can borrow the
+other's verdict, and corpus-only runs reject a unit-shard selection.
 Exact expected identities are reconstructed from the recorded seed, and the aggregate check
 requires every shard to succeed. CI jobs share a 60-minute limit; individual command timeouts remain unchanged.
 

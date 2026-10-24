@@ -192,13 +192,29 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_ci_unit_partition_gate(self):
         from native_tests import parse_unit_shard
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        values = json.loads('['+re.search(r'        shard: \[([^\n]+)\]', text).group(1)+']')
+        from workflow_fixtures import selected_families, event_context
+        families = selected_families(text, 'unit', event_context())
+        self.assertEqual(len(families), 17)
+        corpus = [row for row in families if row['group'] == 'corpus']
+        self.assertEqual(corpus, [dict(name='Corpus', shard='', group='corpus')])
+        values = [row['shard'] for row in families if row['group'] == 'suites']
         partitions = [parse_unit_shard(value) for value in values]
         count = partitions[0][1]
         self.assertEqual(count, 16)
         self.assertEqual(partitions, [(index, count) for index in range(1, count+1)])
         unit = text.split('  unit:\n', 1)[1].split('  unit-status:\n', 1)[0]
         self.assertIn('CI_SHARD_SEED: ${{ github.run_id }}', unit)
+        self.assertIn('max-parallel: 17', unit)
+        self.assertIn('name: Unit / ${{ matrix.family.name }}', unit)
+        self.assertIn('UNIT_SCOPE: ${{ matrix.family.group }}', unit)
+        self.assertIn('UNIT_SHARD: ${{ matrix.family.shard }}', unit)
+        self.assertIn('build/tests/corpus/results.json', unit)
+        for context in (event_context(event='workflow_dispatch', suite='unit'),
+                        event_context(event='pull_request', action='labeled', label='ci:unit'),
+                        event_context(event='pull_request', action='labeled', label='ci:full')):
+            # The corpus row cannot disappear from a requested Unit run or add an extra skipped PR job.
+            self.assertEqual(selected_families(text, 'unit', context), families)
+        self.assertEqual(selected_families(text, 'unit', event_context(event='pull_request')), [])
         gate = text.split('  unit-status:\n', 1)[1].split('  failures:\n', 1)[0]
         self.assertIn('name: Unit', gate)
         self.assertIn('needs: unit', gate)
@@ -465,6 +481,11 @@ class NimonyCISafeguards(unittest.TestCase):
         runtime = subprocess.check_output(command+['check-unit'], cwd=ROOT, text=True)
         module_plan = subprocess.check_output(command+['check-modules'], cwd=ROOT, text=True)
         self.assertIn('tools/test_runtime.py', runtime)
+        corpus = subprocess.check_output(command+['check-corpus'], cwd=ROOT, text=True)
+        self.assertEqual(corpus.count('tools/test_runtime.py'), 1)
+        self.assertIn('UNIT_SCOPE := corpus', (ROOT/'Makefile').read_text())
+        summary = subprocess.check_output(command+['summary-unit', 'UNIT_SCOPE=corpus'], cwd=ROOT, text=True)
+        self.assertIn('build/tests/corpus/results.json', summary)
         self.assertIn('tools/setup_submodules.py', runtime)
         self.assertIn('cargo fetch --locked', runtime)
         self.assertNotIn('unittest discover', runtime)

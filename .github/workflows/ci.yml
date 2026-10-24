@@ -189,16 +189,17 @@ jobs:
 
   unit:
     if: *requested
-    name: Unit / Shard (${{ matrix.shard }})
+    name: Unit / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
-      max-parallel: 16
+      max-parallel: 17
       matrix:
         os: *ci-os
-        shard: ["1/16", "2/16", "3/16", "4/16", "5/16", "6/16", "7/16", "8/16", "9/16", "10/16", "11/16", "12/16", "13/16", "14/16", "15/16", "16/16"]
+        family: ${{ fromJSON('[{"name":"Shard (1/16)","shard":"1/16","group":"suites"},{"name":"Shard (2/16)","shard":"2/16","group":"suites"},{"name":"Shard (3/16)","shard":"3/16","group":"suites"},{"name":"Shard (4/16)","shard":"4/16","group":"suites"},{"name":"Shard (5/16)","shard":"5/16","group":"suites"},{"name":"Shard (6/16)","shard":"6/16","group":"suites"},{"name":"Shard (7/16)","shard":"7/16","group":"suites"},{"name":"Shard (8/16)","shard":"8/16","group":"suites"},{"name":"Shard (9/16)","shard":"9/16","group":"suites"},{"name":"Shard (10/16)","shard":"10/16","group":"suites"},{"name":"Shard (11/16)","shard":"11/16","group":"suites"},{"name":"Shard (12/16)","shard":"12/16","group":"suites"},{"name":"Shard (13/16)","shard":"13/16","group":"suites"},{"name":"Shard (14/16)","shard":"14/16","group":"suites"},{"name":"Shard (15/16)","shard":"15/16","group":"suites"},{"name":"Shard (16/16)","shard":"16/16","group":"suites"},{"name":"Corpus","shard":"","group":"corpus"}]') }}
     env:
-      UNIT_SHARD: ${{ matrix.shard }}
+      UNIT_SHARD: ${{ matrix.family.shard }}
+      UNIT_SCOPE: ${{ matrix.family.group }}
       CI_SHARD_SEED: ${{ github.run_id }}
     runs-on: ${{ matrix.os }}
     steps:
@@ -206,12 +207,11 @@ jobs:
       - *python
       - name: Validate verification inventory
         run: *inventory-run
-      - name: Native unit and codec tests
+      - name: Native unit or corpus tests
         run: make check-unit
       - name: Show verification coverage
         if: always()
         run: make summary-${{ github.job }} SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
-      # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       # Diagnostics only: never binaries, dependency trees, certificates or private keys.
       - name: Retain verification evidence
         if: always()
@@ -224,6 +224,8 @@ jobs:
             build/ci/*.log
             build/tests/runtime/*.log
             build/tests/runtime/results.json
+            build/tests/corpus/*.log
+            build/tests/corpus/results.json
             build/crypto/build.log
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
@@ -238,7 +240,7 @@ jobs:
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Require every unit shard
+      - name: Require every unit shard and corpus
         env:
           SHARDS_RESULT: ${{ needs.unit.result }}
         run: test "$SHARDS_RESULT" = success

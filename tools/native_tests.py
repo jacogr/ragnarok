@@ -235,11 +235,19 @@ def unit_dependency_weights():
 
 
 # Partition discovered batches without registering suite names or compiling any test twice.
-def unit_partition(shard=None, seed=None):
+def unit_partition(shard=None, seed=None, scope='all'):
+    if scope not in ('all', 'suites', 'corpus'):
+        # Report scope cannot silently drop native tests or independent corpus coverage.
+        raise ValueError('Unit scope must be all, suites or corpus')
+    if scope == 'corpus':
+        # Corpus execution is complete and ordered, never partitioned across ordinary unit shards.
+        if shard is not None:
+            raise ValueError('Corpus scope cannot select a unit shard')
+        return [], True
     batches = unit_batches()
     if shard is None:
-        # Local verification remains complete unless a caller explicitly selects a CI partition.
-        return batches, True
+        # Complete local verification retains both workloads; CI selects the ordinary suites explicitly.
+        return batches, scope == 'all'
     if (not isinstance(shard, (tuple, list)) or len(shard) != 2
             or any(type(value) is not int for value in shard)
             or not 1 <= shard[0] <= shard[1] <= 16):
@@ -249,15 +257,16 @@ def unit_partition(shard=None, seed=None):
     # Stratify unit batches by current source dependencies; bundle internals keep their dependency order.
     if seed is not None:
         weights = unit_dependency_weights()
-        # The corpus has no single module root: an unweighted placeholder keeps its owner randomized.
-        partitions = stratified([*batches, None], count, seed, 'unit',
+        # Explicit suite-only CI work has no corpus placeholder; legacy combined selections retain it.
+        items = [*batches, None] if scope == 'all' else batches
+        partitions = stratified(items, count, seed, 'unit',
                                 lambda batch: 0 if batch is None else weights[batch[0]])
         work = partitions[index-1]
         return [batch for batch in work if batch is not None], None in work
     else:
         # Unseeded local partitions retain the historical lexical plan for existing reproductions.
         selected = ([batches[0]] if index == 1 else []) + batches[index::count]
-    return selected, index == count
+    return selected, scope == 'all' and index == count
 
 
 # Parse the same bounded partition notation used by the CI matrix and retained report metadata.

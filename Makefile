@@ -30,6 +30,8 @@ export FUZZ_LIBFUZZER ?=
 export FUZZ_REPLAY ?=
 export PAGED_STORAGE_IMAGE ?= ragnarok:paged-probe
 export SUITE ?=
+# Complete local units remain the default; CI separates native suites and independent corpora.
+export UNIT_SCOPE ?= all
 # Select one independent E2E family; an empty value retains complete local verification.
 export E2E_GROUP ?=
 SUMMARY_OUTPUT ?= build/ci/summary.md
@@ -157,6 +159,9 @@ modules: check-modules
 check-modules: check-inventory compiler-tools ui-assets build-info
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" 2>&1 | tee build/ci/modules.log
 runtime: check-unit
+.PHONY: check-corpus summary-corpus
+check-corpus: override UNIT_SCOPE := corpus
+check-corpus: check-unit
 check-unit: setup format-check
 	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" 2>&1 | tee build/ci/runtime.log
 
@@ -360,9 +365,11 @@ summary-pvm-reference:
 	$(PYTHON) tools/summarize_tests.py --kind pvm-reference --report build/tests/pvm-reference/results.json --output "$(SUMMARY_OUTPUT)" --artifact build/tests/pvm-reference/summary.md
 
 summary-runtime: summary-unit
+summary-corpus: override UNIT_SCOPE := corpus
+summary-corpus: summary-unit
 summary-unit:
 	mkdir -p build/ci
-	$(PYTHON) tools/summarize_tests.py --kind runtime --report build/tests/runtime/results.json --output "$(SUMMARY_OUTPUT)"
+	$(PYTHON) tools/summarize_tests.py --kind runtime --report build/tests/$(if $(filter corpus,$(UNIT_SCOPE)),corpus,runtime)/results.json --output "$(SUMMARY_OUTPUT)"
 summary-models:
 	mkdir -p build/ci
 	$(PYTHON) tools/summarize_tests.py --kind models --report build/tests/models/results.json --output "$(SUMMARY_OUTPUT)"
@@ -413,6 +420,7 @@ help:
 	  'make check-models  Check bounded models, mutants and reachability' \
 	  'make check-python  Run Python reference/tooling/provenance tests' \
 	  'make check-unit    Run native suites and independent corpora' \
+	  'make check-corpus  Run independent corpora only' \
 	  'make check-failures Run runtime contract/crash probes and positive controls' \
 	  'make check-guards  Run compiler rejection guards' \
 	  'make check-e2e     Run peer/service/resilience/soak/offload scenarios' \
