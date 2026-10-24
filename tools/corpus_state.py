@@ -346,5 +346,48 @@ def current_stf_epoch_corpus(compiler, report, checks, libraries):
     return corpus
 
 
+@CORPORA.case
+def current_stf_population_corpus(compiler, report, checks, libraries):
+    """Compare real culprit evidence, independently sized validator rosters and every complete successor byte."""
+    from current_stf_population_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_epoch', 'current_stf_population', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # Original-map reconstruction, OpenSSL credentials and independent posterior maps precede native execution.
+    expected, evidence = expected_observations()
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_population_driver.nim',
+        'current-stf-population', crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
+    corpus = dict(build=compiled, passed=False, **evidence, dispute_refusals=3,
+                  null_author_refusals=1, profile_refusals=54, profile_admissions=12)
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], '--run'], 'current-stf-population-corpus', expected)
+    announce('independent offender/population whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_eviction_corpus(compiler, report, checks, libraries):
+    """Verify whole-map contest replacement and typed non-retention with fixed Ring inputs."""
+    from current_stf_eviction_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_epoch', 'current_stf_eviction', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # The reference decides the single eviction, every winner and all output bytes before the driver runs.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-eviction-proofs.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_eviction_driver.nim',
+        'current-stf-eviction', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence, nonretention_refusals=2,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-eviction-corpus', expected)
+    announce('independent ticket contest eviction whole STF maps', corpus['passed'])
+    return corpus
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run

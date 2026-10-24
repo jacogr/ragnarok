@@ -1,0 +1,209 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Complete three-core original maps and real culprit/resize candidates expose population-ceiling and offender semantics.
+import std/[assertions, cmdline, syncio]
+import ../support/current_stf_epoch_context as epoch
+import ../../src/app/[chain, candidate, current_block_input, current_block_download]
+import ../../src/chain/[genesis, provider]
+import ../../src/codec/[bounded, state_layout, state_safrole, state_consensus, state_authorization,
+  state_availability, state_statistics, state_privileges, state_disputes, disputes, report_owned,
+  block_codec, header, state_composition]
+import ../../src/state/[store, accumulation_current_update, current_profile, current_globals,
+  current_state, global_snapshot, block_transition, disputes, safrole_transition, safrole_authentication]
+import ../../src/crypto/primitives
+import ../../src/bandersnatch/bandersnatch
+import ../support/[current_stf_population_context, current_namespace_context,
+  accumulation_current_chain_context, state_inventory_context]
+
+proc original(base: OwnedReport): BlockSnapshot =
+  ## Author all profile-dependent chapters before any tested child; the prior fixture source remains untouched.
+  let prior = epoch.original(base)
+  let limits = populationLimits()
+  let policy = limits.reporting.safrole.state
+  var records = newSeq[StateValidator](9)
+  for index in 0..<9:
+    var seed = default(array[32, byte])
+    seed[0] = byte(index+11)
+    let ed = importSeed(seed).value
+    records[index].ed25519 = StateEdKey(array[32, byte](publicKey(ed).value))
+    records[index].bandersnatch = StateBsKey(array[32, byte](publicKey(epoch.key(index+1)).value))
+    var bls = default(array[144, byte])
+    var metadata = default(array[128, byte])
+    for at in 0..<144: bls[at] = byte(index+1)
+    for at in 0..<128: metadata[at] = byte(20+index)
+    records[index].bls = StateBlsKey(bls)
+    records[index].metadata = StateValidatorMetadata(metadata)
+  var active, staging, pending, previous: seq[StateValidator] = @[]
+  for index in 0..<6:
+    active.add(records[index])
+    staging.add(records[5-index])
+  for index in 0..<9:
+    pending.add(records[(index+1) mod 9])
+    previous.add(records[(index+2) mod 9])
+  let setup = newSetup(9).value
+  let root = StateRingRoot(array[144, byte](commitRing(setup, epoch.members(pending)).value))
+  close(setup)
+  var schedule = newSeq[StateBsKey](12)
+  for index in 0..<12: schedule[index] = active[index mod 6].bandersnatch
+  var entries = @[safroleStateEntry(SafroleState(pending: pending, root: root,
+      schedule: keySchedule(schedule), accumulator: @[]), policy).value]
+  entries.add(validatorEntry(ValidatorChapter.Active, active, policy.validators).value)
+  entries.add(validatorEntry(ValidatorChapter.Previous, previous, policy.validators).value)
+  entries.add(validatorEntry(ValidatorChapter.Staging, staging, policy.validators).value)
+  let authorization = limits.completion.execution.initial.guests.contexts.queues
+  entries.add(authorizationEntry(AuthorizationKind.Pools, @[newSeq[AuthorizerHash](1),
+      newSeq[AuthorizerHash](1), newSeq[AuthorizerHash](1)], authorization).value)
+  entries.add(authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80),
+      newSeq[AuthorizerHash](80), newSeq[AuthorizerHash](80)], authorization).value)
+  entries.add(availabilityStateEntry(newSeq[AvailabilityAssignment](3),
+      limits.reporting.disputes.availability).value)
+  entries.add(privilegeStateEntry(PrivilegeState(assigners: newSeq[ServiceIndex](3)),
+      limits.round.privileges).value)
+  var activity = ActivityState(cores: newSeq[CoreActivity](3))
+  activity.validators[StatisticsEpoch.Current] = newSeq[ValidatorActivity](6)
+  activity.validators[StatisticsEpoch.Previous] = newSeq[ValidatorActivity](9)
+  for period in low(StatisticsEpoch)..high(StatisticsEpoch):
+    for index in 0..<activity.validators[period].len:
+      for measure in low(ValidatorMeasure)..high(ValidatorMeasure):
+        activity.validators[period][index][measure] = ValidatorCounter(uint32(1000*ord(
+            period)+100*index+10+ord(measure)))
+  entries.add(activityStateEntry(activity, ActivityConfig(cores: CoreCount(3),
+      current: ValidatorCount(6), previous: ValidatorCount(9), maxServices: ElementLimit(0),
+          maxBytes: ByteLimit(4096))).value)
+  var judgments = DisputeState()
+  judgments.reports[JudgmentSet.Bad] = @[default(DisputeHash)]
+  entries.add(disputeStateEntry(judgments, limits.reporting.disputes.state).value)
+  var state = forkStateStore(prior.stateSnapshot).value
+  var writes: seq[StateWrite] = @[]
+  for entry in entries: writes.add(StateWrite(key: entry.key, kind: StateWriteKind.Put,
+      value: entry.value))
+  assert state.apply(writes).error == StateStoreError.None
+  captureBlockSnapshot(currentChainBytes(prior.header), state.snapshot.value, populationParameters()).value
+
+proc culprit(): tuple[wire: seq[byte], offenders: seq[OffenderKey]] =
+  ## Secret fixture seed16 guarantees a report already classified bad in the original C5.
+  var seed = default(array[32, byte])
+  seed[0] = 16
+  let key = importSeed(seed).value
+  let offender = OffenderKey(array[32, byte](publicKey(key).value))
+  let signature = DisputeSignature(array[64, byte](sign(key, epoch.context("jam_guarantee",
+      default(array[32, byte]))).value))
+  let evidence = Disputes(culprits: @[Culprit(target: default(DisputeHash), key: offender,
+      signature: signature)])
+  var wire = newSeq[byte](1000)
+  let encoded = encodeDisputes(evidence, DisputeConfig(validators: ValidatorCount(9),
+      maxBytes: ByteLimit(1000)), wire)
+  assert encoded.error == DisputeError.None
+  wire.setLen(encoded.value)
+  (wire, @[offender])
+
+proc refusedDispute(chain: ApplicationChain, candidate: OwnedBlock, reason: DisputesError) =
+  ## Exact culprit/signature/marker refusals leave every canonical byte and selected head unchanged.
+  let saved = epoch.checkpointHex(chain.stateSnapshot.value)
+  let result = prepareCurrentCandidate(chain, candidate, [], populationLimits())
+  assert result.error == CurrentCandidateError.PrefixFailure
+  assert result.prefixFailure.error == ApplicationCandidateError.BlockFailure
+  let failure = result.prefixFailure.blockFailure
+  assert failure.error == BlockTransitionError.DisputesFailure
+  assert failure.disputesError == reason
+  assert epoch.checkpointHex(chain.stateSnapshot.value) == saved
+
+proc profiles(chain: ApplicationChain, candidate: OwnedBlock, size: int) =
+  ## Candidate, fragmented input and download accept ceiling-nine and reject impossible/undersized capacities.
+  let limits = populationLimits()
+  let resources = CurrentBlockInputLimits(blockBytes: ByteLimit(100000), ancestors: ElementLimit(4),
+      ancestorBytes: ByteLimit(100000))
+  var input = default(CurrentBlockInput)
+  assert input.begin(chain, ByteLimit(uint64(size)), [], resources, limits).error ==
+      CurrentBlockInputError.None
+  var download = default(CurrentBlockDownload)
+  assert download.begin(chain, [], resources, limits).error == CurrentBlockDownloadError.None
+  for ceiling in [3'u64, 8, 12]:
+    var narrow = limits
+    narrow.reporting.admission.frame.validators = ValidatorCount(ceiling)
+    let result = prepareCurrentCandidate(chain, candidate, [], narrow)
+    assert result.error == CurrentCandidateError.PrefixFailure
+    assert result.prefixFailure.error == ApplicationCandidateError.ProfileMismatch
+    var badInput = default(CurrentBlockInput)
+    assert badInput.begin(chain, ByteLimit(uint64(size)), [], resources, narrow).error ==
+        CurrentBlockInputError.ProfileMismatch
+    var badDownload = default(CurrentBlockDownload)
+    assert badDownload.begin(chain, [], resources, narrow).error ==
+        CurrentBlockDownloadError.ProfileMismatch
+
+proc main() {.raises.} =
+  ## Generation exports only original input/root witnesses; normal verification executes genuine candidate admission.
+  let raw = readFile(paramStr(1))
+  var bytes = newSeq[byte](raw.len)
+  for index, octet in raw: bytes[index] = byte(octet)
+  let parent = original(decodeOwnedReport(bytes, 2).value)
+  let evidence = culprit()
+  if paramStr(2) == "--generate":
+    echo "P ", epoch.checkpointHex(parent.stateSnapshot)
+    let setup = newSetup(9).value
+    let staging = decodeStateValidators(parent.stateSnapshot.lookup(chapterKey(StateChapter(
+        7))).value.bytes, populationLimits().reporting.safrole.state.validators).value.value
+    var filtered: seq[StateValidator] = @[]
+    for index in 0..<6:
+      var record = validatorAt(staging, StateValidatorIndex(uint64(index))).value
+      if array[32, byte](record.ed25519) == array[32, byte](evidence.offenders[
+          0]): record = nullValidator()
+      filtered.add(record)
+    echo "R ", epoch.hex(array[144, byte](commitRing(setup, epoch.members(filtered)).value))
+    close(setup)
+  else:
+    let captured = captureBlockSnapshot(currentChainBytes(parent.header), parent.stateSnapshot,
+        populationParameters())
+    var chain = initApplicationChain(genesisView(captured)).value
+    let saved = epoch.checkpointHex(parent.stateSnapshot)
+    echo "P ", saved
+    for slot in [2'u32, 11, 12, 13, 24, 25]:
+      let prior = chain.chainView.bestBlock.value
+      let body = if slot == 2: evidence.wire else: @[0'u8, 0, 0]
+      let offenders = if slot == 2: evidence.offenders else: @[]
+      let candidate = epoch.child(prior, slot, @[], @[], limits = populationLimits(),
+          disputeWire = body, newOffenders = offenders)
+      if slot == 2:
+        refusedDispute(chain, epoch.child(prior, slot, @[], @[], limits = populationLimits(),
+            disputeWire = body), DisputesError.InvalidMarker)
+        var damaged = body
+        damaged[damaged.len-2] = damaged[damaged.len-2] xor 1
+        refusedDispute(chain, epoch.child(prior, slot, @[], @[], limits = populationLimits(),
+            disputeWire = damaged, newOffenders = offenders), DisputesError.InvalidSignature)
+      elif slot == 11:
+        refusedDispute(chain, epoch.child(prior, slot, @[], @[], limits = populationLimits(),
+            disputeWire = evidence.wire, newOffenders = evidence.offenders),
+                DisputesError.InvalidKey)
+      var wire = newSeq[byte](candidate.blockInfo.value.consumed)
+      assert candidate.encodeOwnedBlock(wire).error == FrameError.None
+      profiles(chain, candidate, wire.len)
+      echo "B ", epoch.hex(wire)
+      let prepared = prepareCurrentCandidate(chain, candidate, [], populationLimits())
+      assert prepared.error == CurrentCandidateError.None, $prepared.error
+      let update = prepared.value
+      let profile = captureCurrentProfile(update, CurrentProfileLimits(validators: ElementLimit(
+          1024), bytes: ByteLimit(65536))).value
+      let globals = qualifyCurrentGlobals(profile, GlobalStateLimits(chapter: StateChapterPolicy(
+          items: ElementLimit(10000), maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144))).value
+      assert qualifyCurrentState(globals, currentNamespaceServices(update.currentUpdateState,
+          namespaceSeeds()), inventoryCaptureLimits).error == CurrentStateError.None
+      chain.installPrepared(update)
+      echo "O ", epoch.checkpointHex(chain.stateSnapshot.value)
+    let retained = epoch.checkpointHex(chain.stateSnapshot.value)
+    let nullSlot = epoch.child(chain.chainView.bestBlock.value, 28, @[], @[],
+        limits = populationLimits(), forceSecret = 1)
+    let refused = prepareCurrentCandidate(chain, nullSlot, [], populationLimits())
+    assert refused.error == CurrentCandidateError.PrefixFailure
+    assert refused.prefixFailure.error == ApplicationCandidateError.BlockFailure
+    let failure = refused.prefixFailure.blockFailure
+    assert failure.error == BlockTransitionError.SafroleFailure
+    assert failure.safroleError.error == SafroleTransitionError.AuthenticationFailure
+    assert failure.safroleError.authenticationError == SafroleAuthError.InvalidAuthor
+    assert epoch.checkpointHex(chain.stateSnapshot.value) == retained
+    assert epoch.checkpointHex(parent.stateSnapshot) == saved
+
+try:
+  main() # A refused or incomplete resize never emits passing complete-map evidence.
+except:
+  quit(2)

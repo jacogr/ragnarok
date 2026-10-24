@@ -143,11 +143,15 @@ def advance_no_reports(parent, child, body, extrinsic_root, *, outputs=(), preim
 
 
 def advance_chapters(parent, header, slot, author, entropy_output, *, outputs=(), preimages=(),
-                     ticket_count=0):
+                     ticket_count=0, cores=2):
     """Advance no-report global chapters after a feature reference has independently authored its header."""
     prior_slot = int.from_bytes(parent[chapter_key(11)], 'little')
-    assert slot > prior_slot and 0 <= author < 6
+    assert slot > prior_slot and cores in (2, 3)
     crossed = slot//12 > prior_slot//12
+    current_count = Reader(parent[chapter_key(8)]).count()
+    previous_count = Reader(parent[chapter_key(9)]).count()
+    active_count = Reader(parent[chapter_key(4)]).count() if crossed else current_count
+    assert 6 <= active_count <= 3*cores and active_count % 3 == 0 and 0 <= author < active_count
     prior_root = tree(list(parent.items()))[0]
     assert header[32:64] == prior_root and int.from_bytes(header[96:100], 'little') == slot
     entropy = parent[chapter_key(6)]
@@ -157,9 +161,9 @@ def advance_chapters(parent, header, slot, author, entropy_output, *, outputs=()
     # No guarantees remove pool entries; append the indexed queue hash and retain the newest eight.
     pools = Reader(parent[chapter_key(1)])
     queues = parent[chapter_key(2)]
-    assert len(queues) == 2*80*32
+    assert len(queues) == cores*80*32
     rows = []
-    for core in range(2):
+    for core in range(cores):
         count = pools.count()
         assert count <= 8
         row = pools.take(32*count)
@@ -191,19 +195,19 @@ def advance_chapters(parent, header, slot, author, entropy_output, *, outputs=()
         bag = bytes.fromhex(keccak256(b'peak'+bag+peak))
     blocks.append((digest(header)+bag+bytes(32)+slot.to_bytes(4, 'little'), b''))
     result[chapter_key(3)] = history_wire((blocks[-8:], peaks))
-    parsed = parse_statistics(parent[chapter_key(13)], DEFAULT)
+    parsed = parse_statistics(parent[chapter_key(13)], (cores, current_count, previous_count, *DEFAULT[3:]))
     assert not isinstance(parsed, str), parsed
     (current, previous, _, _), consumed = parsed
     assert consumed == len(parent[chapter_key(13)])
     if crossed:
-        previous, current = current, [(0,)*6]*6
+        previous, current = current, [(0,)*6]*active_count
     row = list(current[author])
     row[0] += 1
     row[1] += ticket_count
     row[2] += len(preimages)
     row[3] += sum(len(value) for _, value in preimages)
     current[author] = tuple(row)
-    result[chapter_key(13)] = statistics_wire((current, previous, [(0,)*8]*2, []))
+    result[chapter_key(13)] = statistics_wire((current, previous, [(0,)*8]*cores, []))
     assert set(result) == set(parent)
     return result
 
