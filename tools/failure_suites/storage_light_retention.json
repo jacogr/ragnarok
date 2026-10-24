@@ -1,0 +1,59 @@
+{
+  "source": "tests/native/storage_light_retention_results.nim",
+  "build_name": "storage-light-retention-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-light-retention-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Guarded retention result default"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-light-retention-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Guarded retention result failed"
+    },
+    {
+      "identity": {
+        "member": "len",
+        "origin": "default"
+      },
+      "arguments": [
+        "len",
+        "default"
+      ],
+      "name": "storage-light-retention-len-default",
+      "diagnostic": "plan.ready",
+      "description": "Guarded retention len default"
+    },
+    {
+      "identity": {
+        "member": "keys",
+        "origin": "default"
+      },
+      "arguments": [
+        "keys",
+        "default"
+      ],
+      "name": "storage-light-retention-keys-default",
+      "diagnostic": "plan.ready",
+      "description": "Guarded retention keys default"
+    }
+  ]
+}

@@ -751,3 +751,114 @@ proc update*(snapshot: PreparedLightSnapshot, proofs: openArray[LightStateProof]
     forgottenKeys: openArray[StateKey]): LightSnapshotResult[PreparedLightSnapshot] =
   ## Validate one disjoint combined batch and prepare its final canonical image without exposing intermediate knowledge.
   edit(snapshot, proofs, forgottenKeys)
+
+type
+  LightRetentionLimits* = object ## Per-call soft ceilings and bounded eviction/scan work never replace the snapshot's inherited hard policy.
+    items*: ElementLimit ## Incoming queries are protected; older queries are evicted in canonical key order until all ceilings fit.
+    valueBytes*, bytes*: ByteLimit ## Logical values and complete encoded-image extent are independent soft charges.
+    entries*, evictions*: ElementLimit ## Bound examined source entries and removal descriptors independently of incoming proof count.
+  LightRetentionPlan* = object ## Advisory immutable key removals grant no proof verification or durable publication authority.
+    ready: bool
+    removed: seq[StateKey]
+  RetentionEntry = object ## Fixed private candidate descriptors carry only canonical identities and exact logical/encoded charges.
+    key: StateKey
+    bytes, values: uint64
+func initialized*(plan: LightRetentionPlan): bool =
+  ## A default plan safely reports its missing completed planning result.
+  plan.ready
+func len*(plan: LightRetentionPlan): int {.requires: plan.ready.} =
+  ## Count only completed deterministic removal choices.
+  plan.removed.len
+proc forgottenKeys*(plan: LightRetentionPlan): seq[StateKey] {.requires: plan.ready.} =
+  ## Return an independently mutable copy; a plan retains no source image or native lease.
+  result = newSeq[StateKey](plan.removed.len)
+  for index in 0..<plan.removed.len: result[index] = plan.removed[index]
+func retentionFailure(reason: LightSnapshotError): LightSnapshotResult[LightRetentionPlan] =
+  ## Refusal carries no successful removal prefix.
+  LightSnapshotResult[LightRetentionPlan](status: reason)
+proc planLightRetention*(snapshot: PreparedLightSnapshot, proofs: openArray[LightStateProof],
+    limits: LightRetentionLimits): LightSnapshotResult[LightRetentionPlan] =
+  ## Predict exact final charges without crypto; protect incoming queries and choose only bounded canonical old-query removals.
+  let owner = snapshot.owner
+  if owner == nil: return retentionFailure(LightSnapshotError.Uninitialized)
+  let hard = owner.limits
+  let incoming = uint64(proofs.len)
+  let allowance = uint64(hard.cache.writes)
+  if uint64(limits.items) > uint64(hard.cache.items) or
+      uint64(limits.valueBytes) > uint64(hard.cache.valueBytes) or
+      uint64(limits.bytes) > uint64(hard.bytes) or uint64(limits.bytes) < uint64(Overhead) or
+      uint64(owner.cache.len) > uint64(limits.entries) or incoming > allowance:
+    return retentionFailure(LightSnapshotError.LimitExceeded)
+  let capacity = min(uint64(owner.cache.len), min(uint64(limits.evictions), allowance-incoming))
+  if incoming > uint64(high(int) div sizeof(KeyIndex)) or
+      capacity > uint64(high(int) div sizeof(RetentionEntry)):
+    return retentionFailure(LightSnapshotError.LengthOverflow)
+  for proof in proofs:
+    # Shape/work refusal precedes sorting and source traversal; validity still requires ordinary admission below.
+    let nodes = uint64(proof.proof.nodes.len)
+    let raw = uint64(proof.proof.value.len)
+    if nodes > 249 or nodes > uint64(hard.cache.proof.nodes) or raw > uint64(
+        hard.cache.proof.valueBytes):
+      return retentionFailure(LightSnapshotError.LimitExceeded)
+  var ordered = newSeq[KeyIndex](proofs.len)
+  for index, proof in proofs: ordered[index] = KeyIndex(key: proof.key, index: index)
+  ordered.sort(compareIndex)
+  for index in 1..<ordered.len:
+    if compareKey(ordered[index-1].key, ordered[index].key) == 0:
+      return LightSnapshotResult[LightRetentionPlan](status: LightSnapshotError.ProofFailure,
+        proofReason: LightCacheError.DuplicateKey)
+  var bytes = uint64(Overhead)
+  var values = 0'u64
+  var items = incoming
+  for proof in proofs:
+    # Each native input length and the hard 249-node ceiling prove this per-entry uint64 sum.
+    let raw = uint64(proof.proof.value.len)
+    let extent = uint64(EntryBytes)+uint64(proof.proof.nodes.len)*64+raw
+    if not grow(bytes, extent, high(uint64)) or not grow(values, raw, high(uint64)):
+      return retentionFailure(LightSnapshotError.LengthOverflow)
+  var candidates = newSeq[RetentionEntry](int(capacity))
+  var count = 0
+  var offset = HeaderBytes
+  var fresh = 0
+  while offset < owner.encoded.len-32:
+    # The immutable canonical source already proves all fixed headers and payload extents; no detached old proofs are allocated.
+    let key = readKey(owner.encoded, offset)
+    let nodes = number(owner.encoded, offset+31, 2)
+    let raw = number(owner.encoded, offset+33)
+    let extent = uint64(EntryBytes)+nodes*64+raw
+    assert extent <= uint64(owner.encoded.len-32-offset)
+    while fresh < ordered.len and compareKey(ordered[fresh].key, key) < 0: inc fresh
+    let replaced = fresh < ordered.len and compareKey(ordered[fresh].key, key) == 0
+    if not replaced:
+      # Replacements are released before all final charges; only unprotected old keys can become removal candidates.
+      if not grow(bytes, extent, high(uint64)) or not grow(values, raw, high(uint64)) or
+          not grow(items, 1, high(uint64)):
+        return retentionFailure(LightSnapshotError.LengthOverflow)
+      if count < candidates.len:
+        candidates[count] = RetentionEntry(key: key, bytes: extent, values: raw)
+        inc count
+    offset += int(extent)
+  var removed = 0
+  while items > uint64(limits.items) or values > uint64(limits.valueBytes) or bytes > uint64(limits.bytes):
+    # A protected incoming set that cannot fit, or an exhausted removal/mutation allowance, refuses without any visible eviction.
+    if removed >= count: return retentionFailure(LightSnapshotError.LimitExceeded)
+    let entry = candidates[removed]
+    assert items > 0 and values >= entry.values and bytes >= entry.bytes
+    dec items
+    values -= entry.values
+    bytes -= entry.bytes
+    inc removed
+  var keys = newSeq[StateKey](removed)
+  for index in 0..<removed: keys[index] = candidates[index].key
+  LightSnapshotResult[LightRetentionPlan](status: LightSnapshotError.None,
+    completed: LightRetentionPlan(ready: true, removed: move(keys)))
+proc admitRetained*(snapshot: PreparedLightSnapshot, proofs: openArray[LightStateProof],
+    limits: LightRetentionLimits): LightSnapshotResult[PreparedLightSnapshot] =
+  ## Verify incoming evidence and publish one immutable replacement at the original root/policy; no eviction prefix escapes on failure.
+  let planned = planLightRetention(snapshot, proofs, limits)
+  if planned.error == LightSnapshotError.ProofFailure:
+    return LightSnapshotResult[PreparedLightSnapshot](status: LightSnapshotError.ProofFailure,
+      proofReason: planned.proofError)
+  if planned.error != LightSnapshotError.None:
+    return LightSnapshotResult[PreparedLightSnapshot](status: planned.error)
+  snapshot.update(proofs, planned.value.forgottenKeys)

@@ -395,3 +395,7 @@ binds an opaque destination to the exact source position/policy; `advanceRoot` p
 new physical epoch while preserving the update sequence. Guarded unselected cleanup never
 deletes a selected target. Startup, trust selection and network proof fetching remain separately
 owned integration work.
+
+`planLightRetention` and `admitRetained` provide opt-in deterministic quota eviction, protecting
+incoming queries and applying one atomic immutable update under the original root and hard policy.
+See [bounded evidence retention](../../spec/storage-light-retention.md).
