@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Synchronous maintained primitive ABI for the GP 0.8.0 release-designated ark-vrf 0.2.2 profile.
+//! Synchronous maintained primitive ABI for the current Gray Paper Draft 35 Thin v1 profile.
 //! No protocol domain/codec logic or dependency source patches. All outputs commit only on success.
 //!
 //! Exposes bs_* C ABI functions for owned keys/setups, signing, verification and ring
@@ -20,7 +20,7 @@ use std::{
 
 /// Owned immutable ring parameters; only this bridge knows the concrete Rust allocation/layout.
 struct Setup {
-    params: bs::RingProofParams,
+    params: bs::RingSetup,
     requested: usize,
 }
 /// ABI reason codes; zero alone succeeds, with no default output bytes on failure.
@@ -47,11 +47,22 @@ unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8], u32> {
     Ok(unsafe { slice::from_raw_parts(ptr, len) })
 }
 /// Decode exactly one canonical compressed value, rejecting appended bytes and malformed subgroup encodings.
-fn decode<T: CanonicalDeserialize>(mut input: &[u8]) -> Result<T, u32> {
+fn decode<T: CanonicalDeserialize + CanonicalSerialize>(mut input: &[u8]) -> Result<T, u32> {
+    let original = input;
     let value = T::deserialize_compressed(&mut input).map_err(|_| 2u32)?;
     // Backend decoders can accept suffixes; this ABI never does.
     if !input.is_empty() {
         return Err(1);
+    }
+    // Composite pairing types require explicit validity checks in this dependency profile.
+    value.check().map_err(|_| 2u32)?;
+    let mut canonical = Vec::new();
+    value
+        .serialize_compressed(&mut canonical)
+        .map_err(|_| 5u32)?;
+    // Exclude alternative representations accepted by a foreign type's decoder.
+    if canonical != original {
+        return Err(2);
     }
     Ok(value)
 }
@@ -90,10 +101,10 @@ unsafe fn setup<'a>(handle: *const c_void) -> Result<&'a Setup, u32> {
 }
 /// Hash-to-curve from raw context data, never from a caller-chosen curve point.
 fn input(data: &[u8]) -> Result<bs::Input, u32> {
-    bs::Input::new(data).ok_or(2)
+    bs::Input::new(data).map_err(|_| 2u32)
 }
 /// Decode a bounded ordered ring; guard backend truncation before indexing/proving.
-fn ring(data: &[u8], owner: &Setup) -> Result<Vec<bs::AffinePoint>, u32> {
+fn ring(data: &[u8], owner: &Setup) -> Result<Vec<bs::Public>, u32> {
     // Require complete points and at least one member within the explicitly requested capacity.
     if data.is_empty() || data.len() % 32 != 0 || data.len() / 32 > owner.requested {
         return Err(1);
@@ -102,11 +113,8 @@ fn ring(data: &[u8], owner: &Setup) -> Result<Vec<bs::AffinePoint>, u32> {
     // Invalid-member substitution is native-language policy, not an implicit Rust rewrite.
     for encoded in data.chunks_exact(32) {
         let public: bs::Public = decode(encoded)?;
-        // Historical indexing must never receive an identity member; do not silently rewrite a valid point.
-        if public.0.is_zero() {
-            return Err(2);
-        }
-        points.push(public.0);
+        // Checked Public decoding rejects identity; normalization never substitutes that valid curve point.
+        points.push(public);
     }
     Ok(points)
 }
@@ -144,7 +152,7 @@ pub unsafe extern "C" fn bs_key_free(handle: *mut c_void) {
 pub unsafe extern "C" fn bs_public(handle: *const c_void, out: *mut u8) -> u32 {
     guard(|| unsafe { publish(&key(handle)?.public(), out, 32) })
 }
-/// Sign raw context and separate additional data into the original output||c||s 96-byte wire value.
+/// Sign raw context and separate additional data into the Thin output||R||s 96-byte wire value.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn bs_sign(
     handle: *const c_void,
@@ -155,11 +163,16 @@ pub unsafe extern "C" fn bs_sign(
     out: *mut u8,
 ) -> u32 {
     guard(|| {
-        use ark_vrf::ietf::Prover;
         let secret = unsafe { key(handle)? };
         let i = input(unsafe { bytes(data, len)? })?;
         let o = secret.output(i);
-        let proof = secret.prove(i, o, unsafe { bytes(ad, ad_len)? });
+        let proof = secret.prove_thin(
+            ark_vrf::VrfIo {
+                input: i,
+                output: o,
+            },
+            unsafe { bytes(ad, ad_len)? },
+        );
         unsafe { publish(&(o, proof), out, 96) }
     })
 }
@@ -176,26 +189,23 @@ pub unsafe extern "C" fn bs_verify(
     out: *mut u8,
 ) -> u32 {
     guard(|| {
-        use ark_vrf::ietf::Verifier;
         // Full widths and a live destination are checked before decoding any untrusted proof.
         if sig_len != 96 || out.is_null() {
             return Err(1);
         }
         let public: bs::Public = decode(unsafe { bytes(pk, 32)? })?;
-        let (o, proof): (bs::Output, bs::IetfProof) = decode(unsafe { bytes(sig, sig_len)? })?;
-        // Historical verifier identities need explicit adapter guards against trivial zero-key/output proofs.
-        if public.0.is_zero() || o.0.is_zero() {
-            return Err(2);
-        }
+        let (o, proof): (bs::Output, bs::ThinProof) = decode(unsafe { bytes(sig, sig_len)? })?;
         public
-            .verify(
-                input(unsafe { bytes(data, len)? })?,
-                o,
+            .verify_thin(
+                ark_vrf::VrfIo {
+                    input: input(unsafe { bytes(data, len)? })?,
+                    output: o,
+                },
                 unsafe { bytes(ad, ad_len)? },
                 &proof,
             )
             .map_err(|_| 4u32)?;
-        let hash = o.hash();
+        let hash = o.hash::<32>();
         unsafe {
             std::ptr::copy_nonoverlapping(hash.as_ptr(), out, 32);
         }
@@ -216,7 +226,7 @@ pub unsafe extern "C" fn bs_setup_new(size: usize, out: *mut *mut c_void) -> u32
         ));
         // The runner checks the embedded trusted file's immutable hash; validate its curve points too.
         let pcs = bs::PcsParams::deserialize_uncompressed(SRS).map_err(|_| 5u32)?;
-        let params = bs::RingProofParams::from_pcs_params(size, pcs).map_err(|_| 5u32)?;
+        let params = bs::RingSetup::from_pcs_params(size, pcs).map_err(|_| 5u32)?;
         unsafe {
             *out = Box::into_raw(Box::new(Setup {
                 params,
@@ -248,7 +258,11 @@ pub unsafe extern "C" fn bs_commit(
     guard(|| {
         let owner = unsafe { setup(handle)? };
         let points = ring(unsafe { bytes(pks, len)? }, owner)?;
-        let root = owner.params.verifier_key(&points).commitment();
+        let root = owner
+            .params
+            .verifier_key(&points)
+            .map_err(|_| 2u32)?
+            .commitment();
         unsafe { publish(&root, out, 144) }
     })
 }
@@ -267,18 +281,26 @@ pub unsafe extern "C" fn bs_ring_sign(
     out: *mut u8,
 ) -> u32 {
     guard(|| {
-        use ark_vrf::ring::Prover;
         let owner = unsafe { setup(handle)? };
         let secret = unsafe { key(secret)? };
         let points = ring(unsafe { bytes(pks, pks_len)? }, owner)?;
         // The backend can wrap/truncate indices; the adapter rejects invalid membership before proving.
-        if index >= points.len() || points[index] != secret.public().0 {
+        if index >= points.len() || points[index] != secret.public() {
             return Err(1);
         }
-        let prover = owner.params.prover(owner.params.prover_key(&points), index);
+        let prover_key = owner.params.prover_key(&points).map_err(|_| 2u32)?;
+        let prover = owner.params.ring_context().ring_prover(prover_key, index);
         let i = input(unsafe { bytes(data, len)? })?;
         let o = secret.output(i);
-        let proof = secret.prove(i, o, unsafe { bytes(ad, ad_len)? }, &prover);
+        let proof = bs::RingProof::prove(
+            ark_vrf::VrfIo {
+                input: i,
+                output: o,
+            },
+            unsafe { bytes(ad, ad_len)? },
+            secret,
+            &prover,
+        );
         unsafe { publish(&(o, proof), out, 784) }
     })
 }
@@ -296,7 +318,6 @@ pub unsafe extern "C" fn bs_ring_verify(
     out: *mut u8,
 ) -> u32 {
     guard(|| {
-        use ark_vrf::ring::Verifier;
         // The exact proof width and output must be checked before invoking historical proof deserializers.
         if sig_len != 784 || out.is_null() {
             return Err(1);
@@ -304,22 +325,21 @@ pub unsafe extern "C" fn bs_ring_verify(
         let owner = unsafe { setup(handle)? };
         let root: bs::RingCommitment = decode(unsafe { bytes(root, 144)? })?;
         let (o, proof): (bs::Output, bs::RingProof) = decode(unsafe { bytes(sig, sig_len)? })?;
-        // Output identity is outside this research adapter profile; reject before historical verification.
-        if o.0.is_zero() {
-            return Err(2);
-        }
         let verifier = owner
             .params
-            .verifier(owner.params.verifier_key_from_commitment(root));
-        bs::Public::verify(
-            input(unsafe { bytes(data, len)? })?,
-            o,
-            unsafe { bytes(ad, ad_len)? },
-            &proof,
-            &verifier,
-        )
-        .map_err(|_| 4u32)?;
-        let hash = o.hash();
+            .ring_context()
+            .ring_verifier(owner.params.verifier_key_from_commitment(root));
+        proof
+            .verify(
+                ark_vrf::VrfIo {
+                    input: input(unsafe { bytes(data, len)? })?,
+                    output: o,
+                },
+                unsafe { bytes(ad, ad_len)? },
+                &verifier,
+            )
+            .map_err(|_| 4u32)?;
+        let hash = o.hash::<32>();
         unsafe {
             std::ptr::copy_nonoverlapping(hash.as_ptr(), out, 32);
         }
@@ -335,7 +355,9 @@ pub unsafe extern "C" fn bs_validate_public(pk: *const u8, len: usize) -> u32 {
         if len != 32 {
             return Err(1);
         }
-        let _: bs::Public = decode(unsafe { bytes(pk, len)? })?;
+        // Preserve identity as a valid subgroup point, never silently substitute it as padding.
+        // Actual signing/ring verification decodes Public and rejects identity separately.
+        let _: bs::AffinePoint = decode(unsafe { bytes(pk, len)? })?;
         Ok(())
     })
 }
@@ -355,21 +377,31 @@ pub unsafe extern "C" fn bs_padding(out: *mut u8) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    /// Additional data must change the nonce even when secret and VRF input are unchanged.
+    /// Additional data binds the Thin proof while leaving the VRF output unchanged.
     #[test]
-    fn additional_data_separates_nonces() {
-        use ark_vrf::ietf::Prover;
+    fn additional_data_separates_proofs() {
         let secret = bs::Secret::from_scalar(bs::ScalarField::from(7u64));
-        let input = bs::Input::new(b"ragnarok-nonce-regression").unwrap();
-        let output = secret.output(input);
-        let first = secret.prove(input, output, b"first-additional-data");
-        let second = secret.prove(input, output, b"second-additional-data");
-        // Recover only these public test-key nonces algebraically; the old backend reused them.
-        let first_nonce = first.s - first.c * secret.scalar();
-        let second_nonce = second.s - second.c * secret.scalar();
-        assert_ne!(first_nonce, second_nonce);
-        // Proofs still expose the same VRF output, with the GP's fixed wire width.
-        assert_eq!(output.compressed_size() + first.compressed_size(), 96);
+        let io = secret.vrf_io(bs::Input::new(b"ragnarok-nonce-regression").unwrap());
+        let first = secret.prove_thin(io, b"first-additional-data");
+        let second = secret.prove_thin(io, b"second-additional-data");
+        let mut first_bytes = Vec::new();
+        let mut second_bytes = Vec::new();
+        first.serialize_compressed(&mut first_bytes).unwrap();
+        second.serialize_compressed(&mut second_bytes).unwrap();
+        assert_ne!(first_bytes, second_bytes);
+        assert!(
+            secret
+                .public()
+                .verify_thin(io, b"second-additional-data", &first)
+                .is_err()
+        );
+        assert!(
+            secret
+                .public()
+                .verify_thin(io, b"first-additional-data", &first)
+                .is_ok()
+        );
+        assert_eq!(io.output.compressed_size() + first.compressed_size(), 96);
     }
 
     /// A deliberately panicking primitive path must become an ABI reason, never unwind across C.

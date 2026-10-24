@@ -147,6 +147,22 @@ class ThinReferenceTests(unittest.TestCase):
         """Reproduce Draft 35 Appendix C.2 vector 1 without arkworks or native code."""
         self.assertEqual(qualify(VECTOR), {'signature_bytes': 96, 'suite_bytes': 27})
 
+    def test_complete_draft35_vectors(self):
+        """Reproduce actual hash-to-curve and all signature bytes without loading native code."""
+        import json
+        from pathlib import Path
+        from bandersnatch_thin_oracle import input_point, sign
+        source = Path(__file__).resolve().parents[1]/'vendor/bandersnatch-vrf-spec/assets/vectors/bandersnatch_sha-512_ell2_thin.json'
+        vectors = json.loads(source.read_text())
+        self.assertEqual(len(vectors), 7)
+        for vector in vectors:
+            with self.subTest(vector=vector['comment']):
+                alpha, ad = bytes.fromhex(vector['alpha']), bytes.fromhex(vector['ad'])
+                self.assertEqual(encode(input_point(alpha)).hex(), vector['h'])
+                proof, output = sign(int.from_bytes(bytes.fromhex(vector['sk']), 'little'), alpha, ad)
+                self.assertEqual(proof.hex(), vector['gamma']+vector['proof_r']+vector['proof_s'])
+                self.assertEqual(output.hex(), vector['beta'])
+
     def test_additional_data_is_bound(self):
         """The same points with different AD cannot retain the deterministic proof."""
         with self.assertRaises(AssertionError):

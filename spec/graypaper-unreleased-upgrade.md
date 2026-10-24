@@ -85,9 +85,13 @@ writes and zero incoming credits. This is a prerequisite for current parallel
 selection; it does not remove the foreign publication gate by itself.
 
 
-The legacy Bandersnatch backend remains a verified release-reference IETF profile;
-its gate now identifies the current Thin VRF requirement. No current Thin parity is
-claimed from historical vector success.
+Bandersnatch now selects the qualified Draft 35 Thin v1 profile using pristine
+ark-vrf 0.6.0 and advances the JAM vector pin to gp-next
+`23061ae1f9b51171c01387e7dde0f15794c98e24`. Its upstream changelog explicitly
+names the target GP changes and Draft 35/0.6.0. Positive Thin/ring/current JAM
+vectors and retained historical rejection witnesses are separate evidence; see
+[the primitive contract](bandersnatch.md). Complete current-schema STF parity
+remains separately qualified.
 
 ## Lifecycle ownership regression
 
@@ -167,6 +171,6 @@ results. They are aggregate regression evidence, not rewritten green reports or 
 Linux CI. The interpreted benchmark retains raw measurements/environment metadata and
 keeps compiled comparisons deferred by maintainer direction.
 
-M1 framing is complete. Full state serialization, whole-block parity, current Thin VRF
-parity and the explicitly gated host capabilities above remain separate work. Full
+M1 framing is complete. Full state serialization, whole-block parity and the explicitly
+gated host capabilities above remain separate from qualified Thin primitive integration. Full
 upstream PolkaVM fuzzing remains a required future independent CI job.

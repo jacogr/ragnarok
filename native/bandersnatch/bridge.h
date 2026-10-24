@@ -32,6 +32,6 @@ uint32_t bs_ring_sign(const void *, const void *, size_t, const uint8_t *, size_
 uint32_t bs_ring_verify(const void *, const uint8_t *, const uint8_t *, size_t, const uint8_t *, size_t, const uint8_t *, size_t, uint8_t *);
 /* Canonical prime-subgroup point validation; missing/wrong-width inputs fail before decode. */
 uint32_t bs_validate_public(const uint8_t *, size_t);
-/* Copy the selected historical suite's 32-byte padding encoding. */
+/* Copy the selected Thin v1 suite's 32-byte padding encoding. */
 uint32_t bs_padding(uint8_t *);
 #endif

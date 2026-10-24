@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Published signed-header credentials and independent entropy-state handoff, plus authenticated
+## Current Thin credentials, incompatible published-source refusals and independent entropy-state handoff, plus authenticated
 ## ticket/fallback fixtures.
 ##
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
@@ -253,12 +253,12 @@ proc boundaries() =
         verifications() == 2
   reset(0)
 
-## Published headers and parent/posterior state bytes are supplied independently; no signing keys are generated for this evidence.
+## Keep twenty incompatible upstream headers separate from three independently authored current-profile positives.
 proc published(text: string) =
   let lines = text.splitLines()
-  assert lines.len == 21
+  assert lines.len == 24
   let config = policy()
-  for i in 0..<20:
+  for i in 0..<23:
     let f = lines[i].splitWhitespace()
     assert f.len == 7
     let raw = unhex(f[1])
@@ -270,6 +270,10 @@ proc published(text: string) =
     var owner = capture(raw, config)
     reset(0)
     let outcome = authenticateSafroleSeal(owner, schedule, active, previous, entropy, config)
+    if i < 20:
+      # This exact upstream revision retains non-Thin trace credentials; no alternate verifier is permitted.
+      assert outcome.error == SafroleAuthError.InvalidSeal and verifications() == 1
+      continue
     assert outcome.error == SafroleAuthError.None and verifications() == 2
     assert outcome.value.ticketed == (f[0] in ["safrole/48",
         "safrole/49"]) # Explicit published schedule classification: eighteen fallback, two ticket records.
@@ -277,7 +281,7 @@ proc published(text: string) =
     let advanced = advanceEntropyTime(entropy, previous, target, outcome.value.entropy, EpochSlots(12))
     assert advanced.error == EntropyTransitionError.None
     assert entropyEntry(advanced.value.entropy).value ==
-        expected # Independent published posterior accumulator/history binds the authenticated output.
+        expected # Independent mathematical posterior accumulator/history binds the authenticated output.
     owner = default(OwnedHeader)
     assert fullBytes(outcome.value.header) == raw # The result is now the only retained header owner.
   reset(0)
@@ -287,4 +291,4 @@ try:
   published(readFile(getEnv("RAGNAROK_SAFROLE_AUTHENTICATION"))) # Missing published credential transport must fail explicitly.
 except:
   quit(2) # Do not substitute self-generated signatures for absent external evidence.
-echo "PASS Safrole authentication: twenty published credentials, ticket/fallback proofs and verified entropy handoff"
+echo "PASS Safrole authentication: three independent Thin cases, twenty incompatible trace refusals and authored ticket/fallback boundaries"

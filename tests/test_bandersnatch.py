@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Build the pinned GP 0.8.0 release-reference Bandersnatch Rust ABI and check Nim.
+"""Build the pinned current Draft 35 Thin v1 Bandersnatch Rust ABI and check Nim.
 
 Exposes suite, generated_proofs and bridge_checks, plus pinned fixture loading and native query
 helpers.
@@ -24,7 +24,7 @@ FIXTURES = ROOT / 'vectors/official/bandersnatch'
 
 # Unmodified published vectors belong to their source submodule; small project reductions remain local fixtures.
 def fixture_path(name):
-    if name in ('ietf.json','ring.json'):
+    if name in ('thin.json','ring.json'):
         scheme=Path(name).stem
         return ROOT/PINS['sources']['spec-jam']['path']/f'assets/vectors/bandersnatch_sha-512_ell2_{scheme}.json'
     return FIXTURES/name
@@ -88,17 +88,35 @@ def suite(binary, query=query, failure_probe=None):
     else:
         code, diagnostic = failure_probe(binary)
     assert code == 1 and '[AssertionDefect]' in diagnostic and 'value.status == None' in diagnostic
-    ietf = json.loads(fixture_path('ietf.json').read_text())
+    thin = json.loads(fixture_path('thin.json').read_text())
     rings = json.loads(fixture_path('ring.json').read_text())
+    # Independently reproduce public equations and transcript fields before exercising the native backend.
+    from test_bandersnatch_thin_reference import qualify
+    for vector in thin:
+        qualify(vector)
     # Ordinary contextual signatures must reproduce every published field exactly, not just verify themselves.
-    for v in ietf:
+    for v in thin:
         sk,pk,context,ad = [octets(v[k]) for k in ('sk','pk','alpha','ad')]
-        expected = octets(v['gamma'])+octets(v['proof_c'])+octets(v['proof_s'])
+        expected = octets(v['gamma'])+octets(v['proof_r'])+octets(v['proof_s'])
         assert query(binary,'P',sk)==pk.hex()
         assert query(binary,'S',sk,context,ad)==expected.hex()
         assert query(binary,'V',pk,expected,context,ad)==v['beta'][:64]
         rejected(query(binary,'V',pk,expected,context+b'!',ad))
         rejected(query(binary,'V',pk,expected,context,ad+b'!'))
+    # Draft 35 permits identity R. Construct a zero-nonce proof only with the public fixture secret.
+    from test_bandersnatch_thin_reference import SUITE, G, IDENTITY, ORDER, encode, squeeze
+    vector = thin[0]
+    transcript = (SUITE+b'\x01'+(2).to_bytes(8, 'little')+encode(G)+octets(vector['pk'])
+                  +octets(vector['h'])+octets(vector['gamma'])+(0).to_bytes(8, 'little'))
+    commitment = encode(IDENTITY)
+    challenge = int.from_bytes(squeeze(transcript+b'\x40'+commitment, 16), 'little')
+    response = (challenge*int.from_bytes(octets(vector['sk']), 'little') % ORDER).to_bytes(32, 'little')
+    identity_r = octets(vector['gamma'])+commitment+response
+    assert query(binary, 'V', octets(vector['pk']), identity_r, b'', b'') == vector['beta'][:64]
+    # A second encoding of identity and an out-of-field response are never canonical proofs.
+    for bad in (octets(vector['gamma'])+(1 | (1 << 255)).to_bytes(32, 'little')+response,
+                identity_r[:64]+ORDER.to_bytes(32, 'little')):
+        rejected(query(binary, 'V', octets(vector['pk']), bad, b'', b''))
     # Ring roots/proofs come from the published trusted-SRS vectors; generation uses the safe randomized backend feature set.
     for v in rings:
         proof = ring_proof(v)
@@ -106,21 +124,24 @@ def suite(binary, query=query, failure_probe=None):
         assert query(binary,'R',8,octets(v['ring_pks']))==v['ring_pks_com']
         assert query(binary,'W',8,octets(v['ring_pks_com']),proof,octets(v['alpha']),octets(v['ad']))==v['beta'][:64]
     official = 0
-    # JAM domains/serialization are constructed here in native test policy, not hidden in Rust.
-    for profile in ('tiny','full'):
-        v = json.loads((FIXTURES / f'jam-{profile}.json').read_text())
-        members = b''.join(octets(k) for k in v['members'])
-        assert query(binary,'R',v['capacity'],members)==v['root'][2:]
-        # Each independently generated ticket's extracted output must equal its official post-state score.
-        for ticket in v['tickets']:
-            context = b'jam_ticket_seal'+octets(v['entropy'])+bytes([ticket['attempt']])
-            actual = query(binary,'W',v['capacity'],octets(v['root']),octets(ticket['signature']),context,b'')
-            assert actual==ticket['output'][2:]
+    # The advanced pin restores positive independently published JAM tickets and exact outputs.
+    for profile in ('tiny', 'full'):
+        value = json.loads((FIXTURES/f'jam-{profile}.json').read_text())
+        members = b''.join(octets(key) for key in value['members'])
+        assert query(binary, 'R', value['capacity'], members) == value['root'][2:]
+        for ticket in value['tickets']:
+            context = b'jam_ticket_seal'+octets(value['entropy'])+bytes([ticket['attempt']])
+            assert query(binary, 'W', value['capacity'], octets(value['root']),
+                         octets(ticket['signature']), context, b'') == ticket['output'][2:]
             official += 1
-    padded_jam = json.loads((FIXTURES / 'jam-padding.json').read_text())
-    assert query(binary,'R',padded_jam['capacity'],b''.join(octets(k) for k in padded_jam['members']))==padded_jam['root'][2:]
+    padding_case = json.loads((FIXTURES/'jam-padding.json').read_text())
+    assert query(binary, 'R', padding_case['capacity'],
+                 b''.join(octets(key) for key in padding_case['members'])) == padding_case['root'][2:]
+    # Keep historical-source incompatibility explicit, separately from current vector success.
+    historical = historical_profile_rejections(binary, query)
     v = rings[0]
     root,proof,members = octets(v['ring_pks_com']),ring_proof(v),octets(v['ring_pks'])
+    rejected(query(binary,'W',256,root,proof,b'',b'')) # Domain 1024 cannot verify a domain-512 proof.
     rejected(query(binary,'W',8,root,proof,b'wrong-context',b''))
     rejected(query(binary,'W',8,root,proof,b'',b'wrong-additional'))
     rejected(query(binary,'W',8,root[:-1],proof,b'',b''))
@@ -132,7 +153,8 @@ def suite(binary, query=query, failure_probe=None):
     rejected(query(binary,'R',1,members))
     rejected(query(binary,'R',8,members[:-1]))
     # Invalid encoded members are replaced by the specified padding point by the maintained wrapper.
-    padding = bytes.fromhex('92ca79e61dd90c1573a8693f199bf6e1e86835cc715cdcf93f5ef222560023aa')
+    padding = octets(PINS['padding_point'])
+    rejected(query(binary,'R',8,encode(IDENTITY)+members[32:])) # Valid identity is not rewritten as padding.
     altered = bytes([255])*32+members[32:]
     padded = padding+members[32:]
     assert query(binary,'R',8,altered)==query(binary,'R',8,padded)
@@ -140,8 +162,25 @@ def suite(binary, query=query, failure_probe=None):
     for n in (0,1,31,33):
         rejected(query(binary,'P',bytes(n)))
         rejected(query(binary,'V',bytes(n),bytes(96),b'',b''))
-    return {'ietf_vectors':len(ietf),'ring_vectors':len(rings),'official_jam_tickets':official,
+    return {'thin_vectors':len(thin),'ring_vectors':len(rings),'official_jam_tickets':official,'historical_profile':historical,
             'ownership':'passed','native_threads':4,'rounds_per_thread':32,'checked_failure':'passed'}
+
+
+# These unchanged pinned fixtures belong to the former IETF suite, never current Thin success evidence.
+def historical_profile_rejections(binary, query):
+    rejected_tickets = 0
+    # Exact original roots and tickets must not trigger a hidden historical-profile fallback.
+    for profile in ('tiny', 'full'):
+        value = json.loads((ROOT/f'vectors/historical/bandersnatch/jam-{profile}.json').read_text())
+        members = b''.join(octets(key) for key in value['members'])
+        assert query(binary, 'R', value['capacity'], members) != value['root'][2:]
+        for ticket in value['tickets']:
+            context = b'jam_ticket_seal'+octets(value['entropy'])+bytes([ticket['attempt']])
+            rejected(query(binary, 'W', value['capacity'], octets(value['root']),
+                           octets(ticket['signature']), context, b''))
+            rejected_tickets += 1
+    return {'status': 'incompatible_old_profile', 'rejected_tickets': rejected_tickets,
+            'current_stf_parity': False}
 
 
 # Cross-check proof creation and contextual output extraction through the supplied native owner.
@@ -156,7 +195,7 @@ def generated_proofs(binary, query=query):
         public = octets(query(binary,'P',scalar))
         signature = octets(query(binary,'S',scalar,context,additional))
         assert len(octets(query(binary,'V',public,signature,context,additional))) == 32
-    return {'ring_proofs':1, 'ietf_messages':16}
+    return {'ring_proofs':1, 'thin_messages':16}
 
 
 # Exercise exact widths, malformed points/scalars/roots and all-or-nothing writes at the Rust/C boundary.

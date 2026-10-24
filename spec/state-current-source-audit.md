@@ -1,8 +1,12 @@
 # Current-schema source qualification
 
 Gray Paper target: `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`.
-Reference vectors remain `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
-Neither source nor toolchain pins change in this qualification.
+Current vectors are `23061ae1f9b51171c01387e7dde0f15794c98e24` (gp-next),
+advanced together with the Draft 35 Thin backend. The report/metadata fixture has
+been independently regenerated from the same seven named trace pairs at that
+exact source. This preserves the distinction between published and derived roots;
+the previous `d3c089c9a1d5352ad353626d7a2db8589f137b2a` report is historical.
+The compiler/toolchain pin is unchanged.
 
 The seven already SHA-pinned trace blobs yield fourteen complete pre/post maps
 and twenty-six metadata observations. Independent reconstruction still verifies every

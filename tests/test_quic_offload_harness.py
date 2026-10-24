@@ -14,13 +14,13 @@ from test_quic_offload import corpus, selftests, exercise
 
 # Exercise orchestration without running workers, Rust verification or a QUIC listener.
 class OffloadHarnessTests(unittest.TestCase):
-    # Freeze the original official tiny-ticket wire across compiler-specific directory routing.
+    # Freeze the aligned Thin official tiny-ticket wire across compiler-specific directory routing.
     def test_original_fixture_identity(self):
         with tempfile.TemporaryDirectory() as temporary:
             fixture, metadata = corpus(Path(temporary)/'isolated')
             self.assertEqual(fixture.stat().st_size, 1012)
             self.assertEqual(metadata['fixture_sha256'],
-                             '18a438ff6830f86ecb7ac2dc5285375a35193a2dbe87dceabe75b507cb08d71b')
+                             '98c1193e028be7a1d5833536bf5fb9341bb9812f3225a117e62560be22850c47')
 
     # A successful exit cannot replace the completion/exhaustion and worker-join observations.
     def test_selftest_requires_all_markers(self):
