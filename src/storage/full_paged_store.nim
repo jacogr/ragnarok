@@ -7,7 +7,7 @@
 import std/assertions
 import ./[full_paged_codec, full_paged_stream, paged_io, paged_codec, database_identity,
   file_errors, full_paged_build, durability,
-  managed_manifest, node_repository]
+  managed_manifest, node_repository, paged_stream]
 import ../codec/[bounded, state_layout, state_trie]
 
 type
@@ -36,6 +36,7 @@ type
     root*: StateRoot
     limits*: FullPagedStreamLimits
     construction*: FullPagedConstructionLimits
+    replayBytes*: ByteLimit ## Explicit anonymous replay disk ceiling; zero denies replay cleanup.
   ReaderData = ref object ## One immutable native pin; only explicit retirement can release its descriptor.
     file: PagedFile
     checked: CheckedFullPagedArtifact
@@ -51,11 +52,11 @@ type
   FullPagedWriter* = object ## Unique writer retirement authority; candidates do not prolong its lease after close.
     data: nil WriterData
   CandidateData = ref object ## Sealed authoring capability binds exact writer incarnation and selected predecessor.
-    file: PagedFile
+    file, pending: PagedFile
     owner: WriterData
     checked: CheckedFullPagedArtifact
     source: FullPagedManifest
-    active, sealed, initial: bool
+    active, sealed, initial, recovery: bool
   FullPagedCandidate* = object ## Failed authoring may still own a forensic file and requires explicit close.
     data: nil CandidateData
   FullPagedPublication* = object ## Confirmed selection remains success independently of later retirement diagnostics.
@@ -269,7 +270,13 @@ proc close*(candidate: var FullPagedCandidate): FileError =
   if data == nil or not data.active: return FileError.Uninitialized
   data.active = false
   candidate.data = nil
-  if data.file.opened: data.file.close else: FileError.None
+  var reason = FileError.None
+  if data.file.opened: reason = data.file.close
+  if data.pending.opened:
+    # Retire staging even when the independent epoch close reports uncertainty.
+    let retired = data.pending.close
+    if reason == FileError.None: reason = retired
+  reason
 proc close*(writer: var FullPagedWriter): FileError =
   ## Retire the selected file and stable lease once; independently retained readers/candidates remain separate.
   let data = writer.data
@@ -648,3 +655,240 @@ proc reclaim*(writer: var FullPagedWriter, receipt: FullPagedEpochReceipt,
   let retired = file.close
   FullPagedNativeResult[FullPagedReclamation](status: FullPagedNativeError.None,
     completed: FullPagedReclamation(ready: true, absentBefore: false, retirement: retired))
+
+proc sameManifest(left, right: FullPagedManifest): bool =
+  ## Defaults cannot compare equal as source authority; codec failure never grants byte equality.
+  if not left.initialized or not right.initialized: return false
+  let a = left.bytes
+  let b = right.bytes
+  a.error == FullPagedError.None and b.error == FullPagedError.None and a.value == b.value
+func comparisonLimits(config: FullPagedNativeConfig): PagedWorkLimits =
+  ## Each fixed-page comparison has explicit finite IO/read ceilings, separate from graph admission.
+  PagedWorkLimits(ioCalls: config.construction.ioCalls, readBytes: config.construction.readBytes)
+proc prepareCleanup(data: WriterData, candidate: var FullPagedCandidate,
+    expectedSource: FullPagedManifest, target: FullPagedHeader,
+    producer: nil FullPagedProducer, initial: bool): FullPagedNativeResult[bool] =
+  ## Reproduce and fully admit exact target bytes in bounded anonymous disk scratch before granting cleanup authority.
+  if not data.active: return refused[bool](FullPagedNativeError.Uninitialized)
+  if data.poisoned and not initial: return refused[bool](FullPagedNativeError.RecoveryRequired)
+  if candidate.opened: return fileFailed[bool](FileError.Busy)
+  if not target.initialized: return refused[bool](FullPagedNativeError.InvalidCandidate)
+  if array[32, byte](target.chainId) != array[32, byte](data.config.chain):
+    return refused[bool](FullPagedNativeError.InvalidCandidate)
+  var source = default(FullPagedManifest)
+  var compaction = false
+  if initial:
+    # Bootstrap authority requires independent root/position and actual CURRENT absence under the existing lease.
+    if data.selected or expectedSource.initialized:
+      return refused[bool](FullPagedNativeError.InvalidCandidate)
+    let absent = data.directory.initialAbsent
+    if absent != FileError.None: return fileFailed[bool](absent)
+    let sameRoot = array[32, byte](target.root) == array[32, byte](data.config.root)
+    if not sameRoot or uint64(target.epoch) != 1 or uint64(target.generation) != 0:
+      return refused[bool](FullPagedNativeError.InvalidCandidate)
+  else:
+    # Existing recovery binds an exact predecessor; same-generation targets are exclusively source-derived compactions.
+    source = data.checked.manifest
+    if not sameManifest(expectedSource, source): return refused[bool](
+        FullPagedNativeError.StaleView)
+    if uint64(source.epoch) == high(uint64): return refused[bool](
+        FullPagedNativeError.CounterExhausted)
+    if uint64(target.epoch) != uint64(source.epoch)+1:
+      return refused[bool](FullPagedNativeError.InvalidCandidate)
+    compaction = uint64(target.generation) == uint64(source.generation)
+    if not compaction:
+      # Ordinary replacement advances once; comparison precedes addition at the maximum generation.
+      if uint64(source.generation) == high(uint64):
+        return refused[bool](FullPagedNativeError.CounterExhausted)
+      if uint64(target.generation) != uint64(source.generation)+1:
+        return refused[bool](FullPagedNativeError.InvalidCandidate)
+    let head = validateHead(data)
+    if head.error != FullPagedNativeError.None: return rejected[bool, bool](head)
+  if not compaction and producer == nil: return refused[bool](FullPagedNativeError.InvalidCandidate)
+  let shape = target.geometry
+  let bounded = pagedGeometry(shape.entries, shape.payloadBytes, data.config.limits.dataset)
+  if bounded.error != PagedCodecError.None: return fileFailed[bool](FileError.LimitExceeded)
+  if shape.byteLength > uint64(data.config.replayBytes): return fileFailed[bool](
+      FileError.LimitExceeded)
+  var scratch = default(PagedFile)
+  defer:
+    # Anonymous replay close uncertainty prevents capturing a successful cleanup capability.
+    if scratch.opened and scratch.close != FileError.None: result = fileFailed[bool](
+        FileError.IoFailure)
+  let acquired = openScratch(scratch, data.directory, data.config.replayBytes)
+  if acquired != FileError.None: return fileFailed[bool](acquired)
+  let limits = buildLimits(data.config)
+  let authored = if compaction:
+    compactFullFile(scratch, data.head, data.directory, data.checked, target,
+      FullPagedCompactionLimits(ioCalls: limits.ioCalls, hashes: limits.hashes,
+        readBytes: limits.readBytes, writeBytes: limits.writeBytes))
+  else:
+    buildFullFile(scratch, data.directory, producer, target, limits)
+  if authored.error != FileError.None: return fileFailed[bool](authored.error)
+  if authored.value.error != FullPagedBuildError.None: return buildFailed[bool](authored.value)
+  let built = authored.value.value.checked
+  let manifest = built.manifest.bytes
+  if manifest.error != FullPagedError.None: return codecFailed[bool](manifest.error)
+  let artifact = CandidateData(owner: data, source: source, checked: built, recovery: true,
+      initial: initial)
+  defer:
+    # Until adoption both independent captured resources remain local explicit-close obligations.
+    if candidate.data == nil:
+      if artifact.file.opened and artifact.file.close != FileError.None:
+        result = fileFailed[bool](FileError.IoFailure)
+      if artifact.pending.opened and artifact.pending.close != FileError.None:
+        result = fileFailed[bool](FileError.IoFailure)
+  let exists = data.directory.epochExists(target.epoch)
+  if exists.error != FileError.None: return fileFailed[bool](exists.error)
+  if exists.value:
+    # An arbitrary partial epoch becomes eligible only after complete prefix equality under an exclusive pin.
+    let pinned = openEpoch(artifact.file, data.directory, target.epoch,
+      PagedPin.Exclusive, data.config.limits.dataset.bytes)
+    if pinned != FileError.None: return fileFailed[bool](pinned)
+    let matched = matchesPrefix(artifact.file, scratch, comparisonLimits(data.config))
+    if matched != FileError.None: return fileFailed[bool](matched)
+  let pending = openFullPending(artifact.pending, data.directory)
+  if pending.error != FileError.None: return fileFailed[bool](pending.error)
+  if pending.value:
+    # Validate staging before either child can be removed; light-width or overlong files refuse.
+    let matched = matchesFullPrefix(artifact.pending, manifest.value, comparisonLimits(data.config))
+    if matched != FileError.None: return fileFailed[bool](matched)
+  let current = if initial: data.directory.initialAbsent else: current(data)
+  if current != FileError.None: return fileFailed[bool](current)
+  let retired = scratch.close
+  if retired != FileError.None: return fileFailed[bool](retired)
+  artifact.active = true
+  candidate.data = artifact
+  FullPagedNativeResult[bool](status: FullPagedNativeError.None, completed: true)
+proc prepareFullPagedCleanup*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
+    expectedSource: FullPagedManifest, target: FullPagedHeader,
+    producer: nil FullPagedProducer): FullPagedNativeResult[bool] =
+  ## Explicit independently expected replacement or source-derived compaction never scans for cleanup targets.
+  let data = writer.data
+  if data == nil: return refused[bool](FullPagedNativeError.Uninitialized)
+  prepareCleanup(data, candidate, expectedSource, target, producer, false)
+proc discardFullPagedCandidate*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
+    expectedSource: FullPagedManifest): FullPagedNativeResult[FullPagedReclamation] =
+  ## Every source, epoch and staging preflight must pass before unlink; uncertainty poisons the writer.
+  let data = writer.data
+  let artifact = candidate.data
+  if data == nil or artifact == nil: return refused[FullPagedReclamation](
+      FullPagedNativeError.Uninitialized)
+  if not data.active or not artifact.active:
+    return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
+  if artifact.owner != data: return refused[FullPagedReclamation](FullPagedNativeError.StaleView)
+  if artifact.initial and (not artifact.recovery or data.selected):
+    return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
+  if data.poisoned and not artifact.initial:
+    return refused[FullPagedReclamation](FullPagedNativeError.RecoveryRequired)
+  if artifact.initial:
+    # A bootstrap cleanup capability cannot overwrite or remove any selected CURRENT, even malformed bytes.
+    if expectedSource.initialized or artifact.source.initialized:
+      return refused[FullPagedReclamation](FullPagedNativeError.StaleView)
+    let absent = data.directory.initialAbsent
+    if absent != FileError.None: return fileFailed[FullPagedReclamation](absent)
+  else:
+    # A detached source receipt cannot follow a newer selection or revive another writer incarnation.
+    if not sameManifest(expectedSource, artifact.source):
+      return refused[FullPagedReclamation](FullPagedNativeError.StaleView)
+    if not sameManifest(expectedSource, data.checked.manifest):
+      return refused[FullPagedReclamation](FullPagedNativeError.StaleView)
+    let head = validateHead(data)
+    if head.error != FullPagedNativeError.None: return rejected[FullPagedReclamation, bool](head)
+  if not artifact.sealed and not artifact.recovery:
+    return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
+  let absent = not artifact.file.opened
+  if not absent:
+    # Captured namespace/inode/version/extent must still match before any destructive namespace operation.
+    if not data.directory.sameDirectory(artifact.file):
+      return refused[FullPagedReclamation](FullPagedNativeError.StaleView)
+    let checked = artifact.file.check
+    if checked != FileError.None: return fileFailed[FullPagedReclamation](checked)
+    if artifact.sealed:
+      # A live complete seal supplies direct full-graph validation without a new producer replay.
+      let verified = artifact.file.validateFullFile(data.directory, artifact.checked.header,
+        artifact.checked.manifest, data.config.limits)
+      if verified.error != FileError.None: return fileFailed[FullPagedReclamation](verified.error)
+      if verified.value.error != FullPagedStreamError.None:
+        return graphFailed[FullPagedReclamation, CheckedFullPagedArtifact](verified.value)
+  else:
+    # Captured absence cannot authorize a file that appeared after replay preparation.
+    let exists = data.directory.epochExists(artifact.checked.manifest.epoch)
+    if exists.error != FileError.None: return fileFailed[FullPagedReclamation](exists.error)
+    if exists.value: return refused[FullPagedReclamation](FullPagedNativeError.StaleView)
+  let manifest = artifact.checked.manifest.bytes
+  if manifest.error != FullPagedError.None: return codecFailed[FullPagedReclamation](manifest.error)
+  if artifact.sealed and not artifact.pending.opened:
+    # Live seals may capture staging lazily; every subsequent attempt still rechecks its exact prefix.
+    let pending = openFullPending(artifact.pending, data.directory)
+    if pending.error != FileError.None: return fileFailed[FullPagedReclamation](pending.error)
+  if artifact.pending.opened:
+    # Failed prefix validation never becomes implicit permission on a retry.
+    let checked = matchesFullPrefix(artifact.pending, manifest.value, comparisonLimits(data.config))
+    if checked != FileError.None: return fileFailed[FullPagedReclamation](checked)
+  else:
+    # Prepared staging absence refuses any later-created unknown child.
+    let checked = data.directory.pendingAbsent
+    if checked != FileError.None: return fileFailed[FullPagedReclamation](checked)
+  let current = if artifact.initial: data.directory.initialAbsent else: current(data)
+  if current != FileError.None: return fileFailed[FullPagedReclamation](current)
+  if not absent:
+    # All preflights precede the first unlink, and uncertainty requires fresh capture after reopen.
+    let removed = removePinned(data.directory, artifact.file)
+    if removed != FileError.None:
+      data.poisoned = true
+      return fileFailed[FullPagedReclamation](removed)
+  if artifact.pending.opened:
+    # Independently pinned staging is removed only after its own byte/version checks passed above.
+    let removed = removePinned(data.directory, artifact.pending)
+    if removed != FileError.None:
+      data.poisoned = true
+      return fileFailed[FullPagedReclamation](removed)
+  let confirmed = data.directory.synchronize
+  if confirmed != FileError.None:
+    data.poisoned = true
+    return fileFailed[FullPagedReclamation](confirmed)
+  let retired = candidate.close
+  FullPagedNativeResult[FullPagedReclamation](status: FullPagedNativeError.None,
+    completed: FullPagedReclamation(ready: true, absentBefore: absent, retirement: retired))
+proc resumeFullPagedInitialization*(writer: var FullPagedWriter, path: string,
+    config: FullPagedNativeConfig, roots: openArray[FullPagedRoot], producer: nil FullPagedProducer,
+    count, payload: uint64): FullPagedNativeResult[FullPagedPublication] =
+  ## Existing LOCK and absent CURRENT permit exact replay cleanup then independently bound fresh bootstrap.
+  if writer.opened: return fileFailed[FullPagedPublication](FileError.Busy)
+  if producer == nil: return refused[FullPagedPublication](FullPagedNativeError.Uninitialized)
+  let header = initFullPagedHeader(config.chain, config.root, ManagedEpoch(1),
+    RepositoryGeneration(0), count, payload, roots, config.limits.dataset)
+  if header.error != FullPagedError.None: return codecFailed[FullPagedPublication](header.error)
+  let data = WriterData(config: config, poisoned: true)
+  let acquired = openDirectory(data.directory, path, false, true)
+  if acquired != FileError.None:
+    # Even partial native lease setup is retired before a failed resume returns.
+    if data.directory.opened and data.directory.close != FileError.None:
+      return fileFailed[FullPagedPublication](FileError.IoFailure)
+    return fileFailed[FullPagedPublication](acquired)
+  data.active = true
+  writer.data = data
+  var candidate = default(FullPagedCandidate)
+  defer:
+    # Acquired failures keep the writer visible but always retire local candidate descriptors.
+    if candidate.opened and candidate.close != FileError.None:
+      result = fileFailed[FullPagedPublication](FileError.IoFailure)
+  let replayed = prepareCleanup(data, candidate, default(FullPagedManifest), header.value, producer, true)
+  if replayed.error != FullPagedNativeError.None: return rejected[FullPagedPublication, bool](replayed)
+  let cleanup = candidate.data
+  assert cleanup != nil
+  let expected = cleanup.checked.manifest
+  let removed = discardFullPagedCandidate(writer, candidate, default(FullPagedManifest))
+  if removed.error != FullPagedNativeError.None:
+    return rejected[FullPagedPublication, FullPagedReclamation](removed)
+  if removed.value.retirementError != FileError.None:
+    return fileFailed[FullPagedPublication](removed.value.retirementError)
+  let prepared = prepare(data, candidate, config.root, roots, producer, count, payload, true)
+  if prepared.error != FullPagedNativeError.None:
+    return rejected[FullPagedPublication, StorageDurability](prepared)
+  let authored = candidate.data
+  assert authored != nil
+  if not sameManifest(authored.checked.manifest, expected):
+    return refused[FullPagedPublication](FullPagedNativeError.InvalidCandidate)
+  writer.publish(candidate)

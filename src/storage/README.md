@@ -465,5 +465,6 @@ Move-only writers/candidates now publish fully checked root unions with file/dir
 exact incarnation/source binding and separate post-confirmation retirement diagnostics. Retained
 root unions and captured, exclusively pinned epoch reclamation now separate logical history from
 physical file lifetime. Source-derived full compaction preserves exact history and ordinary
-generation while rewriting authenticated pages into a new epoch. Replay cleanup and consumer
-adoption remain subsequent work.
+generation while rewriting authenticated pages into a new epoch. Explicit replay cleanup and
+bootstrap resume compare complete independent target/staging prefixes before removal, with a separate
+anonymous replay disk ceiling and fresh capture after uncertainty. Consumer adoption remains open.

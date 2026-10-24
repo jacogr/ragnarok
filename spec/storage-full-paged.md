@@ -304,3 +304,37 @@ maximum ordinary generation with no producer calls. Every observed native prepar
 preserves the strict selected source.1000 actual compaction/publication cycles retain30,464 ->
 30,464 occupied bytes. Ordinary publication and retention regressions pass after shared native
 sealing and test-oracle extraction. Explicit prefix cleanup/bootstrap recovery remain next.
+
+## Explicit replay cleanup and interrupted bootstrap
+
+`prepareFullPagedCleanup` requires an exact independently expected current manifest and target
+header. Ordinary replacement advances generation once; a same-generation target is reproduced
+exclusively from the held authenticated source through compaction. No caller producer can change
+same-generation graph knowledge. Complete target construction/admission occurs in anonymous disk
+scratch before any partial epoch or `CURRENT.next` is captured. `replayBytes` is a separate explicit
+native disk ceiling (zero denies replay); graph scratch remains independently bounded to2N bytes.
+Construction/admission budgets remain separate; each prefix comparison has the configured finite
+construction IO/read ceiling and holds at most two fixed pages. No resident graph is retained.
+
+A move-only cleanup capability captures exact epoch/staging inode/version/extent or their absence.
+Every prefix must match independently reconstructed full bytes. Full staging is at most192 bytes;
+light-width and overlong prefixes refuse. Captured absence cannot authorize late-created files.
+`discardFullPagedCandidate` checks original writer incarnation, exact source selection, source
+complete graph, every captured resource and staging prefix before the first unlink. Complete live
+seals can be discarded without replay. Failed staging comparisons remain failures on retry.
+Uncertain removal/barrier IO poisons the writer; strict reopen and fresh replay are required.
+Confirmed synchronized absence reports subsequent retirement errors separately.
+
+`resumeFullPagedInitialization` requires an existing stable LOCK and absent CURRENT, including
+refusal of malformed existing CURRENT. It completely replays independently expected epoch1/
+generation0/root inventory, removes only matching captured prefixes, constructs afresh and requires
+the entire new manifest to equal the replay witness before publication. There is no directory
+scan, inferred head, automatic damaged-file repair or authority over an existing selection.
+
+The selected `storage_full_paged_recovery` suite checks header/page/tree/checksum prefix boundaries,
+zero/full prefixes, overlong and mismatched bytes, staging retry refusal, late-created paths,
+replay disk denial, stale incarnations, source-derived compaction, write/rename bootstrap failures,
+changed producer refusal and every observed preparation/removal read/write/flock/close/fsync/
+unlink/ftruncate failure with strict reopen and fresh replay.1000 repeated capture/discard cycles
+retain73,024 ->73,024 occupied bytes in the checked ARC profile. Process-death and populated Linux
+working-set panels, followed by consumer integration, remain open.
