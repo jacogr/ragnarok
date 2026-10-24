@@ -1,0 +1,22 @@
+{
+  "environment": "RAGNAROK_PVM_UPSTREAM_FUZZ",
+  "files": {
+    "pvm-upstream-fuzz/fault-0.bin": "31b96f1be5fe64a53dc8a3252d81eebdbe6df9af7ad94ed6fea015ce78414581",
+    "pvm-upstream-fuzz/fault-1.bin": "30e57b643d55677b56cb75cd6227df54e98ff35bb7f209f6058ce6cb63ca9d5b",
+    "pvm-upstream-fuzz/fault.raw": "00522e6d35c7d6e4aa50d433a7d874616207004477d38c629572f1346284d978",
+    "pvm-upstream-fuzz/halt-0.bin": "d5efb168fe38623abfe16c8e6d57bd9bab1395068cdb3bae9618c4d6d36c316b",
+    "pvm-upstream-fuzz/halt-1.bin": "5ac5d847ef4c368e8e8eb5727a38f15f3c6a0719c2d026f0bda084d9efd91128",
+    "pvm-upstream-fuzz/halt.raw": "8d072d3f16be7cb7ba8053d9bd9466b24bc39a65bc96333cc2fc93057af842d0",
+    "pvm-upstream-fuzz/loop-gas-0.bin": "f160cac9e23d5bc405356694fe8b03eb0250ba9f9c09515767093a9e60acd5f0",
+    "pvm-upstream-fuzz/loop-gas-1.bin": "7824a78de1a8e412dbd4b099d726ab0edf1e16b51464d3314c13da8461d4d1eb",
+    "pvm-upstream-fuzz/loop-gas.raw": "04dae352ac525a582d29936dd9bc1754cd03807a804f01a4bb58c52fef714cf0",
+    "pvm-upstream-fuzz/mapped-store-0.bin": "69322b5d2c9d711ce440872005453364e1744e83ca9cedf1d33cc1b19bda84b3",
+    "pvm-upstream-fuzz/mapped-store-1.bin": "40c212a52185547dc6fc4d6ec9d6c9915f75e4bd78566355fb70ac7d1cb76069",
+    "pvm-upstream-fuzz/mapped-store.raw": "2a1416b18964f59a9aa38f8722ed0894ff341a11ca410dada5a8908becafe715",
+    "pvm-upstream-fuzz/provenance.json": "542158a40cbd210f0bea565d62a941653c8a705ed7830480d55a86f93a2caa65",
+    "pvm-upstream-fuzz/trap-register-0.bin": "92f78875f5c77740b48d8d88e5b96b09cf13a78561b484019b2dc42a6e51b028",
+    "pvm-upstream-fuzz/trap-register-1.bin": "55ed97a94d37315c4f3e53c508b5b7564501fdbca9ee912ab216106302b8e876",
+    "pvm-upstream-fuzz/trap-register.raw": "0123f2e142ef0eccf17baaa7a2d4d0ffdff9aaf8472aea97263b96fab7db4f39"
+  },
+  "target": "pvm-upstream-fuzz"
+}

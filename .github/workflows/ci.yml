@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, bench-pvm, bench-storage, bench-storage-growth, full]
+        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz-pvm, bench-pvm, bench-storage, bench-storage-growth, full]
         default: full
         required: true
 
@@ -706,3 +706,38 @@ jobs:
           BENCH_STORAGE_RESULT: ${{ needs.bench-storage.result }}
           BENCH_STORAGE_GROWTH_RESULT: ${{ needs.bench-storage-growth.result }}
         run: test "$BENCH_PVM_RESULT" = success && test "$BENCH_STORAGE_RESULT" = success && test "$BENCH_STORAGE_GROWTH_RESULT" = success
+
+  # Original upstream campaigns and the JAM bridge have separate verdicts and failure artifacts.
+  pvm-fuzz:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
+    name: Fuzz PVM
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    env:
+      FUZZ_RUNS: "10000"
+    steps:
+      - *checkout
+      - *python
+      - *inventory
+      - name: Run pinned upstream campaigns and JAM bridge
+        run: make fuzz-pvm-upstream
+      - name: Show fuzz coverage and bridge accounting
+        if: always()
+        run: |
+          if test -f build/pvm-upstream-fuzz/summary.md; then
+            cat build/pvm-upstream-fuzz/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'PVM fuzz campaign did not complete; inspect results.json and logs.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain fuzz evidence and failing inputs
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-fuzz-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            build/pvm-upstream-fuzz/*.log
+            build/pvm-upstream-fuzz/results.json
+            build/pvm-upstream-fuzz/summary.md
+            build/pvm-upstream-fuzz/artifacts/

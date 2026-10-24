@@ -1,0 +1,52 @@
+{
+  "commit": "69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa",
+  "backend": "interpreter",
+  "profile": "JamV1 Sync Full L2Hit, gas=512, terminal trap, two mapped RW pages, two register profiles",
+  "cases": {
+    "fault": {
+      "raw_sha256": "00522e6d35c7d6e4aa50d433a7d874616207004477d38c629572f1346284d978",
+      "bridge_observation": [
+        "bridged",
+        "4",
+        "none",
+        "1,30,110,0"
+      ]
+    },
+    "halt": {
+      "raw_sha256": "8d072d3f16be7cb7ba8053d9bd9466b24bc39a65bc96333cc2fc93057af842d0",
+      "bridge_observation": [
+        "bridged",
+        "3",
+        "none",
+        "1,50,0"
+      ]
+    },
+    "loop-gas": {
+      "raw_sha256": "04dae352ac525a582d29936dd9bc1754cd03807a804f01a4bb58c52fef714cf0",
+      "bridge_observation": [
+        "bridged",
+        "3",
+        "none",
+        "1,80,0"
+      ]
+    },
+    "mapped-store": {
+      "raw_sha256": "2a1416b18964f59a9aa38f8722ed0894ff341a11ca410dada5a8908becafe715",
+      "bridge_observation": [
+        "bridged",
+        "3",
+        "none",
+        "1,120,0"
+      ]
+    },
+    "trap-register": {
+      "raw_sha256": "0123f2e142ef0eccf17baaa7a2d4d0ffdff9aaf8472aea97263b96fab7db4f39",
+      "bridge_observation": [
+        "bridged",
+        "3",
+        "none",
+        "1,199,0"
+      ]
+    }
+  }
+}
