@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_TRANSFER_ADMISSION",
+  "files": {
+    "current-stf-transfer-admission.json": "c597384959a37b0ef4c4074904bdff5dfdd46a31a24e8b100e40067bb92dba13"
+  },
+  "target": "current-stf-transfer-admission.json"
+}

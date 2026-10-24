@@ -37,3 +37,33 @@ proc poolTransferCode*(mode: int): seq[byte] =
     registerImmediate(12, memo), @[10'u8, 22], @[50'u8, 0]]
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable = newSeq[byte](128)): result.add(octet)
+
+proc admissionTransferCode*(mode: int): seq[byte] =
+  ## Distinct invalid endpoints, authorization/funding/memo checks and exact gas boundaries reach real host dispatch.
+  var source = high(uint64)
+  var destination = 42'u64
+  var selection = 0'u64
+  var amount = 7'u64
+  var gas = 10000'u64
+  var memo = 196608'u64
+  case mode
+  of 28: source = 77 # An absent source refuses without fabricating a source account.
+  of 29: destination = 77 # An absent destination cannot receive or dispatch.
+  of 30: source = 42 # The caller does not supervise this existing unfunded source.
+  of 31: amount = 1000001 # Selected source funding is one token short.
+  of 32: selection = 4 # Undefined pool flags cannot mask into a valid pool.
+  of 33: memo = high(uint64)-63 # The fixed128-byte memo extent crosses the register address domain.
+  of 34: gas = 9 # Below the recipient's explicit minimum10.
+  of 35: gas = 10 # Accepted credit but insufficient to prepay the recipient's22-gas block.
+  of 36: gas = 99322 # Exact remaining report budget after instruction and base-host costs.
+  of 37: gas = 99323 # The same outgoing host quote is unaffordable by one unit.
+  of 38: gas = 21 # Incoming execution is one unit below a whole basic block.
+  of 39: gas = 22 # Incoming execution can pay exactly one complete halt block.
+  of 40: source = 4294967395'u64 # Full-width source must not alias existing low32 bits99.
+  of 41: destination = 4294967338'u64 # Full-width destination must not alias existing low32 bits42.
+  else: discard # Only explicit canonical fixture modes reach this family through the driver.
+  let instructions = @[registerImmediate(7, source), registerImmediate(8, destination),
+    registerImmediate(9, selection), registerImmediate(10, amount), registerImmediate(11, gas),
+    registerImmediate(12, memo), @[10'u8, 22], @[50'u8, 0]]
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, writable = newSeq[byte](128)): result.add(octet)
