@@ -618,14 +618,16 @@ proc controlMutation(program: Program, decoded: ProgramResult[Instruction],
   outcome
 
 # Mutate only invocation-owned CPU values and a checked private memory workspace; observable exits publish immutable roots.
-template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info: var MachineInfo,
-    memory: var WorkingMemory, limit: GasCycleLimit, control, memoryAccess, hostCalls: bool,
+template instructionBody[UsePlan, UseMemo, CheckDebt: static[bool]](program: Program,
+    info: var MachineInfo, memory: var WorkingMemory, limit: GasCycleLimit, control, memoryAccess,
+        hostCalls: bool,
     cache: var ExecutionCache, decoded: ProgramResult[Instruction], plan: GasPlan,
     memo: GasMemo): InstructionEvaluation =
   ## Share checked transitions while erasing unused pricing ownership at compile time.
-  if uint64(info.gasDeficit) != 0:
-    # Terminal host debt must never be reinterpreted as executable zero gas.
-    return InstructionEvaluation(status: StepError.InvalidMachine)
+  when CheckDebt:
+    if uint64(info.gasDeficit) != 0:
+      # Single-step callers validate here; private loops validate each entire segment once.
+      return InstructionEvaluation(status: StepError.InvalidMachine)
   # Both private callers derive this result from the current machine's own program and PC.
   # Entry capture validates PC; terminal snapshots may intentionally have a non-executable PC.
   if decoded.error != ProgramError.None: return InstructionEvaluation(
@@ -750,21 +752,21 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
         effect: InstructionEffect(kind: StepExit.Host, callNumber: HostCallId(uint64(item.x)),
         callAddress: item.address))
   InstructionEvaluation(status: StepError.None, effect: InstructionEffect(kind: outcome))
-proc evaluateInstruction[UsePlan: static[bool]](program: Program, info: var MachineInfo,
+proc evaluateInstruction[UsePlan, CheckDebt: static[bool]](program: Program, info: var MachineInfo,
     memory: var WorkingMemory, limit: GasCycleLimit, control, memoryAccess, hostCalls: bool,
         cache: var ExecutionCache,
     decoded: ProgramResult[Instruction], plan: GasPlan = default(GasPlan)): InstructionEvaluation =
   ## Expand the shared checked transition with the original legacy helper interface.
-  instructionBody[UsePlan, false](program, info, memory, limit, control, memoryAccess, hostCalls,
-      cache, decoded, plan, default(GasMemo))
+  instructionBody[UsePlan, false, CheckDebt](program, info, memory, limit, control, memoryAccess,
+      hostCalls, cache, decoded, plan, default(GasMemo))
 
-proc memoEvaluateInstruction(program: Program, info: var MachineInfo,
+proc memoEvaluateInstruction[CheckDebt: static[bool]](program: Program, info: var MachineInfo,
     memory: var WorkingMemory, limit: GasCycleLimit, control, memoryAccess, hostCalls: bool,
         cache: var ExecutionCache,
     decoded: ProgramResult[Instruction], memo: GasMemo): InstructionEvaluation =
   ## Use the same checked transition with an exclusively borrowed lazy pricing handle.
-  instructionBody[false, true](program, info, memory, limit, control, memoryAccess, hostCalls,
-      cache, decoded, default(GasPlan), memo)
+  instructionBody[false, true, CheckDebt](program, info, memory, limit, control, memoryAccess,
+      hostCalls, cache, decoded, default(GasPlan), memo)
 
 proc publishInstruction(program: Program, memory: Memory, info: MachineInfo,
     effect: InstructionEffect, terminal: bool): StepResult =
@@ -803,7 +805,7 @@ proc stepDecoded[UsePlan: static[bool]](source: Machine, limit: GasCycleLimit, c
       originalMemory.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
   var info = captured.value
   var memory = initWorkingMemory(originalMemory.value, false)
-  let evaluated = evaluateInstruction[UsePlan](owner.value, info, memory, limit, control,
+  let evaluated = evaluateInstruction[UsePlan, true](owner.value, info, memory, limit, control,
       memoryAccess, hostCalls, cache, decoded, plan)
   if evaluated.status != StepError.None: return StepResult(status: evaluated.status)
   if evaluated.effect.kind == StepExit.OutOfGas:
@@ -931,10 +933,11 @@ template evaluateSelected[UsePlan, UseMemo: static[bool]](program: Program, info
     decoded: ProgramResult[Instruction], plan: GasPlan, memo: GasMemo): InstructionEvaluation =
   ## Select the priced evaluator without changing ordinary call frames.
   when UseMemo:
-    memoEvaluateInstruction(program, info, memory, gasLimit, true, true, true, chargeCache, decoded, memo)
+    memoEvaluateInstruction[false](program, info, memory, gasLimit, true, true, true, chargeCache,
+        decoded, memo)
   else:
-    evaluateInstruction[UsePlan](program, info, memory, gasLimit, true, true, true, chargeCache,
-        decoded, plan)
+    evaluateInstruction[UsePlan, false](program, info, memory, gasLimit, true, true, true,
+        chargeCache, decoded, plan)
 
 template budgetBody[UsePlan, UseMemo: static[bool]](source: Machine, remaining: var uint64,
     gasLimit: GasCycleLimit, chargeCache: var ExecutionCache, instructions: var InstructionCache,
@@ -956,12 +959,12 @@ template budgetBody[UsePlan, UseMemo: static[bool]](source: Machine, remaining: 
         originalMemory.error != MachineError.None:
       # Absent owners are local API misuse, not a guest program failing deblob.
       return StepResult(status: StepError.InvalidMachine)
-    if uint64(original.value.gasDeficit) != 0:
-      # Reject terminal debt before even a zero-budget or invalid-PC execution path.
-      return StepResult(status: StepError.InvalidMachine)
     program = owner.value
     info = original.value
     memory.current = originalMemory.value
+  if uint64(info.gasDeficit) != 0:
+    # Every ordinary/resumed segment validates debt before zero budgets or executable-PC inspection.
+    return StepResult(status: StepError.InvalidMachine)
   when UsePlan:
     if not matchesProgram(plan, program):
       return StepResult(status: StepError.InvalidGasPlan)

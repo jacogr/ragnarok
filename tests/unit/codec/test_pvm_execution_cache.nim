@@ -363,6 +363,62 @@ proc denseRun(source: Machine, mode: int, plan: GasPlan, memo: GasMemo,
   of 1: execute(source, ExecutionStepLimit(attempts), plan)
   else: execute(source, ExecutionStepLimit(attempts), memo)
 
+type DebtContext = object ## Test-only callback values make invalid terminal debt distinguishable from a valid zero-gas reply.
+  calls: int
+  action: HostAction
+  debt: uint64
+
+proc debtReply(context: var DebtContext, stopped: StepOutcome): HostResponse {.raises: [].} =
+  ## Every response retains valid owners/registers so nonzero debt alone must cause refusal.
+  assert stopped.exit == StepExit.Host and uint64(stopped.hostCall) == 1
+  inc context.calls
+  let cpu = machineInfo(stopped.machine).value
+  HostResponse(action: context.action, gas: cpu.gas, gasDeficit: GasDeficit(context.debt),
+    registers: cpu.registers, memory: memoryOf(stopped.machine).value)
+
+proc debtReplyFallible(context: var DebtContext, stopped: StepOutcome): HostResult[
+    Reason] {.raises: [].} =
+  ## A callback-selected success still requires the same engine-side debt validation.
+  hostSuccess[Reason](debtReply(context, stopped))
+
+proc rejectedHostDebt() =
+  ## All pricing modes reject malformed terminal/continuing replies even after the final permitted guest attempt.
+  let source = input(code([@[10'u8, 1], @[50'u8, 2]]), 0)
+  let original = machineInfo(source).value
+  let policies = densePolicies(source)
+  for mode in 0..<3:
+    for action in [HostAction.Continue, HostAction.Panic, HostAction.OutOfGas]:
+      # No remaining instruction budget may hide a malformed reply, and no terminal action may publish debt.
+      var context = DebtContext(calls: 0, action: action, debt: 1)
+      let ordinary = case mode
+        of 0: executeWithHost(source, context, debtReply, ExecutionStepLimit(1), HostCallLimit(1),
+            GasCycleLimit(100000))
+        of 1: executeWithHost(source, context, debtReply, ExecutionStepLimit(1), HostCallLimit(1), policies.plan)
+        else: executeWithHost(source, context, debtReply, ExecutionStepLimit(1), HostCallLimit(1), policies.memo)
+      assert ordinary.error == StepError.InvalidHostResponse and context.calls == 1
+      same(machineInfo(source).value, original)
+      context.calls = 0
+      let fallible = case mode
+        of 0: executeWithHost(source, context, debtReplyFallible, ExecutionStepLimit(1),
+            HostCallLimit(1), GasCycleLimit(100000))
+        of 1: executeWithHost(source, context, debtReplyFallible, ExecutionStepLimit(1),
+            HostCallLimit(1), policies.plan)
+        else: executeWithHost(source, context, debtReplyFallible, ExecutionStepLimit(1),
+            HostCallLimit(1), policies.memo)
+      assert fallible.error == HostExecutionError.ExecutionFailure and
+        fallible.executionError == StepError.InvalidHostResponse and context.calls == 1
+      same(machineInfo(source).value, original)
+    # A zero-debt reply must genuinely resume and reach the independently encoded r2 halt sentinel.
+    var context = DebtContext(calls: 0, action: HostAction.Continue, debt: 0)
+    let valid = case mode
+      of 0: executeWithHost(source, context, debtReply, ExecutionStepLimit(2), HostCallLimit(1),
+          GasCycleLimit(100000))
+      of 1: executeWithHost(source, context, debtReply, ExecutionStepLimit(2), HostCallLimit(1), policies.plan)
+      else: executeWithHost(source, context, debtReply, ExecutionStepLimit(2), HostCallLimit(1), policies.memo)
+    assert valid.error == StepError.None and valid.value.exit == StepExit.Halt and context.calls == 1
+    assert uint64(machineInfo(valid.value.machine).value.gasDeficit) == 0
+    same(machineInfo(source).value, original)
+
 proc denseGuestPressure() =
   ## Cold/warm policies, sustained decode pressure and local refusals retain complete single-step CPU/gas parity.
   let source = denseSource()
@@ -945,6 +1001,7 @@ proc absentControlSuccessors() =
     same(machineInfo(source).value, cpu)
 
 adaptiveGuestPressure()
+rejectedHostDebt()
 expandedPriceCollisions(true)
 denseGuestPressure()
 widerDecodedPressure()
