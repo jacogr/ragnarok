@@ -50,3 +50,27 @@ proc supervisedUpgradeCode*(mode: int, hash: array[32, byte]): seq[byte] =
   instructions.add(if mode in [93, 94]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc juniorConflictCode*(mode: int): seq[byte] =
+  ## Self write, yield and provision are independently observable after supervisor conflict selection.
+  var memory = newSeq[byte](65)
+  memory[0] = 7
+  memory[1] = 42
+  memory[64] = 73
+  for index in 0..<32: memory[32+index] = byte(index)
+  var instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 196608),
+    registerImmediate(9, 1), registerImmediate(10, 196609), registerImmediate(11, 1), @[10'u8, 5],
+    registerImmediate(7, 196640), @[10'u8, 27], registerImmediate(7, high(uint64)),
+    registerImmediate(8, 196672), registerImmediate(9, 1), @[10'u8, 28]]
+  instructions.add(if mode == 100: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc supervisorConflictCode*(mode: int): seq[byte] =
+  ## Actual selected foreign membership cancels the junior; a discarded uncheckpointed write cannot conflict.
+  var instructions = @[registerImmediate(7, 42), registerImmediate(8, 196608),
+    registerImmediate(9, 1), registerImmediate(10, 196609), registerImmediate(11, 1), @[10'u8, 5]]
+  if mode == 99: instructions.add(@[10'u8, 19]) # Preserve genuine foreign membership in the exceptional implication.
+  instructions.add(if mode in [98, 99]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, @[7'u8, 99]): result.add(octet)

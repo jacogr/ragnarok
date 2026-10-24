@@ -983,5 +983,27 @@ def current_stf_supervised_upgrades_corpus(compiler, report, checks, libraries):
 
 
 
+@CORPORA.case
+def current_stf_supervised_conflicts_corpus(compiler, report, checks, libraries):
+    """Compare parallel supervisor/junior conflicts, selected account precedence and retained provisions against whole maps."""
+    from current_stf_supervised_conflicts_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_supervised_conflicts', 'current_stf_transfers', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-supervised-conflicts-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-supervised-conflicts', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent GP N annulment, M account selection, retained gas/provisions and discarded yield')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-supervised-conflicts-corpus', expected)
+    announce('independent supervised conflicts whole STF maps', corpus['passed'])
+    return corpus
+
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
