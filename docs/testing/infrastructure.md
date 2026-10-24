@@ -91,11 +91,19 @@ advisory lock serializes standalone and cumulative unit invocations through evid
 the active batch and its elapsed time.
 
 CI partitions discovered unit work across sixteen bounded jobs, keeping each job's
-linked/resource work sequential. Each CI run shuffles the discovered independent batches and one
-corpus bundle using `CI_SHARD_SEED=${{ github.run_id }}`, then assigns work round-robin. The codec
-directory remains one batch; corpora keep their shared-driver dependency order within their bundle.
-Both bundles have randomized shard ownership, execute once and need no timing weights or maintained
-assignments. Shards prepare only their selected native dependencies and fixture providers.
+linked/resource work sequential. Each CI run derives batch weights from the number of unique
+transitive project modules imported by its test sources, including test helpers. Static
+`import`/`from`/`include` discovery includes all conditional branches and excludes standard-library,
+generated and external sources; this is a cost estimate, never a coverage filter. The graph is
+read once per invocation and needs no compiler setup, historical timings or maintained assignments.
+
+Using `CI_SHARD_SEED=${{ github.run_id }}`, the planner randomizes ties, sorts batches by weight,
+and forms blocks with one item per shard. Each block is independently dealt to random distinct
+shards, including the final partial block, then each shard's execution order is shuffled. The codec
+directory remains one batch, weighted by its members' combined unique dependencies. The corpus
+bundle remains an unweighted placeholder with randomized ownership; its shared-driver dependency
+order stays intact. Both bundles execute once. Shards prepare only their selected native dependencies
+and fixture providers.
 
 Every runner uses the same seed, retained as `shard_seed` in results, logs and summaries. Rerunning
 the same GitHub run preserves its assignment; a new run ID reshuffles it. Reproduce a partition

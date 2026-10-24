@@ -17,7 +17,9 @@ import platform
 import argparse
 import sys
 from setup_nimony import ROOT, cache_directory
-from ci_shards import shuffled
+from functools import lru_cache
+from ci_shards import stratified
+from nim_dependencies import transitive_dependencies
 
 # Share directory-discovered suite identities with selection, cumulative reports and provenance.
 from verification_inventory import UNIT_SOURCES, UNIT_SUITES, ARC_SUITES
@@ -223,6 +225,15 @@ def unit_batches():
     return [('codec', pure, None)]+[(name, (name,), name) for name in UNIT_LINKS]
 
 
+# Sources are immutable during one verification invocation; reuse the graph for preparation and verdict checks.
+@lru_cache(maxsize=1)
+def unit_dependency_weights():
+    """Derive each batch's unique imported project-module count from its discovered source members."""
+    dependencies = transitive_dependencies(UNIT_SOURCES.values(), ROOT)
+    return {name: len(set().union(*(dependencies[unit_source(member).resolve()] for member in members)))
+            for name, members, _ in unit_batches()}
+
+
 # Partition discovered batches without registering suite names or compiling any test twice.
 def unit_partition(shard=None, seed=None):
     batches = unit_batches()
@@ -235,9 +246,13 @@ def unit_partition(shard=None, seed=None):
         # Invalid or empty partition declarations must fail before setup or verdict calculation.
         raise ValueError('Unit shard must be index/count with 1 <= index <= count <= 16')
     index, count = shard
-    # Shuffle independent batches and the corpus bundle; dependency order inside each stays intact.
+    # Stratify unit batches by current source dependencies; bundle internals keep their dependency order.
     if seed is not None:
-        work = shuffled([*batches, None], seed, 'unit')[index-1::count]
+        weights = unit_dependency_weights()
+        # The corpus has no single module root: an unweighted placeholder keeps its owner randomized.
+        partitions = stratified([*batches, None], count, seed, 'unit',
+                                lambda batch: 0 if batch is None else weights[batch[0]])
+        work = partitions[index-1]
         return [batch for batch in work if batch is not None], None in work
     else:
         # Unseeded local partitions retain the historical lexical plan for existing reproductions.
