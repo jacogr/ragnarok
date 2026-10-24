@@ -91,6 +91,28 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('format.py --check', plan)
         self.assertIn('test_modules.py --compiler "$NIMONY" --smoke', plan)
 
+    # The lightweight gate must roll up without starting heavy compilation on ordinary PR updates.
+    def test_smoke_compile_rollup(self):
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        smoke = text.split('  smoke:\n', 1)[1].split('  modules:\n', 1)[0]
+        gate = text.split('  compile-status:\n', 1)[1].split('  models:\n', 1)[0]
+        self.assertIn('name: Compile / Smoke\n', smoke)
+        condition = re.search(r'^    if: (.+)$', smoke, re.MULTILINE).group(1)
+        self.assertIn('if: ${{ always() && ('+condition[4:-3]+') }}', gate)
+        for required in ("github.event.action != 'labeled'", "github.event.label.name == 'ci:unit'",
+                         "github.event.label.name == 'ci:full'", "inputs.suite == 'smoke'",
+                         "inputs.suite == 'unit'", "inputs.suite == 'full'"):
+            # Every scope with a Compile gate schedules its mandatory Smoke child in the same run.
+            self.assertIn(required, condition)
+        self.assertIn('FULL_COMPILE_REQUEST: *requested', gate)
+        command = re.search(r'        run: ([^\n]+)', gate).group(1)
+        for smoke_result in ('success', 'failure', 'cancelled', 'skipped'):
+            # Intentional heavy-job skips are allowed only for a lightweight request.
+            environment = dict(FULL_COMPILE_REQUEST='false', SMOKE_RESULT=smoke_result,
+                               MODULES_RESULT='skipped', PYTHON_RESULT='skipped', GUARDS_RESULT='skipped')
+            status = subprocess.run(['bash', '-c', command], env=environment).returncode
+            self.assertEqual(status == 0, smoke_result == 'success')
+
     # Scope guards must act on the label addition, never on persistent PR labels or a branch name.
     def test_ci_request_scopes(self):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
@@ -214,7 +236,7 @@ class NimonyCISafeguards(unittest.TestCase):
         """A green sibling cannot conceal a failed, skipped or cancelled member of a requested group."""
         import itertools
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        groups = {'compile': ('Compile', ('modules', 'python', 'guards')),
+        groups = {'compile': ('Compile', ('smoke', 'modules', 'python', 'guards')),
                   'interop': ('Interop', ('pvm-reference', 'telemetry-interop')),
                   'perf': ('Perf', ('bench-pvm', 'bench-storage', 'bench-storage-growth')),
                   'fuzz': ('Fuzz', ('pvm-fuzz',)),
@@ -234,6 +256,9 @@ class NimonyCISafeguards(unittest.TestCase):
             for results in itertools.product(('success', 'failure', 'cancelled', 'skipped'), repeat=len(jobs)):
                 environment = {job.upper().replace('-', '_')+'_RESULT': result
                                for job, result in zip(jobs, results)}
+                if group == 'compile':
+                    # Complete requests must reject every skipped, cancelled or failing dependency.
+                    environment['FULL_COMPILE_REQUEST'] = 'true'
                 code = subprocess.run(['bash', '-c', command], env=environment).returncode
                 self.assertEqual(code == 0, all(result == 'success' for result in results))
 

@@ -95,7 +95,7 @@ head; pending checks are not a failure or a pass. Query status when it determine
 wait between queries and do not watch/poll unless requested. PR creation must be followed by
 attaching its URL to the calling task.
 
-PR creation and updates automatically request the lightweight Smoke check (formatting and
+PR creation and updates automatically request the lightweight Compile / Smoke check (formatting and
 unoptimized all-source semantic compilation). Heavy verification remains opt-in for PRs. Keep
 local verification appropriate to the diff; request additional remote checks only when asked
 or when the maintainer has authorized that verification.

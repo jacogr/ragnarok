@@ -18,8 +18,8 @@ full/Perf requests, with a standalone `bench-pvm` scope also available, and publ
 one speed table with raw samples. The current baseline compares Ragnarök
 and the PolkaVM interpreter; compiled comparisons are deferred. Full fuzzing CI remains future work.
 
-Pushes to `master` request full verification, including **Smoke**.
-PR opening, reopening and source updates automatically run **Smoke**: complete read-only formatting plus unoptimized semantic compilation of every production module
+Pushes to `master` request full verification, including **Compile / Smoke**.
+PR opening, reopening and source updates automatically run **Compile / Smoke**: complete read-only formatting plus unoptimized semantic compilation of every production module
 and the production peer main. Heavy
 checks still require a maintainer label (`ci:unit`, `ci:e2e`, `ci:interop`, `ci:perf` or `ci:full`).
 Automatic smoke runs have their own cancellation group, separate from explicit heavy requests.
@@ -28,7 +28,9 @@ The workflow also supports manual dispatch with a selected scope.
 Jobs publish summaries and retain diagnostic logs and reports from `build/`. See
 [requesting CI](../docs/testing.md#requesting-ci) for label scopes, reruns and revision semantics.
 
-Complete group requests expose concise aggregate checks: **Compile**, **Unit**, **Contract**,
+The **Compile** aggregate also runs for automatic PR updates and manual `smoke` requests,
+requiring **Compile / Smoke** alone. Master pushes and `unit`/`full` requests require all four
+Compile children. Complete group requests expose concise aggregate checks: **Compile**, **Unit**, **Contract**,
 **E2E**, **Interop**, **Perf**, **Build** and **Fuzz**. Each aggregate requires every child in its group to succeed,
 including rejecting unexpected skips and cancellations. Standalone manual workload scopes
 (such as `ref-pvm` or `bench-storage`) run only that workload and omit the complete-group gate.
