@@ -16,12 +16,12 @@ independent owners. Rust parameter/key owners use corresponding private ARC dest
 length prefix. `verifyAssurances` checks configuration, exact validator-key mapping, all structural
 and parent constraints, then signatures. Verified count is not a state-transition or availability verdict.
 
-Bandersnatch now uses pristine ark-vrf 0.2.2, the draft-29 release's explicit reference, with its
-nonce updates and unchanged 96/784-byte wire contracts. Draft-29 vectors and published JAM 0.8.0
-tickets pass. The draft text's 16-byte challenge conflicts with the reference's 32-byte challenge;
-that exact-text parity gate remains documented. Rust stays limited to primitives, with locked
-source/SRS hashes and no upstream patches or unsafe test-vector features. Nim owns domain
-construction and ring policy.
+Bandersnatch uses pristine ark-vrf 0.6.0 with the adopted Gray Paper's Draft 35 Thin v1
+profile. Seven Thin and seven RingVRF vectors pass the maintained 96/784-byte ABI; its public
+SRS remains unchanged. The vector profile's 48-byte hash-to-curve padding differs from RFC9380;
+the separate v2 suite is not selected. Historical IETF ticket passes remain archived and are
+not current Thin/STF parity. Rust stays limited to primitives, with locked source/SRS hashes,
+no upstream patches, and production column blinding. Nim owns domain construction and ring policy.
 
 The exceptional-point Ed25519 acceptance policy is unresolved: pinned BoringSSL accepts the
 identity-A/identity-R/zero-S probes. Vector success does not finalize consensus verification policy

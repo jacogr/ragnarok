@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_REPORTING",
+  "files": {
+    "current-stf-reporting.json": "ce9749e0d683bcd23cc6b1e54368c256ba2d03daeebbdfeb6dd9c75707dd1081"
+  },
+  "target": "current-stf-reporting.json"
+}

@@ -1,143 +1,128 @@
-# Bandersnatch: GP 0.8.0 release-reference profile
+# Bandersnatch Thin v1 primitive contract
 
-Target: Gray Paper v0.8.0, release-designated ark-vrf 0.2.2 (draft-text discrepancy documented below),
-`07f041dabd073f9018b418e9ee72e79dd2185401`,
-[Bandersnatch appendix](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/bandersnatch.tex)
-and [Safrole tickets](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/safrole.tex).
-[All pins](bandersnatch-pins.json) include Rust, Nim, source-tree hashes,
-Cargo.lock hash, SRS hash, published vectors and original/reduced JAM fixture
-hashes. Sources and dependencies build without local patches.
+The adopted Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` cites
+**Draft 35**. The [qualification matrix](bandersnatch-thin-qualification.md)
+resolves its suite, transcripts, encodings and exact references. Production uses
+pristine ark-vrf 0.6.0 `dfb696dfb92425009af80dbbb403e647f6c9e3e4`, its
+`bandersnatch` **v1** suite, and specification Draft 35
+`122f52fb63c6e8eb887aa7416f869aba5075519b`. Draft 35 identifies vector generator
+0.5.3 `9ec593e98b69395e97680330e75b5235b48121f4`. The chosen newer implementation
+retains that executable profile while improving canonical decoding and API safety;
+it was selected against vectors, not its version number.
 
-## Suite choice is a compatibility requirement
+## Maintained ABI and policy
 
-The [draft-29 release](https://github.com/davxy/bandersnatch-vrf-spec/releases/tag/draft-29)
-explicitly designates **ark-vrf 0.2.2** as its reference implementation. We pin its pristine
-[release revision](https://github.com/davxy/ark-vrf/tree/1ebde144e68f17344e51c2d5ce8db217425ba0f3)
-and [draft-29 specification/vector revision](https://github.com/davxy/bandersnatch-vrf-spec/tree/bce69d059124a2bec80898912413ffef1c4e4570).
-This implementation uses `Bandersnatch_SHA-512_ELL2`, SHA-512, Elligator2, a 32-byte challenge,
-canonical compressed prime-subgroup points and canonical little-endian scalars. Its IETF proof
-bundle is output(32) || challenge(32) || response(32), matching GP's 96-byte signature contract.
-
-Version 0.2.2 binds additional data into ordinary nonce generation and cross-binds both secrets
-in Pedersen nonce generation. The adapter now uses the public scalar accessor; no upstream source
-is patched. A Rust regression signs one VRF input under different additional data and requires
-different recovered test-key nonces. The previous backend would reuse them. Published draft-29
-ordinary signatures are reproduced byte-for-byte, and RingVRF/JAM 0.8.0 tickets verify.
-
-The initially surveyed ark-vrf 0.6.0 is incompatible with this scheme. Its
-`bandersnatch_v1` preserves the much newer 0.5.3 profile, not this original IETF
-profile. Suite IDs, transcripts, points and challenge/proof formats differ.
-Choosing Thin because its bundle also happens to be 96 bytes does not establish
-compatibility. No silent suite/toolchain/protocol upgrade is made.
-
-| Primitive | Wire/input/output contract |
+| Primitive | Contract |
 | --- | --- |
-| Scalar import | Exactly 32 canonical little-endian bytes, nonzero; explicitly a scalar, not a seed. |
-| Public derivation/import | 32-byte compressed public encoding; import validates canonical prime-subgroup encoding. |
-| Contextual signing | Borrow raw VRF input/context and separate additional data; own full 96-byte signature. |
-| Contextual verification | Reconstruct input with hash-to-curve; verify proof; return only verified first 32 output-hash bytes. |
-| Ring commitment | Ordered raw 32-byte members normalized in Nim; 144-byte compressed root. |
-| Ring proving/verification | Complete output + Pedersen proof + ring membership proof totals 784 bytes; success yields verified 32-byte output. |
-| Ring setup | Opaque immutable owner, requested capacity 1..1023; domain is backend next-power-of-two construction, using the pinned public SRS. |
+| Scalar import | Exactly 32 canonical little-endian bytes, nonzero scalar, never a seed |
+| Public key | 32-byte compressed Edwards prime-subgroup encoding |
+| Ordinary signature | `output(32) || R(32) || response(32)`, Thin, no serialized challenge |
+| Verified output | First 32 bytes of v1 transcript-based output derivation |
+| Ring proof | Output + Pedersen + membership, exactly 784 bytes |
+| Ring commitment | Ordered normalized keys, 144 compressed bytes |
+| Setup | Immutable opaque owner; explicit requested capacity 1..1023 and public SRS |
 
-Input/additional buffers are bounded to 65536 bytes per ABI call as an explicit
-research resource budget. This is not a new JAM wire rule. Negative indices,
-wrong widths, zero/excess capacities, too many ring members and nonmatching
-key/index pairs fail before historical backend wrapping/truncation can occur.
-Imports/verification never expose default output after failure. Signature/root
-imports own exact-width encodings; full cryptographic decoding occurs during
-verification.
+Nim owns raw context, separate additional data, protocol signing domains, exact
+encodings, invalid-member substitution and retained ARC ownership. Rust owns only
+primitive key/setup allocations and equations. Buffers are synchronously borrowed;
+outputs are published only after complete success. The 65536-byte input/AD cap is
+an adapter resource budget, not a JAM wire rule. Reason codes and owner ABI are
+unchanged. All decoded composites undergo validity checks and canonical
+re-serialization comparison; suffixes, off-curve/subgroup points and invalid scalars
+fail. Verification exposes no output on failure.
 
-## Invalid members and setup provenance
+Identity is a valid subgroup point during ring normalization and is never silently
+replaced by padding. It is rejected as a public key, input, output or ring member
+at the operation boundary. Thin R and Pedersen R/O_k may legally be identity.
+Invalid encodings alone become the v1 padding point
+`da5ca18e76fbd5467319795e26fd80f0b9cf7fc888d995348b7ff299197a42c4`.
+Backend failures/panics remain typed failures and do not become padding.
 
-Only canonical/subgroup decode failures become the specified padding point:
-`92ca79e61dd90c1573a8693f199bf6e1e86835cc715cdcf93f5ef222560023aa`.
-The normalization loop belongs to each language. Backend panic/failure is
-propagated, never hidden as padding. Ring order is preserved. The independent
-JAM epoch-change padding fixture checks the resulting root.
+## Ring and dependency provenance
 
-The public Zcash Powers of Tau-derived 2^11 uncompressed SRS is taken from the
-pinned specification assets: 6145 G1 and two G2 points. Its exact hash is checked
-before compiling it into the Rust library. Rust validates the SRS points before
-constructing each setup owner. No insecure seed-generated setup is exposed;
-no trusted-setup generation script runs. Root/proof verification requires the
-correct setup domain and SRS; the root bytes do not embed that configuration.
-SRS provenance is recorded from the reference assets, not independently audited
-ceremony transcript reconstruction. Full 1023-member and tiny six-member JAM
-roots/tickets pass; tiny uses its explicit test-profile domain.
+The Draft 35 public Zcash Powers of Tau-derived uncompressed SRS has the unchanged
+SHA-256 `1d7d27e4f5f3c6190989bea58803180d3e19f725a57069392a405ac78b233c7d`:
+6145 G1 and two G2 points. Source checks precede embedding, and Rust validates
+points before setup construction. No insecure SRS generator runs. PIOP domain is
+`next_power_of_two(max(requested,1)+257)` for this scalar field; PCS needs
+`3*domain+1` G1 powers. Capacities 6/8 use domain 512 and 1023 uses domain 2048.
+Requested capacity, actual rounded capacity and member index are checked separately;
+no backend index wrapping or member truncation is accepted by the ABI.
 
-## Security and interpretation limits
+The lock moves arkworks 0.5 to 0.6, ark-transcript 0.0.3 to 0.0.6, ring-proof
+0.0.6 to 0.0.10 and their required closure. Both primitive manifests record the
+same reviewed lock hash. Enabled ark-vrf features remain explicit `std`,
+`bandersnatch`, `ring`, `secret-split`. Default `RingSetup::from_pcs_params`
+constructs a blinded context; neither `new_without_blinding` nor insecure setup
+constructors are used. The backend's removal of a vector feature does not justify
+using its public non-ZK context constructor. Locked/offline builds remain mandatory
+following setup's permitted dependency fetch. Upstream trees remain pristine.
 
-The maintained bridge contains Rust unwinds with `catch_unwind` and keeps
-`panic=unwind`; C status 6 becomes a reason-only backend-panic result. System
-allocation exhaustion/abort, invalid forged pointers and owner lifetime races
-cannot be contained this way. The public wrappers establish widths/owners for
-normal use. Secret owners zeroize the retained scalar on drop. `secret-split`
-is enabled for the backend's scalar-multiplication mitigation; unsafe
-`test-vectors` (deterministic/non-ZK) features are explicitly forbidden by the
-runner. Production-feature RingVRF proofs are generated and cross-verified.
+## Evidence and limits
 
-The adapter rejects zero imported scalars and identity public/output points in
-ordinary verification, identity ring members and identity ring outputs. These
-are explicit research-profile guards around the historical backend, not a
-complete audit or an assertion that the Gray Paper has resolved every exceptional
-encoding/point rule. The guard does not substitute a valid identity point with
-padding. Further audit/side-channel/canonicality review of this pinned backend and
-its dependency closure remains an M2 gate. The release-reference migration preserves the existing wire scheme and introduces no upstream
-source patches or project-owned cryptographic algorithm.
+Initial direct ABI qualification reproduces all seven Thin signatures byte for byte,
+verifies all seven Draft 35 ring proofs and their exact ordered roots/outputs, and
+generates/verifies a randomized production-feature ring proof. An independently
+written Python affine/transcript reference reconstructs all seven Thin public keys,
+outputs, nonce commitments, responses and output hashes using supplied H points.
+Its extended test-only mathematical
+oracle also reproduces all seven input points and complete signature/output bytes,
+using the v1 XMD/Elligator2 equations. It never loads native code. This is a separate
+implementation check, not an independent KZG membership or security audit.
 
-The published specification vectors share authors/provenance with the backend
-and are not independent algorithm validation. Independent pinned official JAM
-Safrole fixtures add external evidence for roots, ticket verification/output and
-invalid-member padding, but do not exercise all client sealing domains or prove
-full state-transition conformance. This remains a research integration, not a
-production consensus backend selection.
+The unchanged pinned historical JAM tiny/full tickets all fail the new ABI with
+status 4 and leave sentinel output untouched. Their provenance remains checked;
+those failures explicitly record profile incompatibility rather than current STF
+success. Historical roots and transcripts must never trigger fallback to IETF.
+The [archived release contract](bandersnatch-release-reference.md) preserves old
+passes, nonce evidence and the separate draft-29 challenge discrepancy.
 
-## Remaining draft-text discrepancy
+The vector source is advanced globally to gp-next
+`23061ae1f9b51171c01387e7dde0f15794c98e24`, whose changelog and Safrole guide
+explicitly select Draft 35/ark-vrf 0.6.0. All 379 existing consumed source paths
+are rehashed. Reduced positive tiny/full tickets and the padding-root fixture are
+regenerated from exact published fields; seven current tickets and the padding
+root pass the checked contextual driver. The three original reduced files are
+retained byte-for-byte under `vectors/historical/bandersnatch`, with original
+hashes and an explicit cross-profile rejection check.
 
-Draft 29 section 2.1 says `cLen = 16`, whereas its explicitly designated ark-vrf 0.2.2 reference
-uses 32. The latter matches GP's 96-byte signature width, published draft-29 signature vectors
-and published JAM 0.8.0 ticket verification. The draft's Appendix B also retains a stale-vector
-warning, even though the checked ordinary vectors reproduce the release reference exactly.
+Consumer validation uses this aligned source and explicit authored positives;
+incompatible historical fixtures retain their separate identity. The same
+seven selected full trace pairs still contain 89-byte service metadata; independent
+root verification succeeds, but expansion to 105 bytes changes roots and cannot
+recover hashed logical identities. This specific complete-STF source limit does
+not block stage vectors, signed-header chapter comparisons or authored current
+schema end-to-end cases.
 
-We implement and test the explicit release-reference profile, including nonce updates. No
-challenge padding, incompatible 80-byte signature or private compiler/dependency patch is added.
-Exact agreement with the draft's literal 16-byte challenge statement remains blocked pending an
-upstream clarification; `bandersnatch-pins.json` records both values, and `test_spec.py` reports one
-focused pending text-consistency check. This discrepancy does not justify retaining the old nonce
-implementation or claiming a full protocol/security audit. See [the migration audit](graypaper-0.8.0.md).
+Draft 35's RFC9380 wording omits its 48-byte expansion prefix deviation; its vectors
+and the selected v1 implementation agree. Later Draft 36 states the deviation
+explicitly. The RFC-compliant 128-byte-prefix v2 is a different suite, not a silent
+repair. This executable vector profile is not literal RFC equivalence, a security
+audit, full published STF parity or a production-readiness claim.
 
-## Nimony owner/result migration
+## Current consumer results and published trace gate
 
-The pinned Nimony adapter preserves the release-reference ABI, 96/784-byte proof contracts,
-normalization and source/SRS pins. Results hide discriminators/payloads behind read-only errors
-and success preconditions. Key/setup ARC owners and their native handles express nullability
-explicitly; stable retained locals protect defaults/closed handles. Close invalidates all aliases,
-and final ARC release invokes the correct original Rust destructor once.
+Checked ARC/Clang native rotation, ticket admission, schedule and markers pass
+against the advanced stage vectors. Authentication and complete Safrole component
+publication pass three independently authored current Thin cases (two within an
+epoch, one crossing), plus existing native authored ticket/fallback boundaries.
+Expected credentials, entropy/time, markers and chapter bytes come from the Python
+mathematical/byte/hash reference, never native STF observations. The input ring
+constant is six copies of G under the qualified SRS/domain512; it is a valid input
+fixture, not an independent ring-cryptography audit. These are six required global
+chapters plus an unrelated sentinel, explicitly not a complete sixteen-chapter JAM state.
 
-The test-only owner observer delegates real allocations/frees, counts live keys/setups across
-scopes and injects constructor refusals without altering production/upstream code. Native tests
-cover escaped scopes, retained aliases/replacement, close/final release, source/fixed copies,
-capacity boundaries and recovery. It does not inspect freed memory or independently establish
-scalar zeroization. The key/import workload returns live Nim occupancy 192 to 192 bytes after
-1,000 warmed scopes; setup release is tested separately with the real SRS. Thirty-two isolated
-result guards and seventeen privacy plus three nominal compiler probes pass. Three maintained
-Rust bridge tests and the locked/offline Rust 1.99.0 build also pass.
+The advanced vector source's stage proofs are current, but its sampled signed
+traces are mixed-profile. Exact witness `traces/fallback/00000001.json`, SHA-256
+`d4c48b72483c0dda92d490d60d1fef1aab49dd50e0db87d3a3671129c0f38b52`, has
+nonsquares in both Thin R positions (seal and entropy proof). Its entropy proof
+is unchanged from the old corpus. Native authentication refuses all twenty
+selected unchanged headers as `InvalidSeal`, with one seal attempt and no
+verified output. The old source bytes/root expectations are never re-signed,
+patched or relabelled as current positives. This is a concrete external signed
+trace parity gate, separate from successful Thin migration and stage validation.
 
-The contextual fixture driver now also passes all seven ordinary vectors, seven ring vectors and
-seven published JAM tickets, including exact bytes/outputs and wrong-domain rejections. One
-generated ring proof and sixteen additional contextual messages pass. Four native workers each
-complete 32 signing/verification rounds with independent owners and joined lifetimes. Native ABI
-checks reject 99 ordinary widths, 785 ring widths and 64 mutated proofs without partial output.
-The runner records 131 driver requests plus a separate failed-result contract probe.
-
-These are local macOS ARM64 results under checked ARC/Clang LTO. Implemented release-reference M2
-regression coverage now passes; Linux confirmation and the draft-text discrepancy remain separate.
-M3 UDP/readiness and linked transport lifecycle checks now pass locally.
-Shared identity/DER/framing validation now also passes locally.
-CE 143 integration results and retained digest ownership now also pass locally.
-The peer executable and one-shot authenticated CE 143 matrix now also pass locally.
-Retained CE 143 service and integrated digest lifecycles now also pass locally.
-Retained IPv6 mesh/reconnect and peer-loss recovery now also pass locally.
-Next: same-process endpoint soak and remaining admission/resilience coverage. See the [cumulative
-trial](../docs/nimony-trial.md).
+The current metadata audit separately re-verifies fourteen published map roots
+and all twenty-six 89-byte metadata observations. Authored current-schema full
+state/STF work proceeds independently; neither primitive/component success nor
+test-only metadata expansion establishes published full STF parity.

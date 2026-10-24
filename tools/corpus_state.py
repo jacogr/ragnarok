@@ -8,7 +8,7 @@ Exposes run_state to execute state serialization/composition corpora and record 
 from functools import partial
 from pathlib import Path
 import hashlib
-from corpus_checks import run_corpus, CorpusGroup
+from corpus_checks import run_corpus, compare_corpus, CorpusGroup
 from native_checks import announce
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -277,6 +277,311 @@ def outputs_corpus(compiler, report, checks, libraries):
                         crypto_library=crypto_library)
     corpus['passed'] = corpus['passed'] and len(traces) == 8 and all(row['complete_component_match'] for row in traces)
     announce('independent chapter-16 last accumulation outputs corpus', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_corpus(compiler, report, checks, libraries):
+    """Compare genuine current candidate execution against complete independently computed maps."""
+    from current_stf_oracle import expected_observations, verify_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    # Freeze all expected inputs/outputs before any native compilation or transition execution.
+    expected = expected_observations()
+    evidence = verify_observations(expected)
+    for identity in ('current_stf', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_driver.nim',
+        'current-stf', crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  scope='complete current-schema same-epoch empty-body STF; two explicit services')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1]], 'current-stf-corpus', expected)
+    announce('independent complete current-schema STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_effects_corpus(compiler, report, checks, libraries):
+    """Compare complete preimage/storage/yield/checkpoint successor maps with independent equations."""
+    from current_stf_effects_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_effects', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # Independent code assembly, gas simulation, credentials and all successor bytes precede native execution.
+    expected, evidence = expected_observations()
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_effects_driver.nim',
+        'current-stf-effects', crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  scope='five two-block current STF chains; nonempty preimages and literal guest effects')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1]], 'current-stf-effects-corpus', expected)
+    announce('independent nonempty-extrinsic and guest-effect whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_epoch_corpus(compiler, report, checks, libraries):
+    """Execute epoch rotation, cutoff markers and real RingVRF admission against independent complete maps."""
+    from current_stf_epoch_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_epoch', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # Frozen Ring/KZG witnesses are input data; every score, Thin credential and successor map is independently calculated.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-epoch-proofs.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_epoch_driver.nim',
+        'current-stf-epoch', crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  **evidence)
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-epoch-corpus', expected)
+    announce('independent epoch/ticket whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_population_corpus(compiler, report, checks, libraries):
+    """Compare real culprit evidence, independently sized validator rosters and every complete successor byte."""
+    from current_stf_population_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_epoch', 'current_stf_population', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # Original-map reconstruction, OpenSSL credentials and independent posterior maps precede native execution.
+    expected, evidence = expected_observations()
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_population_driver.nim',
+        'current-stf-population', crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
+    corpus = dict(build=compiled, passed=False, **evidence, dispute_refusals=3,
+                  null_author_refusals=1, profile_refusals=54, profile_admissions=12)
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], '--run'], 'current-stf-population-corpus', expected)
+    announce('independent offender/population whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_eviction_corpus(compiler, report, checks, libraries):
+    """Verify whole-map contest replacement and typed non-retention with fixed Ring inputs."""
+    from current_stf_eviction_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_epoch', 'current_stf_eviction', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # The reference decides the single eviction, every winner and all output bytes before the driver runs.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-eviction-proofs.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_eviction_driver.nim',
+        'current-stf-eviction', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence, nonretention_refusals=2,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-eviction-corpus', expected)
+    announce('independent ticket contest eviction whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_verdict_corpus(compiler, report, checks, libraries):
+    """Compare signed verdict/fault judgments, assignment cancellation and every complete successor byte."""
+    from current_stf_verdict_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_epoch', 'current_stf_population', 'current_stf_verdicts', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # Independent signatures, parent-selected quorums and all expected maps exist before the native build/run.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-verdict-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_verdict_driver.nim',
+        'current-stf-verdicts', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  reference='OpenSSL Ed25519, mathematical Thin and independent complete-map verdict/fault STF')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-verdict-corpus', expected)
+    announce('independent verdict/fault whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_reporting_corpus(compiler, report, checks, libraries):
+    """Compare real guarantee/assurance publication with independent complete maps and contextual refusals."""
+    from current_stf_reporting_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf', 'current_stf_reporting', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # OpenSSL signatures, mathematical Thin, report projections and every map exist before native execution.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-reporting-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_reporting_driver.nim',
+        'current-stf-reporting', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  reference='OpenSSL Ed25519, mathematical Thin and independent report/availability whole-map STF')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-reporting-corpus', expected)
+    announce('independent guarantee/assurance whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_report_guests_corpus(compiler, report, checks, libraries):
+    """Compare report-driven real guest execution against independently calculated complete maps."""
+    from current_stf_report_guests_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_effects', 'current_stf_report_guests', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # All mathematical guest effects, gas charges, signed children and roots precede native execution.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-report-guests-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-report-guests', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  reference='mathematical Thin, OpenSSL Ed25519, literal guest semantics and independent GP gas')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-report-guests-corpus', expected)
+    announce('independent report-driven guest whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_dependency_waves_corpus(compiler, report, checks, libraries):
+    """Compare deferred E/Q priority waves, cycles and gas continuation against complete independent maps."""
+    from current_stf_dependency_waves_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_effects', 'current_stf_report_guests', 'current_stf_dependency_waves', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # Shared genuine driver consumes only bodies; independent E/Q/accseq maps and traces already exist.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-dependency-waves-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-dependency-waves', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent GP E/Q/accseq, literal guest semantics, mathematical Thin and OpenSSL Ed25519')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-dependency-waves-corpus', expected)
+    announce('independent deferred dependency-wave whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_budget_retention_corpus(compiler, report, checks, libraries):
+    """Compare budget-exhausted ready retention and later drain against independently calculated full maps."""
+    from current_stf_budget_retention_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_budget_retention', 'current_stf_dependency_waves', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-budget-retention-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-budget-retention', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent GP E/Q/accseq and literal guest gas; whole-map retention/drain')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-budget-retention-corpus', expected)
+    announce('independent budget-retention whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_gas_exits_corpus(compiler, report, checks, libraries):
+    """Compare gas-limited guest exits and pooled operands against independently calculated full maps."""
+    from current_stf_gas_exits_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_gas_exits', 'current_stf_report_guests', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-gas-exits-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-gas-exits', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent prepaid-block/host gas, pooled budgets and literal guest implications')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-gas-exits-corpus', expected)
+    announce('independent gas-exits whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_late_code_corpus(compiler, report, checks, libraries):
+    """Compare late code-preimage phase ordering against independently calculated full maps."""
+    from current_stf_late_code_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_late_code', 'current_stf_report_guests', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-late-code-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-late-code', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent missing-code skips, late fulfillment and literal guest implications')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-late-code-corpus', expected)
+    announce('independent late-code whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_epoch_drain_corpus(compiler, report, checks, libraries):
+    """Compare epoch-spanning deferred guest execution against independently calculated full maps."""
+    from current_stf_epoch_drain_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_epoch_drain', 'current_stf_dependency_waves', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-epoch-drain-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-epoch-drain', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent Safrole/header equations, deferred budgets and literal guest effects')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-epoch-drain-corpus', expected)
+    announce('independent epoch-drain whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_ready_expiry_corpus(compiler, report, checks, libraries):
+    """Compare skipped-time ready expiry after actual execution against independently calculated full maps."""
+    from current_stf_ready_expiry_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_ready_expiry', 'current_stf_epoch_drain', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-ready-expiry-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-ready-expiry', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent GP Q/accseq then elapsed-slot expiry and mathematical epoch headers')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-ready-expiry-corpus', expected)
+    announce('independent ready-expiry whole STF maps', corpus['passed'])
     return corpus
 
 

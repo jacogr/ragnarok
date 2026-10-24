@@ -33,7 +33,7 @@ command, build = checks.command, checks.build
 def unit_passed(report):
     try:
         # Every shard has a source-derived exact scope; partial data cannot claim full verification.
-        batches, corpora = unit_partition(report.get('unit_shard'))
+        batches, corpora = unit_partition(report.get('unit_shard'), report.get('shard_seed'))
     except ValueError:
         return False
     expected = {name for _, members, _ in batches for name in members}
@@ -51,7 +51,7 @@ def unit_passed(report):
 def failures_passed(report):
     try:
         # Scope is derived before execution and is never inferred from whichever probes happened to pass.
-        plans, specialized = failure_partition(report.get('failure_shard'))
+        plans, specialized = failure_partition(report.get('failure_shard'), report.get('shard_seed'))
     except ValueError:
         return False
     if set(FAILURE_PLANS).intersection(report) != set(plans):
@@ -80,15 +80,15 @@ def failures_passed(report):
 
 
 # Execute ordinary Hastur suites and independent references with the existing fixture/linking contracts.
-def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard=None):
+def run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard=None, seed=None):
     with unit_cache_lock(compiler):
         # A concurrent standalone run must not mutate the shared cache or retire active ARC evidence.
-        _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard)
+        _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard, seed)
 
 
 # Keep the complete execution order and corpus contracts within one compiler-cache lock.
-def _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard):
-    batches, corpora = unit_partition(shard)
+def _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, shard, seed):
+    batches, corpora = unit_partition(shard, seed)
     for batch, members, target in batches:
         # Compatible codecs share one directory run; linked/resource profiles retain isolated runs.
         print('RUN '+batch+' (Hastur)', flush=True)
@@ -114,18 +114,18 @@ def _run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_
             report['suites'].append(row)
             announce(name+' (Hastur)', row['passed'])
     if corpora:
-        # Only the final shard owns corpora; shared driver dependencies retain their original order.
+        # Only the selected owner runs corpora; shared driver dependencies retain their original order.
         run_corpora(compiler, report, checks, libraries, quic_fixtures, integration_wires)
 
 
 # Execute strict crash/contract probes separately; compilation alone cannot prove these preconditions.
-def run_failures(compiler, report, libraries, availability_fixture, composition_fixture, shard=None):
-    plans, specialized = failure_partition(shard)
+def run_failures(compiler, report, libraries, availability_fixture, composition_fixture, shard=None, seed=None):
+    plans, specialized = failure_partition(shard, seed)
     groups = tuple(family for family in plans if family in FAILURE_SUITES)
     # Discovered families keep their ordered probes, independent binaries and exact diagnostic predicates.
     run_failure_suites(compiler, report, libraries, build, command, groups=groups)
     if not specialized:
-        # Specialized controls and their native resource setup execute once, in the final partition.
+        # Specialized controls and their native resource setup execute once, in the selected partition.
         return
     from failure_controls import CONTROLS, FailureContext
     context = FailureContext(compiler, report, libraries, build, command, BUILD,
@@ -140,10 +140,15 @@ def main():
     parser.add_argument('--compiler', type=Path, required=True)
     parser.add_argument('--group', choices=('unit', 'failures'), default='unit')
     parser.add_argument('--unit-shard', type=parse_unit_shard, default=os.environ.get('UNIT_SHARD'),
-                        help='Run one discovered unit partition, index/count (at most twelve)')
+                        help='Run one discovered unit partition, index/count (at most sixteen)')
     parser.add_argument('--failure-shard', type=parse_failure_shard, default=os.environ.get('FAILURE_SHARD'),
-                        help='Run one discovered contract partition, index/count (at most four)')
+                        help='Run one discovered contract partition, index/count (at most six)')
+    parser.add_argument('--shard-seed', default=os.environ.get('CI_SHARD_SEED'),
+                        help='Shared shuffle seed; CI uses its run ID, retained in each report')
     args = parser.parse_args()
+    if args.shard_seed is not None and not args.shard_seed.strip():
+        # An empty CI seed must fail before setup instead of selecting an unintended lexical plan.
+        parser.error('--shard-seed must be nonempty')
     if args.unit_shard is not None and args.group != 'unit':
         # Runtime rejection probes retain their separate complete execution contract.
         parser.error('--unit-shard applies only to the unit group')
@@ -160,6 +165,10 @@ def main():
     (BUILD/'results.json').unlink(missing_ok=True)
     report = dict(environment=dict(system=platform.system(), machine=platform.machine(),
                   python=platform.python_version()), verification_group=args.group)
+    if args.shard_seed is not None and (args.unit_shard or args.failure_shard):
+        # Report-driven validation and local reproduction use the actual scheduling seed.
+        report['shard_seed'] = args.shard_seed
+        print('Shard shuffle seed: '+args.shard_seed, flush=True)
     if args.group == 'unit':
         # Unit evidence owns suites/corpora only; runtime contracts have a different report.
         report['suites'] = []
@@ -168,7 +177,7 @@ def main():
             report['unit_shard'] = args.unit_shard
     else:
         # Every runtime family must be populated by this invocation, including after a prior successful run.
-        plans, specialized = failure_partition(args.failure_shard)
+        plans, specialized = failure_partition(args.failure_shard, args.shard_seed)
         report.update({family: [] for family in plans})
         if args.failure_shard is not None:
             # A green partition is visibly partial until the aggregate CI check has passed.
@@ -189,7 +198,7 @@ def main():
     needs_corpora = True
     if args.group == 'unit' and args.unit_shard is not None:
         # Provision only the union consumed by this partition; corpora retain their complete dependencies.
-        selected_batches, needs_corpora = unit_partition(args.unit_shard)
+        selected_batches, needs_corpora = unit_partition(args.unit_shard, args.shard_seed)
         selected_suites = [name for _, members, _ in selected_batches for name in members]
         from native_requirements import NATIVE_REQUIREMENTS
         required = {library for name in selected_suites for library in NATIVE_REQUIREMENTS[name]['libraries']}
@@ -198,7 +207,7 @@ def main():
     elif args.group == 'failures' and args.failure_shard is not None:
         # Ordinary partitions avoid preparing unrelated transport and Rust resources.
         libraries, quic_fixtures, native_evidence = prepare_libraries(
-            BUILD, required=failure_libraries(args.failure_shard))
+            BUILD, required=failure_libraries(args.failure_shard, args.shard_seed))
     else:
         # Complete local runs preserve the established aggregate preparation path.
         libraries, quic_fixtures, native_evidence = prepare_libraries(BUILD)
@@ -231,11 +240,13 @@ def main():
             fixtures, fixture_evidence = prepare_partition_fixtures(
                 BUILD, selected_suites, quic_fixtures, integration)
             report['partition_fixture_preparation'] = fixture_evidence
-        run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, args.unit_shard)
+        run_unit(compiler, report, libraries, fixtures, quic_fixtures, integration_wires, args.unit_shard,
+                 args.shard_seed)
         step_passed = unit_passed(report)
     else:
         # Contract checks keep their diagnostic predicates and positive controls unchanged.
-        run_failures(compiler, report, libraries, availability_fixture, composition_fixture, args.failure_shard)
+        run_failures(compiler, report, libraries, availability_fixture, composition_fixture,
+                     args.failure_shard, args.shard_seed)
         step_passed = failures_passed(report)
     if args.group == 'failures':
         # Preserve the protected-result verdict in its owning job only.

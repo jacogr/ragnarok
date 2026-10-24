@@ -1,10 +1,12 @@
 # Bandersnatch implementation instructions
 
-- Use pinned ark-vrf 0.2.2, the draft-29 release-designated IETF Bandersnatch reference. Preserve
-  its nonce separation and 96/784-byte contracts. Record the draft-text 16-byte versus reference
-  32-byte challenge discrepancy; never substitute newer suite profiles or invent proof padding.
-  Keep Rust behind the maintained primitive ABI, locked builds, source/SRS hash checks and native
-  ring/domain policy. Never enable unsafe deterministic/non-ZK test-vector features in the adapter
-  build. Passing vectors does not establish an audit.
-
-See [the migration record](../../spec/graypaper-0.8.0.md) and pinned primitive ABI.
+- Use the current Gray Paper's Draft 35 Thin v1 profile, qualified in
+  `spec/bandersnatch-thin-qualification.md`: pristine ark-vrf 0.6.0 commit
+  `dfb696dfb92425009af80dbbb403e647f6c9e3e4`, suite `Bandersnatch-SHA512-ELL2-v1`.
+  Do not select the RFC-padding v2 suite. Preserve the maintained 96/784-byte ABI,
+  transcript/nonce separation, canonical/subgroup checks, checked identity policy,
+  locked builds, source/SRS hashes and native ring/domain policy. Never use
+  `new_without_blinding`, insecure seeded setup or unsafe vector features in production.
+- Historical IETF evidence is archived in `spec/bandersnatch-release-reference.md`;
+  historical published tickets are not current Thin parity. Source discrepancies and
+  current consumer evidence belong in `spec/bandersnatch.md`. Passing vectors is not an audit.

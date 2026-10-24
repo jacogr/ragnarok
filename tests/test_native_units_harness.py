@@ -52,7 +52,7 @@ class NativeUnitHarness(unittest.TestCase):
 
     # Any supported shard count covers every discovered suite exactly once, without new registrations.
     def test_partition_inventory(self):
-        for count in range(1, 13):
+        for count in range(1, 17):
             # Separate coverage and serial-load checks catch gaps, duplicates and accidentally duplicated corpora.
             partitions = [native_tests.unit_partition((index, count)) for index in range(1, count+1)]
             names = [name for batches, _ in partitions for _, members, _ in batches for name in members]
@@ -65,13 +65,44 @@ class NativeUnitHarness(unittest.TestCase):
         self.assertEqual(native_tests.unit_partition(), (native_tests.unit_batches(), True))
         self.assertEqual(native_tests.unit_partition((1, 1)), native_tests.unit_partition())
 
+    # A shared seed changes assignment without losing suites, duplicating batches or touching global RNG.
+    def test_seeded_partition_inventory(self):
+        import random
+        state = random.getstate()
+        for count in (1, 2, 6, 16):
+            # Independent runners reconstruct the same whole plan from discovery and one retained seed.
+            for seed in ('40080775112', '40080775113'):
+                partitions = [native_tests.unit_partition((index, count), seed)
+                              for index in range(1, count+1)]
+                self.assertEqual(partitions, [native_tests.unit_partition((index, count), seed)
+                                              for index in range(1, count+1)])
+                batches = [batch for selected, _ in partitions for batch in selected]
+                names = [name for _, members, _ in batches for name in members]
+                self.assertEqual(len(names), len(set(names)))
+                self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
+                self.assertEqual(sum(corpora for _, corpora in partitions), 1)
+                self.assertEqual(sum(batch[0] == 'codec' for batch in batches), 1)
+                sizes = [len(selected)+int(corpora) for selected, corpora in partitions]
+                self.assertLessEqual(max(sizes)-min(sizes), 1)
+        self.assertNotEqual(native_tests.unit_partition((1, 16), '40080775112'),
+                            native_tests.unit_partition((1, 16), '40080775113'))
+        owners = {next(index for index in range(1, 17)
+                       if native_tests.unit_partition((index, 16), str(seed))[1])
+                  for seed in range(6)}
+        self.assertGreater(len(owners), 1)
+        self.assertEqual(random.getstate(), state)
+        for seed in ('', ' ', 123, True):
+            # Invalid recorded metadata cannot select a successful unrelated partition.
+            with self.subTest(seed=seed), self.assertRaises(ValueError):
+                native_tests.unit_partition((1, 16), seed)
+
     # Empty, unbounded or malformed shard declarations cannot silently turn into partial verification.
     def test_invalid_partitions(self):
-        for shard in [(0, 12), (13, 12), (1, 13), (9, 8), (1, 0), (True, 12), (1,), '1/12']:
+        for shard in [(0, 12), (13, 12), (1, 17), (9, 8), (1, 0), (True, 12), (1,), '1/12']:
             # Report metadata is validated with the same bounds as the CLI.
             with self.subTest(shard=shard), self.assertRaises(ValueError):
                 native_tests.unit_partition(shard)
-        for value in ['0/12', '1/13', '13/12', '2/1', 'one/12', '1', '1/12/12']:
+        for value in ['0/12', '1/17', '13/12', '2/1', 'one/12', '1', '1/12/12']:
             # Invalid CLI notation must fail before libraries or native tools are prepared.
             with self.subTest(value=value), self.assertRaises(ValueError):
                 native_tests.parse_unit_shard(value)

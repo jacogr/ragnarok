@@ -87,9 +87,12 @@ proc applyCurrentAccumulationChain*(state: var StateStore, view: var ChainView,
   let sequence = completed.completedSequenceSource.value
   let admission = sequence.currentSequenceInitial.value.currentRoundGuests.value.guestRound.value.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value
   let profile = admission.blockTransitionProfile
+  # GP valcount permits independent roster sizes; the decoder ceiling covers the head up to three validators per core.
   if uint64(profile.cores) != uint64(head.value.cores) or
       uint64(profile.epochSlots) != uint64(head.value.epochSlots) or
-      uint64(profile.validators) != uint64(head.value.activeValidators):
+      uint64(profile.validators) < uint64(head.value.activeValidators) or
+      uint64(profile.validators) mod 3 != 0 or
+      uint64(profile.validators) div 3 > uint64(head.value.cores):
     return CurrentAccumulationChainResult(status: CurrentAccumulationChainError.ProfileMismatch) # Preserve the authenticated header decoding domains.
   let executedParameters = sequence.currentSequenceInitial.value.currentRoundParameters.value
   let selectedParameters = head.value.chainParameters

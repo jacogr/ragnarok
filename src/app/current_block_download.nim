@@ -167,8 +167,11 @@ proc begin*(download: var CurrentBlockDownload, chain: ApplicationChain,
     return refused[CurrentBlockDownloadId](CurrentBlockDownloadError.MissingHead) # No implicit requested hash or complete map.
   let head = selected.value
   let frame = policies.reporting.admission.frame
+  # GP valcount permits independent roster sizes; the decoder ceiling covers the head up to three validators per core.
   if uint64(frame.cores) != uint64(head.cores) or
-      uint64(frame.validators) != uint64(head.activeValidators) or
+      uint64(frame.validators) < uint64(head.activeValidators) or
+      uint64(frame.validators) mod 3 != 0 or
+      uint64(frame.validators) div 3 > uint64(head.cores) or
       uint64(frame.epochSlots) != uint64(head.epochSlots):
     return refused[CurrentBlockDownloadId](CurrentBlockDownloadError.ProfileMismatch) # Refuse unrelated profile without hashing.
   if uint64(resources.blockBytes) == 0 or uint64(frame.maxBytes) == 0 or

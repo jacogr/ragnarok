@@ -68,6 +68,15 @@ epoch successors match supplied declarations. Existing default rollback-sentinel
 unchanged and still refuse complete typed matching. This is supplied-and-validated inventory;
 `PreparedCurrentChainUpdate` does not export a complete producer-owned logical manifest.
 
+The [whole-map STF golden chains](../spec/current-stf-whole-map.md) independently calculate all
+successor bytes for two complete current-schema chains of ten empty-body blocks each. They cover
+history eviction, MMR carries, authorizer-pool saturation, Thin entropy, statistics and unchanged
+service namespaces. The [nonempty-extrinsic and guest-effect goldens](../spec/current-stf-effects-goldens.md)
+extend complete-map parity to requested preimages, storage create/replace/delete, yield and panic
+rollback/checkpoint retention across ten more actual transitions. Broader full STF parity remains open.
+The [epoch/ticket goldens](../spec/current-stf-epoch-goldens.md) add twenty-two complete transitions
+covering roster rotation, ticket contests, cutoff markers, ticket/fallback sealing and epoch skips.
+
 See the source contracts for [current globals](../spec/state-current-globals.md),
 [current serialization](../spec/state-current-state.md),
 [current review](../spec/state-current-review.md),
@@ -170,10 +179,11 @@ No speculative public delta API is introduced here.
 
 Full current-pin STF qualification still needs independent complete current-schema pre/post source
 material, actual selected producer integration and the outstanding normative/crypto gates. The
-[current Bandersnatch pin record](../spec/bandersnatch-pins.json) preserves release-reference IETF
-verification separately from adopted current Thin VRF parity. Conflicting bless allowances retain
+[current Bandersnatch pin record](../spec/bandersnatch-pins.json) now selects the qualified
+Draft 35 Thin v1 profile and aligned vector revision; historical IETF evidence is archived separately. Conflicting bless allowances retain
 `AmbiguousPrivileges` under the [existing integration contract](../spec/pvm-accumulation-integration.md).
-No pins, compatibility fallback, RPC root/schema policy or storage API/format are changed. M1 framing
+This continuation API introduces no compatibility fallback, RPC root/schema policy or storage
+API/format change. The separate Thin migration advances crypto/vector pins. M1 framing
 and current request namespace completion do not imply complete state serialization/STF or JAM parity.
 
 ## Explicit supplied successors and retained consumers

@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Execute every Safrole substep from actual pinned parent chapters and signed headers, with
+## Execute every Safrole substep from independently authored current Thin parent chapters and headers, with
 ## atomic rollback.
 ##
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
@@ -71,7 +71,7 @@ proc tickets(raw: seq[byte]): seq[Ticket] =
     for j in 0..<784: proof[j] = raw[i*785+1+j] # No proof truncation or padding.
     result[i].proof = TicketProof(proof)
 
-## Posterior offender identities are supplied from the published disputes chapter, not guessed from markers.
+## Posterior offender identities are supplied from the declared disputes chapter, not guessed from markers.
 proc offenders(raw: seq[byte]): seq[OffenderKey] =
   let decoded = decodeDisputeState(raw, DisputeStateConfig(perSet: ElementLimit(100),
     totalItems: ElementLimit(400), maxBytes: ByteLimit(100000)))
@@ -243,10 +243,10 @@ proc boundaries(source: seq[StateEntry], expected: seq[StateEntry], raw: seq[byt
   failHash(0)
 
 ## Pin all successful chapter outputs and exercise backend failures after actual completed private work.
-proc published(text: string) =
+proc authored(text: string) =
   let lines = text.splitLines()
-  assert lines.len == 21
-  for index in 0..<20:
+  assert lines.len == 4
+  for index in 0..<3:
     let f = lines[index].splitWhitespace()
     assert f.len == 15
     let config = policy()
@@ -272,13 +272,13 @@ proc published(text: string) =
     assert count > 1
     for i, chapter in [4, 6, 8, 9, 11]:
       assert outcome.value.snapshot.lookup(chapterKey(StateChapter(chapter))).value.bytes ==
-        unhex(f[10+i]) # Exact complete posterior bytes from the real signed trace.
+        unhex(f[10+i]) # Exact complete posterior bytes from independent mathematical fixtures.
     unchanged(parent, source, root)
     if index in [0, 2]:
       var expected: seq[StateEntry] = @[]
       for i, chapter in [4, 6, 8, 9, 11]:
         expected.add(StateEntry(key: chapterKey(StateChapter(chapter)), value: unhex(f[
-            10+i]))) # Complete published posterior fields.
+            10+i]))) # Complete independently authored posterior fields.
       boundaries(source, expected, rawHeader, submitted, punished, index == 2)
     assert state.snapshot.value.lookup(source[2].key).value.bytes == source[2].value
     assert state.snapshot.value.lookup(source[^1].key).value.bytes == source[^1].value
@@ -346,7 +346,7 @@ proc published(text: string) =
 let fixture = getEnv("RAGNAROK_SAFROLE_TRANSITION")
 assert fixture.len != 0
 try:
-  published(readFile(fixture)) # Missing fixture IO must fail the suite instead of skipping a corpus.
+  authored(readFile(fixture)) # Missing fixture IO must fail the suite instead of skipping a corpus.
 except:
   quit(2) # No partial result is a successful native test.
-echo "PASS Safrole transition: twenty authenticated traces, exact chapters and atomic rollback"
+echo "PASS Safrole transition: three independent Thin cases, exact chapters and atomic rollback"

@@ -90,14 +90,20 @@ the exact build profile; workers reuse only their own compatible intermediates. 
 advisory lock serializes standalone and cumulative unit invocations through evidence validation, including exceptional exits. Cumulative runs log
 the active batch and its elapsed time.
 
-CI partitions the discovered batch plan across twelve bounded jobs, keeping each job's
-linked/resource work sequential. Shards prepare only their selected native dependencies and
-fixture providers, reusing sibling manifests from each provider once. Codec discovery belongs only to the first
-partition and independent corpora only to the last; no tests or corpora are duplicated.
-`UNIT_SHARD=index/count make check-unit` selects the same source-derived scope locally (up to twelve partitions); plain `make check-unit` remains complete. Each shard
-validates its exact expected identities and reports its scope, and a stable aggregate PR check
-requires every shard to succeed. The 30-minute job limits and individual command timeouts remain
-unchanged.
+CI partitions discovered unit work across sixteen bounded jobs, keeping each job's
+linked/resource work sequential. Each CI run shuffles the discovered independent batches and one
+corpus bundle using `CI_SHARD_SEED=${{ github.run_id }}`, then assigns work round-robin. The codec
+directory remains one batch; corpora keep their shared-driver dependency order within their bundle.
+Both bundles have randomized shard ownership, execute once and need no timing weights or maintained
+assignments. Shards prepare only their selected native dependencies and fixture providers.
+
+Every runner uses the same seed, retained as `shard_seed` in results, logs and summaries. Rerunning
+the same GitHub run preserves its assignment; a new run ID reshuffles it. Reproduce a partition
+on the same source revision with `CI_SHARD_SEED=<run-id> UNIT_SHARD=3/16 make check-unit` (or
+`--shard-seed` on the underlying runner). Unseeded local partitions keep their historical lexical
+assignment; plain `make check-unit` remains complete and keeps its original execution order.
+Exact expected identities are reconstructed from the recorded seed, and the aggregate check
+requires every shard to succeed. Job and individual command timeouts remain unchanged.
 
 `make check-inventory` loads these profiles before provisioning. New suites add their own file;
 no shared manifest entry or central provenance-path addition is needed.
@@ -162,12 +168,15 @@ release/speed optimization and all runtime checks. The shared native builder def
 ThinLTO, including future production-like and fuzz callers unless they deliberately opt out.
 LTO flags participate in the compiler cache identity, so incompatible intermediates cannot mix.
 
-CI partitions the discovered ordinary contract families across four bounded jobs. Specialized
-controls execute once, in the final partition. Each partition requires its exact predeclared
-identities and diagnostic predicates; the stable contract check requires all partitions to pass.
-`FAILURE_SHARD=index/count make check-failures` selects the same scope locally; plain
-`make check-failures` remains complete. Ordinary partitions prepare only their declared native
-providers. Job and individual command timeouts are unchanged, and summaries identify their scope.
+CI partitions discovered ordinary contract families and one specialized-control bundle across
+six bounded jobs. The shared run-ID seed shuffles these work items before round-robin assignment;
+controls keep their dependency order inside their randomly assigned bundle and execute once.
+Each partition requires its exact predeclared identities and diagnostic predicates; the stable
+contract check requires all partitions to pass. Reproduce a seeded scope on the same revision with
+`CI_SHARD_SEED=<run-id> FAILURE_SHARD=2/6 make check-failures`. Unseeded local partitions retain their
+historical assignment; plain `make check-failures` remains complete. Ordinary partitions prepare
+only their declared native providers; the specialized owner retains full setup. Job and command
+timeouts are unchanged, and summaries identify the shard and seed.
 
 Production and test adapters share `tools/build_crypto.py`, `tools/build_bandersnatch.py` and
 `tools/build_quic.py`. `tools/native_dependencies.py` owns pristine submodule checks and logged

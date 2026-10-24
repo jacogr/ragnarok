@@ -50,7 +50,10 @@ class SpecificationTests(unittest.TestCase):
         entry = PINS['vectors']
         require_submodule(dict(entry, repository=entry['repository'].removeprefix('https://github.com/')))
         self.assertEqual(entry['protocol_version'], '0.8.0')
-        self.assertEqual(entry['tag'], 'v0.8.0')
+        self.assertNotIn('tag', entry)
+        self.assertEqual(entry['release_status'], 'unreleased')
+        self.assertEqual(entry['commit'], '23061ae1f9b51171c01387e7dde0f15794c98e24')
+        self.assertEqual(entry['graypaper_commit'], PINS['graypaper']['commit'])
         # Hash every consumed fixture and the upstream changelog, not merely the JSON representation.
         for path, digest in entry['files'].items():
             self.assertEqual(hashlib.sha256((ROOT/path).read_bytes()).hexdigest(), digest, path)
@@ -68,12 +71,22 @@ class SpecificationTests(unittest.TestCase):
             self.assertEqual(wire[136:140], item['context']['anchor_slot'].to_bytes(4, 'little'))
             self.assertEqual(wire[240:272], bytes.fromhex(item['context']['lookup_anchor_state_root'][2:]))
 
-    # This focused pending gate prevents treating release-reference success as agreement with the contradictory draft text.
-    @unittest.skipIf(BANDERSNATCH['parity_gate']['status'].startswith('blocked'), BANDERSNATCH['parity_gate']['reason'])
-    def test_bandersnatch_draft29_text_consistent(self):
+    # The adopted bibliography fixes the Thin draft; later implementation safety fixes preserve its v1 vectors.
+    def test_bandersnatch_thin_profile_pin(self):
         gate = BANDERSNATCH['parity_gate']
-        self.assertEqual(BANDERSNATCH['challenge_bytes'], gate['reference_challenge_bytes'])
-        self.assertEqual(gate['validated_profile_protocol'], '0.8.0-release-reference')
+        self.assertEqual(BANDERSNATCH['suite'], 'Bandersnatch-SHA512-ELL2-v1')
+        self.assertEqual(BANDERSNATCH['challenge_bytes'], 16)
+        self.assertEqual(gate['reference_tag'], 'draft-35')
+        self.assertEqual(gate['validated_profile_protocol'], '0.8.0-unreleased-draft35-v1')
+        self.assertEqual(gate['vector_generator_version'], '0.5.3')
+        self.assertIn('Draft 35', (ROOT/'vendor/graypaper/biblio.bib').read_text())
+        # Preserve rather than relabel the historical release's separate cLen discrepancy.
+        previous = BANDERSNATCH['historical_release_reference']
+        self.assertEqual(previous['challenge_bytes'], 32)
+        self.assertEqual(previous['sources']['ark-vrf-jam']['tag'], 'v0.2.2')
+        self.assertEqual(previous['sources']['spec-jam']['tag'], 'draft-29')
+        self.assertEqual(BANDERSNATCH['official_jam']['commit'], PINS['vectors']['commit'])
+        self.assertEqual(previous['parity_gate']['reference_challenge_bytes'], 16)
 
 
 # Running the file checks provenance only; it never advances a dependency or changes protocol data.

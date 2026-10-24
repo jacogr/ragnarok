@@ -34,7 +34,7 @@ class OutcomeSpecificationAdoption(unittest.TestCase):
         self.assertIn(r"u = \gascounter - \gascounter'", source.read_text())
 
     def test_nonempty_hash_return_provisions(self):
-        """The reviewed merge fixes C to X without changing the GP/vector repository pins."""
+        """The reviewed merge fixes C to X; its historical vector source remains the recorded base release."""
         adoption = json.loads((ROOT / 'spec/pvm-hash-return-adoption.json').read_text())
         pins = json.loads((ROOT / 'spec/pins.json').read_text())
         self.assertEqual(adoption['pr'], 533)
@@ -43,7 +43,7 @@ class OutcomeSpecificationAdoption(unittest.TestCase):
                          'e36d6aaf4b84f06632cd427e5d9a04cff082b47cb4bc1e37a34ad68bec3ea6fd')
         self.assertEqual(adoption['base_graypaper_commit'], '07f041dabd073f9018b418e9ee72e79dd2185401')
         self.assertEqual(pins['graypaper']['release_status'], 'unreleased')
-        self.assertEqual(adoption['vectors_commit'], pins['vectors']['commit'])
+        self.assertEqual(adoption['vectors_commit'], pins['vectors']['base_release_commit'])
         self.assertIn('regular X', adoption['scope'])
 
     def test_divergent_checkpoint_witness(self):

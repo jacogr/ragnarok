@@ -2,8 +2,8 @@
 
 [Native bridges](../README.md) · [Nim adapter](../../src/bandersnatch/README.md)
 
-This folder implements the narrow synchronous primitive ABI for the pinned ark-vrf 0.2.2
-release-designated IETF VRF/RingVRF profile.
+This folder implements the narrow synchronous primitive ABI for the pinned ark-vrf 0.6.0
+Draft 35 Thin v1/RingVRF profile.
 
 | Path | Contents |
 | --- | --- |
@@ -22,7 +22,7 @@ under `build/bandersnatch/`; upstream sources remain pristine under `vendor/`.
 
 See the [primitive contract](../../spec/bandersnatch.md), [crypto guide](../../docs/crypto.md) and
 [folder instructions](AGENTS.md) for verification, exact profile constraints and the documented
-challenge-width discrepancy. Unsafe deterministic/non-ZK vector features must remain disabled.
+v1 hash-to-curve padding discrepancy. Unsafe deterministic/non-ZK vector features must remain disabled.
 
 The same locked library also exports the internal `rcr_*` ordinary-crypto ABI consumed by
 `native/crypto/primitive_bridge.c`. It shares SHA-2/SHA3 and zeroization dependencies without

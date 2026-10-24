@@ -118,8 +118,11 @@ proc begin*(input: var CurrentBlockInput, chain: ApplicationChain, extent: ByteL
     return CurrentBlockInputAdmission(status: CurrentBlockInputError.MissingHead) # No implicit complete state or parent.
   let head = selected.value
   let frame = policies.reporting.admission.frame
+  # GP valcount permits independent roster sizes; the decoder ceiling covers the head up to three validators per core.
   if uint64(frame.cores) != uint64(head.cores) or
-      uint64(frame.validators) != uint64(head.activeValidators) or
+      uint64(frame.validators) < uint64(head.activeValidators) or
+      uint64(frame.validators) mod 3 != 0 or
+      uint64(frame.validators) div 3 > uint64(head.cores) or
       uint64(frame.epochSlots) != uint64(head.epochSlots):
     return CurrentBlockInputAdmission(status: CurrentBlockInputError.ProfileMismatch) # Domain refusal does no hashing/decoding.
   let size = uint64(extent)
