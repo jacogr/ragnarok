@@ -116,6 +116,10 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): 
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 87..91:
+    # R's known hash selects one independently declared foreign request identity.
+    let hash = array[32, byte](blake2b256([82'u8]).value)
+    second = supervisedRequestCode(mode, hash)
   of 82..86: second = supervisedWriteCode(mode) # Genuine foreign storage publication, authority and exceptional selection.
   of 77..81: second = managerCode(mode) # One manager controls an unambiguous fixed-role handoff.
   of 72..76: second = ejectionCode(mode) # Empty old junior retirement and exact once-only refund.
@@ -166,6 +170,10 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # This original request must be removed before checkpointing and a later regular recreation is discarded.
     seeds[1].requests.add(StateRequestItem(hash: requestHash, length: RequestLength(1),
         history: requestedHistory()))
+  if mode == 89:
+    # Only the foreign forget-before-checkpoint original starts with R pending in42.
+    seeds[0].requests.add(StateRequestItem(hash: requestHash, length: RequestLength(1),
+        history: requestedHistory()))
   if mode in [1, 2]:
     seeds[1].storage.add(StateStorageItem(key: @[7'u8], value: (if mode == 1: @[
         1'u8, 2, 3, 4, 5] else: @[1'u8, 2]))) # Original replacement/deletion footprints are genuine parent inputs.
@@ -194,7 +202,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   if mode in 77..81:
     # Authority belongs to one actual original manager; other roles and all allowances remain empty.
     options.manager = (if mode == 81: 42'u32 else: 99'u32)
-  if mode in 82..86:
+  if mode in 82..91:
     # Authority is original and incarnation-bound; stale/missing nominees fall back to target self supervision.
     options.signed.accountSupervisor = (if mode == 86: 77'u32 else: 99'u32)
     options.signed.accountSupervisorCreated = (if mode == 85: 1'u32 else: 0'u32)
@@ -238,7 +246,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # At most two children extend the explicit two-account prior; later empty blocks retain all four canonical records.
     limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)
     limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
-  if mode in 62..71:
+  if mode in 62..71 or mode in 87..91:
     # One identity may be touched on both sides of a checkpoint; explicit observations retain the selected prefix.
     limits.completion.execution.initial.guests.requestFacts = ElementLimit(4)
     limits.completion.execution.execution.round.guests.requestFacts = ElementLimit(4)
@@ -294,16 +302,18 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
         assert before.stateSnapshot.lookup(chapterServiceKey(StateChapter(255), service)).error ==
             StateStoreError.MissingKey
     var services = currentNamespaceServices(snapshot, seeds)
-    if mode in 62..71:
+    if mode in 62..71 or mode in 87..91:
       # Materialize only the explicitly authored R identity, never infer arbitrary namespace entries from raw hashes.
-      let requestKey = serviceRequestKey(ServiceIndex(99), requestHash, RequestLength(1), ByteLimit(32)).value
+      let target = if mode in 87..91: 0 else: 1
+      let requestKey = serviceRequestKey(services[target].service, requestHash, RequestLength(1),
+          ByteLimit(32)).value
       let stored = snapshot.lookup(requestKey)
       var declared = false
-      for item in services[1].requests:
+      for item in services[target].requests:
         if array[32, byte](item.hash) == array[32, byte](requestHash) and uint32(item.length) ==
             1: declared = true
       if stored.error == StateStoreError.None and not declared:
-        services[1].requests.add(StateRequestItem(hash: requestHash, length: RequestLength(1),
+        services[target].requests.add(StateRequestItem(hash: requestHash, length: RequestLength(1),
             history: requestedHistory()))
       else: assert stored.error in [StateStoreError.None,
           StateStoreError.MissingKey] # Full-map comparison fixes presence independently.
@@ -431,7 +441,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 87
+      assert mode >= 0 and mode < 92
       bodies = @[]
       slots = @[]
     else:
@@ -439,7 +449,7 @@ proc main() {.raises.} =
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
-  assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86]
+  assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:

@@ -12,3 +12,25 @@ proc supervisedWriteCode*(mode: int): seq[byte] =
   instructions.add(if mode in [83, 84]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, @[7'u8, 9, 8, 7]): result.add(octet)
+
+proc supervisedRequestCode*(mode: int, hash: array[32, byte]): seq[byte] =
+  ## All reservation/removal arguments name inactive42; its selected supervisor owns the final request facts.
+  var memory = newSeq[byte](32)
+  for index, octet in hash: memory[index] = octet
+  var operations = @[25'u8]
+  case mode
+  of 88: operations = @[25'u8, 26] # Create and remove the foreign pending reservation in one selected context.
+  of 89: operations = @[26'u8, 19, 25] # Checkpoint foreign removal, then discard its ordinary recreation.
+  of 91: operations = @[25'u8, 19] # Exceptional selection retains a genuine foreign reservation.
+  else: discard # The ordinary and panic variants share literal solicitation.
+  var instructions: seq[seq[byte]] = @[]
+  for operation in operations:
+    if operation == 19:
+      instructions.add(@[10'u8, 19]) # Capture the foreign namespace version at this exact point.
+    else:
+      for instruction in [registerImmediate(7, 42), registerImmediate(8, 196608),
+          registerImmediate(9, 1), @[10'u8, operation]]:
+        instructions.add(instruction) # Reset the explicit target after every returned status.
+  instructions.add(if mode in [89, 90, 91]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)
