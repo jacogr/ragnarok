@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_EPOCH_DRAIN",
+  "files": {
+    "current-stf-epoch-drain.json": "66b7cd17f02f095b285997d5baf950eb8cf9614d31b5a1fd4e230b5ec8f66f19"
+  },
+  "target": "current-stf-epoch-drain.json"
+}

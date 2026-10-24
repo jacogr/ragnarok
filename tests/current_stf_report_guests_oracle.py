@@ -40,15 +40,17 @@ def original(mode):
 def guarantee(parent, initial, core, slot, *, package=None, prerequisites=b'', lookup=b'', service=None, accumulation_gas=100000):
     """Sign a full authored report, explicit dependency families and the actual target service code hash."""
     sid = service if service is not None else ((42 if core == 0 else 99) if slot == 3 else 99)
-    fixed = history(initial[chapter_key(3)])[0][0][0]
+    records = history(initial[chapter_key(3)])[0]
+    fixed = records[-2 if len(records) > 1 else -1][0]
+    anchor_root = fixed[64:96] if len(records) > 1 else tree(list(initial.items()))[0]
     pool = Reader(parent[chapter_key(1)])
     pools = [pool.take(32*pool.count()) for _ in range(2)]
     if package is None:
         package = digest(f'immediate package slot{slot} core{core}'.encode()) # Preserve original immediate identities.
-    anchor = fixed[:32]+(1).to_bytes(4, 'little')+tree(list(initial.items()))[0]
+    anchor = fixed[:32]+fixed[96:100]+anchor_root
     header = (package+(100+slot+core).to_bytes(4, 'little')+digest(package+b'segments')
               +(6).to_bytes(2, 'little')+digest(package+b'exports')+(3+core).to_bytes(2, 'little')
-              +anchor+bytes(32)+anchor)
+              +anchor+fixed[32:64]+anchor)
     value = dict(header=header, prerequisites=prerequisites, core=core, authorizer=pools[core][:32],
                  gas=17+core, auth=b'auth'+bytes([core]), lookup=lookup,
                  digests=[(sid, metadata_parse(parent[chapter_service(255, sid)], 105)[0],
@@ -121,9 +123,12 @@ def advance(parent, initial, mode, slot, gs, ass, *, plan=None):
     if plan is not None and 'yielded' in plan:
         outputs = ((99, COMMITMENT),) if plan['yielded'] else ()
     raw, commitment = body(gs, ass) if plan is None or 'body' not in plan else plan['body']
-    child = authored_child(parent, raw, commitment)
-    result = advance_no_reports(parent, child, raw, commitment, outputs=outputs,
-                                preimages=() if plan is None else plan.get('preimages', ()))
+    if plan is not None and 'foundation' in plan:
+        child, result = plan['foundation'](raw, commitment, outputs)
+    else:
+        child = authored_child(parent, raw, commitment)
+        result = advance_no_reports(parent, child, raw, commitment, outputs=outputs,
+                                    preimages=() if plan is None else plan.get('preimages', ()))
     for core in range(2):
         if old[core] is not None and (votes[core] >= 5 or slot >= old[core]['registered']+5): old[core] = None
     pools, rows = Reader(parent[chapter_key(1)]), []

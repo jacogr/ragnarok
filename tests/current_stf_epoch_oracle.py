@@ -101,7 +101,7 @@ def submitted_for(slot, bank):
 
 
 def successor(parent, slot, submitted, bank, roots, *, cores=2, dispute_wire=bytes(3),
-              new_offenders=()):
+              new_offenders=(), body_override=None, extrinsic_override=None, outputs=()):
     """Calculate each header, admitted contest, rotated state and entire successor independently."""
     previous = int.from_bytes(parent[chapter_key(11)], 'little')
     assert slot > previous
@@ -167,6 +167,9 @@ def successor(parent, slot, submitted, bank, roots, *, cores=2, dispute_wire=byt
                                               for item in submitted)
     body = tickets+bytes(3)+dispute_wire
     commitment = digest(digest(tickets)+3*digest(b'\0')+digest(dispute_wire))
+    if body_override is not None:
+        assert not submitted and extrinsic_override is not None
+        body, commitment = body_override, extrinsic_override
     blocks, _ = history(parent[chapter_key(3)])
     source = dict(parent=blocks[-1][0][:32], parent_state_root=tree(list(parent.items()))[0],
                   extrinsic_hash=commitment, slot=slot, epoch_mark=epoch, tickets_mark=winners,
@@ -174,7 +177,7 @@ def successor(parent, slot, submitted, bank, roots, *, cores=2, dispute_wire=byt
     source['seal'], _ = sign(secret, transcript, header_wire('U', source))
     header = header_wire('H', source)
     result = advance_chapters(parent, header, slot, author, entropy_output,
-                              ticket_count=len(submitted), cores=cores)
+                              ticket_count=len(submitted), cores=cores, outputs=outputs)
     result[chapter_key(4)] = consensus_wire((b''.join(post_pending), post_root, post_kind,
                                             b''.join(post_schedule), b''.join(kept)))
     if crossed:

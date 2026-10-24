@@ -4,6 +4,7 @@
 ## Immediate available reports drive genuine guests, grouped operands and complete current-state publication.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/header
+import ../support/current_stf_epoch_context as epoch
 import ../../src/app/[chain, candidate]
 import ../../src/chain/provider
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
@@ -12,7 +13,8 @@ import ../../src/crypto/primitives
 import ../../src/state/[store, checkpoint, accumulation_current_update,
   accumulation_current_completion,
   accumulation_current_driver, accumulation_current_round, accumulation_block_guests,
-  accumulation_guest_runner, accumulation_dispatch, current_profile,
+  accumulation_guest_runner, accumulation_dispatch, report_admission, guarantee_credentials,
+  current_profile,
   current_globals, current_state, global_snapshot]
 import ../support/[accumulation_execution_context, accumulation_activity_context,
   current_namespace_execution_context, current_namespace_context, current_consecutive_context,
@@ -47,6 +49,16 @@ proc guest(mode: int): seq[byte] =
 proc failure(outcome: CurrentCandidateResult): string =
   ## Preserve selected typed completion reasons so a bounded fixture refusal cannot look like a map mismatch.
   result = $outcome.error
+  if outcome.error == CurrentCandidateError.ReportFailure:
+    let reports = outcome.reportFailure
+    result.add("/" & $reports.error)
+    case reports.error
+    of ReportAdmissionError.CredentialFailure: result.add("/" & $reports.credentialError.error)
+    of ReportAdmissionError.PolicyFailure: result.add("/" & $reports.policyError)
+    of ReportAdmissionError.AnchorFailure: result.add("/" & $reports.anchorError)
+    of ReportAdmissionError.PackageFailure: result.add("/" & $reports.packageError)
+    of ReportAdmissionError.AssignmentFailure: result.add("/" & $reports.assignmentError)
+    else: discard # Preserve the selected report-level refusal without inspecting unrelated payloads.
   if outcome.error == CurrentCandidateError.CompletionFailure:
     let completion = outcome.completionFailure
     result.add("/" & $completion.error)
@@ -71,7 +83,8 @@ proc failure(outcome: CurrentCandidateResult): string =
             else: discard # Other actual typed guest failures retain their direct reason.
 
 
-proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false) =
+proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
+    uint32] = @[]) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
   let codes = [namespaceHaltCode(), guest(mode)]
   var seeds = namespaceSeeds()
@@ -124,11 +137,13 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   limits.completion.composition.activity.preimages.totalBlobBytes = ByteLimit(512)
   limits.completion.composition.preimages.bytes = ByteLimit(512)
   var ancestors: seq[OwnedHeader] = @[]
-  for body in bodies:
+  for bodyIndex, body in bodies:
     # Exact independent extrinsics enter a real seal against the selected canonical parent.
     let before = chain.chainView.bestBlock.value
     let saved = checkpointHex(before.stateSnapshot)
-    let child = currentSameEpochBodyChild(before, body)
+    let child = if slots.len > 0 and slots[bodyIndex] > 0:
+      epoch.child(before, slots[bodyIndex], @[], @[], limits = limits, bodyWire = body)
+    else: currentSameEpochBodyChild(before, body) # Original consecutive same-epoch cases keep their exact constructor.
     var wire = newSeq[byte](child.blockInfo.value.consumed)
     assert child.encodeOwnedBlock(wire).error == FrameError.None
     echo "B ", hex(wire)
@@ -196,22 +211,26 @@ proc main() {.raises.} =
   var mode = -1
   var missingCode = false
   var bodies: seq[seq[byte]] = @[]
+  var slots: seq[uint32] = @[]
   for line in readFile(paramStr(2)).splitLines:
     if line.len == 0: continue # The final transport newline contains no request.
     let fields = line.splitWhitespace()
     assert fields.len in [2, 3]
     if fields[0] == "C":
-      if mode >= 0: run(base, mode, bodies, missingCode) # Finish the complete chain before selecting another original.
+      if mode >= 0: run(base, mode, bodies, missingCode,
+          slots) # Finish the complete chain before selecting another original.
       missingCode = fields.len == 3
       if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
       assert mode >= 0 and mode < 5
       bodies = @[]
+      slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
-      bodies.add(unhex(fields[1]))
+      slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
+      bodies.add(unhex(fields[^1]))
   assert mode == 4 and bodies.len > 0 # Strict independent output comparison binds each complete chain length.
-  run(base, mode, bodies, missingCode)
+  run(base, mode, bodies, missingCode, slots)
 
 try:
   main() # I/O, compilation, guest, publication or qualification failure fails the complete corpus.
