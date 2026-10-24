@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_PROFILE_REPLAY",
+  "files": {
+    "current-stf-profile-replay.json": "1f8956f90e8e01707a4bb3e736ade7f8a872a686a8d312cd3db264929275e588"
+  },
+  "target": "current-stf-profile-replay.json"
+}

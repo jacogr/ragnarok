@@ -1203,5 +1203,27 @@ def current_stf_child_recreation_corpus(compiler, report, checks, libraries):
 
 
 
+@CORPORA.case
+def current_stf_profile_replay_corpus(compiler, report, checks, libraries):
+    """Compare full-store reconstruction across explicit code-size, deposit, aging and supervisor lifecycle profiles."""
+    from current_stf_profile_replay_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_profile_replay', 'current_stf_transfers', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-profile-replay-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-profile-replay', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent equation-family maps, exact checkpoint reconstruction and unchanged signed continuation under each declared profile')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-profile-replay-corpus', expected)
+    announce('independent current-profile checkpoint continuation maps', corpus['passed'])
+    return corpus
+
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
