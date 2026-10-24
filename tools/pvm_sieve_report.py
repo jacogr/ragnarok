@@ -20,8 +20,10 @@ def limits_for_guest(guest):
     raise ValueError('Unknown checked guest family')
 
 
-def parse_output(output,engine,limit):
+def parse_output(output,engine,limit,samples=SAMPLES):
     """Accept one ordered, complete pass; reject extra output, duplicate and nonpositive samples."""
+    if type(samples) is not int or samples not in (1, SAMPLES):
+        raise ValueError("Unsupported sieve sample count")
     if engine not in ENGINES or limit not in (*LIMITS,1):
         raise ValueError("Unknown sieve engine or limit")
     rows=[]
@@ -36,7 +38,7 @@ def parse_output(output,engine,limit):
         if sample!=len(rows) or wall<=0 or cpu<=0:
             raise ValueError('Unordered or nonpositive sieve sample')
         rows.append(dict(sample=sample,wall_ns=wall,cpu_ns=cpu))
-    if len(rows)!=SAMPLES:
+    if len(rows)!=samples:
         raise ValueError('Incomplete sieve sample pass')
     return rows
 
@@ -63,7 +65,7 @@ def validate_memo_preparation(item):
         raise ValueError('Invalid gas-memo resource/occupancy identity')
 
 
-def parse_process_output(output,engine,limit,guest='sieve'):
+def parse_process_output(output,engine,limit,guest='sieve',samples=SAMPLES):
     """Require complete policy-specific initialization/occupancy framing in addition to every measured execution."""
     limits=limits_for_guest(guest)
     if limit not in limits:raise ValueError('Unknown guest workload size')
@@ -91,7 +93,7 @@ def parse_process_output(output,engine,limit,guest='sieve'):
         preparation=dict(cpu_ns=cpu,wall_ns=wall,code_bytes=code,payload_bytes=payload,
                          cycle_limit=cycles,priced_blocks=int(tail[1]))
         validate_memo_preparation(preparation)
-    return dict(guest=guest,samples=parse_output('\n'.join(lines),engine,limit),preparation=preparation)
+    return dict(guest=guest,samples=parse_output('\n'.join(lines),engine,limit,samples),preparation=preparation)
 
 
 def validate_samples(rows):
