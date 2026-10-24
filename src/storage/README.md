@@ -408,3 +408,9 @@ their existing uncertainty contracts.
 `prepareLightMaintenance` and `maintain` apply explicit frame/byte compaction thresholds and a
 bounded canonical retired-epoch sweep. Passive receipts separate confirmed selection, old-handle
 retirement and partial cleanup progress. See [bounded journal maintenance](../../spec/storage-light-maintenance.md).
+
+The [paged working-set contract](../../spec/storage-paged-working-set.md) starts with a separate
+disk-indexed light-evidence schema, bounded-memory strict open/lookup, independent reader pins
+and explicit immutable publication. It specifies the next implementation boundaries; no paged
+runtime or consumer adoption is supplied by the contract. Full-node paging retains complete-graph
+validation requirements and a separate integration gate.
