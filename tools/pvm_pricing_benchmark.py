@@ -55,7 +55,7 @@ def main():
         medians[name] = statistics.median(
             row['execution_ns'] for row in rows if row['mode'] == mode and row['sample'] >= 3)
     sources = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-               for path in sorted((ROOT/'src/pvm').glob('*.nim'))}
+               for path in sorted((ROOT/'src/pvm').rglob('*.nim'))}
     source = ROOT/'tests/performance/pvm_pricing_lookup.nim'
     sources[str(source.relative_to(ROOT))] = hashlib.sha256(source.read_bytes()).hexdigest()
     report.write_text(json.dumps(dict(build=build, samples=rows, warm_median_ns=medians,

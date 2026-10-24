@@ -8,6 +8,7 @@
 
 import std/[assertions, syncio, envvars]
 import ../../../src/pvm/[program, machine, registers, gas, gas_plan, gas_memo, step]
+import ../../../src/pvm/internal/register_ops
 
 # Decode a fixed little-endian fixture word; the fixture shape is checked before any access.
 proc word(data: string, at: int): uint64 =
@@ -81,6 +82,10 @@ for row in 0..<count:
   assert evaluated.error == RegisterError.None
   let output = evaluated.value
   let decoded = instruction(program, CodeAddress(0))
+  var directIndex: range[0..12] = 12
+  var directValue = RegisterValue(not expected)
+  assert computeRegisterWrite(decoded, input, directIndex, directValue)
+  assert int(directIndex) == destination and uint64(directValue) == expected
   let written = evaluateRegisterWrite(decoded, input)
   assert written.error == RegisterError.None
   assert int(byte(written.destination)) == destination and uint64(written.writeValue) == expected
@@ -140,6 +145,15 @@ for op in 0..<256:
   # Only opcodes actually replayed contribute to coverage.
   if seen[op]: inc covered
 assert covered == 85
+proc unchangedFailure(decoded: ProgramResult[Instruction]) =
+  ## Refused internal computations preserve both caller-owned output sentinels and every input register.
+  let input = default(RegisterFile)
+  var index: range[0..12] = 7
+  var value = RegisterValue(0xdeadbeefcafebabe'u64)
+  assert not computeRegisterWrite(decoded, input, index, value)
+  assert index == 7 and uint64(value) == 0xdeadbeefcafebabe'u64
+
+unchangedFailure(default(ProgramResult[Instruction]))
 let missingWrite = default(RegisterWriteResult)
 assert missingWrite.error == RegisterError.Uninitialized
 let missingDecode = default(ProgramResult[Instruction])
@@ -153,6 +167,8 @@ let missingInstruction = default(ProgramResult[Instruction])
 assert evaluateRegisters(missingInstruction, default(RegisterFile)).error ==
   RegisterError.InvalidInstruction
 let valid = programFor(200, 0x10, 2, 0)
+unchangedFailure(instruction(valid, CodeAddress(1)))
+unchangedFailure(instruction(valid, CodeAddress(high(uint64))))
 assert evaluateRegisters(instruction(valid, CodeAddress(1)), default(RegisterFile)).error ==
   RegisterError.InvalidInstruction
 assert evaluateRegisters(valid, CodeAddress(1), default(RegisterFile)).error ==
@@ -164,6 +180,7 @@ for op in 0..255:
   # Valid decoded instructions outside the evaluator must fail without a payload.
   if validOpcode(byte(op)) and not seen[op]:
     let unsupported = programFor(byte(op), 0, 0, 0)
+    unchangedFailure(instruction(unsupported, CodeAddress(0)))
     assert evaluateRegisterWrite(instruction(unsupported, CodeAddress(0)), default(
         RegisterFile)).error == RegisterError.UnsupportedInstruction
     assert evaluateRegisters(unsupported, CodeAddress(0), default(RegisterFile)).error ==

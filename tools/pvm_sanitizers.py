@@ -95,7 +95,7 @@ def main():
         if not passed:
             raise RuntimeError('sanitized corpus failed: '+name)
         print('PASS AddressSanitizer corpus:', name, flush=True)
-    for path in [*sorted((ROOT/'src/pvm').glob('*.nim')), control_source,
+    for path in [*sorted((ROOT/'src/pvm').rglob('*.nim')), control_source,
                  control_source.with_suffix('.h'), ROOT/'src/codec/natural.nim',
                  ROOT/'tools/native_checks.py', ROOT/'tools/pvm_sanitizers.py']:
         # Exact source/binary/fixture identities keep this analyzer run distinct from another profile or later tree.
