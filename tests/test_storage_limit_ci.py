@@ -5,17 +5,23 @@
 from pathlib import Path
 import sys
 import unittest
+from workflow_fixtures import event_context, selected_families, family_section
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"tools"))
 class LimitCITests(unittest.TestCase):
-    """Memory ceilings remain in the existing opt-in storage job with always-run reporting."""
+    """Memory ceilings remain in the existing opt-in Storage family with always-run reporting."""
     def test_group_and_failure_artifacts(self):
         """No new job or trigger is needed; missing evidence must survive the failure path."""
         root=Path(__file__).resolve().parents[1]
-        section=(root/'.github/workflows/ci.yml').read_text().split('  bench-storage:\n',1)[1]
-        self.assertIn('timeout-minutes: 30',section)
+        workflow=(root/'.github/workflows/ci.yml').read_text()
+        section=family_section(workflow, 'perf', 'bench-storage')
+        family=next(row for row in selected_families(workflow, 'perf', event_context())
+                    if row['group'] == 'bench-storage')
+        self.assertEqual(family['minutes'],30)
         self.assertIn('run: make bench-storage-memory-ceilings\n',section)
         self.assertIn('run: make bench-storage\n',section)
-        self.assertIn('if: always()\n        run: make summary-storage-memory-ceilings SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"',section)
+        self.assertIn("if: ${{ always() && matrix.family.group == 'bench-storage' }}\n        run: make summary-storage-memory-ceilings SUMMARY_OUTPUT=\"$GITHUB_STEP_SUMMARY\"",section)
+        self.assertNotIn('run: make bench-storage-memory-ceilings',
+                         family_section(workflow, 'perf', 'bench-storage-growth'))
         for suffix in ('*.log','results.json','observations.csv','summary.md','status.md'):
             self.assertIn('build/tests/storage-memory-ceilings/'+suffix,section)
     def test_make_setup_boundaries(self):
