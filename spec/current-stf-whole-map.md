@@ -60,7 +60,9 @@ uses the same checked non-LTO profile as normal unit corpora; exact-head Linux C
 
 This establishes complete-map parity for the authored empty-body, same-epoch chains. It does not
 establish guest-effect, epoch-change, ticket/dispute/report admission or general JAM STF parity.
-Those retain their existing focused native checks and need further independent whole-map cases.
+The [nonempty-extrinsic and guest-effect goldens](current-stf-effects-goldens.md) add selected
+preimage/storage/yield/checkpoint chains; broader cases retain their focused native checks and
+need further independent whole-map coverage.
 Published signed traces at the selected vector pin still have the separately recorded mixed-profile
 credentials and historical metadata limitations; these authored cases do not repair those sources.
 The conflicting-allowance `AmbiguousPrivileges` guard remains unchanged.

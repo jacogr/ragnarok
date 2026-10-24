@@ -19,6 +19,7 @@ from state_history_oracle import wire as history_wire
 from state_trie_oracle import tree
 from test_codec import reference_decode, reference_encode as natural
 from test_crypto import keccak256
+from history_transition_fixtures import output_root
 
 FIXTURE = Path(__file__).parent/'fixtures/current-stf.json'
 
@@ -81,19 +82,22 @@ def history(data):
     return blocks, peaks
 
 
-def authored_child(parent):
-    """Independently sign the next empty block before running any production transition."""
+def authored_child(parent, body=bytes(7), extrinsic_root=None):
+    """Independently sign a same-epoch child with explicitly calculated body commitment."""
     blocks, _ = history(parent[chapter_key(3)])
     entropy = parent[chapter_key(6)]
     slot = int.from_bytes(parent[chapter_key(11)], 'little')+1
     context = b'jam_fallback_seal'+entropy[96:128]
     _, output = sign(1, context, b'')
     proof, _ = sign(1, b'jam_entropy'+output, b'')
+    if extrinsic_root is None:
+        assert body == bytes(7)
+        extrinsic_root = digest(4*digest(b'\0')+digest(bytes(3)))
     unsigned = (blocks[-1][0][:32]+tree(list(parent.items()))[0]
-                +digest(4*digest(b'\0')+digest(bytes(3)))+slot.to_bytes(4, 'little')
+                +extrinsic_root+slot.to_bytes(4, 'little')
                 +bytes(4)+proof+b'\0')
     seal, _ = sign(1, context, unsigned)
-    return unsigned+seal+bytes(7)
+    return unsigned+seal+body
 
 
 def expected_observations():
@@ -116,17 +120,16 @@ def expected_observations():
     return lines
 
 
-def successor(parent, child):
-    """Calculate every changed chapter from original inputs and preserve all other exact entries."""
-    assert len(child) == 304 and child[297:] == bytes(7), 'bounded empty-body wire only'
+def advance_no_reports(parent, child, body, extrinsic_root, *, outputs=(), preimages=()):
+    """Shared no-report equations accept explicit independent preimage/output observations."""
+    assert len(child) == 297+len(body) and child[297:] == body
     assert child[100:104] == bytes(4) and child[200:201] == b'\0', 'no markers/offenders, author zero'
     slot = int.from_bytes(child[96:100], 'little')
     prior_slot = int.from_bytes(parent[chapter_key(11)], 'little')
     assert 1 <= prior_slot < slot < 12 and slot == prior_slot+1
     prior_root = tree(list(parent.items()))[0]
     assert child[32:64] == prior_root
-    # GP header.tex commits to five family hashes; disputes contain three empty sequence counts.
-    assert child[64:96] == digest(4*digest(b'\0')+digest(bytes(3)))
+    assert child[64:96] == extrinsic_root
     entropy = parent[chapter_key(6)]
     assert len(entropy) == 128
     context = b'jam_fallback_seal'+entropy[96:128]
@@ -152,12 +155,14 @@ def successor(parent, child):
         rows.append(natural(len(row)//32)+row)
     pools.done()
     result[chapter_key(1)] = b''.join(rows)
-    # Recent history corrects the parent, appends a zero output root to the belt and bags peaks.
+    # Recent history corrects the parent, appends the independently derived output root and bags peaks.
     blocks, peaks = history(parent[chapter_key(3)])
     assert blocks[-1][0][:32] == child[:32]
     fixed, pairs = blocks[-1]
     blocks[-1] = (fixed[:64]+prior_root+fixed[96:], pairs)
-    carry = bytes(32)
+    leaves = [service.to_bytes(4, 'little')+commitment for service, commitment in outputs]
+    result[chapter_key(16)] = natural(len(leaves))+b''.join(leaves)
+    carry = output_root(leaves)
     position = 0
     while position < len(peaks) and peaks[position] is not None:
         carry = bytes.fromhex(keccak256(peaks[position]+carry))
@@ -177,15 +182,25 @@ def successor(parent, child):
     assert not isinstance(parsed, str), parsed
     (current, previous, _, _), consumed = parsed
     assert consumed == len(parent[chapter_key(13)])
-    current[0] = (current[0][0]+1, *current[0][1:])
+    row = list(current[0])
+    row[0] += 1
+    row[2] += len(preimages)
+    row[3] += sum(len(value) for _, value in preimages)
+    current[0] = tuple(row)
     result[chapter_key(13)] = statistics_wire((current, previous, [(0,)*8]*2, []))
+    assert set(result) == set(parent)
+    return result
+
+
+def successor(parent, child):
+    """Bound empty-body cases separately from the explicit guest-effect whole-map reference."""
+    assert len(child) == 304 and child[297:] == bytes(7), 'bounded empty-body wire only'
     # No available reports, ready work, provisions or accumulation outputs can introduce effects.
     assert parent[chapter_key(10)] == bytes(2)
     assert parent[chapter_key(14)] == bytes(12)
     assert parent[chapter_key(15)] == bytes(12)
     assert parent[chapter_key(16)] == b'\0'
-    assert set(result) == set(parent)
-    return result
+    return advance_no_reports(parent, child, bytes(7), digest(4*digest(b'\0')+digest(bytes(3))))
 
 
 def verify_observations(lines):

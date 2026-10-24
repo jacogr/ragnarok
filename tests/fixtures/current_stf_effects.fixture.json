@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_EFFECTS",
+  "files": {
+    "current-stf-effects.json": "64a644ca5c77dcfd33c7c5f84486f4c4db7e5468b32fbac64a92324073c8aed6"
+  },
+  "target": "current-stf-effects.json"
+}
