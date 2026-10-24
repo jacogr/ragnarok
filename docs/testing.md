@@ -79,7 +79,7 @@ For standalone branch verification, use **Actions → CI → Run workflow**, sel
 choose `smoke`, `unit`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `bench-storage`, `bench-storage-growth` or `full`
 (the default). `interop` runs all Interop jobs; `perf` runs all Perf jobs. The existing
 `ref-pvm` and `bench-pvm` selections remain available for individual PVM jobs.
-**Perf PVM** also runs automatically on master pushes. Its validated interpreted
+**Perf / PVM** also runs automatically on master pushes. Its validated interpreted
 [PVM speed comparison](../spec/pvm-benchmark-comparison.md) appears in the Actions
 run summary with raw artifacts, so no manual dispatch is needed after a merge. The same job also
 runs the frozen real-guest comparisons: sieve at 1k, 10k, 100k and 10 million; minimal
@@ -144,8 +144,8 @@ local verification does not substitute for Linux CI.
 prepared batches, read requests and complete maps. `make summary-storage-benchmark` appends its
 table to `SUMMARY_OUTPUT` and saves downloadable `build/tests/storage-benchmark/summary.md`.
 
-In Actions, **Perf Storage** sits beside **Perf PVM**. Master pushes, `perf`/`full` dispatch and
+In Actions, **Perf / Storage** sits beside **Perf / PVM**. Master pushes, `perf`/`full` dispatch and
 `ci:perf`/`ci:full` PR requests run the group. `bench-storage` dispatch selects comparison/resources;
-`bench-storage-growth` selects the independent Perf Storage Growth matrix and SDK controls.
+`bench-storage-growth` selects the independent Perf / Storage Growth matrix and SDK controls.
 Each job always renders a summary and retains JSON, CSV, Markdown and logs, including failures. Timing has
 no fixed CI speed threshold. See [the workload contract](../spec/storage-benchmark.md) for scope.

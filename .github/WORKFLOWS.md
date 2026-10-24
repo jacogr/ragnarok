@@ -9,11 +9,11 @@ the root README on the repository landing page.
 It runs the maintained Make targets on native Linux runners, plus macOS for binary builds,
 with separate jobs for source compilation, Python references/tooling, native units/corpora, runtime failures, compiler guards,
 E2E networking, JAM Tart telemetry interoperability and the Docker image build/smoke check.
-The **Build Docker** job runs on master pushes, full requests and manual `build`/`docker` requests,
+The **Build / Docker** job runs on master pushes, full requests and manual `build`/`docker` requests,
 and never publishes an image. A separate PVM
 reference job runs the pinned public-API probes and matching native suites for master pushes
 and full/Interop requests, or standalone manual `ref-pvm` requests. It explicitly
-selects the interpreter. **Perf PVM** measures validated workloads on master pushes and
+selects the interpreter. **Perf / PVM** measures validated workloads on master pushes and
 full/Perf requests, with a standalone `bench-pvm` scope also available, and publishes
 one speed table with raw samples. The current baseline compares Ragnarök
 and the PolkaVM interpreter; compiled comparisons are deferred. Full fuzzing CI remains future work.
@@ -33,7 +33,7 @@ Complete group requests expose concise aggregate checks: **Compile**, **Unit**, 
 including rejecting unexpected skips and cancellations. Standalone manual workload scopes
 (such as `ref-pvm` or `bench-storage`) run only that workload and omit the complete-group gate.
 
-**Build Linux** and **Build macOS** produce [relocatable binary archives](../docs/binaries.md)
+**Build / Linux** and **Build / macOS** produce [relocatable binary archives](../docs/binaries.md)
 for Linux x86-64 and macOS ARM64. The complete Build group runs on master/full requests and
 manual `build` requests. Each archive includes maintained native ABIs, licenses, a provenance
 manifest and a checksum; a separately unpacked copy must pass peer selftests before upload.

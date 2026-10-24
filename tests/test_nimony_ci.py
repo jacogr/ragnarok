@@ -196,7 +196,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertEqual(tuple(groups), PLAN.groups())
         self.assertIn('fail-fast: false', section)
         self.assertIn('E2E_GROUP: ${{ matrix.family.group }}', section)
-        self.assertIn('name: E2E ${{ matrix.family.name }}', section)
+        self.assertIn('name: E2E / ${{ matrix.family.name }}', section)
         self.assertIn('name: ${{ matrix.os }}-e2e-${{ matrix.family.group }}-${{ github.run_attempt }}', section)
         self.assertNotIn('needs:', section)
         gate = text.split('  e2e-status:\n', 1)[1].split('  pvm-reference:\n', 1)[0]
@@ -248,7 +248,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('{os: ubuntu-24.04, name: Linux, platform: linux-amd64}', section)
         self.assertIn('{os: macos-15, name: macOS, platform: macos-arm64}', section)
         self.assertIn('fail-fast: false', section)
-        self.assertIn('name: Build ${{ matrix.target.name }}', section)
+        self.assertIn('name: Build / ${{ matrix.target.name }}', section)
         self.assertIn('run: make package-binary', section)
         self.assertIn('if-no-files-found: error', section)
         self.assertIn('build/dist/ragnarok-${{ matrix.target.platform }}.tar.gz.sha256', section)
@@ -328,10 +328,10 @@ class NimonyCISafeguards(unittest.TestCase):
         jobs = re.findall(r'^  ([\w-]+):\n    if:', text, re.MULTILINE)
         index = jobs.index('pvm-reference')
         self.assertEqual(jobs[index:index+2], ['pvm-reference', 'telemetry-interop'])
-        self.assertIn('name: Interop PVM', text)
-        self.assertIn('name: Interop Telemetry', text)
-        self.assertIn('name: Perf PVM', text)
-        self.assertIn('name: Perf Storage', text)
+        self.assertIn('name: Interop / PVM', text)
+        self.assertIn('name: Interop / Telemetry', text)
+        self.assertIn('name: Perf / PVM', text)
+        self.assertIn('name: Perf / Storage', text)
         index = jobs.index('bench-pvm')
         self.assertEqual(jobs[index:index+2], ['bench-pvm', 'bench-storage'])
         self.assertEqual(jobs[index:index+3], ['bench-pvm', 'bench-storage', 'bench-storage-growth'])
@@ -356,7 +356,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text=(ROOT/'.github/workflows/ci.yml').read_text()
         short=text.split('  bench-storage:\n',1)[1].split('  bench-storage-growth:\n',1)[0]
         growth=text.split('  bench-storage-growth:\n',1)[1].split('  perf-status:\n',1)[0]
-        self.assertIn('name: Perf Storage Growth',growth)
+        self.assertIn('name: Perf / Storage Growth',growth)
         for trigger in ("github.event_name == 'push'", "inputs.suite == 'perf'", "inputs.suite == 'bench-storage-growth'",
                         "inputs.suite == 'full'", "github.event.label.name == 'ci:perf'", "github.event.label.name == 'ci:full'"):
             # An explicit short-only dispatch remains short-only; group requests still execute both jobs.
