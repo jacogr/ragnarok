@@ -7,7 +7,8 @@ import ../../src/codec/header
 import ../../src/pvm/[initialize, machine]
 import ../support/current_stf_epoch_context as epoch
 import ../support/report_context as reportContext
-import ../support/[current_stf_transfer_context, current_stf_lifecycle_context, current_stf_supervised_context]
+import ../support/[current_stf_transfer_context, current_stf_lifecycle_context,
+    current_stf_supervised_context, current_stf_privileges_context]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[provider, genesis, parameters]
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
@@ -122,6 +123,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 155..160: second = blessAllowanceCode(mode) # Nonempty manager-selected dictionaries affect subsequent block inputs.
   of 148..154: second = childRecreationCode(mode, replacement,
       codeLength) # Real retirement clears the old incarnation before reserved-ID reuse.
   of 141..147: second = childRetirementCode(mode, replacement,
@@ -242,6 +244,8 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # Actual protected-only funds make the post-reassignment authority check distinguishable from ordinary funding.
     options.secondBalance = 0
     options.secondSupervisorBalance = 1000000
+  if mode in 155..160:
+    options.manager = (if mode == 160: 42'u32 else: 99'u32) # Authority is committed before the first signed input.
   if mode in 77..81:
     # Authority belongs to one actual original manager; other roles and all allowances remain empty.
     options.manager = (if mode == 81: 42'u32 else: 99'u32)
@@ -587,7 +591,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 155
+      assert mode >= 0 and mode < 161
       bodies = @[]
       slots = @[]
     else:
@@ -596,7 +600,7 @@ proc main() {.raises.} =
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
-      106, 111, 112, 117, 122, 130, 135, 140, 147, 154]
+      106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:
