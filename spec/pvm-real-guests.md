@@ -118,3 +118,24 @@ identities. Tables now retain CPU mean/sample SD, min–max and wall medians in
 addition to median ratios and scoped pricing/first-execution costs. Format,
 inventory, workflow YAML parsing and 76 affected Python benchmark/CI safeguard
 tests passed. This local result does not claim an exact-head Linux CI pass.
+
+## Fixed-width scalar copies
+
+The next checked M1 Max investigation sampled the maintained indirect-call guest separately
+from timing runs. Scalar reads/writes accounted for the largest sampled subtree; dynamic target
+validation was smaller. The private chunk helpers now express complete two-, four- and eight-byte
+copies with constant lengths. Clang can lower these unaligned-safe copies directly. Fragment
+lengths retain the bounded variable copy, and chunk-crossing/big-endian accesses retain the byte
+fallback. Complete permission preflight and clone-before-write ownership are unchanged.
+
+A paired comparison against merged master `8ec989d6`, using the pinned checked ARC/Clang ThinLTO
+profile, retained two reversed passes over all three maintained families at both sizes and all
+three Ragnarök pricing modes: 936 full-state checked executions, including warmups. Large
+indirect-call CPU medians were 35.852 to 32.887 ms dynamically, 34.833 to 32.390 ms planned, and
+35.038 to 32.061 ms with lazy memo pricing (about 7–8.5% lower). Memory fill changed by -0.4%
+to +1.3%; sieve by -1.3% to -2.6%. Those smaller differences remain unproven. Initialization and
+first-cold samples remain separate in the raw process records; this is no universal speed claim.
+The existing independent scalar boundary/writer/snapshot suites cover admitted widths, unaligned
+accesses, all page-split fragment lengths, chunk crossings, faults and retained predecessor bytes.
+Raw paired samples, exact source identities and diagnostic profile are retained under
+`build/pvm11/scalar-copy/` and `build/pvm11/profile/`. Local observations are distinct from Linux CI.
