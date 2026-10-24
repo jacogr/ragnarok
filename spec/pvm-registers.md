@@ -181,3 +181,35 @@ profiles and memory/control/host/retry composition remain required.
 
 The unchanged frozen scalar/chain oracles now qualify complete invocation policies and both
 callback forms; see [register policy reference](pvm-register-policy-reference.md).
+
+
+## Shared typed arithmetic expansion, 2026-10-24
+
+The internal `src/pvm/internal/register_ops.nim` module owns the existing opcode
+set and arithmetic helpers. Its typed `computeRegisterWrite` template computes a
+bounded destination and copied value without constructing a tagged public result.
+Both outputs are committed only after success; default/invalid/unsupported inputs
+leave them unchanged. All source operands and conditional fallbacks are read before
+either output is published. No program representation, mutable owner, unchecked
+access or arithmetic rule changes.
+
+Charged execution expands this computation at its private register dispatch and
+applies exactly one write after the existing capability and whole-block gas checks.
+The public `registerOnlyOpcode`, `evaluateRegisterWrite`, `applyRegisterWrite` and
+both `evaluateRegisters` signatures and guarded result contracts remain unchanged.
+Their wrapper shares the same arithmetic implementation. Helpers remain private
+to the internal module; the module retains no execution state.
+
+The independent frozen corpus now also checks the internal scalar outputs for all
+38,977 witnesses across 85 opcodes. Sentinel controls check atomic refusal for
+default instructions, invalid PCs and every valid out-of-scope opcode. Existing
+register chains, charged-step, cache/ARC, mixed-program and host-reentry suites
+remain the affected consumers. Snapshot census instrumentation and benchmark/
+analyzer source identities recursively include internal Nim modules; a temporary
+source-tree control verifies nested bytes and both original/generated hashes.
+
+This is a performance candidate pending paired Linux CI qualification. Generated
+C removes evaluator calls from private dispatch but expands its code; that alone
+is not a speed claim. CPU guest medians, synthetic execution clocks and an
+identical-source control must establish the final tradeoff before publication.
+M1 framing completion and the remaining full-JAM parity gates are unchanged.
