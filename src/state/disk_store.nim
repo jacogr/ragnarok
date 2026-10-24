@@ -14,7 +14,8 @@ import ../codec/[state_trie, bounded]
 type
   DiskStoreError* {.pure.} = enum ## Selected failures expose reasons alone; roots grant no block authority.
     Uninitialized, None, Busy, TrustMismatch, StaleSnapshot, PolicyMismatch, ContextRequired,
-    StateFailure, ExportFailure, FileFailure, RepositoryFailure, NativeFailure, PagedFailure, GenerationOverflow
+    StateFailure, ExportFailure, FileFailure, RepositoryFailure, NativeFailure, PagedFailure,
+      GenerationOverflow, RetirementPending, RetirementNotPending
   DiskStoreResult*[T] = object ## Guard every selected stage before extracting a success or nested reason.
     case status: DiskStoreError
     of None: completed: T
@@ -33,9 +34,12 @@ type
     previous: FullPagedManifest
     context: seq[byte]
   PagedDiskCache = ref object ## Last confirmed metadata is owned and passive; the existing worker lease excludes every shared alias during IO.
-    healthy: bool
+    healthy, pending: bool
     selected, previous: FullPagedManifest
     context: seq[byte]
+  PreparedPagedRetirement* = object ## Passive metadata binds one cache incarnation and exact current/old manifests; it owns no native pin.
+    owner: nil PagedDiskCache
+    current, previous: FullPagedManifest
   DiskStateStore* = object ## One noncopyable selected backend publishes ordinary immutable complete-state views.
     journal: FileRepository
     paged: FullPagedWriter
@@ -399,6 +403,8 @@ proc commit*(store: var DiskStateStore, expected, target: StateStoreSnapshot,
     # Actual native selection, authoring, barriers and uncertainty detection occur only under the caller's excluded IO lease.
     let cache = store.pagedCache
     assert cache != nil # Successful cached snapshot admission above proves the private active-cache invariant.
+    if cache.pending:
+      return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.RetirementPending) # Bound authored storage before another candidate can be created.
     if not contextFits(uint64(context.len), store.pagedConfig, true):
       return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
           fileReason: FileError.LimitExceeded)
@@ -448,6 +454,7 @@ proc commit*(store: var DiskStateStore, expected, target: StateStoreSnapshot,
       return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
           fileReason: FileError.RecoveryRequired)
     cache.previous = selected.value
+    cache.pending = true
     cache.context = ownedContext
     cache.selected = published.value.manifest
     store.state = retained # Confirmed native success precedes the exact target map and metadata cache adoption.
@@ -757,7 +764,8 @@ proc openLocalPagedDiskStateStore*(store: var DiskStateStore, path: string,
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
         fileReason: envelope.fileError)
   store.pagedCache = PagedDiskCache(healthy: true, selected: selected.value,
-    previous: envelope.value.previous, context: envelope.value.context)
+    previous: envelope.value.previous, pending: envelope.value.previous.initialized,
+    context: envelope.value.context)
   store.state = restored.value
   store.pagedConfig = config
   store.pagedConfig.root = selected.value.root
@@ -767,3 +775,56 @@ proc openLocalPagedDiskStateStore*(store: var DiskStateStore, path: string,
   adopted = true
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None,
       completed: store.state.snapshot.value)
+
+func ready*(job: PreparedPagedRetirement): bool =
+  ## Read only passive job metadata; no pin or live writer borrow escapes its owner.
+  job.owner != nil and job.current.initialized and job.previous.initialized
+func pagedRetirementPending*(store: DiskStateStore): bool =
+  ## Host observation is memory-only and requires the existing graph exclusion whenever a worker owns the store.
+  let cache = store.pagedCache
+  if cache == nil: return false # A default/closed facade owns no pending descriptor.
+  store.pagedMode and cache.pending
+proc preparePagedRetirement*(store: DiskStateStore): DiskStoreResult[PreparedPagedRetirement] =
+  ## Capture exact authenticated metadata while idle; the job cannot be replayed against a reopened incarnation.
+  let cache = store.pagedCache
+  if not store.opened: return DiskStoreResult[PreparedPagedRetirement](
+      status: DiskStoreError.Uninitialized)
+  if cache == nil: return DiskStoreResult[PreparedPagedRetirement](
+      status: DiskStoreError.RetirementNotPending)
+  if not store.pagedMode or not cache.pending:
+    return DiskStoreResult[PreparedPagedRetirement](status: DiskStoreError.RetirementNotPending)
+  if not cache.healthy: return DiskStoreResult[PreparedPagedRetirement](
+    status: DiskStoreError.FileFailure,
+    fileReason: FileError.RecoveryRequired)
+  DiskStoreResult[PreparedPagedRetirement](status: DiskStoreError.None,
+    completed: PreparedPagedRetirement(owner: cache, current: cache.selected,
+        previous: cache.previous))
+proc commitPagedRetirement*(store: var DiskStateStore,
+    job: PreparedPagedRetirement): DiskStoreResult[FullPagedReclamation] =
+  ## Excluded IO retires one exact predecessor; failures never undo an already confirmed canonical publication.
+  let cache = store.pagedCache
+  if not store.opened: return DiskStoreResult[FullPagedReclamation](
+      status: DiskStoreError.Uninitialized)
+  if not job.ready or cache == nil or cache != job.owner:
+    return DiskStoreResult[FullPagedReclamation](status: DiskStoreError.StaleSnapshot)
+  if not cache.pending: return DiskStoreResult[FullPagedReclamation](
+      status: DiskStoreError.RetirementNotPending)
+  if not cache.healthy: return DiskStoreResult[FullPagedReclamation](
+    status: DiskStoreError.FileFailure,
+    fileReason: FileError.RecoveryRequired)
+  let captured = job.current.bytes
+  let selected = cache.selected.bytes
+  if captured.error != FullPagedError.None or selected.error != FullPagedError.None:
+    return DiskStoreResult[FullPagedReclamation](status: DiskStoreError.StaleSnapshot)
+  if captured.value != selected.value:
+    return DiskStoreResult[FullPagedReclamation](status: DiskStoreError.StaleSnapshot) # Reused old jobs refuse passively without quarantining a valid newer source.
+  let outcome = store.paged.reclaimExpectedEpoch(job.previous, job.current)
+  if outcome.error != FullPagedNativeError.None:
+    # A foreign immutable reader is ordinary backpressure. Other native uncertainty requires explicit reopen.
+    let busy = outcome.error == FullPagedNativeError.FileFailure and outcome.fileError == FileError.Busy
+    if not busy: store.failPaged()
+    return nativeFailed[FullPagedReclamation, FullPagedReclamation](outcome)
+  cache.pending = false
+  if outcome.value.retirementError != FileError.None:
+    store.failPaged() # Confirmed removal remains a successful receipt with its separate final close diagnostic.
+  DiskStoreResult[FullPagedReclamation](status: DiskStoreError.None, completed: outcome.value)

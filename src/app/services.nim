@@ -6,7 +6,7 @@
 ## transport callbacks must retire before close/destruction. A bounded chain snapshot is shared once.
 ## After starting preparation, explicitly close to join before any borrowed input or shared alias retires.
 
-import std/[syncio, strutils, base64, assertions]
+import std/[syncio, strutils, base64, assertions, monotimes, times]
 import ../state/logical_continuation
 import ./options
 import ./[checkpoint_recovery, checkpoint_trust]
@@ -45,7 +45,7 @@ import ./chain as application_chain
 import ../state/[store, disk_store, accumulation_finalization, accumulation_completion,
     accumulation_publication, accumulation_current_update]
 import ../storage/[file_repository, node_repository, node_records, record_codec, database_identity,
-    managed_repository, managed_manifest]
+    managed_repository, managed_manifest, full_paged_store]
 import ../chain/provider
 import ../telemetry/[wire, client, chain]
 import ../quic/transport
@@ -92,7 +92,7 @@ func admissionFailure*(admission: LogicalProofAdmission): StateProofAdmission {.
 
 type
   ServiceDiskOperation {.pure.} = enum ## One private tag selects the receipt/cleanup path for the shared native disk slot.
-    Publication, Maintenance, CurrentPublication
+    Publication, Maintenance, CurrentPublication, Retirement
 
 type Services* = object             ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
   rpc*: Server
@@ -116,6 +116,10 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   disk: DiskStateStore
   diskWorker: DiskPublicationWorker
   diskMaintenance: PreparedDiskMaintenance
+  diskRetirement: PreparedPagedRetirement
+  retirementCompletion: DiskPublicationCompletion
+  retirementDelayed: bool
+  retirementAttempt: MonoTime
   maintenanceStage: DiskChainResult[PreparedDiskMaintenance]
   maintenanceCompletion: DiskPublicationCompletion
   startupMaintenance: DiskChainResult[ManagedCompaction]
@@ -157,6 +161,8 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.rpcProofTicket)
   `=wasMoved`(services.diskWorker)
   `=wasMoved`(services.disk)
+  `=wasMoved`(services.diskRetirement)
+  `=wasMoved`(services.retirementCompletion)
   `=wasMoved`(services.diskMaintenance)
   `=wasMoved`(services.maintenanceStage)
   `=wasMoved`(services.maintenanceCompletion)
@@ -190,6 +196,8 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.rpcProofTicket)
   `=destroy`(services.diskWorker) # Join must precede every disk/canonical/publication alias retirement.
   `=destroy`(services.disk)
+  `=destroy`(services.diskRetirement)
+  `=destroy`(services.retirementCompletion)
   `=destroy`(services.diskMaintenance)
   `=destroy`(services.maintenanceStage)
   `=destroy`(services.maintenanceCompletion)
@@ -212,6 +220,27 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.adoption)
   `=destroy`(services.currentAdoption)
 
+proc finishDiskRetirement(services: var Services, completion: DiskPublicationCompletion) =
+  ## Cleanup has its own receipt: never replace a completed canonical publication with a cleanup failure.
+  services.retirementCompletion = completion
+  if completion.kind == DiskCompletionKind.Retired:
+    let outcome = completion.retirementValue
+    if outcome.error == DiskStoreError.FileFailure and outcome.fileError == FileError.Busy:
+      services.retirementDelayed = true
+      services.retirementAttempt = getMonoTime() # A foreign immutable reader backpressures authoring without an IO spin.
+    elif outcome.error != DiskStoreError.None:
+      services.diskFaulted = true
+    elif outcome.value.retirementError != FileError.None:
+      services.diskFaulted = true # Confirmed removal remains visible independently from final close uncertainty.
+    else:
+      services.retirementDelayed = false # The next ordinary publication may now author one new artifact.
+  else:
+    assert completion.kind == DiskCompletionKind.NotExecuted # Joined queued work entered no IO and leaves the target pending.
+  services.diskRetirement = default(PreparedPagedRetirement)
+  services.diskOperation = ServiceDiskOperation.Publication
+  services.publishing = false
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
 proc finishDiskMaintenance(services: var Services, completion: DiskPublicationCompletion) =
   ## Joined/collected maintenance ends the physical lease without changing canonical/RPC state or adoption receipts.
   services.maintenanceCompletion = completion
@@ -268,6 +297,9 @@ proc finishDiskPublication(services: var Services, completion: DiskPublicationCo
   ## Called only after collect/join retires all native temporaries; install before reopening RPC access.
   if not services.publishing: return
   case services.diskOperation
+  of ServiceDiskOperation.Retirement:
+    services.finishDiskRetirement(completion)
+    return # Retiring old physical storage never installs another canonical or RPC head.
   of ServiceDiskOperation.Maintenance:
     services.finishDiskMaintenance(completion)
     return # Physical maintenance has no application installation outcome.
@@ -524,6 +556,10 @@ proc setupDisk(services: var Services, options: Options, limits: StateStoreLimit
       let created = services.initializeSelectedDisk(options.stateDatabase)
       if created.error != DiskChainError.None:
         return false # O_EXCL prevents a failed open from overwriting any existing or concurrently created file.
+  services.diskRetirement = default(PreparedPagedRetirement)
+  services.retirementCompletion = default(DiskPublicationCompletion)
+  services.retirementDelayed = false
+  services.retirementAttempt = default(MonoTime)
   services.diskMaintenance = default(PreparedDiskMaintenance)
   services.maintenanceStage = default(DiskChainResult[PreparedDiskMaintenance])
   services.maintenanceCompletion = default(DiskPublicationCompletion)
@@ -728,9 +764,9 @@ proc applyAccumulation*(services: var Services, source: PreparedFinalAccumulatio
     services.canonical.applyAccumulation(source, limits) # Disabled/default canonical owners still use existing guarded adoption.
 
 func accumulationStage*(services: Services): AccumulationHandoffStage =
-  ## Maintenance preserves the completed adoption but delays its graph-bearing acknowledgement until the lease ends.
-  if services.publishing and services.diskOperation ==
-      ServiceDiskOperation.Maintenance: return AccumulationHandoffStage.Publishing
+  ## Physical cleanup preserves completed adoption and delays graph-bearing acknowledgement until the lease ends.
+  if services.publishing and services.diskOperation in
+      {ServiceDiskOperation.Maintenance, ServiceDiskOperation.Retirement}: return AccumulationHandoffStage.Publishing
   services.adoption.stage
 
 proc enqueueAccumulation*(services: var Services, source: PreparedFinalAccumulation,
@@ -763,8 +799,9 @@ proc enqueueBlockInput*(services: var Services, input: var BlockInput, id: Block
   input.enqueue(id, services.canonical, services.adoption, composition)
 
 func currentAccumulationPhase*(services: Services): CurrentHandoffPhase =
-  ## Maintenance delays graph-bearing acknowledgment until its native lease ends, just like ordinary publication.
-  if services.publishing and services.diskOperation == ServiceDiskOperation.Maintenance:
+  ## Physical cleanup delays graph-bearing acknowledgment until the shared native lease ends.
+  if services.publishing and services.diskOperation in {ServiceDiskOperation.Maintenance,
+      ServiceDiskOperation.Retirement}:
     return CurrentHandoffPhase.Publishing
   services.currentAdoption.phase
 
@@ -1153,6 +1190,40 @@ proc beginDiskMaintenance*(services: var Services): bool =
   services.diskOperation = ServiceDiskOperation.Maintenance
   services.publishing = true # Every existing canonical/RPC/checkpoint gate now covers the maintenance lease too.
   true
+func diskRetirementCompletion*(services: Services): DiskPublicationCompletion {.requires: not services.publishing.} =
+  ## Preserve actual cleanup success, Busy or failure after collection or joined shutdown; core publication receipts remain separate.
+  services.retirementCompletion
+proc beginDiskRetirement*(services: var Services): bool =
+  ## Borrow no graph until publication/preparation/proof exclusion and the RPC pause have all succeeded.
+  if not services.started or not services.diskEnabled or not services.diskPaged or
+      services.diskFaulted: return false
+  if services.proofing or services.preparing or services.publishing or
+      services.rpc.chainPaused: return false
+  if not services.disk.pagedRetirementPending: return false
+  services.rpcLease = services.rpc.pauseChain()
+  if services.chainRpc and services.rpcLease == nil: return false
+  let prepared = preparePagedRetirement(services.disk)
+  if prepared.error != DiskStoreError.None:
+    services.diskFaulted = true
+    discard services.rpc.resumeChain(services.rpcLease)
+    services.rpcLease = nil
+    return false
+  services.diskRetirement = prepared.value
+  services.retirementCompletion = default(DiskPublicationCompletion)
+  let admitted = services.diskWorker.submitRetirement(services.disk, services.diskRetirement)
+  if admitted.error != DiskWorkerError.None:
+    services.diskRetirement = default(PreparedPagedRetirement)
+    services.diskFaulted = true
+    discard services.rpc.resumeChain(services.rpcLease)
+    services.rpcLease = nil
+    return false
+  services.diskTicket = admitted.value
+  services.diskOperation = ServiceDiskOperation.Retirement
+  services.publishing = true # Existing gates cover the same one-slot graph lease through collect or joined close.
+  true
+proc retirementDue(services: Services): bool =
+  ## One retry per second bounds repeated foreign-reader pin checks; no wall-clock/protocol time enters state semantics.
+  not services.retirementDelayed or (getMonoTime()-services.retirementAttempt).inMilliseconds >= 1000
 proc rpcProofLimits(): ProofQueryLimits =
   ## Explicit local resource ceilings bound complete-map generation, proof verification and detached wire copies.
   ProofQueryLimits(map: StateTrieLimits(items: ElementLimit(65536), nodes: TrieNodeLimit(131071),
@@ -1227,6 +1298,11 @@ proc tick*(services: var Services, peers: uint32) =
       return # Poll only scalar worker state while RPC/canonical graphs remain borrowed.
     services.finishDiskPublication(services.diskWorker.collect(services.diskTicket))
   if services.diskEnabled:
+    if services.diskPaged and not services.diskFaulted and services.disk.pagedRetirementPending:
+      # Retire the authenticated predecessor before staging the next candidate; pending handoffs retain their bounded slot.
+      if services.retirementDue(): discard services.beginDiskRetirement()
+      services.ui.tick()
+      return
     if services.currentAdoption.phase == CurrentHandoffPhase.Pending and
         services.stageCurrentDiskPublication():
       let admitted = services.diskWorker.submit(services.disk, services.currentDiskPublication)

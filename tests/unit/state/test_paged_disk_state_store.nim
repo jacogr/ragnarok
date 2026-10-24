@@ -3,7 +3,9 @@
 
 ## The complete disk facade preserves exact owned state/context, retained application history and native uncertainty on paged storage.
 # @@Verification={"arc":"paged_disk_state_store_arc_release"}
-import std/[assertions, syncio]
+import std/[assertions, syncio, monotimes, times]
+import std/posix/posix
+import ../../../src/app/disk_worker
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture,
   disk_history_context]
 import ../../../src/state/[store, paged_state, disk_store]
@@ -87,6 +89,9 @@ proc normal() =
   assert uint64(disk.generation.value) == 2 and disk.snapshotContext.value == @[9'u8]
   assert disk.restoreDiskSnapshot(source.commitment.root, statePolicy()).value.lookup(key(
       0)).value.bytes == @[5'u8]
+  let retirement = preparePagedRetirement(disk).value
+  assert disk.commitPagedRetirement(retirement).error == DiskStoreError.None
+  assert not disk.pagedRetirementPending # Historical maps below must now come entirely from the selected union, not the removed artifact.
   let before = getOccupiedMem()
   for iteration in 0..<1000:
     # Independent historical complete maps and detached context values must release every temporary owner.
@@ -289,6 +294,118 @@ proc malformedEnvelope() {.raises.} =
     assert rejected.error == DiskStoreError.FileFailure and rejected.fileError ==
         FileError.WrongIdentity
     assert not disk.opened and readFile(directory & "/CURRENT") == before
+proc retirementBackpressure() =
+  ## Pending retirement blocks the next artifact; stale and reopened jobs cannot mutate a valid later incarnation.
+  let source = state(5)
+  let target = state(9)
+  let successor = state(11)
+  let config = configuration(source, statePolicy())
+  let directory = path("retirement-backpressure")
+  var disk = default(DiskStateStore)
+  defer:
+    if disk.opened: discard disk.close # Every admitted native owner is explicitly retired.
+  assert initializePagedDiskStateStore(disk, directory, source, config, transport(config), [
+      7'u8]).error == DiskStoreError.None
+  assert not disk.pagedRetirementPending
+  assert preparePagedRetirement(disk).error == DiskStoreError.RetirementNotPending
+  assert disk.commit(source, target, [9'u8], [source]).error == DiskStoreError.None
+  let job = preparePagedRetirement(disk).value
+  assert job.ready and disk.pagedRetirementPending
+  resetIo()
+  assert disk.commit(target, successor, [11'u8], [target]).error == DiskStoreError.RetirementPending
+  assert ioCalls(readIo) == 0 and ioCalls(writeIo) == 0
+  assert disk.commitPagedRetirement(default(PreparedPagedRetirement)).error ==
+      DiskStoreError.StaleSnapshot
+  assert disk.commitPagedRetirement(job).error == DiskStoreError.None
+  assert not disk.pagedRetirementPending
+  assert disk.commit(target, successor, [11'u8], [target]).error == DiskStoreError.None
+  resetIo()
+  assert disk.commitPagedRetirement(job).error == DiskStoreError.StaleSnapshot
+  assert ioCalls(readIo) == 0 and sameStateSnapshot(disk.snapshot.value, successor)
+  let next = preparePagedRetirement(disk).value
+  assert disk.close == FileError.None
+  assert openLocalPagedDiskStateStore(disk, directory, config.chain, statePolicy(), config,
+      transport(config)).error == DiskStoreError.None
+  assert disk.commitPagedRetirement(next).error == DiskStoreError.StaleSnapshot
+  assert disk.commitPagedRetirement(preparePagedRetirement(disk).value).error == DiskStoreError.None
+  assert disk.close == FileError.None
+  assert openLocalPagedDiskStateStore(disk, directory, config.chain, statePolicy(), config,
+      transport(config)).error == DiskStoreError.None
+  let absent = disk.commitPagedRetirement(preparePagedRetirement(disk).value)
+  assert absent.error == DiskStoreError.None and absent.value.alreadyAbsent
+  assert not disk.pagedRetirementPending and disk.snapshot.value.lookup(key(0)).value.bytes == @[11'u8]
+proc waitRetirement(worker: var DiskPublicationWorker) =
+  ## The host observes only synchronized scalars while the worker borrows every store/job alias.
+  let started = getMonoTime()
+  while worker.phase != DiskWorkerPhase.Done:
+    assert (getMonoTime()-started).inSeconds < 20
+    var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
+    var remaining = default(Timespec)
+    discard nanosleep(requested, remaining) # Yield under a bounded monotonic test deadline.
+proc retirementWorker(mode, failure: int) {.raises.} =
+  ## Collect/join/immediate shutdown preserve a typed retirement receipt for success, Busy and actual IO failure.
+  let source = state(5)
+  let target = state(9)
+  let config = configuration(source, statePolicy())
+  let directory = path("retirement-worker-" & $mode & "-" & $failure)
+  var disk = default(DiskStateStore)
+  var reader = default(FullPagedReader)
+  var worker = default(DiskPublicationWorker)
+  defer:
+    discard worker.close() # Join before any borrowed store/job graph can retire, even after an assertion path.
+    resetIo()
+    if reader.opened: discard reader.close
+    if disk.opened: discard disk.close
+  assert initializePagedDiskStateStore(disk, directory, source, config, transport(config), [
+      7'u8]).error == DiskStoreError.None
+  if failure == 1:
+    # The independent old reader physically excludes unlink without borrowing the facade's resident graph.
+    assert openFullPagedReader(reader, directory, config).error == FullPagedNativeError.None
+  assert disk.commit(source, target, [9'u8], [source]).error == DiskStoreError.None
+  var job = preparePagedRetirement(disk).value
+  let retained = disk.snapshot.value
+  assert worker.start()
+  resetIo()
+  if failure == 2: armIo(readIo, 0, 1, failedIo) # The first actual retirement source fence refuses on the IO worker.
+  let admitted = worker.submitRetirement(disk, job)
+  assert admitted.error == DiskWorkerError.None
+  var unready = default(PreparedPagedRetirement)
+  assert worker.submitRetirement(disk, unready).error == DiskWorkerError.Busy
+  assert worker.collect(default(DiskPublicationTicket)).kind == DiskCompletionKind.Uninitialized
+  var completion = default(DiskPublicationCompletion)
+  if mode == 2:
+    completion = worker.close() # Only queued shutdown may report NotExecuted; entered IO must retain its actual result.
+  else:
+    waitRetirement(worker)
+    if mode == 0:
+      completion = worker.collect(admitted.value)
+      assert worker.collect(admitted.value).kind == DiskCompletionKind.Uninitialized
+      assert worker.close.kind == DiskCompletionKind.Uninitialized
+    else:
+      completion = worker.close() # Joined Done shutdown must route retirement, never a default ordinary publication result.
+  if completion.kind == DiskCompletionKind.Retired:
+    # Actual retirement outcomes stay in their own guarded variant after either collect or joined close.
+    let outcome = completion.retirementValue
+    if failure == 0:
+      assert outcome.error == DiskStoreError.None and not disk.pagedRetirementPending
+    elif failure == 1:
+      assert outcome.error == DiskStoreError.FileFailure and outcome.fileError == FileError.Busy
+      assert disk.pagedRetirementPending and sameStateSnapshot(disk.snapshot.value, target)
+    else:
+      assert outcome.error == DiskStoreError.FileFailure and outcome.fileError ==
+          FileError.IoFailure
+      assert pendingIo() == 0 and disk.snapshot.error == DiskStoreError.FileFailure
+  else:
+    assert mode == 2 and completion.kind == DiskCompletionKind.NotExecuted
+    assert disk.pagedRetirementPending # No IO entry cannot claim cleanup or fabricate a successful publication.
+  resetIo()
+  assert retained.lookup(key(0)).value.bytes == @[9'u8]
+  if reader.opened: assert reader.close == FileError.None
+  assert disk.close == FileError.None
+  assert openLocalPagedDiskStateStore(disk, directory, config.chain, statePolicy(), config,
+      transport(config)).error == DiskStoreError.None
+  assert disk.commitPagedRetirement(preparePagedRetirement(disk).value).error == DiskStoreError.None
+  assert disk.snapshot.value.lookup(key(0)).value.bytes == @[9'u8]
 proc main() {.raises.} =
   ## Native facade behavior and complete application context restoration share one supported runner and exact fixture contract.
   normal()
@@ -298,6 +415,10 @@ proc main() {.raises.} =
   cachedMetadata()
   envelopeWitness()
   malformedEnvelope()
+  retirementBackpressure()
+  for mode in 0..2:
+    # Every receipt path has success, genuine foreign-pin backpressure and actual IO refusal controls.
+    for failure in 0..2: retirementWorker(mode, failure)
   echo "paged disk state store PASS"
 try:
   main()
