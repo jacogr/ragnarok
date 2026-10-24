@@ -457,3 +457,45 @@ across every size/depth/cache case and every heap/descriptor sample retires exac
 receipt records2,8,72 or2048 streamed entries as appropriate. Swap and OOM/OOM-kill counters remain
 zero; actual reclaim-limit events reach23,245. Source/provider/binary and exact selected-file
 identities are reverified. The same optional-kernel-peak and concrete-profile limitations apply.
+
+## Full StateStore consumer transport
+
+The state-layer paged_state module prepares complete existing StateStore snapshots for the full
+paged backend and restores ordinary resident stores from a checked root. PagedStateLimits bound
+input snapshots, aggregate staging records/value bytes before deduplication, and final unique
+artifact geometry separately. All retained snapshots must share the selected snapshot's exact
+complete-map/mutation policy. Metadata/count preflight precedes exported byte/record allocation.
+Complete hashes sort the physical union; duplicates require equal complete physical fields.
+Repeated logical roots must agree in every complete-map count.
+
+PreparedPagedState owns private immutable detached transport and retains no original map, native
+owner or callback. Copied root claims and mutable producer outputs cannot modify its backing.
+Its owned producer can be used for explicit native replay cleanup after source maps retire.
+Initialization requires the independently selected native root to match the prepared complete
+snapshot. Replacement requires exact expected source manifest bytes. These helpers keep native
+writer/candidate retirement caller-owned, including failed acquired owners and forensic candidates.
+Confirmed publication receipts retain their separate retirementError/writerUsable diagnostics;
+a post-confirmation close error never becomes an ambiguous publication failure.
+
+restorePagedStateStore preflights copied root counts against independently selected StateStore
+limits, stages owned entry copies, requires successful complete streaming, constructs an ordinary
+StateStore and recomputes its complete-map commitment against the caller's expected root. No
+partial map escapes failure. Retained roots and an empty selected root over nonempty history restore
+independently. Restored snapshots/forks preserve existing sorted iteration, present-empty values
+and immutable lifetime after every native owner closes. The consumer does not implicitly mutate
+an application memory head: build a private target, prepare/publish the native candidate, then
+adopt memory only after confirmed publication.
+
+This transport intentionally materializes bounded resident records and complete maps under caller
+policy. Its memory contract is separate from the native storage-only64MiB qualification. The full
+V1 paged selection also contains no application checkpoint/head/history context binding; automatic
+disk-chain startup/layout flags remain a separate open integration item. Existing context-required
+application storage paths are unchanged. This is complete provided-map transport, not completion
+of JAM state serialization or whole-client parity.
+
+The paged_state suite covers independent complete roots, record/root deduplication, policy/staging/
+image quota refusal, detached producer outputs, full root replacement, historical/empty restoration,
+ordinary retained memory views/forks, unknown roots, every observed native consumer read failure,
+strict reopen and every initialization close boundary including confirmed retirement diagnostics.
+1000 prepare/restore/release cycles retain52,016 ->52,016 occupied bytes. Existing StateStore tests
+pass; compiler controls reject private transport/result fields and partial ProofView-as-full input.

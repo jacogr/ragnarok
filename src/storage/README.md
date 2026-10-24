@@ -480,3 +480,8 @@ Full native readers also lend sorted complete-root entries through synchronous v
 callbacks, with copied rootInfo counts and per-call ceilings that only tighten inherited policy.
 This supports complete StateStore transport while preserving the native pin and bounded storage
 working set. Consumers stage and own their requested copies; partial delivery is never success.
+
+The state-layer paged_state consumer prepares immutable bounded full StateStore transport and
+restores ordinary complete maps from checked paged roots, with independent root recomputation.
+Native writer/candidate lifetimes stay explicit. Resident consumer copies and application
+checkpoint/head-context startup remain separate from the storage-only working-set qualification.
