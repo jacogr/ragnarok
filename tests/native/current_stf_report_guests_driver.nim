@@ -411,11 +411,12 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       for service in children:
         assert before.stateSnapshot.lookup(chapterServiceKey(StateChapter(255), service)).error ==
             StateStoreError.MissingKey
-    if (mode in 123..130 or mode in 141..154) and uint32(before.slot) == 3:
-      # Only the explicitly requested reserved77 may be born; full-map comparison rejects any other identity or debit.
+    if mode in 123..130 or mode in 141..154:
+      # Reserved77 is a fixed authored identity at any absolute birth/retirement slot, including epoch-boundary recreation.
+      children = @[]
       let stored = snapshot.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77)))
       if stored.error == StateStoreError.None: children.add(ServiceIndex(77))
-      else: assert stored.error == StateStoreError.MissingKey
+      else: assert stored.error == StateStoreError.MissingKey # A selected retirement or ordinary rollback leaves no declared child.
     var services = currentNamespaceServices(snapshot, seeds)
     if mode in 62..71 or mode in 87..91:
       # Materialize only the explicitly authored R identity, never infer arbitrary namespace entries from raw hashes.

@@ -1,5 +1,16 @@
 # Accumulation solicit host
 
+## Current complete STF publication
+
+The complete current STF path now applies bounded modified-account conflict and
+account selection before publishing supervised effects. Independent signed
+whole-map cases cover this host and selected panic/checkpoint behavior; see
+[supervised conflicts](current-stf-supervised-conflicts.md) and
+[the coordinated current status](graypaper-unreleased-upgrade.md#current-whole-map-accumulation-evidence).
+The earlier host-only/legacy batch publication gates recorded below remain valid
+for those narrower APIs, whose Unsupported ancestry guards are unchanged. They do
+not describe the current complete STF path or establish full JAM wire parity.
+
 ## Current unreleased Gray Paper contract
 
 Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, `pvm_invocations.tex`,
@@ -11,15 +22,15 @@ from storage/preimage namespaces.
 Current self mutations preserve r8/r9 and accept explicit self or the sentinel.
 Supervised target mutations now authenticate effective authority before namespace
 hashing, use the target account's metadata/history/preimage keys, and retain the
-invoking service's actual slot. Foreign ancestry stays Unsupported for parallel
-publication until modified-account conflict selection is implemented. The old
+invoking service's actual slot. Legacy self-only batch APIs retain Unsupported foreign ancestry. The complete STF
+route uses bounded modified-account selection and selected-write proofs. The old
 register layout is never accepted as an alternate production ABI.
 
 Scope/completion: add nominal target overloads while preserving self APIs and
 bounded self-key traces. Check length HUH before memory, then panic/WHO/authority
 ordering, both account incarnations, target-only footprint/funding, immutable
-checkpoints, typed backend/store failures, exact histories and ARC. Verify genuine
-foreign mutation remains a batch publication gate and self tracing stays bounded.
+checkpoints, typed backend/store failures, exact histories and ARC. Verify legacy batch refusal remains intact, current whole-map selection publishes
+only selected foreign effects, and self tracing stays bounded.
 
 The sections below preserve historical release implementation and verification records.
 

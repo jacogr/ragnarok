@@ -1225,5 +1225,27 @@ def current_stf_profile_replay_corpus(compiler, report, checks, libraries):
 
 
 
+@CORPORA.case
+def current_stf_epoch_composition_corpus(compiler, report, checks, libraries):
+    """Compare supervisor, privileged-queue and funded lifecycle effects across signed epoch boundaries and fresh-store continuation."""
+    from current_stf_epoch_composition_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_epoch_composition', 'current_stf_transfers', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-epoch-composition-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-epoch-composition', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent epoch/header/assurance equations composed with supervisor selection, posterior queues and funded lifecycle effects')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-epoch-composition-corpus', expected)
+    announce('independent epoch composition whole STF maps', corpus['passed'])
+    return corpus
+
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
