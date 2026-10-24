@@ -161,9 +161,10 @@ def run():
                 for seed in seeds:
                     shutil.copy2(seed, corpus/seed.name)
             if name == 'fuzz_program_blob':
-                # Arbitrary requires all nine u32 fields plus a bool; an empty corpus never reaches them in a short smoke run.
+                # Three zero code bytes contain the Latest64 jump-table header and a trap.
+                # This reaches estimation immediately, rather than relying on a later code-size mutation.
                 for bounded in (False, True):
-                    data = struct.pack('<9I?', 0, 0, 0, 0, 4096, 1, 1, 8192, 32, bounded)
+                    data = struct.pack('<9I?', 0, 0, 3, 0, 4096, 1, 1, 8192, 32, bounded)
                     (corpus/hashlib.sha256(data).hexdigest()).write_bytes(data)
             artifacts = BUILD/'artifacts'/name
             artifacts.mkdir(parents=True, exist_ok=True)
