@@ -5,7 +5,8 @@
 # @@Verification={"arc":"storage_full_paged_compaction_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
-import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_build, full_paged_store,
+import ../../../src/storage/[full_paged_codec, full_paged_stream, full_paged_build,
+  full_paged_store,
   paged_codec, paged_stream, paged_io, managed_manifest, node_repository, file_errors]
 import ../../../src/codec/bounded
 proc path(label: string): string =
@@ -43,7 +44,8 @@ proc core(source: FullPagedFixture, cache: int) =
     admitted.value, expected.header, budget())
   assert built.error == FullPagedBuildError.None and built.value.producerCalls == 0
   assert bytes.bytes == expected.io.bytes
-  assert array[32, byte](built.value.checked.fingerprint) == array[32, byte](admitted.value.fingerprint)
+  assert array[32, byte](built.value.checked.fingerprint) == array[32, byte](
+      admitted.value.fingerprint)
   let observed = built.value
   var exact = budget()
   exact.ioCalls = ElementLimit(observed.ioCalls)
@@ -161,7 +163,8 @@ proc faultSchedule(source: FullPagedFixture) =
       assert failed.error != FullPagedNativeError.None
       if candidate.opened: assert candidate.close == FileError.None
       assert writer.close == FileError.None
-      assert openFullPagedReader(reader, directory, source.config).error == FullPagedNativeError.None
+      assert openFullPagedReader(reader, directory, source.config).error ==
+          FullPagedNativeError.None
       assert uint64(reader.selected.value.epoch) == 1
       assert reader.close == FileError.None
 proc main() =

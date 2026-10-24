@@ -446,8 +446,10 @@ proc prepareFullPagedCompaction*(writer: var FullPagedWriter,
     candidate: var FullPagedCandidate): FullPagedNativeResult[StorageDurability] =
   ## Full root union, ordinary generation and physical bytes derive only from the held checked source.
   let data = writer.data
-  if data == nil or not data.active: return refused[StorageDurability](FullPagedNativeError.Uninitialized)
-  if data.poisoned or not data.selected: return refused[StorageDurability](FullPagedNativeError.RecoveryRequired)
+  if data == nil or not data.active: return refused[StorageDurability](
+      FullPagedNativeError.Uninitialized)
+  if data.poisoned or not data.selected: return refused[StorageDurability](
+      FullPagedNativeError.RecoveryRequired)
   let source = data.checked.header
   var roots = default(array[FullPagedMaxRoots, FullPagedRoot])
   for index in 0..<source.len:
