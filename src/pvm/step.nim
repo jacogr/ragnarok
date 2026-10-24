@@ -30,9 +30,14 @@ type
     next: range[0..2]
     secondary: nil SecondaryPrices
     targets: array[4, DynamicTargetEntry]
+  DecodedSpill = ref object ## One bounded invocation-local spill retains copied scalar results, never a program or mutable machine.
+    entries: array[4096, ProgramResult[Instruction]]
+    replaceUpper: array[2048, bool]
   InstructionCache = object ## Thirty-two genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
     entries: array[32, ProgramResult[Instruction]]
     replaceUpper: array[16, bool]
+    spill: nil DecodedSpill
+    misses: range[0..32768]
   HostCallId* = distinct uint64 ## Host identifiers occupy a register-width domain distinct from gas, addresses and step budgets.
   ExecutionStepLimit* = distinct uint64 ## Local scheduling policy bounds attempted instructions; it is not guest gas or a guest exit.
   HostCallLimit* = distinct uint64 ## Local dispatch budget, independent of attempted guest instructions and guest gas.
@@ -820,19 +825,31 @@ proc stepOnce*(source: Machine, plan: GasPlan): StepResult =
   ## Evaluate any admitted opcode, including a genuine host suspension, under matching immutable prices.
   stepWithPlan(source, plan, true, true, true)
 
-proc cachedInstruction(program: Program, address: CodeAddress,
-    cache: var InstructionCache): ProgramResult[Instruction] {.inline.} =
-  ## Preserve the natural direct-slot hit first, then inspect its paired way within the same thirty-two-result budget.
-  let slot = int(uint64(address) mod uint64(cache.entries.len)) # Fixed positive capacity proves the native index.
-  if cache.entries[slot].error == ProgramError.None and uint64(cache.entries[slot].value.address) ==
-      uint64(address):
-    return cache.entries[slot] # Most existing working sets keep their original single-comparison hit path.
-  let alternative = slot xor 16 # Toggling one of five bounded index bits stays within 0..31.
-  if cache.entries[alternative].error == ProgramError.None and uint64(cache.entries[
-      alternative].value.address) == uint64(address):
-    return cache.entries[alternative]
+proc rememberSpill(table: DecodedSpill, address: CodeAddress, decoded: ProgramResult[Instruction]) =
+  ## Only the private successful-decode path calls this insertion; replacement is bounded and never retains source ownership.
+  let bucket = int((uint64(address)*11400714819323198485'u64) shr 53)
+  let destination = if table.replaceUpper[bucket]: bucket+2048 else: bucket
+  table.entries[destination] = decoded
+  table.replaceUpper[bucket] = not table.replaceUpper[bucket]
+
+proc decodeInstructionMiss(program: Program, address: CodeAddress,
+    cache: var InstructionCache, slot, alternative: int): ProgramResult[Instruction] {.noinline.} =
+  ## Keep decoding, bounded allocation and replacement off the original two-comparison hit path.
   result = instruction(program, address)
   if result.error == ProgramError.None:
+    if cache.spill == nil:
+      if cache.misses < 32768:
+        inc cache.misses # Saturating successful-miss progress never wraps with guest work.
+      else:
+        # Only sustained pressure pays one fixed allocation; the existing small-program path remains allocation-free.
+        let table = DecodedSpill(entries: default(array[4096, ProgramResult[Instruction]]),
+          replaceUpper: default(array[2048, bool]))
+        for entry in cache.entries:
+          if entry.error == ProgramError.None: rememberSpill(table, entry.value.address, entry)
+        cache.spill = table
+    let table = cache.spill
+    if table != nil: rememberSpill(table, address, result)
+
     var destination = slot
     if cache.entries[slot].error == ProgramError.None:
       if cache.entries[alternative].error != ProgramError.None:
@@ -843,6 +860,29 @@ proc cachedInstruction(program: Program, address: CodeAddress,
         destination = if cache.replaceUpper[bucket]: bucket+16 else: bucket
         cache.replaceUpper[bucket] = not cache.replaceUpper[bucket]
     cache.entries[destination] = result
+
+proc cachedInstruction(program: Program, address: CodeAddress,
+    cache: var InstructionCache): ProgramResult[Instruction] {.inline.} =
+  ## Preserve the original thirty-two-result fast path; larger working sets enter a separately bounded cold helper.
+  let slot = int(uint64(address) mod uint64(cache.entries.len)) # Fixed positive capacity proves the native index.
+  if cache.entries[slot].error == ProgramError.None and uint64(cache.entries[slot].value.address) ==
+      uint64(address):
+    return cache.entries[slot] # Most existing working sets keep their original single-comparison hit path.
+  let alternative = slot xor 16 # Toggling one of five bounded index bits stays within 0..31.
+  if cache.entries[alternative].error == ProgramError.None and uint64(cache.entries[
+      alternative].value.address) == uint64(address):
+    return cache.entries[alternative]
+  let table {.cursor.} = cache.spill # The invocation owns this immutable-program fact table through the callback-free lookup.
+  if table != nil:
+    # Exact PC tags permit copied scalar results only; misses alone enter the allocating cold path.
+    let bucket = int((uint64(address)*11400714819323198485'u64) shr 53)
+    if table.entries[bucket].error == ProgramError.None and uint64(table.entries[
+        bucket].value.address) == uint64(address):
+      return table.entries[bucket]
+    if table.entries[bucket+2048].error == ProgramError.None and uint64(table.entries[
+        bucket+2048].value.address) == uint64(address):
+      return table.entries[bucket+2048]
+  decodeInstructionMiss(program, address, cache, slot, alternative)
 
 # Evaluate recursive Psi iteratively over an already validated program and captured machine.
 # The shared remaining budget counts attempted instructions, including the exiting instruction.
