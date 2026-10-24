@@ -376,3 +376,7 @@ write/barrier work, strict reopen, retained-reader lifetime and fresh-process pe
 Managed journal [attachment and bounded windows](../../spec/storage-held-journal-ranges.md)
 retain the exact append inode without loading the entire log. Caller-owned reads recheck
 selected name/inode/extent and actual EOF, with explicit uncertainty and retirement.
+
+Strict light [streaming reopen](../../spec/storage-light-streaming-reopen.md) shares immutable
+anchor/frame verification with whole-buffer replay, sizes buffers from checked headers, and
+publishes its owner only after the complete held extent and final EOF revalidate.
