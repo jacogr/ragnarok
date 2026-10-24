@@ -403,3 +403,19 @@ PolkaVM interpreted (2.31x); that speed target remains open. These are same-job
 observations, not ratios combined across runners. All raw results and regressions
 remain under `build/pvm12/ci-40123607524/`. Local timing is discarded. Publication
 adds only this feature-record evidence to the measured runtime.
+
+## Direct terminal-exit predicate candidate, 2026-10-24
+
+The checked Linux source profile attributes 304,696,845 instructions (5.40% of
+planned Pinky's total) to the post-mutation panic/halt set predicate. This candidate
+shares a private inline pair of named enum comparisons across fallthrough checking,
+snapshot publication and bounded-loop PC normalization. Every StepExit value keeps
+the exact original classification: only Panic and Halt are final. Fault and Host
+still retain their precise metadata and causing PC, and OutOfGas remains distinct.
+No exit validation, gas checks, fallthrough fact or state mutation is removed.
+
+The existing step, complete conditional-control reference, memory-step, cache,
+host-reentry and mixed-policy suites cover these transitions. Generated C must
+show direct comparisons in place of variable set-bit shifts, and paired complete-
+state CI must establish timing before acceptance. This candidate description makes
+no performance claim from instruction count attribution alone.
