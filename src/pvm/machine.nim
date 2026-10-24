@@ -419,7 +419,7 @@ proc scalarSpan[Cached: static[bool]](memory: Memory, address: MemoryAddress, wi
   if byte(width) notin [1'u8, 2'u8, 4'u8, 8'u8]:
     # Only the four supported widths may enter arithmetic or payload loops.
     return MachineResult[ScalarSpan](status: MachineError.InvalidWidth)
-  let data = memory.data
+  let data {.cursor.} = memory.data # The caller retains this immutable owner through the complete read-only preflight.
   let start = uint64(address) and 0xffffffff'u64
   if start > uint64(high(uint32)) - uint64(byte(width)):
     # Exclusive-end overflow retains the approved final-page presence rule before permissions.

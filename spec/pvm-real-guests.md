@@ -191,3 +191,34 @@ invocation. Two checked, opposite-order comparisons retained the unchanged three
 contracts; large indirect-call CPU improved roughly3–5% across pricing modes. Dynamic memory-fill
 was approximately neutral and remains an explicit control. Its feature record preserves complete
 small/large evidence, cache isolation tests, cold samples and limits on performance attribution.
+
+## Borrowed scalar preflight owner
+
+`scalarSpan` now borrows its local immutable memory data handle during read-only preflight.
+The caller keeps the source alive for the entire call; the helper invokes only read-only page
+lookup and returns copied scalar coordinates. It neither mutates the owner nor calls a host,
+allocates, or exports the borrow. Existing load/store owners and public ownership APIs remain
+unchanged. Generated C for both cached and uncached preflight drops one local retain and its
+selected release on each post-binding exit, while all address/width/presence/permission checks
+remain. Broader borrow and page-hint experiments were rejected; this scope is one local binding.
+
+Two reversed-order checked comparisons each retain936 full-state invocations across all three
+families, small/large sizes and pricing modes, including cold/preparation observations. Large
+indirect planned CPU improves27.480→26.387 ms and28.578→27.372 ms; lazy CPU improves27.810→27.110 ms
+and29.800→28.574 ms. Dynamic indirect improvement varies from3.3% to neutral, so only the repeated
+planned/lazy result supports a roughly3–4% claim. Memory-fill/sieve results are approximately
+neutral or improve, with lazy sieve varying up to0.7% slower in these pairs.
+
+An additional11-guest synthetic comparison retains1716 validated invocations across all policies.
+Some short/substantial rows vary in both directions; planned aligned hosts are3.9% slower in that
+comparison and remain visible. This is a local tradeoff observation, not a universal speedup.
+Selected machine, scalar-writer, memory access/boundary, mixed-program, host memory replacement
+and execution-cache suites check exact state, first-fault ordering, retained snapshot lifetimes
+and balanced ARC release. Pins, runtime checks and the two-page hint policy are unchanged.
+
+Raw samples and exact build/source/binary identities remain in
+`build/pvm11/scalar-copy/scalar-span-borrow{,-final}-paired.json` and
+`build/pvm11/scalar-span-borrow/{acceptance,lowering}.json`, with synthetic and native logs in that
+same feature folder. These Apple M1 Max observations do not establish Linux or whole-JAM speed.
+M1 framing remains complete in its documented scope; full state serialization/STF parity and the
+existing fuzzing/compiled-comparison deferrals remain unchanged.
