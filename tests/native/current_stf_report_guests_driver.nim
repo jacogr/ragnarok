@@ -15,6 +15,7 @@ import ../../src/state/[store, checkpoint, accumulation_current_update,
   accumulation_current_completion,
   accumulation_current_driver, accumulation_current_round, accumulation_block_guests,
   accumulation_guest_runner, accumulation_dispatch, accumulation_invocation, report_admission,
+  block_transition,
   guarantee_credentials,
   current_profile,
   current_globals, current_state, global_snapshot]
@@ -51,6 +52,16 @@ proc guest(mode: int): seq[byte] =
 proc failure(outcome: CurrentCandidateResult): string =
   ## Preserve selected typed completion reasons so a bounded fixture refusal cannot look like a map mismatch.
   result = $outcome.error
+  if outcome.error == CurrentCandidateError.PrefixFailure:
+    # Surface actual shared-prefix errors before report completion so a fixture ceiling is diagnosable.
+    let prefix = outcome.prefixFailure
+    result.add("/" & $prefix.error)
+    if prefix.error == ApplicationCandidateError.BlockFailure:
+      result.add("/" & $prefix.blockFailure.error)
+    if prefix.error == ApplicationCandidateError.ReportFailure:
+      let reports = prefix.reportFailure
+      result.add("/" & $reports.error)
+      if reports.error == ReportAdmissionError.PolicyFailure: result.add("/" & $reports.policyError)
   if outcome.error == CurrentCandidateError.ReportFailure:
     let reports = outcome.reportFailure
     result.add("/" & $reports.error)
@@ -94,6 +105,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): 
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 72..76: second = ejectionCode(mode) # Empty old junior retirement and exact once-only refund.
   of 67..71:
     # A one-byte declared provision never aliases any code preimage or the original Q payload.
     let hash = array[32, byte](blake2b256([82'u8]).value)
@@ -170,6 +182,11 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
   options.signed.extra = @[activityParentEntry()]
+  if mode in 72..76:
+    # No donor subkeys exist: this actual third account has zero footprint and both distinct funded pools.
+    let donor = ServiceMetadata(balance: AccountBalance(7), supervisorBalance: AccountBalance(11),
+      parent: ServiceIndex(99), supervisor: ServiceIndex(if mode == 75: 42 else: 99))
+    options.signed.extra.add(serviceMetadataEntry(ServiceIndex(77), donor, ByteLimit(105)).value)
   let fixture = executionFixture(base, options)
   var chain = initApplicationChain(fixture.executionNamespaceParent).value
   let original = checkpointHex(chain.stateSnapshot.value)
@@ -213,6 +230,12 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     limits.completion.execution.initial.provisions.encodedBytes = ByteLimit(32)
     limits.completion.execution.execution.round.guests.provisions = limits.completion.execution.initial.guests.provisions
     limits.completion.execution.execution.round.provisions = limits.completion.execution.initial.provisions
+  if mode in 72..76:
+    # Capture the complete three-account prior and one real retirement in both execution stages.
+    limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)
+    limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
+    limits.completion.execution.initial.guests.deletedAccounts = ElementLimit(1)
+    limits.completion.execution.execution.round.guests.deletedAccounts = ElementLimit(1)
   var children: seq[ServiceIndex] = @[]
   var ancestors: seq[OwnedHeader] = @[]
   for bodyIndex, body in bodies:
@@ -308,6 +331,14 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
         services[index].storage.add(StateStorageItem(key: @[7'u8], value: stored.value.bytes))
       else:
         assert stored.error == StateStoreError.MissingKey # Deletion/rollback cannot fabricate an empty stored value.
+    if mode in 72..76:
+      # The only extra declared identity is the authored empty junior; disappearance must be a real MissingKey.
+      let stored = snapshot.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77)))
+      if stored.error == StateStoreError.None:
+        let decoded = decodeServiceMetadata(stored.value.bytes, ByteLimit(105))
+        assert decoded.error == ServiceMetadataError.None
+        services.add(StateService(service: ServiceIndex(77), metadata: decoded.value.metadata))
+      else: assert stored.error == StateStoreError.MissingKey
     for service in children:
       # New metadata and its sole empty code request remain independently constrained by the exact complete-map comparison.
       let value = snapshot.lookup(chapterServiceKey(StateChapter(255), service))
@@ -358,14 +389,14 @@ proc main() {.raises.} =
       missingCode = fields.len == 3
       if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 72
+      assert mode >= 0 and mode < 77
       bodies = @[]
       slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71] and bodies.len >
+  assert mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76] and bodies.len >
       0 # Strict independent output comparison binds each complete chain length.
   run(base, mode, bodies, missingCode, slots)
 

@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_SERVICE_EJECTION",
+  "files": {
+    "current-stf-service-ejection.json": "e71d5e5fa2f71ef6e2e255a7d8f1e5f047e1bc537d369328d6db474a4ec3b5be"
+  },
+  "target": "current-stf-service-ejection.json"
+}
