@@ -16,71 +16,6 @@ import ../../src/bandersnatch/bandersnatch
 import ../support/[current_stf_population_context, current_namespace_context,
   accumulation_current_chain_context, state_inventory_context]
 
-proc original(base: OwnedReport): BlockSnapshot =
-  ## Author all profile-dependent chapters before any tested child; the prior fixture source remains untouched.
-  let prior = epoch.original(base)
-  let limits = populationLimits()
-  let policy = limits.reporting.safrole.state
-  var records = newSeq[StateValidator](9)
-  for index in 0..<9:
-    var seed = default(array[32, byte])
-    seed[0] = byte(index+11)
-    let ed = importSeed(seed).value
-    records[index].ed25519 = StateEdKey(array[32, byte](publicKey(ed).value))
-    records[index].bandersnatch = StateBsKey(array[32, byte](publicKey(epoch.key(index+1)).value))
-    var bls = default(array[144, byte])
-    var metadata = default(array[128, byte])
-    for at in 0..<144: bls[at] = byte(index+1)
-    for at in 0..<128: metadata[at] = byte(20+index)
-    records[index].bls = StateBlsKey(bls)
-    records[index].metadata = StateValidatorMetadata(metadata)
-  var active, staging, pending, previous: seq[StateValidator] = @[]
-  for index in 0..<6:
-    active.add(records[index])
-    staging.add(records[5-index])
-  for index in 0..<9:
-    pending.add(records[(index+1) mod 9])
-    previous.add(records[(index+2) mod 9])
-  let setup = newSetup(9).value
-  let root = StateRingRoot(array[144, byte](commitRing(setup, epoch.members(pending)).value))
-  close(setup)
-  var schedule = newSeq[StateBsKey](12)
-  for index in 0..<12: schedule[index] = active[index mod 6].bandersnatch
-  var entries = @[safroleStateEntry(SafroleState(pending: pending, root: root,
-      schedule: keySchedule(schedule), accumulator: @[]), policy).value]
-  entries.add(validatorEntry(ValidatorChapter.Active, active, policy.validators).value)
-  entries.add(validatorEntry(ValidatorChapter.Previous, previous, policy.validators).value)
-  entries.add(validatorEntry(ValidatorChapter.Staging, staging, policy.validators).value)
-  let authorization = limits.completion.execution.initial.guests.contexts.queues
-  entries.add(authorizationEntry(AuthorizationKind.Pools, @[newSeq[AuthorizerHash](1),
-      newSeq[AuthorizerHash](1), newSeq[AuthorizerHash](1)], authorization).value)
-  entries.add(authorizationEntry(AuthorizationKind.Queues, @[newSeq[AuthorizerHash](80),
-      newSeq[AuthorizerHash](80), newSeq[AuthorizerHash](80)], authorization).value)
-  entries.add(availabilityStateEntry(newSeq[AvailabilityAssignment](3),
-      limits.reporting.disputes.availability).value)
-  entries.add(privilegeStateEntry(PrivilegeState(assigners: newSeq[ServiceIndex](3)),
-      limits.round.privileges).value)
-  var activity = ActivityState(cores: newSeq[CoreActivity](3))
-  activity.validators[StatisticsEpoch.Current] = newSeq[ValidatorActivity](6)
-  activity.validators[StatisticsEpoch.Previous] = newSeq[ValidatorActivity](9)
-  for period in low(StatisticsEpoch)..high(StatisticsEpoch):
-    for index in 0..<activity.validators[period].len:
-      for measure in low(ValidatorMeasure)..high(ValidatorMeasure):
-        activity.validators[period][index][measure] = ValidatorCounter(uint32(1000*ord(
-            period)+100*index+10+ord(measure)))
-  entries.add(activityStateEntry(activity, ActivityConfig(cores: CoreCount(3),
-      current: ValidatorCount(6), previous: ValidatorCount(9), maxServices: ElementLimit(0),
-          maxBytes: ByteLimit(4096))).value)
-  var judgments = DisputeState()
-  judgments.reports[JudgmentSet.Bad] = @[default(DisputeHash)]
-  entries.add(disputeStateEntry(judgments, limits.reporting.disputes.state).value)
-  var state = forkStateStore(prior.stateSnapshot).value
-  var writes: seq[StateWrite] = @[]
-  for entry in entries: writes.add(StateWrite(key: entry.key, kind: StateWriteKind.Put,
-      value: entry.value))
-  assert state.apply(writes).error == StateStoreError.None
-  captureBlockSnapshot(currentChainBytes(prior.header), state.snapshot.value, populationParameters()).value
-
 proc culprit(): tuple[wire: seq[byte], offenders: seq[OffenderKey]] =
   ## Secret fixture seed16 guarantees a report already classified bad in the original C5.
   var seed = default(array[32, byte])
@@ -137,7 +72,7 @@ proc main() {.raises.} =
   let raw = readFile(paramStr(1))
   var bytes = newSeq[byte](raw.len)
   for index, octet in raw: bytes[index] = byte(octet)
-  let parent = original(decodeOwnedReport(bytes, 2).value)
+  let parent = populationOriginal(decodeOwnedReport(bytes, 2).value)
   let evidence = culprit()
   if paramStr(2) == "--generate":
     echo "P ", epoch.checkpointHex(parent.stateSnapshot)

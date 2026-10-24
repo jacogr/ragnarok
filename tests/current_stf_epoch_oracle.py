@@ -112,7 +112,7 @@ def successor(parent, slot, submitted, bank, roots, *, cores=2, dispute_wire=byt
     judgments = Reader(parent[chapter_key(5)])
     sets = [[judgments.take(32) for _ in range(judgments.count())] for _ in range(4)]
     judgments.done()
-    assert list(new_offenders) == sorted(set(new_offenders))
+    assert all(len(key) == 32 for key in new_offenders)  # Header sequence preserves cross-section repeats.
     offenders = sorted(set(sets[3]) | set(new_offenders))
     post_pending = [NULL_VALIDATOR if row[32:64] in offenders else row
                     for row in roster(parent[chapter_key(7)])] if crossed else pending

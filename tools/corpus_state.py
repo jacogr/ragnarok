@@ -389,5 +389,28 @@ def current_stf_eviction_corpus(compiler, report, checks, libraries):
     return corpus
 
 
+@CORPORA.case
+def current_stf_verdict_corpus(compiler, report, checks, libraries):
+    """Compare signed verdict/fault judgments, assignment cancellation and every complete successor byte."""
+    from current_stf_verdict_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_epoch', 'current_stf_population', 'current_stf_verdicts', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # Independent signatures, parent-selected quorums and all expected maps exist before the native build/run.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-verdict-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_verdict_driver.nim',
+        'current-stf-verdicts', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  reference='OpenSSL Ed25519, mathematical Thin and independent complete-map verdict/fault STF')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-verdict-corpus', expected)
+    announce('independent verdict/fault whole STF maps', corpus['passed'])
+    return corpus
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
