@@ -14,10 +14,11 @@ from storage_light_churn_benchmark import FIELDS
 def witness(size, mode):
     """Independent fixed arithmetic defines both backends' expected durable work."""
     image = 128+4096*(1129+size)
-    journal = mode == 'journal'
+    journal = mode != 'churn'
+    batched = mode == 'journal-batch'
     row = dict(zip(FIELDS, [size, 8, image,
         8*(500+1088+size) if journal else 8*(2*image-1129-size),
-        16, 16 if journal else 32, 0 if journal else 16,
+        1 if batched else 16, 1 if batched else 16 if journal else 32, 0 if journal else 16,
         176 if journal else 160, 73907 if journal else 73729,
         1000, 2000, 100, 1000, 2000, 100]))
     raw = mode+'\t'+'\t'.join(str(row[n]) for n in FIELDS)+'\n'
@@ -27,16 +28,17 @@ def witness(size, mode):
     return row, raw, receipt
 
 
-def panel():
+def panel(include_batch=False):
     """Three rounds alternate both dimensions and carry independently authored namespace extents."""
-    result = dict(status='checks-passed', samples=3, runs=[],
+    modes = paired.BATCH_MODES if include_batch else paired.MODES
+    result = dict(status='checks-passed', samples=3, modes=modes, runs=[],
                   fixtures={str(s):dict(sha256='a'*64) for s in (64, 1024)})
-    for index, size, mode in paired.cases(3):
+    for index, size, mode in paired.cases(3, modes):
         row, raw, receipt = witness(size, mode)
         result['runs'].append(dict(sample=index, size=size, mode=mode, observed=row, raw=raw,
             receipt=receipt, image_sha256='a'*64, current_sha256='b'*64,
-            journal_sha256='c'*64 if mode == 'journal' else None,
-            journal_bytes=row['written_bytes']+98 if mode == 'journal' else 0))
+            journal_sha256='c'*64 if mode != 'churn' else None,
+            journal_bytes=row['written_bytes']+98 if mode != 'churn' else 0))
     return result
 
 
@@ -48,6 +50,22 @@ class MatchedLightChurnTests(unittest.TestCase):
                 row, raw, receipt = witness(size, mode)
                 self.assertEqual(paired.admit(raw, size, mode, receipt, 'a'*64, 'a'*64), row)
         self.assertIn('13216', paired.summarize(panel()))
+
+    def test_batch_modes_work_and_complete_panel(self):
+        for size in (64, 1024):
+            row, raw, receipt = witness(size, 'journal-batch')
+            self.assertEqual(paired.admit(raw, size, 'journal-batch', receipt, 'a'*64, 'a'*64), row)
+            for name in FIELDS[:9]:
+                changed = dict(row); changed[name] += 1
+                bad = 'journal-batch\t'+'\t'.join(str(changed[n]) for n in FIELDS)
+                with self.assertRaises(ValueError):paired.parse(bad, size, 'journal-batch')
+        self.assertIn('journal-batch', paired.summarize(panel(True)))
+        report = panel(True); report['runs'].pop()
+        with self.assertRaises(ValueError):paired.summarize(report)
+        report = panel(True); report['modes'] = paired.MODES
+        with self.assertRaises(ValueError):paired.summarize(report)
+        for modes in [None, [], ('journal-batch',), ('churn', 'journal', 'journal')]:
+            with self.assertRaises(ValueError):paired.cases(3, modes)
 
     def test_each_deterministic_counter(self):
         for mode in paired.MODES:

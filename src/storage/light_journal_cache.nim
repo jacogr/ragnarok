@@ -319,6 +319,117 @@ proc update*(owner: var LightJournalCache, proofs: openArray[LightStateProof],
   owner.append(prepared.value)
 
 type
+  LightJournalEdit* = object ## Borrowed synchronous batch input contains one ordinary disjoint proof-cache update.
+    proofs*: seq[LightStateProof] ## Incoming independently verified evidence obeys the existing per-frame proof/cache limits.
+    forgotten*: seq[StateKey] ## Explicit local-evidence removal never invents authenticated absence.
+  BatchData = ref object ## Prepared transport retains only the final immutable image and exact predecessor position, not every intermediate image.
+    image: PreparedLightSnapshot
+    encoded: seq[byte]
+    selected, prior: StorageChecksum
+    epoch: ManagedEpoch
+    before, last: LightDeltaSequence
+    frames, priorFrames, priorBytes: uint64
+  PreparedLightJournalBatch* = object ## Opaque prepared concatenation grants no durable publication receipt until its append barrier succeeds.
+    data: nil BatchData
+func initialized*(batch: PreparedLightJournalBatch): bool =
+  ## Default batches have no encoded-frame or successor authority.
+  batch.data != nil
+proc frameCount*(batch: PreparedLightJournalBatch): uint64 {.requires: batch.data != nil.} =
+  ## Report the exact nonempty number of authenticated consecutive update frames.
+  let data = batch.data
+  assert data != nil
+  data.frames
+proc byteLength*(batch: PreparedLightJournalBatch): int {.requires: batch.data != nil.} =
+  ## Report completed canonical transport extent without exporting mutable bytes.
+  let data = batch.data
+  assert data != nil
+  data.encoded.len
+proc sequence*(batch: PreparedLightJournalBatch): LightDeltaSequence {.requires: batch.data != nil.} =
+  ## Inspect the checked final global sequence, independent of physical epoch.
+  let data = batch.data
+  assert data != nil
+  data.last
+proc snapshot*(batch: PreparedLightJournalBatch): PreparedLightSnapshot {.requires: batch.data != nil.} =
+  ## Retain only the prepared immutable final candidate; it is not a durable-head receipt.
+  let data = batch.data
+  assert data != nil
+  data.image
+proc prepareLightJournalBatch*(owner: LightJournalCache,
+    edits: openArray[LightJournalEdit]): LightJournalResult[PreparedLightJournalBatch] =
+  ## Authenticate consecutive updates privately within all inherited caps, retaining only final image and bounded aggregate frame bytes.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return fail[PreparedLightJournalBatch](reason)
+  assert data != nil
+  if edits.len == 0: return fail[PreparedLightJournalBatch](FileError.InvalidBatch)
+  let count = uint64(edits.len)
+  let maximumFrames = uint64(data.config.journal.frames)
+  if data.frames > maximumFrames or count > maximumFrames-data.frames or
+      count > high(uint64)-uint64(data.sequence): return fail[PreparedLightJournalBatch](
+          FileError.LimitExceeded)
+  let observed = managedJournalBytes(data.journal)
+  if observed.error != FileError.None: return fail[PreparedLightJournalBatch](observed.error)
+  let maximum = min(uint64(data.config.journal.bytes), uint64(high(int)))
+  if observed.value > maximum or count > (maximum-observed.value) div uint64(LightDeltaOverhead):
+    return fail[PreparedLightJournalBatch](FileError.LimitExceeded)
+  let capacity = maximum-observed.value
+  var encoded = newSeq[byte](0)
+  var current = data.image
+  var sequence = data.sequence
+  for edit in edits:
+    # Remaining aggregate bytes constrain each frame before its own shape allocation and proof/backend work.
+    var limits = data.config.journal.frame
+    limits.bytes = ByteLimit(min(uint64(limits.bytes), capacity-uint64(encoded.len)))
+    if uint64(sequence) == high(uint64): return fail[PreparedLightJournalBatch](
+        FileError.LimitExceeded)
+    let next = prepareLightDelta(current, LightDeltaSequence(uint64(sequence)+1), edit.proofs,
+        edit.forgotten, limits)
+    if next.error != LightDeltaError.None: return fail[PreparedLightJournalBatch](deltaReason(next.error))
+    let prepared = next.value
+    for octet in prepared.encodedBytes: encoded.add(octet)
+    current = prepared.snapshot
+    sequence = prepared.sequence
+  LightJournalResult[PreparedLightJournalBatch](status: FileError.None,
+    completed: PreparedLightJournalBatch(data: BatchData(image: current, encoded: move(encoded),
+      selected: data.selected.checksum, prior: data.image.checksum, epoch: data.selected.epoch,
+      before: data.sequence, last: sequence, frames: count, priorFrames: data.frames,
+      priorBytes: observed.value)))
+proc append*(owner: var LightJournalCache, batch: PreparedLightJournalBatch): LightJournalResult[
+    StorageDurability] =
+  ## Append a prepared consecutive group once and synchronize once before publishing its final image; uncertainty requires explicit prefix recovery.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return fail[StorageDurability](reason)
+  assert data != nil
+  let prepared = batch.data
+  if prepared == nil: return fail[StorageDurability](FileError.Uninitialized)
+  let bound = binding(prepared.image, data.config)
+  if bound != FileError.None: return fail[StorageDurability](bound)
+  let observed = managedJournalBytes(data.journal)
+  if observed.error != FileError.None: return fail[StorageDurability](observed.error)
+  if uint64(prepared.epoch) != uint64(data.selected.epoch) or
+      uint64(prepared.before) != uint64(data.sequence) or prepared.priorFrames != data.frames or
+      prepared.priorBytes != observed.value or
+      array[32, byte](prepared.selected) != array[32, byte](data.selected.checksum) or
+      array[32, byte](prepared.prior) != array[32, byte](data.image.checksum):
+    return fail[StorageDurability](FileError.StaleView)
+  let maximumFrames = uint64(data.config.journal.frames)
+  let maximum = min(uint64(data.config.journal.bytes), uint64(high(int)))
+  if data.frames > maximumFrames or prepared.frames > maximumFrames-data.frames or
+      observed.value > maximum or uint64(prepared.encoded.len) > maximum-observed.value:
+    return fail[StorageDurability](FileError.LimitExceeded)
+  let written = appendManagedJournal(data.journal, prepared.encoded)
+  if written != FileError.None:
+    # A complete prefix may already exist; neither automatic rollback nor an all-or-nothing disk claim is permitted.
+    data.poisoned = true
+    return fail[StorageDurability](written)
+  data.image = prepared.image
+  data.sequence = prepared.last
+  data.frames += prepared.frames
+  LightJournalResult[StorageDurability](status: FileError.None,
+      completed: StorageDurability.FileAndDirectorySynced)
+
+type
   RecoveryOwner = ref object ## Explicit partial-tail inspection retains exactly the lease/inode whose bytes authorized its plan.
     owner: JournalOwner
     plan: LightTailPlan

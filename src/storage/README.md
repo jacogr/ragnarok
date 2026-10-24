@@ -380,3 +380,7 @@ selected name/inode/extent and actual EOF, with explicit uncertainty and retirem
 Strict light [streaming reopen](../../spec/storage-light-streaming-reopen.md) shares immutable
 anchor/frame verification with whole-buffer replay, sizes buffers from checked headers, and
 publishes its owner only after the complete held extent and final EOF revalidate.
+
+Prepared [light journal update batches](../../spec/storage-light-journal-batches.md) authenticate
+bounded consecutive edits privately, retain only their final image, and publish with one append
+barrier. Interrupted groups preserve complete earlier frames for explicit prefix recovery.
