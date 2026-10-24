@@ -64,6 +64,11 @@ gh pr edit <number> --remove-label ci:full
 gh pr edit <number> --add-label ci:full
 ```
 
+Unit and Contract use 16 and 6 shards respectively. Each run shuffles discovered work with its
+shared GitHub run ID, without timing weights or maintained assignments. Reports and summaries
+retain the seed for [local reproduction](testing/infrastructure.md). Dependency-ordered codec,
+corpus and specialized-control bundles stay intact, with their owning shard randomized too.
+
 New smoke updates cancel older smoke runs for that PR, without cancelling labeled heavy CI.
 A new heavy request cancels an older heavy run for the same PR; unrelated labels schedule no runners and
 cannot cancel requested checks. Results apply only to the tested revision. A focused run does

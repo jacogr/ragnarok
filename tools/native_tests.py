@@ -17,6 +17,7 @@ import platform
 import argparse
 import sys
 from setup_nimony import ROOT, cache_directory
+from ci_shards import shuffled
 
 # Share directory-discovered suite identities with selection, cumulative reports and provenance.
 from verification_inventory import UNIT_SOURCES, UNIT_SUITES, ARC_SUITES
@@ -223,19 +224,24 @@ def unit_batches():
 
 
 # Partition discovered batches without registering suite names or compiling any test twice.
-def unit_partition(shard=None):
+def unit_partition(shard=None, seed=None):
     batches = unit_batches()
     if shard is None:
         # Local verification remains complete unless a caller explicitly selects a CI partition.
         return batches, True
     if (not isinstance(shard, (tuple, list)) or len(shard) != 2
             or any(type(value) is not int for value in shard)
-            or not 1 <= shard[0] <= shard[1] <= 12):
+            or not 1 <= shard[0] <= shard[1] <= 16):
         # Invalid or empty partition declarations must fail before setup or verdict calculation.
-        raise ValueError('Unit shard must be index/count with 1 <= index <= count <= 12')
+        raise ValueError('Unit shard must be index/count with 1 <= index <= count <= 16')
     index, count = shard
-    # Spread serial linked/resource workloads lexically; codec discovery and corpora each run once.
-    selected = ([batches[0]] if index == 1 else []) + batches[index::count]
+    # Shuffle independent batches and the corpus bundle; dependency order inside each stays intact.
+    if seed is not None:
+        work = shuffled([*batches, None], seed, 'unit')[index-1::count]
+        return [batch for batch in work if batch is not None], None in work
+    else:
+        # Unseeded local partitions retain the historical lexical plan for existing reproductions.
+        selected = ([batches[0]] if index == 1 else []) + batches[index::count]
     return selected, index == count
 
 

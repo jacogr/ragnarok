@@ -147,7 +147,10 @@ class NimonyCISafeguards(unittest.TestCase):
         values = json.loads('['+re.search(r'        shard: \[([^\n]+)\]', text).group(1)+']')
         partitions = [parse_unit_shard(value) for value in values]
         count = partitions[0][1]
+        self.assertEqual(count, 16)
         self.assertEqual(partitions, [(index, count) for index in range(1, count+1)])
+        unit = text.split('  unit:\n', 1)[1].split('  unit-status:\n', 1)[0]
+        self.assertIn('CI_SHARD_SEED: ${{ github.run_id }}', unit)
         gate = text.split('  unit-status:\n', 1)[1].split('  failures:\n', 1)[0]
         self.assertIn('name: Unit', gate)
         self.assertIn('needs: unit', gate)
@@ -168,8 +171,10 @@ class NimonyCISafeguards(unittest.TestCase):
         values = json.loads('['+re.search(r'        shard: \[([^\n]+)\]', section).group(1)+']')
         partitions = [parse_failure_shard(value) for value in values]
         count = partitions[0][1]
+        self.assertEqual(count, 6)
         self.assertEqual(partitions, [(index, count) for index in range(1, count+1)])
         self.assertIn('FAILURE_SHARD: ${{ matrix.shard }}', section)
+        self.assertIn('CI_SHARD_SEED: ${{ github.run_id }}', section)
         gate = text.split('  failures-status:\n', 1)[1].split('  e2e:\n', 1)[0]
         self.assertIn('name: Contract', gate)
         self.assertIn('needs: failures', gate)

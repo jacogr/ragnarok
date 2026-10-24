@@ -100,6 +100,23 @@ class VerificationUnit(unittest.TestCase):
                     self.assertFalse(test_runtime.unit_passed(missing))
                     self.assertFalse(test_runtime.unit_passed({**report, key: dict(passed=False)}))
 
+    # Report verification must reconstruct the seeded plan rather than accepting lexical sibling evidence.
+    def test_seeded_unit_verdict(self):
+        seed = '40080775112'
+        for index in range(1, 17):
+            # Each complete shard report carries the seed used for preparation and native execution.
+            batches, corpora = test_runtime.unit_partition((index, 16), seed)
+            rows = [dict(name=name, passed=True) for _, members, _ in batches for name in members]
+            report = dict(unit_shard=[index, 16], shard_seed=seed, suites=rows,
+                          **{name: dict(passed=True) for name in test_runtime.CORPUS_NAMES if corpora})
+            self.assertTrue(test_runtime.unit_passed(report))
+            self.assertFalse(test_runtime.unit_passed({**report, 'shard_seed': '40080775113'}))
+            self.assertFalse(test_runtime.unit_passed({**report, 'shard_seed': ''}))
+            self.assertFalse(test_runtime.unit_passed({**report, 'suites': rows[1:]}))
+            from summarize_tests import summarize
+            report['status'] = 'checks-passed'
+            self.assertIn('seed '+seed, summarize(report, 'runtime'))
+
     # A successful subset summary must visibly identify the partition that actually ran.
     def test_partition_summary_scope(self):
         from summarize_tests import summarize

@@ -59,6 +59,9 @@ def summarize(report, kind):
             # A successful partition is not a claim that every other partition ran or passed.
             index, count = report['unit_shard']
             scope = f' — shard {index}/{count}'
+            if report.get('shard_seed') is not None:
+                # Include the shared seed so an individual artifact can reproduce its randomized scope.
+                scope += ' (seed '+report['shard_seed']+')'
         lines = ['## Native unit and codec verification'+scope, '', '**Status: '+report['status']+'**', '',
                  f'- Native suites: {len(report["suites"])}', f'- Independent corpora: {len(corpora)}',
                  '',
@@ -71,12 +74,15 @@ def summarize(report, kind):
     elif kind == 'failures':
         # Runtime contracts own a separate inventory; compiler rejections belong to the guards job.
         from failure_plans import failure_partition
-        plans, specialized = failure_partition(report.get('failure_shard'))
+        plans, specialized = failure_partition(report.get('failure_shard'), report.get('shard_seed'))
         scope = ''
         if report.get('failure_shard') is not None:
             # Subset evidence identifies its actual partition rather than claiming every contract family.
             index, count = report['failure_shard']
             scope = f' — shard {index}/{count}'
+            if report.get('shard_seed') is not None:
+                # Include the shared seed so an individual artifact can reproduce its randomized scope.
+                scope += ' (seed '+report['shard_seed']+')'
         lines = ['## Runtime failure and contract verification'+scope, '', '**Status: '+report['status']+'**', '',
                  '| Group | Passed | Total |', '| --- | --- | --- |']
         for key in plans:

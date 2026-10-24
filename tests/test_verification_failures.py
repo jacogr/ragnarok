@@ -50,7 +50,7 @@ class VerificationFailures(unittest.TestCase):
     def test_failure_partition_coverage(self):
         from failure_plans import failure_partition, parse_failure_shard, failure_libraries, SPECIAL_CASES
         from failure_checks import FAILURE_SUITES
-        for count in range(1, 5):
+        for count in range(1, 7):
             # Growing the discovered family tree must need no edit to the CI scheduler.
             partitions = [failure_partition((index, count)) for index in range(1, count+1)]
             names = [family for plans, _ in partitions for family in plans]
@@ -74,7 +74,7 @@ class VerificationFailures(unittest.TestCase):
                                 self.assertIn(suite[key], required)
         self.assertEqual(failure_partition(), failure_partition((1, 1)))
         self.assertEqual(parse_failure_shard('2/4'), (2, 4))
-        for value in ['0/4', '1/5', '2/1', 'one/4', '1', '1/4/4']:
+        for value in ['0/4', '1/7', '2/1', 'one/4', '1', '1/4/4']:
             # A malformed partition cannot quietly fall back to a smaller passing workload.
             with self.subTest(value=value), self.assertRaises(ValueError):
                 parse_failure_shard(value)
@@ -82,13 +82,59 @@ class VerificationFailures(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 failure_partition(value)
 
+    # Seeded assignment preserves exact families, required libraries and specialized ownership.
+    def test_seeded_failure_partitions(self):
+        from failure_plans import failure_partition, failure_libraries, SPECIAL_CASES
+        from failure_checks import FAILURE_SUITES
+        for seed in ('40080775112', '40080775113'):
+            # Every partition is independently reproducible and no ordinary family runs twice.
+            partitions = [failure_partition((index, 6), seed) for index in range(1, 7)]
+            self.assertEqual(partitions, [failure_partition((index, 6), seed) for index in range(1, 7)])
+            names = [name for plans, _ in partitions for name in plans]
+            self.assertEqual(len(names), len(set(names)))
+            self.assertEqual(set(names), set(test_runtime.FAILURE_PLANS))
+            self.assertEqual(sum(specialized for _, specialized in partitions), 1)
+            sizes = [len(set(plans).intersection(FAILURE_SUITES))+int(specialized)
+                     for plans, specialized in partitions]
+            self.assertLessEqual(max(sizes)-min(sizes), 1)
+            for index, (plans, specialized) in enumerate(partitions, 1):
+                # Dependency preparation and verdict validation must use the same seed as execution.
+                required = failure_libraries((index, 6), seed)
+                report = dict(failure_shard=[index, 6], shard_seed=seed,
+                              **{key: [dict(identity, passed=True) for identity in cases]
+                                 for key, cases in plans.items()})
+                if specialized:
+                    self.assertIsNone(required)
+                    report.update(store_controls=dict(passed=True),
+                                  probe_cases={name: dict(passed=True) for name in test_runtime.SPECIAL_DRIVERS})
+                else:
+                    expected = set()
+                    for family in plans:
+                        # Native providers remain the exact union of this shuffled partition's consumers.
+                        suite = FAILURE_SUITES[family]
+                        expected.update(suite.get('native_libraries', ()))
+                        expected.update(suite[key] for key in ('crypto_library', 'quic_library')
+                                        if suite.get(key) is not None)
+                    self.assertEqual(required, expected)
+                self.assertTrue(test_runtime.failures_passed(report))
+                self.assertFalse(test_runtime.failures_passed({**report, 'shard_seed': 'different'}))
+                self.assertFalse(test_runtime.failures_passed({**report, 'shard_seed': ''}))
+                report['status'] = 'checks-passed'
+                from summarize_tests import summarize
+                self.assertIn('seed '+seed, summarize(report, 'failures'))
+        owners = {next(index for index in range(1, 7)
+                       if failure_partition((index, 6), str(seed))[1]) for seed in range(6)}
+        self.assertGreater(len(owners), 1)
+        self.assertNotEqual(failure_partition((1, 6), '40080775112'),
+                            failure_partition((1, 6), '40080775113'))
+
     # Partial success cannot hide missing/replaced probes, sibling results or missing specialized controls.
     def test_failure_partition_verdicts(self):
         from failure_plans import failure_partition
-        for index in range(1, 5):
+        for index in range(1, 7):
             # Each shard has a predeclared identity plan independent of observed process success.
-            plans, specialized = failure_partition((index, 4))
-            report = dict(failure_shard=[index, 4], **{key: [dict(identity, passed=True) for identity in cases]
+            plans, specialized = failure_partition((index, 6))
+            report = dict(failure_shard=[index, 6], **{key: [dict(identity, passed=True) for identity in cases]
                                                     for key, cases in plans.items()})
             if specialized:
                 report.update(store_controls=dict(passed=True),
@@ -115,9 +161,12 @@ class VerificationFailures(unittest.TestCase):
 
     # Non-owning partitions return after their ordinary probes without looking up specialized native resources.
     def test_ordinary_partition_execution_scope(self):
-        plans, _ = test_runtime.failure_partition((1, 4))
+        seed = '40080775112'
+        index = next(index for index in range(1, 7)
+                     if not test_runtime.failure_partition((index, 6), seed)[1])
+        plans, _ = test_runtime.failure_partition((index, 6), seed)
         with patch.object(test_runtime, 'run_failure_suites') as run:
-            test_runtime.run_failures(Path('/fixture/nimony'), {}, {}, None, None, (1, 4))
+            test_runtime.run_failures(Path('/fixture/nimony'), {}, {}, None, None, (index, 6), seed)
         self.assertEqual(run.call_args.kwargs['groups'], tuple(plans))
 
     # Contract-only selection must be rejected before setup when passed to the unit group.
@@ -133,14 +182,14 @@ class VerificationFailures(unittest.TestCase):
     # Summaries identify the shard and only claim positive controls for their actual owner.
     def test_failure_partition_summary(self):
         from summarize_tests import summarize
-        for index in range(1, 5):
-            plans, specialized = test_runtime.failure_partition((index, 4))
-            report = dict(failure_shard=[index, 4], status='checks-passed',
+        for index in range(1, 7):
+            plans, specialized = test_runtime.failure_partition((index, 6))
+            report = dict(failure_shard=[index, 6], status='checks-passed',
                           **{family: [dict(passed=True)] for family in plans})
             if specialized:
                 report['store_controls'] = dict(passed=True)
             text = summarize(report, 'failures')
-            self.assertIn(f'shard {index}/4', text)
+            self.assertIn(f'shard {index}/6', text)
             self.assertEqual('Store positive controls:' in text, specialized)
 
     # Runtime summary rows report their actual verdicts independently of both other native jobs.
