@@ -431,7 +431,8 @@ are independently owned.
 independent shared epoch pins, durable atomic CURRENT selection and captured retired-epoch
 reclamation through exclusive pins. Complete verification precedes publication; receipts separate
 confirmed selection from later native retirement diagnostics. Unknown staging/build files remain
-forensic and block conflicting operations. Process/resource qualification and consumer adoption remain gates in the
+forensic and block conflicting operations. Process-death qualification covers successful native syscall boundaries; Linux resource qualification
+and consumer adoption remain gates in the
 [paged contract](../../spec/storage-paged-working-set.md).
 
 
