@@ -709,8 +709,13 @@ proc edit(snapshot: PreparedLightSnapshot, updates: openArray[LightStateProof],
   # The same stable inputs fill exactly the preflighted image; retained canonical evidence is copied as a byte span.
   while nextSource(owner.encoded, ordered, old, fresh, source):
     if source.offset >= 0:
-      for index in 0..<int(source.extent): output[cursor+index] = owner.encoded[source.offset+index]
-      cursor += int(source.extent)
+      let extent = int(source.extent) # The canonical source cursor already proved native representability.
+      assert source.offset <= owner.encoded.len-32
+      assert extent > 0 and extent <= owner.encoded.len-32-source.offset
+      assert cursor <= output.len-32 and extent <= output.len-32-cursor
+      # Distinct newly allocated output and immutable held source cannot overlap; copy only the proved entry span.
+      copyMem(addr output[cursor], unsafeAddr owner.encoded[source.offset], extent)
+      cursor += extent
     else:
       let update = updates[source.index]
       let key = array[31, byte](update.key)
