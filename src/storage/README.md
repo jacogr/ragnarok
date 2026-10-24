@@ -390,6 +390,8 @@ complete-frame boundaries, partial-tail repair and retry without duplicating ret
 
 The [storage-only light-root advancement contract](../../spec/storage-light-root-advancement.md)
 defines an independently supplied destination root, complete replacement proof knowledge,
-retained old-root readers and atomic checkpoint/anchor selection. It is contract-first planned
-work; the current owner still binds one root. Startup, trust selection and network proof fetching
-remain separately owned integration work.
+retained old-root readers and atomic checkpoint/anchor selection. `prepareLightRootAdvance`
+binds an opaque destination to the exact source position/policy; `advanceRoot` publishes it in a
+new physical epoch while preserving the update sequence. Guarded unselected cleanup never
+deletes a selected target. Startup, trust selection and network proof fetching remain separately
+owned integration work.

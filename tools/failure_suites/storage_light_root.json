@@ -1,0 +1,111 @@
+{
+  "source": "tests/native/storage_light_root_results.nim",
+  "build_name": "storage-light-root-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "plan",
+        "origin": "default"
+      },
+      "arguments": [
+        "plan",
+        "default"
+      ],
+      "name": "storage-light-root-plan-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Root plan default guard"
+    },
+    {
+      "identity": {
+        "member": "plan",
+        "origin": "failed"
+      },
+      "arguments": [
+        "plan",
+        "failed"
+      ],
+      "name": "storage-light-root-plan-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Root plan failed guard"
+    },
+    {
+      "identity": {
+        "member": "receipt",
+        "origin": "default"
+      },
+      "arguments": [
+        "receipt",
+        "default"
+      ],
+      "name": "storage-light-root-receipt-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Root receipt default guard"
+    },
+    {
+      "identity": {
+        "member": "receipt",
+        "origin": "failed"
+      },
+      "arguments": [
+        "receipt",
+        "failed"
+      ],
+      "name": "storage-light-root-receipt-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Root receipt failed guard"
+    },
+    {
+      "identity": {
+        "member": "epoch",
+        "origin": "default"
+      },
+      "arguments": [
+        "epoch",
+        "default"
+      ],
+      "name": "storage-light-root-epoch-default",
+      "diagnostic": "not prepared.data == nil",
+      "description": "Root plan epoch default guard"
+    },
+    {
+      "identity": {
+        "member": "sequence",
+        "origin": "default"
+      },
+      "arguments": [
+        "sequence",
+        "default"
+      ],
+      "name": "storage-light-root-sequence-default",
+      "diagnostic": "not prepared.data == nil",
+      "description": "Root plan sequence default guard"
+    },
+    {
+      "identity": {
+        "member": "root",
+        "origin": "default"
+      },
+      "arguments": [
+        "root",
+        "default"
+      ],
+      "name": "storage-light-root-root-default",
+      "diagnostic": "not prepared.data == nil",
+      "description": "Root plan root default guard"
+    },
+    {
+      "identity": {
+        "member": "snapshot",
+        "origin": "default"
+      },
+      "arguments": [
+        "snapshot",
+        "default"
+      ],
+      "name": "storage-light-root-snapshot-default",
+      "diagnostic": "not prepared.data == nil",
+      "description": "Root plan snapshot default guard"
+    }
+  ]
+}

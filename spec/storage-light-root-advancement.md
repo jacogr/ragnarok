@@ -1,8 +1,8 @@
 # Storage-only light-root advancement
 
-Status: contract-first design for standalone storage. The APIs below are planned; the existing
-journal owner still binds one root until the implementation and its completion checks land.
-This contract does not authorize StateStore, PVM, startup, networking or consensus integration.
+Status: standalone durable implementation with native IO/ownership qualification. Grouped
+process-crash qualification follows as a separate implementation unit. This contract does not
+authorize StateStore, PVM, startup, networking or consensus integration.
 
 ## Authority and meaning
 
@@ -40,9 +40,9 @@ Retained source snapshots and lookup/proof/page readers remain bound to their or
 remain valid after advancement, failure, native close or later advancements. Storage never
 retags an old reader. Retained handles supply no claim that their root is still selected.
 
-## Planned durable API and ownership
+## Durable API and ownership
 
-The owner remains `LightJournalCache`. Planned public operations are:
+The owner remains `LightJournalCache`. Public operations are:
 
 ```nim
 prepareLightRootAdvance(owner, expectedEpoch, expectedSequence,
@@ -151,3 +151,30 @@ The contract, feature with supporting qualification, and grouped process-crash e
 planned as three substantive additions to native stack #1395. The existing four layers count
 toward the maintainer's maximum of 15 PRs. Each ready unit is published before the next begins.
 M1 framing and complete JAM state serialization remain separate milestones.
+
+## Implemented-scope evidence
+
+`make unit SUITE=storage_light_root_advance` uses two independently calculated complete-map
+roots and separately verified proof images. It passes changed/unchanged values, stale positive
+and negative proofs, empty presence/absence/unknown distinctions, no implicit source-proof carry,
+root/image return cycles, retained readers/cursors, source and destination strict reopen,
+following destination updates, exact snapshot and journal policies, empty/read-only replacement,
+all maximum-counter cases, and pure/provider refusal. Publication observes three writes, eight
+syncs and one rename with zero destination rehashes. Ten native fault/name cases distinguish
+preselection failure, post-rename PublishedUnsynced and confirmed selection with retirement error.
+
+Candidate cleanup cases preserve unknown snapshot/staging content and earlier valid candidates
+when any prefix preflight fails. Same-epoch appends stale publication but permit exact cleanup.
+A failed last-unlink barrier leaves absence that explicit retry still synchronizes. The selected
+target is never removed by an obsolete plan. Retired cleanup also verifies across different roots.
+
+One thousand late-provider-refusal/preparation/copy retirements return occupied ARC memory to
+13,456/13,456 bytes locally. Eight strict runtime authority guards, six independent successful
+controls and three exact private-field compiler rejections pass. Existing owner, repair,
+compaction, reclamation, streaming-reopen and batch consumers pass, retaining their 1,000-cycle
+ARC witnesses. Logs remain under `build/storage-db5-root-*`.
+
+Evidence is checked ARC/Clang ThinLTO macOS arm64 with pinned Nimony
+`4724f66c2e01b17810c844f26575b2317995fda2`. Exact-head Linux CI, process-crash completion
+and hardware power-loss behavior are distinct; none is inferred from successful syscall fault
+injection. Root provenance and application adoption remain external.
