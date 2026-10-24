@@ -11,6 +11,7 @@ publish = false
 [workspace]
 
 [dependencies]
+libc = "=0.2.154"
 polkavm = { path = "../../../vendor/polkavm/crates/polkavm" }
 polkavm-common = { path = "../../../vendor/polkavm/crates/polkavm-common", features = ["alloc"] }
 picosimd = { version = "=0.9.6", features = ["ops"] }

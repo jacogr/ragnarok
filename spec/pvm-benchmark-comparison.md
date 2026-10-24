@@ -767,3 +767,6 @@ private-field rejection, independent arithmetic/destination cases and full execu
 host/retry consumers accompany the feature. Checked ARC/Clang ThinLTO, pins and
 normal error/capability gates remain unchanged. Local timing/no-isolation limits,
 open full STF/JAM parity, deferred compiled comparison and deferred fuzzing remain.
+
+The opt-in [maintained real-sieve comparison](pvm-sieve-benchmark.md) complements these
+synthetic guests with a frozen linked upstream program and complete terminal-state checks.
