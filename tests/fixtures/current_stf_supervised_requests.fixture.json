@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_SUPERVISED_REQUESTS",
+  "files": {
+    "current-stf-supervised-requests.json": "09cf72baf27bfb3519ca93bb4f4e237996c32cb9eb6904713821c26a4c9b3e80"
+  },
+  "target": "current-stf-supervised-requests.json"
+}
