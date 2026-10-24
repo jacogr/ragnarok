@@ -29,7 +29,7 @@ def chunks(data, size):
     return [data[index:index+size] for index in range(0, len(data), size)]
 
 
-def inputs(parent, initial, slot, cycle, reports):
+def inputs(parent, initial, slot, cycle, reports, *, gas_limits=None):
     """Hold A pending while B→C→D→E become available, or admit a genuinely unresolved A↔B cycle."""
     specifications = []
     if slot == 3:
@@ -43,7 +43,8 @@ def inputs(parent, initial, slot, cycle, reports):
         # Segment roots are independently authored with the referenced package, never observed state.
         lookup = b''.join(package(key)+digest(package(key)+b'exports') for key in sorted(lookups, key=package))
         item = pipeline.guarantee(parent, initial, core, slot, package=package(name), service=sid,
-                                  prerequisites=b''.join(sorted(package(key) for key in prerequisites)), lookup=lookup)
+                                  prerequisites=b''.join(sorted(package(key) for key in prerequisites)), lookup=lookup,
+                                  accumulation_gas=100000 if gas_limits is None else gas_limits[name])
         assert package(name) not in reports
         reports[package(name)] = item['layout']
         gs.append(item)

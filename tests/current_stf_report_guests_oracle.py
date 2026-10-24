@@ -37,7 +37,7 @@ def original(mode):
     return parent
 
 
-def guarantee(parent, initial, core, slot, *, package=None, prerequisites=b'', lookup=b'', service=None):
+def guarantee(parent, initial, core, slot, *, package=None, prerequisites=b'', lookup=b'', service=None, accumulation_gas=100000):
     """Sign a full authored report, explicit dependency families and the actual target service code hash."""
     sid = service if service is not None else ((42 if core == 0 else 99) if slot == 3 else 99)
     fixed = history(initial[chapter_key(3)])[0][0][0]
@@ -52,7 +52,7 @@ def guarantee(parent, initial, core, slot, *, package=None, prerequisites=b'', l
     value = dict(header=header, prerequisites=prerequisites, core=core, authorizer=pools[core][:32],
                  gas=17+core, auth=b'auth'+bytes([core]), lookup=lookup,
                  digests=[(sid, metadata_parse(parent[chapter_service(255, sid)], 105)[0],
-                           digest(package+b'payload'), 100000, 0, bytes([slot, core]),
+                           digest(package+b'payload'), accumulation_gas, 0, bytes([slot, core]),
                            (13+core, 2+core, 3+core, 4+core, 5+core))])
     wire = report_wire(value)
     indices = [i for i, at in enumerate(permutation(parent[chapter_key(6)][64:96]))
