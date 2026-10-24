@@ -18,6 +18,10 @@ import subprocess
 import time
 from pathlib import Path
 
+# Browser work is nested inside the live peer session; reserve its full deadline in that session.
+RPC_SERVICE_SECONDS = 30
+BROWSER_TIMEOUT_SECONDS = 60
+
 
 # Read exactly one bounded wire field; premature EOF is a failed protocol exchange.
 def exact(connection, size):
@@ -112,8 +116,10 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
     (static/'escape.gz').unlink(missing_ok=True)
     (static/'escape.gz').symlink_to('../peer.log')
     log = folder/'peer.log'
+    # The normal RPC budget starts after the optional browser allowance; success still stops immediately.
+    service_seconds = RPC_SERVICE_SECONDS + (BROWSER_TIMEOUT_SECONDS if browser else 0)
     command = [str(binary), 'server', str(peer_port), str(certificates/'a.cert.pem'),
-               str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', '30000', 'service',
+               str(certificates/'a.key.pem'), '-', 'jamnp-s/1/00000000', str(service_seconds*1000), 'service',
                '--with-rpc', '--rpc-port', str(rpc_port)]
     if ui:
         command.remove('--with-rpc') # Prove UI alone enables the separate RPC listener.
@@ -237,7 +243,7 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                     subprocess.run(['node', str(root/'tools/ui_browser.mjs'),
                                     f'http://127.0.0.1:{ui_port}/', f'ws://127.0.0.1:{rpc_port}/',
                                     str(browser_folder), *(['--subscriptions'] if expected_genesis is not None else [])], cwd=root, env=environment, stdout=log_file,
-                                   stderr=subprocess.STDOUT, check=True, timeout=60)
+                                   stderr=subprocess.STDOUT, check=True, timeout=BROWSER_TIMEOUT_SECONDS)
             with connect(rpc_port, f'http://127.0.0.1:{ui_port}' if ui else None) as connection:
                 request = dict(jsonrpc='2.0', method='ragnarok_clientInfo', id='client')
                 text = json.dumps(request)
