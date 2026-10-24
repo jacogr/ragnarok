@@ -162,7 +162,7 @@ def summarize(report):
 
 def run(base_ref, scope='all', folder=None):
     """Build both frozen libraries and publish only after all paired full-state checks and identity guards pass."""
-    folder = Path(folder) if folder is not None else BUILD
+    folder = (Path(folder) if folder is not None else BUILD).resolve()
     if not folder.resolve().is_relative_to((ROOT/'build').resolve()):
         raise ValueError('paired guest output must remain in the owned build directory')
     folder.mkdir(parents=True, exist_ok=True)
