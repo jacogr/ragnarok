@@ -25,7 +25,7 @@ from setup_nimony import installed
 BUILD = ROOT/'build/tests/pvm-instruction-profile'
 CASES = (('pinky', 1, 'dynamic'), ('pinky', 1, 'planned'), ('sieve', 100000, 'planned'))
 VERSION = 'valgrind-3.22.0'
-SCOPE = 'executeBudget_0_*'
+SCOPE = 'execute_?_*'
 
 
 def profile_counts(text, allow_empty=False):
@@ -132,7 +132,7 @@ def run():
         report['builds'].append(row)
         report['binary_sha256'] = digest(binary)
         symbols = checks.command(['nm', '--defined-only', binary], 'symbols')
-        if symbols['exit_code'] or not re.search(r'\bexecuteBudget_0_\w+', symbols['output']):
+        if symbols['exit_code'] or not re.search(r'\bexecute_[0-9]+_\w+', symbols['output']):
             raise RuntimeError('native execution symbol unavailable; no whole-process fallback')
         refused = checks.command([binary], 'assertions',
             environment=dict(os.environ, RAGNAROK_PVM_SIEVE_ASSERT_PROBE='1'), timeout=30)
@@ -157,7 +157,7 @@ def run():
                                  limit, guest, samples=1)
             text = output.read_text()
             counts = profile_counts(text)
-            if re.search(r'^fn=executeBudget_0_\w+', text, re.M) is None:
+            if re.search(r'^fn=execute_[0-9]+_\w+', text, re.M) is None:
                 raise RuntimeError('profile lacks selected native execution')
             result.pop('output')
             annotation = checks.command(['callgrind_annotate', '--auto=no', '--inclusive=no',
@@ -177,7 +177,7 @@ def run():
                  '| Guest | Limit | Pricing | Instructions |', '| --- | ---: | --- | ---: |']
         for item in report['profiles']:
             lines.append(f"| {item['guest']} | {item['limit']} | {item['mode']} | {item['counts']['Ir']} |")
-        lines += ['', 'One full-state-checked invocation per cell; initialization and validation are outside collection.',
+        lines += ['', 'One full-state-checked invocation per cell; fixture preparation and full-state comparison are outside collection.',
                   'Raw call graphs and self-cost annotations retain helper attribution and inlined compiler symbols.']
         (BUILD/'results.json').write_text(json.dumps(report, indent=2)+'\n')
         (BUILD/'summary.md').write_text('\n'.join(lines)+'\n')
