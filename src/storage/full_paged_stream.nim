@@ -82,6 +82,9 @@ func manifest*(checked: CheckedFullPagedArtifact): FullPagedManifest {.requires:
 func fingerprint*(checked: CheckedFullPagedArtifact): FullPagedDigest {.requires: checked.ready.} =
   ## Bind exact canonical physical records independently of equal protocol roots or local page layout.
   checked.stream
+func limits*(checked: CheckedFullPagedArtifact): FullPagedStreamLimits {.requires: checked.ready.} =
+  ## Return detached inherited scalar policies without permitting mutation of admitted authority.
+  checked.policy
 func counts*(checked: CheckedFullPagedArtifact): FullPagedCounts {.requires: checked.ready.} =
   ## Copy passive actual counters from successful complete admission.
   checked.used
