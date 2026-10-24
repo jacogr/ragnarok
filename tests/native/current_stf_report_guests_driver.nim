@@ -122,6 +122,9 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 136..140:
+    second = preimageAgingCode(mode, array[32, byte](blake2b256([
+        82'u8]).value)) # Strict age checks never narrow or wrap the invocation time.
   of 131..135:
     second = childReadinessCode(mode, replacement, namespaceHaltCode()) # The new public child becomes available only through selected fnprovide.
   of 123..130: second = reservedCreationCode(mode, replacement,
@@ -200,6 +203,12 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # This original request must be removed before checkpointing and a later regular recreation is discarded.
     seeds[1].requests.add(StateRequestItem(hash: requestHash, length: RequestLength(1),
         history: requestedHistory()))
+  if mode in 136..140:
+    # R was genuinely supplied before removal; preserve its stored bytes at the exact boundary.
+    seeds[1].requests.add(StateRequestItem(hash: requestHash, length: RequestLength(1),
+      history: (if mode == 138: availableHistory(RequestSlot(0)) else: unavailableHistory(
+          RequestSlot(0), RequestSlot(1)))))
+    seeds[1].preimages.add(StatePreimageItem(hash: requestHash, value: @[82'u8]))
   if mode == 89:
     # Only the foreign forget-before-checkpoint original starts with R pending in42.
     seeds[0].requests.add(StateRequestItem(hash: requestHash, length: RequestLength(1),
@@ -268,6 +277,11 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     var wire = chainParameters.encodeParameters
     for index in 0..<4: wire[98+index] = byte((4096'u32 shr (8*index)) and 255)
     chainParameters = decodeParameters(wire).value
+  if mode in 136..140:
+    # Explicit lookup age0 makes the pinned4800-slot safety margin observable with valid absolute uint32 slots.
+    var wire = chainParameters.encodeParameters
+    for index in 74..<78: wire[index] = 0
+    chainParameters = decodeParameters(wire).value
   if mode in 123..130:
     # Author a distinct nonzero deposit schedule; existing zero-deposit profiles and all protocol checks remain intact.
     var wire = chainParameters.encodeParameters
@@ -304,7 +318,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # At most two children extend the explicit two-account prior; later empty blocks retain all four canonical records.
     limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)
     limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
-  if mode in 62..71 or mode in 87..91:
+  if mode in 62..71 or mode in 87..91 or mode in 136..140:
     # One identity may be touched on both sides of a checkpoint; explicit observations retain the selected prefix.
     limits.completion.execution.initial.guests.requestFacts = ElementLimit(4)
     limits.completion.execution.execution.round.guests.requestFacts = ElementLimit(4)
@@ -411,9 +425,15 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       else: assert stored.error in [StateStoreError.None,
           StateStoreError.MissingKey] # Full-map comparison fixes presence independently.
 
-    if mode in 67..71:
+    if mode in 67..71 or mode in 136..140:
       # Only R is newly provisionable; exact independent maps constrain its value and corresponding request history.
       let stored = snapshot.lookup(servicePreimageKey(ServiceIndex(99), requestHash, ByteLimit(32)).value)
+      if mode in 136..140:
+        var preserved: seq[StatePreimageItem] = @[]
+        for item in services[1].preimages:
+          if array[32, byte](item.hash) != array[32, byte](requestHash): preserved.add(
+              item) # Keep all unrelated original identities.
+        services[1].preimages = preserved
       if stored.error == StateStoreError.None:
         services[1].preimages.add(StatePreimageItem(hash: requestHash, value: @[82'u8]))
       else: assert stored.error == StateStoreError.MissingKey
@@ -553,7 +573,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 136
+      assert mode >= 0 and mode < 141
       bodies = @[]
       slots = @[]
     else:
@@ -562,7 +582,7 @@ proc main() {.raises.} =
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
-      106, 111, 112, 117, 122, 130, 135]
+      106, 111, 112, 117, 122, 130, 135, 140]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:

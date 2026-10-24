@@ -1137,5 +1137,27 @@ def current_stf_child_readiness_corpus(compiler, report, checks, libraries):
 
 
 
+@CORPORA.case
+def current_stf_preimage_aging_corpus(compiler, report, checks, libraries):
+    """Compare strict request expiry, live preimage retention and restored-history compaction against independent maps."""
+    from current_stf_preimage_aging_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_preimage_aging', 'current_stf_transfers', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-preimage-aging-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-preimage-aging', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent widened strict-expiry equations, history transitions, exact reservation release and selected maps')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-preimage-aging-corpus', expected)
+    announce('independent preimage aging whole STF maps', corpus['passed'])
+    return corpus
+
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
