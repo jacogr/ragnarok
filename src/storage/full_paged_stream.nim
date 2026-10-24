@@ -6,6 +6,7 @@
 import std/assertions
 import ./[full_paged_codec, paged_codec, paged_stream, node_records]
 import ../codec/[bounded, state_layout, state_trie]
+import ../crypto/primitives
 
 const FullPagedFixedBytes* = 4194304'u64 ## Conservative logical workspace, distinct from measured RSS.
 type
@@ -40,6 +41,7 @@ type
     selected: FullPagedManifest
     policy: FullPagedStreamLimits
     used: FullPagedCounts
+    stream: FullPagedDigest
   FullPagedLookup* = object ## An owned value is distinct from checked protocol absence.
     present: bool
     payload: seq[byte]
@@ -77,6 +79,9 @@ func header*(checked: CheckedFullPagedArtifact): FullPagedHeader {.requires: che
 func manifest*(checked: CheckedFullPagedArtifact): FullPagedManifest {.requires: checked.ready.} =
   ## Native owners still supply immutable inode/pin/durability authority separately.
   checked.selected
+func fingerprint*(checked: CheckedFullPagedArtifact): FullPagedDigest {.requires: checked.ready.} =
+  ## Bind exact canonical physical records independently of equal protocol roots or local page layout.
+  checked.stream
 func counts*(checked: CheckedFullPagedArtifact): FullPagedCounts {.requires: checked.ready.} =
   ## Copy passive actual counters from successful complete admission.
   checked.used
@@ -261,8 +266,25 @@ proc position(io: PagedInput, header: FullPagedHeader, selected: FullPagedManife
     elif order > 0: stop = middle
     else: return middle
   header.geometry.entries
+proc fingerprint(previous: FullPagedDigest, bytes: seq[byte], work: var Work): FullPagedDigest =
+  ## Complete canonical record bytes extend a fixed-width chain in the exact sorted index order.
+  result = default(FullPagedDigest)
+  if not work.charge(Counter.Hash, 1): return
+  if bytes.len > high(int)-32:
+    work.fail(FullPagedStreamError.LimitExceeded)
+    return
+  var input = newSeq[byte](32+bytes.len)
+  let prior = array[32, byte](previous)
+  for index in 0..<32: input[index] = prior[index] # Prior fixed-width digest.
+  for index in 0..<bytes.len: input[32+index] = bytes[index] # One already bounded physical record.
+  let hashed = blake2b256(input)
+  if hashed.error != CryptoError.None:
+    discard work.codec(FullPagedError.BackendFailure)
+    return
+  result = FullPagedDigest(array[32, byte](hashed.value))
 proc record(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest,
-    ordinal: uint64, cache: var PageCache, work: var Work): TrieRecord =
+    ordinal: uint64, cache: var PageCache, work: var Work,
+    stream: var FullPagedDigest, bindStream: bool): TrieRecord =
   ## One bounded raw record and one decoded value coexist; no complete-record table is retained.
   let found = io.row(header, selected, ordinal, cache, work)
   if work.status != FullPagedStreamError.None: return default(TrieRecord)
@@ -274,11 +296,19 @@ proc record(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest
   var raw = newSeq[byte](int(size))
   if not io.range(header, selected, uint64(header.geometry.payloadOffset)+found.offset,
       raw, cache, work): return default(TrieRecord)
+  if bindStream:
+    # Admission records the actual authenticated transport, not a re-encoding of logical state.
+    stream = fingerprint(stream, raw, work)
   let hashCount = (if size > 104: 2'u64 else: 1'u64)
   if not work.charge(Counter.Hash, hashCount): return default(TrieRecord)
   let decoded = decodeFullPagedRecord(raw, found.digest, work.limits.trie.perValue)
   if not work.codec(decoded.error): return default(TrieRecord)
   decoded.value
+proc record(io: PagedInput, header: FullPagedHeader, selected: FullPagedManifest,
+    ordinal: uint64, cache: var PageCache, work: var Work): TrieRecord =
+  ## Graph/path reads validate individual records without extending the complete stream fingerprint.
+  var ignored = default(FullPagedDigest)
+  io.record(header, selected, ordinal, cache, work, ignored, false)
 proc tree(io: PagedInput, shape: PagedGeometry, start, width: uint64, cursor: var uint64,
     work: var Work): FullPagedDigest =
   ## Fixed-depth postorder recursion checks every stored digest, including nonphysical padding leaves.
@@ -413,6 +443,7 @@ proc validateFullPaged*(io: PagedInput, scratch: FullPagedScratch, header: FullP
     return refused[CheckedFullPagedArtifact](work)
   var cache = default(PageCache)
   var scan = initFullPagedIndexScan(shape)
+  var stream = default(FullPagedDigest)
   for ordinal in 0'u64..<shape.entries:
     # Read every record before traversing so an unreachable malformed record cannot hide behind graph failures.
     var raw = default(array[64, byte])
@@ -420,7 +451,7 @@ proc validateFullPaged*(io: PagedInput, scratch: FullPagedScratch, header: FullP
         CheckedFullPagedArtifact](work)
     let admitted = scan.admit(raw)
     if not work.codec(admitted.error): return refused[CheckedFullPagedArtifact](work)
-    discard io.record(header, selected, ordinal, cache, work)
+    discard io.record(header, selected, ordinal, cache, work, stream, true)
     if work.status != FullPagedStreamError.None: return refused[CheckedFullPagedArtifact](work)
   if not work.codec(scan.finish): return refused[CheckedFullPagedArtifact](work)
   if not io.padding(header, selected, 4096+shape.entries*64, uint64(shape.payloadOffset),
@@ -453,7 +484,7 @@ proc validateFullPaged*(io: PagedInput, scratch: FullPagedScratch, header: FullP
   if not scratch.input.checkExtent(shape.entries*2, work): return refused[CheckedFullPagedArtifact](work)
   FullPagedStreamResult[CheckedFullPagedArtifact](status: FullPagedStreamError.None,
     completed: CheckedFullPagedArtifact(ready: true, header: header, selected: selected,
-      policy: limits, used: work.used))
+      policy: limits, used: work.used, stream: stream))
 proc lookupFullPaged*(io: PagedInput, checked: CheckedFullPagedArtifact, root: StateRoot,
     key: StateKey): FullPagedStreamResult[FullPagedLookup] =
   ## Only an admitted retained root permits an owned lookup or authenticated protocol absence.
