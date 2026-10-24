@@ -1,0 +1,228 @@
+{
+  "source": "tests/native/storage_paged_native_results.nim",
+  "build_name": "storage-paged-native-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-paged-native-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Native paged result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-paged-native-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Native paged result failed guard"
+    },
+    {
+      "identity": {
+        "member": "file",
+        "origin": "default"
+      },
+      "arguments": [
+        "file",
+        "default"
+      ],
+      "name": "storage-paged-native-file-default",
+      "diagnostic": "outcome.status == FileFailure",
+      "description": "Native paged file default guard"
+    },
+    {
+      "identity": {
+        "member": "file",
+        "origin": "failed"
+      },
+      "arguments": [
+        "file",
+        "failed"
+      ],
+      "name": "storage-paged-native-file-failed",
+      "diagnostic": "outcome.status == FileFailure",
+      "description": "Native paged file failed guard"
+    },
+    {
+      "identity": {
+        "member": "stream",
+        "origin": "default"
+      },
+      "arguments": [
+        "stream",
+        "default"
+      ],
+      "name": "storage-paged-native-stream-default",
+      "diagnostic": "outcome.status == StreamFailure",
+      "description": "Native paged stream default guard"
+    },
+    {
+      "identity": {
+        "member": "stream",
+        "origin": "failed"
+      },
+      "arguments": [
+        "stream",
+        "failed"
+      ],
+      "name": "storage-paged-native-stream-failed",
+      "diagnostic": "outcome.status == StreamFailure",
+      "description": "Native paged stream failed guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "default"
+      },
+      "arguments": [
+        "proof",
+        "default"
+      ],
+      "name": "storage-paged-native-proof-default",
+      "diagnostic": "outcome.status == StreamFailure",
+      "description": "Native paged proof default guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "failed"
+      },
+      "arguments": [
+        "proof",
+        "failed"
+      ],
+      "name": "storage-paged-native-proof-failed",
+      "diagnostic": "outcome.status == StreamFailure",
+      "description": "Native paged proof failed guard"
+    },
+    {
+      "identity": {
+        "member": "proof_kind",
+        "origin": "failed"
+      },
+      "arguments": [
+        "proof_kind",
+        "failed"
+      ],
+      "name": "storage-paged-native-proof-kind-failed",
+      "diagnostic": "outcome.streamCause == ProofFailure",
+      "description": "Native paged nonproof cause guard"
+    },
+    {
+      "identity": {
+        "member": "publication",
+        "origin": "default"
+      },
+      "arguments": [
+        "publication",
+        "default"
+      ],
+      "name": "storage-paged-native-publication-default",
+      "diagnostic": "receipt.ready",
+      "description": "Native paged publication default guard"
+    },
+    {
+      "identity": {
+        "member": "reclamation",
+        "origin": "default"
+      },
+      "arguments": [
+        "reclamation",
+        "default"
+      ],
+      "name": "storage-paged-native-reclamation-default",
+      "diagnostic": "receipt.ready",
+      "description": "Native paged reclamation default guard"
+    },
+    {
+      "identity": {
+        "member": "io",
+        "origin": "default"
+      },
+      "arguments": [
+        "io",
+        "default"
+      ],
+      "name": "storage-paged-native-io-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Native paged io default guard"
+    },
+    {
+      "identity": {
+        "member": "writer_live",
+        "origin": "default"
+      },
+      "arguments": [
+        "writer_live",
+        "default"
+      ],
+      "name": "storage-paged-native-writer-live-default",
+      "diagnostic": "not opened(writer)",
+      "description": "Native paged writer_live default guard"
+    },
+    {
+      "identity": {
+        "member": "reader_live",
+        "origin": "default"
+      },
+      "arguments": [
+        "reader_live",
+        "default"
+      ],
+      "name": "storage-paged-native-reader-live-default",
+      "diagnostic": "not opened(reader)",
+      "description": "Native paged reader_live default guard"
+    },
+    {
+      "identity": {
+        "member": "candidate_live",
+        "origin": "default"
+      },
+      "arguments": [
+        "candidate_live",
+        "default"
+      ],
+      "name": "storage-paged-native-candidate-live-default",
+      "diagnostic": "not opened(candidate)",
+      "description": "Native paged candidate_live default guard"
+    },
+    {
+      "identity": {
+        "member": "file_live",
+        "origin": "default"
+      },
+      "arguments": [
+        "file_live",
+        "default"
+      ],
+      "name": "storage-paged-native-file-live-default",
+      "diagnostic": "not opened(file)",
+      "description": "Native paged file_live default guard"
+    },
+    {
+      "identity": {
+        "member": "directory_live",
+        "origin": "default"
+      },
+      "arguments": [
+        "directory_live",
+        "default"
+      ],
+      "name": "storage-paged-native-directory-live-default",
+      "diagnostic": "not opened(directory)",
+      "description": "Native paged directory_live default guard"
+    }
+  ]
+}
