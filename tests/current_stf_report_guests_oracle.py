@@ -120,9 +120,10 @@ def advance(parent, initial, mode, slot, gs, ass, *, plan=None):
     outputs = ((99, COMMITMENT),) if any(99 in group for group in batches) and mode != 'panic-rollback' else ()
     if plan is not None and 'yielded' in plan:
         outputs = ((99, COMMITMENT),) if plan['yielded'] else ()
-    raw, commitment = body(gs, ass)
+    raw, commitment = body(gs, ass) if plan is None or 'body' not in plan else plan['body']
     child = authored_child(parent, raw, commitment)
-    result = advance_no_reports(parent, child, raw, commitment, outputs=outputs)
+    result = advance_no_reports(parent, child, raw, commitment, outputs=outputs,
+                                preimages=() if plan is None else plan.get('preimages', ()))
     for core in range(2):
         if old[core] is not None and (votes[core] >= 5 or slot >= old[core]['registered']+5): old[core] = None
     pools, rows = Reader(parent[chapter_key(1)]), []
