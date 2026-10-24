@@ -116,5 +116,24 @@ and successful fsync receipts do not establish device/filesystem power-loss dura
 
 ## Current status
 
-Contract only. No full paged codec, complete-graph admission, native owner or consumer integration
-is claimed by this layer. The next unit is the full physical format and bounded index validation.
+`full_paged_codec.nim` implements format-only admission. The full header is one 4096-byte page:
+32-byte zero-padded magic, chain at 32, epoch/generation at 64/72, selected root at 80,
+record count/payload extent/root count at 112/120/128, eight reserved zero bytes, then at most
+64 strictly root-sorted 56-byte claims (root, entries, nodes, value bytes) from offset 144.
+All remaining bytes are zero. Root inventory is fixed-capacity; unsupported larger histories
+require an explicit future format rather than implicit allocation.
+
+Each 64-byte index row stores complete hash at 0, payload-relative offset/length at 32/40 and
+sixteen zero bytes. Payload records preserve the physical repository wire fields: tag/hash/key/
+length/value for leaves (72 fixed bytes), tag/hash/full-left/full-right for branches (97 bytes).
+Every record is locally JAM-hashed; physical left-bit aliases remain distinct transport bytes.
+Shared light geometry is arithmetic-only, with a stronger 72-byte minimum full-record extent.
+Page leaf/padding/internal hashes use separate FULL-PAGED V1 domains. Full CURRENT is 192 bytes:
+32-byte magic, chain/root, epoch/generation, data pages/exact EOF, page root and BLAKE2b-256 of
+its preceding 160 bytes. No light schema or digest gains full artifact authority.
+
+The selected `storage_full_paged_codec` native suite verifies independent fixed-offset bytes,
+all header truncations and trailing reserved bytes, exact/one-short geometry/value quotas,
+strict/sticky index coverage and ordering, every manifest-byte corruption, primitive failure,
+empty/long values and complete physical left-bit retention. This is format evidence only.
+Complete-graph admission, native owners and consumer integration remain subsequent units.
