@@ -15,11 +15,13 @@ for side in 0..<32:
   for i in 0..<4096: image.bytes[i] = byte((65536+side*4096+i) mod 251)
   images.add(image)
 let source = captureMemory(images, PageLimit(32)).value
-for ordinal in 0..<9:
+let blank = captureMemory([], PageLimit(32)).value
+for ordinal in 0..<11:
   # Reversing the bounded case order checks simple first/last bias in a separate process.
-  let identity = if getEnv("RAGNAROK_PVM_MEMORY_REVERSE") == "1": 8-ordinal else: ordinal
-  let sizes = [512, 512, 4096, 4096, 65536, 65536, 4096, 65536, 4096]
-  let kinds = ["read", "write", "read", "write", "read", "write", "capture", "capture", "image"]
+  let identity = if getEnv("RAGNAROK_PVM_MEMORY_REVERSE") == "1": 10-ordinal else: ordinal
+  let sizes = [512, 512, 4096, 4096, 65536, 65536, 4096, 65536, 4096, 131072, 131072]
+  let kinds = ["read", "write", "read", "write", "read", "write", "capture", "capture", "image",
+      "reserve", "clear"]
   let size = sizes[identity]
   let kind = kinds[identity]
   var input = newSeq[byte](size)
@@ -44,6 +46,15 @@ for ordinal in 0..<9:
       for repeat in 0..<128:
         writes[repeat] = captureMemory(images.toOpenArray(0, size div 4096-1), PageLimit(uint32(
             size div 4096)))
+    elif kind == "reserve":
+      # Materialize an initially absent32-page interval without including empty-source preparation in timing.
+      for repeat in 0..<128:
+        writes[repeat] = withWritablePages(blank, PageIndex(16), PageIndex(48))
+    elif kind == "clear":
+      # Clear retained nonzero pages through the same immutable trusted range boundary used by host paging.
+      for repeat in 0..<128:
+        writes[repeat] = withPageRange(source, PageIndex(16), PageIndex(48), PageAccess.ReadWrite,
+            PageContent.Zeroed)
     else:
       # Materialize one complete independently copied image, including all eight private chunks.
       assert kind == "image"
@@ -80,6 +91,15 @@ for ordinal in 0..<9:
         let absent = pageImage(writes[repeat].value, PageIndex(uint32(16+size div 4096))).value
         assert absent.access == PageAccess.Inaccessible
         for octet in absent.bytes: assert octet == 0
+      elif kind == "reserve" or kind == "clear":
+        # Observe every mapped zero byte and access mode, including pages sharing underlying immutable zero storage.
+        assert writes[repeat].error == MachineError.None
+        assert uint32(writablePageCount(writes[repeat].value, PageIndex(16), PageIndex(
+            48)).value) == 32
+        for side in 0..<32:
+          let image = pageImage(writes[repeat].value, PageIndex(uint32(16+side))).value
+          assert image.access == PageAccess.ReadWrite
+          for octet in image.bytes: assert octet == 0
       else:
         # Public image materialization must copy both metadata and every byte exactly.
         assert kind == "image" and observed[repeat].error == MachineError.None
@@ -89,4 +109,5 @@ for ordinal in 0..<9:
     for side in 0..<32:
       let image = pageImage(source, PageIndex(uint32(16+side))).value
       for index in 0..<4096: assert image.bytes[index] == byte((65536+side*4096+index) mod 251)
+    assert uint32(writablePageCount(blank, PageIndex(16), PageIndex(48)).value) == 0
     echo "RANGE,", kind, ",", size, ",", sample, ",", elapsed, ",", cpuElapsed

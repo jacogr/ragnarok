@@ -113,6 +113,20 @@ proc pageFromImage(image: PageImage): PageData =
     chunkFromImage(image, 1536), chunkFromImage(image, 2048), chunkFromImage(image, 2560),
     chunkFromImage(image, 3072), chunkFromImage(image, 3584)])
 
+proc sharedZeroChunk(seed: var nil PageChunk): PageChunk =
+  ## Lazily retain one immutable known-zero payload within this mapping operation; no process-global pool exists.
+  let current = seed
+  if current != nil:
+    return current # Permission-only changes need no seed, and later new pages share this immutable payload.
+  let fresh = PageChunk(bytes: default(array[512, byte]))
+  seed = fresh
+  fresh
+
+proc zeroPage(index: PageIndex, access: PageAccess, seed: var nil PageChunk): PageData =
+  ## Only absent or explicitly cleared pages reach this helper; every later writer still clones touched chunks first.
+  let chunk = sharedZeroChunk(seed)
+  PageData(index: index, access: access, chunks: [chunk, chunk, chunk, chunk, chunk, chunk, chunk, chunk])
+
 func pageByte(page: PageData, offset: int): byte {.inline.} =
   ## Read one proven page offset without returning a mutable chunk or retaining a transient reference.
   page.chunks[offset div 512].bytes[offset mod 512]
@@ -303,6 +317,7 @@ proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[M
   var pages = newSeqOfCap[PageData](int(total))
   for i in 0..<start:
     pages.add(data.pages[i]) # Retain the untouched prefix, including permissions and nonzero bytes.
+  var zero: nil PageChunk = nil # Keep a lazy payload only until this operation has published all immutable children.
   var at = start
   var ordinal = uint32(first)
   while ordinal < uint32(past):
@@ -315,8 +330,7 @@ proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[M
       inc at
     else:
       # An absent page has implicit zero storage; materialization must preserve those bytes.
-      pages.add(pageFromImage(PageImage(index: PageIndex(ordinal), access: PageAccess.ReadWrite,
-        bytes: default(array[4096, byte]))))
+      pages.add(zeroPage(PageIndex(ordinal), PageAccess.ReadWrite, zero))
     inc ordinal
   for i in stop..<data.pages.len:
     pages.add(data.pages[i]) # The exclusive endpoint and entire suffix remain untouched.
@@ -344,14 +358,15 @@ proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
   var pages = newSeqOfCap[PageData](int(total))
   for index in 0..<start: pages.add(data.pages[index]) # Preserve immutable outside prefix owners.
   if not dropped:
+    var zero: nil PageChunk = nil # Dropping zero/inaccessible storage never allocates a replacement payload.
     var ordinal = uint32(first)
     var at = start
     while ordinal < uint32(past):
       if at < stop and uint32(data.pages[at].index) == ordinal and content == PageContent.Preserved:
         pages.add(pageWithAccess(data.pages[at], access)) # Retain inaccessible/read-only bytes without copying payloads.
       else:
-        pages.add(pageFromImage(PageImage(index: PageIndex(ordinal), access: access,
-          bytes: default(array[4096, byte])))) # Absent or explicitly zeroed pages receive independent zero storage.
+        pages.add(zeroPage(PageIndex(ordinal), access,
+            zero)) # New headers share only known immutable zero bytes, never an old nonzero payload.
       if at < stop and uint32(data.pages[at].index) == ordinal:
         inc at # Each present old page is consumed exactly once in the ordered interval.
       inc ordinal # The validated exclusive endpoint bounds every ordinal below 2^20.
