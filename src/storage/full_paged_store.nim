@@ -650,14 +650,15 @@ func policy(limits: FullPagedStreamLimits): array[16, uint64] =
     uint64(limits.scratchBytes), uint64(limits.work.ioCalls), uint64(limits.work.hashes),
     uint64(limits.work.visits), uint64(limits.work.readBytes), uint64(limits.work.writeBytes),
     uint64(limits.contextBytes)]
-proc reclaim*(writer: var FullPagedWriter, receipt: FullPagedEpochReceipt,
-    expected: FullPagedManifest): FullPagedNativeResult[FullPagedReclamation] =
-  ## Delete only an exact captured older physical epoch after full source/old-graph checks and exclusive pinning.
+proc reclaimEpoch(writer: var FullPagedWriter, previous, expected: FullPagedManifest,
+    receipt: FullPagedEpochReceipt, capturedIdentity: bool): FullPagedNativeResult[
+        FullPagedReclamation] =
+  ## Shared bounded deletion checks exact expected old content; captured receipts additionally bind the original inode.
   let data = writer.data
   if data == nil or not data.active:
     return refused[FullPagedReclamation](FullPagedNativeError.Uninitialized)
   if data.poisoned: return refused[FullPagedReclamation](FullPagedNativeError.RecoveryRequired)
-  if not receipt.ready or not expected.initialized:
+  if not previous.initialized or not expected.initialized:
     return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
   let selected = data.checked.manifest.bytes
   let captured = expected.bytes
@@ -665,17 +666,29 @@ proc reclaim*(writer: var FullPagedWriter, receipt: FullPagedEpochReceipt,
   if captured.error != FullPagedError.None: return codecFailed[FullPagedReclamation](captured.error)
   if selected.value != captured.value: return refused[FullPagedReclamation](
       FullPagedNativeError.StaleView)
-  if uint64(receipt.selected.epoch) >= uint64(expected.epoch):
+  let oldBytes = previous.bytes
+  if oldBytes.error != FullPagedError.None: return codecFailed[FullPagedReclamation](oldBytes.error)
+  let oldSelection = decodeFullPagedSelection(oldBytes.value, data.config.chain, previous.root,
+    data.config.limits.dataset, uint64(data.config.limits.contextBytes) > 0)
+  if oldSelection.error != FullPagedError.None:
+    return codecFailed[FullPagedReclamation](oldSelection.error)
+  if uint64(previous.epoch) >= uint64(expected.epoch):
     return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
-  let sameChain = array[32, byte](receipt.header.chainId) == array[32, byte](data.config.chain)
-  let samePolicy = policy(receipt.limits) == policy(data.config.limits)
-  if not sameChain or not samePolicy or not data.directory.matchesDirectory(receipt.identity):
+  if uint64(previous.generation) > uint64(expected.generation):
     return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
+  if capturedIdentity:
+    # Original receipt authority remains bound to its namespace, policy, chain and captured inode.
+    if not receipt.ready: return refused[FullPagedReclamation](
+        FullPagedNativeError.InvalidCandidate)
+    let sameChain = array[32, byte](receipt.header.chainId) == array[32, byte](data.config.chain)
+    let samePolicy = policy(receipt.limits) == policy(data.config.limits)
+    if not sameChain or not samePolicy or not data.directory.matchesDirectory(receipt.identity):
+      return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
   let source = validateHead(data)
   if source.error != FullPagedNativeError.None: return rejected[FullPagedReclamation, bool](source)
   let pending = data.directory.pendingAbsent
   if pending != FileError.None: return fileFailed[FullPagedReclamation](pending)
-  let exists = data.directory.epochExists(receipt.selected.epoch)
+  let exists = data.directory.epochExists(previous.epoch)
   if exists.error != FileError.None: return fileFailed[FullPagedReclamation](exists.error)
   if not exists.value:
     # Fresh source checking and a real barrier qualify idempotent absence; stale names never become an unlink wildcard.
@@ -692,15 +705,26 @@ proc reclaim*(writer: var FullPagedWriter, receipt: FullPagedEpochReceipt,
     # Pre-confirmation failure may not leak even a captured exclusive cleanup pin.
     if file.opened and file.close != FileError.None:
       result = fileFailed[FullPagedReclamation](FileError.IoFailure)
-  let pinned = openEpoch(file, data.directory, receipt.selected.epoch,
-    PagedPin.Exclusive, receipt.limits.dataset.bytes)
+  let pinned = openEpoch(file, data.directory, previous.epoch,
+    PagedPin.Exclusive, data.config.limits.dataset.bytes)
   if pinned != FileError.None: return fileFailed[FullPagedReclamation](pinned)
-  let actual = file.fileIdentity
-  if actual.error != FileError.None: return fileFailed[FullPagedReclamation](actual.error)
-  if not receipt.identity.matches(actual.value):
-    return fileFailed[FullPagedReclamation](FileError.RecoveryMismatch)
-  let verified = file.validateFullFile(data.directory, receipt.header, receipt.selected,
-      receipt.limits)
+  if capturedIdentity:
+    # A byte-identical replacement inode still cannot satisfy an original captured-inode receipt.
+    let actual = file.fileIdentity
+    if actual.error != FileError.None: return fileFailed[FullPagedReclamation](actual.error)
+    if not receipt.identity.matches(actual.value):
+      return fileFailed[FullPagedReclamation](FileError.RecoveryMismatch)
+  let header = file.readFullHeader(data.config.chain, previous.root, data.config.limits.dataset,
+    data.config.limits.contextBytes)
+  if header.error != FileError.None: return fileFailed[FullPagedReclamation](header.error)
+  if header.value.error != FullPagedError.None: return codecFailed[FullPagedReclamation](
+      header.value.error)
+  let encoded = previous.bytes
+  if encoded.error != FullPagedError.None: return codecFailed[FullPagedReclamation](encoded.error)
+  let bound = decodeFullPagedManifest(encoded.value, header.value.value)
+  if bound.error != FullPagedError.None: return codecFailed[FullPagedReclamation](bound.error)
+  let verified = file.validateFullFile(data.directory, header.value.value, previous,
+    data.config.limits)
   if verified.error != FileError.None: return fileFailed[FullPagedReclamation](verified.error)
   if verified.value.error != FullPagedStreamError.None:
     return graphFailed[FullPagedReclamation, CheckedFullPagedArtifact](verified.value)
@@ -713,6 +737,17 @@ proc reclaim*(writer: var FullPagedWriter, receipt: FullPagedEpochReceipt,
   let retired = file.close
   FullPagedNativeResult[FullPagedReclamation](status: FullPagedNativeError.None,
     completed: FullPagedReclamation(ready: true, absentBefore: false, retirement: retired))
+
+proc reclaim*(writer: var FullPagedWriter, receipt: FullPagedEpochReceipt,
+    expected: FullPagedManifest): FullPagedNativeResult[FullPagedReclamation] =
+  ## Captured reader authority requires the exact original inode even after all owning readers retire.
+  if not receipt.ready: return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
+  reclaimEpoch(writer, receipt.selected, expected, receipt, true)
+proc reclaimExpectedEpoch*(writer: var FullPagedWriter, previous,
+    expected: FullPagedManifest): FullPagedNativeResult[FullPagedReclamation] =
+  ## An independently authenticated old manifest authorizes exact content, not an inode remembered before restart.
+  ## Never derive previous from a namespace scan. Complete admission, an exclusive pin and current fencing precede unlink.
+  reclaimEpoch(writer, previous, expected, default(FullPagedEpochReceipt), false)
 
 proc sameManifest(left, right: FullPagedManifest): bool =
   ## Defaults cannot compare equal as source authority; codec failure never grants byte equality.

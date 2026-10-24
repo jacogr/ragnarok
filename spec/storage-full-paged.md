@@ -552,3 +552,33 @@ Swap and OOM/OOM-kill counters remain zero; reclaim-limit events reach6,615. The
 provider, binary and selected-file identities are rechecked. This qualifies this concrete native
 storage profile including raw-proof extraction, separately from resident state consumer retention
 and hardware/filesystem power-loss behavior.
+
+## Restart-safe expected-manifest retirement
+
+`reclaimExpectedEpoch(writer, previous, expected)` takes independently authenticated previous
+manifest content and the exact expected CURRENT manifest. It never discovers an old epoch by
+scanning names. The previous selection must match the configured chain, finite dataset policy
+and explicitly selected V1/V2 schema, have an older physical epoch and no newer ordinary
+generation. Current/new/default selections and malformed bindings refuse deletion.
+
+The held writer lease, complete current graph, exact CURRENT and absence of pending publication
+are checked before retirement. A present old epoch requires an exclusive nonblocking pin,
+header/manifest binding, complete old graph admission, and fresh current/name/inode checks
+before unlink and directory synchronization. Foreign readers produce Busy without deletion.
+Exact absence is idempotent only after fresh current checks and a real directory barrier.
+Confirmed removal remains successful with a separately exposed final close diagnostic; an
+unconfirmed namespace/barrier failure poisons the writer until explicit reopen.
+
+This content authority permits a byte-identical replacement inode after restart. Existing
+`reclaim` with a captured reader receipt retains its stronger original-inode, namespace and
+policy requirements. Neither API grants deletion authority from plausible directory contents.
+The new native suite covers both formats, foreign pins, wrong content, equal-byte replacement
+inodes, payload corruption, each observed read/scratch/lock/close/unlink/synchronization failure,
+and exact restart/retry. Checked macOS ARC evidence is 1,000 idempotent retries at
+51,440 -> 51,440 occupied bytes. This is not hardware power-loss evidence.
+
+The new expected-retirement and existing captured-receipt retention suites also pass checked
+Linux amd64 under Docker emulation. The new suite records the same 1,000-cycle
+51,440 -> 51,440 ARC evidence. Qualified image:
+sha256:2eb52334835215e77b0f888f9fd476ef9529efb755c5d1ce2b0f9d8115fa1a6d.
+Frozen source hashes and native evidence: build/storage-db5-retirement-linux.json.
