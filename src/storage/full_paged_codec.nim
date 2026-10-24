@@ -344,6 +344,9 @@ proc bytes*(manifest: FullPagedManifest): FullPagedResult[array[FullPagedManifes
   putHash(output, 160, array[32, byte](sum.value))
   FullPagedResult[array[FullPagedManifestBytes, byte]](status: FullPagedError.None,
       completed: output)
+func root*(manifest: FullPagedManifest): StateRoot {.requires: manifest.ready.} =
+  ## Passive selected posterior root becomes usable only after its owning native graph and application context are checked.
+  manifest.selected
 func pageRoot*(manifest: FullPagedManifest): FullPagedDigest {.requires: manifest.ready.} =
   ## Capture local page authority before any subsequent random read.
   manifest.tree

@@ -148,3 +148,33 @@ ARC result. The private backing compiler guard, affected V1 streaming/native/cle
 context codec and state ProofView suites pass. Source inventory, stable pinned formatting and
 all 419 production modules plus the peer entry point pass local semantic Smoke. Application
 startup and actual device power-loss qualification remain separate completion gates.
+
+## Local complete-map restoration under the writer lease
+
+openLocalFullPagedWriter is an explicit V2-only local restart entry point. Its arguments select
+chain, admission/construction limits and replay allowance; it acquires the stable exclusive lease
+before reading CURRENT and discovering the local posterior root. Fixed-size metadata is bounded
+before access, then the ordinary selection checksum, header/manifest binding, complete graph and
+unchanged CURRENT checks all run. The returned storage owner grants no application header,
+profile, finality or external checkpoint trust. Application startup must finish those bindings
+before publishing a canonical view. openFullPagedWriter retains its independently expected root
+contract and remains the entry point for explicitly expected or imported state.
+
+Complete-map entry traversal and root claims can be borrowed synchronously from the writer's
+already admitted immutable selected head. This avoids a second admission/pin during local history
+restoration. The state SDK reconstructs each complete root under ordinary StateStore limits and
+independently recomputes its JAM root. Shared bounded staging and completion checks serve explicit
+reader and writer entry points; neither callbacks nor native retirement authority escape. Context
+arguments on StateStore initialization/replacement forward exact stable borrowed bytes to native
+V2 authoring without changing complete-map transport ownership.
+
+The paged_state_context suite qualifies current and retained complete roots, exact owned snapshot
+values, context publication, strict-root rejection after a selected-root change, local restart,
+writer lease exclusion, wrong-chain and V1 policy refusal, state quotas, unknown roots, all
+observed native reconstruction read failures and closed-owner refusal. Its 1,000 complete-map and
+context capture cycles retain 45,632 -> 45,632 occupied bytes with checked macOS ARC/Clang.
+
+The same checked native suite passes on Linux amd64 under Docker emulation, with 1,000 ARC
+cycles retaining 45,632 -> 45,632 occupied bytes. Existing StateStore transport, full V2 context
+and old-epoch reader regressions pass. Source inventory, separate stable pinned formatting and
+419 production modules plus the peer entry point pass local semantic Smoke.
