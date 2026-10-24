@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz-pvm, bench-pvm, bench-storage, bench-storage-growth, full]
+        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-storage, bench-storage-growth, full]
         default: full
         required: true
 
@@ -26,7 +26,7 @@ permissions:
 
 # New requests supersede earlier runs for the same ref; unrelated labels cannot cancel them.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.run_id || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 # All verification groups use the same shell and Python output policy.
@@ -709,7 +709,7 @@ jobs:
 
   # Original upstream campaigns and the JAM bridge have separate verdicts and failure artifacts.
   pvm-fuzz:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.label.name == 'ci:full') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full')) }}
     name: Fuzz PVM
     timeout-minutes: 30
     runs-on: ubuntu-latest
@@ -741,3 +741,16 @@ jobs:
             build/pvm-upstream-fuzz/results.json
             build/pvm-upstream-fuzz/summary.md
             build/pvm-upstream-fuzz/artifacts/
+
+  # Future subsystem campaigns join this aggregate so one green child cannot conceal another failure.
+  fuzz-status:
+    name: Fuzz
+    needs: [pvm-fuzz]
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full'))) }}
+    strategy: *os-strategy
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Require every Fuzz job
+        env:
+          PVM_FUZZ_RESULT: ${{ needs.pvm-fuzz.result }}
+        run: test "$PVM_FUZZ_RESULT" = success

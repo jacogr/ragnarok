@@ -132,7 +132,9 @@ Original libFuzzer failures save their own inputs under
 binary/flags and input path; upstream libFuzzer's `-minimize_crash=1` mode can
 reduce those original-target crashes. Neither path modifies the vendored source.
 
-The independent **Fuzz PVM** CI job runs on master, full verification requests,
-and `workflow_dispatch` with `suite=fuzz-pvm`. It retains logs, partial/final
+The **Fuzz** group currently contains **Fuzz PVM**. It runs on master, full
+verification requests, the `ci:fuzz` PR label, and `workflow_dispatch` with
+`suite=fuzz`. Its aggregate requires every child to succeed, including rejecting
+skipped or cancelled children. `suite=fuzz-pvm` selects only the PVM child. It retains logs, partial/final
 results, summary and failing original inputs/reference frames even after failure.
 It is separate from PVM reference and performance jobs and ordinary native tests.

@@ -51,7 +51,7 @@ class UpstreamFuzzToolTests(unittest.TestCase):
     def test_ci_separates_upstream_and_native_verdicts(self):
         """All Linux targets and the bridge run in their own job, retaining raw failures even after failure."""
         text = (fuzz.ROOT/'.github/workflows/ci.yml').read_text().split('  pvm-fuzz:\n')[1]
-        for required in ["inputs.suite == 'fuzz-pvm'", "inputs.suite == 'full'", 'runs-on: ubuntu-latest',
+        for required in ["inputs.suite == 'fuzz-pvm'", "inputs.suite == 'fuzz'", "github.event.label.name == 'ci:fuzz'", "inputs.suite == 'full'", 'runs-on: ubuntu-latest',
                          'run: make fuzz-pvm-upstream', 'if: always()', 'build/pvm-upstream-fuzz/artifacts/']:
             self.assertIn(required, text)
         self.assertNotIn('continue-on-error', text)
