@@ -7,6 +7,7 @@ Exposes FAILURE_PLANS, derived FAILURE_COUNTS, SPECIAL_CASES and driver_modes. E
 never come from observed successful results; normal case metadata remains in existing family files.
 """
 from failure_checks import FAILURE_SUITES
+from ci_shards import shuffled
 from failure_drivers import SPECIAL_DRIVERS, driver_modes, check_driver_modes
 from failure_controls import CONTROLS
 
@@ -25,19 +26,26 @@ FAILURE_PLANS = dict(sorted(FAILURE_PLANS.items()))
 FAILURE_COUNTS = {family: len(cases) for family, cases in FAILURE_PLANS.items()}
 
 
-# Partition discovered ordinary families once; specialized controls stay together in the final shard.
-def failure_partition(shard=None):
+# Partition ordinary families and the specialized bundle once, preserving dependency order within each.
+def failure_partition(shard=None, seed=None):
     if shard is None:
         # The default local command retains the complete historical workload and verdict.
         return FAILURE_PLANS, True
     if (not isinstance(shard, (tuple, list)) or len(shard) != 2
             or any(type(value) is not int for value in shard)
-            or not 1 <= shard[0] <= shard[1] <= 4):
+            or not 1 <= shard[0] <= shard[1] <= 6):
         # Invalid subsets cannot silently become successful partial verification.
-        raise ValueError('Failure shard must be index/count with 1 <= index <= count <= 4')
+        raise ValueError('Failure shard must be index/count with 1 <= index <= count <= 6')
     index, count = shard
-    families = set(tuple(FAILURE_SUITES)[index-1::count])
-    specialized = index == count
+    if seed is not None:
+        # Specialized controls form one dependent bundle whose owning shard also changes each run.
+        work = shuffled([*FAILURE_SUITES, None], seed, 'failures')[index-1::count]
+        families = set(work)-{None}
+        specialized = None in work
+    else:
+        # Existing unseeded local reproductions retain their historical partition assignment.
+        families = set(tuple(FAILURE_SUITES)[index-1::count])
+        specialized = index == count
     plans = {family: cases for family, cases in FAILURE_PLANS.items()
              if family in families or (specialized and family in SPECIAL_CASES)}
     return plans, specialized
@@ -51,8 +59,8 @@ def parse_failure_shard(value):
 
 
 # Ordinary shards prepare only declared native dependencies; the specialized owner retains full setup.
-def failure_libraries(shard=None):
-    plans, specialized = failure_partition(shard)
+def failure_libraries(shard=None, seed=None):
+    plans, specialized = failure_partition(shard, seed)
     if specialized:
         return None
     required = set()
