@@ -67,8 +67,10 @@ gh pr edit <number> --add-label ci:full
 ```
 
 Unit and Contract use 16 and 6 shards respectively. Each run shuffles discovered work with its
-shared GitHub run ID, without timing weights or maintained assignments. Reports and summaries
-retain the seed for [local reproduction](testing/infrastructure.md). Dependency-ordered codec,
+shared GitHub run ID, without historical timing weights or maintained assignments. Unit batches
+are first stratified by their unique transitive project-module count, spreading similarly weighted
+work across shards before randomizing execution order. Reports and summaries retain the seed for
+[local reproduction](testing/infrastructure.md). Dependency-ordered codec,
 corpus and specialized-control bundles stay intact, with their owning shard randomized too.
 
 New smoke updates cancel older smoke runs for that PR, without cancelling labeled heavy CI.
