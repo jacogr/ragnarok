@@ -160,3 +160,26 @@ Rejected local experiments are retained under `build/pvm11/`: forcing preflight 
 its read/write parameter and skipping already-dirty preparation did not establish broad gains.
 Explicit borrowed local owners removed reference-count operations in generated C but regressed
 representative workloads; that candidate was also reverted. None of those probes is production.
+
+## Cold-only private chunk cloning
+
+A diagnostic scalar-page trace of the small indirect guest observed 10,012 cached page visits
+and only two first-write chunk clones. Generated ARM64 assembly nevertheless placed the large
+cloning frame and allocator setup in the repeatedly called preparation routine. Cloning now lives
+in a private non-inlined helper. The hot preparation loop checks dirty bits and enters that helper
+only for a first write; complete scalar preflight and clone-before-write ownership are unchanged.
+The short preparation loop can inline into scalar stores without bringing the cloning frame along.
+
+Two independent paired comparisons against the single-page parent each passed 936 full-state
+executions over every maintained family, size and pricing mode. Dynamic large memory fill improved
+by 5.3% and 5.4% in the two comparisons (the repeat medians were 14.584 to 13.799 ms). Most other
+changes remained within a few percent and are not established gains. Warm medians, initialization
+and first-cold executions remain separately inspectable under `build/pvm11/scalar-copy/` in
+`cold-clone-paired.json` and `cold-clone-repeat.json`; assembly and the diagnostic trace are retained
+separately. Writer/snapshot ARC lifetimes, immutable chunk boundaries and paid cross-page repair
+passed focused native verification. These are checked local M1 Max observations, not Linux results.
+
+The trace also showed a three-page indirect working set, but four-slot MRU, stable-resident and
+compact-hint prototypes did not pass the timing threshold despite reducing simulated misses.
+The production writer retains its two slots. A bytewise partial-store fallback intended to prevent
+Clang merging fixed-width stores also failed to establish a gain and was reverted.

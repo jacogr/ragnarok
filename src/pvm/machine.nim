@@ -637,18 +637,21 @@ proc newScalarMemoryWriter*(memory: Memory): MachineResult[ScalarMemoryWriter] =
   MachineResult[ScalarMemoryWriter](status: MachineError.None, completed:
     ScalarMemoryWriter(base: memory, pages: @[], dirty: @[], active: false, recent: [-1, -1]))
 
+proc cloneWriterChunk(writer: ScalarMemoryWriter, slot, chunk: int, mask: byte) {.noinline.} =
+  ## Keep allocator/TLS work on the first-write path; callers prove this chunk is not yet private.
+  if writer.dirty[slot] == 0:
+    writer.pages[slot] = pageWithAccess(writer.pages[slot], writer.pages[slot].access)
+  writer.pages[slot].chunks[chunk] = PageChunk(bytes: writer.pages[slot].chunks[chunk].bytes)
+  writer.dirty[slot] = writer.dirty[slot] or mask
+
 proc prepareWriterSpan(writer: ScalarMemoryWriter, slot, offset, count: int) =
-  ## The validated nonempty page interval clones each header/chunk only on its first write in this private epoch.
+  ## Already-private chunks need only a bounded dirty-bit check; clone before the first byte mutation.
   let first = offset div 512
   let last = (offset+count-1) div 512
   for chunk in first..last:
     let mask = 1'u8 shl chunk
     if (writer.dirty[slot] and mask) == 0:
-      if writer.dirty[slot] == 0:
-        writer.pages[slot] = pageWithAccess(writer.pages[slot], writer.pages[
-            slot].access) # Shared headers stay immutable.
-      writer.pages[slot].chunks[chunk] = PageChunk(bytes: writer.pages[slot].chunks[chunk].bytes)
-      writer.dirty[slot] = writer.dirty[slot] or mask
+      cloneWriterChunk(writer, slot, chunk, mask) # No immutable header/chunk is ever changed in place.
 
 func writerScalar(writer: ScalarMemoryWriter, source: MemoryData, slot, offset,
     count: int): uint64 {.inline.} =
