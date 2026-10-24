@@ -75,3 +75,6 @@ in the benchmark reports; no noisy observations are discarded.
 Next work is reducing execution overhead and measuring more representative repeated guests.
 Fuzzing remains deferred until maintainer Daybreak access. M1 framing completion remains scoped;
 complete state serialization and whole-block/JAM equivalence are still open.
+
+Synchronous price-owner borrowing and its isolated lookup benchmark are recorded in
+[pricing owner borrows](pvm-pricing-owner-borrows.md).

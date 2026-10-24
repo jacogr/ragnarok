@@ -101,5 +101,5 @@ proc blockGas*(memo: GasMemo, start: CodeAddress): GasMemoResult[BlockGas] =
   ## Mirror the original exact block-start query; interior/operand addresses remain refused and execution selects containing starts.
   ## Updates may survive a later execution refusal, but contain no paid gas, CPU or memory progress.
   if memo.data == nil: return GasMemoResult[BlockGas](status: GasMemoError.InvalidProgram)
-  let data = memo.data
+  let data {.cursor.} = memo.data # The caller retains the stable policy owner through this synchronous lookup.
   price(data, start)

@@ -193,6 +193,11 @@ bench-pvm-guests: setup
 bench-pvm-memory: setup
 	$(PYTHON) tools/pvm_memory_benchmark.py
 
+# Exact-start public pricing cost includes invalid-start controls and cold/warm samples.
+.PHONY: bench-pvm-pricing
+bench-pvm-pricing: setup
+	$(PYTHON) tools/pvm_pricing_benchmark.py
+
 # Coverage-guided byte fuzzing owns its native adapter, finite controls and retained corpus; it never runs from ordinary unit or E2E checks.
 fuzz-pvm-program: toolchain check-inventory
 	$(PYTHON) tools/fuzz_pvm_program.py
