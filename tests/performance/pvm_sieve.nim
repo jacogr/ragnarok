@@ -1,10 +1,23 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Execute the exact linked upstream sieve supplied to PolkaVM; compare complete reference outputs.
+## Execute frozen checked upstream guests supplied to PolkaVM; compare complete reference outputs.
 import std/[assertions, syncio, monotimes, envvars]
 import ../../src/pvm/[program, machine, gas, gas_plan, gas_memo]
 import ../../src/pvm/step as reference
+
+type GuestKind {.pure.} = enum ## One immutable process selection binds the frozen guest to an independent expected result.
+  Sieve, Minimal, Memset
+
+proc selectedGuest(value: string): GuestKind =
+  ## Keep the original default and reject unknown family labels before any timing.
+  case value
+  of "", "sieve": GuestKind.Sieve # Existing sieve callers retain their original protocol.
+  of "minimal": GuestKind.Minimal # Indirect calls retain a deterministic counter result.
+  of "memset": GuestKind.Memset # Memory fill retains byte zero and checks the remaining extent.
+  else:
+    assert false, "unknown checked guest family"
+    GuestKind.Sieve
 
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
   ## Record CPU time alongside the elapsed metric also emitted by the reference harness.
@@ -15,7 +28,13 @@ proc word(data: string, at, width: int): uint64 =
   result = 0
   for i in 0..<width: result = result or (uint64(byte(data[at + i])) shl (8 * i))
 
-proc count(limit: uint64): uint64 =
+proc count(guest: GuestKind, limit: uint64): uint64 =
+  ## Select independent expectations without reading mutable process configuration during execution.
+  if guest != GuestKind.Sieve:
+    assert limit in [1000'u64, 100000'u64]
+    if guest == GuestKind.Minimal: return 2*limit + limit mod 2
+    else: return limit-1
+
   ## Known prime counts are independent of the two timed interpreters.
   case limit
   of 100: 25'u64
@@ -38,15 +57,16 @@ proc checkMemory(memory: Memory, indices: seq[PageIndex], access: seq[PageAccess
     for i in 0..<4096: assert image.bytes[i] == byte(expected[offset + page * 4096 + i])
 
 proc check(machine: Machine, indices: seq[PageIndex], access: seq[PageAccess], expected: string,
-    limit: uint64) =
+    limit: uint64, guest: GuestKind) =
   ## Validate terminal CPU state, exact gas, all registers and all mapped memory outside timing.
   let cpu = machineInfo(machine).value
   assert uint64(cpu.pc) == 0 and cpu.blockCharged and uint64(cpu.gasDeficit) == 0
   assert uint64(cpu.gas) == word(expected, 8, 8)
   for i in 0..<13: assert uint64(cpu.registers[i]) == word(expected, 16 + i * 8, 8)
-  assert uint64(cpu.registers[7]) == count(limit)
+  assert uint64(cpu.registers[7]) == count(guest, limit)
   checkMemory(memoryOf(machine).value, indices, access, expected, 120)
 
+let guest = selectedGuest(getEnv("RAGNAROK_PVM_GUEST"))
 if getEnv("RAGNAROK_PVM_SIEVE_ASSERT_PROBE") == "1":
   assert false, "pvm sieve native assertion control"
 var data = ""
@@ -100,6 +120,9 @@ let pricing = getEnv("RAGNAROK_PVM_PRICING")
 assert pricing in ["", "dynamic", "planned", "memo"]
 let plannedMode = pricing == "planned"
 let memoMode = pricing == "memo"
+if guest != GuestKind.Sieve:
+  # Additional families require a protocol witness before policy metadata or samples.
+  echo "GUEST,", getEnv("RAGNAROK_PVM_GUEST")
 var plan = default(GasPlan)
 var memo = default(GasMemo)
 if plannedMode:
@@ -144,7 +167,7 @@ for sample in 0..<samples:
   let elapsed = getMonoTime().ticks - wallStart
   assert done.error == reference.StepError.None, "current sieve execution"
   assert done.value.exit == reference.StepExit.Halt
-  check(done.value.machine, indices, access, expected, limit)
+  check(done.value.machine, indices, access, expected, limit, guest)
   echo "SIEVE,", engine, ",", limit, ",", sample, ",", elapsed, ",", cpuElapsed
   checkMemory(memory, indices, access, originalBytes, 0)
   let original = machineInfo(source).value

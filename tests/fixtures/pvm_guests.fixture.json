@@ -1,0 +1,19 @@
+{
+  "environment": "RAGNAROK_PVM_GUESTS",
+  "files": {
+    "pvm-guests/LICENSE-APACHE": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+    "pvm-guests/LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "pvm-guests/README.md": "b26969cd7151d03d441b878cc46e4c4af039bcc2c8f9786ea8355bd69985dcca",
+    "pvm-guests/guest-Cargo.lock": "f14d934f8512c52c9017fc5ffb4a8d47907157fa9a922372dd80e2ec431068e4",
+    "pvm-guests/memset.Cargo.toml": "69d5cd2870e568364eac641a6360ebd38ea0a57f6c492c2119fd89ca7b5ff5b1",
+    "pvm-guests/memset.checked_entry.rs.inc": "5334dbd8b2c39ae5beae09d41a0564a7a5f2d5f39126f8a37d7235c1a7c38a26",
+    "pvm-guests/memset.polkavm": "7f65561fbcbec23b6ea1a991013875782fad7e9a3d97262e8ef41451d5b80f10",
+    "pvm-guests/memset.provenance.json": "abd820f5eb1703bfe6c62590ec5f849730814270a1184d9d25bb232f7cdcd4ee",
+    "pvm-guests/minimal.Cargo.toml": "d026ad7c2f54f088e646a6d1b700f26a30ab15aa00049582bf77471514a629db",
+    "pvm-guests/minimal.checked_entry.rs.inc": "778d5ae081e865793e9df1670dd65d9938b116ba6708c8fcad8d71919cd8210f",
+    "pvm-guests/minimal.polkavm": "dc14d67a05a7f34cb606e9e5cc19d7758259f44ae91e1e4c046fc72852f59a86",
+    "pvm-guests/minimal.provenance.json": "75038d8adc7e601c08d2e2f229a4989a87009766e4a3e7fe43e6fba295c92139",
+    "pvm-guests/workspace.Cargo.toml": "cc74f85bd72364217cae38139163416b42047f4092c439ae43fa379f79f10eec"
+  },
+  "target": "pvm-guests"
+}

@@ -27,16 +27,53 @@ fn cpu_nanoseconds() -> u128 {
         .unwrap()
 }
 
-// Independently tabulated observable counts also bind the guest's checked export.
-fn expected(limit: u32) -> u64 {
-    match limit {
-        100 => 25,
-        1000 => 168,
-        10000 => 1229,
-        100000 => 9592,
-        1000000 => 78498,
-        10000000 => 664579,
-        _ => panic!("unsupported validated sieve size"),
+// A selected family remains fixed for preparation and every measured snapshot.
+#[derive(Clone, Copy, PartialEq)]
+enum Guest {
+    Sieve,
+    Minimal,
+    Memset,
+}
+impl Guest {
+    // Reject unknown labels rather than interpreting another family's results as sieve.
+    fn selected() -> Self {
+        match std::env::var("RAGNAROK_PVM_GUEST").as_deref() {
+            Err(_) | Ok("") | Ok("sieve") => Self::Sieve,
+            Ok("minimal") => Self::Minimal,
+            Ok("memset") => Self::Memset,
+            _ => panic!("unknown checked guest family"),
+        }
+    }
+    // Stable protocol labels bind each complete process to one frozen artifact family.
+    fn name(self) -> &'static str {
+        match self {
+            Self::Sieve => "sieve",
+            Self::Minimal => "minimal",
+            Self::Memset => "memset",
+        }
+    }
+}
+
+// Independent mathematical results supplement complete state comparison for every guest.
+fn expected(guest: Guest, limit: u32) -> u64 {
+    match guest {
+        Guest::Minimal => {
+            assert!(limit == 1000 || limit == 100000);
+            2 * u64::from(limit) + u64::from(limit % 2)
+        }
+        Guest::Memset => {
+            assert!(limit == 1000 || limit == 100000);
+            u64::from(limit - 1)
+        }
+        Guest::Sieve => match limit {
+            100 => 25,
+            1000 => 168,
+            10000 => 1229,
+            100000 => 9592,
+            1000000 => 78498,
+            10000000 => 664579,
+            _ => panic!("unsupported validated sieve size"),
+        },
     }
 }
 
@@ -84,8 +121,8 @@ fn instance(module: &Module, entry: polkavm::ProgramCounter, registers: &[u64; 1
 }
 
 // Snapshot validation includes complete gas/register/mapped-memory outcomes, outside either clock.
-fn snapshot(instance: &mut RawInstance, pages: &[(u32, u8)], limit: u32) -> Vec<u8> {
-    assert_eq!(instance.reg(Reg::A0), expected(limit));
+fn snapshot(instance: &mut RawInstance, pages: &[(u32, u8)], guest: Guest, limit: u32) -> Vec<u8> {
+    assert_eq!(instance.reg(Reg::A0), expected(guest, limit));
     assert!(instance.gas() >= 0);
     let mut result = b"PVMSIE01".to_vec();
     result.extend_from_slice(&(instance.gas() as u64).to_le_bytes());
@@ -108,7 +145,8 @@ pub fn command(args: &[String]) {
     let output = Path::new(&args[2]);
     let limit: u32 = args[3].parse().unwrap();
     let samples: usize = args[4].parse().unwrap();
-    expected(limit);
+    let guest = Guest::selected();
+    expected(guest, limit);
     assert!(samples == 1 || samples == 13);
     if std::env::var("RAGNAROK_PVM_SIEVE_ASSERT_PROBE").as_deref() == Ok("1") {
         panic!("pvm sieve reference assertion control");
@@ -159,21 +197,40 @@ pub fn command(args: &[String]) {
         let mut instance = instance(&module, entry, &registers);
         assert_eq!(instance.run().unwrap(), InterruptKind::Finished);
         fs::write(input_path, input).unwrap();
-        fs::write(expected_path, snapshot(&mut instance, &mapped, limit)).unwrap();
-        println!(
-            "SIEVE_PREPARED,{limit},{},{}",
-            mapped.len(),
-            parts.code_and_jump_table.len()
-        );
+        fs::write(
+            expected_path,
+            snapshot(&mut instance, &mapped, guest, limit),
+        )
+        .unwrap();
+        if guest == Guest::Sieve {
+            // Preserve the existing maintained sieve command's preparation framing.
+            println!(
+                "SIEVE_PREPARED,{limit},{},{}",
+                mapped.len(),
+                parts.code_and_jump_table.len()
+            );
+        } else {
+            // Bind additional frozen guest preparations to their explicit selected family.
+            println!(
+                "GUEST_PREPARED,{},{limit},{},{}",
+                guest.name(),
+                mapped.len(),
+                parts.code_and_jump_table.len()
+            );
+        }
         return;
     }
-    assert_eq!(
-        fs::read(input_path).unwrap(),
-        input,
+    // Compare complete images without dumping multi-megabyte byte arrays on a refused control.
+    assert!(
+        fs::read(input_path).unwrap() == input,
         "sieve input differs from artifact/ABI"
     );
     let reference = fs::read(expected_path).unwrap();
     assert_eq!(reference.len(), 120 + mapped.len() * 4096);
+    if guest != Guest::Sieve {
+        // A mandatory family prefix prevents cross-family sample relabeling.
+        println!("GUEST,{}", guest.name());
+    }
     for sample in 0..samples {
         let mut instance = instance(&module, entry, &registers);
         let wall = Instant::now();
@@ -182,9 +239,9 @@ pub fn command(args: &[String]) {
         let cpu_elapsed = cpu_nanoseconds() - cpu;
         let elapsed = wall.elapsed().as_nanos();
         assert_eq!(result, InterruptKind::Finished);
-        assert_eq!(
-            snapshot(&mut instance, &mapped, limit),
-            reference,
+        // Equality still covers every byte; a mismatch retains a bounded diagnostic instead of the arrays.
+        assert!(
+            snapshot(&mut instance, &mapped, guest, limit) == reference,
             "sieve terminal state mismatch"
         );
         println!("SIEVE,polkavm_interpreter,{limit},{sample},{elapsed},{cpu_elapsed}");

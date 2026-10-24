@@ -1,0 +1,17 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Reviewed fixture rebuild manifest; upstream algorithm attribution is in README.md.
+[workspace]
+resolver = "2"
+members = ["bench-minimal", "bench-memset"]
+[workspace.dependencies]
+picoalloc = { version = "=5.0.0", default-features = false }
+[workspace.lints.rust]
+unexpected-cfgs = "allow"
+static_mut_refs = "allow"
+[profile.release]
+lto = "fat"
+panic = "abort"
+opt-level = 3
+codegen-units = 1
+debug = true
