@@ -67,7 +67,10 @@ whole-client throughput improvements.
 - [Dependent arithmetic chains](pvm-register-chain-reference.md) now cover all 85
   register operations across block transitions and host continuations. Broaden
   composition further and profile the resulting interpreter costs; these operation
-  matrices and fixed guests do not prove arbitrary program equivalence.
+  matrices and fixed guests do not prove arbitrary program equivalence. The
+  [mixed memory/host loop matrix](pvm-mixed-program-reference.md#reusable-pricing-and-both-host-apis)
+  additionally checks dynamic/planned pricing and cold/warmed memos through both callback forms,
+  retaining complete memory/register observations at underfunded block entries.
 - Add the [required full upstream PolkaVM differential fuzzing job](graypaper-discrepancies.md#required-future-polkavm-fuzzing-ci)
   separately when a faithful state adapter and reproducible failure handling exist.
   Current deterministic comparisons and malformed-input native tests do not satisfy it.

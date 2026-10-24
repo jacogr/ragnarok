@@ -67,3 +67,26 @@ Evidence is local macOS checked release Nimony ARC/Clang LTO and pinned Rust rel
 no remote Linux, performance, complete upstream test or fuzz result is claimed.
 This supplies a representative combined guest boundary; it does not establish
 complete JAM invocation or whole-block state-transition parity.
+
+## Reusable pricing and both host APIs
+
+The native consumer now replays the unchanged frozen 128 gas scenarios through dynamic pricing,
+immutable complete plans, fresh empty memos and already learned memos, using both response-only
+and fallible-success host callbacks: 1,024 complete runs and 15,744 checked host callbacks. Each
+case retains exact attempt/callback budgets, all thirteen registers, gas/charged/terminal metadata,
+both complete page images and the original source aliases. The independent Python oracle, frozen
+bytes and pinned public interpreted PolkaVM consumer are unchanged; this adds execution-policy
+composition coverage rather than a new oracle or protocol interpretation.
+
+Fresh memos begin empty for every scenario. A first-block affordability refusal may learn that
+block's price but must expose no memory/register progress; other cold cases reach both prices.
+Explicitly warmed source-bound tables retain two prices across the complete loop and both callback
+forms. Immutable plans are bounded to the two independently priced blocks and the same cycle
+ceiling. Policy preparation never grants paid gas or overrides an underfunded boundary.
+
+The selected native suite and independent oracle reproduction checks pass. Both real consumers
+accept the original frozen input and reject altered expected registers, memory expectations,
+block prices, record counts and truncation. Evidence is retained under `build/pvm11/mixed-*`.
+These deterministic original-program comparisons do not resume paused fuzzing, establish arbitrary
+program equivalence or close full JAM/state serialization gates. Host refusal and repair/rebinding
+matrices remain separately owned by the host/gas-policy suites.

@@ -4,10 +4,16 @@
 ## Complete GP-derived guest loops compare memory, host replies, branches and exact gas boundaries.
 
 import std/[assertions, syncio, envvars]
-import ../../../src/pvm/[program, machine, gas, step]
+import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
 
 type HostContext = object ## Synchronous test hosts own only scalar expectations and callback progress.
   calls, iterations, initial, address, budget, price: uint64
+
+type
+  PricingMode {.pure.} = enum ## Each execution policy consumes the same frozen guest and complete expected state.
+    Dynamic, Planned, Memo
+  HostRefusal {.pure.} = enum ## The zero ordinal remains a real refusal reason; selected success carries the reply separately.
+    Refused
 
 proc word(data: string, at, width: int): uint64 =
   ## Decode fixed corpus fields only after their enclosing record has been bounded.
@@ -49,6 +55,41 @@ proc respond(context: var HostContext, suspension: StepOutcome): HostResponse {.
   HostResponse(action: HostAction.Continue, gas: cpu.gas, gasDeficit: GasDeficit(0),
     registers: registers, memory: memory)
 
+proc respondFallible(context: var HostContext, suspension: StepOutcome): HostResult[
+    HostRefusal] {.raises: [].} =
+  ## The selected success branch transports exactly the response checked by the ordinary callback.
+  hostSuccess[HostRefusal](respond(context, suspension))
+
+proc runReply(source: Machine, context: var HostContext, mode: PricingMode,
+    cycles: uint64, plan: GasPlan, memo: GasMemo): StepOutcome =
+  ## Each response-only policy retains identical attempt/callback budgets and the same invocation-local context.
+  let steps = ExecutionStepLimit(6 * context.iterations + 1)
+  let hosts = HostCallLimit(2 * context.iterations)
+  let checked = case mode
+    of PricingMode.Dynamic:
+      executeWithHost(source, context, respond, steps, hosts, GasCycleLimit(cycles))
+    of PricingMode.Planned:
+      executeWithHost(source, context, respond, steps, hosts, plan)
+    of PricingMode.Memo:
+      executeWithHost(source, context, respond, steps, hosts, memo)
+  assert checked.error == StepError.None
+  checked.value
+
+proc runFallible(source: Machine, context: var HostContext, mode: PricingMode,
+    cycles: uint64, plan: GasPlan, memo: GasMemo): StepOutcome =
+  ## Fallible host successes must preserve the same complete memory/register prefix at every gas boundary.
+  let steps = ExecutionStepLimit(6 * context.iterations + 1)
+  let hosts = HostCallLimit(2 * context.iterations)
+  let checked = case mode
+    of PricingMode.Dynamic:
+      executeWithHost(source, context, respondFallible, steps, hosts, GasCycleLimit(cycles))
+    of PricingMode.Planned:
+      executeWithHost(source, context, respondFallible, steps, hosts, plan)
+    of PricingMode.Memo:
+      executeWithHost(source, context, respondFallible, steps, hosts, memo)
+  assert checked.error == HostExecutionError.None
+  checked.value
+
 var data = ""
 try:
   # Frozen complete-program inputs are mandatory; test execution never regenerates expectations.
@@ -57,6 +98,8 @@ except:
   quit 2
 assert data.len >= 12 and data[0..7] == "PVMMIX01" and word(data, 8, 4) == 32
 var cursor = 12
+var checkedScenarios = 0
+var checkedCalls = 0'u64
 for row in 0..<32:
   # Bound the complete header, scalar domains and raw blob before any narrowing or allocation.
   assert data.len - cursor >= 268
@@ -100,49 +143,80 @@ for row in 0..<32:
     images[offset div 4096].bytes[offset mod 4096] = byte((initial shr (8 * i)) and 255)
   let memory = captureMemory(images, PageLimit(2)).value
   let total = iterations * price + haltPrice
-  for scenario in 0..<4:
-    # Exact and surplus success, final-block shortage and initial-block shortage share the same guest.
-    let budget = if scenario == 0: total + 7 elif scenario == 1: total
-      elif scenario == 2: total - 1 else: price - 1
-    let source = captureMachine(program, memory, MachineInfo(pc: CodeAddress(0), gas: MachineGas(
-        budget),
-      blockCharged: false, registers: registers)).value
-    var context = HostContext(calls: 0, iterations: iterations, initial: initial, address: address,
-      budget: budget, price: price)
-    let checked = executeWithHost(source, context, respond, ExecutionStepLimit(6 * iterations + 1),
-      HostCallLimit(2 * iterations), GasCycleLimit(cycles))
-    assert checked.error == StepError.None
-    let outcome = checked.value
-    let posterior = machineInfo(outcome.machine).value
-    let progressed = scenario != 3
-    assert context.calls == (if progressed: 2 * iterations else: 0'u64)
-    if scenario < 2:
-      # Successful dynamic halt normalizes the native PC after paying the final block exactly once.
-      assert outcome.exit == StepExit.Halt and uint64(posterior.pc) == 0 and posterior.blockCharged
-      assert uint64(posterior.gas) == budget - total
-    else:
-      # Both underfunded boundaries preserve the current block's uncharged state and completed prefix.
-      assert outcome.exit == StepExit.OutOfGas and not posterior.blockCharged
-      assert uint64(posterior.pc) == (if scenario == 2: 20'u64 else: 0'u64)
-      assert uint64(posterior.gas) == (if scenario == 2: haltPrice - 1 else: budget)
-    for i in 0..<13:
-      # The independent complete-program oracle includes accumulated host replies and loop counter state.
-      let expected = word(data, at + (if progressed: 164 else: 60) + i * 8, 8)
-      assert uint64(posterior.registers[i]) == expected
-      assert uint64(machineInfo(source).value.registers[i]) == uint64(registers[i])
-    let scalar = if progressed: word(data, at + 20, 8) else: initial
-    for page in 0..<2:
-      # Complete byte comparison and source aliases detect extra writes that scalar-only checks miss.
-      let actual = pageImage(memoryOf(outcome.machine).value, PageIndex(uint32(16 + page))).value
-      assert actual.access == PageAccess.ReadWrite
-      for i in 0..<4096:
-        let physical = 0x10000'u64 + uint64(page * 4096 + i)
-        let expected = if physical >= address and physical - address < 8:
-          byte((scalar shr (8 * int(physical - address))) and 255) else: 33'u8
-        assert actual.bytes[i] == expected
-      assert pageImage(memoryOf(source).value, PageIndex(uint32(16 + page))).value.bytes == images[page].bytes
-    assert uint64(machineInfo(source).value.gas) == budget and not machineInfo(
-        source).value.blockCharged
+  let prepared = newGasPlan(program, GasPlanLimits(blocks: GasPlanBlockLimit(2),
+    bytes: GasPlanByteLimit(512), cycles: GasCycleLimit(cycles)))
+  assert prepared.error == GasPlanError.None
+  let plan = prepared.value
+  assert gasPlanInfo(plan).value.blockCount == 2
+  let learned = newGasMemo(program, GasMemoLimits(bytes: GasMemoByteLimit(512),
+    cycles: GasCycleLimit(cycles)))
+  assert learned.error == GasMemoError.None
+  let memo = learned.value
+  assert gasMemoInfo(memo).value.pricedBlocks == 0
+  assert uint64(blockGas(memo, CodeAddress(0)).value) == price
+  assert uint64(blockGas(memo, CodeAddress(20)).value) == haltPrice
+  for mode in [PricingMode.Dynamic, PricingMode.Planned, PricingMode.Memo]:
+    for warm in [false, true]:
+      if warm and mode != PricingMode.Memo: continue # Only a lazy memo has learned facts to distinguish.
+      for fallible in [false, true]:
+        for scenario in 0..<4:
+          # Exact and surplus success, final-block shortage and initial-block shortage share the same guest.
+          let budget = if scenario == 0: total + 7 elif scenario == 1: total
+            elif scenario == 2: total - 1 else: price - 1
+          let source = captureMachine(program, memory, MachineInfo(pc: CodeAddress(0),
+              gas: MachineGas(budget),
+            blockCharged: false, registers: registers)).value
+          var context = HostContext(calls: 0, iterations: iterations, initial: initial,
+            address: address,
+            budget: budget, price: price)
+          var selectedMemo = memo
+          if mode == PricingMode.Memo and not warm:
+            # Each cold scenario starts with an explicitly successful empty source-bound table.
+            let cold = newGasMemo(program, GasMemoLimits(bytes: GasMemoByteLimit(512),
+              cycles: GasCycleLimit(cycles)))
+            assert cold.error == GasMemoError.None
+            selectedMemo = cold.value
+          let outcome = if fallible: runFallible(source, context, mode, cycles, plan, selectedMemo)
+            else: runReply(source, context, mode, cycles, plan, selectedMemo)
+          inc checkedScenarios
+          checkedCalls += context.calls
+          if mode == PricingMode.Memo:
+            # A cold first-block refusal learns one price; every other case reaches or already knows both blocks.
+            let learnedBlocks = if warm or scenario != 3: 2'u64 else: 1'u64
+            assert gasMemoInfo(selectedMemo).value.pricedBlocks == learnedBlocks
+          let posterior = machineInfo(outcome.machine).value
+          let progressed = scenario != 3
+          assert context.calls == (if progressed: 2 * iterations else: 0'u64)
+          if scenario < 2:
+            # Successful dynamic halt normalizes the native PC after paying the final block exactly once.
+            assert outcome.exit == StepExit.Halt and uint64(posterior.pc) == 0 and
+                posterior.blockCharged
+            assert uint64(posterior.gas) == budget - total
+          else:
+            # Both underfunded boundaries preserve the current block's uncharged state and completed prefix.
+            assert outcome.exit == StepExit.OutOfGas and not posterior.blockCharged
+            assert uint64(posterior.pc) == (if scenario == 2: 20'u64 else: 0'u64)
+            assert uint64(posterior.gas) == (if scenario == 2: haltPrice - 1 else: budget)
+          for i in 0..<13:
+            # The independent complete-program oracle includes accumulated host replies and loop counter state.
+            let expected = word(data, at + (if progressed: 164 else: 60) + i * 8, 8)
+            assert uint64(posterior.registers[i]) == expected
+            assert uint64(machineInfo(source).value.registers[i]) == uint64(registers[i])
+          let scalar = if progressed: word(data, at + 20, 8) else: initial
+          for page in 0..<2:
+            # Complete byte comparison and source aliases detect extra writes that scalar-only checks miss.
+            let actual = pageImage(memoryOf(outcome.machine).value, PageIndex(uint32(16 + page))).value
+            assert actual.access == PageAccess.ReadWrite
+            for i in 0..<4096:
+              let physical = 0x10000'u64 + uint64(page * 4096 + i)
+              let expected = if physical >= address and physical - address < 8:
+                byte((scalar shr (8 * int(physical - address))) and 255) else: 33'u8
+              assert actual.bytes[i] == expected
+            assert pageImage(memoryOf(source).value, PageIndex(uint32(16 + page))).value.bytes ==
+                images[page].bytes
+          assert uint64(machineInfo(source).value.gas) == budget and not machineInfo(
+              source).value.blockCharged
 assert cursor == data.len
+assert checkedScenarios == 1024 and checkedCalls == 15744
 
-echo "PVM mixed-program cross-check passed: 32 programs, 128 gas scenarios"
+echo "PVM mixed-program cross-check passed: 32 programs, 1024 policy/host scenarios"
