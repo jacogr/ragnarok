@@ -23,12 +23,12 @@ type
     data: nil DirectoryData
   FileData = ref object ## Synchronous callbacks retain stable private state only for the duration of one algorithm call.
     fd, directory: cint
-    active, poisoned, sealed, exclusive: bool
+    active, poisoned, sealed, exclusive, anonymous: bool
     name: string
     identity, namespace: Stat
     size: uint64
     limit: ByteLimit
-  PagedFile* = object ## Unique epoch descriptor and independent directory descriptor, with one immutable native pin.
+  PagedFile* = object ## Unique epoch/staging/replay descriptor and independent directory handle; named resources retain immutable native pins.
     data: nil FileData
   PagedFileIdentity* = object ## Passive exact inode/namespace receipt cannot create a file owner or pin.
     ready: bool
@@ -111,6 +111,19 @@ proc renameAt(a: cint, source: cstring, b: cint, target: cstring): cint {.import
 proc unlinkAt(fd: cint, path: cstring, flags: cint): cint {.importc: "unlinkat", cdecl,
     header: "<unistd.h>".}
   ## Only a captured canonical epoch with an exclusive pin may be removed.
+type CStream {.importc: "FILE", header: "<stdio.h>".} = object ## SDK-owned opaque anonymous temporary stream.
+let getFlags {.importc: "F_GETFL", header: "<fcntl.h>".}: cint
+let setFlags {.importc: "F_SETFL", header: "<fcntl.h>".}: cint
+let duplicateCloseExec {.importc: "F_DUPFD_CLOEXEC", header: "<fcntl.h>".}: cint
+proc temporaryNative(): ptr CStream {.importc: "tmpfile", cdecl, header: "<stdio.h>".}
+  ## libc creates and unlinks scratch transport before the descriptor escapes.
+proc descriptorNative(stream: ptr CStream): cint {.importc: "fileno", cdecl, header: "<stdio.h>".}
+  ## Borrow the stream's descriptor only long enough to create an independent close authority.
+proc retireStream(stream: ptr CStream): cint {.importc: "fclose", cdecl, header: "<stdio.h>".}
+  ## Retire the bootstrap FILE exactly once; subsequent IO uses only the separately owned descriptor.
+proc duplicateNative(fd, operation, minimum: cint): cint {.importc: "fcntl", cdecl,
+    header: "<fcntl.h>".}
+  ## The SDK variadic command duplicates with atomic close-on-exec on supported Linux/macOS.
 func error*[T](outcome: PagedIoResult[T]): FileError =
   ## Observe typed native failures without extracting an inactive payload.
   outcome.status
@@ -144,12 +157,14 @@ proc identity(data: FileData): bool =
   var held = default(Stat)
   var path = default(Stat)
   var directory = default(Stat)
-  posix.fstat(data.fd, held) == 0 and S_ISREG(held.st_mode) and held.st_size >= 0 and
-    posix.fstat(data.directory, directory) == 0 and same(directory, data.namespace) and
-    named(data.directory, data.name, path) and S_ISREG(path.st_mode) and same(path,
-        data.identity) and
-    same(held, data.identity) and (not data.sealed or sameVersion(held, data.identity)) and uint64(
-        held.st_size) == data.size and path.st_size == held.st_size
+  if posix.fstat(data.fd, held) != 0 or not S_ISREG(held.st_mode) or held.st_size < 0: return false
+  if posix.fstat(data.directory, directory) != 0 or not same(directory,
+      data.namespace): return false
+  if not same(held, data.identity) or uint64(held.st_size) != data.size: return false
+  if data.sealed and not sameVersion(held, data.identity): return false
+  if data.anonymous: return true
+  named(data.directory, data.name, path) and S_ISREG(path.st_mode) and same(path, data.identity) and
+      path.st_size == held.st_size
 proc check*(file: PagedFile): FileError =
   ## Integrity uncertainty latches on the stable private resource until explicit close.
   let data = file.data
@@ -258,7 +273,7 @@ proc openDirectory*(directory: var PagedDirectory, path: string, create, writer:
   fd = -1
   lease = -1
   directory.check
-proc openEpoch*(file: var PagedFile, directory: PagedDirectory, epoch: ManagedEpoch,
+proc openNamed(file: var PagedFile, directory: PagedDirectory, child: string,
     pin: PagedPin, limit: ByteLimit): FileError =
   ## Create/pin exactly one no-follow regular file; every file owns an independent held-directory descriptor.
   if file.opened: return FileError.Busy
@@ -267,9 +282,7 @@ proc openEpoch*(file: var PagedFile, directory: PagedDirectory, epoch: ManagedEp
   let data = directory.data
   assert data != nil
   if pin != PagedPin.Shared and not data.writer: return FileError.WrongIdentity
-  let named = epochName(epoch)
-  if named.error != FileError.None: return named.error
-  var name = named.value
+  var name = child
   let flags = O_CLOEXEC or O_NONBLOCK or noFollow or
     (if pin == PagedPin.Create: O_RDWR or O_CREAT or O_EXCL or O_APPEND else: O_RDONLY)
   var fd = openAt(data.fd, name.toCString(), flags, 0o600)
@@ -297,6 +310,59 @@ proc openEpoch*(file: var PagedFile, directory: PagedDirectory, epoch: ManagedEp
   fd = -1
   parent = -1
   file.check
+proc openEpoch*(file: var PagedFile, directory: PagedDirectory, epoch: ManagedEpoch,
+    pin: PagedPin, limit: ByteLimit): FileError =
+  ## Epoch owners accept only one canonical counter-derived name.
+  let name = epochName(epoch)
+  if name.error != FileError.None: return name.error
+  openNamed(file, directory, name.value, pin, limit)
+proc openScratch*(file: var PagedFile, directory: PagedDirectory, limit: ByteLimit): FileError =
+  ## Anonymous replay transport uses a uniquely owned CLOEXEC descriptor and never creates a database candidate name.
+  if file.opened: return FileError.Busy
+  let checked = directory.check
+  if checked != FileError.None: return checked
+  let owner = directory.data
+  assert owner != nil
+  if not owner.writer: return FileError.WrongIdentity
+  let stream = temporaryNative()
+  if stream == nil: return FileError.IoFailure
+  let original = descriptorNative(stream)
+  let fd = if original < 0: -1.cint else: duplicateNative(original, duplicateCloseExec, 0)
+  let retired = retireStream(stream)
+  if fd < 0: return FileError.IoFailure
+  var handle = fd
+  var parent = -1.cint
+  defer:
+    if handle >= 0 and closeNative(handle) != 0: result = FileError.IoFailure
+    if parent >= 0 and closeNative(parent) != 0: result = FileError.IoFailure
+  if retired != 0: return FileError.IoFailure
+  let flags = duplicateNative(fd, getFlags, 0)
+  if flags < 0 or duplicateNative(fd, setFlags, flags or O_APPEND) != 0: return FileError.IoFailure
+  var metadata = default(Stat)
+  if posix.fstat(fd, metadata) != 0 or not S_ISREG(metadata.st_mode) or metadata.st_size != 0:
+    return FileError.IoFailure
+  var dot = "."
+  parent = openAt(owner.fd, dot.toCString(), O_RDONLY or O_CLOEXEC or directoryFlag or noFollow, 0)
+  if parent < 0: return FileError.IoFailure
+  file.data = FileData(fd: handle, directory: parent, active: true, anonymous: true,
+    identity: metadata, namespace: owner.identity, size: 0, limit: limit, exclusive: true)
+  handle = -1
+  parent = -1
+  file.check
+proc openPending*(file: var PagedFile, directory: PagedDirectory): PagedIoResult[bool] =
+  ## Capture only the fixed optional staging file; no scan or unknown-prefix adoption is authorized.
+  let checked = directory.check
+  if checked != FileError.None: return PagedIoResult[bool](status: checked)
+  let owner = directory.data
+  assert owner != nil
+  var metadata = default(Stat)
+  if not named(owner.fd, "CURRENT.next", metadata):
+    if posix.errno() == missing: return PagedIoResult[bool](status: FileError.None,
+        completed: false)
+    return PagedIoResult[bool](status: FileError.IoFailure)
+  let acquired = openNamed(file, directory, "CURRENT.next", PagedPin.Exclusive, ByteLimit(PagedManifestBytes))
+  if acquired != FileError.None: return PagedIoResult[bool](status: acquired)
+  PagedIoResult[bool](status: FileError.None, completed: true)
 proc readCurrent*(directory: PagedDirectory): PagedIoResult[seq[byte]] =
   ## CURRENT is bounded metadata, never a selected data-file fallback or whole-file image read.
   let checked = directory.check
@@ -382,6 +448,66 @@ proc input(data: FileData): PagedInput =
     output = data.size
     true
   PagedInput(read: read, extent: extent)
+proc matchesPrefix*(file: var PagedFile, expected: var PagedFile,
+    budget: PagedWorkLimits): FileError =
+  ## Compare one captured partial candidate with the exact fully reproduced artifact, at most two pages at a time.
+  let checked = file.check
+  if checked != FileError.None: return checked
+  let verified = expected.check
+  if verified != FileError.None: return verified
+  let actual = file.data
+  let reference = expected.data
+  assert actual != nil and reference != nil
+  if actual.size > reference.size: return FileError.RecoveryMismatch
+  let readLimit = uint64(budget.readBytes)
+  let chunks = actual.size div uint64(PagedPageBytes)+(if actual.size mod uint64(PagedPageBytes) ==
+      0: 0'u64 else: 1'u64)
+  if readLimit < 2 or actual.size > (readLimit-2) div 2 or chunks*2+2 > uint64(
+      budget.ioCalls): return FileError.LimitExceeded
+  let source = input(actual)
+  let replay = input(reference)
+  assert source.read != nil and source.extent != nil and replay.read != nil and replay.extent != nil
+  var left = default(array[PagedPageBytes, byte])
+  var right = default(array[PagedPageBytes, byte])
+  var offset = 0'u64
+  while offset < actual.size:
+    # Difference-before-addition bounds both exact reads and final partial page/digest fragments.
+    let count = int(min(uint64(PagedPageBytes), actual.size-offset))
+    if not source.read(PagedOffset(offset), left.toOpenArray(0,
+        count-1)): return FileError.IoFailure
+    if not replay.read(PagedOffset(offset), right.toOpenArray(0,
+        count-1)): return FileError.IoFailure
+    for index in 0..<count:
+      if left[index] != right[index]: return FileError.RecoveryMismatch
+    offset += uint64(count)
+  var size = 0'u64
+  if not source.extent(size) or size != actual.size: return FileError.RecoveryMismatch
+  if not replay.extent(size) or size != reference.size: return FileError.RecoveryMismatch
+  FileError.None
+proc matchesPrefix*(file: var PagedFile, bytes: openArray[byte],
+    budget: PagedWorkLimits): FileError =
+  ## Fixed manifest prefixes are bounded before reading and retain no detached staging authority.
+  let checked = file.check
+  if checked != FileError.None: return checked
+  let actual = file.data
+  assert actual != nil
+  if bytes.len != PagedManifestBytes or actual.size > uint64(
+      bytes.len): return FileError.RecoveryMismatch
+  let calls = if actual.size == 0: 1'u64 else: 2'u64
+  if actual.size+1 > uint64(budget.readBytes) or calls > uint64(
+      budget.ioCalls): return FileError.LimitExceeded
+  var raw = default(array[PagedManifestBytes, byte])
+  let source = input(actual)
+  assert source.read != nil and source.extent != nil
+  let count = int(actual.size)
+  if count > 0:
+    # Even a one-byte or checksum-fragment staging file must match the independently reconstructed manifest.
+    if not source.read(PagedOffset(0), raw.toOpenArray(0, count-1)): return FileError.IoFailure
+    for index in 0..<count:
+      if raw[index] != bytes[index]: return FileError.RecoveryMismatch
+  var size = 0'u64
+  if not source.extent(size) or size != actual.size: return FileError.RecoveryMismatch
+  FileError.None
 proc latch(data: FileData, reason: PagedStreamError) =
   ## Pure policy/provider refusals preserve usable owners; integrity/IO uncertainty requires strict reopen.
   case reason

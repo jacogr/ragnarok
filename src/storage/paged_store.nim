@@ -35,11 +35,11 @@ type
   PagedWriter* = object ## Sole writer-lease/selected-handle retirement authority; it owns no retained reader.
     data: nil WriterData
   CandidateData = ref object ## A candidate retains the original writer incarnation but never prolongs its native lease after close.
-    file: PagedFile
+    file, pending: PagedFile
     owner: WriterData
     source: PagedManifest
     checked: CheckedPagedArtifact
-    active, sealed, initial: bool
+    active, sealed, initial, recovery: bool
   PagedCandidate* = object ## Unique authoring/sealed artifact owner; failed authoring must still be explicitly closed.
     data: nil CandidateData
   ReaderData = ref object ## One independent pinned immutable epoch and captured policies survive writer publication/close.
@@ -175,7 +175,12 @@ proc close*(candidate: var PagedCandidate): FileError =
   if data == nil or not data.active: return FileError.Uninitialized
   data.active = false
   candidate.data = nil
-  if data.file.opened: data.file.close else: FileError.None
+  var reason = FileError.None
+  if data.file.opened: reason = data.file.close
+  if data.pending.opened:
+    let retired = data.pending.close
+    if reason == FileError.None: reason = retired
+  reason
 proc close*(writer: var PagedWriter): FileError =
   ## Independent reader/candidate descriptors do not retain this writer's lease or selected handle.
   let data = writer.data
@@ -574,3 +579,238 @@ proc reclaim*(writer: var PagedWriter, receipt: PagedEpochReceipt,
   let retired = file.close
   PagedNativeResult[PagedReclamation](status: PagedNativeError.None,
     completed: PagedReclamation(ready: true, absentBefore: false, retirement: retired))
+
+proc prepareCleanup(data: WriterData, candidate: var PagedCandidate,
+    expectedSource: PagedManifest, expectedTarget: PagedHeader,
+    producer: nil PagedProducer, initial: bool): PagedNativeResult[bool] =
+  ## Reproduce independently expected target bytes in anonymous bounded scratch before capturing any partial cleanup authority.
+  if not data.active: return refused[bool](PagedNativeError.Uninitialized)
+  if data.poisoned and not initial: return refused[bool](PagedNativeError.RecoveryRequired)
+  if candidate.opened: return fileFailed[bool](FileError.Busy)
+  if producer == nil or not expectedTarget.initialized or (not initial and
+      not expectedSource.initialized):
+    return refused[bool](PagedNativeError.InvalidCandidate)
+  var source = default(PagedManifest)
+  if initial:
+    # A failed bootstrap grants only independently checked CURRENT absence, never a disk-derived source head.
+    if data.selected or expectedSource.initialized: return refused[bool](
+        PagedNativeError.InvalidCandidate)
+    let absent = data.directory.initialAbsent
+    if absent != FileError.None: return fileFailed[bool](absent)
+    let identity = array[32, byte](expectedTarget.root) == array[32, byte](data.config.root)
+    if not identity or uint64(expectedTarget.epoch) != 1 or uint64(expectedTarget.sequence) != 0:
+      return refused[bool](PagedNativeError.InvalidTransition)
+  else:
+    # Existing-database recovery binds exact physical source position before any producer or scratch work.
+    source = data.checked.manifest
+    if expectedSource.bytes != source.bytes: return refused[bool](PagedNativeError.StaleView)
+    if uint64(source.epoch) == high(uint64): return refused[bool](PagedNativeError.CounterExhausted)
+    if uint64(expectedTarget.epoch) != uint64(source.epoch)+1:
+      return refused[bool](PagedNativeError.InvalidTransition)
+  if array[32, byte](expectedTarget.chainId) != array[32, byte](data.config.chain):
+    return refused[bool](PagedNativeError.InvalidTransition)
+  let shape = expectedTarget.geometry
+  let bounded = pagedGeometry(shape.entries, shape.payloadBytes, data.config.limits.dataset)
+  if bounded.error != PagedCodecError.None: return fileFailed[bool](FileError.LimitExceeded)
+  if shape.byteLength > uint64(data.config.limits.work.writeBytes):
+    return PagedNativeResult[bool](status: PagedNativeError.StreamFailure,
+        streamCause: PagedStreamError.LimitExceeded)
+  let sameRoot = initial or array[32, byte](expectedTarget.root) == array[32, byte](source.root)
+  let sameSequence = initial or uint64(expectedTarget.sequence) == uint64(source.sequence)
+  if not initial:
+    # Root changes preserve ordinary sequence; same-root updates either advance once or reproduce exact compaction knowledge.
+    let replacement = uint64(source.sequence) < high(uint64) and
+      uint64(expectedTarget.sequence) == uint64(source.sequence)+1
+    if (not sameRoot and not sameSequence) or (sameRoot and not sameSequence and not replacement):
+      return refused[bool](PagedNativeError.InvalidTransition)
+    let head = validateHead(data)
+    if head.error != PagedNativeError.None:
+      if head.error == PagedNativeError.FileFailure: return fileFailed[bool](head.fileError)
+      return PagedNativeResult[bool](status: PagedNativeError.StreamFailure,
+        streamCause: head.streamError, proofCause: (if head.streamError ==
+            PagedStreamError.ProofFailure: head.proofError else: StateProofError.Uninitialized))
+  var scratch = default(PagedFile)
+  defer:
+    if scratch.opened:
+      let retired = scratch.close
+      if retired != FileError.None: result = fileFailed[bool](retired)
+  let acquired = openScratch(scratch, data.directory, data.config.limits.dataset.bytes)
+  if acquired != FileError.None: return fileFailed[bool](acquired)
+  let authoring = buildFile(scratch, producer, expectedTarget, data.config.limits)
+  if authoring.error != FileError.None: return fileFailed[bool](authoring.error)
+  let built = authoring.value
+  if built.error != PagedStreamError.None: return streamFailed[bool, CheckedPagedArtifact](built)
+  if not initial and sameRoot and sameSequence and not samePagedKnowledge(data.checked, built.value):
+    return refused[bool](PagedNativeError.InvalidTransition)
+  var artifact = CandidateData(owner: data, source: source, checked: built.value, recovery: true,
+      initial: initial)
+  defer:
+    if candidate.data == nil:
+      if artifact.file.opened:
+        let retired = artifact.file.close
+        if retired != FileError.None: result = fileFailed[bool](retired)
+      if artifact.pending.opened:
+        let retired = artifact.pending.close
+        if retired != FileError.None: result = fileFailed[bool](retired)
+  let exists = data.directory.epochExists(expectedTarget.epoch)
+  if exists.error != FileError.None: return fileFailed[bool](exists.error)
+  if exists.value:
+    # Existing bytes grant authority only after complete-file-prefix comparison under an independent exclusive pin.
+    let pinned = openEpoch(artifact.file, data.directory, expectedTarget.epoch,
+      PagedPin.Exclusive, data.config.limits.dataset.bytes)
+    if pinned != FileError.None: return fileFailed[bool](pinned)
+    let matched = matchesPrefix(artifact.file, scratch, data.config.limits.work)
+    if matched != FileError.None: return fileFailed[bool](matched)
+  let pending = openPending(artifact.pending, data.directory)
+  if pending.error != FileError.None: return fileFailed[bool](pending.error)
+  if pending.value:
+    # Preflight staging bytes before either namespace child can be unlinked.
+    let matched = matchesPrefix(artifact.pending, built.value.manifest.bytes,
+        data.config.limits.work)
+    if matched != FileError.None: return fileFailed[bool](matched)
+  let current = if initial: data.directory.initialAbsent else: current(data)
+  if current != FileError.None: return fileFailed[bool](current)
+  let retired = scratch.close
+  if retired != FileError.None: return fileFailed[bool](retired)
+  artifact.active = true
+  candidate.data = artifact
+  PagedNativeResult[bool](status: PagedNativeError.None, completed: true)
+proc preparePagedCleanup*(writer: var PagedWriter, candidate: var PagedCandidate,
+    expectedSource: PagedManifest, expectedTarget: PagedHeader,
+    producer: nil PagedProducer): PagedNativeResult[bool] =
+  ## Existing-database replay requires an exact independently expected source and a fresh target proof producer.
+  let data = writer.data
+  if data == nil: return refused[bool](PagedNativeError.Uninitialized)
+  prepareCleanup(data, candidate, expectedSource, expectedTarget, producer, false)
+proc discardPagedCandidate*(writer: var PagedWriter, candidate: var PagedCandidate,
+    expectedSource: PagedManifest): PagedNativeResult[PagedReclamation] =
+  ## Retire one exact sealed or replay-checked partial candidate only after every source/file/staging preflight passes.
+  let data = writer.data
+  let artifact = candidate.data
+  if data == nil or artifact == nil: return refused[PagedReclamation](
+      PagedNativeError.Uninitialized)
+  if not data.active or not artifact.active:
+    return refused[PagedReclamation](PagedNativeError.InvalidCandidate)
+  if artifact.owner != data: return refused[PagedReclamation](PagedNativeError.StaleView)
+  if artifact.initial and (not artifact.recovery or data.selected):
+    return refused[PagedReclamation](PagedNativeError.InvalidCandidate)
+  if data.poisoned and not artifact.initial: return refused[PagedReclamation](
+      PagedNativeError.RecoveryRequired)
+  if artifact.initial:
+    # Initial cleanup is valid only in an explicitly unselected bootstrap incarnation.
+    if expectedSource.initialized or artifact.source.initialized: return refused[PagedReclamation](
+        PagedNativeError.StaleView)
+    let absent = data.directory.initialAbsent
+    if absent != FileError.None: return fileFailed[PagedReclamation](absent)
+  else:
+    # Passive expected positions cannot revive a stale candidate or silently follow CURRENT.
+    if not expectedSource.initialized or expectedSource.bytes != artifact.source.bytes or
+        expectedSource.bytes != data.checked.manifest.bytes:
+      return refused[PagedReclamation](PagedNativeError.StaleView)
+    let head = validateHead(data)
+    if head.error != PagedNativeError.None:
+      if head.error == PagedNativeError.FileFailure: return fileFailed[PagedReclamation](head.fileError)
+      return PagedNativeResult[PagedReclamation](status: PagedNativeError.StreamFailure,
+        streamCause: head.streamError, proofCause: (if head.streamError ==
+            PagedStreamError.ProofFailure: head.proofError else: StateProofError.Uninitialized))
+  if not artifact.sealed and not artifact.recovery:
+    return refused[PagedReclamation](PagedNativeError.InvalidCandidate)
+  let absent = not artifact.file.opened
+  if not absent:
+    # Name/inode/version/extent checks bind prepared prefix validation to the still-held immutable resource.
+    if not data.directory.sameDirectory(artifact.file): return refused[PagedReclamation](
+        PagedNativeError.StaleView)
+    let checked = artifact.file.check
+    if checked != FileError.None: return fileFailed[PagedReclamation](checked)
+    if artifact.sealed:
+      let verified = validateFile(artifact.file, artifact.checked.manifest, data.config.limits)
+      if verified.error != PagedStreamError.None: return streamFailed[PagedReclamation,
+          CheckedPagedArtifact](verified)
+  else:
+    # Captured absence cannot authorize a newly created epoch with an equal counter after preparation.
+    let exists = data.directory.epochExists(artifact.checked.manifest.epoch)
+    if exists.error != FileError.None: return fileFailed[PagedReclamation](exists.error)
+    if exists.value: return refused[PagedReclamation](PagedNativeError.StaleView)
+  if artifact.sealed and not artifact.pending.opened:
+    # A live complete seal independently defines staging bytes without requiring another producer replay.
+    let pending = openPending(artifact.pending, data.directory)
+    if pending.error != FileError.None: return fileFailed[PagedReclamation](pending.error)
+  if artifact.pending.opened:
+    # Recheck prefix bytes on every attempt; a failed staging comparison never turns into authority on retry.
+    let checked = matchesPrefix(artifact.pending, artifact.checked.manifest.bytes,
+        data.config.limits.work)
+    if checked != FileError.None: return fileFailed[PagedReclamation](checked)
+  else:
+    let checked = data.directory.pendingAbsent
+    if checked != FileError.None: return fileFailed[PagedReclamation](checked)
+  let current = if artifact.initial: data.directory.initialAbsent else: current(data)
+  if current != FileError.None: return fileFailed[PagedReclamation](current)
+  if not absent:
+    # No unlink occurs until every candidate/staging/source preflight above has passed.
+    let removed = removePinned(data.directory, artifact.file)
+    if removed != FileError.None:
+      data.poisoned = true
+      return fileFailed[PagedReclamation](removed)
+  if artifact.pending.opened:
+    let removed = removePinned(data.directory, artifact.pending)
+    if removed != FileError.None:
+      data.poisoned = true
+      return fileFailed[PagedReclamation](removed)
+  let confirmed = data.directory.synchronize
+  if confirmed != FileError.None:
+    data.poisoned = true
+    return fileFailed[PagedReclamation](confirmed)
+  let retired = candidate.close
+  PagedNativeResult[PagedReclamation](status: PagedNativeError.None,
+    completed: PagedReclamation(ready: true, absentBefore: absent, retirement: retired))
+
+func rejected[T, U](outcome: PagedNativeResult[U]): PagedNativeResult[
+    T] {.requires: outcome.status != PagedNativeError.None.} =
+  ## Composite recovery preserves the exact selected cause and never manufactures an intermediate success payload.
+  if outcome.error == PagedNativeError.FileFailure: return fileFailed[T](outcome.fileError)
+  if outcome.error == PagedNativeError.StreamFailure:
+    return PagedNativeResult[T](status: PagedNativeError.StreamFailure,
+      streamCause: outcome.streamError,
+      proofCause: (if outcome.streamError == PagedStreamError.ProofFailure: outcome.proofError else: StateProofError.Uninitialized))
+  refused[T](outcome.error)
+proc resumePagedInitialization*(writer: var PagedWriter, path: string, config: PagedNativeConfig,
+    producer: nil PagedProducer, count, payload: uint64): PagedNativeResult[PagedPublication] =
+  ## Explicit replay of an interrupted bootstrap requires existing LOCK, CURRENT absence and independently expected initial evidence.
+  if writer.opened: return fileFailed[PagedPublication](FileError.Busy)
+  if producer == nil: return refused[PagedPublication](PagedNativeError.Uninitialized)
+  let header = initPagedHeader(config.chain, config.root, ManagedEpoch(1), LightDeltaSequence(0),
+      count, payload, config.limits.dataset)
+  if header.error != PagedCodecError.None: return fileFailed[PagedPublication](
+      FileError.LimitExceeded)
+  var data = WriterData(config: config, poisoned: true)
+  let acquired = openDirectory(data.directory, path, false, true)
+  if acquired != FileError.None:
+    if data.directory.opened:
+      let retired = data.directory.close
+      if retired != FileError.None: return fileFailed[PagedPublication](retired)
+    return fileFailed[PagedPublication](acquired)
+  data.active = true
+  writer.data = data
+  var candidate = default(PagedCandidate)
+  defer:
+    if candidate.opened:
+      let retired = candidate.close
+      if retired != FileError.None: result = fileFailed[PagedPublication](retired)
+  let replayed = prepareCleanup(data, candidate, default(PagedManifest), header.value, producer, true)
+  if replayed.error != PagedNativeError.None: return rejected[PagedPublication, bool](replayed)
+  let cleanup = candidate.data
+  assert cleanup != nil
+  let expected = cleanup.checked.manifest.bytes
+  let removed = discardPagedCandidate(writer, candidate, default(PagedManifest))
+  if removed.error != PagedNativeError.None: return rejected[PagedPublication, PagedReclamation](removed)
+  if removed.value.retirementError != FileError.None: return fileFailed[PagedPublication](
+      removed.value.retirementError)
+  let prepared = prepare(data, candidate, producer, config.root, count, payload,
+      PagedBuildKind.Replacement, true)
+  if prepared.error != PagedNativeError.None: return rejected[PagedPublication, StorageDurability](prepared)
+  let authored = candidate.data
+  assert authored != nil
+  if authored.checked.manifest.bytes != expected:
+    return PagedNativeResult[PagedPublication](status: PagedNativeError.StreamFailure,
+        streamCause: PagedStreamError.ChangedInput)
+  writer.publish(candidate)

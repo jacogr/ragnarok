@@ -2,8 +2,7 @@
 
 Status: storage-only codecs, streamed construction/admission/lookup and native immutable epoch
 ownership/publication with pinned readers and explicit captured retired-epoch reclamation.
-Replay-bound candidate cleanup, process/resource qualification and application adoption
-remain pending. The backend is a disk-indexed **light-evidence** store designed for selected datasets
+Process/resource qualification and application adoption remain pending. The backend is a disk-indexed **light-evidence** store designed for selected datasets
 that may exceed RAM while its
 private working set remains explicitly bounded. Existing complete-image/cache and full-node
 repository APIs keep their current contracts.
@@ -515,3 +514,65 @@ RSS, larger-than-RAM data or candidate recovery. Those remain separate completio
 All fourteen layers of the original native stack #1395 were merged before this continuation.
 New coherent outstanding-work units start from merged master in a new native stack, capped at
 fifteen simultaneously stacked PRs; completed/merged history is preserved without branch pruning.
+
+
+## Explicit sealed and replay-bound candidate cleanup
+
+`discardPagedCandidate(writer, candidate, expectedSource)` consumes a live sealed candidate only
+under its exact source selection and original writer incarnation. It revalidates source and target,
+preflights any staging prefix against the complete seal, checks held inode/version/namespace/extent and rechecks CURRENT before
+unlink. It never follows an equal root to a new physical head. Failed authoring is not a seal and
+cannot be discarded by this path without independent replay authority.
+
+`preparePagedCleanup` takes an independently expected source manifest, target header and stable
+replayable proof producer. Target root, chain, epoch, sequence, counts and geometry are never read
+from the candidate. Exact inherited limits come from the writer. A target is source epoch+1;
+replacement advances sequence once, root advancement preserves it, and same-root/same-sequence
+compaction additionally requires the exact admitted source evidence fingerprint. Source exhaustion,
+invalid transitions and stale expected positions refuse before replay/build IO.
+
+The producer is completely verified into bounded anonymous temporary transport. libc `tmpfile`,
+an independent atomic-CLOEXEC descriptor and checked FILE retirement leave no database scratch
+name; descriptor-local append flags preserve canonical builder output across verification seeks.
+Scratch bytes are bounded by the dataset/write policy and resident state remains fixed scratch plus
+one bounded proof/value. This uses temporary disk space up to the complete expected artifact; it
+does not materialize the artifact in RAM or require scratch durability. Scratch filesystem/IO or
+retirement failure refuses preparation. Unnamed scratch is retired on all failures/process deaths.
+
+An independent exclusive pin captures the optional next-epoch file. Every actual byte must equal
+the corresponding complete expected-file prefix, including zero bytes, a partial page, proof or
+digest word; overlong/foreign bytes refuse. The optional fixed CURRENT.next file also needs an
+exclusive pin, bounded extent and exact reconstructed manifest-prefix match, including partial
+checksum bytes. Prefix comparisons have explicit read/call preflights under inherited work limits.
+Every file is preflighted before either can be unlinked. Successful preparation returns only an
+opaque explicit-close `PagedCandidate` cleanup capability; it retains captured pins/metadata and
+original writer incarnation, not the producer or scratch file, and cannot be published as a seal.
+
+Discard rechecks all retained inode/version/extent bindings and the source selection. Captured
+absence cannot authorize a subsequently created epoch or staging file. It removes only the exact
+captured next epoch and optional staging name, synchronizes their directory and performs a final
+barrier even on already-absent retries. Partial unlink/barrier uncertainty returns no successful
+cleanup receipt and requires explicit close/strict reopen/fresh replay. Confirmed cleanup survives
+subsequent descriptor-retirement failure through the receipt's separate `retirementError`.
+`alreadyAbsent` describes the target epoch; a staging prefix may still have been removed.
+
+`resumePagedInitialization` is a separate explicit operation for an existing interrupted bootstrap
+namespace with persistent LOCK and absent CURRENT. Independent config/root/counts/producer define
+epoch one/sequence zero. It reproduces and checks the initial candidate/staging prefixes, captures
+absence again before unlink, rebuilds and publishes only after the new complete manifest matches
+the replay witness. A producer changing to different valid same-root knowledge between builds
+refuses publication. Existing CURRENT always refuses this operation; callers must use strict open
+with independent expectations. A namespace interrupted before its persistent LOCK exists, invalid
+or nonreproducible files, and unrelated unknown files retain their forensic/admin boundary. Ordinary
+open never invokes any recovery, deletes a prefix, adopts staging or infers a root.
+
+The checked native `storage_paged_cleanup` suite covers sealed discard, every manifest-prefix length,
+page/digest fragments, independent mismatches, unchanged forensic bytes on refusal, stale writer
+incarnations, captured-absence substitution, late staging mutation, explicit root advancement and
+compaction knowledge checks, every observed prepare/discard syscall refusal, early/late provider
+refusal, write quota preflight, bootstrap resume, changing producers and selected-target protection
+after uncertain publication. It includes 1,000 replay/prepare/discard lifetimes with complete ARC
+release. Existing owner/result runtime guards, privacy and actual ownership lowering remain part
+of this boundary. Reproduce with `make unit SUITE=storage_paged_cleanup` and the affected paged
+stream/native/compaction suites. This source-owned evidence does not yet establish process-crash
+or Linux RSS/larger-than-RAM qualification; those are the next grouped validation units.

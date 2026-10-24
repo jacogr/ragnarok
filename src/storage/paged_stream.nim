@@ -730,3 +730,11 @@ proc compactPagedArtifact*(io: PagedOutput, source: PagedInput, artifact: Checke
     work.fail(PagedStreamError.ChangedInput)
     return refused[CheckedPagedArtifact](work)
   checked
+
+func samePagedKnowledge*(a, b: CheckedPagedArtifact): bool =
+  ## Passive fully admitted artifacts agree on exact canonical evidence, not merely a JAM state root.
+  a.ready and b.ready and array[32, byte](a.header.chainId) == array[32, byte](b.header.chainId) and
+    array[32, byte](a.header.root) == array[32, byte](b.header.root) and
+    a.header.geometry.entries == b.header.geometry.entries and
+    a.header.geometry.payloadBytes == b.header.geometry.payloadBytes and
+    array[32, byte](a.stream) == array[32, byte](b.stream)
