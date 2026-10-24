@@ -137,7 +137,7 @@ all header truncations and trailing reserved bytes, exact/one-short geometry/val
 strict/sticky index coverage and ordering, every manifest-byte corruption, primitive failure,
 empty/long values and complete physical left-bit retention. This is format evidence only.
 Complete-graph admission, native readers/construction/publication are implemented by the units
-below. Retention/recovery, consumer adoption and full resource/crash panels remain open.
+below. Compaction/recovery, consumer adoption and full resource/crash panels remain open.
 
 
 ## Bounded graph engine
@@ -246,3 +246,37 @@ writer/reader lifetimes retain42,208 ->42,208 occupied bytes; an additional1000 
 retain their warmed occupied memory exactly while an old reader stays pinned. Physical epochs
 are deliberately left forensic/retained in this layer; captured reclamation and explicit replay
 cleanup follow. These OS barrier receipts do not establish hardware/filesystem power-loss durability.
+
+
+## Retained root unions and captured physical reclamation
+
+An explicit replacement can retain multiple complete roots in one exact physical union. Shared
+records are stored once; each root still receives independent route/topology/count validation.
+Removing an old physical epoch does not remove a logical root retained by a newer union. Dropping
+that root requires another explicitly authored complete replacement; subsequent readers report
+UnknownRoot for the dropped root while independently pinned prior readers remain valid.
+
+`epochReceipt` captures a reader's exact checked header/manifest, inode/version/namespace and all
+15 inherited admission-policy scalars. It owns no pin or writer lease. `reclaim` accepts only a
+captured strictly older epoch and exact current expected selection in the same namespace, chain
+and policy. It completely verifies the held source, refuses unknown staging, opens an independent
+exclusive nonblocking old-epoch pin, checks captured identity, fully verifies the old graph and
+rechecks CURRENT immediately before unlink/directory sync. Busy readers, substituted inodes,
+other namespaces and any policy change refuse. No directory scanning or inferred old root occurs.
+
+Already absent retries recheck source and perform a real directory barrier. Uncertain unlink/
+synchronization poisons the writer and requires strict reopen; successful absence reports old-file
+retirement errors separately. Selected-epoch deletion and default/stale receipts are refused.
+The `storage_full_paged_retention` suite covers complete shared-root history, exact64-root header
+capacity/one-short policy, every independent policy field, live reader exclusion, logical history
+after physical deletion, identical-byte inode substitution, cross-namespace receipts, all observed
+cleanup IO faults and strict reopen/retry.1000 synchronized absence retries retain72,416 ->72,416
+occupied bytes; admission authority and captured identity privacy rejections pass.
+
+The existing seven-variable epoch-pin model also maps to the full implementation: graph admission
+runs while the shared pin remains held, full publication uses guarded CURRENT rename and full
+reclamation uses EX/current-check/unlink. Base16 states pass; removing either exclusive exclusion
+or post-pin CURRENT equality produces a5-state violation; the retained-old-reader witness is
+reachable with a5-state trace. Serial and four-worker results agree. Native tests exercise real
+pin contention and retained readers; the model excludes hostile filesystems, proof/graph semantics
+and power loss. No new integrated model or broader formal guarantee is claimed.
