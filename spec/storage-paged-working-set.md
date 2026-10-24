@@ -576,3 +576,30 @@ release. Existing owner/result runtime guards, privacy and actual ownership lowe
 of this boundary. Reproduce with `make unit SUITE=storage_paged_cleanup` and the affected paged
 stream/native/compaction suites. This source-owned evidence does not yet establish process-crash
 or Linux RSS/larger-than-RAM qualification; those are the next grouped validation units.
+
+
+## Process-death qualification
+
+`storage_paged_crashes` supervises exact forked children with the existing successful-syscall
+observer. A private witness, verified stopped status, exact SIGKILL and reap distinguish every
+crash from a positive completion control or timeout. The parent proves writer-lease contention
+while each child remains stopped. Namespace construction and strict source reopen precede the
+armed region, except explicit bootstrap operations whose complete lifecycle is under test.
+
+The suite schedules every observed successful write, fsync, rename, unlink and descriptor close
+for initialization, replacement, independent-root advancement, exact-source compaction, replay-bound
+candidate/staging cleanup, interrupted-initialization resume and captured retired-epoch cleanup.
+Positive short writes additionally stop inside pages and digest words. Independent oracle bytes
+constrain CURRENT to the old or complete new manifest, every candidate to its exact authored
+prefix, and every surviving old file to its original bytes. Wrong-root and correct strict reopen
+preserve all known forensic files and perform no repair. Explicit complete replay cleans an
+unselected target before reauthoring; absent bootstrap CURRENT requires explicit initialization
+resume. Selected files can never become cleanup candidates. Already-absent retirement retries
+synchronize the directory, independent retained readers still serve old-root values, and unrelated
+siblings survive.
+
+Reproduce with `make unit SUITE=storage_paged_crashes`. This checked native suite qualifies
+process death on the tested filesystem, including all actually observed operation boundaries; it
+does not simulate power loss, device caches or storage reordering. The serial fresh-process Linux
+RSS/descriptor/cache panel and populated dataset larger than enforced no-swap RAM remain the
+remaining working-set completion gate. Consumer adoption remains separately gated.
