@@ -96,7 +96,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         smoke = text.split('  smoke:\n', 1)[1].split('  modules:\n', 1)[0]
         gate = text.split('  compile-status:\n', 1)[1].split('  models:\n', 1)[0]
-        self.assertIn('name: Compile / Smoke\n', smoke)
+        self.assertIn('name: Compile / ${{ matrix.family.name }}\n', smoke)
         condition = re.search(r'^    if: (.+)$', smoke, re.MULTILINE).group(1)
         self.assertIn('if: ${{ always() && ('+condition[4:-3]+') }}', gate)
         for required in ("github.event.action != 'labeled'", "github.event.label.name == 'ci:unit'",
@@ -353,10 +353,19 @@ class NimonyCISafeguards(unittest.TestCase):
         jobs = re.findall(r'^  ([\w-]+):\n    if:', text, re.MULTILINE)
         index = jobs.index('pvm-reference')
         self.assertEqual(jobs[index:index+2], ['pvm-reference', 'telemetry-interop'])
-        self.assertIn('name: Interop / PVM', text)
-        self.assertIn('name: Interop / Telemetry', text)
-        self.assertIn('name: Perf / PVM', text)
-        self.assertIn('name: Perf / Storage', text)
+        for job, group, family in [('smoke', 'Compile', 'Smoke'), ('modules', 'Compile', 'Source'),
+                                   ('python', 'Compile', 'Reference & Tooling'),
+                                   ('guards', 'Compile', 'Rejection Guards'),
+                                   ('pvm-reference', 'Interop', 'PVM'),
+                                   ('telemetry-interop', 'Interop', 'Telemetry'),
+                                   ('bench-pvm', 'Perf', 'PVM'), ('bench-storage', 'Perf', 'Storage'),
+                                   ('bench-storage-growth', 'Perf', 'Storage Growth'),
+                                   ('pvm-fuzz', 'Fuzz', 'PVM')]:
+            # A singleton family keeps execution unchanged and skipped names identical within each group.
+            section = re.search(r'^  '+job+r':\n(.*?)(?=^  [\w-]+:|\Z)',
+                                text, re.MULTILINE | re.DOTALL).group(1)
+            self.assertIn('name: '+group+' / ${{ matrix.family.name }}\n', section)
+            self.assertIn('family: [{name: '+family+'}]\n', section)
         index = jobs.index('bench-pvm')
         self.assertEqual(jobs[index:index+2], ['bench-pvm', 'bench-storage'])
         self.assertEqual(jobs[index:index+3], ['bench-pvm', 'bench-storage', 'bench-storage-growth'])
@@ -381,7 +390,8 @@ class NimonyCISafeguards(unittest.TestCase):
         text=(ROOT/'.github/workflows/ci.yml').read_text()
         short=text.split('  bench-storage:\n',1)[1].split('  bench-storage-growth:\n',1)[0]
         growth=text.split('  bench-storage-growth:\n',1)[1].split('  perf-status:\n',1)[0]
-        self.assertIn('name: Perf / Storage Growth',growth)
+        self.assertIn('name: Perf / ${{ matrix.family.name }}',growth)
+        self.assertIn('family: [{name: Storage Growth}]',growth)
         for trigger in ("github.event_name == 'push'", "inputs.suite == 'perf'", "inputs.suite == 'bench-storage-growth'",
                         "inputs.suite == 'full'", "github.event.label.name == 'ci:perf'", "github.event.label.name == 'ci:full'"):
             # An explicit short-only dispatch remains short-only; group requests still execute both jobs.

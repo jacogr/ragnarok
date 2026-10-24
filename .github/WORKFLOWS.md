@@ -32,7 +32,9 @@ The **Compile** aggregate also runs for automatic PR updates and manual `smoke` 
 requiring **Compile / Smoke** alone. Master pushes and `unit`/`full` requests require all four
 Compile children. Complete group requests expose concise aggregate checks: **Compile**, **Unit**, **Contract**,
 **E2E**, **Interop**, **Perf**, **Build** and **Fuzz**. Each aggregate requires every child in its group to succeed,
-including rejecting unexpected skips and cancellations. Standalone manual workload scopes
+including rejecting unexpected skips and cancellations. Compile, Interop, Perf and Fuzz children
+use a shared `Group / ${{ matrix.family.name }}` display pattern with singleton family matrices;
+their job IDs, execution scopes and aggregate dependencies remain independent. Standalone manual workload scopes
 (such as `ref-pvm` or `bench-storage`) run only that workload and omit the complete-group gate.
 
 **Build / Linux** and **Build / macOS** produce [relocatable binary archives](../docs/binaries.md)
