@@ -295,3 +295,62 @@ selected large-working-set tradeoff. All21 real and33 synthetic cells, both
 orders, cold observations and raw noise controls remain in the CI artifacts and
 `build/pvm12/ci-40107423219/` plus its `-attempt2` sibling. No universal speed
 claim or complete-JAM parity claim follows.
+
+## Borrowed complete cache entries, 2026-10-24
+
+The private lookup returns a nullable pointer to a complete genuine cache entry
+instead of copying its64-byte result at every hit. Successful cold decoding still fills
+the existing fixed small array and bounded direct spill under the original replacement
+policy, then returns the small destination's address. Failures return nil without filling,
+evicting or advancing replacement; the two private consumers retain their existing
+Panic/InvalidHostSuspension mappings and never select a failed payload.
+
+This differs from the earlier rejected stack-scratch experiment: neither consumer adds
+an auxiliary miss-result frame or keeps a pointer to a callee's local decoder result.
+Every nonnil address points into an invocation-owned fixed array. The spill owner remains
+retained by that invocation. Neither consumer performs another instruction-cache lookup,
+replaces cache storage, calls a host or exports the address while consuming the borrowed
+fact. Instruction evaluation only mutates separate CPU, memory, price and target state;
+host-response validation completes before the next callback. Subsequent lookups may evict
+an entry only after the prior borrow's last use. Public decoder results remain copied
+values, with unchanged guarded accessors and contracts. No new instruction representation
+or prepared execution tier is introduced.
+
+Acceptance requires all existing eviction/capacity, malformed-entry, policy, nested-host
+and source-snapshot witnesses, balanced ARC observations, address-sanitizer stack controls,
+and an incremental paired Linux comparison. Earlier desktop scratch-borrow timings do not
+qualify this candidate; dispatch inlining and direct-cache ordering have since changed.
+
+The candidate passes seven selected native cache/execution/mixed/host/reentry/failure/
+metered-repair suites, including their declared1000-cycle balanced ARC groups.
+Generated C represents every private hit result as a pointer passed to the evaluator,
+with no additional caller miss-result frame. AddressSanitizer passes the complete cache
+and frozen mixed-memory host-reentry cases with stack-use-after-return detection enabled;
+a separate positive stack-escape control is detected. These checks cover instrumented
+stack/scope addresses; the pinned native allocator does not individually poison heap
+objects, so they do not establish complete heap/leak coverage. The incremental comparison below supplies timing evidence for this exact runtime.
+
+
+[Standalone CI40116035877](https://github.com/jacogr/ragnarok/actions/runs/40116035877)
+compares runtime13fa3134 directly with published parent67df0628 on one AMD EPYC9V45
+runner. The rejected adaptive dynamic-target experiments are absent from both sources.
+All2808 paired full-state invocations,2808 identical-source controls, assertion controls
+and the interpreted reference pack pass. Both process orders improve Pinky CPU by
+14.54/13.27% dynamic,21.03/19.08% planned and12.55/13.65% memo. Corresponding Pinky
+controls vary -0.94/-2.50%, +1.90/-1.42% and -1.39/-3.08%. Long indirect calls improve
+14.60–20.53%, long sieve7.27–16.35%, and dynamic memory fill12.92/13.52%. These are
+within-run ratios; absolute times from other CPUs are not combined.
+
+All21 real and33 synthetic cells, cold observations and both orders remain retained.
+Short sieve1000 memo regresses4.11/3.78% (about5us), above its -1.41/+0.85% controls.
+Tiny arithmetic1 planned costs20/4.5ns more (+8.32/+1.83%); dynamic/memo tiny cases
+vary by tens of nanoseconds. Long memo memory fill changes -6.75/-0.67% against
+-1.20/+9.36% controls, and planned synthetic host changes overlap their controls;
+neither is claimed as an established gain. Dynamic and memo host reductions remain
+visible with their corresponding controls in the raw artifact.
+
+The exact standalone runtime passes all seven selected native cache/execution/mixed/
+reentry/failure/repair suites and their declared1000-cycle balanced ARC groups. Cache
+and frozen mixed-memory reentry ASan runs pass with a positive stack-escape control;
+native-allocator heap/leak coverage is not claimed. Documentation-only native rebases
+preserve the measured runtime, drivers, build configuration and dependency pins.
