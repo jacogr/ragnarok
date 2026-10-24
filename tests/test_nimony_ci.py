@@ -17,6 +17,7 @@ import unittest
 from harness_fixtures import temporary_folder
 import threading
 from unittest.mock import patch
+from workflow_fixtures import event_context, expression, job_section, selected_families, family_section, job_condition
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
@@ -74,8 +75,8 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_pr_updates_request_only_smoke_with_isolated_concurrency(self):
         """An ordinary PR update runs the small gate without requesting or cancelling heavy CI."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = re.search(r'^  smoke:\n(.*?)(?=^  [\w-]+:|\Z)', text, re.MULTILINE | re.DOTALL).group(1)
-        self.assertIn("github.event_name == 'pull_request' && github.event.action != 'labeled'", section)
+        section = family_section(text, 'compile', 'smoke')
+        self.assertIn("github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled'", section)
         self.assertIn("github.event_name == 'push' ||", section)
         self.assertIn("inputs.suite == 'smoke'", section)
         self.assertIn('run: make check-smoke', section)
@@ -93,71 +94,96 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # The lightweight gate must roll up without starting heavy compilation on ordinary PR updates.
     def test_smoke_compile_rollup(self):
+        """A lightweight request expands only Smoke and still requires the complete selected matrix."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        smoke = text.split('  smoke:\n', 1)[1].split('  modules:\n', 1)[0]
-        gate = text.split('  compile-status:\n', 1)[1].split('  models:\n', 1)[0]
-        self.assertIn('name: Compile / ${{ matrix.family.name }}\n', smoke)
-        condition = re.search(r'^    if: (.+)$', smoke, re.MULTILINE).group(1)
-        self.assertIn('if: ${{ always() && ('+condition[4:-3]+') }}', gate)
-        for required in ("github.event.action != 'labeled'", "github.event.label.name == 'ci:unit'",
-                         "github.event.label.name == 'ci:full'", "inputs.suite == 'smoke'",
-                         "inputs.suite == 'unit'", "inputs.suite == 'full'"):
-            # Every scope with a Compile gate schedules its mandatory Smoke child in the same run.
-            self.assertIn(required, condition)
-        self.assertIn('FULL_COMPILE_REQUEST: *requested', gate)
-        command = re.search(r'        run: ([^\n]+)', gate).group(1)
-        for smoke_result in ('success', 'failure', 'cancelled', 'skipped'):
-            # Intentional heavy-job skips are allowed only for a lightweight request.
-            environment = dict(FULL_COMPILE_REQUEST='false', SMOKE_RESULT=smoke_result,
-                               MODULES_RESULT='skipped', PYTHON_RESULT='skipped', GUARDS_RESULT='skipped')
-            status = subprocess.run(['bash', '-c', command], env=environment).returncode
-            self.assertEqual(status == 0, smoke_result == 'success')
+        gate = job_section(text, 'compile-status')
+        self.assertIn('needs: compile', gate)
+        self.assertIn('SHARDS_RESULT: ${{ needs.compile.result }}', gate)
+        families = selected_families(text, 'compile', event_context('pull_request', 'synchronize'))
+        self.assertEqual([row['group'] for row in families], ['smoke'])
+        self.assertNotIn('minutes', families[0])
+
+    def test_every_job_uses_shared_timeout(self):
+        """Randomized workload variance has one 60-minute safety limit across all CI jobs."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        jobs = re.findall(r'^  ([\w-]+):\n', text.split('jobs:\n', 1)[1], re.MULTILINE)
+        self.assertEqual(text.count('&ci-job-timeout 60'), 1)
+        for job in jobs:
+            # Aggregate and future jobs must opt into the same bound rather than inherit six hours.
+            section = job_section(text, job)
+            expected = '&ci-job-timeout 60' if job == 'compile' else '*ci-job-timeout'
+            self.assertIn('timeout-minutes: '+expected+'\n', section)
+            self.assertEqual(section.count('    timeout-minutes:'), 1)
+            self.assertNotIn('"minutes":', section)
 
     # Scope guards must act on the label addition, never on persistent PR labels or a branch name.
     def test_ci_request_scopes(self):
+        """Actual matrix expressions preserve every automatic, labeled and standalone manual request."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        requested = ("github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && "
-                     "(inputs.suite == 'unit' || inputs.suite == 'full')) || "
-                     "(github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || "
-                     "github.event.label.name == 'ci:full'))")
-        full = ("github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && "
-                "inputs.suite == 'full') || (github.event_name == 'pull_request' && "
-                "github.event.label.name == 'ci:full')")
-        e2e = ("github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && "
-               "(inputs.suite == 'e2e' || inputs.suite == 'full')) || "
-               "(github.event_name == 'pull_request' && (github.event.label.name == 'ci:e2e' || "
-               "github.event.label.name == 'ci:full'))")
-        self.assertIn('if: &requested ${{ '+requested+' }}', text)
-        self.assertIn('if: ${{ '+full+' }}', text)
-        for job, condition in [('modules', '&requested ${{ '+requested+' }}'),
-                               ('python', '*requested'), ('models', '*requested'), ('unit', '*requested'),
-                               ('docker', '${{ '+full.replace("inputs.suite == 'full')",
-                                   "(inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full'))")+' }}'),
-                               ('guards', '*requested'), ('failures', '${{ '+full+' }}'),
-                               ('pvm-reference', '${{ '+full.replace("inputs.suite == 'full')",
-                                   "(inputs.suite == 'interop' || inputs.suite == 'ref-pvm' || inputs.suite == 'full'))").replace("github.event.label.name == 'ci:full')",
-                                   "(github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))")+' }}'),
-                               ('e2e', '${{ '+e2e+' }}'),
-                               ('telemetry-interop', '${{ '+full.replace("inputs.suite == 'full')",
-                                   "(inputs.suite == 'interop' || inputs.suite == 'full'))").replace("github.event.label.name == 'ci:full')",
-                                   "(github.event.label.name == 'ci:interop' || github.event.label.name == 'ci:full'))")+' }}'),
-                               ('unit-status', '${{ always() && ('+requested+') }}'),
-                               ('failures-status', '${{ always() && ('+full+') }}'),
-                               ('e2e-status', '${{ always() && ('+e2e+') }}')]:
-            # Gates retain the same selection as their matrix while still observing failed/cancelled jobs.
-            with self.subTest(job=job):
-                section = re.search(r'^  '+job+r':\n(.*?)(?=^  [\w-]+:|\Z)',
-                                    text, re.MULTILINE | re.DOTALL).group(1)
-                actual = re.search(r'^    if: (.+)$', section, re.MULTILINE).group(1)
-                self.assertEqual(actual, condition)
+        groups = {'compile': ['smoke', 'modules', 'python', 'guards'],
+                  'interop': ['pvm-reference', 'telemetry-interop'],
+                  'perf': ['bench-pvm', 'bench-storage', 'bench-storage-growth'],
+                  'build': ['docker', 'binary', 'binary']}
+        for event in (event_context(), event_context('workflow_dispatch', suite='full'),
+                      event_context('pull_request', 'labeled', 'ci:full')):
+            # Full requests include every family, with both native binary hosts retained.
+            for job, wanted in groups.items():
+                self.assertEqual([row['group'] for row in selected_families(text, job, event)], wanted)
+        for action in ('opened', 'reopened', 'synchronize'):
+            # An ordinary PR update runs Smoke alone, irrespective of persistent heavy labels.
+            event = event_context('pull_request', action)
+            for job in groups:
+                self.assertEqual([row['group'] for row in selected_families(text, job, event)],
+                                 ['smoke'] if job == 'compile' else [])
+        for label, active in [('ci:unit', ['compile']), ('ci:interop', ['interop']),
+                              ('ci:perf', ['perf']), ('ci:e2e', []), ('ci:fuzz', []), ('unrelated', [])]:
+            # A label addition selects exactly its group; unrelated labels schedule no matrix members.
+            for job in groups:
+                self.assertEqual([row['group'] for row in selected_families(
+                    text, job, event_context('pull_request', 'labeled', label))],
+                    groups[job] if job in active else [])
+        manual = {'smoke': ('compile', ['smoke']), 'unit': ('compile', groups['compile']),
+                  'interop': ('interop', groups['interop']), 'ref-pvm': ('interop', ['pvm-reference']),
+                  'perf': ('perf', groups['perf']), 'bench-pvm': ('perf', ['bench-pvm']),
+                  'bench-storage': ('perf', ['bench-storage']),
+                  'bench-storage-growth': ('perf', ['bench-storage-growth']),
+                  'build': ('build', groups['build']), 'docker': ('build', ['docker']),
+                  'e2e': ('', []), 'fuzz': ('', []), 'fuzz-pvm': ('', [])}
+        for suite, (owner, wanted) in manual.items():
+            # Standalone requests never claim sibling coverage or launch another group's work.
+            for job in groups:
+                self.assertEqual([row['group'] for row in selected_families(
+                    text, job, event_context('workflow_dispatch', suite=suite))], wanted if job == owner else [])
         self.assertNotIn('github.event.pull_request.labels', text)
-        self.assertIn('persist-credentials: false', text)
-        self.assertIn('permissions:\n  contents: read', text)
+
+    def test_closed_pr_labels_cannot_schedule_or_cancel_ci(self):
+        """Closed and merged PR label events schedule no jobs and use an isolated cancellation key."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        jobs = re.findall(r'^  ([\w-]+):\n', text.split('jobs:\n', 1)[1], re.MULTILINE)
+        key = re.search(r'^  group: ci-\$\{\{ github.workflow \}\}-\$\{\{ (.*) \}\}$',
+                        text, re.MULTILINE).group(1)
+        master = event_context()
+        master['github'].update(run_id=100, ref='refs/heads/master')
+        master_key = expression(key, master)
+        seen = set()
+        for merged in (False, True):
+            # A merged PR can carry a master ref; cancellation isolation cannot rely on ref alone.
+            for label in ('ci:full', 'ci:unit', 'ci:e2e', 'ci:interop', 'ci:perf', 'ci:fuzz', 'unrelated'):
+                event = event_context('pull_request', 'labeled', label, state='closed', merged=merged)
+                event['github'].update(run_id=200+len(seen), ref='refs/heads/master')
+                for job in jobs:
+                    self.assertFalse(expression(job_condition(text, job), event), (job, merged, label))
+                closed_key = expression(key, event)
+                self.assertNotEqual(closed_key, master_key)
+                self.assertNotIn(closed_key, seen)
+                seen.add(closed_key)
+        triggers = text.split('"on":\n', 1)[1].split('\npermissions:', 1)[0]
+        self.assertNotIn('unlabeled', triggers)
 
     # Automatic smoke updates and explicit heavy requests use separate cancellation groups.
     def test_ci_request_concurrency(self):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && "
+        expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && "
                     "github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && "
                     "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}")
         self.assertIn('group: '+expected+'\n  cancel-in-progress: true', text)
@@ -221,7 +247,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('name: E2E / ${{ matrix.family.name }}', section)
         self.assertIn('name: ${{ matrix.os }}-e2e-${{ matrix.family.group }}-${{ github.run_attempt }}', section)
         self.assertNotIn('needs:', section)
-        gate = text.split('  e2e-status:\n', 1)[1].split('  pvm-reference:\n', 1)[0]
+        gate = text.split('  e2e-status:\n', 1)[1].split('  interop:\n', 1)[0]
         self.assertIn('name: E2E', gate)
         self.assertIn('needs: e2e', gate)
         self.assertIn('SHARDS_RESULT: ${{ needs.e2e.result }}', gate)
@@ -233,53 +259,46 @@ class NimonyCISafeguards(unittest.TestCase):
                 self.assertEqual(code == 0, result == 'success')
 
     def test_group_gates_require_every_dependency(self):
-        """A green sibling cannot conceal a failed, skipped or cancelled member of a requested group."""
-        import itertools
+        """Failed, skipped or cancelled matrix results cannot produce green group aggregates."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        groups = {'compile': ('Compile', ('smoke', 'modules', 'python', 'guards')),
-                  'interop': ('Interop', ('pvm-reference', 'telemetry-interop')),
-                  'perf': ('Perf', ('bench-pvm', 'bench-storage', 'bench-storage-growth')),
-                  'fuzz': ('Fuzz', ('pvm-fuzz',)),
-                  'build': ('Build', ('docker', 'binary'))}
-        for group, (name, jobs) in groups.items():
-            section = re.search(r'^  '+group+r'-status:\n(.*?)(?=^  [\w-]+:|\Z)',
-                                text, re.MULTILINE | re.DOTALL).group(1)
-            self.assertIn('name: '+name+'\n', section)
-            self.assertIn('needs: ['+', '.join(jobs)+']', section)
-            self.assertIn('if: ${{ always() && (', section)
-            self.assertIn("inputs.suite == '"+('unit' if group == 'compile' else group)+"'", section)
-            if group != 'compile':
-                # Single-workload manual requests have no complete-group verdict to claim.
-                self.assertNotIn("inputs.suite == 'bench-", section)
-                self.assertNotIn("inputs.suite == 'ref-pvm'", section)
-            command = re.search(r'        run: ([^\n]+)', section).group(1)
-            for results in itertools.product(('success', 'failure', 'cancelled', 'skipped'), repeat=len(jobs)):
-                environment = {job.upper().replace('-', '_')+'_RESULT': result
-                               for job, result in zip(jobs, results)}
-                if group == 'compile':
-                    # Complete requests must reject every skipped, cancelled or failing dependency.
-                    environment['FULL_COMPILE_REQUEST'] = 'true'
-                code = subprocess.run(['bash', '-c', command], env=environment).returncode
-                self.assertEqual(code == 0, all(result == 'success' for result in results))
+        for group in ('compile', 'interop', 'perf', 'build'):
+            gate = job_section(text, group+'-status')
+            self.assertIn('needs: '+group+'\n', gate)
+            self.assertIn('if: ${{ always() && (', gate)
+            self.assertIn('SHARDS_RESULT: ${{ needs.'+group+'.result }}', gate)
+            command = re.search(r'        run: ([^\n]+)', gate).group(1)
+            for result in ('success', 'failure', 'cancelled', 'skipped'):
+                status = subprocess.run(['bash', '-c', command], env={'SHARDS_RESULT': result}).returncode
+                self.assertEqual(status == 0, result == 'success')
+            for suite in ('smoke', 'ref-pvm', 'bench-pvm', 'bench-storage', 'bench-storage-growth', 'docker'):
+                # Only Compile's lightweight requests have an aggregate; standalone other groups omit theirs.
+                condition = re.search(r'^    if: (.+)$', gate, re.MULTILINE).group(1)
+                self.assertEqual(bool(expression(condition, event_context('workflow_dispatch', suite=suite))),
+                                 group == 'compile' and suite == 'smoke')
+        fuzz = job_section(text, 'fuzz-status')
+        self.assertIn('needs: [pvm-fuzz]', fuzz)
+        command = re.search(r'        run: ([^\n]+)', fuzz).group(1)
+        for result in ('success', 'failure', 'cancelled', 'skipped'):
+            status = subprocess.run(['bash', '-c', command], env={'PVM_FUZZ_RESULT': result}).returncode
+            self.assertEqual(status == 0, result == 'success')
 
     def test_binary_builds_match_pinned_hosts_and_publish_only_archives(self):
-        """Build requests cover both supported native hosts and retain successful package payloads only."""
+        """The combined Build matrix keeps Docker and both supported native archive hosts distinct."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = re.search(r'^  binary:\n(.*?)(?=^  [\w-]+:|\Z)',
-                            text, re.MULTILINE | re.DOTALL).group(1)
-        platforms = re.findall(r'platform: ([\w-]+)', section)
+        section = family_section(text, 'build', 'binary', 'Linux')
+        rows = selected_families(text, 'build', event_context())
+        binary = [row for row in rows if row['group'] == 'binary']
         pins = json.loads((ROOT/'spec/toolchain.json').read_text())
-        self.assertEqual(set(platforms), {name.replace('_', '-') for name in pins['platforms']})
-        self.assertIn('{os: ubuntu-24.04, name: Linux, platform: linux-amd64}', section)
-        self.assertIn('{os: macos-15, name: macOS, platform: macos-arm64}', section)
+        self.assertEqual({row['platform'] for row in binary}, {name.replace('_', '-') for name in pins['platforms']})
+        self.assertEqual([(row['name'], row['os']) for row in rows],
+                         [('Docker', 'ubuntu-latest'), ('Linux', 'ubuntu-24.04'), ('macOS', 'macos-15')])
         self.assertIn('fail-fast: false', section)
-        self.assertIn('name: Build / ${{ matrix.target.name }}', section)
+        self.assertIn('name: Build / ${{ matrix.family.name }}', section)
         self.assertIn('run: make package-binary', section)
+        self.assertNotIn('run: make check-docker', section)
         self.assertIn('if-no-files-found: error', section)
-        self.assertIn('build/dist/ragnarok-${{ matrix.target.platform }}.tar.gz.sha256', section)
+        self.assertIn('build/dist/ragnarok-${{ matrix.family.platform }}.tar.gz.sha256', section)
         self.assertNotIn('contents: write', text)
-        self.assertNotIn('inputs.suite == \'unit\'', section)
-        self.assertNotIn("inputs.suite == 'docker'", section)
         self.assertNotIn('needs:', section)
         make = (ROOT/'Makefile').read_text()
         self.assertIn('package-binary: export BINARY_PACKAGE = 1', make)
@@ -288,33 +307,35 @@ class NimonyCISafeguards(unittest.TestCase):
 
     # Every independent CI job must visibly reject incomplete inventories before provisioning its workload.
     def test_ci_inventory_preflight(self):
+        """Every native matrix family validates inventory before its own provisioning command."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        definition = text.split('      - &inventory\n', 1)[1].split('      - ', 1)[0]
-        self.assertEqual(definition.strip(),
-                         'name: Validate verification inventory\n        run: make check-inventory')
-        jobs = ('modules', 'python', 'guards', 'unit', 'failures', 'e2e', 'telemetry-interop', 'docker', 'pvm-reference')
-        for job in (*jobs, 'bench-pvm', 'bench-storage'):
-            # Exact job boundaries keep an appended independent workload from entering its neighbor's scope.
-            with self.subTest(job=job):
-                section = re.search(r'^  '+job+r':\n(.*?)(?=^  [\w-]+:|\Z)',
-                                    text, re.MULTILINE | re.DOTALL).group(1)
-                preflight = '- &inventory' if job == 'modules' else '- *inventory'
-                target = job if job.startswith('bench-') else 'check-'+job
-                self.assertEqual(section.count(preflight), 1)
-                self.assertLess(section.index(preflight), section.index('run: make '+target))
+        self.assertIn('run: &inventory-run make check-inventory', text)
+        for job, family, target in [('compile', 'modules', 'check-modules'), ('compile', 'python', 'check-python'),
+                                    ('compile', 'guards', 'check-guards'), ('interop', 'pvm-reference', 'check-pvm-reference'),
+                                    ('interop', 'telemetry-interop', 'check-telemetry-interop-ci'),
+                                    ('perf', 'bench-pvm', 'bench-pvm'), ('perf', 'bench-storage', 'bench-storage'),
+                                    ('perf', 'bench-storage-growth', 'bench-storage-growth'), ('build', 'docker', 'check-docker')]:
+            section = family_section(text, job, family)
+            self.assertEqual(section.count('name: Validate verification inventory'), 1)
+            self.assertLess(section.index('name: Validate verification inventory'), section.index('run: make '+target))
+        for job in ('unit', 'failures', 'e2e', 'pvm-fuzz', 'models'):
+            self.assertIn('run: *inventory-run', job_section(text, job))
         self.assertNotIn('continue-on-error:', text)
 
     def test_pvm_reference_evidence_scope(self):
         """The separate full-scope job keeps failed-run evidence without silently allowing failure."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = re.search(r'^  pvm-reference:\n(.*?)(?=^  [\w-]+:|\Z)', text, re.MULTILINE | re.DOTALL).group(1)
-        self.assertIn('runs-on: ubuntu-latest', section)
+        section = family_section(text, 'interop', 'pvm-reference')
+        self.assertIn('runs-on: ${{ matrix.os }}', section)
+        self.assertIn('os: *ci-os', section)
         self.assertIn('RAGNAROK_PVM_REFERENCE_BACKEND: interpreter', section)
         self.assertNotIn('sysctl', section)
         self.assertIn("inputs.suite == 'interop'", section)
         self.assertIn("github.event.label.name == 'ci:interop'", section)
         self.assertEqual(section.count('run: make check-pvm-reference'), 1)
-        self.assertIn('if: always()\n        uses: *upload-artifact', section)
+        artifact = section.split('      - name: Retain PVM comparison evidence\n', 1)[1]
+        self.assertIn("if: ${{ always() && matrix.family.group == 'pvm-reference' }}", artifact)
+        self.assertIn('uses: *upload-artifact', artifact)
         paths = section.split('          path: |\n', 1)[1]
         self.assertIn('build/tests/pvm-reference/results.json', paths)
         self.assertIn('build/tests/pvm-reference/summary.md', paths)
@@ -329,8 +350,9 @@ class NimonyCISafeguards(unittest.TestCase):
     def test_benchmark_runs_on_master_and_perf_requests_with_raw_data(self):
         """Master/group requests retain the Actions table and raw validated measurements."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = text.split('  bench-pvm:\n', 1)[1]
-        self.assertIn("if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}", section)
+        section = family_section(text, 'perf', 'bench-pvm')
+        self.assertEqual([row['group'] for row in selected_families(text, 'perf',
+                         event_context('workflow_dispatch', suite='bench-pvm'))], ['bench-pvm'])
         self.assertEqual(section.count('run: make bench-pvm\n'), 1)
         for target in ('bench-pvm-sieve','bench-pvm-guests'):
             self.assertEqual(section.count('run: make '+target+'\n'),1)
@@ -340,7 +362,7 @@ class NimonyCISafeguards(unittest.TestCase):
                 self.assertIn('build/tests/'+folder+'/'+name,section)
         self.assertIn('build/tests/pvm-guests/*/*.log',section)
         self.assertNotIn('pvm-ir',section)
-        self.assertLess(section.index('- *inventory'), section.index('run: make bench-pvm'))
+        self.assertLess(section.index('name: Validate verification inventory'), section.index('run: make bench-pvm'))
         self.assertIn('summary-pvm-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', section)
         for name in ('results.json','samples.csv','summary.md'):
             self.assertIn('build/tests/pvm-benchmark/'+name, section)
@@ -348,59 +370,49 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertNotIn('sysctl', section)
 
     # Interop jobs remain adjacent in the workflow and use consistent group names in Actions.
-    def test_interop_and_perf_job_names(self):
+    def test_one_matrix_per_display_group(self):
+        """Each group has one real matrix job, rather than same-name independent skipped jobs."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        jobs = re.findall(r'^  ([\w-]+):\n    if:', text, re.MULTILINE)
-        index = jobs.index('pvm-reference')
-        self.assertEqual(jobs[index:index+2], ['pvm-reference', 'telemetry-interop'])
-        for job, group, family in [('smoke', 'Compile', 'Smoke'), ('modules', 'Compile', 'Source'),
-                                   ('python', 'Compile', 'Reference & Tooling'),
-                                   ('guards', 'Compile', 'Rejection Guards'),
-                                   ('pvm-reference', 'Interop', 'PVM'),
-                                   ('telemetry-interop', 'Interop', 'Telemetry'),
-                                   ('bench-pvm', 'Perf', 'PVM'), ('bench-storage', 'Perf', 'Storage'),
-                                   ('bench-storage-growth', 'Perf', 'Storage Growth'),
-                                   ('pvm-fuzz', 'Fuzz', 'PVM')]:
-            # A singleton family keeps execution unchanged and skipped names identical within each group.
-            section = re.search(r'^  '+job+r':\n(.*?)(?=^  [\w-]+:|\Z)',
-                                text, re.MULTILINE | re.DOTALL).group(1)
-            self.assertIn('name: '+group+' / ${{ matrix.family.name }}\n', section)
-            self.assertIn('family: [{name: '+family+'}]\n', section)
-        index = jobs.index('bench-pvm')
-        self.assertEqual(jobs[index:index+2], ['bench-pvm', 'bench-storage'])
-        self.assertEqual(jobs[index:index+3], ['bench-pvm', 'bench-storage', 'bench-storage-growth'])
+        for group, names in [('compile', ['Smoke', 'Source', 'Reference & Tooling', 'Rejection Guards']),
+                             ('interop', ['PVM', 'Telemetry']), ('perf', ['PVM', 'Storage', 'Storage Growth']),
+                             ('build', ['Docker', 'Linux', 'macOS'])]:
+            self.assertEqual([row['name'] for row in selected_families(text, group, event_context())], names)
+            self.assertIn('name: '+group.title()+' / ${{ matrix.family.name }}', job_section(text, group))
+            self.assertEqual(text.count('    name: '+group.title()+' / ${{ matrix.family.name }}'), 1)
+        for removed in ('smoke', 'modules', 'python', 'guards', 'pvm-reference', 'telemetry-interop',
+                        'bench-pvm', 'bench-storage', 'bench-storage-growth', 'docker', 'binary'):
+            self.assertNotIn('\n  '+removed+':\n', text)
 
     def test_storage_perf_scope_and_summary(self):
         """Storage shares the Perf group while retaining independent validated artifacts and failure status."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
-        section = text.split('  bench-storage:\n', 1)[1].split('  bench-storage-growth:\n',1)[0]
+        section = family_section(text, 'perf', 'bench-storage')
         for trigger in ("github.event_name == 'push'", "inputs.suite == 'perf'", "inputs.suite == 'bench-storage'",
                         "inputs.suite == 'full'", "github.event.label.name == 'ci:perf'", "github.event.label.name == 'ci:full'"):
             self.assertIn(trigger, section)
         self.assertEqual(section.count('run: make bench-storage\n'), 1)
         self.assertIn('summary-storage-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"', section)
-        self.assertIn('if: always()', section)
+        self.assertIn('always()', section)
         for name in ('results.json', 'samples.csv', 'summary.md'):
             self.assertIn('build/tests/storage-benchmark/'+name, section)
         self.assertNotIn('continue-on-error', section)
         self.assertNotIn('needs:', section)
 
-    def test_storage_growth_is_an_independent_perf_job(self):
+    def test_storage_growth_is_an_independent_perf_family(self):
         """Growth preserves dispatch/group triggers, strict failure and artifacts without serial dependencies."""
         text=(ROOT/'.github/workflows/ci.yml').read_text()
-        short=text.split('  bench-storage:\n',1)[1].split('  bench-storage-growth:\n',1)[0]
-        growth=text.split('  bench-storage-growth:\n',1)[1].split('  perf-status:\n',1)[0]
+        short=family_section(text, 'perf', 'bench-storage')
+        growth=family_section(text, 'perf', 'bench-storage-growth')
         self.assertIn('name: Perf / ${{ matrix.family.name }}',growth)
-        self.assertIn('family: [{name: Storage Growth}]',growth)
+        self.assertIn('Storage Growth',growth)
         for trigger in ("github.event_name == 'push'", "inputs.suite == 'perf'", "inputs.suite == 'bench-storage-growth'",
                         "inputs.suite == 'full'", "github.event.label.name == 'ci:perf'", "github.event.label.name == 'ci:full'"):
             # An explicit short-only dispatch remains short-only; group requests still execute both jobs.
             self.assertIn(trigger,growth)
-        self.assertNotIn("inputs.suite == 'bench-storage'",growth)
         self.assertEqual(growth.count('run: make bench-storage-growth\n'),1)
         self.assertIn('summary-storage-growth SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"',growth)
-        self.assertIn('timeout-minutes: 30',growth)
-        self.assertIn('if: always()',growth)
+        self.assertIn('timeout-minutes: *ci-job-timeout',growth)
+        self.assertIn('always()',growth)
         self.assertIn('name: bench-storage-growth-${{ github.run_attempt }}',growth)
         for name in ('results.json','summary.md','growth/results.json','growth/samples.csv',
                      'growth/publications.csv','growth/io/*.log','growth/io/results.json','growth/io/calls.csv'):
@@ -835,7 +847,7 @@ class StorageResourceCISafeguards(unittest.TestCase):
 
     def test_resource_panels_and_artifacts_remain_grouped(self):
         """Resource panels remain with the ordinary comparison after sustained growth moves out."""
-        text=(ROOT/'.github/workflows/ci.yml').read_text(); section=text.split('  bench-storage:\n',1)[1].split('  bench-storage-growth:\n',1)[0]
+        text=(ROOT/'.github/workflows/ci.yml').read_text(); section=family_section(text, 'perf', 'bench-storage')
         self.assertEqual(section.count('run: make bench-storage\n'),1)
         self.assertIn('run: make bench-storage-resources bench-storage-allocations bench-storage-lifetimes bench-storage-deployment bench-storage-fresh-reopen bench-storage-file-cache',section)
         self.assertIn('summary-storage-resources SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"',section)
