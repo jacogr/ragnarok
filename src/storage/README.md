@@ -456,3 +456,7 @@ freeze the checked probe outside pressure and then run fresh populated-data writ
 processes under exact Linux no-swap controls. Source-owned receipts distinguish ARC, descriptors,
 whole-process RSS and kernel cache; see the paged contract for workload, reproduction and actual
 qualification evidence. This does not authorize consumer adoption.
+
+The [full-node paged contract](../../spec/storage-full-paged.md) records the separately authorized
+complete-graph backend and subsequent light consumer adoption. The contract layer alone supplies
+no complete-graph paging or consumer implementation.
