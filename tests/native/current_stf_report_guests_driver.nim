@@ -105,6 +105,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): 
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 77..81: second = managerCode(mode) # One manager controls an unambiguous fixed-role handoff.
   of 72..76: second = ejectionCode(mode) # Empty old junior retirement and exact once-only refund.
   of 67..71:
     # A one-byte declared provision never aliases any code preimage or the original Q payload.
@@ -178,6 +179,9 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # Actual protected-only funds make the post-reassignment authority check distinguishable from ordinary funding.
     options.secondBalance = 0
     options.secondSupervisorBalance = 1000000
+  if mode in 77..81:
+    # Authority belongs to one actual original manager; other roles and all allowances remain empty.
+    options.manager = (if mode == 81: 42'u32 else: 99'u32)
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -389,14 +393,14 @@ proc main() {.raises.} =
       missingCode = fields.len == 3
       if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 77
+      assert mode >= 0 and mode < 82
       bodies = @[]
       slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76] and bodies.len >
+  assert mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81] and bodies.len >
       0 # Strict independent output comparison binds each complete chain length.
   run(base, mode, bodies, missingCode, slots)
 
