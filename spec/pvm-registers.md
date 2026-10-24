@@ -178,3 +178,6 @@ owner-release/operand-copy controls compare captured coordinates as well. Three
 new application-failure controls join the existing payload-access family and its
 genuine positive control. Independent dependent-register chains, both destination
 profiles and memory/control/host/retry composition remain required.
+
+The unchanged frozen scalar/chain oracles now qualify complete invocation policies and both
+callback forms; see [register policy reference](pvm-register-policy-reference.md).
