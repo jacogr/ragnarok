@@ -6,7 +6,7 @@ import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/header
 import ../support/current_stf_epoch_context as epoch
 import ../support/report_context as reportContext
-import ../support/[current_stf_transfer_context, current_stf_lifecycle_context]
+import ../support/[current_stf_transfer_context, current_stf_lifecycle_context, current_stf_supervised_context]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[provider, genesis]
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
@@ -116,6 +116,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): 
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 82..86: second = supervisedWriteCode(mode) # Genuine foreign storage publication, authority and exceptional selection.
   of 77..81: second = managerCode(mode) # One manager controls an unambiguous fixed-role handoff.
   of 72..76: second = ejectionCode(mode) # Empty old junior retirement and exact once-only refund.
   of 67..71:
@@ -193,6 +194,10 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   if mode in 77..81:
     # Authority belongs to one actual original manager; other roles and all allowances remain empty.
     options.manager = (if mode == 81: 42'u32 else: 99'u32)
+  if mode in 82..86:
+    # Authority is original and incarnation-bound; stale/missing nominees fall back to target self supervision.
+    options.signed.accountSupervisor = (if mode == 86: 77'u32 else: 99'u32)
+    options.signed.accountSupervisorCreated = (if mode == 85: 1'u32 else: 0'u32)
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -426,15 +431,15 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 82
+      assert mode >= 0 and mode < 87
       bodies = @[]
       slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert (reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81]) and bodies.len >
-      0 # Strict independent output comparison binds each complete chain length.
+  assert bodies.len != 0 # Every selected chain must contain a signed child.
+  assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:
