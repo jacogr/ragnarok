@@ -8,7 +8,7 @@ import ../../src/pvm/[initialize, machine]
 import ../support/current_stf_epoch_context as epoch
 import ../support/report_context as reportContext
 import ../support/[current_stf_transfer_context, current_stf_lifecycle_context,
-    current_stf_supervised_context, current_stf_privileges_context]
+    current_stf_supervised_context, current_stf_privileges_context, current_stf_incarnation_context]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[provider, genesis, parameters]
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
@@ -124,7 +124,11 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
   var second: seq[byte] = @[]
   if mode in 161..165: first = allowanceManagerCode(mode,
       true) # The scheduled service is a real independently authored manager program.
+  if mode in 171..175: first = incarnationRebindCode(
+      mode) # Actual later self rebinding changes only the recorded supervisor incarnation.
   case mode
+  of 171..175: second = incarnationCreatorCode(mode, replacement,
+      staging) # Exact known foreign-write bytes become the new77 code.
   of 166..170: second = allowanceEligibilityCode(mode) # Real zero/exact free budgets retain explicit dictionary membership.
   of 161..165: second = allowanceManagerCode(mode,
       false) # Original manager99 grants the future service its authority and allowance.
@@ -176,10 +180,12 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
     uint32] = @[], reload = false) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
-  let replacement = if mode in 92..96: supervisedReplacementCode() else: namespaceHaltCode()
+  let replacement = if mode in 171..175: supervisedWriteCode(82) elif mode in
+      92..96: supervisedReplacementCode() else: namespaceHaltCode()
   let replacementHash = array[32, byte](blake2b256(replacement).value)
   let requestHash = ServicePreimageHash(array[32, byte](blake2b256([82'u8]).value))
   var staged: seq[byte] = @[]
+  if mode in 171..175: staged = replacement # Whole child code is an explicit constructor input, not an observed successor.
   if mode in 118..122:
     # This maintained fixture authors the exact original ring-witness membership used independently by the reference.
     let source = epoch.original(base)
@@ -276,11 +282,14 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     if mode == 130:
       # Original99 has two raw entries and four requests:10items and396+codeBytes; child threshold224 must preserve this own minimum.
       options.secondBalance = 566'u64+uint64(codes[1].len)+223'u64
+  if mode in 171..175:
+    options.registrar = 99
+    options.signed.accountSupervisor = 77 # The original42 genuinely points to old77 creation0.
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
   options.signed.extra = @[activityParentEntry()]
-  if mode in 72..76:
+  if mode in 72..76 or mode in 171..175:
     # No donor subkeys exist: this actual third account has zero footprint and both distinct funded pools.
     let donor = ServiceMetadata(balance: AccountBalance(7), supervisorBalance: AccountBalance(11),
       parent: ServiceIndex(99), supervisor: ServiceIndex(if mode == 75: 42 else: 99))
@@ -381,6 +390,20 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # One real child may be retired; both initial and continuation passes retain exact deletion facts.
     limits.completion.execution.initial.guests.deletedAccounts = ElementLimit(1)
     limits.completion.execution.execution.round.guests.deletedAccounts = ElementLimit(1)
+  if mode in 171..175:
+    # Full old/new77 inventory, one deletion/recreation and one exact code provision are explicit in both stages.
+    limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)
+    limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
+    limits.completion.execution.initial.guests.deletedAccounts = ElementLimit(1)
+    limits.completion.execution.execution.round.guests.deletedAccounts = ElementLimit(1)
+    limits.completion.execution.initial.guests.provisions = provisionPolicy(items = 1,
+        perBlob = uint64(replacement.len), total = uint64(replacement.len))
+    limits.completion.execution.initial.provisions.values = PreimageLimits(items: ElementLimit(1),
+        perBlob: ByteLimit(uint64(replacement.len)), totalBlobBytes: ByteLimit(uint64(
+        replacement.len)))
+    limits.completion.execution.initial.provisions.encodedBytes = ByteLimit(512)
+    limits.completion.execution.execution.round.guests.provisions = limits.completion.execution.initial.guests.provisions
+    limits.completion.execution.execution.round.provisions = limits.completion.execution.initial.provisions
   var children: seq[ServiceIndex] = @[]
   var ancestors: seq[OwnedHeader] = @[]
   for bodyIndex, body in bodies:
@@ -422,7 +445,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       for service in children:
         assert before.stateSnapshot.lookup(chapterServiceKey(StateChapter(255), service)).error ==
             StateStoreError.MissingKey
-    if mode in 123..130 or mode in 141..154:
+    if mode in 123..130 or mode in 141..154 or mode in 171..175:
       # Reserved77 is a fixed authored identity at any absolute birth/retirement slot, including epoch-boundary recreation.
       children = @[]
       let stored = snapshot.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(77)))
@@ -518,6 +541,9 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       assert value.error == StateStoreError.None
       let metadata = decodeServiceMetadata(value.value.bytes, ByteLimit(105))
       assert metadata.error == ServiceMetadataError.None and metadata.value.consumed == 105
+      if mode in 171..175 and (mode == 175 or uint32(before.slot) < 3):
+        services.add(StateService(service: service, metadata: metadata.value.metadata))
+        continue # The known original empty77 remains genuinely empty before creation or after creator rollback.
       let hash = ServicePreimageHash(replacementHash)
       let request = snapshot.lookup(serviceRequestKey(service, hash, RequestLength(uint32(
           replacement.len)), ByteLimit(32)).value)
@@ -599,7 +625,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 171
+      assert mode >= 0 and mode < 176
       bodies = @[]
       slots = @[]
     else:
@@ -608,7 +634,7 @@ proc main() {.raises.} =
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
-      106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160, 165, 170]
+      106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160, 165, 170, 175]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:

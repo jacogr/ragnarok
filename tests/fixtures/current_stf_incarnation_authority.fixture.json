@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_INCARNATION_AUTHORITY",
+  "files": {
+    "current-stf-incarnation-authority.json": "72763f1f08650a7c44ab51d22e9d86ec1966efa2293ddd0fa66ca38c12486699"
+  },
+  "target": "current-stf-incarnation-authority.json"
+}
