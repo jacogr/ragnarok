@@ -380,6 +380,26 @@ exemption and terminal normalization remain in their existing order. No owner,
 public API, instruction representation, new metadata allocation or check flag changes.
 
 The selected step/capability, conditional-control, memory, cache, host-reentry and
-mixed-policy suites cover the changed path. Paired GitHub CI against merged master
-must establish speed and retain regressions/identical-source controls before this
-candidate is published; local timing is discarded.
+mixed-policy suites pass, including1000 balanced ARC cycles in the declared groups.
+[CI40123607524](https://github.com/jacogr/ragnarok/actions/runs/40123607524) compares
+runtime `350d5e1f` against merged parent `e8b45e6c` on AMD EPYC7763. All2808 paired
+state-checked invocations,2808 identical-source controls, assertion controls and the
+pinned interpreted reference pack pass. Both process orders retain cold rows and
+all54 real/synthetic cells.
+
+Per-order CPU changes are planned Pinky -7.02/-6.27%, sieve100000 -8.86/-8.86%,
+memset100000 -10.81/-10.86%, and indirect100000 -6.51/-10.44%. Memo Pinky changes
+-5.55/-4.62%, and dynamic memset -3.44/-3.37%. Dynamic Pinky changes+0.60/-6.66%
+against control -2.52/-1.85%, so no consistent dynamic Pinky gain is claimed.
+Planned Pinky controls change -3.40/+1.33%; its scoped gain is smaller than a
+universal seven-percent claim.
+
+No host gain is established. The retained largest positive synthetic cells are
+memo aligned hosts -1.67/+2.39%, memo crossing hosts0.00/+2.73%, and dynamic crossing
+hosts+2.89/-3.01%; these vary across order and overlap small control variation.
+Tiny memo arithmetic changes+20.5/-50ns while its control changes+50.5/+60.5ns.
+The reference pack's planned Pinky median is423.621ms versus183.076ms for pinned
+PolkaVM interpreted (2.31x); that speed target remains open. These are same-job
+observations, not ratios combined across runners. All raw results and regressions
+remain under `build/pvm12/ci-40123607524/`. Local timing is discarded. Publication
+adds only this feature-record evidence to the measured runtime.
