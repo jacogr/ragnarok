@@ -903,7 +903,14 @@ proc decodeInstructionMiss(program: Program, address: CodeAddress,
 
 proc cachedInstruction(program: Program, address: CodeAddress,
     cache: var InstructionCache): ProgramResult[Instruction] {.inline.} =
-  ## Preserve the original thirty-two-result fast path; larger working sets enter a separately bounded cold helper.
+  ## Promoted invocations probe the dominant exact-tagged direct table first; ordinary calls retain both small ways.
+  let table {.cursor.} = cache.spill # The invocation owns this immutable-program fact table through the callback-free lookup.
+  if table != nil:
+    # Exact PC tags permit copied scalar results only; misses alone enter the allocating cold path.
+    let bucket = int(uint64(address) and 16383)
+    if table.entries[bucket].error == ProgramError.None and uint64(table.entries[
+        bucket].value.address) == uint64(address):
+      return table.entries[bucket]
   let slot = int(uint64(address) mod uint64(cache.entries.len)) # Fixed positive capacity proves the native index.
   if cache.entries[slot].error == ProgramError.None and uint64(cache.entries[slot].value.address) ==
       uint64(address):
@@ -912,13 +919,6 @@ proc cachedInstruction(program: Program, address: CodeAddress,
   if cache.entries[alternative].error == ProgramError.None and uint64(cache.entries[
       alternative].value.address) == uint64(address):
     return cache.entries[alternative]
-  let table {.cursor.} = cache.spill # The invocation owns this immutable-program fact table through the callback-free lookup.
-  if table != nil:
-    # Exact PC tags permit copied scalar results only; misses alone enter the allocating cold path.
-    let bucket = int(uint64(address) and 16383)
-    if table.entries[bucket].error == ProgramError.None and uint64(table.entries[
-        bucket].value.address) == uint64(address):
-      return table.entries[bucket]
   decodeInstructionMiss(program, address, cache, slot, alternative)
 
 # Evaluate recursive Psi iteratively over an already validated program and captured machine.

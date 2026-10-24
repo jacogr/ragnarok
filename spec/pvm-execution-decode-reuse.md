@@ -257,3 +257,41 @@ CI evidence: [run40102267534, both attempts](https://github.com/jacogr/ragnarok/
 Local downloaded reports are under`build/pvm12/ci-40102267534/` and
 `build/pvm12/ci-40102267534-attempt2/`. Broader whole-JAM performance, full state
 serialization/parity and compiled execution remain outside this qualification.
+
+## Promoted-table probe order, 2026-10-24
+
+After promotion, probe the existing direct table before the two small ways. The
+recorded direct-mapping study has30,763,791 spill hits among32,055,270 Pinky
+requests, so most of these requests can avoid two unsuccessful small-way checks.
+An unpromoted invocation performs one nil-table test before the unchanged small
+lookup. Promotion threshold, capacity, exact successful-result/full-PC tags,
+miss insertion/replacement and invocation ownership remain unchanged. A direct
+collision can still fall back to either genuine small-way result.
+
+Selected cache-pressure/full-state, step, host-reentry and mixed-policy suites
+qualify correctness and balanced ARC. Prior desktop spill-first screening on the
+old mapping was unproven; the changed direct mapping and Linux paired/noise job
+justify the fresh Linux measurements recorded below.
+
+
+[CI40107423219, attempts1 and2](https://github.com/jacogr/ragnarok/actions/runs/40107423219)
+compares runtime `af5d81fa207d576d0a96665491883b925e51279f` against parent
+`6af95c35df9c3f933315841204d9178efc23ce5e`. Each passes2808 paired full-state
+invocations,2808 identical-source controls, native assertion refusals and the
+pinned interpreted guest pack. First/repeat Pinky CPU changes are -6.6/-8.9%
+dynamic, -9.5/-8.8% planned and -8.5/-9.3% memo. Publication preserves exact
+runtime/driver/build/pin inputs across subsequent profiler/documentation-only
+native restacking; source equality is recorded separately from exact-head CI.
+
+The cost is repeated on small, unpromoted work: dynamic synthetic arithmetic
++5.5/+5.9%, crossing memory +3.3/+3.3%, mixed bits +3.1/+3.4%, alternating blocks
++3.7/+5.2%. Planned minimal1000 is +3.8/+3.7%, and planned memset100000 is
++2.2/+3.9%. Some planned synthetic cells also regress roughly3–5% on repeat.
+Arithmetic10000 executes30001 instructions, below the32768-miss threshold, so
+it receives the extra nil-table probe without a promoted-table benefit. Tiny
+memo changes fluctuate across attempts; host same-source variation reaches
+10–17%, so no host gain is established. These regressions are part of the
+selected large-working-set tradeoff. All21 real and33 synthetic cells, both
+orders, cold observations and raw noise controls remain in the CI artifacts and
+`build/pvm12/ci-40107423219/` plus its `-attempt2` sibling. No universal speed
+claim or complete-JAM parity claim follows.
