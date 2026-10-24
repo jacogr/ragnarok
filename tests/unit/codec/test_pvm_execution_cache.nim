@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Invocation-local decoded operands survive collisions, capacity pressure and host resumptions without crossing programs or callback nesting.
+## Invocation-local decoded operands and prices survive collisions, capacity pressure and host resumptions without crossing programs or callback nesting.
 # @@Verification={"arc": "pvm_execution_cache_arc_release"}
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, gas, gas_plan, gas_memo, step]
@@ -249,12 +249,22 @@ proc largerPriceWorkingSet(blocks = 24) =
   assert execute(source, ExecutionStepLimit(attempts-1), GasCycleLimit(10000)).error ==
       StepError.StepLimitExceeded
 
-proc expandedPriceCollisions() =
-  ## Literal starts9/64/153/208/297/352 share new set35; six unequal prices exceed both secondary ways and three recent entries.
-  let starts = [9, 64, 153, 208, 297, 352]
+proc expandedPriceCollisions(promoted = false) =
+  ## Independent literal collisions exercise both secondary tiers; the promoted case first crosses successful-price pressure.
+  let starts = if promoted: [280, 1877, 2864, 4461, 7045, 8642] else: [9, 64, 153, 208, 297, 352]
   let multiplies = [1, 3, 2, 1, 3]
-  var parts = @[@[40'u8, 9, 0, 0, 0]]
-  var pc = 5
+  var parts: seq[seq[byte]] = @[]
+  var pc = 0
+  if promoted:
+    #170 unequal one/two-instruction blocks force promotion before all six addresses sharing expanded set101 recur.
+    for index in 0..<170:
+      if index mod 2 == 1:
+        parts.add(@[2'u8])
+        inc pc
+      parts.add(@[1'u8])
+      inc pc
+  parts.add(@[40'u8, byte(starts[0]-pc), 0, 0, 0])
+  pc += 5
   for blockIndex in 0..<6:
     while pc < starts[blockIndex]:
       parts.add(@[0'u8]) # Unexecuted padding has explicit instruction masks, never an oversized operand partition.
@@ -264,7 +274,7 @@ proc expandedPriceCollisions() =
         parts.add(@[150'u8, 119, 2])
         pc += 3
       let distance = starts[blockIndex+1]-pc
-      parts.add(@[40'u8, byte(distance), 0, 0, 0])
+      parts.add(@[40'u8, byte(distance and 255), byte(distance shr 8), 0, 0])
       pc += 5
   for index in 0..<5: parts.add(@[150'u8, 119, 2])
   pc += 15
@@ -279,14 +289,42 @@ proc expandedPriceCollisions() =
   var cpu = machineInfo(base).value
   cpu.registers[7] = RegisterValue(1)
   let source = captureMachine(owner, memoryOf(base).value, cpu).value
-  let run = execute(source, ExecutionStepLimit(90), GasCycleLimit(10000))
+  let attempts = if promoted: 345 else: 90
+  let run = execute(source, ExecutionStepLimit(uint64(attempts)), GasCycleLimit(10000))
   assert run.error == StepError.None and run.value.exit == StepExit.Halt
-  same(machineInfo(run.value.machine).value, compareSteps(source, 90, StepExit.Halt))
+  same(machineInfo(run.value.machine).value, compareSteps(source, attempts, StepExit.Halt))
   assert uint64(machineInfo(run.value.machine).value.registers[7]) == 1'u64 shl 60
   assert uint64(machineInfo(run.value.machine).value.registers[10]) == 4
   same(machineInfo(source).value, cpu)
-  assert execute(source, ExecutionStepLimit(89), GasCycleLimit(10000)).error ==
+  assert execute(source, ExecutionStepLimit(uint64(attempts-1)), GasCycleLimit(10000)).error ==
       StepError.StepLimitExceeded
+
+proc adaptiveSource(blocks = 170, rounds = 3, hosted = false, nested = false): Machine =
+  ## Alternating literal one/two-instruction blocks cross promotion and optionally exceed all4228 retained price positions.
+  assert blocks in [170, 5000] and rounds in [3, 10]
+  var parts: seq[seq[byte]] = @[]
+  var pc = 0
+  for index in 0..<blocks:
+    if index mod 2 == 1:
+      # The nested variant changes block boundaries/prices at identical PCs without changing the instruction count or byte width.
+      parts.add(@[if nested: 1'u8 else: 2'u8])
+      inc pc
+    parts.add(@[1'u8])
+    inc pc
+  parts.add(@[149'u8, 0, 255])
+  pc += 3
+  let backwards = 65536-pc
+  parts.add(@[82'u8, 16, 0, byte(backwards and 255), byte(backwards shr 8)])
+  pc += 5
+  if hosted:
+    parts.add(@[10'u8, 1])
+    pc += 2
+    let offset = 0x100000000'u64-uint64(pc)
+    parts.add(@[40'u8, byte(offset and 255), byte((offset shr 8) and 255),
+      byte((offset shr 16) and 255), byte(offset shr 24)])
+  else:
+    parts.add(@[0'u8]) # The guest-only trace ends after its exact number of complete recurrent rounds.
+  input(code(parts), uint64(rounds))
 
 proc denseSource(delta = 1, hosted = false): Machine =
   ##4500 distinct additions pressure the small cache; ten rounds cross the32768-successful-miss allocation threshold.
@@ -307,9 +345,10 @@ proc denseSource(delta = 1, hosted = false): Machine =
     parts.add(@[0'u8]) # Guest-only callers retain a literal terminal trap after the ten completed rounds.
   input(code(parts), 10)
 
-proc densePolicies(source: Machine, byteBudget = 262144'u64): tuple[plan: GasPlan, memo: GasMemo] =
+proc densePolicies(source: Machine, blocks = 8, byteBudget = 262144'u64): tuple[plan: GasPlan,
+    memo: GasMemo] =
   ## Both fixed-source policies admit the independently bounded large program; no partial policy is extracted on refusal.
-  let plan = newGasPlan(programOf(source).value, GasPlanLimits(blocks: GasPlanBlockLimit(8),
+  let plan = newGasPlan(programOf(source).value, GasPlanLimits(blocks: GasPlanBlockLimit(uint64(blocks)),
     bytes: GasPlanByteLimit(byteBudget), cycles: GasCycleLimit(100000)))
   let memo = newGasMemo(programOf(source).value, GasMemoLimits(bytes: GasMemoByteLimit(byteBudget),
     cycles: GasCycleLimit(100000)))
@@ -376,7 +415,7 @@ proc widerDecodedPressure() =
   let original = machineInfo(source).value
   let expected = compareSteps(source, 51007, StepExit.Panic, GasCycleLimit(100000))
   assert uint64(expected.registers[0]) == 0 and uint64(expected.registers[1]) == sum*3
-  let policies = densePolicies(source, 1048576)
+  let policies = densePolicies(source, byteBudget = 1048576)
   for mode in 0..<3:
     for repetition in 0..<2:
       # Complete and cold/warm lazy policies cannot supply operands from another invocation or publish a partial execution.
@@ -387,26 +426,60 @@ proc widerDecodedPressure() =
     assert denseRun(source, mode, policies.plan, policies.memo, 51006).error ==
         StepError.StepLimitExceeded
 
+proc adaptiveGuestPressure() =
+  ## Promotion and larger-than-capacity replacement preserve cold/warm complete CPU/gas parity and exact local bounds.
+  for blocks in [170, 5000]:
+    let source = adaptiveSource(blocks)
+    let original = machineInfo(source).value
+    let attempts = uint64(3*(blocks+blocks div 2+2)+1)
+    let expected = compareSteps(source, int(attempts), StepExit.Panic, GasCycleLimit(100000))
+    let policies = densePolicies(source, 20000)
+    var shortCpu = original
+    shortCpu.gas = MachineGas(high(uint64)-uint64(expected.gas)-1)
+    let short = captureMachine(programOf(source).value, memoryOf(source).value, shortCpu).value
+    let unpaid = compareSteps(short, int(attempts), StepExit.OutOfGas, GasCycleLimit(100000))
+    for mode in 0..<3:
+      for repetition in 0..<2:
+        # Reusing a memo does not reuse the private invocation price owner or its miss counter.
+        let done = denseRun(source, mode, policies.plan, policies.memo, attempts)
+        assert done.error == StepError.None and done.value.exit == StepExit.Panic
+        same(machineInfo(done.value.machine).value, expected)
+        same(machineInfo(source).value, original)
+      assert denseRun(source, mode, policies.plan, policies.memo, attempts-1).error ==
+          StepError.StepLimitExceeded
+      let stopped = denseRun(short, mode, policies.plan, policies.memo, attempts)
+      assert stopped.error == StepError.None and stopped.value.exit == StepExit.OutOfGas
+      same(machineInfo(stopped.value.machine).value, unpaid)
+      same(machineInfo(short).value, shortCpu)
+
+proc adaptiveArc(source: Machine, expected: MachineInfo) =
+  ## Every dynamic call must release its promoted price owner before returning; only copied CPU facts survive.
+  let done = execute(source, ExecutionStepLimit(772), GasCycleLimit(100000))
+  assert done.error == StepError.None and done.value.exit == StepExit.Panic
+  same(machineInfo(done.value.machine).value, expected)
+
+
 type DenseContext = object ## Expected CPU values and a separately owned nested source never grant access to either private decoder cache.
   expected: array[2, MachineInfo]
   nestedExpected: MachineInfo
+  nestedSteps: uint64
   nested: Machine
   calls: int
   refuse: bool
 
 proc denseReply(context: var DenseContext, stopped: StepOutcome): HostResponse {.raises: [].} =
-  ## Both dense invocations own spills at identical PCs; the outer program must regain its original operands after continuation.
+  ## Nested invocations own separate price/decoder spills at identical PCs; the outer program must regain its original facts after continuation.
   assert context.calls < 2 and uint64(stopped.hostCall) == 1
   let cpu = machineInfo(stopped.machine).value
   same(cpu, context.expected[context.calls])
-  let nested = execute(context.nested, ExecutionStepLimit(45021), GasCycleLimit(100000))
+  let nested = execute(context.nested, ExecutionStepLimit(context.nestedSteps), GasCycleLimit(100000))
   assert nested.error == StepError.None and nested.value.exit == StepExit.Panic
   same(machineInfo(nested.value.machine).value, context.nestedExpected)
   assert uint64(machineInfo(context.nested).value.registers[0]) == 10
   inc context.calls
   var registers = cpu.registers
   if context.calls == 1:
-    registers[0] = RegisterValue(10) # Re-enter the original dense guest for another ten rounds.
+    registers[0] = RegisterValue(10) # Re-enter the original guest for another ten rounds.
   HostResponse(action: (if context.calls == 1: HostAction.Continue else: HostAction.Panic),
     gas: cpu.gas, registers: registers, memory: memoryOf(stopped.machine).value)
 
@@ -417,39 +490,42 @@ proc denseReplyFallible(context: var DenseContext, stopped: StepOutcome): HostRe
   if context.refuse and context.calls == 2: return hostFailure(Reason.Refused)
   hostSuccess[Reason](response)
 
-proc denseHostPressure() =
-  ## Exact90043 attempts cover two ten-round dense passes, the first host continuation/jump and the second terminal callback.
-  let source = denseSource(hosted = true)
-  let nested = denseSource(8)
-  let first = compareSteps(source, 45021, StepExit.Host, GasCycleLimit(100000))
+proc denseHostPressure(adaptive = false) =
+  ## Both pressure families cover two ten-round passes, continuation, nested execution and ordinary/typed callback termination.
+  let source = if adaptive: adaptiveSource(rounds = 10, hosted = true) else: denseSource(hosted = true)
+  let nested = if adaptive: adaptiveSource(rounds = 10, nested = true) else: denseSource(8)
+  let firstSteps = if adaptive: 2571 else: 45021
+  let attempts = uint64(firstSteps*2+1)
+  let first = compareSteps(source, firstSteps, StepExit.Host, GasCycleLimit(100000))
   var posterior = first
-  posterior.pc = CodeAddress(13510)
+  posterior.pc = CodeAddress(if adaptive: 265 else: 13510)
   posterior.registers[0] = RegisterValue(10)
   let resumed = captureMachine(programOf(source).value, memoryOf(source).value, posterior).value
-  let second = compareSteps(resumed, 45022, StepExit.Host, GasCycleLimit(100000))
-  let nestedExpected = compareSteps(nested, 45021, StepExit.Panic, GasCycleLimit(100000))
-  assert uint64(second.registers[1]) == 359940 and uint64(nestedExpected.registers[1]) == 494970
-  let policies = densePolicies(source)
+  let second = compareSteps(resumed, firstSteps+1, StepExit.Host, GasCycleLimit(100000))
+  let nestedExpected = compareSteps(nested, firstSteps, StepExit.Panic, GasCycleLimit(100000))
+  assert uint64(second.registers[1]) == (if adaptive: 0'u64 else: 359940'u64)
+  assert uint64(nestedExpected.registers[1]) == (if adaptive: 0'u64 else: 494970'u64)
+  let policies = densePolicies(source, if adaptive: 20000 else: 8)
   for mode in 0..<3:
     var context = DenseContext(expected: [first, second], nestedExpected: nestedExpected,
-      nested: nested, calls: 0, refuse: false)
+      nestedSteps: uint64(firstSteps), nested: nested, calls: 0, refuse: false)
     let ordinary = case mode
-      of 0: executeWithHost(source, context, denseReply, ExecutionStepLimit(90043), HostCallLimit(
-          2), GasCycleLimit(100000))
-      of 1: executeWithHost(source, context, denseReply, ExecutionStepLimit(90043), HostCallLimit(
-          2), policies.plan)
-      else: executeWithHost(source, context, denseReply, ExecutionStepLimit(90043), HostCallLimit(
-          2), policies.memo)
+      of 0: executeWithHost(source, context, denseReply, ExecutionStepLimit(attempts),
+          HostCallLimit(2), GasCycleLimit(100000))
+      of 1: executeWithHost(source, context, denseReply, ExecutionStepLimit(attempts),
+          HostCallLimit(2), policies.plan)
+      else: executeWithHost(source, context, denseReply, ExecutionStepLimit(attempts),
+          HostCallLimit(2), policies.memo)
     assert ordinary.error == StepError.None and ordinary.value.exit == StepExit.Panic and
         context.calls == 2
     same(machineInfo(ordinary.value.machine).value, second)
     context.calls = 0
     let fallible = case mode
-      of 0: executeWithHost(source, context, denseReplyFallible, ExecutionStepLimit(90043),
+      of 0: executeWithHost(source, context, denseReplyFallible, ExecutionStepLimit(attempts),
           HostCallLimit(2), GasCycleLimit(100000))
-      of 1: executeWithHost(source, context, denseReplyFallible, ExecutionStepLimit(90043),
+      of 1: executeWithHost(source, context, denseReplyFallible, ExecutionStepLimit(attempts),
           HostCallLimit(2), policies.plan)
-      else: executeWithHost(source, context, denseReplyFallible, ExecutionStepLimit(90043),
+      else: executeWithHost(source, context, denseReplyFallible, ExecutionStepLimit(attempts),
           HostCallLimit(2), policies.memo)
     assert fallible.error == HostExecutionError.None and fallible.value.exit == StepExit.Panic and
         context.calls == 2
@@ -457,23 +533,23 @@ proc denseHostPressure() =
     context.calls = 0
     context.refuse = true
     let refused = case mode
-      of 0: executeWithHost(source, context, denseReplyFallible, ExecutionStepLimit(90043),
+      of 0: executeWithHost(source, context, denseReplyFallible, ExecutionStepLimit(attempts),
           HostCallLimit(2), GasCycleLimit(100000))
-      of 1: executeWithHost(source, context, denseReplyFallible, ExecutionStepLimit(90043),
+      of 1: executeWithHost(source, context, denseReplyFallible, ExecutionStepLimit(attempts),
           HostCallLimit(2), policies.plan)
-      else: executeWithHost(source, context, denseReplyFallible, ExecutionStepLimit(90043),
+      else: executeWithHost(source, context, denseReplyFallible, ExecutionStepLimit(attempts),
           HostCallLimit(2), policies.memo)
     assert refused.error == HostExecutionError.HostFailure and refused.hostError ==
         Reason.Refused and context.calls == 2
     context.calls = 0
     context.refuse = false
     let short = case mode
-      of 0: executeWithHost(source, context, denseReply, ExecutionStepLimit(90042), HostCallLimit(
-          2), GasCycleLimit(100000))
-      of 1: executeWithHost(source, context, denseReply, ExecutionStepLimit(90042), HostCallLimit(
-          2), policies.plan)
-      else: executeWithHost(source, context, denseReply, ExecutionStepLimit(90042), HostCallLimit(
-          2), policies.memo)
+      of 0: executeWithHost(source, context, denseReply, ExecutionStepLimit(attempts-1),
+          HostCallLimit(2), GasCycleLimit(100000))
+      of 1: executeWithHost(source, context, denseReply, ExecutionStepLimit(attempts-1),
+          HostCallLimit(2), policies.plan)
+      else: executeWithHost(source, context, denseReply, ExecutionStepLimit(attempts-1),
+          HostCallLimit(2), policies.memo)
     assert short.error == StepError.StepLimitExceeded and context.calls == 1
   assert uint64(machineInfo(source).value.registers[0]) == 10 and uint64(machineInfo(
       source).value.registers[1]) == 0
@@ -868,11 +944,16 @@ proc absentControlSuccessors() =
     same(machineInfo(stopped.value.machine).value, expected)
     same(machineInfo(source).value, cpu)
 
+adaptiveGuestPressure()
+expandedPriceCollisions(true)
 denseGuestPressure()
 widerDecodedPressure()
 denseHostPressure()
+denseHostPressure(true)
 let denseOccupied = getOccupiedMem()
-for repetition in 0..<4: denseHostPressure()
+for repetition in 0..<4:
+  denseHostPressure()
+  denseHostPressure(true)
 assert getOccupiedMem() == denseOccupied
 controlSuccessors()
 absentControlSuccessors()
@@ -893,8 +974,12 @@ let denseArcSource = denseSource()
 let denseArcPlan = densePolicies(denseArcSource).plan
 let denseArcExpected = compareSteps(denseArcSource, 45021, StepExit.Panic, GasCycleLimit(100000))
 denseArc(denseArcSource, denseArcPlan, denseArcExpected)
+let adaptiveArcSource = adaptiveSource()
+let adaptiveArcExpected = compareSteps(adaptiveArcSource, 772, StepExit.Panic, GasCycleLimit(100000))
+adaptiveArc(adaptiveArcSource, adaptiveArcExpected)
 let before = getOccupiedMem()
 for cycle in 0..<1000:
+  adaptiveArc(adaptiveArcSource, adaptiveArcExpected)
   denseArc(denseArcSource, denseArcPlan, denseArcExpected)
   collisions()
   threeWayPressure()
