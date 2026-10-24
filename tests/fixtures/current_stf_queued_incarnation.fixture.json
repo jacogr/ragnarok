@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_QUEUED_INCARNATION",
+  "files": {
+    "current-stf-queued-incarnation.json": "75c1f67342a7519abada59789fb41014597e507c8857c701e1f144975fa7000c"
+  },
+  "target": "current-stf-queued-incarnation.json"
+}

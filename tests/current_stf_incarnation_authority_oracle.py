@@ -55,7 +55,7 @@ def original(profile):
     parent[chapter_key(12)]=privileges_wire((0,0,99,[0,0],[]));return parent
 
 
-def effects(result,parent,profile,slot):
+def effects(result,parent,profile,slot,*,rebind_slot=6,write_slot=8):
     """Common prior authority refuses77 at6; only a retained explicit rebind permits the later foreign write at8."""
     first,second,third=programs(profile);child=envelope(*third);gas={};changed=False
     if slot==4:
@@ -65,13 +65,13 @@ def effects(result,parent,profile,slot):
             result[key]=account_wire((code,wide,narrow))
             result[chapter_service(255,77)]=account_wire((digest(child),(0,0,100,19,81+len(child),0),(2,4,0,99,99,0)))
             result[request_key(77,digest(child),len(child))]=request_wire((4,));result[value_key('P',77,digest(child))]=child
-    if slot==6:
+    if slot==rebind_slot:
         instructions,_=first;gas[42]=simulate(instructions,gas_definitions(),prefix=[b'\0']*5)[0]+1000*int(profile!='stale')+103*int(profile=='checkpoint-panic')
         if profile not in ('stale','panic'):
             key=chapter_service(255,42);code,wide,narrow=account_parse(parent[key],105);narrow=list(narrow)
             narrow[4]=77;narrow[5]=account_parse(parent[chapter_service(255,77)],105)[2][1]
             result[key]=account_wire((code,wide,narrow)) # Original42 self authority is valid after the actual old77 incarnation disappears.
-    if slot in (6,8):
+    if slot in (rebind_slot,write_slot):
         code_ready=profile!='creator-panic';instructions,_=third
         gas[77]=simulate(instructions,gas_definitions(),prefix=[b'\0']*5)[0]+2442+(3358+1023)//1024+(216*3+1023)//1024 if code_ready else 0
         key=chapter_service(255,42);code,wide,narrow=account_parse(parent[key],105);current77=account_parse(parent[chapter_service(255,77)],105)[2][1]
