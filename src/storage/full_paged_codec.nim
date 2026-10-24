@@ -479,3 +479,6 @@ proc decodeFullPagedSelection*(input: openArray[byte], chain: StorageChainId, ro
     completed: FullPagedManifest(ready: true, chain: chain, selected: root,
       physical: ManagedEpoch(epoch), ordinary: RepositoryGeneration(number(input, 104)),
       pages: pages, extent: extent, tree: FullPagedDigest(hashAt(input, 128))))
+func generation*(manifest: FullPagedManifest): RepositoryGeneration {.requires: manifest.ready.} =
+  ## Read ordinary full-repository generation independently of the physical epoch.
+  manifest.ordinary

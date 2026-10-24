@@ -113,8 +113,8 @@ proc tree*(bytes: var seq[byte], pages, start, width: int): array[32, byte] =
     body.append(right)
     result = digest(body)
   bytes.append(result)
-proc fixture*(records: seq[TrieRecord], selected: TrieRecord, roots: seq[
-    FullPagedRoot]): FullPagedFixture =
+proc fixture*(records: seq[TrieRecord], selected: TrieRecord, roots: seq[FullPagedRoot],
+    epoch = ManagedEpoch(1), generation = RepositoryGeneration(0)): FullPagedFixture =
   ## Canonical record ordering plus independent tree construction can seal hostile but locally valid graphs.
   var sorted = records
   sorted.sort(proc(a, b: TrieRecord): int = compareFullHash(array[32, byte](a.digest),
@@ -127,7 +127,7 @@ proc fixture*(records: seq[TrieRecord], selected: TrieRecord, roots: seq[
       10000)).value.len) # Test extent.
   let made = initFullPagedHeader(default(StorageChainId), StateRoot(array[32, byte](
       selected.digest)),
-    ManagedEpoch(1), RepositoryGeneration(0), uint64(sorted.len), payload, claims, policy().dataset)
+    epoch, generation, uint64(sorted.len), payload, claims, policy().dataset)
   assert made.error == FullPagedError.None
   let header = made.value
   var bytes: seq[byte] = @[]
