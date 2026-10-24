@@ -119,7 +119,7 @@ def run():
             report['controls'].append(dict(name=name, passed=passed, run=result, profile_sha256=digest(output)))
             if not passed:
                 raise RuntimeError('profile scope calibration failed: '+name)
-        prepared = prepare_inputs(checks, BUILD, cases=(('sieve', 100000), ('pinky', 1)))
+        prepared = prepare_inputs(checks, BUILD) # The shared preparer admits only its maintained complete matrix.
         identities.update(prepared['identities'])
         report['provenance'] = prepared['provenance']
         driver = {name: (ROOT/name).read_bytes() for name in DRIVER}
