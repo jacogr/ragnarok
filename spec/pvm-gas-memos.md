@@ -87,3 +87,6 @@ The rejected prepaid-register dispatcher and compact/dense complete-decoding exp
 outside production: small/uneven gains or their additional memory cost did not justify adoption.
 Fuzzing remains deferred until maintainer Daybreak access. M1 framing is complete in its documented
 scope; full state serialization and whole-JAM/STF equivalence remain open.
+
+Synchronous price-owner borrowing and its isolated lookup benchmark are recorded in
+[pricing owner borrows](pvm-pricing-owner-borrows.md).

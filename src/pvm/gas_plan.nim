@@ -101,7 +101,7 @@ func gasPlanInfo*(plan: GasPlan): GasPlanResult[GasPlanInfo] =
 func blockGas*(plan: GasPlan, start: CodeAddress): GasPlanResult[BlockGas] =
   ## Select only an exact priced block start; full-width addresses are checked before narrowing.
   if plan.data == nil: return GasPlanResult[BlockGas](status: GasPlanError.InvalidProgram)
-  let data = plan.data
+  let data {.cursor.} = plan.data # The caller retains the stable policy owner through this synchronous lookup.
   let pc = uint64(start)
   if pc >= uint64(data.prices.len): return GasPlanResult[BlockGas](
       status: GasPlanError.InvalidStart)
