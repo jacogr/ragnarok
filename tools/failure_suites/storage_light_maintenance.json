@@ -1,0 +1,98 @@
+{
+  "source": "tests/native/storage_light_maintenance_results.nim",
+  "build_name": "storage-light-maintenance-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-light-maintenance-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Guarded maintenance result default"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-light-maintenance-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Guarded maintenance result failed"
+    },
+    {
+      "identity": {
+        "member": "receipt",
+        "origin": "default"
+      },
+      "arguments": [
+        "receipt",
+        "default"
+      ],
+      "name": "storage-light-maintenance-receipt-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Guarded maintenance receipt default"
+    },
+    {
+      "identity": {
+        "member": "receipt",
+        "origin": "failed"
+      },
+      "arguments": [
+        "receipt",
+        "failed"
+      ],
+      "name": "storage-light-maintenance-receipt-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Guarded maintenance receipt failed"
+    },
+    {
+      "identity": {
+        "member": "compact",
+        "origin": "default"
+      },
+      "arguments": [
+        "compact",
+        "default"
+      ],
+      "name": "storage-light-maintenance-compact-default",
+      "diagnostic": "not prepared.data == nil",
+      "description": "Guarded maintenance compact default"
+    },
+    {
+      "identity": {
+        "member": "count",
+        "origin": "default"
+      },
+      "arguments": [
+        "count",
+        "default"
+      ],
+      "name": "storage-light-maintenance-count-default",
+      "diagnostic": "not prepared.data == nil",
+      "description": "Guarded maintenance count default"
+    },
+    {
+      "identity": {
+        "member": "first",
+        "origin": "default"
+      },
+      "arguments": [
+        "first",
+        "default"
+      ],
+      "name": "storage-light-maintenance-first-default",
+      "diagnostic": "not prepared.data == nil",
+      "description": "Guarded maintenance first default"
+    }
+  ]
+}

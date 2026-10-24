@@ -404,3 +404,7 @@ Journal `prepareLightRetainedUpdate` and `admitRetained` authenticate automatic 
 and admission in one ordinary frame and one barrier. Prepared groups bind every journal policy
 scalar as well as their exact physical predecessor; strict reopen and explicit tail repair retain
 their existing uncertainty contracts.
+
+`prepareLightMaintenance` and `maintain` apply explicit frame/byte compaction thresholds and a
+bounded canonical retired-epoch sweep. Passive receipts separate confirmed selection, old-handle
+retirement and partial cleanup progress. See [bounded journal maintenance](../../spec/storage-light-maintenance.md).
