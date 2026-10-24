@@ -44,8 +44,8 @@ env:
 jobs:
   # Complete source import graph plus peer main and read-only formatting; no native linking or fixture setup.
   smoke:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke') }}
-    name: Smoke
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke') }}
+    name: Compile / Smoke
     timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
@@ -162,20 +162,22 @@ jobs:
             build/bandersnatch/build.log
             build/bandersnatch/cargo-features.log
 
-  # Require the whole requested group, including failed, cancelled or skipped children.
+  # Automatic updates require Smoke; complete Compile requests additionally require every full check.
   compile-status:
     name: Compile
-    needs: [modules, python, guards]
-    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full'))) }}
+    needs: [smoke, modules, python, guards]
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) || (github.event_name == 'pull_request' && github.event.action != 'labeled') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke')) }}
     strategy: *os-strategy
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Require every Compile job
+      - name: Require requested Compile jobs
         env:
+          FULL_COMPILE_REQUEST: *requested
+          SMOKE_RESULT: ${{ needs.smoke.result }}
           MODULES_RESULT: ${{ needs.modules.result }}
           PYTHON_RESULT: ${{ needs.python.result }}
           GUARDS_RESULT: ${{ needs.guards.result }}
-        run: test "$MODULES_RESULT" = success && test "$PYTHON_RESULT" = success && test "$GUARDS_RESULT" = success
+        run: test "$SMOKE_RESULT" = success && { test "$FULL_COMPILE_REQUEST" = false || { test "$MODULES_RESULT" = success && test "$PYTHON_RESULT" = success && test "$GUARDS_RESULT" = success; }; }
 
   models:
     if: *requested
