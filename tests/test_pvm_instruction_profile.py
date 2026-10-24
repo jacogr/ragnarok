@@ -12,7 +12,7 @@ from pvm_instruction_profile import profile_counts, calibration_passed, run
 
 def profile(total=42, function='pvm_profile_selected'):
     """Author the documented raw format independently of the profiler runner."""
-    return '# callgrind format\nversion: 1\nevents: Ir Bc Bcm Bi Bim\nfn='+function+'\n1 1 0 0 0 0\ntotals: '+str(total)+' 0 0 0 0\n'
+    return '# callgrind format\nversion: 1\nevents: Ir Bc Bcm Bi Bim\nfn='+function+'\n1 1 0 0 0 0\nsummary: '+str(total)+' 0 0 0 0\ntotals: '+str(total)+' 0 0 0 0\n'
 
 
 class InstructionProfileTests(unittest.TestCase):
@@ -25,13 +25,19 @@ class InstructionProfileTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             profile_counts(profile(0))
 
+    def test_real_callgrind_omits_trailing_zero_events(self):
+        """The observed Linux format omits zero Bi/Bim costs; it still agrees with the complete header."""
+        raw = profile().replace('42 0 0 0 0', '483 32 10')
+        self.assertEqual(profile_counts(raw), dict(Ir=483, Bc=32, Bcm=10, Bi=0, Bim=0))
+
     def test_bad_counters(self):
         """Reject missing/duplicate/truncated/malformed/negative totals and shifted event columns."""
         valid = profile()
         for text in [valid.replace('totals:', 'partial:'), valid+valid, valid.replace('42 0', '-1 0'),
                 valid.replace('42 0', '01 0'), valid.replace('42 0', '42.0 0'),
                 valid.replace('Ir Bc', 'Bc Ir'), valid.replace('Ir Bc', 'Ir Ir'),
-                valid.replace('42 0 0 0 0', '42 0'), valid.replace('# callgrind format', '# other')]:
+                valid.replace('42 0 0 0 0', '42 0 0 0 0 0'),
+                valid.replace('totals: 42', 'totals: 43'), valid.replace('# callgrind format', '# other')]:
             # Every broken file retains the other control fields, isolating its own refusal condition.
             with self.subTest(text=text):
                 with self.assertRaises(ValueError):

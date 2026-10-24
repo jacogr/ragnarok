@@ -32,14 +32,24 @@ def profile_counts(text, allow_empty=False):
     """Require one complete instruction-count footer, not a partial dump, generic log or unrelated event column."""
     events = re.findall(r'^events: (.+)$', text, re.M)
     totals = re.findall(r'^totals: (.+)$', text, re.M)
-    if len(events) != 1 or len(totals) != 1 or not text.startswith('# callgrind format\n'):
+    summaries = re.findall(r'^summary: (.+)$', text, re.M)
+    if (len(events) != 1 or len(totals) != 1 or len(summaries) != 1
+            or not text.startswith('# callgrind format\n')):
         raise ValueError('incomplete Callgrind profile')
     names = events[0].split()
-    values = totals[0].split()
-    if (not names or names[0] != 'Ir' or len(names) != len(set(names)) or len(values) != len(names)
-            or any(re.fullmatch(r'0|[1-9][0-9]*', value) is None for value in values)):
-        raise ValueError('invalid Callgrind event totals')
-    counts = dict(zip(names, map(int, values)))
+    if not names or names[0] != 'Ir' or len(names) != len(set(names)):
+        raise ValueError('invalid Callgrind events')
+    rows = []
+    for raw in (summaries[0], totals[0]):
+        # Callgrind omits trailing zero event costs even when string/position compression is disabled.
+        values = raw.split()
+        if (not values or len(values) > len(names)
+                or any(re.fullmatch(r'0|[1-9][0-9]*', value) is None for value in values)):
+            raise ValueError('invalid Callgrind event totals')
+        rows.append([*map(int, values), *([0]*(len(names)-len(values)))])
+    if rows[0] != rows[1]:
+        raise ValueError('Callgrind header/footer totals disagree')
+    counts = dict(zip(names, rows[1]))
     if not allow_empty and counts['Ir'] == 0:
         raise ValueError('Callgrind collected no instructions')
     return counts
