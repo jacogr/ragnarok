@@ -985,3 +985,159 @@ proc admitRetained*(owner: var LightJournalCache, proofs: openArray[LightStatePr
   let prepared = prepareLightRetainedUpdate(owner, proofs, limits)
   if prepared.error != FileError.None: return fail[StorageDurability](prepared.error)
   owner.append(prepared.value)
+
+type
+  LightMaintenanceLimits* = object ## Explicit opt-in compaction thresholds and one bounded canonical retired-epoch sweep.
+    frames*: ElementLimit ## Zero disables this trigger; nonzero counts ordinary frames since the selected checkpoint.
+    bytes*: ByteLimit ## Zero disables this trigger; charge only journal frame bytes, excluding the fixed anchor.
+    first*: ManagedEpoch ## Explicit canonical sweep cursor; disabled sweeps ignore it and expose zero.
+    epochs*, keep*: ElementLimit ## Bound retirement jobs and preserve this many earlier physical epochs behind the selected head.
+  MaintenanceData = ref object ## Immutable preparation retains metadata plus at most one existing compaction image, never a native lease.
+    source: LightJournalConfig
+    selected, image: StorageChecksum
+    epoch: ManagedEpoch
+    sequence: LightDeltaSequence
+    frames, bytes, retired: uint64
+    first: ManagedEpoch
+    compaction: PreparedLightCompaction
+  PreparedLightMaintenance* = object ## Exact source-bound policy decisions authorize only existing guarded compaction and canonical retirement APIs.
+    data: nil MaintenanceData
+  LightMaintenanceReceipt* = object ## Passive confirmed head plus partial synchronized retirement progress is never root trust or retry authority.
+    previousEpoch*, epoch*: ManagedEpoch
+    sequence*: LightDeltaSequence
+    compacted*: bool
+    retired*: ElementLimit ## Completed canonical pair jobs, including synchronized already-absent retries.
+    nextRetiredEpoch*: ManagedEpoch ## First unfinished requested job, or the exclusive end after complete retirement.
+    retirement*, cleanup*: FileError ## Confirmed compaction retirement and later cleanup errors remain distinct from publication refusal.
+func initialized*(prepared: PreparedLightMaintenance): bool =
+  ## Default plans safely report their missing source binding.
+  prepared.data != nil
+proc compactionNeeded*(prepared: PreparedLightMaintenance): bool {.requires: prepared.data != nil.} =
+  ## Inspect a completed threshold decision without granting an independent compaction candidate.
+  let data = prepared.data
+  assert data != nil
+  data.compaction.initialized
+proc retiredCount*(prepared: PreparedLightMaintenance): ElementLimit {.requires: prepared.data != nil.} =
+  ## Inspect the exact bounded number of canonical pair jobs, without scanning any directory.
+  let data = prepared.data
+  assert data != nil
+  ElementLimit(data.retired)
+proc firstRetiredEpoch*(prepared: PreparedLightMaintenance): ManagedEpoch {.requires: prepared.data != nil.} =
+  ## Inspect the explicit sweep cursor; a disabled sweep may retain zero.
+  let data = prepared.data
+  assert data != nil
+  data.first
+proc prepareLightMaintenance*(owner: LightJournalCache, expectedEpoch: ManagedEpoch,
+    expectedSequence: LightDeltaSequence, limits: LightMaintenanceLimits): LightJournalResult[
+        PreparedLightMaintenance] =
+  ## Decide work from one confirmed source, preserving image/root/sequence and all exact policies; preparation performs no IO.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return fail[PreparedLightMaintenance](reason)
+  assert data != nil
+  if uint64(data.selected.epoch) != uint64(expectedEpoch) or uint64(data.sequence) != uint64(expectedSequence):
+    return fail[PreparedLightMaintenance](FileError.StaleView)
+  let observed = managedJournalBytes(data.journal)
+  if observed.error != FileError.None: return fail[PreparedLightMaintenance](observed.error)
+  assert observed.value >= uint64(LightJournalAnchorBytes)
+  let capacity = uint64(data.config.journal.bytes)
+  assert capacity >= uint64(LightJournalAnchorBytes)
+  if uint64(limits.frames) > uint64(data.config.journal.frames) or
+      uint64(limits.bytes) > capacity-uint64(LightJournalAnchorBytes):
+    return fail[PreparedLightMaintenance](FileError.LimitExceeded)
+  let frameTrigger = uint64(limits.frames) > 0 and data.frames >= uint64(limits.frames)
+  let byteTrigger = uint64(limits.bytes) > 0 and observed.value-uint64(LightJournalAnchorBytes) >=
+      uint64(limits.bytes)
+  let compact = data.frames > 0 and (frameTrigger or byteTrigger)
+  var target = uint64(data.selected.epoch)
+  if compact:
+    # The prospective physical epoch must be representable before any manifest hashing or retirement-range arithmetic.
+    if target == high(uint64): return fail[PreparedLightMaintenance](FileError.EpochExhausted)
+    inc target
+  let first = if uint64(limits.epochs) == 0: 0'u64 else: uint64(limits.first)
+  var count = 0'u64
+  if uint64(limits.epochs) > 0:
+    # Retired canonical slots are strictly below the prospective selected head; no arbitrary future namespace is admitted.
+    if first == 0 or first > target: return fail[PreparedLightMaintenance](
+        FileError.InvalidRetention)
+    if uint64(limits.keep) < target-1:
+      let last = target-1-uint64(limits.keep)
+      if first <= last: count = min(uint64(limits.epochs), last-first+1)
+  var compaction = default(PreparedLightCompaction)
+  if compact:
+    # Reuse the ordinary immutable compaction candidate and its explicit abandoned-candidate cleanup authority.
+    let prepared = prepareLightCompaction(owner, expectedEpoch, expectedSequence)
+    if prepared.error != FileError.None: return fail[PreparedLightMaintenance](prepared.error)
+    compaction = prepared.value
+  LightJournalResult[PreparedLightMaintenance](status: FileError.None,
+    completed: PreparedLightMaintenance(data: MaintenanceData(source: data.config,
+      selected: data.selected.checksum, image: data.image.checksum, epoch: data.selected.epoch,
+      sequence: data.sequence, frames: data.frames, bytes: observed.value, first: ManagedEpoch(
+          first),
+      retired: count, compaction: compaction)))
+proc maintenanceSource(data: JournalOwner, plan: MaintenanceData): FileError =
+  ## Any physical/image/ordinary-update/policy change stales a prepared sweep, including same-root return cycles.
+  if not samePolicy(data.config.snapshot, plan.source.snapshot) or
+      not sameJournalPolicy(data.config.journal, plan.source.journal): return FileError.InvalidBatch
+  let sameChain = array[32, byte](data.config.chain) == array[32, byte](plan.source.chain)
+  let sameRoot = array[32, byte](data.config.root) == array[32, byte](plan.source.root)
+  let sameSelection = array[32, byte](data.selected.checksum) == array[32, byte](plan.selected)
+  let sameImage = array[32, byte](data.image.checksum) == array[32, byte](plan.image)
+  let sameEpoch = uint64(data.selected.epoch) == uint64(plan.epoch)
+  let sameSequence = uint64(data.sequence) == uint64(plan.sequence)
+  if not sameEpoch or not sameSequence or data.frames != plan.frames: return FileError.StaleView
+  if not sameChain or not sameRoot or not sameSelection or not sameImage: return FileError.StaleView
+  let observed = managedJournalBytes(data.journal)
+  if observed.error != FileError.None: return observed.error
+  if observed.value != plan.bytes: return FileError.StaleView
+  FileError.None
+proc maintain*(owner: var LightJournalCache, prepared: PreparedLightMaintenance): LightJournalResult[
+    LightMaintenanceReceipt] =
+  ## Confirm optional compaction before bounded retired-pair jobs; later cleanup failures return exact progress at the confirmed head.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return fail[LightMaintenanceReceipt](reason)
+  assert data != nil
+  let plan = prepared.data
+  if plan == nil: return fail[LightMaintenanceReceipt](FileError.Uninitialized)
+  let checked = maintenanceSource(data, plan)
+  if checked != FileError.None: return fail[LightMaintenanceReceipt](checked)
+  var receipt = LightMaintenanceReceipt(previousEpoch: data.selected.epoch,
+    epoch: data.selected.epoch,
+    sequence: data.sequence, compacted: false, retired: ElementLimit(0),
+    nextRetiredEpoch: plan.first, retirement: FileError.None,
+    cleanup: FileError.None)
+  if plan.compaction.initialized:
+    # Before confirmed CURRENT selection, ordinary publication failures expose no successful maintenance receipt.
+    let compacted = owner.compact(plan.compaction)
+    if compacted.error != FileError.None: return fail[LightMaintenanceReceipt](compacted.error)
+    receipt.compacted = true
+    receipt.epoch = compacted.value.epoch
+    receipt.retirement = compacted.value.retirement
+    if receipt.retirement != FileError.None:
+      if plan.retired > 0: receipt.cleanup = FileError.RecoveryRequired
+      return LightJournalResult[LightMaintenanceReceipt](status: FileError.None, completed: receipt)
+  var completed = 0'u64
+  var cursor = uint64(plan.first)
+  while completed < plan.retired:
+    # Each existing guarded pair job revalidates the selected head and synchronizes absence before progress advances.
+    let removed = owner.cleanupRetiredEpoch(ManagedEpoch(cursor))
+    if removed != FileError.None:
+      receipt.cleanup = removed
+      return LightJournalResult[LightMaintenanceReceipt](status: FileError.None, completed: receipt)
+    inc completed
+    assert cursor < uint64(data.selected.epoch)
+    inc cursor
+    receipt.retired = ElementLimit(completed)
+    receipt.nextRetiredEpoch = ManagedEpoch(cursor)
+  LightJournalResult[LightMaintenanceReceipt](status: FileError.None, completed: receipt)
+proc discardUnselectedMaintenance*(owner: var LightJournalCache,
+    prepared: PreparedLightMaintenance): FileError =
+  ## Explicitly discard only a matching unselected maintenance compaction; source appends retain the existing cleanup-only tolerance.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return reason
+  let plan = prepared.data
+  if plan == nil: return FileError.Uninitialized
+  if not plan.compaction.initialized: return FileError.InvalidBatch
+  owner.discardUnselectedCompaction(plan.compaction)
