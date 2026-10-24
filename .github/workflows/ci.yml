@@ -17,16 +17,21 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-storage, bench-storage-growth, full]
+        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, compare-pvm, bench-storage, bench-storage-growth, full]
         default: full
         required: true
+      pvm_compare_base:
+        description: Baseline ref for compare-pvm (PR labels use the exact PR base SHA)
+        type: string
+        default: HEAD^
+        required: false
 
 permissions:
   contents: read
 
 # New requests supersede earlier runs for the same ref; unrelated labels cannot cancel them.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.event.label.name != 'ci:pvm-compare' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 # All verification groups use the same shell and Python output policy.
@@ -669,6 +674,64 @@ jobs:
             build/tests/storage-growth-benchmark/growth/io/*.log
             build/tests/storage-growth-benchmark/growth/io/results.json
             build/tests/storage-growth-benchmark/growth/io/calls.csv
+            build/ci/*.log
+
+  # Explicit revision experiments use one VM; ordinary perf/full/master runs keep their existing scope.
+  compare-pvm:
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.suite == 'compare-pvm') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action == 'labeled' && github.event.label.name == 'ci:pvm-compare') }}
+    name: Perf / PVM Revisions
+    timeout-minutes: *ci-job-timeout
+    runs-on: ubuntu-24.04
+    env:
+      PVM_COMPARE_SYNTHETIC: "1"
+    steps:
+      - name: Checkout exact candidate and baseline history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - *python
+      - name: Validate verification inventory
+        run: *inventory-run
+      - name: Compare baseline and candidate on this runner
+        env:
+          PVM_COMPARE_BASE: ${{ github.event.pull_request.base.sha || inputs.pvm_compare_base || 'HEAD^' }}
+        run: make compare-pvm-guests
+      - name: Measure identical-source control on this runner
+        run: make compare-pvm-guests PVM_COMPARE_BASE=HEAD PVM_COMPARE_OUTPUT=build/tests/pvm-guest-control
+      - name: Compare candidate with pinned PolkaVM interpreted on this runner
+        run: make bench-pvm-guests
+      - name: Show paired, noise-control and reference comparisons
+        if: always()
+        run: |
+          for report in build/tests/pvm-guest-compare/summary.md build/tests/pvm-guest-control/summary.md build/tests/pvm-guests/summary.md; do
+            # Missing reports retain the original failed step; never substitute an earlier successful run.
+            if test -f "$report"; then
+              cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+      - name: Retain raw paired comparison evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-revisions-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            build/tests/pvm-guest-compare/*.log
+            build/tests/pvm-guest-compare/*.json
+            build/tests/pvm-guest-compare/summary.md
+            build/tests/pvm-guest-control/*.log
+            build/tests/pvm-guest-control/*.json
+            build/tests/pvm-guest-control/summary.md
+            build/tests/pvm-guests/*.json
+            build/tests/pvm-guests/*.csv
+            build/tests/pvm-guests/summary.md
+            build/tests/pvm-guests/*/*.log
+            build/tests/pvm-guests/*/*.json
+            build/tests/pvm-guests/*/*.csv
+            build/tests/pvm-guests/*/summary.md
             build/ci/*.log
 
   perf-status:

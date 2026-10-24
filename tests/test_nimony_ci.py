@@ -58,7 +58,7 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertIn('push:\n    branches: [master]\n', triggers)
         self.assertIn('pull_request:\n    types: [opened, reopened, synchronize, labeled]\n', triggers)
         self.assertIn('workflow_dispatch:\n    inputs:\n      suite:', triggers)
-        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
+        self.assertIn('type: choice\n        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, compare-pvm, bench-storage, bench-storage-growth, full]\n        default: full', triggers)
         self.assertNotIn('pull_request_target', triggers)
         for target in ('check-models', 'check-python', 'check-modules', 'check-unit', 'check-failures', 'check-guards', 'check-e2e',
                        'check-telemetry-interop-ci', 'check-pvm-reference'):
@@ -156,6 +156,56 @@ class NimonyCISafeguards(unittest.TestCase):
                     text, job, event_context('workflow_dispatch', suite=suite))], wanted if job == owner else [])
         self.assertNotIn('github.event.pull_request.labels', text)
 
+    def test_paired_pvm_is_explicit_and_uses_exact_endpoints(self):
+        """Only the requested revision experiment runs, with literal refs and a separate control output."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        condition = job_condition(text, 'compare-pvm')
+        for event, expected in [
+                (event_context(), False),
+                (event_context('workflow_dispatch', suite='compare-pvm'), True),
+                (event_context('workflow_dispatch', suite='perf'), False),
+                (event_context('workflow_dispatch', suite='full'), False),
+                (event_context('pull_request', 'labeled', 'ci:pvm-compare'), True),
+                (event_context('pull_request', 'synchronize', 'ci:pvm-compare'), False),
+                (event_context('pull_request', 'labeled', 'ci:perf'), False),
+                (event_context('pull_request', 'labeled', 'ci:full'), False),
+                (event_context('pull_request', 'labeled', 'ci:pvm-compare', state='closed'), False)]:
+            # Persistent labels and closed PRs cannot launch another expensive comparison.
+            self.assertEqual(bool(expression(condition, event)), expected)
+        section = job_section(text, 'compare-pvm')
+        self.assertIn('timeout-minutes: *ci-job-timeout', section)
+        self.assertIn('runs-on: ubuntu-24.04', section)
+        self.assertIn('PVM_COMPARE_SYNTHETIC: "1"', section)
+        self.assertIn('fetch-depth: 0', section)
+        self.assertIn('persist-credentials: false', section)
+        self.assertIn('ref: ${{ github.event.pull_request.head.sha || github.sha }}', section)
+        self.assertIn("PVM_COMPARE_BASE: ${{ github.event.pull_request.base.sha || inputs.pvm_compare_base || 'HEAD^' }}", section)
+        baseline = section.index('run: make compare-pvm-guests\n')
+        control = section.index('run: make compare-pvm-guests PVM_COMPARE_BASE=HEAD PVM_COMPARE_OUTPUT=build/tests/pvm-guest-control')
+        reference = section.index('run: make bench-pvm-guests\n')
+        self.assertLess(baseline, control)
+        self.assertLess(control, reference)
+        self.assertNotIn('continue-on-error', section)
+        self.assertNotIn('needs:', section)
+        self.assertEqual(section.count('if: always()'), 2)
+        for folder in ('pvm-guest-compare', 'pvm-guest-control', 'pvm-guests'):
+            # Both summaries and raw failed/partial evidence survive without uploading build trees.
+            self.assertIn('build/tests/'+folder+'/summary.md', section)
+            self.assertIn('build/tests/'+folder+'/*.json', section)
+        self.assertNotIn('/snapshots/', section)
+        self.assertNotIn('/compiler-', section)
+
+    def test_workflow_aliases_have_prior_anchors(self):
+        """A moved matrix step cannot leave a new standalone experiment referring to a retired alias."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        anchors = set()
+        for kind, name in re.findall(r'(?<!\S)([&*])([A-Za-z][\w-]*)', text):
+            # GitHub accepts prior YAML anchors; a missing definition makes the entire workflow invalid.
+            if kind == '&':
+                anchors.add(name)
+            else:
+                self.assertIn(name, anchors)
+
     def test_closed_pr_labels_cannot_schedule_or_cancel_ci(self):
         """Closed and merged PR label events schedule no jobs and use an isolated cancellation key."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()
@@ -168,7 +218,7 @@ class NimonyCISafeguards(unittest.TestCase):
         seen = set()
         for merged in (False, True):
             # A merged PR can carry a master ref; cancellation isolation cannot rely on ref alone.
-            for label in ('ci:full', 'ci:unit', 'ci:e2e', 'ci:interop', 'ci:perf', 'ci:fuzz', 'unrelated'):
+            for label in ('ci:full', 'ci:unit', 'ci:e2e', 'ci:interop', 'ci:perf', 'ci:fuzz', 'ci:pvm-compare', 'unrelated'):
                 event = event_context('pull_request', 'labeled', label, state='closed', merged=merged)
                 event['github'].update(run_id=200+len(seen), ref='refs/heads/master')
                 for job in jobs:
@@ -185,7 +235,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         expected = ("ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.state != 'open' && github.run_id || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled' && format('smoke-{0}', github.event.pull_request.number) || github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && "
                     "github.event.label.name != 'ci:unit' && github.event.label.name != 'ci:full' && "
-                    "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.run_id || github.ref }}")
+                    "github.event.label.name != 'ci:e2e' && github.event.label.name != 'ci:interop' && github.event.label.name != 'ci:perf' && github.event.label.name != 'ci:fuzz' && github.event.label.name != 'ci:pvm-compare' && github.run_id || github.ref }}")
         self.assertIn('group: '+expected+'\n  cancel-in-progress: true', text)
 
     # The matrix covers every partition once, and the stable unit gate rejects every non-success result.

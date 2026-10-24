@@ -53,6 +53,7 @@ In the PR sidebar, add one label to request heavier verification of the current 
 | `ci:e2e` | End-to-end networking tests only |
 | `ci:interop` | All Interop jobs: PVM reference comparisons and JAM Tart interoperability |
 | `ci:perf` | All Perf jobs: the validated interpreted PVM speed comparison |
+| `ci:pvm-compare` | Opt-in baseline/candidate, identical-source control and pinned PolkaVM real guests on one runner |
 | `ci:full` | All verification, Interop and Perf jobs |
 
 The label addition is the request; leaving a label on a PR does not enable automatic heavy checks on
@@ -82,7 +83,7 @@ not claim the deferred groups passed. Master pushes/merges always request full v
 newer master runs supersede older ones.
 
 For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
-choose `smoke`, `unit`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `bench-storage`, `bench-storage-growth` or `full`
+choose `smoke`, `unit`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `compare-pvm`, `bench-storage`, `bench-storage-growth` or `full`
 (the default). `interop` runs all Interop jobs; `perf` runs all Perf jobs. The existing
 `ref-pvm` and `bench-pvm` selections remain available for individual PVM jobs.
 **Perf / PVM** also runs automatically on master pushes. Its validated interpreted
@@ -99,6 +100,22 @@ See [the real-guest contract](../spec/pvm-sieve-benchmark.md). CLI equivalent:
 
 ```sh
 gh workflow run ci.yml --ref <branch> -f suite=full
+```
+
+For revision experiments, add `ci:pvm-compare` to an open PR. **Perf / PVM Revisions**
+checks out the exact PR head and compares against its exact base SHA; this job is the exception
+to ordinary PR checks using the merge revision. It runs the paired seven-input/all-policy matrix,
+plus paired synthetic host/memory/tiny controls, then an identical-source control, then the
+pinned PolkaVM interpreted real-guest comparison,
+sequentially on one Ubuntu 24.04 runner. Builds finish before each measured matrix. Raw state-checked
+samples, endpoint/compiler/input hashes, CPU identity and separate summaries are retained for 30 days.
+Noise controls and repeated runs qualify small differences; a fresh VM does not guarantee identical
+physical CPUs across jobs. No speed threshold makes a noisy run pass or fail; semantic or identity
+failures still fail the job. This experimental job is excluded from ordinary `perf`, `full` and
+master requests. Manual requests accept `pvm_compare_base` as a local ref in the fetched history:
+
+```sh
+gh workflow run ci.yml --ref <branch> -f suite=compare-pvm -f pvm_compare_base=<baseline-sha>
 ```
 
 Use the PR labels when PR-associated checks are needed. Manual branch dispatch is separate
