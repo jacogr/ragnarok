@@ -268,3 +268,14 @@ zero-gas precedence, plus invalid static load-and-jump mutation. Program/step/ga
 independent mixed-program, memory, host, metered fault/retry and cache/ARC controls
 pass under the pinned checked release configuration. Default/failed result access
 and private-field rejection have separate negative controls.
+
+
+## Larger bounded price working sets, 2026-10-23
+
+The first-plus-three hot price memo now has a fixed sixteen-entry secondary table.
+Only hot misses consult its two-way tagged sets; only successful simulation fills
+both levels. Complete start-address tags preserve correctness under collisions,
+and every visit retains its gas debit and fixed invocation cycle-limit contract.
+No program-global cache or unbounded preparation is introduced. The block-cache
+contract records replacement/storage bounds and literal collision/capacity tests;
+the benchmark contract records the larger real-guest gain and small-loop tradeoffs.
