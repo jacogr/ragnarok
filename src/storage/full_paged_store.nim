@@ -576,11 +576,13 @@ proc reclaim*(writer: var FullPagedWriter, receipt: FullPagedEpochReceipt,
   let captured = expected.bytes
   if selected.error != FullPagedError.None: return codecFailed[FullPagedReclamation](selected.error)
   if captured.error != FullPagedError.None: return codecFailed[FullPagedReclamation](captured.error)
-  if selected.value != captured.value: return refused[FullPagedReclamation](FullPagedNativeError.StaleView)
+  if selected.value != captured.value: return refused[FullPagedReclamation](
+      FullPagedNativeError.StaleView)
   if uint64(receipt.selected.epoch) >= uint64(expected.epoch):
     return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
-  if array[32, byte](receipt.header.chainId) != array[32, byte](data.config.chain) or policy(receipt.limits) != policy(data.config.limits) or
-      not data.directory.matchesDirectory(receipt.identity):
+  let sameChain = array[32, byte](receipt.header.chainId) == array[32, byte](data.config.chain)
+  let samePolicy = policy(receipt.limits) == policy(data.config.limits)
+  if not sameChain or not samePolicy or not data.directory.matchesDirectory(receipt.identity):
     return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
   let source = validateHead(data)
   if source.error != FullPagedNativeError.None: return rejected[FullPagedReclamation, bool](source)
@@ -610,7 +612,8 @@ proc reclaim*(writer: var FullPagedWriter, receipt: FullPagedEpochReceipt,
   if actual.error != FileError.None: return fileFailed[FullPagedReclamation](actual.error)
   if not receipt.identity.matches(actual.value):
     return fileFailed[FullPagedReclamation](FileError.RecoveryMismatch)
-  let verified = file.validateFullFile(data.directory, receipt.header, receipt.selected, receipt.limits)
+  let verified = file.validateFullFile(data.directory, receipt.header, receipt.selected,
+      receipt.limits)
   if verified.error != FileError.None: return fileFailed[FullPagedReclamation](verified.error)
   if verified.value.error != FullPagedStreamError.None:
     return graphFailed[FullPagedReclamation, CheckedFullPagedArtifact](verified.value)
