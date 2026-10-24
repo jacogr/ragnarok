@@ -9,7 +9,9 @@ import ../support/current_stf_epoch_context as epoch
 import ../support/report_context as reportContext
 import ../support/[current_stf_transfer_context, current_stf_lifecycle_context,
     current_stf_supervised_context, current_stf_privileges_context, current_stf_incarnation_context, current_stf_foreign_funding_context]
-import ../../src/app/[chain, candidate]
+import ../../src/app/[chain, candidate, logical_source_export, current_logical_startup]
+import ../support/[supplied_logical_context, parent_profile_context, parent_globals_context]
+import ../../src/state/[current_logical, supplied_services]
 import ../../src/chain/[provider, genesis, parameters]
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
   state_requests, state_service_values, state_layout, state_safrole, composite]
@@ -183,7 +185,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
 
 
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
-    uint32] = @[], reload = false) =
+    uint32] = @[], reload = false, exchange = false) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
   let replacement = if mode in 171..175: supervisedWriteCode(82) elif mode in
       92..96: supervisedReplacementCode() else: namespaceHaltCode()
@@ -577,8 +579,24 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
           hash: hash, value: replacement))
       else: assert preimage.error == StateStoreError.MissingKey # Created code is unavailable until a genuine selected provision fulfills its request.
       services.add(declared)
-    assert qualifyCurrentState(globals, services, inventoryCaptureLimits).error ==
-        CurrentStateError.None
+    let qualified = qualifyCurrentState(globals, services, inventoryCaptureLimits)
+    assert qualified.error == CurrentStateError.None
+    var declarations = ""
+    if exchange:
+      # Export only raw identities already proved complete against this exact producer snapshot.
+      let logical = captureCurrentLogicalState(qualified.value, services, suppliedLogicalTestLimits)
+      assert logical.error == CurrentLogicalError.None
+      let plan = planLogicalSourceExport(logical.value, LogicalSourceExportLimits(
+          services: ElementLimit(16), facts: ElementLimit(128), perKey: ByteLimit(1024),
+              bytes: ByteLimit(65536)))
+      assert plan.error == LogicalSourceExportError.None
+      let exported = executeLogicalSourceExport(plan.value)
+      assert exported.error == LogicalSourceExportError.None
+      declarations = exported.value
+      var bytes = newSeq[byte](declarations.len)
+      for i in 0..<declarations.len: bytes[i] = byte(declarations[
+          i]) # Observe exact detached ASCII, including empty-key rows.
+      echo "L ", hex(bytes)
     assert checkpointHex(before.stateSnapshot) == saved
     assert chain.canInstallPrepared(update)
     chain.installPrepared(update)
@@ -605,6 +623,23 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       assert reopened.error == ApplicationChainError.None
       chain = reopened.value
       assert checkpointHex(chain.stateSnapshot.value) == checkpointHex(selected.stateSnapshot)
+    if exchange:
+      # Parse detached identities and read every payload from the independently reconstructed selected full store.
+      let limits = CurrentLogicalStartupLimits(
+          projection: SuppliedServicesLimits(services: ElementLimit(16), facts: ElementLimit(128),
+              perValue: ByteLimit(65536), bytes: ByteLimit(262144)),
+          profile: parentProfileTestLimits, globals: parentGlobalsTestLimits,
+              logical: suppliedLogicalTestLimits)
+      let parsed = decodeCurrentLogicalDeclarations(declarations, limits.projection)
+      assert parsed.error == CurrentLogicalStartupError.None
+      let recaptured = captureCurrentLogicalStartup(chain.chainView, parsed.value, limits)
+      assert recaptured.error == CurrentLogicalStartupError.None
+      let incomplete = decodeCurrentLogicalDeclarations(declarations.replace("k=\n", ""),
+          limits.projection)
+      assert incomplete.error == CurrentLogicalStartupError.None
+      assert captureCurrentLogicalStartup(chain.chainView, incomplete.value, limits).error ==
+          CurrentLogicalStartupError.LogicalFailure
+      assert checkpointHex(chain.stateSnapshot.value) == checkpointHex(snapshot)
     echo "O ", checkpointHex(chain.stateSnapshot.value)
   assert checkpointHex(fixture.state.snapshot.value) == original
 
@@ -626,6 +661,7 @@ proc main() {.raises.} =
   var mode = -1
   var missingCode = false
   var reload = false
+  var exchange = false
   var bodies: seq[seq[byte]] = @[]
   var slots: seq[uint32] = @[]
   for line in readFile(paramStr(2)).splitLines:
@@ -634,9 +670,10 @@ proc main() {.raises.} =
     assert fields.len in [2, 3]
     if fields[0] == "C":
       if mode >= 0: run(base, mode, bodies, missingCode,
-          slots, reload) # Finish the complete chain before selecting another original.
+          slots, reload, exchange) # Finish the complete chain before selecting another original.
       missingCode = fields.len == 3 and fields[2] == "missing"
-      reload = fields.len == 3 and fields[2] == "reload"
+      exchange = fields.len == 3 and fields[2] == "exchange"
+      reload = exchange or (fields.len == 3 and fields[2] == "reload")
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
       assert mode >= 0 and mode < 190
@@ -649,7 +686,7 @@ proc main() {.raises.} =
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
       106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160, 165, 170, 175, 182, 189]
-  run(base, mode, bodies, missingCode, slots, reload)
+  run(base, mode, bodies, missingCode, slots, reload, exchange)
 
 try:
   main() # I/O, compilation, guest, publication or qualification failure fails the complete corpus.

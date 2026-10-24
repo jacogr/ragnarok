@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_INTERCHANGE",
+  "files": {
+    "current-stf-interchange.json": "8a96a2594e2c160ef55a2713b0bab68024523486e485eff1a3b026d2eb805a0a"
+  },
+  "target": "current-stf-interchange.json"
+}
