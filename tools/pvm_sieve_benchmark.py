@@ -18,7 +18,7 @@ from native_checks import NativeChecks,ROOT
 from native_dependencies import require_submodule
 from native_fixture_contracts import load_fixture_contracts
 from pvm_benchmark import cpu_model
-from pvm_sieve_report import ENGINES,LIMITS,parse_process_output,summarize
+from pvm_sieve_report import ENGINES,limits_for_guest,parse_process_output,summarize
 from setup_nimony import installed
 
 BUILD=ROOT/'build/tests/pvm-sieve'
@@ -34,8 +34,8 @@ def digest(path):
 
 def verify_fixture(folder=ROOT/'tests/fixtures',upstream=None,guest='sieve'):
     """Check every declared member, guest provenance and already-pinned host dependencies."""
-    if guest not in ('sieve','minimal','memset'):raise ValueError('Unknown checked guest family')
-    _,target,files=load_fixture_contracts(folder)['pvm_sieve' if guest=='sieve' else 'pvm_guests']
+    limits_for_guest(guest)
+    _,target,files=load_fixture_contracts(folder)[{'sieve':'pvm_sieve','pinky':'pvm_pinky'}.get(guest,'pvm_guests')]
     for path,expected in files:
         # A directory fixture must pass every member, including its licenses and provenance.
         if digest(path)!=expected:raise ValueError('Changed sieve fixture: '+str(path))
@@ -106,7 +106,7 @@ def run(guest='sieve',build=None):
     try:
         pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text())
         provenance=verify_fixture(upstream=require_submodule(pins),guest=guest)
-        fixture=ROOT/'tests/fixtures'/('pvm-sieve' if guest=='sieve' else 'pvm-guests')
+        fixture=ROOT/'tests/fixtures'/{'sieve':'pvm-sieve','pinky':'pvm-pinky'}.get(guest,'pvm-guests')
         artifact=fixture/(guest+'.polkavm')
         compiler,_=installed();rust=json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
         sources=[*sorted((ROOT/'src/pvm').glob('*.nim')),*sorted(CRATE.glob('src/*.rs')),
@@ -135,7 +135,7 @@ def run(guest='sieve',build=None):
                  '--manifest-path',CRATE/'Cargo.toml','--target-dir',TARGET],'rust-build')
         reference=TARGET/'release/ragnarok-pvm-benchmark'
         report['binaries']={str(p.relative_to(ROOT)):digest(p) for p in (binary,reference)}
-        for limit in LIMITS:
+        for limit in limits_for_guest(guest):
             # Reference preparation is untimed and freezes the same initial/final state for both engines.
             folder=destination/str(limit);folder.mkdir(exist_ok=True)
             prepared=command([reference,'--sieve-prepare',artifact,folder,limit,1],f'prepare-{limit}',dict(os.environ,RAGNAROK_PVM_GUEST=guest))

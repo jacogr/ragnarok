@@ -1,0 +1,32 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Reviewed fixture rebuild manifest; upstream algorithm attribution is in README.md.
+[package]
+name = "bench-pinky"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "bench_pinky"
+path = "src/main.rs"
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "bench-pinky"
+path = "src/main.rs"
+
+[dependencies]
+nes = { git = "https://github.com/koute/pinky.git", rev = "5a9d4ff5f22731191cffd7d6202a1d144aacd740", default-features = false, features = ["softfloat"] }
+
+[target.'cfg(not(target_os = "solana"))'.dependencies]
+picoalloc = { workspace = true }
+
+[target.'cfg(target_os = "solana")'.dependencies]
+simplealloc = { path = "@POLKAVM_ROOT@/guest-programs/simplealloc" }
+
+[target.'cfg(target_env = "polkavm")'.dependencies]
+polkavm-derive = { path = "@POLKAVM_ROOT@/crates/polkavm-derive" }
+
+[lints]
+workspace = true

@@ -1,0 +1,18 @@
+{
+  "environment": "RAGNAROK_PVM_PINKY",
+  "files": {
+    "pvm-pinky/LICENSE-APACHE": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+    "pvm-pinky/LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "pvm-pinky/LICENSE-PINKY-APACHE": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+    "pvm-pinky/LICENSE-PINKY-MIT": "4d175192466051b05b96e8409325ecdce52a7636764fc0a674d557dd725c6a42",
+    "pvm-pinky/LICENSE-ROM": "0ae31a468f78635d4ba9c4f4fc2ff0dd82fcaa6d742e2f2b1807bbc6f305bbe6",
+    "pvm-pinky/README.md": "e64b481bea966ea78396ab83257d27c212ebb27cf53625d6699c4508d5014ea7",
+    "pvm-pinky/guest-Cargo.lock": "25da65570dffc0b264372a7c43e943000b7557897a2884b304ee60744be88d1a",
+    "pvm-pinky/pinky.Cargo.toml": "5cb43fbed23b64af9e4672bc617a8762791a7c24b394bb03aed234d2920ae815",
+    "pvm-pinky/pinky.checked_entry.rs.inc": "49eeaffc312a73558931647bd3474b8657d807ae0e21da41ca289b1345b9d73a",
+    "pvm-pinky/pinky.polkavm": "9976f59732625268d8eb2dc3d159932176af4f898bdc0c3b07ad0079ef2f7d09",
+    "pvm-pinky/pinky.provenance.json": "fccadd25b17078e9e242b57d37a66853a0ad0960316ff9d38b0c1dfba3e022cd",
+    "pvm-pinky/workspace.Cargo.toml": "ffa092a8b42e1b2a960b82341b0c398d6cdf2b1a0a313c9307d0d60989976396"
+  },
+  "target": "pvm-pinky"
+}

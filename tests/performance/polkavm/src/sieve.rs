@@ -33,6 +33,7 @@ enum Guest {
     Sieve,
     Minimal,
     Memset,
+    Pinky,
 }
 impl Guest {
     // Reject unknown labels rather than interpreting another family's results as sieve.
@@ -41,6 +42,7 @@ impl Guest {
             Err(_) | Ok("") | Ok("sieve") => Self::Sieve,
             Ok("minimal") => Self::Minimal,
             Ok("memset") => Self::Memset,
+            Ok("pinky") => Self::Pinky,
             _ => panic!("unknown checked guest family"),
         }
     }
@@ -50,6 +52,7 @@ impl Guest {
             Self::Sieve => "sieve",
             Self::Minimal => "minimal",
             Self::Memset => "memset",
+            Self::Pinky => "pinky",
         }
     }
 }
@@ -57,6 +60,11 @@ impl Guest {
 // Independent mathematical results supplement complete state comparison for every guest.
 fn expected(guest: Guest, limit: u32) -> u64 {
     match guest {
+        Guest::Pinky => {
+            // The frozen source is already initialized; the checked call converts one complete rendered frame.
+            assert_eq!(limit, 1);
+            1
+        }
         Guest::Minimal => {
             assert!(limit == 1000 || limit == 100000);
             2 * u64::from(limit) + u64::from(limit % 2)
@@ -120,6 +128,21 @@ fn instance(module: &Module, entry: polkavm::ProgramCounter, registers: &[u64; 1
     instance
 }
 
+// Restore writable initialized pages before timing; every run still owns a fresh public instance.
+fn restored_instance(
+    module: &Module,
+    entry: polkavm::ProgramCounter,
+    registers: &[u64; 13],
+    images: &[(u32, Vec<u8>)],
+) -> RawInstance {
+    let mut fresh = instance(module, entry, registers);
+    for (address, bytes) in images {
+        // Public writes restore exact initialized RAM; read-only module pages are never changed.
+        fresh.write_memory(*address, bytes).unwrap();
+    }
+    fresh
+}
+
 // Snapshot validation includes complete gas/register/mapped-memory outcomes, outside either clock.
 fn snapshot(instance: &mut RawInstance, pages: &[(u32, u8)], guest: Guest, limit: u32) -> Vec<u8> {
     assert_eq!(instance.reg(Reg::A0), expected(guest, limit));
@@ -160,6 +183,17 @@ pub fn command(args: &[String]) {
         .find(|export| export == "run_checked")
         .unwrap()
         .program_counter();
+    // Pinky uses the same initialized NES state in both interpreters; its nine setup frames are untimed.
+    let initialize = if guest == Guest::Pinky {
+        Some(
+            blob.exports()
+                .find(|export| export == "initialize")
+                .unwrap()
+                .program_counter(),
+        )
+    } else {
+        None
+    };
     let module = module(blob);
     let mapped = pages(&module);
     let mut registers = [0; 13];
@@ -170,6 +204,12 @@ pub fn command(args: &[String]) {
         !parts.code_and_jump_table.is_empty() && parts.code_and_jump_table.len() <= 4 * 1024 * 1024
     );
     let mut initial = module.instantiate().unwrap();
+    if let Some(entry) = initialize {
+        // Initialize once per process, outside all execution clocks and before freezing mapped input bytes.
+        initial = instance(&module, entry, &registers);
+        assert_eq!(initial.run().unwrap(), InterruptKind::Finished);
+    }
+    let mut initialized_pages = Vec::new();
     let mut input = b"PVMSIV01".to_vec();
     input.extend_from_slice(
         &u32::try_from(parts.code_and_jump_table.len())
@@ -187,14 +227,19 @@ pub fn command(args: &[String]) {
     for &(address, permission) in &mapped {
         input.extend_from_slice(&(address / 4096).to_le_bytes());
         input.push(permission);
-        input.extend_from_slice(&initial.read_memory(address, 4096).unwrap());
+        let bytes = initial.read_memory(address, 4096).unwrap();
+        input.extend_from_slice(&bytes);
+        if guest == Guest::Pinky && permission == 2 {
+            // The source snapshot includes heap, framebuffer and stack residues from the same initializer.
+            initialized_pages.push((address, bytes));
+        }
     }
     let input_path = output.join(format!("input-{limit}.bin"));
     let expected_path = output.join(format!("expected-{limit}.bin"));
     if preparing {
         // Preparation runs once without timing; measured processes never regenerate a tampered expected value.
         fs::create_dir_all(output).unwrap();
-        let mut instance = instance(&module, entry, &registers);
+        let mut instance = restored_instance(&module, entry, &registers, &initialized_pages);
         assert_eq!(instance.run().unwrap(), InterruptKind::Finished);
         fs::write(input_path, input).unwrap();
         fs::write(
@@ -232,7 +277,7 @@ pub fn command(args: &[String]) {
         println!("GUEST,{}", guest.name());
     }
     for sample in 0..samples {
-        let mut instance = instance(&module, entry, &registers);
+        let mut instance = restored_instance(&module, entry, &registers, &initialized_pages);
         let wall = Instant::now();
         let cpu = cpu_nanoseconds();
         let result = instance.run().unwrap();
