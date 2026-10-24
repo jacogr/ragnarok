@@ -121,3 +121,19 @@ clocks as timings. The previous three profiles remain unchanged; all five requir
 scope/assertion controls, complete CPU/gas/page-state checks, captured generated C,
 checksums and real source annotations. This extends the existing profiler review
 unit; it introduces no guest runtime or benchmark timing change.
+
+
+[CI40133617980](https://github.com/jacogr/ragnarok/actions/runs/40133617980)
+qualifies all five profiles on the terminal-predicate stack. Scope-selected,
+scope-absent and native assertion controls pass, all five complete CPU/gas/page-
+state checks pass, and all24 captured generated C files match their lengths and
+SHA-256. Every profile has a real user-annotated execution section. The guest
+binary is byte-identical to CI40131669246 and its original three counter sets
+match exactly, confirming this coverage extension changes no guest runtime.
+
+Planned indirect calls100000 execute430,868,974 native instructions: writer loads
+25.37%, memoryMutation16.11% and writer stores12.63%. Planned memory fill100000
+executes199,920,934: execute62.34%, writer stores14.63%, memoryMutation9.91% and
+writer loads6.26%. These are scoped diagnostic counts, with instrumented clocks
+discarded. The larger call/return reference gap therefore includes substantial
+scalar-memory work; it must not be attributed solely to jump dispatch.
