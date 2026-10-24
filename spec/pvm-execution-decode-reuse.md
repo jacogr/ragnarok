@@ -139,3 +139,41 @@ to0.166µs (one observed sample quantum), and some other small cells vary a few
 percent. There is no universal small-invocation speed claim. Raw data and the exact
 source/binary identities are under`build/pvm12/decoded-large-paired.json`,
 `build/pvm12/decoded-synthetic/` and the adjacent build/guard logs.
+
+
+## Wider bounded spill qualification, 2026-10-24
+
+The selected spill now has16,384 copied instruction-result entries and8192
+replacement flags. The original32-entry first lookup and32,768-successful-miss
+allocation threshold are unchanged. Multiplicative hashing selects thirteen bits
+and the second way is8192 positions above the first. No additional tier, owner,
+lookup policy, unbounded growth or public option is introduced. The earlier4096-entry
+results above remain historical measurements of that prototype.
+
+At the checked target's64-byte result layout, the selected payload is1,056,768
+bytes (1032KiB), four times the earlier258KiB budget, plus ARC/allocator overhead.
+This is an explicit memory/time tradeoff per active sustained-pressure invocation;
+nested invocations have independent budgets. Small invocations still allocate no
+spill. Results retain only copied scalar facts, and all normal capability, gas,
+permission, local-budget and source-snapshot checks remain enabled.
+
+A source-snapshotted deterministic capacity study preserves all32,055,270 Pinky
+requests and full reference state. Actual decodes fall from1,357,193 at4096 entries
+to126,281 at8192 and41,256 at16,384. Instrumentation durations are discarded.
+Uninstrumented prototypes in two opposite process orders (three warmups and ten
+samples each) improve planned Pinky about11.9% at8192 and14.5% at16,384; preceding
+single-frame screens show11.5% and17.0%. Those local Apple M1 Max/macOS measurements
+choose the candidate, not a universal or Linux speed claim. Exact snapshots,
+binaries and samples are under`build/pvm12/decoder-capacity-study/`,
+`decoder-capacity-4096/`, `decoder-capacity-8192/`, `decoder-capacity-16384/` and
+`decoder-capacity-*-confirm.json`.
+
+The native cache suite adds17,000 distinct literal additions, exceeding the16,416
+total positions. Three rounds cross the allocation threshold and force replacement.
+All CPU/gas values agree with public single stepping, including cold/warm policies,
+exact/one-less attempt budgets and unchanged source. Independent three-byte JAM
+framing and an explicit larger test-only policy budget admit this corpus; production
+limits are unchanged. Existing dense nested-host tests and1000-cycle allocation/
+retirement controls remain. The owning decoder layer passes this extended suite
+with238144 occupied bytes before/after1000 cycles. Full-stack guest and affected
+consumer qualification follow before publication; complete-JAM parity remains open.
