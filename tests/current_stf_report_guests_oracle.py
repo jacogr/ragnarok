@@ -153,8 +153,10 @@ def advance(parent, initial, mode, slot, gs, ass, *, plan=None):
     (current, previous, _, _), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
     for index in {i for item in gs for i, _ in item['credentials']}:
         row = list(current[index]); row[4] += 1; current[index] = tuple(row)
+    # GP statistics credits assurances to the old active epoch before rotation; this authored profile has12 slots.
+    assurance_rows = previous if slot//12 != int.from_bytes(parent[chapter_key(11)], 'little')//12 else current
     for item in ass:
-        row = list(current[item['index']]); row[5] += 1; current[item['index']] = tuple(row)
+        row = list(assurance_rows[item['index']]); row[5] += 1; assurance_rows[item['index']] = tuple(row)
     cores, activity = [[0]*8 for _ in range(2)], {}
     for item in gs:
         value = item['layout']; sid = value['digests'][0][0]
