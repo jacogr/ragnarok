@@ -1,0 +1,124 @@
+{
+  "source": "tests/native/storage_light_selection_results.nim",
+  "build_name": "storage-light-selection-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-light-selection-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Light selection result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-light-selection-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Light selection result failed guard"
+    },
+    {
+      "identity": {
+        "member": "chain",
+        "origin": "default"
+      },
+      "arguments": [
+        "chain",
+        "default"
+      ],
+      "name": "storage-light-selection-chain-default",
+      "diagnostic": "manifest.ready",
+      "description": "Light selection chain default guard"
+    },
+    {
+      "identity": {
+        "member": "root",
+        "origin": "default"
+      },
+      "arguments": [
+        "root",
+        "default"
+      ],
+      "name": "storage-light-selection-root-default",
+      "diagnostic": "manifest.ready",
+      "description": "Light selection root default guard"
+    },
+    {
+      "identity": {
+        "member": "epoch",
+        "origin": "default"
+      },
+      "arguments": [
+        "epoch",
+        "default"
+      ],
+      "name": "storage-light-selection-epoch-default",
+      "diagnostic": "manifest.ready",
+      "description": "Light selection epoch default guard"
+    },
+    {
+      "identity": {
+        "member": "sequence",
+        "origin": "default"
+      },
+      "arguments": [
+        "sequence",
+        "default"
+      ],
+      "name": "storage-light-selection-sequence-default",
+      "diagnostic": "manifest.ready",
+      "description": "Light selection sequence default guard"
+    },
+    {
+      "identity": {
+        "member": "image",
+        "origin": "default"
+      },
+      "arguments": [
+        "image",
+        "default"
+      ],
+      "name": "storage-light-selection-image-default",
+      "diagnostic": "manifest.ready",
+      "description": "Light selection image default guard"
+    },
+    {
+      "identity": {
+        "member": "checksum",
+        "origin": "default"
+      },
+      "arguments": [
+        "checksum",
+        "default"
+      ],
+      "name": "storage-light-selection-checksum-default",
+      "diagnostic": "manifest.ready",
+      "description": "Light selection checksum default guard"
+    },
+    {
+      "identity": {
+        "member": "bytes",
+        "origin": "default"
+      },
+      "arguments": [
+        "bytes",
+        "default"
+      ],
+      "name": "storage-light-selection-bytes-default",
+      "diagnostic": "manifest.ready",
+      "description": "Light selection bytes default guard"
+    }
+  ]
+}
