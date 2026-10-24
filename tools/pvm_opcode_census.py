@@ -69,16 +69,20 @@ proc censusCapacityControl*() =
 '''
 
 
-def instrument_step(source):
+def instrument_step(source, pair_capacity=512):
     """Every named mutation must match exactly once before any generated source can be compiled."""
+    if pair_capacity not in (512, 4096):
+        raise ValueError('unsupported opcode census pair capacity')
+    cache = CACHE.replace('512', str(pair_capacity))
+    helpers = HELPERS.replace('512', str(pair_capacity)).replace('shr 55', 'shr '+str(64-(pair_capacity.bit_length()-1)))
     replacements = [
       ('import', 'import ./[program, machine, registers, gas, gas_plan, gas_memo]',
        'import std/[assertions, syncio]\nimport ./[program, machine, registers, gas, gas_plan, gas_memo]'),
       ('types', '  ExecutionCache = object', FIELDS+'  ExecutionCache = object'),
-      ('fields', '    targets: array[4, DynamicTargetEntry]', '    targets: array[4, DynamicTargetEntry]\n'+CACHE.rstrip()),
-      ('initialize', '  ExecutionCache(valid: false,', '''  ExecutionCache(censusOps: default(array[256, uint64]), censusPairs: default(array[512, CensusPair]),
-    censusPrevious: 0, censusStarted: false, censusSteps: 0, valid: false,'''),
-      ('helpers', 'proc cachedSecondaryCharge(', HELPERS+'proc cachedSecondaryCharge('),
+      ('fields', '    targets: array[4, DynamicTargetEntry]', '    targets: array[4, DynamicTargetEntry]\n'+cache.rstrip()),
+      ('initialize', '  ExecutionCache(valid: false,', ('''  ExecutionCache(censusOps: default(array[256, uint64]), censusPairs: default(array[512, CensusPair]),
+    censusPrevious: 0, censusStarted: false, censusSteps: 0, valid: false,''').replace('512', str(pair_capacity))),
+      ('helpers', 'proc cachedSecondaryCharge(', helpers+'proc cachedSecondaryCharge('),
       ('event', '  if not info.blockCharged:', '  recordCensus(cache, item.opcode) # Diagnostic-only event after decoding/capability admission.\n  if not info.blockCharged:'),
       ('guest-terminal', '      return published\n  StepResult(status: StepError.StepLimitExceeded)',
        '''      if effect.kind != StepExit.Host: reportCensus(chargeCache)
@@ -112,8 +116,10 @@ def integer(text, low, high):
     return value
 
 
-def parse_reports(output):
+def parse_reports(output, pair_capacity=512):
     """Require complete opcode/pair conservation and invocation framing before accepting any census."""
+    if pair_capacity not in (512, 4096):
+        raise ValueError('unsupported opcode census pair capacity')
     reports, regular, current = [], [], None
     for line in output.splitlines():
         fields = line.split(',')
@@ -133,7 +139,7 @@ def parse_reports(output):
         elif len(fields) == 5 and fields[1] == 'pair' and current is not None:
             pair = (integer(fields[2], 0, 255), integer(fields[3], 0, 255))
             count = integer(fields[4], 1, current['steps'])
-            if pair in current['pairs'] or len(current['pairs']) >= 512:
+            if pair in current['pairs'] or len(current['pairs']) >= pair_capacity:
                 raise ValueError('duplicate or excess census pair')
             current['pairs'][pair] = count
         elif fields == ['census', 'end'] and current is not None:
@@ -190,11 +196,11 @@ def calibration_passed(result, capacity=False):
             and reports == [small, small, small, outer, small, outer, terminal, terminal])
 
 
-def snapshot_sources(folder):
+def snapshot_sources(folder, extra_paths=(), pair_capacity=512):
     """Copy only owned inputs to an ignored snapshot and instrument its step module, retaining both source identities."""
     original, generated = {}, {}
     paths = [*sorted((ROOT/'src/pvm').glob('*.nim')), ROOT/'src/codec/natural.nim',
-             ROOT/'tests/performance/pvm_workload.nim', ROOT/'tests/support/pvm_census_control.nim']
+             ROOT/'tests/performance/pvm_workload.nim', ROOT/'tests/support/pvm_census_control.nim', *extra_paths]
     for source in paths:
         # No production path is ever written; imported modules retain their original relative layout.
         relative = source.relative_to(ROOT)
@@ -203,21 +209,47 @@ def snapshot_sources(folder):
         data = source.read_bytes()
         original[str(relative)] = hashlib.sha256(data).hexdigest()
         if relative.as_posix() == 'src/pvm/step.nim':
-            data = instrument_step(data.decode()).encode()
+            data = instrument_step(data.decode(), pair_capacity).encode()
         target.write_bytes(data)
         generated[str(relative)] = hashlib.sha256(data).hexdigest()
     return original, generated
 
 
-def build(checks, compiler, source, name, defines=()):
+def build(checks, compiler, source, name, defines=(), cflags=()):
     """Retain checked native flags; a build failure cannot supply a fallback executable or partial report."""
-    row, binary = checks.build(compiler, source, name, defines=defines)
+    row, binary = checks.build(compiler, source, name, defines=defines, cflags=cflags)
     output = row.pop('output')
     (checks.folder/(name+'-build.log')).write_text(output)
     if row['exit_code'] or 'Error:' in output or 'FAILURE' in output:
         raise RuntimeError('opcode census build failed: '+name)
     row['binary_sha256'] = hashlib.sha256(binary.read_bytes()).hexdigest()
     return row, binary
+
+
+def calibrate(checks, compiler, snapshot, builds, controls):
+    """Require compiled ordinary refusal, complete nested/host controls and explicit capacity refusal."""
+    row, plain = build(checks, compiler, ROOT/'tests/support/pvm_census_control.nim', 'uninstrumented-control')
+    builds.append(row)
+    missing = checks.command([plain], 'control-uninstrumented',
+        environment=dict(os.environ, RAGNAROK_PVM_CENSUS_CONTROL='positive'), timeout=30)
+    passed = (missing['exit_code'] != 0 and '[Assertion Failure]' in missing['output']
+        and 'opcode census control requires instrumented snapshot' in missing['output']
+        and 'census,begin,' not in missing['output'])
+    missing.pop('output')
+    controls.append(dict(mode='uninstrumented', passed=passed, run=missing))
+    if not passed:
+        raise RuntimeError('uninstrumented opcode census control did not refuse')
+    row, control = build(checks, compiler, snapshot/'tests/support/pvm_census_control.nim', 'control', ('pvmOpcodeCensus',))
+    builds.append(row)
+    for mode in ('positive', 'capacity'):
+        # The positive control proves invocation reset/nesting and both host terminal paths before capacity refusal is trusted.
+        result = checks.command([control], 'control-'+mode,
+            environment=dict(os.environ, RAGNAROK_PVM_CENSUS_CONTROL=mode), timeout=30)
+        passed = calibration_passed(result, mode == 'capacity')
+        result.pop('output')
+        controls.append(dict(mode=mode, passed=passed, run=result))
+        if not passed:
+            raise RuntimeError('opcode census calibration failed: '+mode)
 
 
 def main():
@@ -237,28 +269,7 @@ def main():
     checks = NativeChecks(folder, reuse_builds=True)
     compiler, _ = installed()
     builds, controls, runs = [], [], []
-    row, plain = build(checks, compiler, ROOT/'tests/support/pvm_census_control.nim', 'uninstrumented-control')
-    builds.append(row)
-    missing = checks.command([plain], 'control-uninstrumented',
-        environment=dict(os.environ, RAGNAROK_PVM_CENSUS_CONTROL='positive'), timeout=30)
-    passed = (missing['exit_code'] != 0 and '[Assertion Failure]' in missing['output']
-        and 'opcode census control requires instrumented snapshot' in missing['output']
-        and 'census,begin,' not in missing['output'])
-    missing.pop('output')
-    controls.append(dict(mode='uninstrumented', passed=passed, run=missing))
-    if not passed:
-        raise RuntimeError('uninstrumented opcode census control did not refuse')
-    row, control = build(checks, compiler, folder/'snapshot/tests/support/pvm_census_control.nim', 'control', ('pvmOpcodeCensus',))
-    builds.append(row)
-    for mode in ('positive', 'capacity'):
-        # The positive control proves invocation reset/nesting and both host terminal paths before capacity refusal is trusted.
-        result = checks.command([control], 'control-'+mode,
-            environment=dict(os.environ, RAGNAROK_PVM_CENSUS_CONTROL=mode), timeout=30)
-        passed = calibration_passed(result, mode == 'capacity')
-        result.pop('output')
-        controls.append(dict(mode=mode, passed=passed, run=result))
-        if not passed:
-            raise RuntimeError('opcode census calibration failed: '+mode)
+    calibrate(checks, compiler, folder/'snapshot', builds, controls)
     binaries = {}
     for name, defines in (('legacy', ('pvmOpcodeCensus',)), ('memo', ('pvmOpcodeCensus', 'pvmBenchmarkMemo'))):
         row, binary = build(checks, compiler, folder/'snapshot/tests/performance/pvm_workload.nim', name, defines)
