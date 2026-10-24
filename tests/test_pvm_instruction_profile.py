@@ -1,13 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Require complete instruction counters, calibrated scope exclusion and stale-report retirement."""
+"""Require complete counters, calibrated scope, stable captured C and real source attribution."""
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from pvm_instruction_profile import profile_counts, calibration_passed, run
+from pvm_instruction_profile import (profile_counts, calibration_passed, run,
+    capture_generated_sources, verify_generated_sources, execution_source_files, source_annotation_passed)
 
 
 def profile(total=42, function='pvm_profile_selected'):
@@ -55,11 +56,81 @@ class InstructionProfileTests(unittest.TestCase):
             # Generic crashes, wrong scopes and whole-process collection are never a calibration fallback.
             self.assertFalse(calibration_passed(result, text, selected))
 
+    def test_generated_sources_preserve_recorded_paths_and_identity(self):
+        """Copied source reproduces relative DWARF paths; missing/changed copies or originals fail."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            folder = root/'build/profile'
+            source = folder/'compiler-pin/guest-cache/c/pkg/step.c'
+            source.parent.mkdir(parents=True)
+            source.write_text('void execute_1_test(void) {}\n')
+            stale = folder/'generated-source/stale.c'
+            stale.parent.mkdir()
+            stale.write_text('old source')
+            archive, manifest = capture_generated_sources(folder, root)
+            key = source.relative_to(root).as_posix()
+            copied = archive/key
+            self.assertEqual(copied.read_bytes(), source.read_bytes())
+            self.assertFalse(stale.exists())
+            verify_generated_sources(manifest, root, archive)
+            for path in [copied, source]:
+                # A valid capture cannot certify later byte changes on either side of the archive.
+                original = path.read_bytes()
+                path.write_bytes(original.replace(b'void', b'VOID'))
+                with self.assertRaises(ValueError):
+                    verify_generated_sources(manifest, root, archive)
+                path.write_bytes(original)
+            copied.unlink()
+            with self.assertRaises(ValueError):
+                verify_generated_sources(manifest, root, archive)
+
+    def test_empty_and_escaping_generated_sources_are_refused(self):
+        """An unrelated cache or an external symlink cannot stand in for guest-generated C."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            folder = root/'build/profile'
+            folder.mkdir(parents=True)
+            with self.assertRaises(ValueError):
+                capture_generated_sources(folder, root)
+            outside = root/'outside.c'
+            outside.write_text('external source')
+            source = folder/'compiler-pin/guest-cache/c/pkg/step.c'
+            source.parent.mkdir(parents=True)
+            try:
+                # Platforms without symlink support retain the positive/mutation controls above.
+                source.symlink_to(outside)
+            except OSError:
+                self.skipTest('symlinks unavailable')
+            with self.assertRaises(ValueError):
+                capture_generated_sources(folder, root)
+
+    def test_selected_sources_require_exact_captured_file_bindings(self):
+        """Only uncompressed selected functions mapped to captured generated paths grant attribution."""
+        key = 'build/profile/compiler-pin/guest-cache/c/pkg/step.c'
+        raw = 'fl='+key+'\nfn=execute_1_test\n1 42\n'
+        self.assertEqual(execution_source_files(raw, {key: {}}), [key])
+        for text in [raw.replace(key, '../outside.c'), raw.replace('fl=', 'cfl='),
+                raw.replace('fl='+key, 'fl=(1) '+key), raw.replace('fn=execute_1_test', 'fn=other')]:
+            # Caller-only metadata, aliases and foreign files never cause fallback path reads.
+            with self.assertRaises(ValueError):
+                execution_source_files(text, {key: {}})
+
+    def test_source_sections_are_required_beyond_function_summary(self):
+        """Missing source, a wrong file, failed annotation or a summary header cannot pass."""
+        key = 'build/profile/compiler-pin/guest-cache/c/pkg/step.c'
+        good = dict(exit_code=0, output='PROGRAM TOTALS\n-- User-annotated source: '+key+'\n42 1 code\n')
+        self.assertTrue(source_annotation_passed(good, [key]))
+        for result in [dict(good, exit_code=1), dict(good, output='PROGRAM TOTALS\n'),
+                dict(good, output='PROGRAM TOTALS\nUser annotated: '+key),
+                dict(good, output=good['output'].replace(key, key+'.other'))]:
+            self.assertFalse(source_annotation_passed(result, [key]))
+        self.assertFalse(source_annotation_passed(good, []))
+
     def test_refusal_retires_completed_reports(self):
         """An unsupported local host cannot leave an old successful aggregate available."""
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
-            for name in ('results.json', 'summary.md'):
+            for name in ('results.json', 'summary.md', 'generated-source-manifest.json'):
                 (folder/name).write_text('stale success')
             with patch('pvm_instruction_profile.BUILD', folder), patch(
                     'pvm_instruction_profile.platform.system', return_value='unsupported'):
@@ -67,4 +138,5 @@ class InstructionProfileTests(unittest.TestCase):
                     run()
             self.assertFalse((folder/'results.json').exists())
             self.assertFalse((folder/'summary.md').exists())
+            self.assertFalse((folder/'generated-source-manifest.json').exists())
             self.assertIn('failed', (folder/'partial.json').read_text())
