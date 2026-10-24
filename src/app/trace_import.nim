@@ -9,7 +9,8 @@ import ../state/[trace_step, trace_state, store, accumulation_current_update]
 
 type
   TraceImportError* {.pure.} = enum ## A refused trace cannot expose a prepared prefix or a fabricated successor.
-    Uninitialized, None, InvalidTrace, MissingParent, PreStateMismatch, CandidateFailure, PostStateMismatch
+    Uninitialized, None, InvalidTrace, MissingParent, PreStateMismatch, CandidateFailure,
+      PostStateMismatch, InvalidObservation, ObservationMismatch
   TraceImportResult* = object ## Only exact input/execution/output agreement returns the genuine chain-bound prepared update.
     case status: TraceImportError
     of None: completed: PreparedCurrentChainUpdate
@@ -59,3 +60,17 @@ proc prepareTraceImport*(chain: ApplicationChain, step: TraceStep,
   if not sameMapping(prepared.value.currentUpdateState, after):
     return TraceImportResult(status: TraceImportError.PostStateMismatch) # Retire the actual prepared candidate without exposing it when the advertised complete successor differs.
   TraceImportResult(status: TraceImportError.None, completed: prepared.value)
+
+
+proc prepareTraceObservation*(chain: ApplicationChain, expected: TraceStep,
+    observed: TraceState, ancestors: openArray[OwnedHeader],
+    limits: CurrentCandidateLimits): TraceImportResult =
+  ## Verify the independent golden transition first, then require every external observed key/value to equal the genuine result before exposing a prepared update.
+  if observed.traceStateInfo.error != TraceStateError.None:
+    return TraceImportResult(status: TraceImportError.InvalidObservation)
+  let prepared = prepareTraceImport(chain, expected, ancestors, limits)
+  if prepared.error != TraceImportError.None:
+    return prepared # An external observation cannot replace a rejected expected block, parent or independently calculated successor.
+  if not sameMapping(prepared.value.currentUpdateState, observed.traceStateSnapshot.value):
+    return TraceImportResult(status: TraceImportError.ObservationMismatch)
+  prepared

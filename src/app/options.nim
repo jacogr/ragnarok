@@ -17,8 +17,8 @@ const
   DefaultStateWriteBytes = 100000'u64 # Each omitted mutation ceiling resolves independently.
   Switches = ["--with-ui", "--with-rpc", "--with-management", "--with-telemetry", "--with-state",
       "--download-local-ancestors", "--download-update-logical-source"]
-  Values = ["--telemetry", "--chain", "--management-socket", "--rpc-port", "--ui-port",
-      "--dev-ui-dir", "--state-writes", "--state-write-bytes", "--state-checkpoint",
+  Values = ["--trace-observations", "--telemetry", "--chain", "--management-socket", "--rpc-port",
+      "--ui-port", "--dev-ui-dir", "--state-writes", "--state-write-bytes", "--state-checkpoint",
       "--state-trust", "--state-header",
       "--state-checkpoint-bytes", "--state-storage", "--state-db", "--state-layout",
       "--state-migrate-from",
@@ -39,7 +39,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   downloadCount, remoteAncestors, discoverAncestors: int
   endpoint, chain, directory, managementPath: string
   recoveryFile, recoveryIdentity, recoveryHeader: string
-  logicalSource, logicalPolicy, namespacePolicy: string
+  logicalSource, logicalPolicy, namespacePolicy, observations: string
   backend: StateStorage
   layout: StateDiskLayout
   compactBytes: ByteLimit
@@ -108,6 +108,10 @@ proc telemetryEnabled*(options: Options): bool =
 func stateEnabled*(options: Options): bool =
   ## Explicit activation and a selected chain use resolved default or overridden mutation budgets.
   options.parsed and options.state
+
+func traceObservationsPath*(options: Options): string =
+  ## Only the explicit offline checker may receive a bounded observation directory; failed/default options expose no path.
+  if options.parsed: options.observations else: ""
 
 func diskStorage*(options: Options): bool =
   ## Only a validated explicit disk request enables durable backend startup.
@@ -249,6 +253,12 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
         for character in value:
           if character == char(0): return false # Native path truncation cannot select a different source identity.
         candidate.migrateFrom = value
+      of "--trace-observations":
+        if value.len > 4096: return false
+        for character in value:
+          if ord(character) < 32 or ord(character) ==
+              127: return false # Keep the later fixed filename addition bounded and native path identity exact.
+        candidate.observations = value
       of "--state-layout":
         case value
         of "journal": candidate.layout = StateDiskLayout.Journal
@@ -349,11 +359,14 @@ proc parseOptions*(arguments: seq[string], options: var Options): bool =
         "download", "download-current", "check-traces"]:
       return false # Explicit state/service activation belongs only to supported command shapes.
   let traceCommand = candidate.positional.len > 0 and candidate.positional[0] == "check-traces"
+  if "--trace-observations" in seen and not traceCommand:
+    return false # External observations belong only to explicit offline comparison, never another command's ignored controls.
   if traceCommand:
     if not candidate.state or candidate.positional.len < 4 or candidate.positional.len > 259:
       return false # One explicit policy, Genesis and1..256 consecutive steps define a finite offline workload.
     for control in seen:
-      if control notin ["--with-state", "--chain", "--state-writes", "--state-write-bytes"]:
+      if control notin ["--with-state", "--chain", "--state-writes", "--state-write-bytes",
+          "--trace-observations"]:
         return false # Offline validation accepts only its explicit trust/state budgets; no listener, disk, recovery or download control is silently ignored.
   if downloadCommand:
     if not candidate.state or candidate.telemetry: return false # Downloads require explicit canonical state; outgoing telemetry is not wired yet.

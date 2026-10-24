@@ -33,6 +33,7 @@ proc main(): int =
       stdout.writeLine("       ragnarok download-current PORT CERT KEY PEER ALPN TIMEOUT CURRENT_POLICY [PORT PEER ...] [OPTIONS]")
       stdout.writeLine("         download-current requires ragnarok-current-download-policy-v1; discovery permission must match the requested mode.")
       stdout.writeLine("       ragnarok check-traces CURRENT_POLICY GENESIS TRACE [TRACE ...] --with-state --chain FILE [STATE_BUDGETS]")
+      stdout.writeLine("         check-traces optionally compares --trace-observations DIR/step-0000.bin (published RawState).")
       stdout.writeLine("       ragnarok --version | --help")
       stdout.writeLine("Options: --with-telemetry --telemetry HOST:PORT --chain FILE")
       stdout.writeLine("         --with-rpc --rpc-port NUMBER --with-ui --ui-port NUMBER --dev-ui-dir DIRECTORY")
