@@ -199,7 +199,7 @@ def calibration_passed(result, capacity=False):
 def snapshot_sources(folder, extra_paths=(), pair_capacity=512):
     """Copy only owned inputs to an ignored snapshot and instrument its step module, retaining both source identities."""
     original, generated = {}, {}
-    paths = [*sorted((ROOT/'src/pvm').glob('*.nim')), ROOT/'src/codec/natural.nim',
+    paths = [*sorted((ROOT/'src/pvm').rglob('*.nim')), ROOT/'src/codec/natural.nim',
              ROOT/'tests/performance/pvm_workload.nim', ROOT/'tests/support/pvm_census_control.nim', *extra_paths]
     for source in paths:
         # No production path is ever written; imported modules retain their original relative layout.

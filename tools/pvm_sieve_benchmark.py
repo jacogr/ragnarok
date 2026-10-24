@@ -109,7 +109,7 @@ def run(guest='sieve',build=None):
         fixture=ROOT/'tests/fixtures'/{'sieve':'pvm-sieve','pinky':'pvm-pinky'}.get(guest,'pvm-guests')
         artifact=fixture/(guest+'.polkavm')
         compiler,_=installed();rust=json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
-        sources=[*sorted((ROOT/'src/pvm').glob('*.nim')),*sorted(CRATE.glob('src/*.rs')),
+        sources=[*sorted((ROOT/'src/pvm').rglob('*.nim')),*sorted(CRATE.glob('src/*.rs')),
                  CRATE/'Cargo.toml',CRATE/'Cargo.lock',ROOT/'spec/toolchain.json',ROOT/'Makefile',
                  ROOT/'tools/pvm_sieve_benchmark.py',ROOT/'tools/pvm_sieve_report.py',ROOT/'tools/pvm_guest_benchmark.py',
                  ROOT/'tools/pvm_benchmark.py',ROOT/'tools/pvm_benchmark_report.py',
