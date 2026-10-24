@@ -356,7 +356,7 @@ proc openTemporary(file: var PagedFile, directory: PagedDirectory, limit: ByteLi
 proc openScratch*(file: var PagedFile, directory: PagedDirectory, limit: ByteLimit): FileError =
   ## Preserve the writer-only append replay transport; graph workspace uses a private separate mode.
   openTemporary(file, directory, limit, true, true)
-proc openPending*(file: var PagedFile, directory: PagedDirectory): PagedIoResult[bool] =
+proc openPendingWidth(file: var PagedFile, directory: PagedDirectory, width: int): PagedIoResult[bool] =
   ## Capture only the fixed optional staging file; no scan or unknown-prefix adoption is authorized.
   let checked = directory.check
   if checked != FileError.None: return PagedIoResult[bool](status: checked)
@@ -367,9 +367,15 @@ proc openPending*(file: var PagedFile, directory: PagedDirectory): PagedIoResult
     if posix.errno() == missing: return PagedIoResult[bool](status: FileError.None,
         completed: false)
     return PagedIoResult[bool](status: FileError.IoFailure)
-  let acquired = openNamed(file, directory, "CURRENT.next", PagedPin.Exclusive, ByteLimit(PagedManifestBytes))
+  let acquired = openNamed(file, directory, "CURRENT.next", PagedPin.Exclusive, ByteLimit(width))
   if acquired != FileError.None: return PagedIoResult[bool](status: acquired)
   PagedIoResult[bool](status: FileError.None, completed: true)
+proc openPending*(file: var PagedFile, directory: PagedDirectory): PagedIoResult[bool] =
+  ## Preserve the light-format staging extent contract.
+  openPendingWidth(file, directory, PagedManifestBytes)
+proc openFullPending*(file: var PagedFile, directory: PagedDirectory): PagedIoResult[bool] =
+  ## Full cleanup captures only a full-width-or-shorter staging prefix under an exclusive pin.
+  openPendingWidth(file, directory, FullPagedManifestBytes)
 proc readSelection(directory: PagedDirectory, width: int): PagedIoResult[seq[byte]] =
   ## CURRENT is bounded metadata, never a selected data-file fallback or whole-file image read.
   let checked = directory.check
@@ -497,14 +503,14 @@ proc matchesPrefix*(file: var PagedFile, expected: var PagedFile,
   if not source.extent(size) or size != actual.size: return FileError.RecoveryMismatch
   if not replay.extent(size) or size != reference.size: return FileError.RecoveryMismatch
   FileError.None
-proc matchesPrefix*(file: var PagedFile, bytes: openArray[byte],
-    budget: PagedWorkLimits): FileError =
+proc matchesManifestPrefix(file: var PagedFile, bytes: openArray[byte],
+    budget: PagedWorkLimits, width: int): FileError =
   ## Fixed manifest prefixes are bounded before reading and retain no detached staging authority.
   let checked = file.check
   if checked != FileError.None: return checked
   let actual = file.data
   assert actual != nil
-  if bytes.len != PagedManifestBytes or actual.size > uint64(
+  if bytes.len != width or actual.size > uint64(
       bytes.len): return FileError.RecoveryMismatch
   let calls = if actual.size == 0: 1'u64 else: 2'u64
   if actual.size+1 > uint64(budget.readBytes) or calls > uint64(
@@ -521,6 +527,14 @@ proc matchesPrefix*(file: var PagedFile, bytes: openArray[byte],
   var size = 0'u64
   if not source.extent(size) or size != actual.size: return FileError.RecoveryMismatch
   FileError.None
+proc matchesPrefix*(file: var PagedFile, bytes: openArray[byte],
+    budget: PagedWorkLimits): FileError =
+  ## Light callers retain exact193-byte reference requirements.
+  matchesManifestPrefix(file, bytes, budget, PagedManifestBytes)
+proc matchesFullPrefix*(file: var PagedFile, bytes: openArray[byte],
+    budget: PagedWorkLimits): FileError =
+  ## Full callers require exact192-byte independently replayed manifest evidence.
+  matchesManifestPrefix(file, bytes, budget, FullPagedManifestBytes)
 proc latch(data: FileData, reason: PagedStreamError) =
   ## Pure policy/provider refusals preserve usable owners; integrity/IO uncertainty requires strict reopen.
   case reason
