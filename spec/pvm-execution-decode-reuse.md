@@ -175,5 +175,22 @@ exact/one-less attempt budgets and unchanged source. Independent three-byte JAM
 framing and an explicit larger test-only policy budget admit this corpus; production
 limits are unchanged. Existing dense nested-host tests and1000-cycle allocation/
 retirement controls remain. The owning decoder layer passes this extended suite
-with238144 occupied bytes before/after1000 cycles. Full-stack guest and affected
-consumer qualification follow before publication; complete-JAM parity remains open.
+with238144 occupied bytes before/after1000 cycles. The resolved full stack also
+passes the combined cache/price suite at238720 before/after1000 cycles. Selected
+host-memory-reentry and mixed-policy reference suites pass on the owning layer.
+
+The maintained comparator against the previous stack tip`40e0de0b` passes1,092
+complete-state invocations, both assertion controls and final identity checks.
+Pinky CPU medians improve17.6% dynamic,15.3% complete-plan and17.2% lazy memo.
+A second936-invocation control comparison does not reproduce the first small-sieve
+planned6.5% slowdown (repeat0.9%); other long controls mostly remain within3%.
+No small-guest speed improvement is established. Two synthetic comparisons pass
+3,432 invocations. A first dynamic aligned-host6.8% slowdown becomes0.7% on repeat;
+planned memory cases remain roughly2–3% slower. The four-instruction dynamic case
+moves0.584 to0.625 microseconds in both runs, one observed sample quantum. All
+regressions/outliers/cold samples remain visible; the larger cache is a measured
+Pinky/memory-budget tradeoff, not a universal win. Reports are under
+`build/pvm12/decoder-16384-full/`, `decoder-16384-repeat-controls/` and
+`decoder-16384-synthetic/`. Pinned formatting covers the changed Nim files;
+production sources match the measured prototype exactly after native restacking.
+Complete-JAM parity remains open.
