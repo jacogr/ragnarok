@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, compare-pvm, bench-storage, bench-storage-growth, full]
+        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, compare-pvm, profile-pvm, bench-storage, bench-storage-growth, full]
         default: full
         required: true
       pvm_compare_base:
@@ -675,6 +675,42 @@ jobs:
             build/ci/*.log
 
   # Explicit revision experiments use one VM; ordinary perf/full/master runs keep their existing scope.
+  # Manual diagnostics attribute checked execution only; ordinary performance and full jobs stay unchanged.
+  profile-pvm:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'profile-pvm' }}
+    name: Perf / PVM Instructions
+    timeout-minutes: *ci-job-timeout
+    runs-on: ubuntu-24.04
+    steps:
+      - *checkout
+      - *python
+      - name: Validate verification inventory
+        run: *inventory-run
+      - name: Install the pinned diagnostic tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends valgrind=1:3.22.0-0ubuntu3
+      - name: Profile checked guest execution
+        run: make profile-pvm-guests
+      - name: Show instruction profiles
+        if: always()
+        run: |
+          if test -f build/tests/pvm-instruction-profile/summary.md; then
+            cat build/tests/pvm-instruction-profile/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain instruction profiles and diagnostics
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-instructions-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            build/tests/pvm-instruction-profile/*.callgrind
+            build/tests/pvm-instruction-profile/*.log
+            build/tests/pvm-instruction-profile/*.json
+            build/tests/pvm-instruction-profile/summary.md
+
   compare-pvm:
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.suite == 'compare-pvm') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action == 'labeled' && github.event.label.name == 'ci:pvm-compare') }}
     name: Perf / PVM Revisions
