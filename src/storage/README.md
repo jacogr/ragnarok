@@ -464,4 +464,6 @@ format, bounded complete-graph admission, replay-bound construction and pinned n
 Move-only writers/candidates now publish fully checked root unions with file/directory barriers,
 exact incarnation/source binding and separate post-confirmation retirement diagnostics. Retained
 root unions and captured, exclusively pinned epoch reclamation now separate logical history from
-physical file lifetime. Compaction, replay cleanup and consumer adoption remain subsequent work.
+physical file lifetime. Source-derived full compaction preserves exact history and ordinary
+generation while rewriting authenticated pages into a new epoch. Replay cleanup and consumer
+adoption remain subsequent work.
