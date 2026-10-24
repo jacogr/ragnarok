@@ -107,6 +107,11 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   options.secondProgram = codes[1]
   options.secondBalance = 1000000
   if mode >= 5: options.signed.accountTransferGas = 10 # Explicit transfer originals admit the paid recipient invocation.
+  if mode in 10..14:
+    # Incarnation-bound supervision is committed in the original metadata before any signed child.
+    options.signed.accountSupervisor = (if mode == 13: 77'u32 elif mode == 14: 42'u32 elif mode in [
+        11, 12]: 99'u32 else: 0'u32)
+    options.signed.accountSupervisorCreated = (if mode == 12: 1'u32 else: 0'u32)
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -224,14 +229,14 @@ proc main() {.raises.} =
       missingCode = fields.len == 3
       if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 10
+      assert mode >= 0 and mode < 15
       bodies = @[]
       slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert mode in [4, 9] and bodies.len > 0 # Strict independent output comparison binds each complete chain length.
+  assert mode in [4, 9, 14] and bodies.len > 0 # Strict independent output comparison binds each complete chain length.
   run(base, mode, bodies, missingCode, slots)
 
 try:

@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_SUPERVISED_TRANSFERS",
+  "files": {
+    "current-stf-supervised-transfers.json": "38fc1ce3ab70c1c49e33cf53d42f0e2289f39fca1cc4ea5a1ecd28ebc4039c72"
+  },
+  "target": "current-stf-supervised-transfers.json"
+}
