@@ -419,3 +419,32 @@ host-reentry and mixed-policy suites cover these transitions. Generated C must
 show direct comparisons in place of variable set-bit shifts, and paired complete-
 state CI must establish timing before acceptance. This candidate description makes
 no performance claim from instruction count attribution alone.
+
+### Terminal predicate CI qualification
+
+CI40130795676 compares runtime dbc46eec with published5f6bd781 on AMD EPYC7763.
+All54 real/synthetic cells,2808 complete-state paired invocations,2808 identical-
+source control invocations, assertion controls and the pinned interpreted reference
+pack pass. Both process orders retain all cold and measured samples.
+
+Per-order CPU changes are planned Pinky -5.82/-5.93%, sieve100000 -4.89/-4.48%,
+memset100000 -5.63/-5.05%, and indirect100000 -6.74/-7.22%. Memo Pinky changes
+-3.49/-3.39%; dynamic memset -7.12/-6.90% and indirect -7.68/-6.90%.
+Dynamic Pinky changes -1.60/-6.15% against controls +0.58/-0.89%, so the smaller
+order is not treated as a reliable six-percent gain. Planned Pinky controls change
+-1.70/+0.08%; the result is a scoped several-percent gain, not a universal ratio.
+
+There is a retained tradeoff: planned aligned hosts change +2.96/+4.98%, against
+controls +0.93/-0.38%. Planned aligned memory changes +9.02/+1.89%, with controls
++3.62/+3.71%, so that larger first-order result is inconclusive. Memo aligned hosts
+change +2.56/+1.32% against +1.67/-0.23%. Dynamic aligned/crossing hosts improve
+13.5–13.9%/8.9–10.4%; no universal host-policy improvement is claimed.
+
+The same-job reference pack measures planned Pinky390.502ms versus PolkaVM
+interpreted185.869ms (2.10x slower). The target of beating that interpreter remains
+open; results from different runner jobs are not compounded. Six selected native
+suites pass, including independent conditional controls, memory faults, nested host
+reentry and mixed policies, with declared1000 balanced ARC lifetimes. Generated C
+retains direct named enum comparisons in every affected predicate. Raw evidence is
+under `build/pvm12/ci-40130795676/`; publication adds only documentation above the
+measured runtime, with production, driver, build and pins unchanged.
