@@ -16,6 +16,8 @@ import statistics
 import subprocess
 
 from native_checks import NativeChecks, ROOT
+from native_fixture_contracts import load_fixture_contracts
+from pvm_benchmark_report import NAMES, parse_output
 from pvm_benchmark import cpu_model
 from pvm_guest_inputs import CASES, digest, prepare_inputs, validate_cases
 from pvm_opcode_census import build
@@ -26,7 +28,8 @@ from setup_nimony import installed
 
 BUILD = ROOT/'build/tests/pvm-guest-compare'
 MODES = {'dynamic': 'ragnarok', 'planned': 'ragnarok_planned', 'memo': 'ragnarok_memo'}
-DRIVER = ('tests/performance/pvm_sieve.nim', 'tests/performance/pvm_sieve_clock.h')
+DRIVER = ('tests/performance/pvm_sieve.nim', 'tests/performance/pvm_sieve_clock.h',
+          'tests/performance/pvm_workload.nim')
 
 
 def git(*arguments):
@@ -109,6 +112,93 @@ def unchanged(identities):
             raise ValueError('paired guest input changed during run: '+str(path))
 
 
+def prepare_synthetic(checks, compiler, folder, report, binaries, identities):
+    """Build both current synthetic drivers against frozen endpoints before any measured matrix."""
+    variable, fixture, files = load_fixture_contracts(ROOT/'tests/fixtures')['pvm_benchmark']
+    if variable != 'RAGNAROK_PVM_BENCHMARK':
+        raise ValueError('synthetic fixture environment mismatch')
+    for path, expected in files:
+        # The published independent fixture supplies all expected CPU/gas/memory/host outcomes.
+        if digest(path) != expected:
+            raise ValueError('changed paired synthetic fixture: '+path.name)
+        identities[path] = expected
+    descriptor = ROOT/'tests/fixtures/pvm_benchmark.fixture.json'
+    identities[descriptor] = digest(descriptor)
+    for variant in ('baseline', 'candidate'):
+        for profile, defines in (('legacy', ()), ('memo', ('pvmBenchmarkMemo',))):
+            name = 'synthetic-'+variant+'-'+profile
+            row, binary = build(checks, compiler, folder/'snapshots'/variant/DRIVER[2],
+                                name, defines=defines)
+            report['builds'].append(row)
+            binaries[name] = binary
+            identities[binary] = digest(binary)
+            control = checks.command([binary], name+'-assertion-control', environment=dict(
+                os.environ, RAGNAROK_PVM_BENCH_ASSERT_PROBE='1',
+                RAGNAROK_PVM_PRICING='memo' if profile == 'memo' else 'dynamic'))
+            output = control.pop('output')
+            if (control['exit_code'] == 0 or '[Assertion Failure]' not in output
+                    or 'pvm synthetic native assertion control' not in output):
+                raise RuntimeError('paired synthetic assertion control failed: '+name)
+            report['controls'].append(dict(variant=variant, profile=profile,
+                                          family='synthetic', run=control, passed=True))
+    return fixture
+
+
+def run_synthetic(checks, folder, report, binaries, fixture):
+    """Retain both orders and every host/memory/tiny control sample; no build overlaps timing."""
+    for repeat, order in enumerate((('baseline', 'candidate'), ('candidate', 'baseline'))):
+        for mode, engine in MODES.items():
+            for variant in order:
+                profile = 'memo' if mode == 'memo' else 'legacy'
+                result = checks.command([binaries['synthetic-'+variant+'-'+profile]],
+                    f'synthetic-{repeat}-{mode}-{variant}', environment=dict(os.environ,
+                        RAGNAROK_PVM_BENCHMARK=str(fixture), RAGNAROK_PVM_PRICING=mode,
+                        RAGNAROK_PVM_BENCH_ASSERT_PROBE='0'))
+                output = result.pop('output')
+                if result['exit_code']:
+                    raise RuntimeError('paired synthetic execution failed: '+result['log'])
+                parsed = parse_output(output, engine)
+                report['synthetic_runs'].append(dict(variant=variant, mode=mode,
+                    pass_index=repeat, parsed=parsed, stdout=output, run=result))
+                (folder/'partial.json').write_text(json.dumps(report, indent=2)+'\n')
+
+
+def synthetic_summary(report):
+    """Reparse persisted raw output and require the complete reversed matrix before showing all controls."""
+    rows = report.get('synthetic_runs', [])
+    enabled = report.get('synthetic_enabled', False)
+    if type(enabled) is not bool or (not enabled and rows):
+        raise ValueError('invalid synthetic comparison selection')
+    if not enabled:
+        return '' # Ordinary guest-only local runs retain their established scope.
+    expected = [(variant, mode, repeat) for repeat, order in enumerate(
+        (('baseline', 'candidate'), ('candidate', 'baseline')))
+        for mode in MODES for variant in order]
+    if report.get('status') != 'checks-passed' or type(rows) is not list or len(rows) != len(expected):
+        raise ValueError('incomplete paired synthetic coverage')
+    for row, identity in zip(rows, expected):
+        # JSON comparison distinguishes bool/int aliases in any copied nested sample or policy field.
+        if (type(row['pass_index']) is not int or type(row['stdout']) is not str
+                or (row['variant'], row['mode'], row['pass_index']) != identity):
+            raise ValueError('foreign or non-reversed paired synthetic coverage')
+        parsed = parse_output(row['stdout'], MODES[row['mode']])
+        if json.dumps(parsed, sort_keys=True) != json.dumps(row['parsed'], sort_keys=True):
+            raise ValueError('changed paired synthetic samples')
+    lines = ['', 'Paired synthetic controls (maintained workload execution clock; all samples retained).',
+             '', '| Workload | Pricing | Baseline µs | Candidate µs | Change |',
+             '| --- | --- | ---: | ---: | ---: |']
+    for index, name in enumerate(NAMES):
+        for mode in MODES:
+            medians = [statistics.median(sample['execution_ns'] for row in rows if
+                row['variant'] == variant and row['mode'] == mode
+                for sample in row['parsed'][index]['samples'][3:])/1000
+                for variant in ('baseline', 'candidate')]
+            change = 100*(medians[1]/medians[0]-1)
+            lines.append(f'| {name} | {mode} | {medians[0]:.3f} | {medians[1]:.3f} | {change:+.1f}% |')
+    lines.append('Host dispatch, cold policy data and all regressions remain visible; small deltas need noise/repeat qualification.')
+    return '\n'.join(lines)+'\n'
+
+
 def summarize(report):
     """Validate complete opposite-order coverage and show all CPU cells, including regressions and noise."""
     if (not isinstance(report, dict) or report.get('status') != 'checks-passed'
@@ -157,12 +247,12 @@ def summarize(report):
     lines.extend(['', 'Three warmups and ten measured samples per process; two reversed orders.',
         'Differences below a few percent are unproven; inspect raw spread and repeat suspicious cells.',
         'Preparation and first-cold samples remain in results.json. No universal or Linux speed claim.'])
-    return '\n'.join(lines)+'\n'
+    return '\n'.join(lines)+'\n'+synthetic_summary(report)
 
 
-def run(base_ref, scope='all', folder=None):
+def run(base_ref, scope='all', folder=None, synthetic=False):
     """Build both frozen libraries and publish only after all paired full-state checks and identity guards pass."""
-    folder = Path(folder) if folder is not None else BUILD
+    folder = (Path(folder) if folder is not None else BUILD).resolve()
     if not folder.resolve().is_relative_to((ROOT/'build').resolve()):
         raise ValueError('paired guest output must remain in the owned build directory')
     folder.mkdir(parents=True, exist_ok=True)
@@ -170,6 +260,9 @@ def run(base_ref, scope='all', folder=None):
         (folder/name).unlink(missing_ok=True) # A failed rerun never leaves an earlier successful downloadable summary.
     report = dict(status='running', runs=[], builds=[], controls=[], cases=[], endpoints={})
     try:
+        if type(synthetic) is not bool:
+            raise ValueError('PVM_COMPARE_SYNTHETIC must be 0 or 1')
+        report.update(synthetic_enabled=synthetic, synthetic_runs=[])
         baseline = revision(base_ref)
         if type(scope) is not str or scope not in ('all', 'controls'):
             raise ValueError('PVM_COMPARE_SCOPE must be all or controls')
@@ -216,6 +309,7 @@ def run(base_ref, scope='all', folder=None):
                     or 'pvm sieve native assertion control' not in output):
                 raise RuntimeError('paired guest assertion control failed: '+variant)
             report['controls'].append(dict(variant=variant, run=control, passed=True))
+        fixture = prepare_synthetic(checks, compiler, folder, report, binaries, identities) if synthetic else None
         for repeat, order in enumerate((('baseline', 'candidate'), ('candidate', 'baseline'))):
             for guest, limit, data, expected in prepared['inputs']:
                 for mode, engine in MODES.items():
@@ -235,10 +329,15 @@ def run(base_ref, scope='all', folder=None):
                             mode=mode, pass_index=repeat, parsed=parsed, run=result))
                         (folder/'partial.json').write_text(json.dumps(report, indent=2)+'\n')
             print('Completed paired guest order', repeat+1, flush=True)
+        if synthetic:
+            run_synthetic(checks, folder, report, binaries, fixture)
         unchanged(identities)
         if working_paths() != members:
             raise ValueError('paired guest source membership changed during run')
-        report.update(status='checks-passed', validated_invocations=len(report['runs'])*13,
+        guest_count = len(report['runs'])*13
+        synthetic_count = len(report['synthetic_runs'])*len(NAMES)*13
+        report.update(status='checks-passed', validated_invocations=guest_count+synthetic_count,
+                      guest_validated_invocations=guest_count, synthetic_validated_invocations=synthetic_count,
                       identical_sources=report['endpoints']['baseline'] == report['endpoints']['candidate'],
                       identity_sha256={str(path.relative_to(ROOT)): value for path, value in identities.items()},
                       binary_sha256={name: digest(path) for name, path in binaries.items()})
@@ -256,6 +355,13 @@ def run(base_ref, scope='all', folder=None):
         raise
 
 
-if __name__ == '__main__':
+def main():
+    """Keep paired/control CI evidence separate while retaining the owned-build output guard."""
     scope = os.environ.get('RAGNAROK_PVM_COMPARE_SCOPE', '') or 'all'
-    run(os.environ.get('RAGNAROK_PVM_COMPARE_BASE', ''), scope=scope)
+    output = os.environ.get('RAGNAROK_PVM_COMPARE_OUTPUT', '') or None
+    synthetic = {'': False, '0': False, '1': True}.get(os.environ.get('RAGNAROK_PVM_COMPARE_SYNTHETIC', ''))
+    run(os.environ.get('RAGNAROK_PVM_COMPARE_BASE', ''), scope=scope, folder=output, synthetic=synthetic)
+
+
+if __name__ == '__main__':
+    main() # Imports remain inert for deterministic guards.

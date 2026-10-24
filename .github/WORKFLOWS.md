@@ -28,6 +28,13 @@ and use isolated concurrency keys, so they cannot cancel active CI. Label remova
 The workflow also supports manual dispatch with a selected scope. Every job, including aggregate
 checks, uses the shared `ci-job-timeout` anchor set to 60 minutes; families have no timeout overrides.
 
+The opt-in **Perf / PVM Revisions** job is requested by `ci:pvm-compare` on an open PR
+or manual `compare-pvm` dispatch. It compares the exact candidate/base on one runner, measures
+an identical-source control and then the candidate against pinned PolkaVM interpreted. It is
+excluded from ordinary master/full/Perf requests; its checkout uses the exact PR head rather
+than the synthetic merge revision. Baseline refs, noise interpretation and evidence are documented
+in [requesting CI](../docs/testing.md#requesting-ci).
+
 Jobs publish summaries and retain diagnostic logs and reports from `build/`. See
 [requesting CI](../docs/testing.md#requesting-ci) for label scopes, reruns and revision semantics.
 
