@@ -127,7 +127,7 @@ proc zigzag(owner: SafroleStateSnapshot): seq[WinningTicket] =
 proc child*(parent: BlockSnapshot, slot: uint32, submitted: seq[Ticket], bank: seq[BankTicket],
     damageMarker = false, damageWinners = false, limits = currentConsecutiveLimits(),
     disputeWire: seq[byte] = @[0'u8, 0, 0], newOffenders: seq[OffenderKey] = @[],
-    forceSecret = 0): OwnedBlock =
+    forceSecret = 0, bodyWire: seq[byte] = @[]): OwnedBlock =
   ## Independently author native input headers from original roster/schedule data; actual candidate execution must validate them.
   let policy = limits.reporting.safrole.state
   let state = parent.stateSnapshot
@@ -191,7 +191,8 @@ proc child*(parent: BlockSnapshot, slot: uint32, submitted: seq[Ticket], bank: s
   let signerPublic = array[32, byte](publicKey(signer).value)
   var author = -1
   for index, record in active:
-    if array[32, byte](record.bandersnatch) == signerPublic: author = index
+    if author < 0 and array[32, byte](record.bandersnatch) ==
+        signerPublic: author = index # Preserve the first matching author when keys repeat.
   assert author >= 0
   let transcript = context((if ticketed: "jam_ticket_seal" else: "jam_fallback_seal"),
       array[32, byte](entropy[if crossed: 2 else: 3]), (if ticketed: int(byte(
@@ -225,6 +226,7 @@ proc child*(parent: BlockSnapshot, slot: uint32, submitted: seq[Ticket], bank: s
   body.setLen(encoded.written)
   for index in 0..<3: body.add(0) # Empty preimages, guarantees and assurances precede exact dispute bytes.
   for octet in disputeWire: body.add(octet)
+  if bodyWire.len > 0: body = bodyWire # Genuine full-body callers still undergo ordinary frame/commitment validation.
   let extrinsic = decodeExtrinsic(body, limits.reporting.admission.frame).value.owner
   source.unsigned.extrinsics = ExtrinsicRoot(array[32, byte](extrinsicCommitment(extrinsic,
       ByteLimit(10000)).value))
