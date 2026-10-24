@@ -412,8 +412,8 @@ func scalarSlot[Cached: static[bool]](data: MemoryData, page: uint32,
         return slot
   lowerBound(data, page)
 
-proc scalarSpan[Cached: static[bool]](memory: Memory, address: MemoryAddress, width: AccessWidth,
-    writing: bool, recent: array[2, int] = [-1, -1]): MachineResult[ScalarSpan] =
+proc scalarSpan[Cached, Writing: static[bool]](memory: Memory, address: MemoryAddress,
+    width: AccessWidth, recent: array[2, int] = [-1, -1]): MachineResult[ScalarSpan] =
   ## Resolve each touched page once, preserving overflow, protected-memory and presence-before-permission precedence.
   if memory.data == nil: return MachineResult[ScalarSpan](status: MachineError.InvalidOwner)
   if byte(width) notin [1'u8, 2'u8, 4'u8, 8'u8]:
@@ -439,7 +439,7 @@ proc scalarSpan[Cached: static[bool]](memory: Memory, address: MemoryAddress, wi
     firstAccess = data.pages[first].access # Missing sparse slots never grant byte access.
   if firstPage == lastPage:
     # A complete single-page scalar needs one presence/permission decision and no second-page ordering.
-    if firstAccess == PageAccess.Inaccessible or (writing and firstAccess != PageAccess.ReadWrite):
+    if firstAccess == PageAccess.Inaccessible or (Writing and firstAccess != PageAccess.ReadWrite):
       return MachineResult[ScalarSpan](status: MachineError.Fault,
         failedPage: PageAddress(firstPage * 4096'u32))
     let count = int(byte(width))
@@ -452,12 +452,12 @@ proc scalarSpan[Cached: static[bool]](memory: Memory, address: MemoryAddress, wi
     lastAccess = data.pages[last].access
   if firstAccess == PageAccess.Inaccessible:
     return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(firstPage * 4096'u32))
-  if writing and lastAccess == PageAccess.Inaccessible:
+  if Writing and lastAccess == PageAccess.Inaccessible:
     # A missing second page precedes a read-only first page for cross-page stores (GP-PVM-008).
     return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(lastPage * 4096'u32))
-  if writing and firstAccess != PageAccess.ReadWrite:
+  if Writing and firstAccess != PageAccess.ReadWrite:
     return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(firstPage * 4096'u32))
-  if lastAccess == PageAccess.Inaccessible or (writing and lastAccess != PageAccess.ReadWrite):
+  if lastAccess == PageAccess.Inaccessible or (Writing and lastAccess != PageAccess.ReadWrite):
     return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(lastPage * 4096'u32))
   let offset = int(start mod 4096)
   let count = int(byte(width))
@@ -467,7 +467,7 @@ proc scalarSpan[Cached: static[bool]](memory: Memory, address: MemoryAddress, wi
 proc load*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineResult[
     RegisterValue] =
   ## Load a complete little-endian scalar from preflighted page spans; instruction sign extension remains separate.
-  let checked = scalarSpan[false](memory, address, width, false)
+  let checked = scalarSpan[false, false](memory, address, width)
   if checked.error != MachineError.None: return failure[RegisterValue, ScalarSpan](checked)
   if memory.data == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
   let data = memory.data
@@ -482,7 +482,7 @@ proc load*(memory: Memory, address: MemoryAddress, width: AccessWidth): MachineR
 proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
     value: RegisterValue): MachineResult[Memory] =
   ## Preflight once, then clone only touched pages and publish an independent atomic snapshot.
-  let checked = scalarSpan[false](memory, address, width, true)
+  let checked = scalarSpan[false, true](memory, address, width)
   if checked.error != MachineError.None: return failure[Memory, ScalarSpan](checked)
   if memory.data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   let data = memory.data
@@ -673,7 +673,7 @@ proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
   if writer == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
   let source = writer.base.data
   if source == nil: return MachineResult[RegisterValue](status: MachineError.InvalidOwner)
-  let checked = scalarSpan[true](writer.base, address, width, false, writer.recent)
+  let checked = scalarSpan[true, false](writer.base, address, width, writer.recent)
   if checked.error != MachineError.None: return failure[RegisterValue, ScalarSpan](checked)
   let span = checked.value
   rememberScalarSpan(writer, span)
@@ -690,7 +690,7 @@ proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: Acces
   if writer == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
   let source = writer.base.data
   if source == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
-  let checked = scalarSpan[true](writer.base, address, width, true, writer.recent)
+  let checked = scalarSpan[true, true](writer.base, address, width, writer.recent)
   if checked.error != MachineError.None: return failure[bool, ScalarSpan](checked)
   if not writer.active:
     # Page count and vector extent already belong to the admitted base; no write can insert pages or change permissions.
