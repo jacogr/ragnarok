@@ -91,3 +91,6 @@ This does not establish external-client trace parity, epoch-changing guarantees/
 all report-policy/dependency combinations, guest-driven staging changes, or whole-map guest
 execution of these newly available reports. Existing historical limitations and
 `AmbiguousPrivileges` remain unchanged. Exact-head Linux CI is separate evidence.
+
+Report-driven execution continues in [the guest whole-map cases](current-stf-report-guest-goldens.md),
+with free allowances removed and actual immediate report operands releasing the authored guests.
