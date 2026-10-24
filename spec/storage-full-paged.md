@@ -360,3 +360,28 @@ shared/exclusive reclamation exclusion, owned value lifetime, new-current histor
 removal, default/wrong-root refusals and every observed read/write/flock/close/ftruncate admission
 fault.1000 independent open/close cycles retain42,512 ->42,512 occupied bytes. Existing current
 reader and retention suites remain regression controls for the shared admission path.
+
+## Full process-death qualification
+
+`storage_full_paged_crashes` uses the existing exact-child successful-syscall stop/SIGKILL harness
+for bootstrap, same-root replacement, independently trusted new-root replacement, source-derived
+compaction, explicit prefix cleanup, bootstrap resume and captured old-epoch reclamation. Real
+short writes add stops inside body pages and digest words. Graph-scratch ftruncate boundaries are
+included. Every stopped child must still hold the stable writer lease against an actual contender;
+completion, timeout, ordinary failure and a genuine stopped/killed child are separate outcomes.
+
+Independent complete-map fixtures define every expected full data/manifest byte before the child
+runs. After death, CURRENT must be the exact prior or new manifest; new selections require the
+entire target and no staging file. Old images, retained readers and an unrelated KEEP sibling stay
+unchanged. Strict correct-root reopen makes no rename/unlink and leaves all fixed namespace bytes
+unchanged; full admission legitimately writes private anonymous graph scratch. Wrong-root reopen
+refuses without namespace changes. Only fresh explicit replay removes partial targets/staging,
+and interrupted bootstrap resumes only while CURRENT is absent. No inferred head or broad cleanup
+is permitted. Reclamation retry performs an actual directory barrier even after confirmed absence.
+
+The final checked ARC/Clang macOS aarch64 panel passes39 completion controls and556 exact stopped-
+child kill boundaries. The identical source also passes39 controls and556 exact kill boundaries on
+Linux amd64 under Docker emulation on this aarch64 host. Source hashes are compared against the
+qualification image; both profiles retain the pristine pinned compiler/provider and runtime checks. These tests establish implemented process-
+death behavior only; fsync success and process death do not establish hardware/filesystem power-
+loss qualification. Populated Linux working-set qualification and consumer adoption remain open.
