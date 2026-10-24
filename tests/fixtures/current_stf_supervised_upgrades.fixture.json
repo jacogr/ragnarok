@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_SUPERVISED_UPGRADES",
+  "files": {
+    "current-stf-supervised-upgrades.json": "f6798e023d89f78246078640c42599700f55c2bd720ad2acacd34dc1f7272915"
+  },
+  "target": "current-stf-supervised-upgrades.json"
+}

@@ -34,3 +34,19 @@ proc supervisedRequestCode*(mode: int, hash: array[32, byte]): seq[byte] =
   instructions.add(if mode in [89, 90, 91]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc supervisedReplacementCode*(): seq[byte] =
+  ## U differs from the original Q code framing while preserving literal halt semantics and exact22 gas.
+  result = @[0'u8]
+  for octet in guestEnvelope([@[50'u8, 0]], @[85'u8]): result.add(octet)
+
+proc supervisedUpgradeCode*(mode: int, hash: array[32, byte]): seq[byte] =
+  ## Upgrade foreign42 through a real host21; namespace availability remains independently declared.
+  var memory = newSeq[byte](32)
+  for index, octet in hash: memory[index] = octet
+  var instructions = @[registerImmediate(7, 42), registerImmediate(8, 196608),
+    registerImmediate(9, 100), registerImmediate(10, 19), @[10'u8, 21]]
+  if mode == 94: instructions.add(@[10'u8, 19]) # Foreign metadata joins the actual checkpoint implication.
+  instructions.add(if mode in [93, 94]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)

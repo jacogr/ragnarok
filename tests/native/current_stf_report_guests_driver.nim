@@ -116,6 +116,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): 
     first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
   var second: seq[byte] = @[]
   case mode
+  of 92..96: second = supervisedUpgradeCode(mode, replacement) # Foreign metadata affects a later independently admitted42 report.
   of 87..91:
     # R's known hash selects one independently declared foreign request identity.
     let hash = array[32, byte](blake2b256([82'u8]).value)
@@ -146,7 +147,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): 
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
     uint32] = @[], reload = false) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
-  let replacement = namespaceHaltCode()
+  let replacement = if mode in 92..96: supervisedReplacementCode() else: namespaceHaltCode()
   let replacementHash = array[32, byte](blake2b256(replacement).value)
   let requestHash = ServicePreimageHash(array[32, byte](blake2b256([82'u8]).value))
   let codes = fixtureCodes(mode, replacementHash, uint32(replacement.len))
@@ -166,6 +167,13 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
         replacement.len)),
       history: (if mode == 50: requestedHistory() else: availableHistory(RequestSlot(1)))))
     if mode != 50: seeds[1].preimages.add(StatePreimageItem(hash: hash, value: replacement))
+  if mode in 92..96:
+    # The foreign target reserves a distinct replacement identity before any block; missing-code mode never inserts its P value.
+    let hash = ServicePreimageHash(replacementHash)
+    seeds[0].requests.add(StateRequestItem(hash: hash, length: RequestLength(uint32(
+        replacement.len)),
+      history: (if mode == 95: requestedHistory() else: availableHistory(RequestSlot(1)))))
+    if mode != 95: seeds[0].preimages.add(StatePreimageItem(hash: hash, value: replacement))
   if mode == 64 or mode in 67..71:
     # This original request must be removed before checkpointing and a later regular recreation is discarded.
     seeds[1].requests.add(StateRequestItem(hash: requestHash, length: RequestLength(1),
@@ -202,10 +210,10 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   if mode in 77..81:
     # Authority belongs to one actual original manager; other roles and all allowances remain empty.
     options.manager = (if mode == 81: 42'u32 else: 99'u32)
-  if mode in 82..91:
+  if mode in 82..96:
     # Authority is original and incarnation-bound; stale/missing nominees fall back to target self supervision.
     options.signed.accountSupervisor = (if mode == 86: 77'u32 else: 99'u32)
-    options.signed.accountSupervisorCreated = (if mode == 85: 1'u32 else: 0'u32)
+    options.signed.accountSupervisorCreated = (if mode in [85, 96]: 1'u32 else: 0'u32)
   options.signed.completeState = true
   options.signed.withTicket = true
   options.signed.serviceNamespaces = seeds
@@ -441,7 +449,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 92
+      assert mode >= 0 and mode < 97
       bodies = @[]
       slots = @[]
     else:
@@ -449,7 +457,7 @@ proc main() {.raises.} =
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
-  assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91]
+  assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:
