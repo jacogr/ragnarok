@@ -93,3 +93,18 @@ can reproduce attribution independently of the CI workspace: run annotation from
 `source_files` as positional source arguments. Existing collection scope, native
 assertion controls, input/reference checks, toolchain flags and discarded-clock
 policy remain unchanged. This improves attribution and makes no runtime speed claim.
+
+
+[CI40125948163](https://github.com/jacogr/ragnarok/actions/runs/40125948163)
+qualifies tool head `2666c5f1` above the fallthrough-class runtime in PR1535. The
+selected/absent-scope and assertion controls, three complete-state profiles,
+source-file bindings and captured-root annotations pass. All24 downloaded C files
+match their recorded byte lengths and SHA-256. The three source logs contain real
+user-annotated execution sections; their sizes are222,384/169,531/167,025 bytes.
+
+The profiled runtime counts are6,165,875,878 instructions for dynamic Pinky,
+5,646,231,310 for planned Pinky, and186,299,926 for planned sieve100000. This tool
+change leaves production code and guest collection commands unchanged. Nine focused
+Python guards cover source copying/stability, path exclusion, exact file binding,
+real source sections and stale-manifest retirement; workflow syntax and inventory
+checks pass. Publication adds only this evidence record to the measured tool.
