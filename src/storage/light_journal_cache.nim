@@ -77,6 +77,11 @@ func samePolicy(left, right: LightSnapshotLimits): bool =
     uint64(left.cache.valueBytes) == uint64(right.cache.valueBytes) and
     uint64(left.cache.proof.nodes) == uint64(right.cache.proof.nodes) and
     uint64(left.cache.proof.valueBytes) == uint64(right.cache.proof.valueBytes)
+func sameJournalPolicy(left, right: LightReplayLimits): bool =
+  ## A prepared root request cannot silently adopt different replay/append capacities after close/reopen.
+  uint64(left.bytes) == uint64(right.bytes) and uint64(left.frames) == uint64(right.frames) and
+    uint64(left.frame.bytes) == uint64(right.frame.bytes) and uint64(left.frame.items) == uint64(
+        right.frame.items)
 proc binding(image: PreparedLightSnapshot, config: LightJournalConfig): FileError =
   ## Opaque preparation cannot widen an owner's inherited policy or change its independent trust selection.
   if not image.initialized: return FileError.Uninitialized
@@ -334,6 +339,7 @@ type
     epoch: ManagedEpoch
     before, last: LightDeltaSequence
     frames, priorFrames, priorBytes: uint64
+    policy: LightReplayLimits
   PreparedLightJournalBatch* = object ## Opaque prepared concatenation grants no durable publication receipt until its append barrier succeeds.
     data: nil BatchData
 func initialized*(batch: PreparedLightJournalBatch): bool =
@@ -398,7 +404,7 @@ proc prepareLightJournalBatch*(owner: LightJournalCache,
     completed: PreparedLightJournalBatch(data: BatchData(image: current, encoded: move(encoded),
       selected: data.selected.checksum, prior: data.image.checksum, epoch: data.selected.epoch,
       before: data.sequence, last: sequence, frames: count, priorFrames: data.frames,
-      priorBytes: observed.value)))
+      priorBytes: observed.value, policy: data.config.journal)))
 proc append*(owner: var LightJournalCache, batch: PreparedLightJournalBatch): LightJournalResult[
     StorageDurability] =
   ## Append a prepared consecutive group once and synchronize once before publishing its final image; uncertainty requires explicit prefix recovery.
@@ -408,6 +414,8 @@ proc append*(owner: var LightJournalCache, batch: PreparedLightJournalBatch): Li
   assert data != nil
   let prepared = batch.data
   if prepared == nil: return fail[StorageDurability](FileError.Uninitialized)
+  if not sameJournalPolicy(prepared.policy, data.config.journal):
+    return fail[StorageDurability](FileError.InvalidBatch)
   let bound = binding(prepared.image, data.config)
   if bound != FileError.None: return fail[StorageDurability](bound)
   let observed = managedJournalBytes(data.journal)
@@ -795,11 +803,6 @@ proc snapshot*(prepared: PreparedLightRootAdvance): PreparedLightSnapshot {.requ
   let data = prepared.data
   assert data != nil
   data.image
-func sameJournalPolicy(left, right: LightReplayLimits): bool =
-  ## A prepared root request cannot silently adopt different replay/append capacities after close/reopen.
-  uint64(left.bytes) == uint64(right.bytes) and uint64(left.frames) == uint64(right.frames) and
-    uint64(left.frame.bytes) == uint64(right.frame.bytes) and uint64(left.frame.items) == uint64(
-        right.frame.items)
 proc rootAdvanceSource(data: JournalOwner, plan: RootAdvanceData, cleanup: bool): FileError =
   ## Exact publication requires the original head; cleanup may tolerate only later ordinary appends in that same physical selection.
   if uint64(data.selected.epoch) != uint64(plan.priorEpoch) or
@@ -943,3 +946,42 @@ proc discardUnselectedRootAdvance*(owner: var LightJournalCache,
   let checkpoint = removeManagedFile(data.directory, ManagedFileKind.Snapshot, plan.selected.epoch)
   if checkpoint != FileError.None: return checkpoint
   data.directory.synchronize
+
+proc prepareLightRetainedUpdate*(owner: LightJournalCache, proofs: openArray[LightStateProof],
+    limits: LightRetentionLimits): LightJournalResult[PreparedLightJournalBatch] =
+  ## Choose bounded quota eviction privately, then authenticate one ordinary frame bound to this exact physical source and policy.
+  let data = owner.data
+  let reason = lifecycle(data)
+  if reason != FileError.None: return fail[PreparedLightJournalBatch](reason)
+  assert data != nil
+  if data.frames >= uint64(data.config.journal.frames) or uint64(data.sequence) == high(uint64):
+    return fail[PreparedLightJournalBatch](FileError.LimitExceeded)
+  let observed = managedJournalBytes(data.journal)
+  if observed.error != FileError.None: return fail[PreparedLightJournalBatch](observed.error)
+  let maximum = min(uint64(data.config.journal.bytes), uint64(high(int)))
+  if observed.value > maximum or uint64(LightDeltaOverhead) > maximum-observed.value:
+    return fail[PreparedLightJournalBatch](FileError.LimitExceeded)
+  let planned = planLightRetention(data.image, proofs, limits)
+  if planned.error == LightSnapshotError.ProofFailure:
+    return fail[PreparedLightJournalBatch](FileError.InvalidBatch)
+  if planned.error != LightSnapshotError.None:
+    return fail[PreparedLightJournalBatch](snapshotReason(planned.error))
+  var frame = data.config.journal.frame
+  frame.bytes = ByteLimit(min(uint64(frame.bytes), maximum-observed.value))
+  let prepared = prepareLightDelta(data.image, LightDeltaSequence(uint64(data.sequence)+1), proofs,
+    planned.value.forgottenKeys, frame)
+  if prepared.error != LightDeltaError.None:
+    return fail[PreparedLightJournalBatch](deltaReason(prepared.error))
+  let delta = prepared.value
+  LightJournalResult[PreparedLightJournalBatch](status: FileError.None,
+    completed: PreparedLightJournalBatch(data: BatchData(image: delta.snapshot,
+      encoded: delta.bytes,
+      selected: data.selected.checksum, prior: data.image.checksum, epoch: data.selected.epoch,
+      before: data.sequence, last: delta.sequence, frames: 1, priorFrames: data.frames,
+      priorBytes: observed.value, policy: data.config.journal)))
+proc admitRetained*(owner: var LightJournalCache, proofs: openArray[LightStateProof],
+    limits: LightRetentionLimits): LightJournalResult[StorageDurability] =
+  ## Publish admission and chosen evictions in one synchronized append; uncertainty requires existing explicit strict reopen or tail repair.
+  let prepared = prepareLightRetainedUpdate(owner, proofs, limits)
+  if prepared.error != FileError.None: return fail[StorageDurability](prepared.error)
+  owner.append(prepared.value)
