@@ -131,3 +131,12 @@ proc precedenceManagerCode*(mode: int): seq[byte] =
   instructions.add(if mode in [115, 116]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, memory): result.add(octet)
+
+proc designationCode*(mode: int, staging: seq[byte]): seq[byte] =
+  ## The exact six-record authored roster is VM input, not a substituted native transition result.
+  let count = if mode == 121: 5'u64 else: 6'u64
+  var instructions = @[registerImmediate(7, 196608), registerImmediate(8, count), @[10'u8, 18]]
+  if mode == 120: instructions.add(@[10'u8, 19]) # Preserve the selected staged roster on exceptional termination.
+  instructions.add(if mode in [119, 120]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, staging): result.add(octet)

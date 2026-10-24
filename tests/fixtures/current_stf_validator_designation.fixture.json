@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_VALIDATOR_DESIGNATION",
+  "files": {
+    "current-stf-validator-designation.json": "7c4e5466656574b43c5997f597743044befc056df614ec67ac672a07d33946bb"
+  },
+  "target": "current-stf-validator-designation.json"
+}
