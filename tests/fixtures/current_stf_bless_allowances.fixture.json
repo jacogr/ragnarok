@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_BLESS_ALLOWANCES",
+  "files": {
+    "current-stf-bless-allowances.json": "ee2779b0b6ed4be58105e900c69f675e3f9030c53eac1aa026781946d2efe621"
+  },
+  "target": "current-stf-bless-allowances.json"
+}
