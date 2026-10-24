@@ -1,0 +1,1 @@
+PASS light journal replay: strict bounded transitions, no corrupt-prefix salvage and exact-byte explicit tail plans
