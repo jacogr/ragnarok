@@ -27,3 +27,22 @@ proc supervisorCode*(mode: int): seq[byte] =
   instructions.add(if mode in [55, 56]: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable = newSeq[byte](128)): result.add(octet)
+
+proc creationCode*(mode: int, replacement: array[32, byte], codeLength: uint32): seq[byte] =
+  ## Real new20 reads the complete current60-byte request; a repeated call advances the genuine public cursor.
+  var memory = newSeq[byte](60)
+  for index, octet in replacement: memory[index] = octet
+  let length = if mode == 61: high(uint32)-1 else: codeLength
+  for index in 0..<4: memory[32+index] = byte((length shr (8*index)) and 255)
+  memory[36] = 100
+  memory[44] = 19
+  var instructions: seq[seq[byte]] = @[]
+  for call in 0..(if mode == 60: 1 else: 0):
+    # Reset the source sentinel after each returned child ID; all other arguments are explicit too.
+    for instruction in [registerImmediate(7, high(uint64)), registerImmediate(8, high(uint64)),
+        registerImmediate(9, 0), registerImmediate(10, 196608), @[10'u8, 20]]:
+      instructions.add(instruction)
+  if mode == 59: instructions.add(@[10'u8, 19]) # Keep the actual created account/request/cursor in the exceptional implication.
+  instructions.add(if mode in [58, 59]: @[0'u8] else: @[50'u8, 0])
+  result = @[0'u8]
+  for octet in guestEnvelope(instructions, memory): result.add(octet)

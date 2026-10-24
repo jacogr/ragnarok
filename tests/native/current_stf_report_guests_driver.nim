@@ -9,12 +9,13 @@ import ../support/[current_stf_transfer_context, current_stf_lifecycle_context]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/provider
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
-  state_requests, state_service_values]
+  state_requests, state_service_values, state_layout, state_safrole]
 import ../../src/crypto/primitives
 import ../../src/state/[store, checkpoint, accumulation_current_update,
   accumulation_current_completion,
   accumulation_current_driver, accumulation_current_round, accumulation_block_guests,
-  accumulation_guest_runner, accumulation_dispatch, report_admission, guarantee_credentials,
+  accumulation_guest_runner, accumulation_dispatch, accumulation_invocation, report_admission,
+  guarantee_credentials,
   current_profile,
   current_globals, current_state, global_snapshot]
 import ../support/[accumulation_execution_context, accumulation_activity_context,
@@ -84,17 +85,33 @@ proc failure(outcome: CurrentCandidateResult): string =
             else: discard # Other actual typed guest failures retain their direct reason.
 
 
+proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32): array[2, seq[byte]] =
+  ## Keep literal family selection explicit and independent of the growing original/namespace construction workflow.
+  var first = namespaceHaltCode()
+  if mode in 42..46:
+    first = memoReceiverCode(mode) # Only memo recipients consume incoming bytes into storage and yields.
+  elif mode in 15..19:
+    first = forwardingCode(mode) # Only forwarding recipients create another outgoing record.
+  var second: seq[byte] = @[]
+  case mode
+  of 57..61: second = creationCode(mode, replacement,
+      codeLength) # Current new20 and real child cursor progression.
+  of 52..56: second = supervisorCode(mode) # Self-supervisor mutation precedes protected funding.
+  of 47..51: second = upgradeCode(mode, replacement) # Old/replacement code are separate original namespace identities.
+  of 42..46: second = memoSenderCode() # Every fixed memo octet has a distinct explicit value.
+  of 28..41: second = admissionTransferCode(mode) # Endpoint, memory, funding and gas boundaries.
+  of 20..27: second = poolTransferCode(mode) # All four funding/credit pool combinations.
+  of 5..19: second = transferCode(mode) # Initial transfer/forwarding/supervision families share literal source code.
+  else: second = guest(mode) # Earlier storage/report guest originals retain their exact code bytes.
+  result = [first, second]
+
+
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
     uint32] = @[]) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
   let replacement = namespaceHaltCode()
   let replacementHash = array[32, byte](blake2b256(replacement).value)
-  let codes = [(if mode in 42..46: memoReceiverCode(mode) elif mode in 15..19: forwardingCode(mode)
-    else: namespaceHaltCode()),
-    (if mode >= 52: supervisorCode(mode) elif mode >= 47: upgradeCode(mode,
-        replacementHash) elif mode >= 42: memoSenderCode()
-    elif mode >= 28: admissionTransferCode(mode) elif mode >= 20: poolTransferCode(mode)
-    elif mode >= 5: transferCode(mode) else: guest(mode))]
+  let codes = fixtureCodes(mode, replacementHash, uint32(replacement.len))
   var seeds = namespaceSeeds()
   for index in 0..<2:
     let codeHash = ServicePreimageHash(array[32, byte](blake2b256(codes[index]).value))
@@ -167,6 +184,11 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   limits.completion.composition.activity.preimages.perBlob = ByteLimit(512)
   limits.completion.composition.activity.preimages.totalBlobBytes = ByteLimit(512)
   limits.completion.composition.preimages.bytes = ByteLimit(512)
+  if mode in 57..61:
+    # At most two children extend the explicit two-account prior; later empty blocks retain all four canonical records.
+    limits.completion.execution.initial.accounts.creation.accounts = ElementLimit(4)
+    limits.completion.execution.execution.round.accounts.creation.accounts = ElementLimit(4)
+  var children: seq[ServiceIndex] = @[]
   var ancestors: seq[OwnedHeader] = @[]
   for bodyIndex, body in bodies:
     # Exact independent extrinsics enter a real seal against the selected canonical parent.
@@ -186,6 +208,23 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     let globals = qualifyCurrentGlobals(profile, GlobalStateLimits(chapter: StateChapterPolicy(
         items: ElementLimit(10000), maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144))).value
     let snapshot = update.currentUpdateState
+    if mode in [57, 59, 60] and uint32(before.slot) == 3:
+      # Derive explicit namespace identities from posterior entropy and the authenticated slot; expected maps use separate Python equations.
+      let encoded = snapshot.lookup(chapterKey(StateChapter(6))).value.bytes
+      assert encoded.len == 128
+      var entropy = default(array[32, byte])
+      for index in 0..<32: entropy[index] = encoded[index]
+      let initial = initialAccumulationService(ServiceIndex(99), StateEntropyWord(entropy),
+          HeaderSlot(4))
+      assert initial.error == AccumulationInvocationError.None
+      children.add(initial.value)
+      if mode == 60:
+        # Public IDs occupy [65536,2^32-256); uint64 arithmetic proves the complete42-step addition before narrowing.
+        let next = 65536'u64+(uint64(uint32(initial.value))-65536+42) mod 4294901504'u64
+        children.add(ServiceIndex(uint32(next)))
+      for service in children:
+        assert before.stateSnapshot.lookup(chapterServiceKey(StateChapter(255), service)).error ==
+            StateStoreError.MissingKey
     var services = currentNamespaceServices(snapshot, seeds)
     for index in 0..<2:
       # Original code/request identities remain explicit; unfulfilled payload requests stay untouched.
@@ -217,6 +256,16 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
         services[index].storage.add(StateStorageItem(key: @[7'u8], value: stored.value.bytes))
       else:
         assert stored.error == StateStoreError.MissingKey # Deletion/rollback cannot fabricate an empty stored value.
+    for service in children:
+      # New metadata and its sole empty code request remain independently constrained by the exact complete-map comparison.
+      let value = snapshot.lookup(chapterServiceKey(StateChapter(255), service))
+      assert value.error == StateStoreError.None
+      let metadata = decodeServiceMetadata(value.value.bytes, ByteLimit(105))
+      assert metadata.error == ServiceMetadataError.None and metadata.value.consumed == 105
+      services.add(StateService(service: service, metadata: metadata.value.metadata, storage: @[],
+          preimages: @[],
+        requests: @[StateRequestItem(hash: ServicePreimageHash(replacementHash),
+            length: RequestLength(uint32(replacement.len)), history: requestedHistory())]))
     assert qualifyCurrentState(globals, services, inventoryCaptureLimits).error ==
         CurrentStateError.None
     assert checkpointHex(before.stateSnapshot) == saved
@@ -257,14 +306,14 @@ proc main() {.raises.} =
       missingCode = fields.len == 3
       if missingCode: assert fields[2] == "missing" # Explicit authored missing-code original.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 57
+      assert mode >= 0 and mode < 62
       bodies = @[]
       slots = @[]
     else:
       assert fields[0] == "B" and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
-  assert mode in [4, 9, 14, 19, 27, 41, 46, 51, 56] and bodies.len >
+  assert mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61] and bodies.len >
       0 # Strict independent output comparison binds each complete chain length.
   run(base, mode, bodies, missingCode, slots)
 
