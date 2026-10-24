@@ -1,10 +1,11 @@
 # Writer-owned scalar page locality
 
-Each scalar memory writer retains two recent successful page-vector slots. An exact physical-page
-index and an in-range slot must match before a hint can replace binary search. Hints retain only
-integers, add no page/chunk owner or per-access allocation, and never imply presence, permission,
-scalar width or valid address arithmetic. The original complete scalar preflight still determines
-protected-prefix, wrapping, final-page presence and cross-page presence/permission precedence.
+Each scalar memory writer retains two recent successful page-vector facts. An exact physical-page
+index and an in-range slot must match before a hint can replace binary search. The current facts
+copy the immutable mapping's presence/permission observation without page/chunk ownership or
+per-access allocation. Scalar width/address checks and complete cross-page permission decisions
+remain in the shared preflight; a readable cached page does not grant write access. The initial
+slot-only implementation below reloaded page metadata after its exact-slot match.
 
 Only a completely successful preflight refreshes hints. A crossing keeps both touched slots;
 a one-page operation retains the previous other slot. Writer aliases share metadata with the same
@@ -128,3 +129,38 @@ and `build/pvm12/ci-40109130958/`. The supported result is the repeated-order
 Pinky dynamic/planned and memory-fill improvement, not a universal claim.
 Publication adds only contract evidence to the measured runtime; exact source,
 driver, build and pin equality is checked across native documentation restacking.
+
+
+## Validated page metadata reuse, 2026-10-24
+
+The current Linux profile at the published interpreter tip attributes12.91% of planned
+Pinky instructions to writer loads and8.56% to stores. A slot-only hint still follows
+page-header pointers to compare physical indices and reload access metadata. The new
+private two-MRU fact retains its validated slot, complete PageIndex and PageAccess.
+Every hit still checks a nonnegative in-range slot and complete physical tag; misses
+use the original sorted lower-bound lookup with exact presence validation. Immutable
+scalar calls compile without hint probes. No public API, page/chunk owner, new instruction
+representation or additional heap allocation is introduced; metadata grows by16 bytes
+per writer on the checked64-bit target.
+
+Only complete successful preflight captures facts. Hot ordered crossing pairs need no
+metadata refresh; single-page MRU rotation reuses the prior second fact when possible.
+Width checks, protected-prefix panic, exclusive-end overflow, complete presence checks,
+read/write permission checks and GP-PVM-008 missing-second-page precedence retain their
+original order. A failed operation neither refreshes metadata nor prepares/mutates bytes.
+
+The owner proof is local: the only assignment to writer.base is snapshotMemory, which
+transfers the same ordered page vector. Private chunk/header cloning preserves each
+page's index and access; vector length/positions do not change. An unrelated permission
+remap creates another immutable Memory and cannot replace this writer's private base.
+New writers initialize both slots invalid. Aliases share one writer identity; fresh host
+segments construct fresh writers. Thus copied positive page facts survive sealing but
+never cross independently mapped owners.
+
+The scalar writer suite extends its1000-cycle pressure group with separately remapped
+owners, freshly writable versus retained read-only facts, and a warmed read-only first
+page followed by a missing second page after an unrelated write and sealed epoch. It
+retains full original/snapshot bytes and all existing sparse/hot/crossing/high/overflow
+cases. Acceptance requires the independent memory/boundary corpora, host/retry/execution
+consumers, balanced ARC observations and paired CI with identical-source/reference
+controls. All local timings are discarded.

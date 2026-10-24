@@ -60,12 +60,16 @@ type
     limit: PageLimit
   Memory* = object ## A default handle is invalid; captureMemory([], ...) creates valid empty memory.
     data: nil MemoryData
+  ScalarPageHint = object ## Successful preflight binds copied physical-page metadata to one stable writer vector slot.
+    slot: int
+    page: PageIndex
+    access: PageAccess
   ScalarMemoryWriter* = ref object ## Mutable scalar-write identity; copied handles share progress, while snapshotMemory publishes immutable epochs.
     base: Memory
     pages: seq[PageData]
     dirty: seq[byte]
     active: bool
-    recent: array[2, int] # Fixed page slots retain no page/chunk owner and never imply permissions.
+    recent: array[2, ScalarPageHint] # Exact tags and bounded slots retain only scalar facts, never page/chunk owners.
   MachineInfo* = object ## Copied CPU state has no pointer into registers or mutable backing storage.
     pc*: CodeAddress
     gas*: MachineGas
@@ -403,17 +407,31 @@ type ScalarSpan = object
   ## Private validated slots and byte extents belong only to the immutable memory inspected in this call.
   first, last, offset, firstCount, count: int
 
-func scalarSlot[Cached: static[bool]](data: MemoryData, page: uint32,
-    recent: array[2, int]): int {.inline.} =
-  ## Immutable calls compile without hint probes; writer calls accept only exact bounded physical-page matches.
+type ScalarPageResolution = object
+  ## Private lookup results keep the original sorted slot and complete presence/permission observation together.
+  slot: int
+  access: PageAccess
+
+func emptyScalarHints(): array[2, ScalarPageHint] {.inline.} =
+  ## Explicit invalid slots cannot certify a default page or grant an access permission.
+  [ScalarPageHint(slot: -1, page: PageIndex(0), access: PageAccess.Inaccessible),
+    ScalarPageHint(slot: -1, page: PageIndex(0), access: PageAccess.Inaccessible)]
+
+func scalarPage[Cached: static[bool]](data: MemoryData, page: uint32,
+    recent: array[2, ScalarPageHint]): ScalarPageResolution {.inline.} =
+  ## Immutable calls omit hints; a writer reuses only exact bounded facts from its unchanged page mapping.
   when Cached:
-    for slot in recent:
-      if slot >= 0 and slot < data.pages.len and uint32(data.pages[slot].index) == page:
-        return slot
-  lowerBound(data, page)
+    for hint in recent:
+      if hint.slot >= 0 and hint.slot < data.pages.len and uint32(hint.page) == page:
+        return ScalarPageResolution(slot: hint.slot, access: hint.access)
+  let slot = lowerBound(data, page)
+  var access = PageAccess.Inaccessible
+  if slot < data.pages.len and uint32(data.pages[slot].index) == page:
+    access = data.pages[slot].access # A lower-bound insertion position never grants absent-page access.
+  ScalarPageResolution(slot: slot, access: access)
 
 proc scalarSpan[Cached, Writing: static[bool]](memory: Memory, address: MemoryAddress,
-    width: AccessWidth, recent: array[2, int] = [-1, -1]): MachineResult[ScalarSpan] =
+    width: AccessWidth, recent: array[2, ScalarPageHint] = emptyScalarHints()): MachineResult[ScalarSpan] =
   ## Resolve each touched page once, preserving overflow, protected-memory and presence-before-permission precedence.
   if memory.data == nil: return MachineResult[ScalarSpan](status: MachineError.InvalidOwner)
   if byte(width) notin [1'u8, 2'u8, 4'u8, 8'u8]:
@@ -423,9 +441,8 @@ proc scalarSpan[Cached, Writing: static[bool]](memory: Memory, address: MemoryAd
   let start = uint64(address) and 0xffffffff'u64
   if start > uint64(high(uint32)) - uint64(byte(width)):
     # Exclusive-end overflow retains the approved final-page presence rule before permissions.
-    let at = scalarSlot[Cached](data, 0xfffff'u32, recent)
-    if at < data.pages.len and uint32(data.pages[at].index) == 0xfffff'u32 and
-        data.pages[at].access != PageAccess.Inaccessible:
+    let finalPage = scalarPage[Cached](data, 0xfffff'u32, recent)
+    if finalPage.access != PageAccess.Inaccessible:
       return MachineResult[ScalarSpan](status: MachineError.Panic)
     return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(0xfffff000'u32))
   if start < 0x10000'u64:
@@ -433,10 +450,9 @@ proc scalarSpan[Cached, Writing: static[bool]](memory: Memory, address: MemoryAd
     return MachineResult[ScalarSpan](status: MachineError.Panic)
   let firstPage = uint32(start div 4096)
   let lastPage = uint32((start + uint64(byte(width)) - 1) div 4096)
-  let first = scalarSlot[Cached](data, firstPage, recent)
-  var firstAccess = PageAccess.Inaccessible
-  if first < data.pages.len and uint32(data.pages[first].index) == firstPage:
-    firstAccess = data.pages[first].access # Missing sparse slots never grant byte access.
+  let firstResolved = scalarPage[Cached](data, firstPage, recent)
+  let first = firstResolved.slot
+  let firstAccess = firstResolved.access
   if firstPage == lastPage:
     # A complete single-page scalar needs one presence/permission decision and no second-page ordering.
     if firstAccess == PageAccess.Inaccessible or (Writing and firstAccess != PageAccess.ReadWrite):
@@ -446,10 +462,9 @@ proc scalarSpan[Cached, Writing: static[bool]](memory: Memory, address: MemoryAd
     return MachineResult[ScalarSpan](status: MachineError.None, completed: ScalarSpan(
       first: first, last: first, offset: int(start mod 4096), firstCount: count, count: count))
   # The remaining access crosses exactly two pages; complete presence checks still precede write permissions.
-  let last = scalarSlot[Cached](data, lastPage, recent)
-  var lastAccess = PageAccess.Inaccessible
-  if last < data.pages.len and uint32(data.pages[last].index) == lastPage:
-    lastAccess = data.pages[last].access
+  let lastResolved = scalarPage[Cached](data, lastPage, recent)
+  let last = lastResolved.slot
+  let lastAccess = lastResolved.access
   if firstAccess == PageAccess.Inaccessible:
     return MachineResult[ScalarSpan](status: MachineError.Fault, failedPage: PageAddress(firstPage * 4096'u32))
   if Writing and lastAccess == PageAccess.Inaccessible:
@@ -635,7 +650,8 @@ proc newScalarMemoryWriter*(memory: Memory): MachineResult[ScalarMemoryWriter] =
   ## Retain a genuine immutable base; working vectors/chunks allocate only after a complete successful scalar preflight.
   if memory.data == nil: return MachineResult[ScalarMemoryWriter](status: MachineError.InvalidOwner)
   MachineResult[ScalarMemoryWriter](status: MachineError.None, completed:
-    ScalarMemoryWriter(base: memory, pages: @[], dirty: @[], active: false, recent: [-1, -1]))
+    ScalarMemoryWriter(base: memory, pages: @[], dirty: @[], active: false,
+        recent: emptyScalarHints()))
 
 proc cloneWriterChunk(writer: ScalarMemoryWriter, slot, chunk: int, mask: byte) {.noinline.} =
   ## Keep allocator/TLS work on the first-write path; callers prove this chunk is not yet private.
@@ -659,13 +675,22 @@ func writerScalar(writer: ScalarMemoryWriter, source: MemoryData, slot, offset,
   if writer.active: pageScalar(writer.pages[slot], offset, count)
   else: pageScalar(source.pages[slot], offset, count)
 
-proc rememberScalarSpan(writer: ScalarMemoryWriter, span: ScalarSpan) =
-  ## Only complete successful preflight supplies slots; epoch sealing retains their exact sorted page positions.
+func captureScalarHint(data: MemoryData, slot: int): ScalarPageHint {.inline.} =
+  ## Complete successful preflight supplies a present slot; read copied metadata while its immutable owner is retained.
+  ScalarPageHint(slot: slot, page: data.pages[slot].index, access: data.pages[slot].access)
+
+proc rememberScalarSpan(writer: ScalarMemoryWriter, span: ScalarSpan, data: MemoryData) {.inline.} =
+  ## Private writes and epoch transfer preserve page indices/access/positions, so exact facts survive sealing without owners.
   if span.first != span.last:
-    writer.recent = [span.first, span.last]
-  elif writer.recent[0] != span.first:
+    if writer.recent[0].slot != span.first or writer.recent[1].slot != span.last:
+      # A hot ordered pair needs no header reload; a newly visited pair captures both validated metadata observations.
+      writer.recent = [captureScalarHint(data, span.first), captureScalarHint(data, span.last)]
+  elif writer.recent[0].slot != span.first:
+    # Reuse the second fact during ordinary MRU rotation instead of chasing an unchanged page header again.
+    let first = if writer.recent[1].slot == span.first: writer.recent[1]
+      else: captureScalarHint(data, span.first)
     writer.recent[1] = writer.recent[0]
-    writer.recent[0] = span.first
+    writer.recent[0] = first
 
 proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
     width: AccessWidth): MachineResult[RegisterValue] =
@@ -676,7 +701,7 @@ proc load*(writer: nil ScalarMemoryWriter, address: MemoryAddress,
   let checked = scalarSpan[true, false](writer.base, address, width, writer.recent)
   if checked.error != MachineError.None: return failure[RegisterValue, ScalarSpan](checked)
   let span = checked.value
-  rememberScalarSpan(writer, span)
+  rememberScalarSpan(writer, span, source)
   var value = writerScalar(writer, source, span.first, span.offset, span.firstCount)
   if span.firstCount < span.count:
     # Full preflight precedes both reads; the remaining suffix proves a bounded sub-word shift.
@@ -700,7 +725,7 @@ proc store*(writer: nil ScalarMemoryWriter, address: MemoryAddress, width: Acces
         index]) # Retain immutable source pages through checked indexed reads.
     writer.active = true
   let span = checked.value
-  rememberScalarSpan(writer, span)
+  rememberScalarSpan(writer, span, source)
   prepareWriterSpan(writer, span.first, span.offset, span.firstCount)
   if span.firstCount < span.count:
     prepareWriterSpan(writer, span.last, 0, span.count-span.firstCount)
@@ -720,6 +745,7 @@ proc snapshotMemory*(writer: nil ScalarMemoryWriter): MachineResult[Memory] =
     return MachineResult[Memory](status: MachineError.None,
         completed: writer.base) # No new write means no new snapshot allocation.
   let frozen = Memory(data: MemoryData(pages: move(writer.pages), limit: source.limit))
+  # Sealing preserves sorted slots, physical indices and permissions; any future mapping change must discard recent facts.
   writer.base = frozen
   writer.dirty = @[]
   writer.active = false # No mutable chunk/vector alias survives the transfer; future stores clone a new epoch.

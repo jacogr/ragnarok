@@ -151,6 +151,18 @@ proc lookupPressureCycle() =
   assert load(alias, MemoryAddress(69632), AccessWidth(1)).error == MachineError.None
   let readonly = store(alias, MemoryAddress(69632), AccessWidth(1), RegisterValue(0))
   assert readonly.error == MachineError.Fault and uint32(readonly.faultPage) == 69632
+  # A separately remapped owner cannot alter either an old writer's cached permission or its sealed snapshots.
+  let retained = snapshotMemory(alias).value
+  var writable = pageImage(retained, PageIndex(17)).value
+  writable.access = PageAccess.ReadWrite
+  let remapped = withPage(retained, writable).value
+  let remappedWriter = newScalarMemoryWriter(remapped).value
+  assert store(remappedWriter, MemoryAddress(69632), AccessWidth(1), RegisterValue(7)).value
+  assert pageImage(snapshotMemory(remappedWriter).value, PageIndex(17)).value.bytes[0] == 7
+  assert uint64(load(alias, MemoryAddress(69632), AccessWidth(1)).value) == 17
+  assert store(alias, MemoryAddress(69632), AccessWidth(1), RegisterValue(7)).error ==
+      MachineError.Fault
+  assert pageImage(retained, PageIndex(17)).value.access == PageAccess.ReadOnly
   let missing = load(writer, MemoryAddress(73728), AccessWidth(1))
   assert missing.error == MachineError.Fault and uint32(missing.faultPage) == 73728
   assert load(writer, MemoryAddress(65536), AccessWidth(3)).error == MachineError.InvalidWidth
@@ -162,7 +174,12 @@ proc lookupPressureCycle() =
   # A readable first RO page must not hide the missing second-page precedence for a crossing store.
   var only = images[0]
   only.access = PageAccess.ReadOnly
-  let separate = newScalarMemoryWriter(captureMemory([only], PageLimit(1)).value).value
+  let separate = newScalarMemoryWriter(captureMemory([only, images[2]], PageLimit(2)).value).value
+  assert load(separate, MemoryAddress(69631), AccessWidth(1)).error == MachineError.None
+  assert store(separate, MemoryAddress(81920), AccessWidth(1), RegisterValue(13)).value
+  let sealed = snapshotMemory(separate).value
+  assert pageImage(sealed, PageIndex(20)).value.bytes[0] == 13
+  # Rewarm the read-only fact after an unrelated write and sealed epoch, before testing missing-second precedence.
   assert load(separate, MemoryAddress(69631), AccessWidth(1)).error == MachineError.None
   let crossing = store(separate, MemoryAddress(69631), AccessWidth(2), RegisterValue(0))
   assert crossing.error == MachineError.Fault and uint32(crossing.faultPage) == 69632
