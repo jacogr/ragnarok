@@ -19,14 +19,16 @@ type
     valid: bool
     index: JumpIndex
     target: CodeAddress
+  SecondaryPrices = ref object ## A bounded private spill owner allocates only after four successful distinct dynamic prices.
+    entries: array[128, BlockChargeEntry]
+    replaceUpper: array[64, bool]
   ExecutionCache = object ## Invocation-local prices retain their policy; four exact-tagged dynamic targets never certify paid gas.
     valid: bool
     start: CodeAddress
     charge: BlockGas
     recent: array[3, BlockChargeEntry]
     next: range[0..2]
-    entries: array[16, BlockChargeEntry]
-    replaceUpper: array[8, bool]
+    secondary: nil SecondaryPrices
     targets: array[4, DynamicTargetEntry]
   InstructionCache = object ## Thirty-two genuine scalar results retain their natural first slot; paired alternatives and bounded replacement belong only to this invocation.
     entries: array[32, ProgramResult[Instruction]]
@@ -283,20 +285,30 @@ func initExecutionCache(): ExecutionCache =
   ## New invocation/limit pairs explicitly start with no valid hot/secondary entries or inherited replacement progress.
   ExecutionCache(valid: false, start: CodeAddress(0), charge: BlockGas(0),
     recent: default(array[3, BlockChargeEntry]), next: 0,
-    entries: default(array[16, BlockChargeEntry]), replaceUpper: default(array[8, bool]),
+    secondary: nil,
     targets: default(array[4, DynamicTargetEntry]))
 
 proc cachedSecondaryCharge(cache: ExecutionCache, start: CodeAddress,
     needed: var uint64): bool {.noinline.} =
-  ## A bounded secondary table handles larger working sets without expanding the primary/recent hot loop.
-  let slot = int((uint64(start)*11400714819323198485'u64) shr 61)
-  if cache.entries[slot].valid and uint64(cache.entries[slot].start) == uint64(start):
-    needed = uint64(cache.entries[slot].charge)
+  ## Four-hot-price invocations allocate nothing; an exact-tagged two-way spill retains only successful owned prices.
+  let table = cache.secondary
+  if table == nil: return false
+  let slot = int((uint64(start)*11400714819323198485'u64) shr 58)
+  if table.entries[slot].valid and uint64(table.entries[slot].start) == uint64(start):
+    needed = uint64(table.entries[slot].charge)
     return true
-  elif cache.entries[slot+8].valid and uint64(cache.entries[slot+8].start) == uint64(start):
-    needed = uint64(cache.entries[slot+8].charge)
+  elif table.entries[slot+64].valid and uint64(table.entries[slot+64].start) ==
+      uint64(start):
+    needed = uint64(table.entries[slot+64].charge)
     return true
   false # Full address tags prevent a collision from authorizing the wrong price.
+
+proc insertSecondary(table: SecondaryPrices, start: CodeAddress, charge: BlockGas) =
+  ## The exclusive invocation owner mutates at most one fixed set; no guest balances or failed simulations enter this table.
+  let slot = int((uint64(start)*11400714819323198485'u64) shr 58)
+  let destination = if table.replaceUpper[slot]: slot+64 else: slot
+  table.entries[destination] = BlockChargeEntry(valid: true, start: start, charge: charge)
+  table.replaceUpper[slot] = not table.replaceUpper[slot]
 
 proc cachedCharge(cache: ExecutionCache, start: CodeAddress,
     needed: var uint64): bool {.inline.} =
@@ -317,16 +329,17 @@ proc rememberCharge(cache: var ExecutionCache, start: CodeAddress, charge: Block
     cache.start = start
     cache.charge = charge
   else:
+    if cache.secondary == nil and cache.recent[cache.next].valid:
+      # The fifth distinct successful miss justifies one bounded allocation. Seed only the three genuine preceding hot facts.
+      let table = SecondaryPrices(entries: default(array[128, BlockChargeEntry]),
+        replaceUpper: default(array[64, bool]))
+      for entry in cache.recent: insertSecondary(table, entry.start, entry.charge)
+      cache.secondary = table
+    let table = cache.secondary
+    if table != nil: insertSecondary(table, start, charge)
     cache.recent[cache.next] = BlockChargeEntry(valid: true, start: start, charge: charge)
     if cache.next == 2: cache.next = 0
     else: inc cache.next # The 0..2 domain and branch prove the next index; no guest-length counter can wrap.
-    let slot = int((uint64(start)*11400714819323198485'u64) shr 61)
-    if cache.replaceUpper[slot]:
-      cache.entries[slot+8] = BlockChargeEntry(valid: true, start: start, charge: charge)
-    else:
-      cache.entries[slot] = BlockChargeEntry(valid: true, start: start, charge: charge)
-    cache.replaceUpper[slot] = not cache.replaceUpper[
-        slot] # Insertion alternates two fixed ways; hits retain read-only hot lookup.
 
 
 func initWorkingMemory(memory: Memory, buffered: bool): WorkingMemory =
