@@ -1027,5 +1027,27 @@ def current_stf_supervised_handoff_corpus(compiler, report, checks, libraries):
 
 
 
+@CORPORA.case
+def current_stf_authorization_assign_corpus(compiler, report, checks, libraries):
+    """Compare ordered authorization queue replacement, handoff and same-block posterior-queue pools against full maps."""
+    from current_stf_authorization_assign_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_authorization_assign', 'current_stf_transfers', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-authorization-assign-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-authorization-assign', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent GP assigner handoff, posterior queue selection and complete C1/C2/C12 maps')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-authorization-assign-corpus', expected)
+    announce('independent authorization assignment whole STF maps', corpus['passed'])
+    return corpus
+
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run
