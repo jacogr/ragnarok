@@ -6,8 +6,8 @@
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, storage_light_journal]
 import ../../../src/storage/[light_journal_cache, light_journal_replay, light_journal_manifest,
-  light_delta, light_snapshot, managed_io, managed_manifest, file_errors]
-import ../../../src/codec/bounded
+  light_delta, light_snapshot, light_state_cache, state_proof, managed_io, managed_manifest, file_errors]
+import ../../../src/codec/[bounded, state_trie]
 proc joined(anchor: seq[byte], one, two: PreparedLightDelta, cut: int): seq[byte] =
   ## Independently concatenate a complete first frame and an explicitly selected second-frame prefix.
   result = anchor
@@ -45,7 +45,19 @@ proc checkInput(path: string, input: seq[byte], fixture: LightJournalFixture,
   if opened == FileError.None:
     assert owner.preparedSnapshot.value.bytes == whole.value.snapshot.bytes, "exact whole-buffer successor"
     assert uint64(owner.sequence.value) == uint64(whole.value.sequence), "exact whole-buffer sequence"
+    let retained = owner.preparedSnapshot.value
+    let reader = owner.snapshot.value
     assert owner.close == FileError.None, "retire confirmed stream owner"
+    assert retained.encodedBytes == whole.value.snapshot.encodedBytes, "anchor or successor survives private checkpoint scope and native close"
+    for first in [0'u8, 255'u8]:
+      # Both present and authenticated-absence results belong to retained immutable evidence, not the retired checkpoint locals.
+      let found = reader.lookup(lightKey(first))
+      let expected = whole.value.snapshot.cache.lookup(lightKey(first))
+      assert found.error == expected.error, "retained stream reader preserves knowledge"
+      if found.error == LightCacheError.None:
+        assert found.value.kind == expected.value.kind, "retained stream reader preserves presence and absence"
+        if found.value.kind == StateLookupKind.Present:
+          assert found.value.bytes == expected.value.bytes, "retained stream values outlive native owner"
   else:
     assert not owner.opened, "refused stream publishes no owner"
   assert readFile(lightChild(path, ManagedFileKind.Journal)) == lightText(input), "strict read preserves exact journal bytes"
@@ -54,7 +66,9 @@ proc openCycle(path: string, fixture: LightJournalFixture) =
   var owner = default(LightJournalCache)
   assert openLightJournalCache(owner, path, fixture.config) == FileError.None, "strict cycle reopen"
   assert uint64(owner.sequence.value) == 2, "strict cycle sequence"
+  let retained = owner.preparedSnapshot.value
   assert owner.close == FileError.None, "strict cycle retirement"
+  assert retained.encodedBytes == fixture.following.snapshot.encodedBytes, "scoped replay successor survives owner retirement"
 proc main() {.raises.} =
   ## Independently authored fixture transitions anchor exact progress, malformed boundaries and all actual native read/barrier refusals.
   let fixture = lightFixture()

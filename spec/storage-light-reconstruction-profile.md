@@ -105,3 +105,51 @@ The next measured-memory hypothesis is to end private checkpoint extraction/resu
 before replay starts advancing. The current reopen scopes appear to retain the initial checkpoint
 while later successor images are reconstructed. Confirm the effect using the same matched panel
 and preserve every failure/EOF/held-inode check before accepting a change.
+
+## Scoped replay checkpoint ownership
+
+The selected checkpoint read, take/restore result and anchor-start result now leave a private
+initialization scope before the replay loop advances. Replay progress retains the initial
+checkpoint until a verified first successor replaces it; later frames no longer overlap that
+otherwise unused initial image. A checkpoint-only journal continues to retain its admitted
+checkpoint. The owner still publishes only after complete replay and final held-inode/EOF
+revalidation, and every failure retires native resources without changing forensic bytes.
+
+The first matched three-round panel (`build/storage-db5-lifetime-panel/`) observed journal and
+batch peak RSS of 22.562/45.344 MiB for 64/1,024-byte values, versus 27.078/53.812 MiB before
+scoping. This is about 16.7%/15.7% lower on these fixtures. Full-image peak RSS stayed
+17.734/36.766 MiB. Canonical bytes and hash/write/sync/rename counts match. Ordinary journal
+reopen medians were 106.241/186.149 ms; small timing differences from the bulk-copy candidate
+are not independently claimed as an improvement.
+
+Streaming parity checks additionally retain the selected image and cache reader after native
+close for anchor-only and completed-frame cases. They compare present, absent and unknown
+knowledge and only extract bytes from present values. The 1,000-cycle stream loop also checks
+that each retained final successor survives owner close before leaving its own retirement scope.
+
+The final interleaved ownership comparison used the frozen bulk-copy and scoped-replay
+binaries with three warmups and ten measured rounds per mode/size/binary (156 fresh consumers,
+`build/storage-db5-lifetime-ab/`). Only `light_journal_cache.nim` differs among measured source
+inputs; native objects and provider/compiler pins match. It confirmed:
+
+| Value bytes | Mode | Peak RSS MiB before → scoped | Reopen ms before → scoped |
+| ---: | --- | ---: | ---: |
+| 64 | Full image | 17.734 → 17.734 | 20.089 → 20.177 |
+| 64 | Journal | 27.078 → 22.562 | 109.436 → 108.971 |
+| 64 | Batch | 27.078 → 22.562 | 110.058 → 109.421 |
+| 1,024 | Full image | 36.766 → 36.766 | 31.630 → 31.633 |
+| 1,024 | Journal | 53.812 → 45.344 | 188.263 → 187.209 |
+| 1,024 | Batch | 53.812 → 45.344 | 188.143 → 187.484 |
+
+Both observations support the memory reduction. Reopen timing is comparable; no additional
+speedup is claimed for the scope change. The remaining whole-image checksum cost follows the
+current canonical successor contract. Further performance work should establish a new measured
+bottleneck or explicitly evaluate a separate format/API tradeoff; weakening V1 authentication
+or changing pinned primitives is not part of these changes.
+
+Scoped-replay qualification passes the expanded streaming suite plus durable owner, repair,
+compaction, reclamation and journal-batch consumers, all with their 1,000-cycle equal-occupancy
+ARC witnesses. Grouped compaction/cleanup process-crash qualification also passes. Earlier
+bulk-copy qualification and its AddressSanitizer evidence cover the unchanged image-edit code.
+The expanded suite preserves every-prefix/every-frame-byte mutation parity, actual short reads,
+IO refusal, lease release and exact forensic-byte checks.
