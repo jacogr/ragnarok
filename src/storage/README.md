@@ -414,3 +414,9 @@ disk-indexed light-evidence schema, bounded-memory strict open/lookup, independe
 and explicit immutable publication. It specifies the next implementation boundaries; no paged
 runtime or consumer adoption is supplied by the contract. Full-node paging retains complete-graph
 validation requirements and a separate integration gate.
+
+`paged_codec.nim` supplies the first format boundary: checked dataset geometry, fixed page/index/
+manifest codecs, constant-space index ordering/coverage scans, proof framing and bounded postorder
+digest paths. Decoding CURRENT before opening an epoch and explicit header binding keep selection
+metadata separate from complete artifact/proof admission. It owns no files or resident dataset;
+streamed construction, paged lookups and native publication remain pending.

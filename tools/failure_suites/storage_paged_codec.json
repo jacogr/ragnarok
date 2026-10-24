@@ -1,0 +1,137 @@
+{
+  "source": "tests/native/storage_paged_codec_results.nim",
+  "build_name": "storage-paged-codec-results",
+  "crypto_library": "crypto",
+  "cases": [
+    {
+      "identity": {
+        "member": "result",
+        "origin": "default"
+      },
+      "arguments": [
+        "result",
+        "default"
+      ],
+      "name": "storage-paged-codec-result-default",
+      "diagnostic": "outcome.status == None",
+      "description": "Paged codec result default guard"
+    },
+    {
+      "identity": {
+        "member": "result",
+        "origin": "failed"
+      },
+      "arguments": [
+        "result",
+        "failed"
+      ],
+      "name": "storage-paged-codec-result-failed",
+      "diagnostic": "outcome.status == None",
+      "description": "Paged codec result failed guard"
+    },
+    {
+      "identity": {
+        "member": "geometry",
+        "origin": "default"
+      },
+      "arguments": [
+        "geometry",
+        "default"
+      ],
+      "name": "storage-paged-codec-geometry-default",
+      "diagnostic": "shape.ready",
+      "description": "Paged codec geometry default guard"
+    },
+    {
+      "identity": {
+        "member": "header",
+        "origin": "default"
+      },
+      "arguments": [
+        "header",
+        "default"
+      ],
+      "name": "storage-paged-codec-header-default",
+      "diagnostic": "header.ready",
+      "description": "Paged codec header default guard"
+    },
+    {
+      "identity": {
+        "member": "manifest",
+        "origin": "default"
+      },
+      "arguments": [
+        "manifest",
+        "default"
+      ],
+      "name": "storage-paged-codec-manifest-default",
+      "diagnostic": "manifest.ready",
+      "description": "Paged codec manifest default guard"
+    },
+    {
+      "identity": {
+        "member": "descriptor",
+        "origin": "default"
+      },
+      "arguments": [
+        "descriptor",
+        "default"
+      ],
+      "name": "storage-paged-codec-descriptor-default",
+      "diagnostic": "descriptor.ready",
+      "description": "Paged codec descriptor default guard"
+    },
+    {
+      "identity": {
+        "member": "path",
+        "origin": "default"
+      },
+      "arguments": [
+        "path",
+        "default"
+      ],
+      "name": "storage-paged-codec-path-default",
+      "diagnostic": "path.ready",
+      "description": "Paged codec path default guard"
+    },
+    {
+      "identity": {
+        "member": "path-bound",
+        "origin": "failed"
+      },
+      "arguments": [
+        "path-bound",
+        "failed"
+      ],
+      "name": "storage-paged-codec-path-bound-failed",
+      "diagnostic": "level < path.count",
+      "description": "Paged codec path-bound failed guard"
+    },
+    {
+      "identity": {
+        "member": "step",
+        "origin": "default"
+      },
+      "arguments": [
+        "step",
+        "default"
+      ],
+      "name": "storage-paged-codec-step-default",
+      "diagnostic": "step.ready",
+      "description": "Paged codec step default guard"
+    },
+    {
+      "identity": {
+        "member": "proof",
+        "origin": "default"
+      },
+      "arguments": [
+        "proof",
+        "default"
+      ],
+      "name": "storage-paged-codec-proof-default",
+      "diagnostic": "shape.ready",
+      "description": "Paged codec proof default guard"
+    }
+  ]
+}

@@ -1,9 +1,10 @@
 # Paged storage and bounded working sets
 
-Status: storage-only contract; no paged runtime, memory result or application adoption is
-implemented by this document. The first backend is an immutable, disk-indexed **light-evidence**
-store. Its selected dataset may exceed RAM while its private working set remains explicitly
-bounded. Existing complete-image/cache and full-node repository APIs keep their current contracts.
+Status: storage-only contract and pure paged-format codecs. No paged database reader/writer,
+memory qualification or application adoption is implemented. The first backend will be an
+immutable, disk-indexed **light-evidence** store whose selected dataset may exceed RAM while its
+private working set remains explicitly bounded. Existing complete-image/cache and full-node
+repository APIs keep their current contracts.
 
 Authority remains the pinned Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`
 Merklization M/B/L and the [proof/trust contract](storage-light-state-proofs.md). Local page hashes,
@@ -285,3 +286,40 @@ No performance or deployment-ceiling conclusion follows from this contract or a 
 fixture. Existing M1 framing/implemented-scope completion remains distinct from complete JAM state
 serialization and whole-client parity. Startup, StateStore/PVM/checkpoint adoption, network proof
 fetching, trust selection and full-node paged graph validation retain their separate scope gates.
+
+## Implemented format boundary
+
+`src/storage/paged_codec.nim` implements checked scalar geometry, exact header/descriptor/CURRENT
+codecs, one-record proof-transport framing, a constant-space first-error index scan and fixed-depth
+postorder digest-path planning/verification. Dataset arithmetic checks unsigned overflow and signed
+native addressability before evaluating offsets. CURRENT can be decoded against independently
+expected chain/root before opening an epoch; `validatePagedBinding` subsequently compares every
+shared header/selection field. Header counts and proof limits remain mandatory separate checks.
+
+All successful metadata/results have private fields and success/initialization-guarded accessors.
+Encoded transport is detached; page ordinals, offsets and local digests retain distinct nominal
+roles. The hash adapter uses 4,133 bytes of explicit page/domain scratch, with bounded scalar/path
+state and primitive-owned scratch additional. These are algorithmic codec extents, not a measured
+backend working set or process RSS ceiling. No native resources or dataset-sized arrays are owned.
+
+The native `storage_paged_codec` suite reproduces the independent empty/two-absence witnesses,
+checks every fixed-header/descriptor/manifest prefix and reserved byte, exact/trailing widths,
+identity/geometry/counter mismatches, count/page/power-of-two/offset limits and one-record framing
+through 249 nodes and cross-page values. An independent explicit postorder-tree oracle checks
+all real leaf/sibling positions across fifteen geometries; scalar-only deep geometry covers
+2^60 payload bytes without allocating the dataset. Changed pages/siblings/roots and provider
+refusal at each observed hash stage produce typed failure. Full-key ordering, gaps, aliases,
+missing/extra rows, empty and sticky failed scans are covered.
+
+Local verification uses `make unit SUITE=storage_paged_codec`, `make check-inventory` and the
+pinned formatter check. The selected strict guard runners cover ten runtime refusals with nine
+successful controls, five private-field rejections and two exact nominal call/position rejections.
+The native suite includes 1,000 complete codec/release cycles with all transport retired before
+ARC samples; observed live occupancy remains 192 bytes before/after in the checked ARC/Clang
+release build on macOS arm64. No Linux paging or above-RAM result follows.
+
+These codecs do **not** authenticate query proofs, validate an entire stored artifact, return
+UnknownKey/Absent/Present, open files or publish a head. A correctly hashed false proof still
+requires the later strict proof verifier to refuse it. Next work is replay-bound streamed
+construction and bounded reads with complete proof/index/tree/padding/EOF validation; native
+publication, reader pins, recovery and process/resource qualification remain separate gates.
