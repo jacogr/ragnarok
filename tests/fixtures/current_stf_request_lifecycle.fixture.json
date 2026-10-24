@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_REQUEST_LIFECYCLE",
+  "files": {
+    "current-stf-request-lifecycle.json": "3b9ffd9ed355d17c90f4ec198fe842d932ea8436ca205e23e4f63398fa8ba8e8"
+  },
+  "target": "current-stf-request-lifecycle.json"
+}
