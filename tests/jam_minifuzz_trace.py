@@ -11,21 +11,38 @@ PEER_REQUEST = b'\x00\x01'+(3).to_bytes(4, 'little')+bytes([0, 8, 0])+bytes(3)+b
 PEER_RESPONSE = b'\x00\x01'+(3).to_bytes(4, 'little')+bytes([0, 8, 0])+bytes(3)+b'\x08Ragnarok'
 
 
+def retained_sibling_queries(job):
+    """Count independently required original-last queries from the explicitly declared finite sibling window."""
+    capacity = job.get('fork_capacity',2)
+    assert type(capacity) is int and 1 <= capacity <= 64
+    pending = total = 0
+    for step in job['steps']:
+        if step['kind'] == 'V': pending = min(pending+1,capacity) # Every variant occupies one retained position.
+        elif pending:
+            total += min(pending,capacity-1);pending = 0 # Original-last itself consumes the newest position.
+    assert pending == 0
+    return total
+
+
 def exchanges(job):
     """Calculate every raw request/reply before execution; no target byte becomes an expected answer."""
     result = [(PEER_REQUEST, PEER_RESPONSE), (job['initialize'], b'\x02'+job['state'][:32]),
               (b'\x04'+digest(job['header']), b'\x05'+job['state'][32:])]
-    sibling = None
+    siblings = []
+    capacity = job.get('fork_capacity',2)
+    assert type(capacity) is int and 1 <= capacity <= 64
     for step in job['steps']:
         header = step['header']
         result.extend(((b'\x03'+step['block'], b'\x02'+step['state'][:32]),
                        (b'\x04'+digest(header), b'\x05'+step['state'][32:])))
         if step['kind'] == 'V':
-            sibling = header, step['state'] # Original-last publication must preserve this independent variant map.
-        elif sibling is not None:
-            result.append((b'\x04'+digest(sibling[0]), b'\x05'+sibling[1][32:]))
-            sibling = None
-    assert sibling is None and job['steps']
+            siblings = (siblings+[(header,step['state'])])[-capacity:] # Keep only independently known retained maps.
+        elif siblings:
+            retained = siblings[-(capacity-1):] if capacity > 1 else []
+            for header,state in retained:
+                result.append((b'\x04'+digest(header),b'\x05'+state[32:]))
+            siblings = []
+    assert not siblings and job['steps']
     result.append((b'\x04'+digest(job['header']), b'\x05'+job['state'][32:]))
     return result
 

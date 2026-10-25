@@ -87,3 +87,28 @@ class MinifuzzBoundaries(unittest.TestCase):
         for entry in pins['wheels'].values():
             self.assertTrue(entry['filename'].endswith('none-any.whl'))
             self.assertRegex(entry['sha256'], r'^[0-9a-f]{64}$')
+
+    def test_original_last_finite_sibling_queries(self):
+        """Nine variants leave seven retained variants after original-last occupies the eighth position."""
+        from collections import Counter
+        from state_layout_oracle import digest
+        from jam_minifuzz_trace import exchanges, retained_sibling_queries
+        state = bytes(32)+b'\0'
+        steps = [dict(kind='V',header=b'variant'+bytes([index]),block=b'block'+bytes([index]),state=state) for index in range(9)]
+        steps += [dict(kind='B',header=b'original',block=b'original-block',state=state),
+                  dict(kind='B',header=b'child',block=b'child-block',state=state)]
+        job = dict(header=b'seed',state=state,initialize=b'initialize',steps=steps,fork_capacity=8)
+        self.assertEqual(retained_sibling_queries(job),7)
+        queries = Counter(request[1:] for request,_ in exchanges(job) if request[:1] == b'\x04')
+        for index,step in enumerate(steps[:9]):
+            self.assertEqual(queries[digest(step['header'])],1 if index < 2 else 2)
+        # A one-position window retains the original alone, with no accidental negative-zero slice.
+        job['fork_capacity'] = 1
+        self.assertEqual(retained_sibling_queries(job),0)
+        queries = Counter(request[1:] for request,_ in exchanges(job) if request[:1] == b'\x04')
+        self.assertTrue(all(queries[digest(step['header'])] == 1 for step in steps[:9]))
+        for invalid in (0,65,True):
+            job['fork_capacity'] = invalid
+            with self.assertRaises(AssertionError): exchanges(job)
+        job['fork_capacity'] = 8;job['steps'] = steps[:9]
+        with self.assertRaises(AssertionError): exchanges(job)

@@ -11,6 +11,7 @@ import ../../src/state/[guarantors, report_policy]
 proc fuzzFullReplayConfig*(): FuzzBackendConfig =
   ## Return an independently owned full-geometry policy; trusted Parameters and all expected maps are supplied separately.
   result = fuzzGuestReplayConfig()
+  result.forkStates = ElementLimit(8) # Match the actual target sibling window; Tiny references retain their own two-state policy.
   var frame = result.candidate.reporting.admission.frame
   frame.cores = CoreCount(341)
   frame.validators = ValidatorCount(1023)

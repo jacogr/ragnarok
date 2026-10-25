@@ -27,9 +27,10 @@ class JamInterfaceCI(unittest.TestCase):
                         completed_sessions=2, planned_exchanges=9, completed_exchanges=9, signed_imports=3,
                         planned_local_missing_evidence=1, completed_local_missing_evidence=1,
                         planned_stream_recoveries=15, completed_stream_recoveries=15,
+                        planned_fork_evictions=6, completed_fork_evictions=6,
                         planned_host_profiles=2, completed_host_profiles=2, host_profiles=[
-                            dict(passed=True, false_success_control=True, parameters_sha256='a'*64, local_missing_evidence=1, stream_recoveries=15, completed_sessions=1, completed_exchanges=4),
-                            dict(passed=True, false_success_control=True, parameters_sha256='b'*64, local_missing_evidence=0, stream_recoveries=0, completed_sessions=1, completed_exchanges=5)]))
+                            dict(passed=True, false_success_control=True, parameters_sha256='a'*64, local_missing_evidence=1, stream_recoveries=15, fork_evictions=6, completed_sessions=1, completed_exchanges=4),
+                            dict(passed=True, false_success_control=True, parameters_sha256='b'*64, local_missing_evidence=0, stream_recoveries=0, fork_evictions=0, completed_sessions=1, completed_exchanges=5)]))
 
     def test_every_declared_child_is_required(self):
         """No missing, extra or failed case can hide behind another successful child."""
@@ -152,4 +153,15 @@ class JamInterfaceCI(unittest.TestCase):
             elif mutation == 'partial': row['completed_stream_recoveries'] -= 1
             elif mutation == 'negative': row['planned_stream_recoveries'] = -1
             else: row['host_profiles'][0]['stream_recoveries'] -= 1
+            self.assertFalse(interface.minifuzz_verified(row))
+
+    def test_fork_retention_completeness(self):
+        """Eviction and retirement cannot disappear while upstream replay and all other controls remain complete."""
+        import copy
+        for mutation in ('missing','partial','negative','substituted'):
+            row = copy.deepcopy(self.complete()['minifuzz'])
+            if mutation == 'missing': del row['completed_fork_evictions']
+            elif mutation == 'partial': row['completed_fork_evictions'] -= 1
+            elif mutation == 'negative': row['planned_fork_evictions'] = -1
+            else: row['host_profiles'][0]['fork_evictions'] -= 1
             self.assertFalse(interface.minifuzz_verified(row))

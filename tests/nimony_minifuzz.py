@@ -36,6 +36,7 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
     results = []
     local_controls = 0
     stream_recoveries = 0
+    fork_evictions = 0
     run.mkdir(parents=True)
     log_path = run/'target.log'
     with tempfile.TemporaryDirectory(prefix='jam-minifuzz-target-') as selected:
@@ -70,6 +71,11 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
                     if 'stream_recovery' in job:
                         from jam_fuzzer_stream_recovery import exercise as recover_stream
                         stream_recoveries += recover_stream(endpoint, job['stream_recovery'])
+                # Finite sibling retention is observed through the actual protocol, including local unknown-state closure.
+                for job, _ in planned:
+                    if 'fork_retention' in job:
+                        from jam_fuzzer_fork_retention import exercise as exercise_forks
+                        fork_evictions += exercise_forks(endpoint, job['fork_retention'])
                 for index, (_, pairs) in enumerate(planned):
                     result = replay(script, environment, endpoint, run/f'case-{index:04d}', pairs, spec=spec)
                     results.append(result)
@@ -87,7 +93,7 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
                 if process.poll() is None:
                     process.kill()
                     process.wait(timeout=10) # Failure/deadline cleanup targets only the process owned by this profile.
-    return dict(passed=True, completed_sessions=len(results), local_missing_evidence=local_controls, stream_recoveries=stream_recoveries,
+    return dict(passed=True, completed_sessions=len(results), local_missing_evidence=local_controls, stream_recoveries=stream_recoveries, fork_evictions=fork_evictions,
                 completed_exchanges=sum(result['completed_exchanges'] for result in results),
                 parameters_sha256=hashlib.sha256(parameters).hexdigest(), spec=spec, false_success_control=True,
                 log=str(log_path))
@@ -107,6 +113,8 @@ def exercise_plan(binary, policy_binary, script, environment, folder, jobs, evid
     assert evidence['expected_local_missing_evidence'] == local_controls
     stream_controls = sum(len(job['stream_recovery']['cases'])+1 for job in jobs if 'stream_recovery' in job)
     assert evidence['expected_stream_recoveries'] == stream_controls
+    fork_controls = sum(2 for job in jobs if 'fork_retention' in job)
+    assert evidence['expected_fork_evictions'] == fork_controls
     planned = [(job, exchanges(job)) for job in jobs]
     profiles = tuple(dict.fromkeys(job['parameters'] for job in jobs))
     folder = Path(folder)
@@ -118,6 +126,8 @@ def exercise_plan(binary, policy_binary, script, environment, folder, jobs, evid
         results.append(exercise_profile(binary, policy_binary, script, environment,
                                        run/f'profile-{index:02d}', selected, parameters))
     return dict(passed=True, planned_sessions=len(planned),
+                planned_fork_evictions=fork_controls,
+                completed_fork_evictions=sum(row['fork_evictions'] for row in results),
                 planned_stream_recoveries=stream_controls,
                 completed_stream_recoveries=sum(row['stream_recoveries'] for row in results),
                 planned_local_missing_evidence=local_controls,
