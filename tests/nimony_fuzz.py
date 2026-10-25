@@ -6,6 +6,7 @@
 These fixed adapter checks generate no random campaigns and do not substitute for polkajam-fuzz.
 """
 import hashlib
+import json
 import os
 from pathlib import Path
 import signal
@@ -99,6 +100,8 @@ def exercise(binary, policy_binary, folder):
     assert final_original == body and calculated_original == dict(after)
     continuation, continuation_state = sibling(dict(after), 0)
     reports = reporting_evidence(genesis)
+    from nimony_fuzz_guests import prepare_sessions, exercise_sessions
+    guest_jobs, guest_evidence = prepare_sessions(bytes.fromhex(json.loads(job['config'])['protocol_parameters']))
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     log_path = folder/'jam-fuzzer-target-process.log'
@@ -178,6 +181,7 @@ def exercise(binary, policy_binary, folder):
                     assert exchange(peer, b'\x04'+digest(reports['first'][:297])) == b'\x05'+reports['second'][32:]
                     assert exchange(peer, b'\x03'+reports['good']) == b'\x02'+reports['third'][:32]
                     assert exchange(peer, b'\x04'+digest(reports['good'][:297])) == b'\x05'+reports['third'][32:]
+                guest_result = exercise_sessions(endpoint, guest_jobs, guest_evidence)
                 process.send_signal(signal.SIGTERM)
                 assert process.wait(timeout=30) == 0
                 assert not endpoint.exists(), 'normal shutdown must remove its owned socket'
@@ -188,6 +192,6 @@ def exercise(binary, policy_binary, folder):
                     process.wait(timeout=10)
         assert 'FUZZ_SESSION_FAILED CandidateFailure MissingLookupAnchor' in log_path.read_text()
         assert parameters.read_text() == job['config']
-    return dict(passed=True, missing_environment=missing, signed_imports=8,
+    return dict(passed=True, guests=guest_result, missing_environment=missing, signed_imports=8,
                 consensus_rejections=2, local_missing_evidence=1, complete_state_queries=11, reconnects=4,
                 log=str(log_path), scope='fixed independent current-profile socket adapter checks; no generated campaign')
