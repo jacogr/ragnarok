@@ -1,0 +1,9 @@
+{
+  "base_sha256": "ce9749e0d683bcd23cc6b1e54368c256ba2d03daeebbdfeb6dd9c75707dd1081",
+  "cases": 5,
+  "successful_imports": 8,
+  "missing_evidence": 4,
+  "occupied_control": 1,
+  "expected_sha256": "55597679a11ec39a58d3dbffc6a8634583097a120bffb06f0c8eac41164e4c73",
+  "requests_sha256": "1bfb95ae6ceb0ce8b9dc7f42eb1ee7471fe304ee882912d237a340d025f3cbaa"
+}

@@ -344,6 +344,27 @@ def jam_fuzzer_ancestry_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_ancestry_retention_corpus(compiler, report, checks, libraries):
+    """Compare real reporting imports with exact independent maps and actual child-root evidence refusals."""
+    from jam_fuzzer_ancestry_retention_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf', 'current_stf_reporting', 'jam_fuzzer_ancestry_retention', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'jam-fuzzer-ancestry-retention-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_ancestry_retention_driver.nim',
+        'jam-fuzzer-ancestry-retention', crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
+    corpus = dict(build=compiled, passed=False, **evidence)
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'jam-fuzzer-ancestry-retention-corpus', expected)
+    announce('independent fuzzer bounded ancestry retention whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
 def jam_fuzzer_report_forks_corpus(compiler, report, checks, libraries):
     """Compare real reporting imports with exact independent maps and actual child-root evidence refusals."""
     from jam_fuzzer_report_forks_oracle import expected_observations

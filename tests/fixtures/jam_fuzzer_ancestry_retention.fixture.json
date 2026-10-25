@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_JAM_FUZZER_ANCESTRY_RETENTION",
+  "files": {
+    "jam-fuzzer-ancestry-retention.json": "fc4192939f840e7e14f15b13b8876620e1b0def6e7d4fc4d42583fe29c27c894"
+  },
+  "target": "jam-fuzzer-ancestry-retention.json"
+}

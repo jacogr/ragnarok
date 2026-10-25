@@ -52,3 +52,11 @@ reports naming a known incorrect child-committed root fail as WrongLookupState.
 Both leave the exact complete map and selected head unchanged before the genuine
 block succeeds. Expected bodies, maps and failure classes are calculated before
 native execution and their streams are frozen independently.
+
+The registered retention corpus tests exact333/666/999-byte evidence ceilings
+(297 actual header bytes plus36 membership bytes per retained record), alongside
+independent count ceilings. Five profiles compare eight successful complete-map
+transitions. Four lookups lose necessary membership/child evidence and fail
+locally without modifying the whole map or selected head. The three-header
+boundary control preserves the proof and reaches the real OccupiedCore consensus
+refusal instead. Expected retention outcomes and all maps precede execution.
