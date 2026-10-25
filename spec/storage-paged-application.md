@@ -559,3 +559,47 @@ native writer. An already-existing bootstrap namespace preserves NativeFailure/F
 a missing open preserves its native file failure. Closing a default unopened writer would instead
 return Uninitialized and must never overwrite that original refusal. Repeated initialize followed
 by independently trusted strict reopen is covered by the native facade suite.
+## Shared excluded light disk operations
+
+The existing fixed-address `DiskPublicationWorker` now admits distinct light publication and light
+retirement jobs alongside its full publication/current-publication/maintenance/retirement operations.
+They share the same capacity-one lock/condition lifecycle, host-only ticket namespace, nonwrapping
+generation, exclusive graph lease and joined shutdown. There is no additional IO thread or
+cancellation-as-rollback path. Passive prepared-job readiness checks occur only after locked
+capacity admission; Busy must never inspect an already leased store/job graph.
+
+Light operation completion selects `LightCompleted` or `LightRetired`, with guarded
+`LightStoreResult[LightStorageSnapshot]` and `LightStoreResult[PagedReclamation]` accessors.
+Full publication and retirement keep their original distinct types. Every activation retires its
+ARC temporaries before publishing Done. Collection or joined Done shutdown moves the actual
+selected result once. Only a shutdown that leaves a genuinely unexecuted Queued operation may
+return NotExecuted; entered IO always retains its actual success, Busy or uncertainty result.
+All result ownership hooks, initializers, inactive pointer families, admission paths, collection and
+joined close account for both new variants. Restarted workers have fresh ticket namespaces.
+
+The host must keep the unique disk owner, prepared job and **all** associated snapshot/head/view/
+witness/cache aliases alive and untouched through Done until collection or joined close. Native
+worker code changes no RPC/canonical owner. The host resumes or adopts application/RPC metadata
+only after collecting the actual outcome. Earlier retained snapshots remain readable once the
+lease ends, including after cleanup uncertainty.
+
+`light_disk_worker` exercises real native publication and retirement through normal collect,
+joined Done and immediate shutdown races; success, native write/read uncertainty and physical
+foreign-reader Busy; default/stale jobs and tickets; Done capacity; restart namespaces; repeated
+native owner lifetimes; and one-slot reuse across light publication, full retirement, light
+retirement and different-root light advancement. Stale jobs complete with typed refusal and zero
+native IO. The unchanged operation-independent lease/join model is rechecked with its safe base,
+three load-bearing failing mutants and reachable uncertain joined receipt, with serial/4-worker
+agreement. Actual typed payload routing remains a deterministic native test obligation. Per-thread
+allocator counters are not presented as whole-process worker memory measurements.
+
+Final shared-worker qualification: light disk-worker, legacy full disk-worker, current full
+disk-worker and full paged-facade suites pass on checked macOS arm64 and checked Linux amd64
+under Docker emulation. The existing paged facade's 1,000 direct capture/release cycles remain
+stable at 12,816 -> 12,816 occupied bytes on both platforms; this is not a whole-process/thread
+memory measurement. Five new/existing payload privacy checks, the scoped lease/join model and
+serial/4-worker controls, pinned formatting and semantic Smoke for 422 production modules plus
+peer pass locally. Qualified Linux image:
+`sha256:07f8124401f2025adcf4776729e786760a1e360b02cf75b92f0fd262c782f322`.
+Frozen source, exact native verdicts, model controls and platform records:
+`build/storage-db5-light-worker-verification.json`.

@@ -549,3 +549,10 @@ proc synchronize*(store: var LightPagedStore): LightStoreResult[StorageDurabilit
     store.quarantine() # A failed fresh barrier requires independent reopen.
     return nativeFailed[StorageDurability, StorageDurability](confirmed)
   LightStoreResult[StorageDurability](status: LightStoreError.None, completed: confirmed.value)
+
+func ready*(job: PreparedLightPublication): bool =
+  ## Passive worker admission distinguishes a fully prepared immutable target/source pair from default jobs.
+  job.source != nil and job.target != nil
+func ready*(job: PreparedLightRetirement): bool =
+  ## A queued cleanup job must retain its exact cache incarnation, current selection and expected predecessor.
+  job.owner != nil and job.current != nil and job.previous.initialized
