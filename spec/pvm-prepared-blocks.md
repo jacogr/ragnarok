@@ -631,3 +631,78 @@ distinguishes reproducible instruction counts from variable execution time and w
 that its basic branch/cache simulations do not model modern hardware closely. The
 PC-deferral and bounded-loop changes were tested together; this result does not prove
 that a narrower PC-only change would regress or improve runtime.
+
+
+## Exact-tagged scalar successor hints, 2026-10-25
+
+Each prepared segment may remember the last successfully resolved successor PC
+and an index-plus-one into its owner's bounded slot array. Zero means unlearned.
+Hints contain no destination reference, handler pointer or operation index. They
+cannot form an ownership cycle or retain evicted payloads. The existing
+invocation-owned current segment survives a transfer so its hint can be inspected
+without adding another retained predecessor owner. A failed hint uses the original
+`preparedChunk` path; only successful resolution learns a destination.
+
+A hint is never authority. Before using it, execution checks the successor PC,
+index bounds, current resident owner and its exact start PC. The owning program
+and policy are fixed; a same-PC replacement in that slot is therefore a genuine
+current segment for the same source. No saved address requires generation-based
+pointer validation. Evicted, displaced, absent and changed-PC targets fall back
+to normal lookup/preparation. Host continuations, whole-block pricing, instruction
+attempts, checked memory, operation records and handlers retain their existing
+semantics. Hints are exclusive-worker mutable facts under the existing busy guard.
+
+The header grows by 16 bytes on the measured arm64 target. Its actual `sizeof`
+enters the existing minimum-payload admission, segment capacity, resident-byte,
+peak-byte and eviction accounting; storage ceilings and policies do not change.
+For the maintained guests, every block/operation/hit/eviction observation matches
+the baseline. Resident and peak bytes include the additional header payload.
+
+The prepared suite retains all 139-opcode, segment, gas, attempt, host/refusal and
+fault checks. An additional two-slot witness learns a path, executes a different
+marked entry that replaces its destination with a different register result, and
+reruns the original path. Repeated calls compare every CPU field, memory byte and
+permission with dynamic execution, including low-gas and attempt limits. The
+witness joins the existing 1,000 balanced ARC lifetime cycles.
+
+### Qualified local comparison
+
+Baseline is scalar-window PR #1679 at `01c4ee54525f645a0f6e434db5b27c754ef7f59b`.
+The isolated candidate source SHA-256 is `8ee9fb64c33220d310a33c057faa3532f998b5eb4e48bb2971b09ff467f45dd9`.
+Pinned Nimony 4724f66c, ARC/Clang 21 checked release/speed with ThinLTO, Apple M1 Max.
+Both endpoints compile through identical source/cache/output paths from fresh
+private caches; the candidate's repeated build is byte-identical. All seven
+guest/size cases pass complete reference and source-snapshot checks in both orders.
+The 112 processes use 13 calls each: three warmups, then ten measured CPU samples.
+Wrong expected gas is rejected before a successful timing row. Local artifacts
+are retained under `build/pvm-port-lab/prepared-links`, outside this PR.
+
+CPU milliseconds below are reused medians, forward / reverse process order:
+
+| Guest | #1679 prepared | Successor hints | Learning port | Rust interpreted, reused |
+| --- | ---: | ---: | ---: | ---: |
+| pinky | 174.136 / 175.478 | 163.174 / 164.782 | 94.224 / 95.430 | 92.090 / 92.710 |
+| sieve | 5.658 / 5.636 | 4.979 / 4.905 | 3.409 / 3.427 | 3.561 / 3.530 |
+| minimal | 11.361 / 11.669 | 11.536 / 11.466 | 6.489 / 6.479 | 6.149 / 6.188 |
+| memset | 6.416 / 6.422 | 6.434 / 6.199 | 3.784 / 3.773 | 3.953 / 3.977 |
+
+Pinky uses 6.09–6.30% less CPU and sieve 12.01–12.97% in the two orders. Minimal
+and fill changes remain unproven: sample ranges overlap and/or the order-specific
+changes differ. Constructors and individual cold calls remain separate in the
+raw records. These are local measurements, not Linux CI or hardware counter data.
+
+The learning port has only the maintained executed core, predecoded/priced facts
+outside timing and an unbounded per-instance cache; it is an architectural control,
+not a complete independent interpreter or total lifecycle equivalent. Ragnarök
+creates fresh invocation memory staging inside each call; Rust's public-API reuse
+adapter resets input outside its execution clock. The target remains faster
+independent interpretation; these results improve Pinky/sieve without closing
+the full gap. No translated core or diagnostic instrumentation enters production.
+
++A separate four-call, clock-disabled diagnostic copy counts validated hints versus
++normal hash lookups. The final call avoids 4,338,676/5,285,285 lookups for Pinky,
++253,436/353,857 for sieve, 200,002/300,005 for minimal and 400,050/400,059 for fill.
++These are software dispatch counts, not preparation misses or hardware counters;
++fill's high hint rate alone does not establish a CPU gain. Diagnostic counters are
++absent from the measured and promoted runtime.
++

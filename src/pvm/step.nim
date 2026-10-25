@@ -1357,6 +1357,8 @@ type
     operations: seq[PreparedOperation]
     bytes: uint64
     price: uint64
+    successor: CodeAddress # Exact source PC for the last successfully resolved transition.
+    successorSlot: uint32  # Zero is unlearned; otherwise a bounded index plus one, never a retained destination.
   PreparedChunk = ref PreparedChunkData ## Private cache/continuation references keep active operations alive through synchronous callbacks.
   PreparedData = ref object ## Shared cache identity retains only immutable program facts, never CPU, memory, gas or host closures.
     source: Program
@@ -1810,14 +1812,31 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
   var frame = PreparedFrame(source: owner.source, info: cursor.info,
     memory: initWorkingMemory(cursor.memory, true), cache: initExecutionCache(),
     exitEffect: InstructionEffect(kind: StepExit.Continued))
+  var chunk = location.chunk # One invocation-owned segment survives transitions; links retain only scalar facts.
+  var at = location.next
   while remaining > 0:
     # A host continuation can reuse its still-live segment if the validated posterior PC matches its next operation.
-    var chunk = location.chunk
-    var at = location.next
     if chunk == nil or at >= chunk.operations.len or uint64(chunk.operations[
         at].address) != uint64(frame.info.pc):
       location.chunk = nil
-      chunk = preparedChunk(owner, frame.info.pc)
+      let predecessor {.cursor.} = chunk # The current local owner fixes this source segment through miss preparation.
+      var resolved: nil PreparedChunk = nil
+      if predecessor != nil and predecessor.successorSlot != 0 and
+          uint64(predecessor.successor) == uint64(frame.info.pc):
+        # A slot hint is never authority: validate bounds and the current resident's exact source PC after eviction.
+        let slot = int(predecessor.successorSlot-1)
+        if slot >= 0 and slot < owner.slots.len:
+          let cached {.cursor.} = owner.slots[slot]
+          if cached != nil and uint64(cached.start) == uint64(frame.info.pc):
+            resolved = cached
+            preparedIncrement(owner.info.hits)
+      if resolved == nil:
+        # Misses retain the complete existing bounded preparation/eviction path and learn only genuine successes.
+        resolved = preparedChunk(owner, frame.info.pc)
+        if predecessor != nil and resolved != nil:
+          predecessor.successor = frame.info.pc
+          predecessor.successorSlot = uint32(preparedSlot(owner, frame.info.pc)+1)
+      chunk = move(resolved)
       at = 0
       if chunk == nil:
         frame.info.pc = CodeAddress(0)
