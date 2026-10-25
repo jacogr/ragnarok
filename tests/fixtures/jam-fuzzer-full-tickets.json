@@ -1,0 +1,32 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "chains": 2,
+  "transitions": 6,
+  "submitted_per_chain": 20,
+  "ticket_input_sha256": "33fd373f2e8f06674b4638fb1ab3b42b8b8d5f849b9e567cdc5510e33069a4b6",
+  "successor_roots": [
+    [
+      "d54d3d6d3233fc8212ab9dfd85899885464147ebbd10352754220207fa38625b",
+      "f1d7a91ecd36c03b693393c7cfca73f58062475d4ca3a535312acaa9a97f1b0c",
+      "6cdb5462fa37ffe076e373945b8a28e7b7b17dc1864d19e9776a929ceb95ca34"
+    ],
+    [
+      "45809c59e9be3cedd7b83633112236fa85551842d0d37fbd9a124937abb1b0a0",
+      "9af29c21020e8b848b1260ba127fe5772762a2688fa04905c6c93e1e49aba29c",
+      "c0c2cbd153f5c262570c523e9d2d41934ecf4388ddde0739a8ccb92ec9833756"
+    ]
+  ],
+  "successor_checkpoint_sha256": [
+    [
+      "82b86d1d9b205cfad2405cc0d1340811908753ad546cc5447e52db50b8a5fb69",
+      "fb7d5381a5714e185287fbfec0d98cee597ed0915df3accf4333ce1f2e30005e",
+      "9ef24c458cd0e42fb42292dd37ba38d797cee3180a6ea6c58690dc0f8b5d7a3a"
+    ],
+    [
+      "4eb21ee7458beb4768159059d0ee1f0ccdbaff5bf88d8b36d414947d9771a9a5",
+      "8da9da4f75fb7a6bb863ae996ee73a33556a12888491b0bcce71f620f851ab41",
+      "6b58347f7d6581a0c4f767004cc6a6f9a10620f4ada39c656762eba4ade6e985"
+    ]
+  ],
+  "expected_sha256": "11175f2a8f5772d99163b5af66afdfe533e3a014eb5a58ae60735267031058df"
+}
