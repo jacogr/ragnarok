@@ -303,3 +303,24 @@ replay. Upstream minifuzz passed three sessions, nine imports and33 exact
 exchanges including sibling queries, plus its real mismatch control. All14
 focused Python tests and inventory passed; the previously formatted Nim/Rust
 source tree remains identical.
+
+## Guest checkpoint restarts with honest ancestry
+
+Each real slot6 guest checkpoint restarts with its actual header and slot5 parent
+membership, then admits a real slot7 report anchored at slot5 and expires it at
+slot12 before independently following both population rotations. The24 complete
+posterior maps preserve guest namespaces and accumulated history while checking
+that supplied parent membership is needed for the positive lookup.
+A separately signed slot7 report references authentic slot4 membership without
+the absent child5 header needed to prove its lookup root. The real socket owner
+must return the exact unchanged seed map and close locally when that evidence
+is missing; it must not fabricate a GP consensus refusal. Each of the three
+guest outcomes owns a separately declared mandatory local-evidence observation.
+
+Observed checkpoint validation: all24 restart and11 unchanged pending-dispute
+steps passed checked native replay. Actual upstream minifuzz passed three
+sessions,24 imports and60 exact exchanges, all three separately required local
+missing-evidence controls, and its real mismatch control. All14 focused Python
+tests and inventory passed; the pinned Nim/Rust formatting tree remains identical.
+The pending-report reference now preserves existing accumulated guest history
+through the foundation shift, retaining its empty deferred-queue precondition.

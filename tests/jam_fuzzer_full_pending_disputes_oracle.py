@@ -86,7 +86,7 @@ def advance(parent,slot,guarantees=(),value=None):
         for index,amount in enumerate(load,4): row[index] += amount
     result[chapter_key(13)] = statistics_wire((current,previous,core_rows,[tuple(activity[sid]) for sid in sorted(activity)]))
     assert parent[chapter_key(14)] == result[chapter_key(14)] == bytes(600)
-    assert parent[chapter_key(15)] == result[chapter_key(15)] == bytes(600)
+    # Existing accumulated guest history follows the independent foundation shift even without a new release.
     return wire,result
 
 

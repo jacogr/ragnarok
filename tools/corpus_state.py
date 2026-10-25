@@ -889,6 +889,16 @@ def jam_fuzzer_full_epochs_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_epoch_checkpoints_corpus(compiler, report, checks, libraries):
+    """Compare honest guest checkpoint restarts through both physical population rotations."""
+    import jam_fuzzer_full_epoch_checkpoints_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_population_ring_input', 'jam_full_guest_ring_input', 'jam_fuzzer_full_epoch_checkpoints',
+         'jam_fuzzer_full_epoch_guests'), headers=True, profiles=[full.parameters()]*len(reference.MODES))
+
+
+@CORPORA.case
 def jam_fuzzer_full_epoch_forks_corpus(compiler, report, checks, libraries):
     """Compare epoch-crossing siblings, original-last state and canonical population rotation over real guest maps."""
     import jam_fuzzer_full_epoch_forks_oracle as reference
