@@ -436,10 +436,10 @@ let linkedPrice = uint64(blockGas(linkedProgram, CodeAddress(0), GasCycleLimit(1
   3*uint64(blockGas(linkedProgram, CodeAddress(4), GasCycleLimit(100000)).value) +
   uint64(blockGas(linkedProgram, CodeAddress(10), GasCycleLimit(100000)).value)
 for slots in [1'u32, 2, 65536]:
-  # The maximum supported sparse index exercises high32-bit stream coordinates without expanding guest code.
+  # Both tiny and maximum supported sparse indices must preserve the same source-bound execution.
   let linkedCache = cache(linkedProgram, blocks = slots)
   for steps in [0'u64, 1, 2, 3, 4, 5, 8, 9, 10]:
-    # Synthetic charge/link nodes cannot consume attempts or make an old slot tag authorize a different block.
+    # Replaced cache slots cannot alter guest attempts or select another block.
     compare(linkedSource, linkedCache, steps, 100000)
   for repeat in 0..<4:
     # Repeated fresh calls alternate all three guest block tags while the source snapshot remains unchanged.
@@ -453,7 +453,7 @@ for slots in [1'u32, 2, 65536]:
     # The fixture must actually replace cached blocks rather than only taking already-present links.
     assert preparedInfo(linkedCache).value.evictions > 0
 
-# Split immediate words must retain all64 bits even when the compact payload's high word has its sign bit set.
+# Prepared immediate operands must retain all64 bits, including the highest sign bit.
 let wideProgram = owner([@[20'u8, 7, 16, 50, 84, 118, 152, 186, 220, 254], @[50'u8, 8]])
 let wideSource = captureMachine(wideProgram, mapped,
   MachineInfo(gas: MachineGas(1000), registers: linkedRegisters)).value

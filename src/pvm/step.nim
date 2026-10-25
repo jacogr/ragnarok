@@ -1332,41 +1332,28 @@ type
     byteLimit*: PreparedByteLimit
     blockLimit*: PreparedBlockLimit
     cycleLimit*: GasCycleLimit
-  PreparedOffset = distinct uint32 ## Private stream coordinates encode one bounded cache slot and a node; no guest address is narrowed.
-  PreparedArguments = object ## Sixteen copied bytes hold operation-specific immediate bits and genuine bounded register coordinates.
-    a, b, c: uint32
-    registers: RegisterSlots
-  PreparedSite = object ## Source metadata stays outside hot arguments; cached links are exact-tag checked before use.
-    address: CodeAddress
-    link: PreparedOffset
-    span, flags: byte
-  PreparedFrame = object ## One invocation owns all CPU/memory/targets, rare outcomes and its pinned current block; owners retain no frames.
+  PreparedFrame = object ## One invocation owns mutable CPU/memory/targets and rare exit metadata; no reusable cache retains it.
     source: Program
-    owner: PreparedData
-    chunk: PreparedChunk
-    info: MachineInfo # Guest PC is reconstructed only at observable boundaries; stream offsets own ordinary execution position.
+    info: MachineInfo
     memory: WorkingMemory
     cache: ExecutionCache
-    remaining: uint64
-    error: StepError
     exitEffect: InstructionEffect
-    resume: PreparedOffset
-  PreparedHandler = proc(frame: var PreparedFrame,
-      offset: PreparedOffset): PreparedOffset {.nimcall, raises: [].}
-  PreparedOperation = object ## Fixed preparation scratch binds one selected handler, compact arguments and genuine source facts.
+    error: StepError # Rare refusal is inspected only after a handler stops; no failed invocation publishes a machine.
+  PreparedHandler = proc(frame: var PreparedFrame, operation: PreparedOperation): bool {.nimcall,
+        raises: [].}
+  PreparedOperation = object ## A sealed private record retains only handler-ready facts from one genuine source-owned decode.
     handler: nil PreparedHandler
-    arguments: PreparedArguments
-    site: PreparedSite
-  PreparedChunkData = object ## One lazily prepared stream block owns parallel immutable arrays and a successful cached price, with no block back-references.
+    address, next, target: CodeAddress
+    x, y: uint64
+    registers: RegisterSlots
+    validTarget, fallthrough, endsBlock: bool
+  PreparedChunkData = object ## One immutable operation array has no back-reference to its program or cache owner.
     start: CodeAddress
-    handlers: seq[nil PreparedHandler]
-    arguments: seq[PreparedArguments]
-    sites: seq[PreparedSite]
-    guests: int
+    operations: seq[PreparedOperation]
     bytes: uint64
     price: uint64
-  PreparedChunk = ref PreparedChunkData ## Invocation and host continuations pin a block independently of cache replacement.
-  PreparedData = ref object ## Shared cache identity retains only source facts; no machine, working memory or host closure escapes into it.
+  PreparedChunk = ref PreparedChunkData ## Private cache/continuation references keep active operations alive through synchronous callbacks.
+  PreparedData = ref object ## Shared cache identity retains only immutable program facts, never CPU, memory, gas or host closures.
     source: Program
     limits: PreparedLimits
     slots: seq[nil PreparedChunk]
@@ -1375,32 +1362,9 @@ type
     busy: bool
   PreparedProgram* = object ## Copies share bounded lazily learned facts; exclusive worker use is required and synchronous reentry is refused.
     data: nil PreparedData
-  PreparedLocation = object ## A rare host continuation pins its block and next stream node, without retaining callback state.
+  PreparedLocation = object ## Invocation-only continuation retains the current operation array across host callbacks, without retaining callback state.
     chunk: nil PreparedChunk
-    offset: PreparedOffset
-
-const
-  preparedStride = 512'u32 ## At most 256 guest nodes plus price/bridge fit one fixed, nonoverlapping stream-coordinate range.
-  preparedStop = PreparedOffset(high(uint32)) ## This reserved coordinate lies beyond all 65536 bounded cache slots.
-  preparedFallthrough = 1'u8 ## Only genuine successful decoding grants a physical executable successor.
-  preparedTarget = 2'u8 ## Only genuine successful decoding grants static target membership.
-
-func preparedIndex(offset: PreparedOffset): int {.inline.} =
-  ## A power-of-two node stride keeps local extraction independent of guest code size.
-  int(uint32(offset) and (preparedStride-1))
-
-func preparedNext(offset: PreparedOffset): PreparedOffset {.inline.} =
-  ## A sealed block has at most 258 nodes; valid cache coordinates stay below 2^25, leaving room for this successor.
-  PreparedOffset(uint32(offset)+1)
-
-func preparedPair(low, upper: uint32): uint64 {.inline.} =
-  ## Reassemble complete register-width immediate/address bits without signed host arithmetic.
-  uint64(low) or (uint64(upper) shl 32)
-
-func preparedSigned(value: uint32): uint64 {.inline.} =
-  ## GP immediates of at most four bytes retain their decoder-produced sign extension in compact argument slots.
-  if (value and 0x80000000'u32) != 0: uint64(value) or 0xffffffff00000000'u64
-  else: uint64(value)
+    next: int
 
 func error*[T](r: PreparationResult[T]): PreparationError =
   ## Inspect status without permitting retagging or fabricated payload selection.
@@ -1419,7 +1383,7 @@ proc newPreparedProgram*(source: Program, limits: PreparedLimits): PreparationRe
   if count == 0 or count > 65536:
     return PreparationResult[PreparedProgram](status: PreparationError.LimitExceeded)
   let indexBytes = count * uint64(sizeof(PreparedChunk))
-  let minimum = uint64(sizeof(PreparedChunkData)) + 3*uint64(sizeof(PreparedOperation))
+  let minimum = uint64(sizeof(PreparedChunkData)) + uint64(sizeof(PreparedOperation))
   if uint64(limits.bytes) < indexBytes or uint64(limits.bytes)-indexBytes < minimum:
     return PreparationResult[PreparedProgram](status: PreparationError.LimitExceeded)
   let owner = PreparedData(source: source, limits: limits,
@@ -1447,230 +1411,148 @@ proc preparedIncrement(value: var uint64) =
   ## Diagnostics saturate without changing execution or refusing a long-lived cache.
   if value != high(uint64): inc value
 
-proc preparedSlot(owner: PreparedData, pc: CodeAddress): int =
-  ## Mix full-width guest PCs with intentional wrapping hash arithmetic; the fixed sparse index bounds the result.
-  let word = uint64(pc)
-  int(((word xor (word shr 13))*0x9e3779b97f4a7c15'u64) mod uint64(owner.slots.len))
-
-proc preparedBase(owner: PreparedData, pc: CodeAddress): PreparedOffset {.inline.} =
-  ## Constructor slot limits bound this multiplication below 2^25; no guest PC is converted to an offset.
-  PreparedOffset(uint32(preparedSlot(owner, pc))*preparedStride)
-
-proc preparedChunk(owner: PreparedData, pc: CodeAddress): nil PreparedChunk {.raises: [].}
-  ## Forward declaration: misses prepare one bounded immutable block before publishing it.
-proc preparedPrice(owner: PreparedData, chunk: PreparedChunk): StepError {.raises: [].}
-  ## Forward declaration: successful whole-block pricing is cached separately from invocation-local paid gas.
-
-proc preparedFailure(frame: var PreparedFrame, reason: StepError): PreparedOffset {.inline.} =
-  ## Local failure records only its reason; no partial machine becomes selectable.
+proc preparedFailure(frame: var PreparedFrame, reason: StepError): bool {.inline.} =
+  ## A local refusal stops dispatch with only its reason; any old exit payload stays unselectable.
   frame.error = reason
-  preparedStop
+  false
 
-proc preparedExit(frame: var PreparedFrame, offset: PreparedOffset,
-    effect: InstructionEffect): PreparedOffset {.inline.} =
-  ## Materialize exactly the causing guest PC or terminal normalization before publishing any observable state.
-  frame.exitEffect = effect
-  frame.info.pc = if terminalExit(effect.kind): CodeAddress(0)
-    else: frame.chunk.sites[preparedIndex(offset)].address
-  if effect.kind == StepExit.Host:
-    # A callback resumes after its causing instruction and retains the same pinned source-site array.
-    frame.resume = preparedNext(offset)
-  preparedStop
-
-proc preparedEnter(frame: var PreparedFrame, pc: CodeAddress,
-    link: PreparedOffset): PreparedOffset =
-  ## Validate the original destination tag before following an offset; replaced slots never authorize a different guest PC.
-  let slot = int(uint32(link) div preparedStride)
-  if slot >= frame.owner.slots.len:
-    return preparedFailure(frame, StepError.InvalidPreparedProgram)
-  var chunk = frame.owner.slots[slot]
-  if chunk != nil and uint64(chunk.start) == uint64(pc):
-    # Exact-tagged hot links avoid recomputing the guest-PC hash and decoding a block.
-    preparedIncrement(frame.owner.info.hits)
-  else:
-    # Preparation may evict the current cache slot; the invocation retains its old block until this assignment completes.
-    chunk = preparedChunk(frame.owner, pc)
-  if chunk == nil:
-    # A non-executable destination has the same recursive guest panic as the existing interpreter.
-    frame.exitEffect = InstructionEffect(kind: StepExit.Panic)
-    frame.info.pc = CodeAddress(0)
-    return preparedStop
-  frame.chunk = chunk
-  link
-
-proc preparedCharge(frame: var PreparedFrame, offset: PreparedOffset): PreparedOffset =
-  ## Synthetic pricing does not consume a guest attempt and never turns an already paid block into a second charge.
-  if not frame.info.blockCharged:
-    let reason = preparedPrice(frame.owner, frame.chunk)
-    if reason != StepError.None: return preparedFailure(frame, reason)
-    if uint64(frame.info.gas) < frame.chunk.price:
-      return preparedExit(frame, offset, InstructionEffect(kind: StepExit.OutOfGas))
-    frame.info.gas = MachineGas(uint64(frame.info.gas)-frame.chunk.price)
-    frame.info.blockCharged = true
-  preparedNext(offset)
-
-proc preparedBridge(frame: var PreparedFrame, offset: PreparedOffset): PreparedOffset =
-  ## A storage split is not a guest branch or attempt; its successor enters with the existing block-paid flag.
-  let index = preparedIndex(offset)
-  let arguments = frame.chunk.arguments[index]
-  let site = frame.chunk.sites[index]
-  preparedEnter(frame, CodeAddress(preparedPair(arguments.a, arguments.b)), site.link)
+proc preparedSignal(frame: var PreparedFrame, exit: StepExit): bool {.inline.} =
+  ## Return one continuation bit; only stopped guest execution selects invocation-local exit metadata.
+  if exit == StepExit.Continued: return true
+  if exit notin {StepExit.Fault, StepExit.Host}:
+    # Fault/host handlers already installed their genuine payload; scalar exits carry no such metadata.
+    frame.exitEffect = InstructionEffect(kind: exit)
+  false
 
 proc preparedRegister[Code: static[int]](frame: var PreparedFrame,
-    offset: PreparedOffset): PreparedOffset =
-  ## Shared arithmetic consumes compact immutable operands; ordinary progress is only the next stream offset.
-  dec frame.remaining
-  let at = preparedIndex(offset)
-  let arguments = frame.chunk.arguments[at]
+    operation: PreparedOperation): bool =
+  ## A literal selected opcode specializes the shared arithmetic; the compact return carries no machine or metadata copy.
   var index: range[0..12] = 0
   var value = RegisterValue(0)
-  if not computeRegisterOperands(arguments.registers, preparedPair(arguments.a, arguments.b),
-      byte(Code), frame.info.registers, index, value, Code):
+  if not computeRegisterOperands(operation.registers, operation.x, byte(Code), frame.info.registers,
+      index, value, Code):
     return preparedFailure(frame, StepError.UnsupportedInstruction)
   frame.info.registers[index] = value
-  if (frame.chunk.sites[at].flags and preparedFallthrough) == 0:
+  frame.info.pc = operation.next
+  if not operation.fallthrough:
     return preparedFailure(frame, StepError.InvalidMachine)
-  preparedNext(offset)
+  preparedSignal(frame, StepExit.Continued)
 
 proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStore: static[bool]](
-    frame: var PreparedFrame, offset: PreparedOffset): PreparedOffset =
-  ## Keep width/sign/operand roles specialized and preserve every permission, crossing and atomic scalar check.
-  dec frame.remaining
-  let at = preparedIndex(offset)
-  let arguments = frame.chunk.arguments[at]
-  let slots = arguments.registers
+    frame: var PreparedFrame, operation: PreparedOperation): bool =
+  ## Width/sign/address/source modes stay selected once; every scalar permission/fault check uses current invocation memory.
+  let slots = operation.registers
   var base = 0'u64
   when Indirect:
-    # Original register values are consumed before any aliased destination mutation.
+    # Load/register-store bases use B; immediate-store bases use original A.
     when Loading or not ImmediateStore: base = uint64(frame.info.registers[slots.bIndex])
     else: base = uint64(frame.info.registers[slots.aIndex])
-  let address = MemoryAddress((base and 0xffffffff'u64)+uint64(arguments.a))
+  let address = MemoryAddress((base and 0xffffffff'u64)+(operation.x and 0xffffffff'u64))
   var failedPage = PageAddress(0)
   var reason = MachineError.None
   when Loading:
-    # All loads use the existing checked invocation-local memory path.
+    # Read the original aliased base before publishing a destination register.
     let loaded = loadWorking(frame.memory, address, AccessWidth(byte(Width)))
     reason = loaded.error
     if reason == MachineError.Fault: failedPage = loaded.faultPage
     if reason == MachineError.None:
       var value = uint64(loaded.value)
       when Signed:
-        # Literal widths below eight make both sign-extension shifts well-defined.
+        # Only signed widths below eight use these compile-time-safe shifts.
         let bits = Width*8
         if (value and (1'u64 shl (bits-1))) != 0:
           value = value or (high(uint64) shl bits)
       frame.info.registers[slots.aIndex] = RegisterValue(value)
   else:
-    # Immediate stores retain complete sign-extended register-width bits in the compact payload.
-    let value = when ImmediateStore: preparedPair(arguments.b, arguments.c)
-      else: uint64(frame.info.registers[slots.aIndex])
+    # Store source selection is fixed while register contents remain invocation-local.
+    let value = when ImmediateStore: operation.y else: uint64(frame.info.registers[slots.aIndex])
     reason = storeWorking(frame.memory, address, AccessWidth(byte(Width)), RegisterValue(value), failedPage)
   case reason
   of MachineError.None:
-    # A missing physical successor remains a local refusal after the same original mutation.
-    if (frame.chunk.sites[at].flags and preparedFallthrough) == 0:
+    # Successful nonterminators require their validated physical successor.
+    if not operation.fallthrough:
       return preparedFailure(frame, StepError.InvalidMachine)
-    preparedNext(offset)
+    frame.info.pc = operation.next
+    preparedSignal(frame, StepExit.Continued)
   of MachineError.Fault:
-    preparedExit(frame, offset, InstructionEffect(kind: StepExit.Fault, failedPage: failedPage))
+    # Only the selected fault exit authorizes this invocation-local page payload.
+    frame.exitEffect = InstructionEffect(kind: StepExit.Fault, failedPage: failedPage)
+    preparedSignal(frame, StepExit.Fault)
   of MachineError.Panic:
-    preparedExit(frame, offset, InstructionEffect(kind: StepExit.Panic))
+    preparedSignal(frame, StepExit.Panic)
   of MachineError.AmbiguousAccessOrder:
     preparedFailure(frame, StepError.AmbiguousAccessOrder)
   else:
     preparedFailure(frame, StepError.InvalidMachine)
 
 proc preparedControl[Code: static[int]](frame: var PreparedFrame,
-    offset: PreparedOffset): PreparedOffset =
-  ## Guest control consumes one attempt and returns a validated prepared offset or a rare observable exit.
-  dec frame.remaining
-  let at = preparedIndex(offset)
-  let arguments = frame.chunk.arguments[at]
-  let site = frame.chunk.sites[at]
+    operation: PreparedOperation): bool =
+  ## Static destinations stay prepared; dynamic ordinals use the same checked source-bound resolver.
+  var outcome = StepExit.Continued
   when Code == 10:
-    # The source-bound causing PC remains exact even after many ordinary stream instructions.
-    if (site.flags and preparedFallthrough) == 0: return preparedFailure(frame,
-        StepError.InvalidMachine)
-    return preparedExit(frame, offset, InstructionEffect(kind: StepExit.Host,
-      callNumber: HostCallId(preparedPair(arguments.a, arguments.b)), callAddress: site.address))
+    # Host metadata is written only after its valid successor is established; the causing PC remains observable.
+    if not operation.fallthrough: return preparedFailure(frame, StepError.InvalidMachine)
+    frame.exitEffect = InstructionEffect(kind: StepExit.Host,
+      callNumber: HostCallId(operation.x), callAddress: operation.address)
+    return preparedSignal(frame, StepExit.Host)
   elif Code == 0:
-    return preparedExit(frame, offset, InstructionEffect(kind: StepExit.Panic))
+    outcome = StepExit.Panic
   elif Code == 2:
-    # Unlikely is an ordinary prepaid operation, including its physical-successor validation.
-    if (site.flags and preparedFallthrough) == 0: return preparedFailure(frame,
-        StepError.InvalidMachine)
-    return preparedNext(offset)
+    # Unlikely stays inside its prepaid block.
+    if not operation.fallthrough: return preparedFailure(frame, StepError.InvalidMachine)
+    frame.info.pc = operation.next
   elif Code == 50 or Code == 180:
-    # Resolve the wrapped original base before the unconditional load-and-jump mutation.
-    let slots = arguments.registers
+    # Read the original base before load-and-jump publishes an aliased destination.
+    let slots = operation.registers
     let base = when Code == 50: slots.aIndex else: slots.bIndex
-    let displacement = when Code == 50: preparedSigned(arguments.a) else: preparedSigned(arguments.b)
-    let address = (uint64(frame.info.registers[base])+displacement) and 0xffffffff'u64
-    var target = CodeAddress(0)
-    let outcome = dynamicControl(frame.source, frame.cache, address, target)
+    let offset = when Code == 50: operation.x else: operation.y
+    let address = (uint64(frame.info.registers[base])+offset) and 0xffffffff'u64
+    var target = operation.next
+    outcome = dynamicControl(frame.source, frame.cache, address, target)
     when Code == 180:
-      # The load survives invalid targets and the halt sentinel, just as in ordinary dispatch.
-      frame.info.registers[slots.aIndex] = RegisterValue(preparedSigned(arguments.a))
-    if outcome != StepExit.Continued:
-      return preparedExit(frame, offset, InstructionEffect(kind: outcome))
-    frame.info.blockCharged = false
-    return preparedEnter(frame, target, preparedBase(frame.owner, target))
+      # The load mutation survives both panic and halt, exactly as in ordinary control execution.
+      frame.info.registers[slots.aIndex] = RegisterValue(operation.x)
+    if outcome == StepExit.Continued:
+      # Only a successful dynamic transfer enters a fresh uncharged block.
+      frame.info.pc = target
+      frame.info.blockCharged = false
   else:
-    # Static targets retain full guest-address width while a cached offset supplies their hot index.
-    var target = CodeAddress(preparedPair(arguments.a, arguments.b))
-    var link = site.link
-    var valid = (site.flags and preparedTarget) != 0
+    # Only conditional selection remains dynamic; preparation owns destination arithmetic and membership.
+    var target = operation.target
+    var valid = operation.validTarget
     when (Code >= 81 and Code <= 90) or (Code >= 170 and Code <= 175):
-      # Both successors remain validated even when the condition selects the other branch.
-      valid = valid and (site.flags and preparedFallthrough) != 0
-      if not branchConditionOperands[Code](arguments.registers, preparedSigned(arguments.c), byte(
-          Code), frame.info.registers):
-        target = CodeAddress(uint64(site.address)+uint64(site.span))
-        link = preparedBase(frame.owner, target)
+      valid = valid and operation.fallthrough
+      if not branchConditionOperands[Code](operation.registers, operation.x, byte(Code),
+          frame.info.registers):
+        target = operation.next
     when Code == 80:
-      # Load-and-static-jump publishes its load even when destination membership fails.
-      frame.info.registers[arguments.registers.aIndex] = RegisterValue(preparedSigned(arguments.c))
-    if not valid: return preparedExit(frame, offset, InstructionEffect(kind: StepExit.Panic))
-    frame.info.blockCharged = false
-    return preparedEnter(frame, target, link)
-  preparedStop # Every specialized branch returns explicitly; keep the compile-time selection in statement position.
+      # Load-and-jump writes even if its destination is invalid.
+      let slots = operation.registers
+      frame.info.registers[slots.aIndex] = RegisterValue(operation.x)
+    if valid:
+      frame.info.pc = target
+      frame.info.blockCharged = false
+    else:
+      outcome = StepExit.Panic
+  preparedSignal(frame, outcome)
 
-proc preparedOperation(owner: PreparedData, decoded: ProgramResult[
-    Instruction]): PreparedOperation =
-  ## Seal compact role-specific operands only from a genuine successful source decode; handler selection occurs once here.
+proc preparedOperation(decoded: ProgramResult[Instruction]): PreparedOperation =
+  ## Select a specialized handler and immutable target facts from a genuine successful decoder result.
   let item = decoded.value
-  let x = uint64(item.x)
-  let y = uint64(item.y)
-  var flags = 0'u8
-  if instructionHasFallthrough(decoded): flags = flags or preparedFallthrough
-  if instructionTargetStartsBlock(decoded): flags = flags or preparedTarget
-  result = PreparedOperation(handler: nil,
-    arguments: PreparedArguments(a: uint32(x and 0xffffffff'u64), b: uint32(x shr 32), c: 0,
-      registers: instructionRegisters(decoded)),
-    site: PreparedSite(address: item.address, link: PreparedOffset(0),
-      span: byte(item.skip+1), flags: flags))
-  var target = CodeAddress(0)
+  result = PreparedOperation(handler: nil, address: item.address,
+    next: CodeAddress(uint64(item.address)+1+uint64(item.skip)), target: CodeAddress(0),
+    x: uint64(item.x), y: uint64(item.y), registers: instructionRegisters(decoded),
+    validTarget: instructionTargetStartsBlock(decoded), fallthrough: instructionHasFallthrough(
+        decoded),
+    endsBlock: terminatesBlock(item.opcode))
   let pc = uint64(item.address)
   if item.opcode == 1:
-    target = CodeAddress(pc+uint64(result.site.span))
+    result.target = CodeAddress(pc+1+uint64(item.skip))
   elif item.displacement < 0:
-    # A mathematically negative target remains invalid without unsigned underflow.
-    if uint64(-item.displacement) <= pc: target = CodeAddress(pc-uint64(-item.displacement))
+    # Invalid negative targets retain a false destination fact without unsigned underflow.
+    if uint64(-item.displacement) <= pc: result.target = CodeAddress(pc-uint64(-item.displacement))
   else:
-    target = CodeAddress(pc+uint64(item.displacement))
-  if executionClasses[int(item.opcode)] == 'm':
-    # Memory addresses use low 32 X; immediate stores need all 64 decoder-produced Y bits.
-    result.arguments.b = uint32(y and 0xffffffff'u64)
-    result.arguments.c = uint32(y shr 32)
-  elif item.opcode in {1'u8, 40'u8, 80'u8..90'u8, 170'u8..175'u8}:
-    # Static targets use two words; their optional immediate is a sign-extended 32-bit operand.
-    result.arguments.a = uint32(uint64(target) and 0xffffffff'u64)
-    result.arguments.b = uint32(uint64(target) shr 32)
-    result.arguments.c = uint32(x and 0xffffffff'u64)
-    result.site.link = preparedBase(owner, target)
-  elif item.opcode == 180:
-    # Both dynamic load/jump immediates have at most 32 significant encoded bits.
-    result.arguments.b = uint32(y and 0xffffffff'u64)
+    result.target = CodeAddress(pc+uint64(item.displacement))
   case item.opcode
   of 0: result.handler = preparedControl[0] # Fixed opcode-to-operation selection occurs only during preparation.
   of 1: result.handler = preparedControl[1] # Fixed opcode-to-operation selection occurs only during preparation.
@@ -1843,6 +1725,10 @@ proc preparedOperation(owner: PreparedData, decoded: ProgramResult[
   of 230: result.handler = preparedRegister[230] # Fixed opcode-to-operation selection occurs only during preparation.
   else: discard # An unsupported future opcode keeps a nil handler and cannot silently become a trap.
 
+proc preparedSlot(owner: PreparedData, pc: CodeAddress): int =
+  ## Mix original byte PCs before bounded modulo; wrapping is intentional hash arithmetic only.
+  let word = uint64(pc)
+  int(((word xor (word shr 13))*0x9e3779b97f4a7c15'u64) mod uint64(owner.slots.len))
 
 proc evictPrepared(owner: PreparedData, slot: int) =
   ## Drop one retained fact array; any invocation-local continuation keeps its own reference alive.
@@ -1850,76 +1736,63 @@ proc evictPrepared(owner: PreparedData, slot: int) =
   if chunk != nil:
     owner.info.residentBytes -= chunk.bytes
     dec owner.info.residentBlocks
-    owner.info.residentOperations -= uint64(chunk.guests)
+    owner.info.residentOperations -= uint64(chunk.operations.len)
     owner.slots[slot] = nil
     preparedIncrement(owner.info.evictions)
 
-proc preparedChunk(owner: PreparedData, pc: CodeAddress): nil PreparedChunk {.raises: [].} =
-  ## Miss preparation has fixed scratch bounds and publishes parallel arrays only after all retained bytes fit policy.
+proc preparedChunk(owner: PreparedData, pc: CodeAddress): nil PreparedChunk =
+  ## Miss work uses one fixed scratch array, then publishes only a complete bounded segment.
   let slot = preparedSlot(owner, pc)
   let cached = owner.slots[slot]
   if cached != nil and uint64(cached.start) == uint64(pc):
     preparedIncrement(owner.info.hits)
     return cached
   let indexBytes = uint64(owner.slots.len)*uint64(sizeof(PreparedChunk))
-  let available = (uint64(owner.limits.bytes)-indexBytes-uint64(sizeof(
-      PreparedChunkData))) div uint64(sizeof(PreparedOperation))
-  let capacity = int(min(256'u64, available-2)) # Constructor minimum reserves price, bridge and at least one guest node.
-  var scratch = default(array[258, PreparedOperation])
+  let capacity = min(256'u64, (uint64(owner.limits.bytes)-indexBytes-uint64(sizeof(
+      PreparedChunkData))) div uint64(sizeof(PreparedOperation)))
+  var scratch = default(array[256, PreparedOperation])
   var count = 0
   var address = pc
   var stopped = false
-  while count < capacity and not stopped:
-    # Every block ends at its first guest terminator or fixed storage split; invalid successors never fabricate operands.
+  while count < int(capacity) and not stopped:
+    # Decode each visited operation once, stopping before a missing successor rather than refusing a valid prefix.
     let decoded = instruction(owner.source, address)
     if decoded.error != ProgramError.None:
       stopped = true
     else:
-      scratch[count+1] = preparedOperation(owner, decoded)
+      scratch[count] = preparedOperation(decoded)
       inc count
       let item = decoded.value
       address = CodeAddress(uint64(address)+1+uint64(item.skip))
       stopped = terminatesBlock(item.opcode) or not instructionHasFallthrough(decoded)
   if count == 0: return nil
-  scratch[0] = PreparedOperation(handler: preparedCharge, arguments: default(PreparedArguments),
-    site: PreparedSite(address: pc, link: PreparedOffset(0), span: 0, flags: 0))
-  scratch[count+1] = PreparedOperation(handler: preparedBridge,
-    arguments: PreparedArguments(a: uint32(uint64(address) and 0xffffffff'u64), b: uint32(uint64(
-        address) shr 32)),
-    site: PreparedSite(address: address, link: preparedBase(owner, address), span: 0, flags: 0))
-  let length = count+2
-  let bytes = uint64(sizeof(PreparedChunkData))+uint64(length)*uint64(sizeof(PreparedOperation))
+  let bytes = uint64(sizeof(PreparedChunkData))+uint64(count)*uint64(sizeof(PreparedOperation))
+  # Fixed scratch is a separate transient preparation bound, not hidden retained cache payload.
   let transient = owner.info.residentBytes+uint64(sizeof(scratch))+bytes
   if transient > owner.info.peakBytes: owner.info.peakBytes = transient
   evictPrepared(owner, slot)
   while owner.info.residentBytes > uint64(owner.limits.bytes)-bytes:
-    # Fixed clock replacement owns no inter-block references; current invocation/host pins survive slot eviction.
+    # Clock replacement is bounded by the fixed nonempty index; no failure or eviction changes guest state.
     evictPrepared(owner, owner.replacement)
     inc owner.replacement
     if owner.replacement == owner.slots.len: owner.replacement = 0
-  var handlers = newSeq[nil PreparedHandler](length)
-  var arguments = newSeq[PreparedArguments](length)
-  var sites = newSeq[PreparedSite](length)
-  for index in 0..<length:
-    # Only complete bounded scratch entries become the immutable executable stream arrays.
-    handlers[index] = scratch[index].handler
-    arguments[index] = scratch[index].arguments
-    sites[index] = scratch[index].site
-  let chunk = PreparedChunk(start: pc, handlers: move(handlers), arguments: move(arguments),
-      sites: move(sites),
-    guests: count, bytes: bytes, price: 0)
+  var operations = newSeq[PreparedOperation](count)
+  for index in 0..<count:
+    # Copy only the fully populated bounded scratch prefix into the retained array.
+    operations[index] = scratch[index]
+  let chunk = PreparedChunk(start: pc, operations: operations, bytes: bytes, price: 0)
   owner.slots[slot] = chunk
   owner.info.residentBytes += bytes
   inc owner.info.residentBlocks
   owner.info.residentOperations += uint64(count)
   preparedIncrement(owner.info.preparedBlocks)
-  if owner.info.preparedOperations <= high(uint64)-uint64(count):
-    # Synthetic nodes do not inflate diagnostic guest-operation totals.
-    owner.info.preparedOperations += uint64(count)
+  # Diagnostic operation totals saturate independently of semantic progress.
+  if owner.info.preparedOperations <= high(uint64)-uint64(count): owner.info.preparedOperations +=
+      uint64(count)
   else: owner.info.preparedOperations = high(uint64)
   chunk
 
-proc preparedPrice(owner: PreparedData, chunk: PreparedChunk): StepError {.raises: [].} =
+proc preparedPrice(owner: PreparedData, chunk: PreparedChunk): StepError =
   ## Only an uncharged entry requests the whole containing basic-block price; segment boundaries do not charge again.
   if chunk.price != 0: return StepError.None
   let start = containingBlockStart(owner.source, chunk.start)
@@ -1935,57 +1808,65 @@ proc preparedPrice(owner: PreparedData, chunk: PreparedChunk): StepError {.raise
 
 proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
     location: var PreparedLocation, remaining: var uint64): StepResult =
-  ## One flat offset/handler loop executes guest and synthetic nodes; only genuine guest operations consume attempt budget.
-  if remaining == 0: return StepResult(status: StepError.StepLimitExceeded)
-  var root = location.chunk
-  var offset = location.offset
-  let resumeIndex = preparedIndex(offset)
-  if root == nil or resumeIndex >= root.sites.len or uint64(root.sites[resumeIndex].address) !=
-      uint64(cursor.info.pc):
-    # Entry/reentry resolves its exact immutable source PC; host continuations may reuse a still-pinned block.
-    root = preparedChunk(owner, cursor.info.pc)
-    offset = preparedBase(owner, cursor.info.pc)
-  if root == nil:
-    # Non-executable entry preserves the existing terminal guest panic without consuming a fabricated instruction.
-    cursor.info.pc = CodeAddress(0)
-    var memory = initWorkingMemory(cursor.memory, true)
-    return publishInstruction(owner.source, memory, cursor.info, InstructionEffect(
-        kind: StepExit.Panic), true)
-  var frame = PreparedFrame(source: owner.source, owner: owner, chunk: root, info: cursor.info,
+  ## Run selected handlers within a prepared segment; no decoder-cache/category/pricing lookup occurs between its ordinary operations.
+  var frame = PreparedFrame(source: owner.source, info: cursor.info,
     memory: initWorkingMemory(cursor.memory, true), cache: initExecutionCache(),
-        remaining: remaining,
-    error: StepError.None, exitEffect: InstructionEffect(kind: StepExit.Continued),
-        resume: PreparedOffset(0))
-  while uint32(offset) != uint32(preparedStop):
-    # Budget refusal precedes pricing/bridging after the last allowed guest attempt, including a resumed host call.
-    if frame.remaining == 0:
-      frame.error = StepError.StepLimitExceeded
-      break
-    let at = preparedIndex(offset)
-    if at >= frame.chunk.handlers.len:
-      frame.error = StepError.InvalidPreparedProgram
-      break
-    let selected = frame.chunk.handlers[at]
-    if selected == nil:
-      # Unknown future guest opcodes retain typed refusal and one attempted instruction, never a silent trap.
-      if at > 0 and at <= frame.chunk.guests: dec frame.remaining
-      frame.error = StepError.UnsupportedInstruction
-      break
-    offset = selected(frame, offset)
-  remaining = frame.remaining
-  if frame.error != StepError.None: return StepResult(status: frame.error)
-  let effect = frame.exitEffect
-  if effect.kind == StepExit.Continued: return StepResult(status: StepError.InvalidMachine)
-  cursor.info = frame.info
-  let published = publishInstruction(owner.source, frame.memory, frame.info, effect, effect.kind !=
-      StepExit.OutOfGas)
-  if published.error == StepError.None:
-    cursor.memory = frame.memory.current
-    if effect.kind == StepExit.Host:
-      # Pin only the rare synchronous continuation; no public result or reusable owner retains invocation state.
-      location.chunk = frame.chunk
-      location.offset = frame.resume
-  published
+    exitEffect: InstructionEffect(kind: StepExit.Continued), error: StepError.None)
+  while remaining > 0:
+    # A host continuation can reuse its still-live segment if the validated posterior PC matches its next operation.
+    var chunk = location.chunk
+    var at = location.next
+    if chunk == nil or at >= chunk.operations.len or uint64(chunk.operations[
+        at].address) != uint64(frame.info.pc):
+      location.chunk = nil
+      chunk = preparedChunk(owner, frame.info.pc)
+      at = 0
+      if chunk == nil:
+        frame.info.pc = CodeAddress(0)
+        cursor.info = frame.info
+        return publishInstruction(owner.source, frame.memory, frame.info, InstructionEffect(
+            kind: StepExit.Panic), true)
+    let active = chunk
+    if active == nil: return StepResult(status: StepError.InvalidPreparedProgram)
+    if not frame.info.blockCharged:
+      # Cache facts establish a price; affordability and the paid flag remain strictly invocation-local.
+      let priced = preparedPrice(owner, active)
+      if priced != StepError.None: return StepResult(status: priced)
+      if uint64(frame.info.gas) < active.price:
+        cursor.info = frame.info
+        return publishInstruction(owner.source, frame.memory, frame.info, InstructionEffect(
+            kind: StepExit.OutOfGas), false)
+      frame.info.gas = MachineGas(uint64(frame.info.gas)-active.price)
+      frame.info.blockCharged = true
+    var ended = false
+    while at < active.operations.len and remaining > 0 and not ended:
+      # Every guest instruction, including an exiting one, consumes one local scheduling attempt.
+      dec remaining
+      # Borrow the stable retained array element directly; no full prepared-record copy crosses the indirect call.
+      let causingPc = active.operations[at].address
+      let endsBlock = active.operations[at].endsBlock
+      let selected = active.operations[at].handler
+      if selected == nil: return StepResult(status: StepError.UnsupportedInstruction)
+      let continued = selected(frame, active.operations[at])
+      inc at
+      if not continued:
+        # Ordinary progress inspects one continuation bit; refusal reasons and genuine exit payloads are rare-path state.
+        if frame.error != StepError.None: return StepResult(status: frame.error)
+        let effect = frame.exitEffect
+        if effect.kind == StepExit.Continued: return StepResult(status: StepError.InvalidMachine)
+        # Fault/host/gas preserve the causing PC; panic/halt keep recursive terminal normalization.
+        frame.info.pc = if terminalExit(effect.kind): CodeAddress(0) else: causingPc
+        cursor.info = frame.info
+        let published = publishInstruction(owner.source, frame.memory, frame.info, effect, true)
+        if published.error == StepError.None:
+          cursor.memory = frame.memory.current
+          location.chunk = active
+          location.next = at
+        return published
+      ended = endsBlock
+    location.chunk = nil
+    location.next = 0
+  StepResult(status: StepError.StepLimitExceeded)
 
 proc runPrepared(source: Machine, prepared: PreparedProgram,
     limit: ExecutionStepLimit): StepResult =

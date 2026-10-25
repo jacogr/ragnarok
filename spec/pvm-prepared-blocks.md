@@ -632,7 +632,7 @@ that its basic branch/cache simulations do not model modern hardware closely. Th
 PC-deferral and bounded-loop changes were tested together; this result does not prove
 that a narrower PC-only change would regress or improve runtime.
 
-## JITB — Just In Time Blocks
+## JITB — Just In Time Blocks: rejected flat-stream trial
 
 This fifth stack layer starts from `58cb51e90eaec06de3c97546573055bb9097e5a3`;
 its runtime is the accepted operand implementation, with additional boundary tests.
@@ -782,3 +782,40 @@ belongs in every cached entry. Preserve checked accesses, exact links, whole-blo
 gas, fault retry, callback/attempt boundaries and source ownership throughout.
 A separate later memory-path investigation remains useful; no such optimization is
 mixed into this qualification commit.
+
+## JITB alternative: borrowed records and scalar continuation
+
+The full flat-stream trial above is superseded in this PR after its measured
+regression. Its exact implementation and measurements remain in history. This
+alternative starts directly from accepted runtime parent
+`58cb51e90eaec06de3c97546573055bb9097e5a3`, retaining its contiguous 56-byte
+operation records, block-level pricing, operation-index loop and source-PC writes.
+Only the private handler outcome changes: a boolean continues execution or enters
+the stopped path, where the invocation owns a typed local refusal or genuine guest
+exit metadata. Refusals are inspected before exit payloads; no failed result exposes
+a partial machine. Fault/host payloads are installed only by their causing handler.
+
+The selected immutable operation is passed directly to the handler; handlers do not
+re-fetch operands or sites through a frame offset. Active ownership stays in the
+block loop, with the same host pinning and bounded cache as the accepted parent.
+There are no synthetic price/bridge handlers, per-node array lookups, extra
+inter-block ARC handoffs or changes to arithmetic, memory, gas or attempt semantics.
+The runtime remains optional and all public APIs remain stable. This isolates
+handler return/rare-exit cost without reviving the rejected position-loop trial.
+
+Required qualification: full prepared opcode/host/fault/retry/budget/replacement
+suite and balanced ARC lifetimes, maintained guests against dynamic/planned,
+accepted prepared and PolkaVM interpreted, generated handler ABI inspection,
+affected tooling/smoke checks, followed by exact-head Linux paired CPU measurements
+and cold/reused profiles in both process orders. No benefit is claimed before that
+comparison; keep only if useful gain survives the workload/regression checks.
+
+Local checked ARC/Clang ThinLTO validation passed: the complete 139-opcode prepared
+suite with existing boundary, host, fault, refusal and replacement witnesses;
+the host-execution suite; all seven maintained guest/size comparisons in both
+process orders; 63 affected tooling checks; formatting and semantic compilation
+of all 441 production modules plus the peer entry point. Owner lifetime checks
+balanced across 1000 iterations (prepared: 98912 bytes before/after; host: 1376).
+Generated C confirms `(frame*, operation*) -> NB8`, and an x86_64 Clang static
+size check confirms the unchanged 56-byte operation record. Paired Linux timings
+against the accepted parent remain pending.
