@@ -1,0 +1,18 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Headless pinned-ELF preparation and interpreter-only correctness/profiling driver.
+[package]
+name = "ragnarok-pvm-doom"
+version = "0.0.0"
+edition = "2021"
+publish = false
+[workspace]
+[dependencies]
+libc = "=0.2.154"
+polkavm = { path = "../../../vendor/polkavm/crates/polkavm" }
+polkavm-common = { path = "../../../vendor/polkavm/crates/polkavm-common", features = ["alloc"] }
+polkavm-linker = { path = "../../../vendor/polkavm/crates/polkavm-linker" }
+[profile.release]
+lto = true
+codegen-units = 1
+debug = true
