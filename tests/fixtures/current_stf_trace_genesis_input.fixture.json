@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_TRACE_GENESIS",
+  "files": {
+    "current-stf-trace-genesis.bin": "9be19b49532800d58328727280d055c50c981007d920716265b24b1050ca92b7"
+  },
+  "target": "current-stf-trace-genesis.bin"
+}

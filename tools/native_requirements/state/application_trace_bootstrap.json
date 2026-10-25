@@ -1,0 +1,17 @@
+{
+  "defines": [],
+  "directory": "state",
+  "fixtures": [
+    "current_stf_trace_genesis_input"
+  ],
+  "includes": [
+    "crypto",
+    "bandersnatch"
+  ],
+  "libraries": [
+    "bandersnatch",
+    "crypto"
+  ],
+  "observers": [],
+  "prepared": false
+}

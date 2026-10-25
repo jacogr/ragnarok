@@ -3,20 +3,21 @@
 
 ## Immediate available reports drive genuine guests, grouped operands and complete current-state publication.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../../src/codec/header
+import ../../src/codec/[header, assurances, state_trie]
 import ../../src/pvm/[initialize, machine]
 import ../support/current_stf_epoch_context as epoch
 import ../support/report_context as reportContext
 import ../support/[current_stf_transfer_context, current_stf_lifecycle_context,
     current_stf_supervised_context, current_stf_privileges_context, current_stf_incarnation_context, current_stf_foreign_funding_context]
-import ../../src/app/[chain, candidate, logical_source_export, current_logical_startup, trace_import]
+import ../../src/app/[chain, candidate, logical_source_export, current_logical_startup,
+    trace_import, trace_bootstrap]
 import ../support/[supplied_logical_context, parent_profile_context, parent_globals_context]
 import ../../src/state/[current_logical, supplied_services]
 import ../../src/chain/[provider, genesis, parameters]
 import ../../src/codec/[bounded, report_owned, block_codec, state_composition, state_accounts,
   state_requests, state_service_values, state_layout, state_safrole, composite]
 import ../../src/crypto/primitives
-import ../../src/state/[trace_step, trace_state, trace_file]
+import ../../src/state/[trace_step, trace_state, trace_file, trace_genesis]
 import ../../src/state/safrole_transition
 import ../../src/state/[store, checkpoint, accumulation_current_update,
   accumulation_current_completion,
@@ -186,7 +187,8 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
 
 
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
-    uint32] = @[], reload = false, exchange = false, traceMode = false, fileMode = false) =
+    uint32] = @[], reload = false, exchange = false, traceMode = false, fileMode = false,
+        genesisWire: seq[byte] = @[]) =
   ## Genuine authored code/request/namespace originals match the independent frozen inputs.
   let replacement = if mode in 171..175: supervisedWriteCode(82) elif mode in
       92..96: supervisedReplacementCode() else: namespaceHaltCode()
@@ -330,8 +332,52 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       for index in 0..<8: wire[8*field+index] = byte((value shr (8*index)) and 255)
     chainParameters = decodeParameters(wire).value
   var chain = initApplicationChain(fixture.executionNamespaceParent(chainParameters)).value
+  var importedGenesis = default(TraceGenesis)
+  if genesisWire.len != 0:
+    # The actual explicitly configured seed supplies independent anchors and Parameters; the incoming Genesis wire supplies neither.
+    let trusted = chain.chainView.bestBlock.value
+    var policy = reportContext.limits()
+    policy.writes = ElementLimit(options.signed.storeWrites)
+    policy.writeValueBytes = ByteLimit(options.signed.maxWriteBytes)
+    let decoded = decodeTraceGenesis(genesisWire, TraceGenesisLimits(
+        header: HeaderConfig(cores: CoreCount(2), authorValidators: ValidatorCount(6),
+            epochSlots: EpochSlots(12), maxBytes: ByteLimit(4096)),
+        state: policy, bytes: ByteLimit(1000000)))
+    assert decoded.error == TraceGenesisError.None
+    importedGenesis = decoded.value
+    assert importedGenesis.traceGenesisBytes.value == genesisWire.len
+    let trust = TraceBootstrapTrust(header: trusted.blockHash,
+        state: trusted.stateSnapshot.commitment.root)
+    let saved = checkpointHex(chain.stateSnapshot.value)
+    var wrong = trust
+    var hash = array[32, byte](trust.header)
+    hash[0] = hash[0] xor 1
+    wrong.header = BlockHash(hash)
+    assert bootstrapTraceChain(importedGenesis, wrong, chainParameters).error ==
+        TraceBootstrapError.HeaderMismatch
+    wrong = trust
+    var root = array[32, byte](trust.state)
+    root[0] = root[0] xor 1
+    wrong.state = StateRoot(root)
+    assert bootstrapTraceChain(importedGenesis, wrong, chainParameters).error ==
+        TraceBootstrapError.StateMismatch
+    assert bootstrapTraceChain(importedGenesis, trust, default(Parameters)).error ==
+        TraceBootstrapError.InvalidParameters
+    assert checkpointHex(chain.stateSnapshot.value) == saved
+    let captured = bootstrapTraceChain(importedGenesis, trust, chainParameters)
+    assert captured.error == TraceBootstrapError.None
+    chain = captured.value
+    assert checkpointHex(chain.stateSnapshot.value) == saved
+    assert sameStateStorePolicy(trusted.stateSnapshot, chain.stateSnapshot.value)
+    assert chain.chainView.bestBlock.value.chainParameters.encodeParameters ==
+        chainParameters.encodeParameters
   let original = checkpointHex(chain.stateSnapshot.value)
   echo "P ", original
+  if genesisWire.len != 0:
+    echo "G ", hex(importedGenesis.copyTraceGenesis(ByteLimit(1000000)).value)
+    echo "A HeaderMismatch"
+    echo "A StateMismatch"
+    echo "A InvalidParameters" # Every rejected bootstrap retains no newly initialized chain or selected-parent prefix.
   var limits = currentConsecutiveLimits()
   limits.completion.composition.validators.projection.assurances = ElementLimit(6)
   limits.completion.composition.validators.projection.reporters = ElementLimit(6)
@@ -715,6 +761,8 @@ proc main() {.raises.} =
   var exchange = false
   var traceMode = false
   var fileMode = false
+  var genesisMode = false
+  var genesisWire: seq[byte] = @[]
   var bodies: seq[seq[byte]] = @[]
   var slots: seq[uint32] = @[]
   for line in readFile(paramStr(2)).splitLines:
@@ -723,10 +771,13 @@ proc main() {.raises.} =
     assert fields.len in [2, 3]
     if fields[0] == "C":
       if mode >= 0: run(base, mode, bodies, missingCode,
-          slots, reload, exchange, traceMode, fileMode) # Finish the complete chain before selecting another original.
+          slots, reload, exchange, traceMode, fileMode,
+          genesisWire) # Finish the complete chain before selecting another original.
       missingCode = fields.len == 3 and fields[2] == "missing"
       fileMode = fields.len == 3 and fields[2] == "trace-file"
-      traceMode = fileMode or (fields.len == 3 and fields[2] == "trace")
+      genesisMode = fields.len == 3 and fields[2] == "trace-genesis"
+      genesisWire = @[]
+      traceMode = fileMode or genesisMode or (fields.len == 3 and fields[2] == "trace")
       exchange = traceMode or (fields.len == 3 and fields[2] == "exchange")
       reload = exchange or (fields.len == 3 and fields[2] == "reload")
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
@@ -734,14 +785,18 @@ proc main() {.raises.} =
       assert mode >= 0 and mode < 190
       bodies = @[]
       slots = @[]
+    elif fields[0] == "G":
+      assert genesisMode and genesisWire.len == 0 and bodies.len == 0
+      genesisWire = unhex(fields[1]) # Only one explicitly transported initial Genesis precedes the chain's independently signed trace steps.
     else:
+      assert not genesisMode or genesisWire.len != 0
       assert fields[0] == (if fileMode: "F" elif traceMode: "T" else: "B") and mode >= 0
       slots.add(if fields.len == 3: uint32(parseInt(fields[1])) else: 0'u32)
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
       106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160, 165, 170, 175, 182, 189]
-  run(base, mode, bodies, missingCode, slots, reload, exchange, traceMode, fileMode)
+  run(base, mode, bodies, missingCode, slots, reload, exchange, traceMode, fileMode, genesisWire)
 
 try:
   main() # I/O, compilation, guest, publication or qualification failure fails the complete corpus.
