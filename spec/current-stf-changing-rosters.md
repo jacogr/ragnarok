@@ -16,6 +16,7 @@ erasure shards remain tied to the current population.
 | --- | ---: | --- |
 | Prior/current credentials, quorum and resize clearing |20|[Population reporting](current-stf-population-reporting.md)|
 | Offender Phi, cancellation/replacement and delayed nulling |22|[Offender reporting](current-stf-offender-reporting.md)|
+| Manager/assigner handoffs, queue precedence and delayed allowances |210|[Privileged updates](current-stf-rotation-privileges.md)|
 | Actual report-triggered writes, panic and checkpoint effects |30|[Population guests](current-stf-population-guests.md)|
 | Ticket contests, winner/fallback sealing and later growth |32|[Ticket reporting](current-stf-ticket-reporting.md)|
 | Deferred waves, release/resize-clear and actual-gas continuation |72|[Dependency waves](current-stf-population-waves.md)|

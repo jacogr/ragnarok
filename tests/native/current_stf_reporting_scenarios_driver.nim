@@ -13,6 +13,16 @@ import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout
 import ../../src/state/[store, checkpoint, accumulation_current_update, current_profile,
   current_globals, current_state, global_snapshot, trace_step, trace_state]
 
+when defined(rotationHosts):
+  import ../support/current_stf_rotation_hosts_context
+
+proc scenarioLimits(): CurrentCandidateLimits =
+  ## Explicit corpus build profiles keep original reporting ceilings unchanged.
+  when defined(rotationHosts):
+    rotationHostLimits()
+  else:
+    populationReportingLimits()
+
 proc suppliedRoot(text: string): StateRoot =
   ## Trusted independently authored roots have one complete fixed32-byte representation.
   let bytes = epoch.unhex(text)
@@ -67,12 +77,12 @@ proc prepareScenarioTrace(chain: ApplicationChain, step: TraceStep, ancestors: o
   let posterior = step.tracePostState.value
   let child = step.traceBlock.value
   let wrongPre = newTraceStep(posterior, child, posterior, ByteLimit(16000000)).value
-  assert prepareTraceImport(chain, wrongPre, ancestors, populationReportingLimits()).error ==
+  assert prepareTraceImport(chain, wrongPre, ancestors, scenarioLimits()).error ==
       TraceImportError.PreStateMismatch
   unchanged()
   echo "R PreStateMismatch"
   let wrongPost = newTraceStep(prior, child, prior, ByteLimit(16000000)).value
-  assert prepareTraceImport(chain, wrongPost, ancestors, populationReportingLimits()).error ==
+  assert prepareTraceImport(chain, wrongPost, ancestors, scenarioLimits()).error ==
       TraceImportError.PostStateMismatch
   unchanged()
   echo "R PostStateMismatch"
@@ -81,15 +91,15 @@ proc prepareScenarioTrace(chain: ApplicationChain, step: TraceStep, ancestors: o
   let headerBytes = child.blockInfo.value.headerBytes
   assert headerBytes > 0 and headerBytes <= altered.len
   altered[headerBytes-1] = altered[headerBytes-1] xor 1
-  let bad = decodeBlock(altered, populationReportingLimits().reporting.admission.frame)
+  let bad = decodeBlock(altered, scenarioLimits().reporting.admission.frame)
   assert bad.error == FrameError.None and bad.value.consumed == altered.len
   let wrongSeal = newTraceStep(prior, bad.value.owner, posterior, ByteLimit(16000000)).value
-  let rejected = prepareTraceImport(chain, wrongSeal, ancestors, populationReportingLimits())
+  let rejected = prepareTraceImport(chain, wrongSeal, ancestors, scenarioLimits())
   assert rejected.error == TraceImportError.CandidateFailure and rejected.candidateFailure.error !=
       CurrentCandidateError.None
   unchanged()
   echo "R CandidateFailure"
-  let prepared = prepareTraceImport(chain, step, ancestors, populationReportingLimits())
+  let prepared = prepareTraceImport(chain, step, ancestors, scenarioLimits())
   if prepared.error == TraceImportError.CandidateFailure:
     assert false, populationReason(prepared.candidateFailure) # Keep actual nested admission/execution diagnostics on unexpected refusal.
   assert prepared.error == TraceImportError.None
@@ -139,18 +149,18 @@ proc main() {.raises.} =
       var imported = default(TraceStep)
       var child = default(OwnedBlock)
       if fields[0] == "T":
-        let frame = populationReportingLimits().reporting.admission.frame
+        let frame = scenarioLimits().reporting.admission.frame
         let policy = TraceStepLimits(frame: frame, state: stores, bytes: ByteLimit(16000000))
         let decoded = decodeTraceStep(supplied, policy)
         assert decoded.error == TraceStepError.None and decoded.value.traceStepBytes.value == supplied.len
         imported = decoded.value
         child = imported.traceBlock.value
       else:
-        let decoded = decodeBlock(supplied, populationReportingLimits().reporting.admission.frame)
+        let decoded = decodeBlock(supplied, scenarioLimits().reporting.admission.frame)
         assert decoded.error == FrameError.None and decoded.value.consumed == supplied.len
         child = decoded.value.owner
       if fields[0] == "N":
-        let outcome = prepareCurrentCandidate(chain, child, ancestors, populationReportingLimits())
+        let outcome = prepareCurrentCandidate(chain, child, ancestors, scenarioLimits())
         assert fields.len == 3 and outcome.error != CurrentCandidateError.None
         assert populationReason(outcome) == fields[2], populationReason(outcome)
         assert epoch.checkpointHex(chain.stateSnapshot.value) == saved
@@ -169,7 +179,7 @@ proc main() {.raises.} =
         if fields[0] == "T":
           update = prepareScenarioTrace(chain, imported, ancestors, wire)
         else:
-          let outcome = prepareCurrentCandidate(chain, child, ancestors, populationReportingLimits())
+          let outcome = prepareCurrentCandidate(chain, child, ancestors, scenarioLimits())
           assert outcome.error == CurrentCandidateError.None, populationReason(outcome)
           update = outcome.value
         let profile = captureCurrentProfile(update, CurrentProfileLimits(validators: ElementLimit(
