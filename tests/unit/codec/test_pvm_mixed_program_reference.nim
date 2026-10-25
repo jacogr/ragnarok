@@ -11,7 +11,7 @@ type HostContext = object ## Synchronous test hosts own only scalar expectations
 
 type
   PricingMode {.pure.} = enum ## Each execution policy consumes the same frozen guest and complete expected state.
-    Dynamic, Planned, Memo
+    Dynamic, Planned, Memo, Prepared
   HostRefusal {.pure.} = enum ## The zero ordinal remains a real refusal reason; selected success carries the reply separately.
     Refused
 
@@ -72,6 +72,12 @@ proc runReply(source: Machine, context: var HostContext, mode: PricingMode,
       executeWithHost(source, context, respond, steps, hosts, plan)
     of PricingMode.Memo:
       executeWithHost(source, context, respond, steps, hosts, memo)
+    of PricingMode.Prepared:
+      # The same frozen program/state/host oracle qualifies the independently prepared operation stream.
+      let prepared = newPreparedProgram(programOf(source).value, PreparedLimits(
+          bytes: PreparedByteLimit(1048576), blocks: PreparedBlockLimit(128), cycles: GasCycleLimit(cycles)))
+      assert prepared.error == PreparationError.None
+      executeWithHost(source, context, respond, steps, hosts, prepared.value)
   assert checked.error == StepError.None
   checked.value
 
@@ -87,6 +93,12 @@ proc runFallible(source: Machine, context: var HostContext, mode: PricingMode,
       executeWithHost(source, context, respondFallible, steps, hosts, plan)
     of PricingMode.Memo:
       executeWithHost(source, context, respondFallible, steps, hosts, memo)
+    of PricingMode.Prepared:
+      # Typed callback selection and complete post-state use the same independent expectations.
+      let prepared = newPreparedProgram(programOf(source).value, PreparedLimits(
+          bytes: PreparedByteLimit(1048576), blocks: PreparedBlockLimit(128), cycles: GasCycleLimit(cycles)))
+      assert prepared.error == PreparationError.None
+      executeWithHost(source, context, respondFallible, steps, hosts, prepared.value)
   assert checked.error == HostExecutionError.None
   checked.value
 
@@ -155,7 +167,7 @@ for row in 0..<32:
   assert gasMemoInfo(memo).value.pricedBlocks == 0
   assert uint64(blockGas(memo, CodeAddress(0)).value) == price
   assert uint64(blockGas(memo, CodeAddress(20)).value) == haltPrice
-  for mode in [PricingMode.Dynamic, PricingMode.Planned, PricingMode.Memo]:
+  for mode in [PricingMode.Dynamic, PricingMode.Planned, PricingMode.Memo, PricingMode.Prepared]:
     for warm in [false, true]:
       if warm and mode != PricingMode.Memo: continue # Only a lazy memo has learned facts to distinguish.
       for fallible in [false, true]:
@@ -217,6 +229,6 @@ for row in 0..<32:
           assert uint64(machineInfo(source).value.gas) == budget and not machineInfo(
               source).value.blockCharged
 assert cursor == data.len
-assert checkedScenarios == 1024 and checkedCalls == 15744
+assert checkedScenarios == 1280 and checkedCalls == 19680
 
-echo "PVM mixed-program cross-check passed: 32 programs, 1024 policy/host scenarios"
+echo "PVM mixed-program cross-check passed: 32 programs, 1280 policy/host scenarios"

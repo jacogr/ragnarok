@@ -7,6 +7,8 @@
 ## HostResult/HostExecutionResult preserve enum-valued callback refusals separately from engine errors.
 ## Guarded StepResult snapshots expose read-only exit and selected faultPage/hostCall metadata.
 ## Successful steps publish immutable snapshots; local failures publish no state or gas progress.
+## newPreparedProgram adds a bounded reusable lazy execution representation; execute/executeWithHost
+## overloads consume its selected handlers and operands without changing guest semantics.
 
 import ./[program, machine, registers, gas, gas_plan, gas_memo]
 import ./internal/register_ops
@@ -75,7 +77,8 @@ type
   StepError* {.pure.} = enum ## Local scope/resource/specification failures are distinct from guest execution outcomes.
     Uninitialized, None, InvalidMachine, UnsupportedInstruction, GasCycleLimitExceeded,
     NegativeBranchTarget, AmbiguousAccessOrder, StepLimitExceeded, InvalidHostSuspension,
-      InvalidHostResponse, HostCallLimitExceeded, InvalidGasPlan, InvalidGasMemo
+      InvalidHostResponse, HostCallLimitExceeded, InvalidGasPlan, InvalidGasMemo,
+        InvalidPreparedProgram, PreparedProgramBusy
   StepResult* = object ## Failed/default alternatives carry only their reason; no partial machine or charge escapes.
     case status: StepError
     of None:
@@ -507,13 +510,16 @@ func signedLess(a, b: uint64): bool =
   (a xor 0x8000000000000000'u64) < (b xor 0x8000000000000000'u64)
 
 # Evaluate the condition against the original register file; decoding already saturated register IDs.
-func branchCondition(decoded: ProgramResult[Instruction], registers: RegisterFile): bool =
+func branchConditionSelected[SelectedOpcode: static[int]](decoded: ProgramResult[Instruction],
+    registers: RegisterFile): bool =
   let item = decoded.value
   let indices = instructionRegisters(decoded)
   let a = uint64(registers[indices.aIndex])
   let b = (if item.opcode <= 90: uint64(item.x)
     else: uint64(registers[indices.bIndex]))
-  case item.opcode
+  # Prepared handlers fix the comparison once; ordinary execution keeps its owned runtime opcode.
+  let opcode = when SelectedOpcode >= 0: byte(SelectedOpcode) else: item.opcode
+  case opcode
   of 81, 170:
     # Equality has identical signed and unsigned interpretations.
     a == b
@@ -544,6 +550,11 @@ func branchCondition(decoded: ProgramResult[Instruction], registers: RegisterFil
   else:
     # The only remaining conditional opcode is signed greater-than immediate (90).
     signedLess(b, a)
+
+func branchCondition(decoded: ProgramResult[Instruction],
+    registers: RegisterFile): bool {.inline.} =
+  ## The ordinary interpreter retains its genuine runtime opcode while sharing comparison semantics with prepared handlers.
+  branchConditionSelected[-1](decoded, registers)
 
 # Apply control mutations after gas charging; panic/halt still retain explicit load mutations.
 # All operands are read before writes, including aliased load-and-dynamic-jump registers.
@@ -1285,3 +1296,655 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
   if settings.error != GasMemoError.None: return StepResult(status: StepError.InvalidGasMemo)
   memoRunHost[Context](source, context, handler, stepLimit, hostLimit,
     settings.value.cycleLimit, memo)
+
+
+# Prepared execution is colocated with the private semantic helpers so no mutable execution capability is exported.
+type
+  PreparedByteLimit* = distinct uint64 ## Local ceiling for the retained index and prepared payload; allocator headers are excluded.
+  PreparedBlockLimit* = distinct uint32 ## Maximum resident hash slots; independent of code size and guest addresses.
+  PreparedLimits* = object ## One source-bound policy controls retained storage and exact pipeline simulation work.
+    bytes*: PreparedByteLimit
+    blocks*: PreparedBlockLimit
+    cycles*: GasCycleLimit
+  PreparationError* {.pure.} = enum ## Preparation refuses invalid owners or policies without publishing a partial handle.
+    Uninitialized, None, InvalidProgram, LimitExceeded
+  PreparationResult*[T] = object ## Default/failed alternatives carry no cache, program or copied observation.
+    case status: PreparationError
+    of None:
+      completed: T
+    else:
+      discard
+  PreparedInfo* = object ## Copied diagnostics expose no writable cache storage or invocation state.
+    codeBytes*, residentBytes*, residentBlocks*, residentOperations*: uint64
+    preparedBlocks*, preparedOperations*, hits*, evictions*, peakBytes*: uint64
+    byteLimit*: PreparedByteLimit
+    blockLimit*: PreparedBlockLimit
+    cycleLimit*: GasCycleLimit
+  PreparedHandler = proc(program: Program, operation: PreparedOperation, info: var MachineInfo,
+    memory: var WorkingMemory, cache: var ExecutionCache): InstructionEvaluation {.nimcall,
+        raises: [].}
+  PreparedOperation = object ## A private operation binds one selected handler to a genuine source-owned decode and static target facts.
+    decoded: ProgramResult[Instruction]
+    handler: nil PreparedHandler
+    target: CodeAddress
+    validTarget: bool
+    endsBlock: bool
+  PreparedChunkData = object ## One immutable operation array has no back-reference to its program or cache owner.
+    start: CodeAddress
+    operations: seq[PreparedOperation]
+    bytes: uint64
+    price: uint64
+  PreparedChunk = ref PreparedChunkData ## Private cache/continuation references keep active operations alive through synchronous callbacks.
+  PreparedData = ref object ## Shared cache identity retains only immutable program facts, never CPU, memory, gas or host closures.
+    source: Program
+    limits: PreparedLimits
+    slots: seq[nil PreparedChunk]
+    info: PreparedInfo
+    replacement: int
+    busy: bool
+  PreparedProgram* = object ## Copies share bounded lazily learned facts; exclusive worker use is required and synchronous reentry is refused.
+    data: nil PreparedData
+  PreparedLocation = object ## Invocation-only continuation retains the current operation array across host callbacks, without retaining callback state.
+    chunk: nil PreparedChunk
+    next: int
+
+func error*[T](r: PreparationResult[T]): PreparationError =
+  ## Inspect status without permitting retagging or fabricated payload selection.
+  r.status
+func value*[T](r: PreparationResult[T]): T {.inline, requires: r.status == PreparationError.None.} =
+  ## Only complete preparation success authorizes its owner or copied information.
+  r.completed
+
+proc newPreparedProgram*(source: Program, limits: PreparedLimits): PreparationResult[
+    PreparedProgram] =
+  ## Capture an exact immutable source and bounded sparse index; unvisited instructions and prices are not expanded.
+  let extent = codeLength(source)
+  if extent.error != ProgramError.None or extent.value == 0:
+    return PreparationResult[PreparedProgram](status: PreparationError.InvalidProgram)
+  let count = uint64(uint32(limits.blocks))
+  if count == 0 or count > 65536:
+    return PreparationResult[PreparedProgram](status: PreparationError.LimitExceeded)
+  let indexBytes = count * uint64(sizeof(PreparedChunk))
+  let minimum = uint64(sizeof(PreparedChunkData)) + uint64(sizeof(PreparedOperation))
+  if uint64(limits.bytes) < indexBytes or uint64(limits.bytes)-indexBytes < minimum:
+    return PreparationResult[PreparedProgram](status: PreparationError.LimitExceeded)
+  let owner = PreparedData(source: source, limits: limits,
+    slots: newSeq[nil PreparedChunk](int(count)), replacement: 0, busy: false,
+    info: PreparedInfo(codeBytes: extent.value, residentBytes: indexBytes, peakBytes: indexBytes,
+      byteLimit: limits.bytes, blockLimit: limits.blocks, cycleLimit: limits.cycles))
+  PreparationResult[PreparedProgram](status: PreparationError.None,
+    completed: PreparedProgram(data: owner))
+
+func preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
+  ## Earlier observations remain copied values as the private cache learns or evicts later facts.
+  if prepared.data == nil: return PreparationResult[PreparedInfo](
+      status: PreparationError.InvalidProgram)
+  let owner = prepared.data
+  PreparationResult[PreparedInfo](status: PreparationError.None, completed: owner.info)
+
+func programOf*(prepared: PreparedProgram): PreparationResult[Program] =
+  ## Retain the original immutable child independently of the cache handle.
+  if prepared.data == nil: return PreparationResult[Program](
+      status: PreparationError.InvalidProgram)
+  let owner = prepared.data
+  PreparationResult[Program](status: PreparationError.None, completed: owner.source)
+
+proc preparedIncrement(value: var uint64) =
+  ## Diagnostics saturate without changing execution or refusing a long-lived cache.
+  if value != high(uint64): inc value
+
+proc preparedRegister[Code: static[int]](program: Program, operation: PreparedOperation,
+    info: var MachineInfo, memory: var WorkingMemory,
+        cache: var ExecutionCache): InstructionEvaluation =
+  ## A literal selected opcode specializes the existing arithmetic table without repeating category dispatch.
+  var index: range[0..12] = 0
+  var value = RegisterValue(0)
+  if not computeRegisterWrite(operation.decoded, info.registers, index, value, Code):
+    return InstructionEvaluation(status: StepError.UnsupportedInstruction)
+  info.registers[index] = value
+  let item = operation.decoded.value
+  info.pc = CodeAddress(uint64(item.address)+1+uint64(item.skip))
+  if not instructionHasFallthrough(operation.decoded):
+    return InstructionEvaluation(status: StepError.InvalidMachine)
+  InstructionEvaluation(status: StepError.None, effect: InstructionEffect(kind: StepExit.Continued))
+
+proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStore: static[bool]](
+    program: Program, operation: PreparedOperation, info: var MachineInfo,
+    memory: var WorkingMemory, cache: var ExecutionCache): InstructionEvaluation =
+  ## Width/sign/address/source modes are selected once; current memory still performs every scalar permission/fault check.
+  let item = operation.decoded.value
+  let slots = instructionRegisters(operation.decoded)
+  var base = 0'u64
+  when Indirect:
+    # Load/register-store bases use B; immediate-store bases use original A.
+    when Loading or not ImmediateStore: base = uint64(info.registers[slots.bIndex])
+    else: base = uint64(info.registers[slots.aIndex])
+  let address = MemoryAddress((base and 0xffffffff'u64)+(uint64(item.x) and 0xffffffff'u64))
+  var failedPage = PageAddress(0)
+  var reason = MachineError.None
+  when Loading:
+    # Read the original aliased base before publishing a destination register.
+    let loaded = loadWorking(memory, address, AccessWidth(byte(Width)))
+    reason = loaded.error
+    if reason == MachineError.Fault: failedPage = loaded.faultPage
+    if reason == MachineError.None:
+      var value = uint64(loaded.value)
+      when Signed:
+        # Only signed widths below eight use these compile-time-safe shifts.
+        let bits = Width*8
+        if (value and (1'u64 shl (bits-1))) != 0:
+          value = value or (high(uint64) shl bits)
+      info.registers[slots.aIndex] = RegisterValue(value)
+  else:
+    # Store source selection is fixed while register contents remain invocation-local.
+    let value = when ImmediateStore: uint64(item.y) else: uint64(info.registers[slots.aIndex])
+    reason = storeWorking(memory, address, AccessWidth(byte(Width)), RegisterValue(value), failedPage)
+  case reason
+  of MachineError.None:
+    # Successful nonterminators require their validated physical successor.
+    if not instructionHasFallthrough(operation.decoded):
+      return InstructionEvaluation(status: StepError.InvalidMachine)
+    info.pc = CodeAddress(uint64(item.address)+1+uint64(item.skip))
+    InstructionEvaluation(status: StepError.None, effect: InstructionEffect(
+        kind: StepExit.Continued))
+  of MachineError.Fault:
+    InstructionEvaluation(status: StepError.None,
+      effect: InstructionEffect(kind: StepExit.Fault, failedPage: failedPage))
+  of MachineError.Panic:
+    InstructionEvaluation(status: StepError.None, effect: InstructionEffect(kind: StepExit.Panic))
+  of MachineError.AmbiguousAccessOrder:
+    InstructionEvaluation(status: StepError.AmbiguousAccessOrder)
+  else:
+    InstructionEvaluation(status: StepError.InvalidMachine)
+
+proc preparedControl[Code: static[int]](program: Program, operation: PreparedOperation,
+    info: var MachineInfo, memory: var WorkingMemory,
+        cache: var ExecutionCache): InstructionEvaluation =
+  ## Static destinations are prepared once; dynamic ordinals retain the checked source-bound resolver.
+  let decoded = operation.decoded
+  let item = decoded.value
+  var outcome = StepExit.Continued
+  when Code == 10:
+    # Publish the causing host PC at the recursive boundary, without treating a host call as a block terminator.
+    if not instructionHasFallthrough(decoded): return InstructionEvaluation(
+        status: StepError.InvalidMachine)
+    return InstructionEvaluation(status: StepError.None, effect: InstructionEffect(
+      kind: StepExit.Host,
+      callNumber: HostCallId(uint64(item.x)), callAddress: item.address))
+  elif Code == 0:
+    outcome = StepExit.Panic
+  elif Code == 2:
+    # Unlikely stays inside its prepaid block.
+    if not instructionHasFallthrough(decoded): return InstructionEvaluation(
+        status: StepError.InvalidMachine)
+    info.pc = CodeAddress(uint64(item.address)+1+uint64(item.skip))
+  elif Code == 50 or Code == 180:
+    outcome = controlMutation(program, decoded, info, cache)
+  else:
+    # Only conditional selection remains dynamic; all destination arithmetic/membership was sealed during preparation.
+    var target = operation.target
+    var valid = operation.validTarget
+    when (Code >= 81 and Code <= 90) or (Code >= 170 and Code <= 175):
+      valid = valid and instructionHasFallthrough(decoded)
+      if not branchConditionSelected[Code](decoded, info.registers):
+        target = CodeAddress(uint64(item.address)+1+uint64(item.skip))
+    when Code == 80:
+      # Load-and-jump writes even if its destination is invalid.
+      let slots = instructionRegisters(decoded)
+      info.registers[slots.aIndex] = RegisterValue(uint64(item.x))
+    if valid:
+      info.pc = target
+      info.blockCharged = false
+    else:
+      outcome = StepExit.Panic
+  InstructionEvaluation(status: StepError.None, effect: InstructionEffect(kind: outcome))
+
+proc preparedOperation(decoded: ProgramResult[Instruction]): PreparedOperation =
+  ## Select a specialized handler and immutable target facts from a genuine successful decoder result.
+  let item = decoded.value
+  result = PreparedOperation(decoded: decoded, handler: nil,
+    target: CodeAddress(0), validTarget: instructionTargetStartsBlock(decoded),
+    endsBlock: terminatesBlock(item.opcode))
+  let pc = uint64(item.address)
+  if item.opcode == 1:
+    result.target = CodeAddress(pc+1+uint64(item.skip))
+  elif item.displacement < 0:
+    # Invalid negative targets retain a false destination fact without unsigned underflow.
+    if uint64(-item.displacement) <= pc: result.target = CodeAddress(pc-uint64(-item.displacement))
+  else:
+    result.target = CodeAddress(pc+uint64(item.displacement))
+  case item.opcode
+  of 0: result.handler = preparedControl[0] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 1: result.handler = preparedControl[1] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 2: result.handler = preparedControl[2] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 10: result.handler = preparedControl[10] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 20: result.handler = preparedRegister[20] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 30: result.handler = preparedMemory[1, false, false, false,
+      true] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 31: result.handler = preparedMemory[2, false, false, false,
+      true] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 32: result.handler = preparedMemory[4, false, false, false,
+      true] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 33: result.handler = preparedMemory[8, false, false, false,
+      true] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 40: result.handler = preparedControl[40] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 50: result.handler = preparedControl[50] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 51: result.handler = preparedRegister[51] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 52: result.handler = preparedMemory[1, true, false, false,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 53: result.handler = preparedMemory[1, true, true, false,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 54: result.handler = preparedMemory[2, true, false, false,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 55: result.handler = preparedMemory[2, true, true, false,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 56: result.handler = preparedMemory[4, true, false, false,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 57: result.handler = preparedMemory[4, true, true, false,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 58: result.handler = preparedMemory[8, true, false, false,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 59: result.handler = preparedMemory[1, false, false, false,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 60: result.handler = preparedMemory[2, false, false, false,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 61: result.handler = preparedMemory[4, false, false, false,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 62: result.handler = preparedMemory[8, false, false, false,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 70: result.handler = preparedMemory[1, false, false, true,
+      true] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 71: result.handler = preparedMemory[2, false, false, true,
+      true] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 72: result.handler = preparedMemory[4, false, false, true,
+      true] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 73: result.handler = preparedMemory[8, false, false, true,
+      true] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 80: result.handler = preparedControl[80] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 81: result.handler = preparedControl[81] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 82: result.handler = preparedControl[82] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 83: result.handler = preparedControl[83] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 84: result.handler = preparedControl[84] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 85: result.handler = preparedControl[85] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 86: result.handler = preparedControl[86] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 87: result.handler = preparedControl[87] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 88: result.handler = preparedControl[88] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 89: result.handler = preparedControl[89] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 90: result.handler = preparedControl[90] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 100: result.handler = preparedRegister[100] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 101: result.handler = preparedRegister[101] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 102: result.handler = preparedRegister[102] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 103: result.handler = preparedRegister[103] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 104: result.handler = preparedRegister[104] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 105: result.handler = preparedRegister[105] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 106: result.handler = preparedRegister[106] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 107: result.handler = preparedRegister[107] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 108: result.handler = preparedRegister[108] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 109: result.handler = preparedRegister[109] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 110: result.handler = preparedRegister[110] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 120: result.handler = preparedMemory[1, false, false, true,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 121: result.handler = preparedMemory[2, false, false, true,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 122: result.handler = preparedMemory[4, false, false, true,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 123: result.handler = preparedMemory[8, false, false, true,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 124: result.handler = preparedMemory[1, true, false, true,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 125: result.handler = preparedMemory[1, true, true, true,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 126: result.handler = preparedMemory[2, true, false, true,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 127: result.handler = preparedMemory[2, true, true, true,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 128: result.handler = preparedMemory[4, true, false, true,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 129: result.handler = preparedMemory[4, true, true, true,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 130: result.handler = preparedMemory[8, true, false, true,
+      false] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 131: result.handler = preparedRegister[131] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 132: result.handler = preparedRegister[132] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 133: result.handler = preparedRegister[133] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 134: result.handler = preparedRegister[134] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 135: result.handler = preparedRegister[135] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 136: result.handler = preparedRegister[136] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 137: result.handler = preparedRegister[137] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 138: result.handler = preparedRegister[138] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 139: result.handler = preparedRegister[139] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 140: result.handler = preparedRegister[140] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 141: result.handler = preparedRegister[141] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 142: result.handler = preparedRegister[142] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 143: result.handler = preparedRegister[143] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 144: result.handler = preparedRegister[144] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 145: result.handler = preparedRegister[145] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 146: result.handler = preparedRegister[146] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 147: result.handler = preparedRegister[147] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 148: result.handler = preparedRegister[148] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 149: result.handler = preparedRegister[149] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 150: result.handler = preparedRegister[150] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 151: result.handler = preparedRegister[151] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 152: result.handler = preparedRegister[152] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 153: result.handler = preparedRegister[153] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 154: result.handler = preparedRegister[154] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 155: result.handler = preparedRegister[155] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 156: result.handler = preparedRegister[156] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 157: result.handler = preparedRegister[157] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 158: result.handler = preparedRegister[158] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 159: result.handler = preparedRegister[159] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 160: result.handler = preparedRegister[160] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 161: result.handler = preparedRegister[161] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 170: result.handler = preparedControl[170] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 171: result.handler = preparedControl[171] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 172: result.handler = preparedControl[172] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 173: result.handler = preparedControl[173] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 174: result.handler = preparedControl[174] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 175: result.handler = preparedControl[175] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 180: result.handler = preparedControl[180] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 190: result.handler = preparedRegister[190] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 191: result.handler = preparedRegister[191] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 192: result.handler = preparedRegister[192] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 193: result.handler = preparedRegister[193] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 194: result.handler = preparedRegister[194] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 195: result.handler = preparedRegister[195] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 196: result.handler = preparedRegister[196] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 197: result.handler = preparedRegister[197] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 198: result.handler = preparedRegister[198] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 199: result.handler = preparedRegister[199] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 200: result.handler = preparedRegister[200] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 201: result.handler = preparedRegister[201] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 202: result.handler = preparedRegister[202] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 203: result.handler = preparedRegister[203] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 204: result.handler = preparedRegister[204] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 205: result.handler = preparedRegister[205] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 206: result.handler = preparedRegister[206] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 207: result.handler = preparedRegister[207] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 208: result.handler = preparedRegister[208] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 209: result.handler = preparedRegister[209] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 210: result.handler = preparedRegister[210] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 211: result.handler = preparedRegister[211] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 212: result.handler = preparedRegister[212] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 213: result.handler = preparedRegister[213] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 214: result.handler = preparedRegister[214] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 215: result.handler = preparedRegister[215] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 216: result.handler = preparedRegister[216] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 217: result.handler = preparedRegister[217] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 218: result.handler = preparedRegister[218] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 219: result.handler = preparedRegister[219] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 220: result.handler = preparedRegister[220] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 221: result.handler = preparedRegister[221] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 222: result.handler = preparedRegister[222] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 223: result.handler = preparedRegister[223] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 224: result.handler = preparedRegister[224] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 225: result.handler = preparedRegister[225] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 226: result.handler = preparedRegister[226] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 227: result.handler = preparedRegister[227] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 228: result.handler = preparedRegister[228] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 229: result.handler = preparedRegister[229] # Fixed opcode-to-operation selection occurs only during preparation.
+  of 230: result.handler = preparedRegister[230] # Fixed opcode-to-operation selection occurs only during preparation.
+  else: discard # An unsupported future opcode keeps a nil handler and cannot silently become a trap.
+
+proc preparedSlot(owner: PreparedData, pc: CodeAddress): int =
+  ## Mix original byte PCs before bounded modulo; wrapping is intentional hash arithmetic only.
+  let word = uint64(pc)
+  int(((word xor (word shr 13))*0x9e3779b97f4a7c15'u64) mod uint64(owner.slots.len))
+
+proc evictPrepared(owner: PreparedData, slot: int) =
+  ## Drop one retained fact array; any invocation-local continuation keeps its own reference alive.
+  let chunk = owner.slots[slot]
+  if chunk != nil:
+    owner.info.residentBytes -= chunk.bytes
+    dec owner.info.residentBlocks
+    owner.info.residentOperations -= uint64(chunk.operations.len)
+    owner.slots[slot] = nil
+    preparedIncrement(owner.info.evictions)
+
+proc preparedChunk(owner: PreparedData, pc: CodeAddress): nil PreparedChunk =
+  ## Miss work uses one fixed scratch array, then publishes only a complete bounded segment.
+  let slot = preparedSlot(owner, pc)
+  let cached = owner.slots[slot]
+  if cached != nil and uint64(cached.start) == uint64(pc):
+    preparedIncrement(owner.info.hits)
+    return cached
+  let indexBytes = uint64(owner.slots.len)*uint64(sizeof(PreparedChunk))
+  let capacity = min(256'u64, (uint64(owner.limits.bytes)-indexBytes-uint64(sizeof(
+      PreparedChunkData))) div uint64(sizeof(PreparedOperation)))
+  var scratch = default(array[256, PreparedOperation])
+  var count = 0
+  var address = pc
+  var stopped = false
+  while count < int(capacity) and not stopped:
+    # Decode each visited operation once, stopping before a missing successor rather than refusing a valid prefix.
+    let decoded = instruction(owner.source, address)
+    if decoded.error != ProgramError.None:
+      stopped = true
+    else:
+      scratch[count] = preparedOperation(decoded)
+      inc count
+      let item = decoded.value
+      address = CodeAddress(uint64(address)+1+uint64(item.skip))
+      stopped = terminatesBlock(item.opcode) or not instructionHasFallthrough(decoded)
+  if count == 0: return nil
+  let bytes = uint64(sizeof(PreparedChunkData))+uint64(count)*uint64(sizeof(PreparedOperation))
+  # Fixed scratch is a separate transient preparation bound, not hidden retained cache payload.
+  let transient = owner.info.residentBytes+uint64(sizeof(scratch))+bytes
+  if transient > owner.info.peakBytes: owner.info.peakBytes = transient
+  evictPrepared(owner, slot)
+  while owner.info.residentBytes > uint64(owner.limits.bytes)-bytes:
+    # Clock replacement is bounded by the fixed nonempty index; no failure or eviction changes guest state.
+    evictPrepared(owner, owner.replacement)
+    inc owner.replacement
+    if owner.replacement == owner.slots.len: owner.replacement = 0
+  var operations = newSeq[PreparedOperation](count)
+  for index in 0..<count:
+    # Copy only the fully populated bounded scratch prefix into the retained array.
+    operations[index] = scratch[index]
+  let chunk = PreparedChunk(start: pc, operations: operations, bytes: bytes, price: 0)
+  owner.slots[slot] = chunk
+  owner.info.residentBytes += bytes
+  inc owner.info.residentBlocks
+  owner.info.residentOperations += uint64(count)
+  preparedIncrement(owner.info.preparedBlocks)
+  # Diagnostic operation totals saturate independently of semantic progress.
+  if owner.info.preparedOperations <= high(uint64)-uint64(count): owner.info.preparedOperations +=
+      uint64(count)
+  else: owner.info.preparedOperations = high(uint64)
+  chunk
+
+proc preparedPrice(owner: PreparedData, chunk: PreparedChunk): StepError =
+  ## Only an uncharged entry requests the whole containing basic-block price; segment boundaries do not charge again.
+  if chunk.price != 0: return StepError.None
+  let start = containingBlockStart(owner.source, chunk.start)
+  if start.error != ProgramError.None: return StepError.InvalidMachine
+  let price = blockGas(owner.source, start.value, owner.limits.cycles)
+  case price.error
+  of GasError.None:
+    chunk.price = uint64(price.value)
+    StepError.None
+  of GasError.CycleLimitExceeded: StepError.GasCycleLimitExceeded
+  of GasError.NegativeBranchTarget: StepError.NegativeBranchTarget
+  else: StepError.InvalidMachine
+
+proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
+    location: var PreparedLocation, remaining: var uint64): StepResult =
+  ## Run selected handlers within a prepared segment; no decoder-cache/category/pricing lookup occurs between its ordinary operations.
+  var memory = initWorkingMemory(cursor.memory, true)
+  var targets = initExecutionCache()
+  while remaining > 0:
+    # A host continuation can reuse its still-live segment if the validated posterior PC matches its next operation.
+    var chunk = location.chunk
+    var at = location.next
+    if chunk == nil or at >= chunk.operations.len or uint64(chunk.operations[
+        at].decoded.value.address) != uint64(cursor.info.pc):
+      location.chunk = nil
+      chunk = preparedChunk(owner, cursor.info.pc)
+      at = 0
+      if chunk == nil:
+        cursor.info.pc = CodeAddress(0)
+        return publishInstruction(owner.source, memory, cursor.info, InstructionEffect(
+            kind: StepExit.Panic), true)
+    let active = chunk
+    if active == nil: return StepResult(status: StepError.InvalidPreparedProgram)
+    if not cursor.info.blockCharged:
+      # Cache facts establish a price; affordability and the paid flag remain strictly invocation-local.
+      let priced = preparedPrice(owner, active)
+      if priced != StepError.None: return StepResult(status: priced)
+      if uint64(cursor.info.gas) < active.price:
+        return publishInstruction(owner.source, memory, cursor.info, InstructionEffect(
+            kind: StepExit.OutOfGas), false)
+      cursor.info.gas = MachineGas(uint64(cursor.info.gas)-active.price)
+      cursor.info.blockCharged = true
+    var ended = false
+    while at < active.operations.len and remaining > 0 and not ended:
+      # Every guest instruction, including an exiting one, consumes one local scheduling attempt.
+      dec remaining
+      # Borrow the stable retained array element directly; no full prepared-record copy crosses the indirect call.
+      let causingPc = active.operations[at].decoded.value.address
+      let endsBlock = active.operations[at].endsBlock
+      let selected = active.operations[at].handler
+      if selected == nil: return StepResult(status: StepError.UnsupportedInstruction)
+      let evaluated = selected(owner.source, active.operations[at], cursor.info, memory, targets)
+      if evaluated.status != StepError.None: return StepResult(status: evaluated.status)
+      inc at
+      let effect = evaluated.effect
+      if effect.kind != StepExit.Continued:
+        # Fault/host/gas preserve the causing PC; panic/halt use the existing recursive terminal normalization.
+        cursor.info.pc = if terminalExit(effect.kind): CodeAddress(0) else: causingPc
+        let published = publishInstruction(owner.source, memory, cursor.info, effect, true)
+        if published.error == StepError.None:
+          cursor.memory = memory.current
+          location.chunk = active
+          location.next = at
+        return published
+      ended = endsBlock
+    location.chunk = nil
+    location.next = 0
+  StepResult(status: StepError.StepLimitExceeded)
+
+proc runPrepared(source: Machine, prepared: PreparedProgram,
+    limit: ExecutionStepLimit): StepResult =
+  ## Validate the source once before entering invocation-owned state; no failed execution publishes a prefix.
+  let owner = prepared.data
+  if owner == nil: return StepResult(status: StepError.InvalidPreparedProgram)
+  var cursor = default(ExecutionCursor)
+  let initialized = initializeCursor(source, cursor)
+  if initialized != StepError.None: return StepResult(status: initialized)
+  if cursor.program != owner.source: return StepResult(status: StepError.InvalidPreparedProgram)
+  var remaining = uint64(limit)
+  var location = default(PreparedLocation)
+  preparedBudget(owner, cursor, location, remaining)
+
+proc execute*(source: Machine, limit: ExecutionStepLimit, prepared: PreparedProgram): StepResult =
+  ## Interpret through reusable prepared blocks; copied aliases share facts and cannot enter the same active owner recursively.
+  let owner = prepared.data
+  if owner == nil: return StepResult(status: StepError.InvalidPreparedProgram)
+  if owner.busy: return StepResult(status: StepError.PreparedProgramBusy)
+  owner.busy = true
+  let answer = runPrepared(source, prepared, limit)
+  owner.busy = false
+  answer
+
+proc preparedHost[Context; Reason: enum](source: Machine, prepared: PreparedProgram,
+    context: var Context, handler: proc(context: var Context, suspension: StepOutcome): HostResult[
+        Reason] {.nimcall, raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit): HostExecutionResult[Reason] =
+  ## One checked cursor and segment continuation survive callbacks; host replies replace all invocation memory staging.
+  let owner = prepared.data
+  var cursor = default(ExecutionCursor)
+  let initialized = initializeCursor(source, cursor)
+  if initialized != StepError.None: return executionResult[Reason](StepResult(status: initialized))
+  if owner == nil or cursor.program != owner.source:
+    return executionResult[Reason](StepResult(status: StepError.InvalidPreparedProgram))
+  var remaining = uint64(stepLimit)
+  var calls = uint64(hostLimit)
+  var location = default(PreparedLocation)
+  while true:
+    # Callback budgets are reserved before invoking any externally supplied synchronous code.
+    let answer = preparedBudget(owner, cursor, location, remaining)
+    if answer.error != StepError.None: return executionResult[Reason](answer)
+    let stopped = answer.value
+    if stopped.exit != StepExit.Host: return executionResult[Reason](answer)
+    if calls == 0: return executionResult[Reason](StepResult(
+        status: StepError.HostCallLimitExceeded))
+    dec calls
+    let response = handler(context, stopped)
+    case response.kind
+    of HostResultKind.Uninitialized:
+      return executionResult[Reason](StepResult(status: StepError.InvalidHostResponse))
+    of HostResultKind.Failure:
+      return HostExecutionResult[Reason](status: HostExecutionError.HostFailure,
+          hostReason: response.failure)
+    of HostResultKind.Response:
+      # Only a genuine causing instruction can continue; program identity never comes from callback output.
+      let decoded = instruction(owner.source, cursor.info.pc)
+      if decoded.error != ProgramError.None or decoded.value.opcode != 10:
+        return executionResult[Reason](StepResult(status: StepError.InvalidHostSuspension))
+      var exit = StepExit.Continued
+      let applied = applyResponseCursor(cursor, decoded.value, response.value, exit)
+      if applied != StepError.None: return executionResult[Reason](StepResult(status: applied))
+      if exit != StepExit.Continued:
+        return executionResult[Reason](publishInstruction(owner.source, cursor.memory, cursor.info,
+          InstructionEffect(kind: exit), true))
+  executionResult[Reason](StepResult(status: StepError.InvalidMachine))
+
+proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason] {.nimcall,
+        raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit,
+        prepared: PreparedProgram): HostExecutionResult[Reason] =
+  ## Shared cache identity stays exclusively busy through callbacks; independent owners can still nest safely.
+  let owner = prepared.data
+  if owner == nil: return executionResult[Reason](StepResult(
+      status: StepError.InvalidPreparedProgram))
+  if owner.busy: return executionResult[Reason](StepResult(status: StepError.PreparedProgramBusy))
+  owner.busy = true
+  let answer = preparedHost(source, prepared, context, handler, stepLimit, hostLimit)
+  owner.busy = false
+  answer
+
+proc preparedResponseHost[Context](source: Machine, prepared: PreparedProgram, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit): StepResult =
+  ## Response-only callbacks use the same prepared budget core and exact existing host-reply validation.
+  let owner = prepared.data
+  var cursor = default(ExecutionCursor)
+  let initialized = initializeCursor(source, cursor)
+  if initialized != StepError.None: return StepResult(status: initialized)
+  if owner == nil or cursor.program != owner.source:
+    return StepResult(status: StepError.InvalidPreparedProgram)
+  var remaining = uint64(stepLimit)
+  var calls = uint64(hostLimit)
+  var location = default(PreparedLocation)
+  while true:
+    # Reserve callback credit before external code; terminal/fault outcomes never invoke it.
+    let answer = preparedBudget(owner, cursor, location, remaining)
+    if answer.error != StepError.None: return answer
+    let stopped = answer.value
+    if stopped.exit != StepExit.Host: return answer
+    if calls == 0: return StepResult(status: StepError.HostCallLimitExceeded)
+    dec calls
+    let response = handler(context, stopped)
+    let decoded = instruction(owner.source, cursor.info.pc)
+    if decoded.error != ProgramError.None or decoded.value.opcode != 10:
+      return StepResult(status: StepError.InvalidHostSuspension)
+    var exit = StepExit.Continued
+    let applied = applyResponseCursor(cursor, decoded.value, response, exit)
+    if applied != StepError.None: return StepResult(status: applied)
+    if exit != StepExit.Continued:
+      return publishInstruction(owner.source, cursor.memory, cursor.info, InstructionEffect(
+          kind: exit), true)
+  StepResult(status: StepError.InvalidMachine)
+
+proc executeWithHost*[Context](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
+    stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit,
+        prepared: PreparedProgram): StepResult =
+  ## Release exclusive identity only after the private scheduler has returned through every success/refusal branch.
+  let owner = prepared.data
+  if owner == nil: return StepResult(status: StepError.InvalidPreparedProgram)
+  if owner.busy: return StepResult(status: StepError.PreparedProgramBusy)
+  owner.busy = true
+  let answer = preparedResponseHost(source, prepared, context, handler, stepLimit, hostLimit)
+  owner.busy = false
+  answer

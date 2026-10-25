@@ -13,7 +13,7 @@ func word(data: openArray[byte], at, width: int): uint64 =
     # Explicit byte expansion keeps the test format independent of production codecs.
     result = result or (uint64(data[at+index]) shl (index*8))
 
-proc exerciseUpstreamFrame*(data: openArray[byte]): bool {.raises: [].} =
+proc exerciseUpstreamFrame*(data: openArray[byte], preparedMode: bool = false): bool {.raises: [].} =
   ## False means malformed replay framing; admitted cases must satisfy every differential assertion.
   if data.len < 249+16384 or data.len > UpstreamFrameBytes: return false
   for index, value in [80'u8, 86, 77, 70, 85, 90, 48, 49]:
@@ -45,7 +45,13 @@ proc exerciseUpstreamFrame*(data: openArray[byte]): bool {.raises: [].} =
     initial.registers[index] = RegisterValue(word(data, 41+index*8, 8))
   let source = captureMachine(decoded.value, captured.value, initial)
   assert source.error == MachineError.None
-  let answer = execute(source.value, ExecutionStepLimit(100000), GasCycleLimit(100000))
+  let answer = if preparedMode:
+      # Optional prepared execution consumes the exact same decoder owner, inputs and frozen reference observations.
+      let created = newPreparedProgram(decoded.value, PreparedLimits(bytes: PreparedByteLimit(
+          1048576), blocks: PreparedBlockLimit(128), cycles: GasCycleLimit(100000)))
+      assert created.error == PreparationError.None
+      execute(source.value, ExecutionStepLimit(100000), created.value)
+    else: execute(source.value, ExecutionStepLimit(100000), GasCycleLimit(100000))
   assert answer.error == StepError.None, "local execution budget or API failure"
   let outcome = answer.value
   assert ord(outcome.exit) == int(data[20]), "upstream exit mismatch"

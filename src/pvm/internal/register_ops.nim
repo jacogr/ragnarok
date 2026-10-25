@@ -93,7 +93,8 @@ func countBits(value: uint64, bits: int, mode: int): uint64 {.requires:
   uint64(bits)-populationCount(filled)
 
 template computeRegisterWrite*(decoded: ProgramResult[Instruction], registers: RegisterFile,
-    writeIndex: var range[0..12], writeValue: var RegisterValue): bool =
+    writeIndex: var range[0..12], writeValue: var RegisterValue,
+    selectedOpcode: static[int] = -1): bool =
   ## Compute one atomic write from original operands; invalid/default/unsupported inputs leave outputs unchanged.
   ## Both private dispatch and the public result wrapper share this typed expansion without temporary tagged results.
   block:
@@ -112,7 +113,9 @@ template computeRegisterWrite*(decoded: ProgramResult[Instruction], registers: R
       var answer = uint64(registers[destination])
       var supported = true
       # Each alternative applies the named GP mutation using unsigned bit patterns.
-      case item.opcode
+      # Prepared handlers select a literal opcode; ordinary callers retain their genuine runtime selection.
+      let opcode = when selectedOpcode >= 0: byte(selectedOpcode) else: item.opcode
+      case opcode
       of 20:
         # load_imm_64 reads only the pre-mutation operands.
         answer = x
