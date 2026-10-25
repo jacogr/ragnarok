@@ -81,6 +81,16 @@ proc samePages(memory: Memory, expected: openArray[PageImage]) =
 proc witness(op: byte, width: int, address, base, offset: uint64, alias: bool,
     pages: openArray[PageImage], exit: StepExit, fault: uint32) =
   let program = owner(op, address, offset, alias)
+  let decoded = instruction(program, CodeAddress(0))
+  assert decoded.error == ProgramError.None
+  let operands = instructionMemoryOperands(decoded)
+  assert int(operands.width) == width
+  assert operands.isLoad == (op in {52'u8..58'u8, 124'u8..130'u8})
+  assert operands.isSigned == (op in signedOps)
+  assert operands.usesImmediate == (op in {30'u8..33'u8, 70'u8..73'u8})
+  let expectedBase = (if op in {70'u8..73'u8}: MemoryBase.A
+    elif op in {120'u8..130'u8}: MemoryBase.B else: MemoryBase.None)
+  assert operands.base == expectedBase
   let memory = captureMemory(pages, PageLimit(4)).value
   var regs = default(RegisterFile)
   # Sentinels make accidental writes to non-destination registers observable.

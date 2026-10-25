@@ -7,7 +7,8 @@
 ## Exposes Program snapshots and nominal address/index/limit types, decodeProgram/decodeJamProgram,
 ## instruction/opcode/jump lookup, raw instruction-byte lookup with zero padding, and block-boundary
 ## and containing-block queries. Genuine instruction results additionally expose success-guarded
-## instructionHasFallthrough/TargetStartsBlock and instructionRegisters without publishing mutable validation metadata.
+## instructionHasFallthrough/TargetStartsBlock and instructionRegisters/instructionMemoryOperands
+## without publishing mutable validation metadata.
 
 import ../codec/natural
 
@@ -50,12 +51,20 @@ type
     TwoRegistersImmediate, TwoRegistersOffset, TwoRegistersTwoImmediates, ThreeRegisters
   RegisterSlots* = object ## Copied bounded host coordinates retain no program/machine owner; only genuine instruction queries bind them to operands.
     aSlot, bSlot, dSlot, writeSlot: range[0'u8..12'u8]
+  MemoryBase* {.pure.} = enum ## A decoded memory address uses no register, original A or original B.
+    None, A, B
+  MemoryOperands* = object ## Copied scalar facts are derived once by the owner decoder; defaults describe no memory access.
+    widthValue: byte
+    loadingValue, signedValue: bool
+    baseValue: MemoryBase
+    immediateValue: bool
   Instruction* = object ## Copied decoded operands use the GP names A/B/D and X/Y; unused fields are zero.
  ## Offsets remain signed displacements: resolving a target must not wrap a negative address.
     address*: CodeAddress
     opcode*: byte
     shape*: OperandShape
     targetStartsBlock: bool # Owner-bound static control membership is never writable through extracted operands.
+    memoryOperands: MemoryOperands # These five byte-sized facts occupy existing alignment padding before skip.
     skip*: range[0..24]
     a*, b*, d*: RegisterIndex
     fallthroughPresent: bool # Only the owner decoder grants this immutable v_blob-chain fact; copied operands cannot forge a tagged result.
@@ -98,6 +107,57 @@ func instructionRegisters*(decoded: ProgramResult[Instruction]): RegisterSlots {
     requires: decoded.status == ProgramError.None.} =
   ## Only a genuine successful decode binds A/B/D and arithmetic-destination coordinates to immutable operand values.
   decoded.completed.registerSlots
+func instructionMemoryOperands*(decoded: ProgramResult[Instruction]): MemoryOperands {.inline,
+    requires: decoded.status == ProgramError.None.} =
+  ## Only a genuine successful decode supplies immutable width, signedness and operand roles; raw copies cannot rebind them.
+  decoded.completed.memoryOperands
+func width*(operands: MemoryOperands): byte {.inline.} =
+  ## Report the decoded byte width; zero denotes a non-memory/default fact, never permission to access bytes.
+  operands.widthValue
+func isLoad*(operands: MemoryOperands): bool {.inline.} =
+  ## Loads write their decoded A only after complete memory preflight succeeds.
+  operands.loadingValue
+func isSigned*(operands: MemoryOperands): bool {.inline.} =
+  ## Only byte/halfword/word loads request explicit high-bit extension.
+  operands.signedValue
+func base*(operands: MemoryOperands): MemoryBase {.inline.} =
+  ## Select the original address register without reclassifying an opcode during execution.
+  operands.baseValue
+func usesImmediate*(operands: MemoryOperands): bool {.inline.} =
+  ## Immediate stores read Y; register stores read original A.
+  operands.immediateValue
+
+func decodeMemoryOperands(opcode: byte): MemoryOperands =
+  ## Derive fixed operand roles only during successful owner decoding; execution/cache hits reuse the result.
+  result = default(MemoryOperands)
+  case opcode
+  of 52..58, 124..130:
+    # Load pairs alternate unsigned/signed at 8/16/32 bits, followed by unsigned 64-bit.
+    let index = (if opcode <= 58: int(opcode)-52 else: int(opcode)-124)
+    result.widthValue = byte(1 shl (index div 2))
+    result.loadingValue = true
+    result.signedValue = index in [1, 3, 5]
+    if opcode >= 124: result.baseValue = MemoryBase.B # Indirect loads consume original B.
+  of 30..33:
+    # Absolute immediate stores use X and Y without reading an address register.
+    result.widthValue = byte(1 shl (int(opcode)-30))
+    result.immediateValue = true
+  of 59..62:
+    # Absolute register stores write the low decoded-width bytes of original A.
+    result.widthValue = byte(1 shl (int(opcode)-59))
+  of 70..73:
+    # Indirect immediate stores use original A plus X and data Y.
+    result.widthValue = byte(1 shl (int(opcode)-70))
+    result.baseValue = MemoryBase.A
+    result.immediateValue = true
+  of 120..123:
+    # Indirect register stores use original B plus X and data A.
+    result.widthValue = byte(1 shl (int(opcode)-120))
+    result.baseValue = MemoryBase.B
+  else:
+    # Successful non-memory decodes retain the explicit zero-width/default facts.
+    discard
+
 func boundedRegister(value: byte): range[0'u8..12'u8] {.inline.} =
   ## GP operands saturate at12; separate returns preserve the explicit narrowing proof.
   if value > 12: return 12'u8
@@ -318,7 +378,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     shape: OperandShape.NoArguments, a: RegisterIndex(0), b: RegisterIndex(0),
     d: RegisterIndex(0), x: Immediate(0), y: Immediate(0), displacement: 0,
     fallthroughPresent: uint64(skip) < uint64(data.codeLength)-pc-1, targetStartsBlock: false,
-        registerSlots: default(RegisterSlots))
+        registerSlots: default(RegisterSlots), memoryOperands: default(MemoryOperands))
   # Each branch corresponds to one complete operand shape in the pinned instruction tables.
   case opcode
   of 0..2:
@@ -416,6 +476,7 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
   else:
     # A valid owner cannot contain another marked opcode; retain an explicit failure alternative.
     return ProgramResult[Instruction](status: ProgramError.InvalidInstruction)
+  item.memoryOperands = decodeMemoryOperands(opcode) # Derive once after operand validation; cached results carry these facts unchanged.
   if opcode == 1:
     # A present successor after a terminating fallthrough is necessarily a block boundary in the validated chain.
     item.targetStartsBlock = item.fallthroughPresent
