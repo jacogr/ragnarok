@@ -219,3 +219,10 @@ Acceptance requires complete opcode, gas, memory, fault/host/reentry and ARC par
 all maintained guests against the frozen prepared baseline on identical build paths;
 proof that the generated result fits a register return; and same-runner cold/reused
 counts and paired timings. This trial introduces no new public API or unchecked access.
+
+The compact-ABI trial is isolated from the merge-ready prepared PR on
+`codex/pvm-prepared-handler-abi`. Its baseline is the reconciled prepared tree
+`10af30aabbc901775f556a563b983583a2eb481f`, including the merged memory facts and
+DOOM tools. Checked local opcode/host/ARC, mixed-reference and complete guest comparisons
+pass on that combined tree. The measurement report additionally records the runner CPU
+model. No speed gain is accepted before the paired Linux evidence completes.
