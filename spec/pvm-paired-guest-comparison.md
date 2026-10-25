@@ -157,8 +157,11 @@ Activation must reproduce the exact captured bytes and membership before compila
 post-build checks detect source changes before the path is reused. Deletions retire
 stale members. Original baseline/candidate snapshots remain separate provenance
 owners, and the final candidate compilation snapshot is sealed through all measured
-processes. Each role keeps independent compiler caches and output directories while
-using the same native/synthetic output basenames. Compiler, flags, driver, fixtures,
+processes. Each role now starts with a fully cleared private compilation directory at
+the same cache/object/output paths. Its executable, permissions and build log are
+retained under the separate role directory before that staging directory is retired.
+This isolates compiler state while also fixing ThinLTO object-module identity.
+Compiler, flags, driver, fixtures,
 pricing policies, matrix ordering, cold rows and full-state/assertion checks remain
 unchanged; every build still finishes before timing.
 
@@ -175,6 +178,25 @@ Focused Python guards cover canonical role activation, stale/deleted members, so
 changes, every image profile, malformed identities, legacy report rendering and a
 same-source image mismatch stopping real orchestration before timing. Exact-head
 Linux validation is recorded below.
+
+### Object-path identity follow-up
+
+The byte specialization stress case exposed another path-sensitive identity effect on
+Linux. [CI40171424010](https://github.com/jacogr/ragnarok/actions/runs/40171424010)
+reproduces unequal whole ELF hashes for all three independent-cache pairs despite
+identical generated C and identical `.text` hashes. ELF details identify a promoted
+`writerScalar...llvm.<suffix>` symbol, its string-table entry and the GNU build ID as
+differences. No executable-code difference or timing penalty is inferred from that
+metadata-only mismatch, and the whole-file SHA-256 guard is retained.
+
+Fresh canonical cache/object/output paths produce byte-identical whole images for
+all three profiles in that same build-only stress diagnostic. The source is fixed
+rejected prototype `11f79d97`, built but never executed by this diagnostic; its
+performance experiment remains rejected. A collector fix binds generated-C comparison
+to the active build cache, excluding earlier profiles. Canonical retention preserves
+executable mode and distinct role logs. Python guards exercise cache retirement,
+unchanged compiler paths, retained old bytes/logs/modes and refusal of unstable output
+or symlinked staging. Full same-image execution validation follows before attribution.
 
 Local qualification passes38 focused guest-comparison/input Python tests, workflow
 YAML parsing and inventory checks. Six real checked ARC/Clang ThinLTO builds pass

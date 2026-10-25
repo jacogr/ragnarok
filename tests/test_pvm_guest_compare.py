@@ -452,14 +452,20 @@ class GuestComparisonTests(unittest.TestCase):
                 calls.append(checks.folder)
                 image = checks.folder/name
                 image.write_bytes(str(len(calls)).encode())
+                image.chmod(0o751)
+                (checks.folder/(name+'-build.log')).write_text(str(len(calls)))
                 return {'exit_code': 0}, image
 
-            with patch.object(compare, 'build', side_effect=fake_build):
+            with patch.object(compare, 'build', side_effect=fake_build), patch.object(compare, 'ROOT', folder):
                 _, first = compare.compile_image(folder, 'baseline', 'compiler', Path('source'), 'native')
                 _, second = compare.compile_image(folder, 'candidate', 'compiler', Path('source'), 'native')
             self.assertEqual(calls, [folder/'compilation']*2)
             self.assertEqual(first.read_bytes(), b'1')
             self.assertEqual(second.read_bytes(), b'2')
+            self.assertEqual(first.stat().st_mode & 0o777, 0o751)
+            self.assertEqual(second.stat().st_mode & 0o777, 0o751)
+            self.assertEqual((first.parent/'native-build.log').read_text(), '1')
+            self.assertEqual((second.parent/'native-build.log').read_text(), '2')
             (folder/'compilation').rename(folder/'other')
             (folder/'compilation').symlink_to(folder/'other', target_is_directory=True)
             with self.assertRaisesRegex(ValueError, 'symlink'):
