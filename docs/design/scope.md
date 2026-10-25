@@ -30,7 +30,7 @@ in the relevant `spec/` contract.
   Fourteen unmodified published full-state mappings reproduce their roots independently and natively;
   exact typed chapter captures now compose with typed service records or explicit opaque captures
   into immutable whole mappings; fourteen complete published mappings reproduce their roots.
-  Independent current-pin whole-state parity and production-scale sizing remain separate;
+  GP-derived serialization qualification and production-scale sizing have separate contracts;
   complete-map memory/disk persistence is implemented within its bounded contracts.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
@@ -60,8 +60,9 @@ feature contracts retain the precise limitations and independent evidence.
 
 The reviewed T(state) serialization layouts are implemented, including current supervised
 metadata and the adopted request bound. [Current serialization status](../../spec/jam-serialization-status.md)
-records exact pins, current byte widths, whole-map qualification and the remaining
-independent unmodified current-schema source/mapping/root evidence requirement.
+records exact pins, current byte widths and independent GP-derived whole-map qualification
+within the declared schema/resource contracts. Original published current-schema maps remain
+additional corroboration; full JAM/STF and valid-state qualification are separate.
 Older namespace-upgrade paragraphs and skips are historical, not active backlog.
 The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
 [M1 coverage audit](../codec-coverage.md) distinguishes framing from those remaining state and

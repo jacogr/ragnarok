@@ -131,8 +131,9 @@ macOS arm64, with Linux confirmation pending CI after push.
 
 State chapters 1–16, current metadata, request-domain enforcement, whole-state composition
 and authored complete-map/root qualification are implemented. The old request-namespace and
-composition backlog is closed. Independent unmodified current-schema whole-state parity
-remains separately unqualified; see [the current status](jam-serialization-status.md).
+composition backlog is closed. Independent GP-derived current-schema qualification is recorded in
+[the current status](jam-serialization-status.md); additional original published current-schema
+maps remain separate corroboration rather than a pending implementation task.
 
 
 ## Compiler-port evidence
