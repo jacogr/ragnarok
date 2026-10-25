@@ -68,6 +68,33 @@ class MinifuzzBoundaries(unittest.TestCase):
         send(peer, payload)
         self.assertEqual(peer.sent, frame)
 
+    def test_observed_import_outcome_extents_and_types(self):
+        """Count actual root/refusal replies; malformed roots and other protocol errors cannot substitute for an import outcome."""
+        from jam_minifuzz_replay import import_outcome
+        from jam_minifuzz_trace import IMPORT_REJECTED
+        self.assertEqual(import_outcome(b'\x03signed',b'\x02'+bytes(32)),(1,0))
+        self.assertEqual(import_outcome(b'\x03signed',IMPORT_REJECTED),(0,1))
+        self.assertEqual(import_outcome(b'\x04query',b'\x05state'),(0,0))
+        for reply in (b'',b'\x02'+bytes(31),b'\x02'+bytes(33),b'\xffother',b'\x05state'):
+            with self.assertRaises(ValueError): import_outcome(b'\x03signed',reply)
+
+    def test_interrupted_stream_peer_close_order(self):
+        """Either close order still requires EOF; unrelated shutdown failures and residual replies never pass."""
+        import errno
+        from unittest.mock import Mock
+        from jam_fuzzer_stream_recovery import interrupted_eof
+        peer = Mock();peer.recv.return_value = b''
+        self.assertTrue(interrupted_eof(peer))
+        peer.shutdown.side_effect = OSError(errno.ENOTCONN,'already closed')
+        self.assertTrue(interrupted_eof(peer))
+        peer.recv.return_value = b'\0'
+        self.assertFalse(interrupted_eof(peer))
+        peer.shutdown.side_effect = OSError(errno.EBADF,'invalid descriptor')
+        with self.assertRaises(OSError): interrupted_eof(peer)
+        peer.shutdown.side_effect = OSError(errno.ENOTCONN,'already closed')
+        peer.recv.side_effect = ConnectionResetError('reset is not EOF')
+        with self.assertRaises(ConnectionResetError): interrupted_eof(peer)
+
     def test_trace_pairs_are_exact_and_fresh(self):
         """A manifest binds every raw binary pair; stale or unrelated directory contents refuse replay."""
         pair = (b'\x04'+bytes(32), b'\x05\x00')

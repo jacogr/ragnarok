@@ -10,9 +10,9 @@ import struct
 import subprocess
 import tempfile
 import time
-from jam_minifuzz_trace import exchanges
+from jam_minifuzz_trace import exchanges, IMPORT_OUTCOMES
 from jam_minifuzz_replay import replay
-from nimony_fuzz_guests import prepare_effect_sessions
+from nimony_fuzz_guests import prepare_effect_sessions, import_counts
 from current_stf_trace_command_oracle import chain_config
 
 
@@ -34,6 +34,7 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
     spec = planned[0][0].get('spec', 'tiny')
     assert spec in ('tiny', 'full') and all(job.get('spec', 'tiny') == spec for job, _ in planned)
     results = []
+    observed_references = {}
     local_controls = 0
     stream_recoveries = 0
     fork_evictions = 0
@@ -76,10 +77,16 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
                     if 'fork_retention' in job:
                         from jam_fuzzer_fork_retention import exercise as exercise_forks
                         fork_evictions += exercise_forks(endpoint, job['fork_retention'])
-                for index, (_, pairs) in enumerate(planned):
+                for index, (job, pairs) in enumerate(planned):
                     result = replay(script, environment, endpoint, run/f'case-{index:04d}', pairs, spec=spec)
                     results.append(result)
                     assert result['passed'], result['failure']
+                    observed = observed_references.setdefault(job['reference'],dict.fromkeys(IMPORT_OUTCOMES,0))
+                    declared = import_counts([job])
+                    # Count only actual matching replies from positive sessions, independently for every source owner.
+                    for field in IMPORT_OUTCOMES:
+                        assert result[field] == declared[field]
+                        observed[field] += result[field]
                 negative = replay(script, environment, endpoint, run/'false-success', planned[0][1], corrupt_last=True, spec=spec)
                 assert not negative['passed'] and negative['upstream_exit_code'] == 0
                 assert negative['failure'].startswith('Unexpected target response')
@@ -93,7 +100,9 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
                 if process.poll() is None:
                     process.kill()
                     process.wait(timeout=10) # Failure/deadline cleanup targets only the process owned by this profile.
-    return dict(passed=True, completed_sessions=len(results), local_missing_evidence=local_controls, stream_recoveries=stream_recoveries, fork_evictions=fork_evictions,
+    return dict(passed=True, **{field:sum(row[field] for row in results) for field in IMPORT_OUTCOMES},
+                observed_references=[dict(reference=name,**counts) for name,counts in sorted(observed_references.items())],
+                completed_sessions=len(results), local_missing_evidence=local_controls, stream_recoveries=stream_recoveries, fork_evictions=fork_evictions,
                 completed_exchanges=sum(result['completed_exchanges'] for result in results),
                 parameters_sha256=hashlib.sha256(parameters).hexdigest(), spec=spec, false_success_control=True,
                 log=str(log_path))
@@ -109,6 +118,7 @@ def exercise_plan(binary, policy_binary, script, environment, folder, jobs, evid
     """Execute a complete independently declared plan; scoped callers retain identical strict process/profile checks."""
     assert evidence['sessions'] == len(jobs) and jobs
     assert evidence['signed_imports'] == sum(len(job['steps']) for job in jobs)
+    assert all(evidence[field] == count for field,count in import_counts(jobs).items())
     local_controls = sum(len(job.get('local_missing_evidence', ())) for job in jobs)
     assert evidence['expected_local_missing_evidence'] == local_controls
     stream_controls = sum(len(job['stream_recovery']['cases'])+1 for job in jobs if 'stream_recovery' in job)
@@ -125,7 +135,18 @@ def exercise_plan(binary, policy_binary, script, environment, folder, jobs, evid
         selected = [(job, pairs) for job, pairs in planned if job['parameters'] == parameters]
         results.append(exercise_profile(binary, policy_binary, script, environment,
                                        run/f'profile-{index:02d}', selected, parameters))
-    return dict(passed=True, planned_sessions=len(planned),
+    observed_references = {}
+    # Profile allocation may split a reference; aggregate only the observed positive-session replies.
+    for profile in results:
+        for row in profile['observed_references']:
+            observed = observed_references.setdefault(row['reference'],dict.fromkeys(IMPORT_OUTCOMES,0))
+            for field in IMPORT_OUTCOMES: observed[field] += row[field]
+    counts = {'planned_'+field:evidence[field] for field in IMPORT_OUTCOMES}
+    counts.update({'completed_'+field:sum(row[field] for row in results) for field in IMPORT_OUTCOMES})
+    assert all(counts['planned_'+field] == counts['completed_'+field] for field in IMPORT_OUTCOMES)
+    return dict(passed=True, **counts,
+                observed_references=[dict(reference=name,**counts) for name,counts in sorted(observed_references.items())],
+                planned_sessions=len(planned),
                 planned_fork_evictions=fork_controls,
                 completed_fork_evictions=sum(row['fork_evictions'] for row in results),
                 planned_stream_recoveries=stream_controls,

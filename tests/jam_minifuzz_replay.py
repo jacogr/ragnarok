@@ -10,7 +10,7 @@ import struct
 import subprocess
 import sys
 import tempfile
-from jam_minifuzz_trace import write_trace
+from jam_minifuzz_trace import write_trace, IMPORT_REJECTED
 
 
 def exact(peer, size):
@@ -39,6 +39,14 @@ def send(peer, data):
     peer.sendall(struct.pack('<I', len(data))+data)
 
 
+def import_outcome(request, reply):
+    """Classify only a real ImportBlock response with canonical root extent or the exact protocol refusal."""
+    if request[:1] != b'\x03': return 0,0
+    if reply[:1] == b'\x02' and len(reply) == 33: return 1,0
+    if reply == IMPORT_REJECTED: return 0,1
+    raise ValueError('Invalid observed import outcome')
+
+
 def replay(script, environment, endpoint, folder, pairs, *, corrupt_last=False, spec='tiny'):
     """Require every actual exchange and process completion; upstream exit0 alone never proves success."""
     if spec not in ('tiny', 'full'):
@@ -48,6 +56,7 @@ def replay(script, environment, endpoint, folder, pairs, *, corrupt_last=False, 
     trace = folder/'trace'
     files = write_trace(trace, pairs)
     observed = []
+    accepted_imports = refused_imports = 0
     failure = None
     code = None
     process = None
@@ -81,6 +90,10 @@ def replay(script, environment, endpoint, folder, pairs, *, corrupt_last=False, 
                                              reply_sha256=hashlib.sha256(actual_reply).hexdigest()))
                         if actual_reply != expected:
                             failure = 'Unexpected target response at exchange '+str(index)
+                        else:
+                            # Only exact replies count; failed controls and unmatched roots cannot supply successful evidence.
+                            accepted,refused = import_outcome(actual_request,actual_reply)
+                            accepted_imports += accepted;refused_imports += refused
                         send(client, actual_reply)
                         if failure is not None:
                             break # Let the real upstream comparison observe the wrong reply and its own exit status.
@@ -96,6 +109,7 @@ def replay(script, environment, endpoint, folder, pairs, *, corrupt_last=False, 
                 if process is not None:
                     code = process.returncode
     result = dict(passed=failure is None and code == 0 and len(observed) == len(pairs),
+                  accepted_imports=accepted_imports,refused_imports=refused_imports,
                   planned_exchanges=len(pairs), completed_exchanges=len(observed),
                   upstream_exit_code=code, failure=failure, files=files, observed=observed)
     (folder/'result.json').write_text(json.dumps(result, indent=2)+'\n')

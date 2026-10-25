@@ -55,6 +55,43 @@ def guest_socket_verified(result):
             and result['consensus_rejections'] == result['signed_imports'])
 
 
+def import_evidence_verified(result, declared, profiles):
+    """Require source-owned outcome budgets, actual per-reference observations and exact per-profile/global totals."""
+    from jam_minifuzz_trace import IMPORT_OUTCOMES
+    expected = {row['reference']:{field:row[field] for field in IMPORT_OUTCOMES} for row in declared}
+    def observations(rows):
+        """Reject missing, duplicated, foreign or ill-typed observed owners before summing their actual outcomes."""
+        if not isinstance(rows,list): return None
+        found = {}
+        for row in rows:
+            if not isinstance(row,dict): return None
+            name = row.get('reference')
+            if not isinstance(name,str) or name not in expected or name in found: return None
+            if any(type(row.get(field)) is not int or row[field] < 0 for field in IMPORT_OUTCOMES): return None
+            found[name] = {field:row[field] for field in IMPORT_OUTCOMES}
+        return found
+    actual = observations(result.get('observed_references'))
+    if actual != expected: return False
+    combined = {}
+    for profile in profiles:
+        if not isinstance(profile,dict): return False
+        observed = observations(profile.get('observed_references'))
+        if observed is None: return False
+        for field in IMPORT_OUTCOMES:
+            if type(profile.get(field)) is not int or profile[field] < 0: return False
+            if profile[field] != sum(row[field] for row in observed.values()): return False
+        for name,row in observed.items():
+            counts = combined.setdefault(name,dict.fromkeys(IMPORT_OUTCOMES,0))
+            for field in IMPORT_OUTCOMES: counts[field] += row[field]
+    if combined != expected: return False
+    for field in IMPORT_OUTCOMES:
+        total = sum(row[field] for row in declared)
+        if any(type(result.get(prefix+field)) is not int or result[prefix+field] != total
+               for prefix in ('planned_','completed_')): return False
+        if sum(row[field] for row in profiles) != total: return False
+    return sum(result['completed_'+field] for field in IMPORT_OUTCOMES) == result['signed_imports']
+
+
 def minifuzz_verified(result):
     """Require all upstream exchanges and an observed false-success control, not the upstream process status alone."""
     if not isinstance(result, dict) or result.get('passed') is not True or result.get('false_success_control') is not True:
@@ -79,9 +116,9 @@ def minifuzz_verified(result):
         return False
     for expected in declared:
         row = actual[expected['reference']]
-        if any(row.get(key) != expected[key] for key in ('fixture_sha256','sessions','signed_imports')):
+        if any(row.get(key) != expected[key] for key in ('fixture_sha256','sessions','signed_imports','accepted_imports','refused_imports')):
             return False
-        if any(type(row.get(key)) is not int for key in ('sessions','signed_imports')):
+        if any(type(row.get(key)) is not int for key in ('sessions','signed_imports','accepted_imports','refused_imports')):
             return False
         stream = row.get('expected_sha256')
         if not isinstance(stream,str) or len(stream) != 64 or any(char not in '0123456789abcdef' for char in stream):
@@ -113,6 +150,7 @@ def minifuzz_verified(result):
             return False
         if result[planned] != result[completed] or result[completed] != sum(profile[field] for profile in profiles):
             return False
+    if not import_evidence_verified(result,declared,profiles): return False
     identities = []
     for profile in profiles:
         if (not isinstance(profile, dict) or profile.get('passed') is not True
@@ -155,6 +193,7 @@ def summary(report):
     if minifuzz_verified(upstream):
         lines.extend(['', 'Declared whole-map references: '+str(len(upstream['independent_references']))+'.',
                       'Upstream sessions: '+str(upstream['completed_sessions'])+'/'+str(upstream['planned_sessions'])+'.',
+                      'Observed accepted / refused imports: '+str(upstream['completed_accepted_imports'])+' / '+str(upstream['completed_refused_imports'])+'.',
                       'Exact upstream exchanges: '+str(upstream['completed_exchanges'])+'/'+str(upstream['planned_exchanges'])+'.',
                       'Local missing evidence / stream recovery / fork retention: '+str(upstream['completed_local_missing_evidence'])+' / '+str(upstream['completed_stream_recoveries'])+' / '+str(upstream['completed_fork_evictions'])+'.'])
     guests = report.get('socket', {}).get('guests')

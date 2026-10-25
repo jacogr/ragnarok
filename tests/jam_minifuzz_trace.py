@@ -8,6 +8,8 @@ from pathlib import Path
 from state_layout_oracle import digest
 from test_codec import reference_encode as natural
 
+IMPORT_OUTCOMES = ('accepted_imports','refused_imports')
+
 PEER_REQUEST = b'\x00\x01'+(3).to_bytes(4, 'little')+bytes([0, 8, 0])+bytes(3)+b'\x04test'
 IMPORT_REJECTED = b'\xff'+natural(len(b'ImportBlock rejected'))+b'ImportBlock rejected'
 PEER_RESPONSE = b'\x00\x01'+(3).to_bytes(4, 'little')+bytes([0, 8, 0])+bytes(3)+b'\x08Ragnarok'
