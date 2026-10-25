@@ -65,7 +65,7 @@ def creation_ids(result, slot, count):
     return ids
 
 
-def effects(result, profile, slot):
+def effects(result, profile, slot, *, statistics_config=DEFAULT):
     """Zero deposit parameters give zero child debit; literal metadata and empty code requests still publish atomically."""
     instructions, _ = program(profile); calls = 2 if profile == 'two-children' else 1
     count = 0 if profile in ('panic', 'reserved-length') else calls
@@ -80,7 +80,7 @@ def effects(result, profile, slot):
     narrow = list(narrow); narrow[2] = slot
     result[key] = account_wire((code, wide, narrow))
     gas = simulate(instructions, gas_definitions(), prefix=[b'\0']*5)[0]+3855*calls+(103 if profile == 'checkpoint-panic' else 0)
-    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], statistics_config)
     activity = {row[0]: list(row) for row in services}
     row = activity.setdefault(99, [99]+[0]*11); row[9] += 1; row[11] += gas
     result[chapter_key(13)] = statistics_wire((current, previous, cores, [tuple(activity[sid]) for sid in sorted(activity)]))

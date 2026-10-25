@@ -42,7 +42,7 @@ def original(profile):
     return parent
 
 
-def effects(result, parent, profile, slot, budget):
+def effects(result, parent, profile, slot, budget, *, statistics_config=DEFAULT):
     """Deleting an empty old junior refunds both pools into self liquid exactly once, without donor participation."""
     donor = chapter_service(255, 77); retained = profile in ('eject', 'checkpoint-panic')
     present = donor in parent; refund = 18 if retained and present else 0
@@ -54,7 +54,7 @@ def effects(result, parent, profile, slot, budget):
     instructions, _ = program(profile)
     gas = simulate(instructions, gas_definitions(), prefix=[b'\0']*5)[0]+458+103*int(profile == 'checkpoint-panic')
     assert gas <= budget
-    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], statistics_config)
     activity = {row[0]: list(row) for row in services}
     row = activity.setdefault(99, [99]+[0]*11); row[9] += 1; row[11] += gas
     result[chapter_key(13)] = statistics_wire((current, previous, cores, [tuple(activity[sid]) for sid in sorted(activity)]))

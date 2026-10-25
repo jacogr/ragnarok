@@ -28,6 +28,13 @@ class ReportingComparisonTests(unittest.TestCase):
             compare_chains(result,command,'driver','fixture',Path(folder)/'requests.txt',requests,expected,2)
         return result,calls
 
+    def test_declared_inventory_keeps_exact_observation_framing(self):
+        """A sixth authored identity field changes no positive output counts and a seventh is refused."""
+        wanted=['P 00','B aa','O bb']
+        self.assertEqual(len(partition(['C first root 00 params 0000','B aa'],wanted,1)),1)
+        with self.assertRaises(AssertionError):
+            partition(['C first root 00 params 0000 extra','B aa'],wanted,1)
+
     def test_complete_success_retains_all_output(self):
         """Each bounded process must pass and concatenation must match the whole expected sequence."""
         result,calls=self.run_case([('P 00\nB aa\nO 22\nN credential/InvalidSignature\n',0),('P 11\nB cc\nO 33\n',0)])

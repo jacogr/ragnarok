@@ -13,7 +13,10 @@ def partition(requests, expected, chains):
         fields=request.split()
         assert fields and fields[0] in ('C','B','N','S','T')
         if fields[0]=='C':
-            assert len(fields) in (4,5) and offset<len(expected) and expected[offset]=='P '+fields[3]
+            assert len(fields) in (4,5,6) and offset<len(expected) and expected[offset]=='P '+fields[3]
+            if len(fields)==6:
+                assert 4<=len(fields[5])<=32768 and len(fields[5])%2==0
+                assert all(octet in '0123456789abcdefABCDEF' for octet in fields[5])
             result.append(([],[]));size=1
         elif fields[0]=='T':
             assert result and len(fields)==2 and offset+4<len(expected)

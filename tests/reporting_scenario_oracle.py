@@ -17,6 +17,9 @@ def collect(cases, fixture, sources, check_frozen=True):
         encoded = checkpoint(list(parent.items()))
         requests.append(f"C {case['name']} {tree(list(parent.items()))[0].hex()} {encoded.hex()}")
         if 'parameters' in case: requests[-1] += ' '+case['parameters'].hex()
+        if 'inventory' in case:
+            assert 'parameters' in case
+            requests[-1] += ' '+case['inventory'].hex()
         lines.append('P '+encoded.hex()); roots.append([]); hashes.append([])
         for block, after, negatives in case['steps']:
             assert block[32:64] == tree(list(parent.items()))[0]
@@ -32,6 +35,8 @@ def collect(cases, fixture, sources, check_frozen=True):
                     checkpoint_sha256=hashes, refusals=refusals)
     if any('parameters' in case for case in cases):
         evidence['parameters_sha256'] = [hashlib.sha256(case['parameters']).hexdigest() if 'parameters' in case else None for case in cases]
+    if any('inventory' in case for case in cases):
+        evidence['inventory_sha256'] = [hashlib.sha256(case['inventory']).hexdigest() if 'inventory' in case else None for case in cases]
     if check_frozen:
         validate_frozen(fixture, sources, evidence)
     return requests, lines, evidence
