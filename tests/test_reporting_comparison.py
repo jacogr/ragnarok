@@ -66,3 +66,13 @@ class ReportingComparisonTests(unittest.TestCase):
         self.assertEqual(result[0][0],requests)
         with self.assertRaises(AssertionError):
             partition(['C a root 00 '+profile+' extra','B aa'],['P 00','B aa','O bb'],1)
+
+    def test_restart_requires_every_control_observation(self):
+        """A complete restart step requires wrong-root, budget and successful restoration results in exact order."""
+        requests=['C a root 00','S aa root']
+        expected=['P 00','B aa','O bb','K RootMismatch','K LimitExceeded','K Restored']
+        self.assertEqual(len(partition(requests,expected,1)),1)
+        for changed in (expected[:-1],expected+['K Restored'],expected[:3]+expected[4:]):
+            with self.subTest(changed=changed):
+                with self.assertRaises(AssertionError):partition(requests,changed,1)
+        with self.assertRaises(AssertionError):partition(['C a root 00','S aa'],expected,1)

@@ -78,3 +78,14 @@ def current_stf_population_anchors_corpus(compiler, report, checks, libraries):
     import current_stf_population_anchors_oracle as oracle
     return scenarios(compiler, checks, libraries, oracle,
         ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_population_reporting', 'current_stf_population_anchors', 'state_report'))
+
+
+@CORPORA.case
+def current_stf_population_restart_corpus(compiler, report, checks, libraries):
+    """Qualify complete checkpoint continuation with independently trusted roots across dynamic-roster state families."""
+    import current_stf_population_restart_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_effects', 'current_stf_epoch', 'current_stf_offender_reporting',
+         'current_stf_population', 'current_stf_population_anchors', 'current_stf_population_gas',
+         'current_stf_population_guests', 'current_stf_population_restart', 'current_stf_population_waves',
+         'current_stf_ticket_reporting', 'state_report'))

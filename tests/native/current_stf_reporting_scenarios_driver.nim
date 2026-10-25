@@ -13,6 +13,47 @@ import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout
 import ../../src/state/[store, checkpoint, accumulation_current_update, current_profile,
   current_globals, current_state, global_snapshot]
 
+proc suppliedRoot(text: string): StateRoot =
+  ## Trusted independently authored roots have one complete fixed32-byte representation.
+  let bytes = epoch.unhex(text)
+  assert bytes.len == 32
+  var root = default(array[32, byte])
+  for index in 0..<32: root[index] = bytes[index]
+  StateRoot(root)
+
+proc restoreSelected(chain: var ApplicationChain, expected: StateRoot, policy: StateStoreLimits) =
+  ## Reconstruct the actual selected state under an external expected root and recapture its exact header/configuration.
+  let selected = chain.chainView.bestBlock.value
+  let saved = epoch.checkpointHex(selected.stateSnapshot)
+  let encoded = encodeFullCheckpoint(selected.stateSnapshot, ByteLimit(16000000))
+  assert encoded.error == CheckpointError.None and encoded.value.len > 0
+  var wrong = array[32, byte](expected)
+  wrong[0] = wrong[0] xor 1
+  assert decodeFullCheckpoint(encoded.value, StateRoot(wrong), policy, ByteLimit(16000000)).error ==
+      CheckpointError.RootMismatch
+  echo "K RootMismatch"
+  assert decodeFullCheckpoint(encoded.value, expected, policy, ByteLimit(
+      encoded.value.len-1)).error == CheckpointError.LimitExceeded
+  echo "K LimitExceeded"
+  assert epoch.checkpointHex(chain.stateSnapshot.value) == saved
+  let restored = decodeFullCheckpoint(encoded.value, expected, policy, ByteLimit(16000000))
+  assert restored.error == CheckpointError.None
+  assert sameStateStorePolicy(selected.stateSnapshot, restored.value.snapshot.value)
+  let captured = captureBlockSnapshot(currentChainBytes(selected.header),
+      restored.value.snapshot.value, selected.chainParameters)
+  assert captured.error == GenesisError.None
+  let view = genesisView(captured).finalizeView(captured.value.blockHash)
+  assert view.error == ViewFinalizeError.None
+  let reopened = initApplicationChain(view.value)
+  assert reopened.error == ApplicationChainError.None
+  chain = reopened.value
+  assert epoch.checkpointHex(chain.stateSnapshot.value) == saved
+  assert array[32, byte](chain.chainView.bestBlock.value.blockHash) == array[32, byte](
+      selected.blockHash)
+  assert chain.chainView.bestBlock.value.chainParameters.encodeParameters ==
+      selected.chainParameters.encodeParameters
+  echo "K Restored"
+
 proc main() {.raises.} =
   ## Only initial inputs decode from the fixture; no expected posterior supplies a production successor.
   let raw = readFile(paramStr(1))
@@ -34,11 +75,7 @@ proc main() {.raises.} =
       assert fields.len in [4, 5]
       if originalWire.len > 0:
         assert epoch.checkpointHex(original) == originalWire # Previous chain installation cannot mutate its original owner.
-      let rootBytes = epoch.unhex(fields[2])
-      assert rootBytes.len == 32
-      var root = default(array[32, byte])
-      for index in 0..<32: root[index] = rootBytes[index]
-      let restored = decodeFullCheckpoint(epoch.unhex(fields[3]), StateRoot(root), stores,
+      let restored = decodeFullCheckpoint(epoch.unhex(fields[3]), suppliedRoot(fields[2]), stores,
           ByteLimit(16000000))
       assert restored.error == CheckpointError.None
       original = restored.value.snapshot.value
@@ -53,7 +90,7 @@ proc main() {.raises.} =
       ancestors = @[]
       echo "P ", originalWire
     else:
-      assert fields[0] == "B" or fields[0] == "N"
+      assert fields[0] in ["B", "N", "S"]
       let before = chain.chainView.bestBlock.value
       let saved = epoch.checkpointHex(before.stateSnapshot)
       let supplied = epoch.unhex(fields[1])
@@ -69,7 +106,8 @@ proc main() {.raises.} =
             before.blockHash)
         echo "N ", fields[2]
       else:
-        assert fields.len == 2 and outcome.error == CurrentCandidateError.None, populationReason(outcome)
+        assert fields.len == (if fields[0] == "S": 3 else: 2) and outcome.error ==
+            CurrentCandidateError.None, populationReason(outcome)
         var wire = newSeq[byte](supplied.len)
         assert child.encodeOwnedBlock(wire).error == FrameError.None
         assert wire == supplied # Independent signed blocks enter and leave framing without native re-signing.
@@ -87,6 +125,8 @@ proc main() {.raises.} =
         for ancestor in ancestors: next.add(ancestor) # Actual accepted ancestors bind later report lookups.
         ancestors = next
         echo "O ", epoch.checkpointHex(chain.stateSnapshot.value)
+        if fields[0] == "S": restoreSelected(chain, suppliedRoot(fields[2]),
+            stores) # Actual ancestor owners remain separately retained, never decoded from expected posteriors.
   assert originalWire.len > 0 and epoch.checkpointHex(original) == originalWire
 
 try:

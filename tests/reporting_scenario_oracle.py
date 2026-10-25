@@ -33,8 +33,13 @@ def collect(cases, fixture, sources, check_frozen=True):
     if any('parameters' in case for case in cases):
         evidence['parameters_sha256'] = [hashlib.sha256(case['parameters']).hexdigest() if 'parameters' in case else None for case in cases]
     if check_frozen:
-        frozen = json.loads(fixture.read_text())
-        assert frozen['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
-        assert frozen['sources_sha256'] == {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
-        assert frozen['evidence'] == evidence
+        validate_frozen(fixture, sources, evidence)
     return requests, lines, evidence
+
+
+def validate_frozen(fixture, sources, evidence):
+    """Bind independently calculated complete evidence to its exact pinned source fixtures."""
+    frozen = json.loads(fixture.read_text())
+    assert frozen['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+    assert frozen['sources_sha256'] == {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
+    assert frozen['evidence'] == evidence
