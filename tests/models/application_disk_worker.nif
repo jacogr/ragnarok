@@ -1,6 +1,6 @@
 (stmts#Copyright (c) 2026 Ragnarök contributors
 SPDX-License-Identifier: MIT OR Apache-2.0
-One host, one capacity-one disk worker, one admitted publication or maintenance.
+One host, one capacity-one disk worker, one admitted full/light publication, retirement or full maintenance.
 phase 0 Idle, 1 Queued, 2 Executing, 3 Done; pc 0 waiting, 1 IO, 2 retired, 3 exited.
 io/receipt 0 absent, 1 NotExecuted, 2 success, 3 uncertain failure. io is history.
 Hypothesis: shutdown after IO entry loses its receipt or ends a still-active graph lease.
