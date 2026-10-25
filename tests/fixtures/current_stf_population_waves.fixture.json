@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_POPULATION_WAVES",
+  "files": {
+    "current-stf-population-waves.json": "d960475d54a524049d97effaf024f5e389581607a02df5d3ec6394e29ecd50c6"
+  },
+  "target": "current-stf-population-waves.json"
+}

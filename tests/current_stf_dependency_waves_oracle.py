@@ -60,15 +60,15 @@ def edit(items, completed):
     return [(wire, dependencies-completed) for wire, dependencies in items if wire[:32] not in completed]
 
 
-def plan(parent, mode, slot, ass, reports):
+def plan(parent, mode, slot, ass, reports, *, cores=2, current=6, previous=6, prior=6):
     """Calculate immediate priority, four dependency waves, affordable batches and posterior ready rows."""
-    assigned = pending(parent[chapter_key(10)])
-    votes = [sum(bool(item['bits'] & (1 << core)) for item in ass) for core in range(2)]
-    available = [assigned[core]['guarantee']['report'] for core in range(2)
-                 if assigned[core] is not None and votes[core] >= 5]
+    assigned = pending(parent[chapter_key(10)], cores, max(current, previous, prior))
+    votes = [sum(bool(item['bits'] & (1 << core)) for item in ass) for core in range(cores)]
+    available = [assigned[core]['guarantee']['report'] for core in range(cores)
+                 if assigned[core] is not None and votes[core] > 2*prior//3]
     history = {key for row in pipeline.accumulated(parent[chapter_key(15)]) for key in chunks(row, 32)}
     rows = [[(wire, set(chunks(dependencies, 32))) for wire, dependencies in row]
-            for row in ready(parent[chapter_key(14)])]
+            for row in ready(parent[chapter_key(14)], cores)]
     immediate, deferred = [], []
     for wire in available:
         value = reports[wire[:32]]
