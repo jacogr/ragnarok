@@ -76,3 +76,13 @@ class ReportingComparisonTests(unittest.TestCase):
             with self.subTest(changed=changed):
                 with self.assertRaises(AssertionError):partition(requests,changed,1)
         with self.assertRaises(AssertionError):partition(['C a root 00','S aa'],expected,1)
+
+    def test_trace_requires_wrong_map_and_seal_controls_before_output(self):
+        """A complete authenticated import cannot skip, reorder or append refusal observations."""
+        requests=['C a root 00','T aa']
+        expected=['P 00','B bb','R PreStateMismatch','R PostStateMismatch','R CandidateFailure','O cc']
+        self.assertEqual(len(partition(requests,expected,1)),1)
+        for changed in (expected[:-1],expected+['O cc'],expected[:3]+expected[4:]):
+            with self.subTest(changed=changed):
+                with self.assertRaises(AssertionError):partition(requests,changed,1)
+        with self.assertRaises(AssertionError):partition(['C a root 00','T aa extra'],expected,1)
