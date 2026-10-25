@@ -7,7 +7,7 @@ import ../support/current_stf_epoch_context as epoch
 import ../support/[current_stf_population_context, current_stf_population_reporting_context,
   accumulation_current_chain_context, reporting_namespace_context, state_inventory_context]
 import ../../src/app/[chain, candidate]
-import ../../src/chain/[genesis, provider]
+import ../../src/chain/[genesis, provider, parameters]
 import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout, state_trie,
   state_composition]
 import ../../src/state/[store, checkpoint, accumulation_current_update, current_profile,
@@ -31,7 +31,7 @@ proc main() {.raises.} =
     if line.len == 0: continue # The final newline is transport framing only.
     let fields = line.splitWhitespace()
     if fields[0] == "C":
-      assert fields.len == 4
+      assert fields.len in [4, 5]
       if originalWire.len > 0:
         assert epoch.checkpointHex(original) == originalWire # Previous chain installation cannot mutate its original owner.
       let rootBytes = epoch.unhex(fields[2])
@@ -43,8 +43,13 @@ proc main() {.raises.} =
       assert restored.error == CheckpointError.None
       original = restored.value.snapshot.value
       originalWire = epoch.checkpointHex(original)
+      var configured = populationParameters()
+      if fields.len == 5:
+        let decoded = decodeParameters(epoch.unhex(fields[4]))
+        assert decoded.ok
+        configured = decoded.value # Explicit complete trusted parameters accompany authored original inputs.
       chain = initApplicationChain(genesisView(captureBlockSnapshot(currentChainBytes(seed.header),
-          original, populationParameters()))).value
+          original, configured))).value
       ancestors = @[]
       echo "P ", originalWire
     else:

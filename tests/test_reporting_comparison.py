@@ -57,3 +57,12 @@ class ReportingComparisonTests(unittest.TestCase):
             (['C a root 00','X aa'],['P 00','O bb'],1)]:
             with self.subTest(requests=requests,count=count):
                 with self.assertRaises(AssertionError):partition(requests,expected,count)
+
+    def test_explicit_parameters_preserve_exact_chain_framing(self):
+        """One complete trusted parameter tuple is transported intact without consuming an expected state row."""
+        profile=bytes(122).hex()
+        requests=['C a root 00 '+profile,'B aa']
+        result=partition(requests,['P 00','B aa','O bb'],1)
+        self.assertEqual(result[0][0],requests)
+        with self.assertRaises(AssertionError):
+            partition(['C a root 00 '+profile+' extra','B aa'],['P 00','B aa','O bb'],1)

@@ -70,3 +70,11 @@ def current_stf_population_gas_corpus(compiler, report, checks, libraries):
     import current_stf_population_gas_oracle as oracle
     return scenarios(compiler, checks, libraries, oracle,
         ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_effects', 'current_stf_dependency_waves', 'current_stf_gas_exits', 'current_stf_budget_retention', 'current_stf_population_gas', 'state_report'))
+
+
+@CORPORA.case
+def current_stf_population_anchors_corpus(compiler, report, checks, libraries):
+    """Qualify exact lookup-age bounds and authenticated tuple provenance after population changes."""
+    import current_stf_population_anchors_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_population_reporting', 'current_stf_population_anchors', 'state_report'))

@@ -16,6 +16,7 @@ def collect(cases, fixture, sources, check_frozen=True):
         parent = case['initial']
         encoded = checkpoint(list(parent.items()))
         requests.append(f"C {case['name']} {tree(list(parent.items()))[0].hex()} {encoded.hex()}")
+        if 'parameters' in case: requests[-1] += ' '+case['parameters'].hex()
         lines.append('P '+encoded.hex()); roots.append([]); hashes.append([])
         for block, after, negatives in case['steps']:
             assert block[32:64] == tree(list(parent.items()))[0]
@@ -29,6 +30,8 @@ def collect(cases, fixture, sources, check_frozen=True):
             parent = after; transitions += 1
     evidence = dict(transitions=transitions, chains=len(cases), roots=roots,
                     checkpoint_sha256=hashes, refusals=refusals)
+    if any('parameters' in case for case in cases):
+        evidence['parameters_sha256'] = [hashlib.sha256(case['parameters']).hexdigest() if 'parameters' in case else None for case in cases]
     if check_frozen:
         frozen = json.loads(fixture.read_text())
         assert frozen['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
