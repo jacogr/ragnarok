@@ -715,3 +715,20 @@ The mathematical reference and native authored positives pass. No alternate
 profile or repaired upstream credentials are accepted. This is an external
 published-trace compatibility gate, not a new Gray Paper ambiguity or permission
 to stop current-schema authored STF work. See [the consumer evidence](bandersnatch.md).
+
+## FUZZ-ANCESTRY-001: initial membership lacks GP lookup-root evidence
+
+The pinned davxy/jam-conformance fuzz-v1 schema at
+`acd4b2da310ff25226c4d41b918712578483fd2c` supplies initial ancestry as
+(slot, header hash) records. GP `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`
+reporting_assurance.tex also requires an actual newer child header whose parent
+is the lookup hash and whose prior-state root is the requested lookup root.
+The initial record alone cannot establish that predicate.
+
+Maintainer decision: preserve GP checks and report missing evidence locally.
+The immutable [ancestry context](jam-fuzzer-ancestry.md) retains membership
+separately from captured full-header evidence.
+`tests/unit/state/test_fuzz_ancestry.nim` witnesses matching actual child roots,
+wrong roots, missing child evidence, independent sibling contexts and eviction.
+This is a tooling information gap, not a consensus exception. Live generated
+campaign validation remains pending engine availability.
