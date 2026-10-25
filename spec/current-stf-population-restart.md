@@ -34,3 +34,9 @@ Observed checked macOS ARM64 ARC/Clang non-LTO: all102 restarts,204 checkpoint
 refusals and14 inherited reporting refusals passed exact complete output comparison.
 The unchanged26-transition/ten-refusal anchor corpus also passed. All41 scoped
 independent/runner tests, inventory and pinned formatting passed.
+
+Checked Linux amd64 passed all102 restarts with identical complete outputs,
+including204 checkpoint refusals and14 inherited reporting refusals. Every frozen
+runtime input matched the host and retained image `ragnarok:db5-population-restart`
+(`sha256:feff4420385b005c11390ac84b6d90f5d4edb7d891329876ceb0381ac71284ba`).
+This is covered-source local evidence, separate from exact-head CI.
