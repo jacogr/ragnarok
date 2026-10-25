@@ -238,6 +238,12 @@ profile-pvm-guests: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_instruction_profile.py
 
+# Opt-in comparative diagnosis keeps both release interpreters and all full-state fixtures unchanged.
+.PHONY: diagnose-pvm-interpreters
+diagnose-pvm-interpreters: setup
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/pvm_interpreter_diagnosis.py
+
 # Coverage-guided byte fuzzing owns its native adapter, finite controls and retained corpus; it never runs from ordinary unit or E2E checks.
 fuzz-pvm-program: toolchain check-inventory
 	$(PYTHON) tools/fuzz_pvm_program.py
