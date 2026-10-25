@@ -156,6 +156,14 @@ def jam_fuzzer_full_ancestry(identity):
 
 
 @reference()
+def jam_fuzzer_full_contest(identity):
+    """Require saturated replacement and every signed non-retained/duplicate Error with exact unchanged maps."""
+    import jam_fuzzer_full_contest_oracle as source
+    from jam_fuzzer_full_profile_oracle import parameters
+    return selected(source,identity,[parameters()]*2,spec='full')
+
+
+@reference()
 def jam_fuzzer_full_epochs(identity):
     """Preserve full population changes and complete variable epoch-marker traces."""
     import jam_fuzzer_full_epochs_oracle as source

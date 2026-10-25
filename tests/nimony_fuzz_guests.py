@@ -46,9 +46,11 @@ def reference_sessions(reference, identity, parameters=None, *, spec='tiny', loc
             jobs.append(dict(initialize=b'\x01'+header+state[32:]+bytes([len(ancestors)])+membership,
                              header=header, state=state, steps=[], parameters=next(profiles), spec=spec, fork_capacity=fork_capacity))
             header, ancestors = initial_header(), [] # Later seeds retain only their own explicit header/evidence.
-        elif tag in ('B', 'V'):
+        elif tag in ('B', 'V', 'R'):
             assert jobs and pending is None
-            block = bytes.fromhex(data)
+            fields = data.split()
+            assert len(fields) == (2 if tag == 'R' else 1)
+            block = bytes.fromhex(fields[0])
             parsed = decode_header('H', block, geometry)
             assert parsed.split()[0].isdigit(), 'Invalid independently framed guest header'
             extent = int(parsed.split()[0])
