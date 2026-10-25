@@ -34,6 +34,7 @@ type
     dataset*: PagedLimits
     proof*: StateProofLimits
     workingBytes*: ByteLimit
+    contextBytes*: ByteLimit ## Zero selects V1; positive context policy requires V2 under this finite cap.
     cachePages*: ElementLimit
     work*: PagedWorkLimits
   PagedStreamError* {.pure.} = enum ## Missing evidence is never an IO/proof failure or authenticated absence.
@@ -55,6 +56,12 @@ type
     policy: PagedStreamLimits
     used: PagedStreamCounts
     stream: PagedDigest
+    contextRoot: PagedDigest
+  PagedContext* = object ## Private opaque context is bound to its exact immutable light selection, never a complete-map snapshot.
+    ready: bool
+    selected: PagedManifest
+    payload: seq[byte]
+    used: PagedStreamCounts
   LoadedProof = object ## Private verified/raw pair exists only while one bounded proof is being decoded or selected.
     checked: VerifiedStateLookup
     record: LightStateProof
@@ -74,6 +81,7 @@ type
     proofCause: StateProofError
     limits: PagedStreamLimits
     used: PagedStreamCounts
+    contextRoot: PagedDigest
   PageCache = object ## One fixed page slot; zero-cache mode uses the same finite transient IO buffer.
     valid: bool
     ordinal: uint64
@@ -177,6 +185,11 @@ proc charge(work: var Work, kind: CounterKind, amount: uint64): bool =
     of CounterKind.ValueByte: increment(work.used.values, amount, uint64(limits.valueBytes))
   if not admitted: work.fail(PagedStreamError.LimitExceeded)
   admitted
+func validatePagedContextSize*(size: uint64, limit: ByteLimit): PagedStreamError =
+  ## Explicit physical context presence is separate from proof, dataset and working-space budgets.
+  if (size == 0) != (uint64(limit) == 0): return PagedStreamError.UnsupportedPolicy # No V1/V2 fallback.
+  if size > uint64(limit): return PagedStreamError.LimitExceeded # Check the independent opaque context ceiling.
+  PagedStreamError.None
 func initWork(limits: PagedStreamLimits): Work =
   ## Reserve fixed scratch before callbacks; this first buffered engine supports exactly zero or one cache slot.
   result = Work(status: PagedStreamError.None, limits: limits, used: PagedStreamCounts(ready: true))
@@ -386,9 +399,25 @@ proc treeDigest(io: PagedOutput, mode: TreeMode, shape: PagedGeometry, slot: var
       return false
   inc slot
   true
+proc bindContext(previous, leaf: PagedDigest, work: var Work): PagedDigest =
+  ## Constant-size context equality folds already authenticated physical leaf digests, independently of proof transport.
+  const Domain = "RAGNAROK-LIGHT-PAGED-CONTEXT-V1\n"
+  result = default(PagedDigest)
+  if not work.hashBudget: return # First-error work refusal cannot expose a partially checked artifact.
+  var raw = default(array[Domain.len+64, byte])
+  for index, character in Domain: raw[index] = byte(character) # Local context-chain domain, not a JAM commitment.
+  for index in 0..<32:
+    # Ordered complete leaf identities already bind physical page ordinals and every context/padding byte.
+    raw[Domain.len+index] = array[32, byte](previous)[index]
+    raw[Domain.len+32+index] = array[32, byte](leaf)[index]
+  let hashed = blake2b256(raw)
+  if hashed.error != CryptoError.None: work.fail(PagedStreamError.BackendFailure) # Preserve provider refusal.
+  else: result = PagedDigest(array[32, byte](hashed.value)) # Only complete hash success advances the equality fingerprint.
 proc walkTree(io: PagedOutput, mode: TreeMode, shape: PagedGeometry,
     work: var Work): PagedStreamResult[PagedDigest] =
   ## A fixed carry stack emits/checks all postorder bytes and domain-separated padding leaves.
+  if mode == TreeMode.Check: work.contextRoot = default(
+      PagedDigest) # Admission owns a fresh context signature, separate from construction.
   var carry = default(array[64, PagedDigest])
   var page = default(array[PagedPageBytes, byte])
   var ordinal = 0'u64
@@ -406,6 +435,11 @@ proc walkTree(io: PagedOutput, mode: TreeMode, shape: PagedGeometry,
     if leaf.error != PagedCodecError.None:
       work.fail(codecReason(leaf.error))
       return refused[PagedDigest](work)
+    if mode == TreeMode.Check and shape.contextBytes > 0 and ordinal < shape.dataPages and
+        ordinal >= uint64(shape.contextOffset) div uint64(PagedPageBytes):
+      work.contextRoot = bindContext(work.contextRoot, leaf.value,
+          work) # Reuse each real context leaf with no additional source read.
+      if work.status != PagedStreamError.None: return refused[PagedDigest](work)
     var current = leaf.value
     if not io.treeDigest(mode, shape, slot, current, work): return refused[PagedDigest](work)
     var consumed = ordinal
@@ -454,7 +488,8 @@ proc inspect(io: PagedInput, selected: PagedManifest, work: var Work): PagedStre
   if not io.checkExtent(selected.byteLength, work): return refused[CheckedPagedArtifact](work)
   var rawHeader = default(array[PagedPageBytes, byte])
   if not io.readExact(0, rawHeader, work): return refused[CheckedPagedArtifact](work)
-  let decoded = decodePagedHeader(rawHeader, selected.chainId, selected.root, work.limits.dataset)
+  let decoded = decodePagedHeader(rawHeader, selected.chainId, selected.root, work.limits.dataset,
+      work.limits.contextBytes)
   if decoded.error != PagedCodecError.None:
     work.fail(codecReason(decoded.error))
     return refused[CheckedPagedArtifact](work)
@@ -500,6 +535,8 @@ proc inspect(io: PagedInput, selected: PagedManifest, work: var Work): PagedStre
   if not io.zeroRange(shape, selected.pageRoot, 4096+shape.entries*64,
       uint64(shape.payloadOffset), cache, work): return refused[CheckedPagedArtifact](work)
   if not io.zeroRange(shape, selected.pageRoot, uint64(shape.payloadOffset)+shape.payloadBytes,
+      uint64(shape.contextOffset), cache, work): return refused[CheckedPagedArtifact](work)
+  if not io.zeroRange(shape, selected.pageRoot, uint64(shape.contextOffset)+shape.contextBytes,
       uint64(shape.treeOffset), cache, work): return refused[CheckedPagedArtifact](work)
   let checkedTree = walkTree(PagedOutput(source: io), TreeMode.Check, shape, work)
   if checkedTree.error != PagedStreamError.None: return refused[CheckedPagedArtifact](work)
@@ -509,7 +546,7 @@ proc inspect(io: PagedInput, selected: PagedManifest, work: var Work): PagedStre
   if not io.checkExtent(selected.byteLength, work): return refused[CheckedPagedArtifact](work)
   PagedStreamResult[CheckedPagedArtifact](status: PagedStreamError.None,
     completed: CheckedPagedArtifact(ready: true, selected: selected, header: header,
-      policy: work.limits, used: work.used, stream: binding))
+      policy: work.limits, used: work.used, stream: binding, contextRoot: work.contextRoot))
 proc validatePagedArtifact*(io: PagedInput, selected: PagedManifest,
     limits: PagedStreamLimits): PagedStreamResult[CheckedPagedArtifact] =
   ## Borrow callbacks synchronously and return only complete metadata, never a native sealed owner or partial image.
@@ -540,7 +577,8 @@ proc locateProof(artifact: CheckedPagedArtifact, io: PagedInput, query: StateKey
   if not io.checkExtent(selected.byteLength, work): return refused[LocatedProof](work)
   var cache = default(PageCache)
   if not io.fetch(shape, selected.pageRoot, 0, cache, work): return refused[LocatedProof](work)
-  let header = decodePagedHeader(cache.bytes, selected.chainId, selected.root, policy.dataset)
+  let header = decodePagedHeader(cache.bytes, selected.chainId, selected.root, policy.dataset,
+      policy.contextBytes)
   if header.error != PagedCodecError.None:
     work.fail(codecReason(header.error))
     return refused[LocatedProof](work)
@@ -684,7 +722,8 @@ proc padding(io: PagedOutput, extent: uint64, work: var Work): bool =
   if size == 0: return true
   io.appendExact(zeros.toOpenArray(0, size-1), work)
 proc buildPagedArtifact*(io: PagedOutput, producer: nil PagedProducer, header: PagedHeader,
-    limits: PagedStreamLimits): PagedStreamResult[CheckedPagedArtifact] =
+    limits: PagedStreamLimits, context: openArray[byte] = []): PagedStreamResult[
+        CheckedPagedArtifact] =
   ## Append a replay-bound complete artifact, then strictly reverify it; synchronization/sealing/publication are separate.
   if producer == nil:
     return PagedStreamResult[CheckedPagedArtifact](status: PagedStreamError.Uninitialized)
@@ -693,10 +732,15 @@ proc buildPagedArtifact*(io: PagedOutput, producer: nil PagedProducer, header: P
   var work = initWork(limits)
   if work.status != PagedStreamError.None: return refused[CheckedPagedArtifact](work)
   let shape = header.geometry
-  if shape.contextBytes != 0:
-    return PagedStreamResult[CheckedPagedArtifact](
-        status: PagedStreamError.UnsupportedPolicy) # V2 needs explicit bounded context authoring, never implicit zero fill.
-  let permitted = pagedGeometry(shape.entries, shape.payloadBytes, limits.dataset)
+  let contextPolicy = validatePagedContextSize(shape.contextBytes, limits.contextBytes)
+  if contextPolicy != PagedStreamError.None:
+    work.fail(contextPolicy) # Physical format and opaque-byte admission precede producer or IO dispatch.
+    return refused[CheckedPagedArtifact](work)
+  if uint64(context.len) != shape.contextBytes:
+    work.fail(PagedStreamError.InvalidFormat) # Exact stable borrowed context is mandatory; zero fill cannot substitute.
+    return refused[CheckedPagedArtifact](work)
+  let permitted = pagedGeometry(shape.entries, shape.payloadBytes, limits.dataset,
+      shape.contextBytes)
   if permitted.error != PagedCodecError.None:
     work.fail(codecReason(permitted.error))
     return refused[CheckedPagedArtifact](work)
@@ -714,6 +758,12 @@ proc buildPagedArtifact*(io: PagedOutput, producer: nil PagedProducer, header: P
     work.fail(PagedStreamError.ChangedInput)
     return refused[CheckedPagedArtifact](work)
   if not io.padding(shape.payloadBytes, work): return refused[CheckedPagedArtifact](work)
+  if shape.contextBytes > 0:
+    # V2 alone appends opaque context pages before the tree; V1 retains its existing IO schedule.
+    if not io.source.checkExtent(uint64(shape.contextOffset), work): return refused[
+        CheckedPagedArtifact](work)
+    if not io.appendExact(context, work): return refused[CheckedPagedArtifact](work)
+    if not io.padding(shape.contextBytes, work): return refused[CheckedPagedArtifact](work)
   if not io.source.checkExtent(uint64(shape.treeOffset), work): return refused[
       CheckedPagedArtifact](work)
   let tree = walkTree(io, TreeMode.Append, shape, work)
@@ -745,7 +795,8 @@ proc compactPagedArtifact*(io: PagedOutput, source: PagedInput, artifact: Checke
     array[32, byte](target.root) == array[32, byte](original.root)
   let counters = uint64(target.epoch) == uint64(original.epoch)+1 and
     uint64(target.sequence) == uint64(original.sequence)
-  let geometry = next.entries == shape.entries and next.payloadBytes == shape.payloadBytes
+  let geometry = next.entries == shape.entries and next.payloadBytes == shape.payloadBytes and
+    next.contextBytes == shape.contextBytes
   if not identities or not counters or not geometry:
     return PagedStreamResult[CheckedPagedArtifact](status: PagedStreamError.ChangedInput)
   var work = initWork(artifact.policy)
@@ -789,9 +840,71 @@ proc compactPagedArtifact*(io: PagedOutput, source: PagedInput, artifact: Checke
   checked
 
 func samePagedKnowledge*(a, b: CheckedPagedArtifact): bool =
-  ## Passive fully admitted artifacts agree on exact canonical evidence, not merely a JAM state root.
+  ## Passive fully admitted artifacts agree on exact canonical evidence and opaque context under one root.
   a.ready and b.ready and array[32, byte](a.header.chainId) == array[32, byte](b.header.chainId) and
     array[32, byte](a.header.root) == array[32, byte](b.header.root) and
     a.header.geometry.entries == b.header.geometry.entries and
     a.header.geometry.payloadBytes == b.header.geometry.payloadBytes and
-    array[32, byte](a.stream) == array[32, byte](b.stream)
+    a.header.geometry.contextBytes == b.header.geometry.contextBytes and
+    array[32, byte](a.stream) == array[32, byte](b.stream) and
+    array[32, byte](a.contextRoot) == array[32, byte](b.contextRoot)
+
+func initialized*(context: PagedContext): bool =
+  ## A default owner grants no authenticated opaque light context.
+  context.ready
+func manifest*(context: PagedContext): PagedManifest {.requires: context.ready.} =
+  ## Bind retained context to the exact admitted physical selection, not merely its JAM root.
+  context.selected
+func byteLength*(context: PagedContext): int {.requires: context.ready.} =
+  ## Scalar length allows application preflight without exposing mutable private backing.
+  context.payload.len
+proc bytes*(context: PagedContext): seq[byte] {.requires: context.ready.} =
+  ## Return detached mutable transport while retaining no native descriptor, pin or callback.
+  result = newSeq[byte](context.payload.len)
+  for index in 0..<result.len: result[index] = context.payload[
+      index] # Every output octet owns its independent backing.
+func counts*(context: PagedContext): PagedStreamCounts {.requires: context.ready.} =
+  ## Only complete success exposes passive successful work counters.
+  context.used
+proc contextBudget(inherited, requested: PagedWorkLimits): PagedWorkLimits =
+  ## Per-call context work can only tighten every captured admission channel.
+  PagedWorkLimits(ioCalls: ElementLimit(min(uint64(inherited.ioCalls), uint64(requested.ioCalls))),
+    producerCalls: ElementLimit(min(uint64(inherited.producerCalls), uint64(
+        requested.producerCalls))),
+    pageHashes: ElementLimit(min(uint64(inherited.pageHashes), uint64(requested.pageHashes))),
+    proofs: ElementLimit(min(uint64(inherited.proofs), uint64(requested.proofs))),
+    nodes: ElementLimit(min(uint64(inherited.nodes), uint64(requested.nodes))),
+    readBytes: ByteLimit(min(uint64(inherited.readBytes), uint64(requested.readBytes))),
+    writeBytes: ByteLimit(min(uint64(inherited.writeBytes), uint64(requested.writeBytes))),
+    valueBytes: ByteLimit(min(uint64(inherited.valueBytes), uint64(requested.valueBytes))))
+proc readPagedContext*(io: PagedInput, checked: CheckedPagedArtifact,
+    budget: PagedWorkLimits): PagedStreamResult[PagedContext] =
+  ## Authenticate one opaque context privately; root/head trust and state proof interpretation remain application responsibilities.
+  if not checked.ready: return PagedStreamResult[PagedContext](
+      status: PagedStreamError.Uninitialized)
+  var policy = checked.policy
+  policy.work = contextBudget(policy.work, budget)
+  var work = initWork(policy)
+  let shape = checked.header.geometry
+  let size = shape.contextBytes
+  if size == 0:
+    work.fail(PagedStreamError.UnsupportedPolicy) # V1 has no application context; never fabricate a successful empty head.
+    return refused[PagedContext](work)
+  let fixed = PagedStreamFixedBytes+41
+  let available = uint64(policy.workingBytes)
+  if available < fixed or size > (available-fixed) div 4 or size > uint64(high(int)):
+    work.fail(PagedStreamError.LimitExceeded) # Four bounded context transports fit independently of proof/value allowances.
+  if size > uint64(policy.work.readBytes) or uint64(policy.work.ioCalls) < 2 or uint64(
+      policy.work.pageHashes) == 0:
+    work.fail(PagedStreamError.LimitExceeded) # Obvious quota refusal precedes source dispatch and allocation.
+  if work.status != PagedStreamError.None: return refused[PagedContext](work)
+  if not io.checkExtent(checked.selected.byteLength, work): return refused[PagedContext](work)
+  var payload = newSeq[byte](int(size))
+  var cache = default(PageCache)
+  if not io.authenticated(shape, checked.selected.pageRoot, uint64(shape.contextOffset), payload,
+      cache, work):
+    return refused[PagedContext](work) # No successfully copied prefix escapes a later IO/authentication refusal.
+  if not io.checkExtent(checked.selected.byteLength, work): return refused[PagedContext](work)
+  PagedStreamResult[PagedContext](status: PagedStreamError.None,
+    completed: PagedContext(ready: true, selected: checked.selected, payload: payload,
+        used: work.used))

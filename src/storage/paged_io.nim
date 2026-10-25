@@ -569,6 +569,14 @@ proc proofFile*(file: var PagedFile, checked: CheckedPagedArtifact, query: State
   let found = lookupPagedProof(checked, input(data), query, budget)
   latch(data, found.error)
   found
+proc contextFile*(file: var PagedFile, checked: CheckedPagedArtifact,
+    budget: PagedWorkLimits): PagedStreamResult[PagedContext] =
+  ## Capture owned context under the same immutable native identity checks as proof reads.
+  let data = file.data
+  if data == nil or not data.active: return readPagedContext(default(PagedInput), checked, budget)
+  let captured = readPagedContext(input(data), checked, budget)
+  latch(data, captured.error)
+  captured
 proc appender(data: FileData): PagedAppend =
   ## Capture a statically non-nil stable file state in a synchronous-only append callback.
   proc append(bytes: openArray[byte]): bool {.closure.} =
@@ -597,14 +605,15 @@ proc sealed(data: FileData, built: PagedStreamResult[CheckedPagedArtifact]): Pag
       data.sealed = true
   PagedIoResult[PagedStreamResult[CheckedPagedArtifact]](status: FileError.None, completed: built)
 proc buildFile*(file: var PagedFile, producer: nil PagedProducer, header: PagedHeader,
-    limits: PagedStreamLimits): PagedIoResult[PagedStreamResult[CheckedPagedArtifact]] =
+    limits: PagedStreamLimits, context: openArray[byte] = []): PagedIoResult[PagedStreamResult[
+        CheckedPagedArtifact]] =
   ## Only a newly created exclusive empty owner can append; failures preserve unsealed forensic bytes.
   let data = file.data
   if data == nil or not data.active or data.sealed or data.poisoned:
     return PagedIoResult[PagedStreamResult[CheckedPagedArtifact]](
         status: FileError.RecoveryRequired)
   let built = buildPagedArtifact(PagedOutput(source: input(data), append: appender(data)), producer,
-      header, limits)
+      header, limits, context)
   latch(data, built.error)
   sealed(data, built)
 proc compactFile*(file: var PagedFile, source: var PagedFile, checked: CheckedPagedArtifact,

@@ -252,7 +252,7 @@ proc openPagedReader*(reader: var PagedReader, path: string,
   let bytes = directory.readCurrent
   if bytes.error != FileError.None: return fileFailed[bool](bytes.error)
   let manifest = decodePagedManifest(bytes.value, config.chain, config.root, config.limits.dataset,
-      ByteLimit(PagedManifestBytes))
+      ByteLimit(PagedManifestBytes), uint64(config.limits.contextBytes) > 0)
   if manifest.error != PagedCodecError.None: return fileFailed[bool](FileError.WrongIdentity)
   var data = ReaderData(config: config)
   defer:
@@ -291,7 +291,7 @@ proc openPagedWriter*(writer: var PagedWriter, path: string,
   let bytes = data.directory.readCurrent
   if bytes.error != FileError.None: return fileFailed[bool](bytes.error)
   let manifest = decodePagedManifest(bytes.value, config.chain, config.root, config.limits.dataset,
-      ByteLimit(PagedManifestBytes))
+      ByteLimit(PagedManifestBytes), uint64(config.limits.contextBytes) > 0)
   if manifest.error != PagedCodecError.None: return fileFailed[bool](FileError.WrongIdentity)
   let pinned = openEpoch(data.head, data.directory, manifest.value.epoch, PagedPin.Shared,
       config.limits.dataset.bytes)
@@ -321,7 +321,7 @@ proc lookup*(reader: var PagedReader, query: StateKey, budget: PagedWorkLimits):
       completed: checked.value.verified)
 proc prepare(data: WriterData, candidate: var PagedCandidate, producer: nil PagedProducer,
     root: StateRoot, count, payload: uint64, kind: PagedBuildKind,
-        initial: bool): PagedNativeResult[StorageDurability] =
+        initial: bool, context: openArray[byte] = []): PagedNativeResult[StorageDurability] =
   ## Bind a new exclusive authoring owner to one live writer incarnation and exact source position/policies.
   if candidate.opened: return fileFailed[StorageDurability](FileError.Busy)
   if producer == nil and kind != PagedBuildKind.Compaction: return refused[StorageDurability](
@@ -347,8 +347,16 @@ proc prepare(data: WriterData, candidate: var PagedCandidate, producer: nil Page
       return PagedNativeResult[StorageDurability](status: PagedNativeError.StreamFailure,
         streamCause: checked.streamError, proofCause: (if checked.streamError ==
             PagedStreamError.ProofFailure: checked.proofError else: StateProofError.Uninitialized))
+  let contextSize = if kind == PagedBuildKind.Compaction:
+    data.checked.header.geometry.contextBytes # Compaction retains source context without caller substitution.
+  else:
+    uint64(context.len) # Replacement and root advancement borrow stable caller context synchronously.
+  let contextPolicy = validatePagedContextSize(contextSize, data.config.limits.contextBytes)
+  if contextPolicy != PagedStreamError.None:
+    return PagedNativeResult[StorageDurability](status: PagedNativeError.StreamFailure,
+        streamCause: contextPolicy)
   let header = initPagedHeader(data.config.chain, root, ManagedEpoch(epoch), LightDeltaSequence(
-      sequence), count, payload, data.config.limits.dataset)
+      sequence), count, payload, data.config.limits.dataset, contextSize)
   if header.error != PagedCodecError.None: return fileFailed[StorageDurability](
       FileError.LimitExceeded)
   let empty = data.directory.pendingAbsent
@@ -366,7 +374,7 @@ proc prepare(data: WriterData, candidate: var PagedCandidate, producer: nil Page
   let authoring = if kind == PagedBuildKind.Compaction:
     compactFile(artifact.file, data.head, data.checked, header.value)
   else:
-    buildFile(artifact.file, producer, header.value, data.config.limits)
+    buildFile(artifact.file, producer, header.value, data.config.limits, context)
   if authoring.error != FileError.None: return fileFailed[StorageDurability](authoring.error)
   let built = authoring.value
   if built.error != PagedStreamError.None: return streamFailed[StorageDurability,
@@ -380,20 +388,22 @@ proc prepare(data: WriterData, candidate: var PagedCandidate, producer: nil Page
   PagedNativeResult[StorageDurability](status: PagedNativeError.None,
       completed: StorageDurability.FileAndDirectorySynced)
 proc preparePagedReplacement*(writer: var PagedWriter, candidate: var PagedCandidate,
-    producer: nil PagedProducer, count, payload: uint64): PagedNativeResult[StorageDurability] =
+    producer: nil PagedProducer, count, payload: uint64, context: openArray[byte] = [
+        ]): PagedNativeResult[StorageDurability] =
   ## Same-root full replacement advances ordinary sequence once, even for explicitly requested equal evidence.
   let data = writer.data
   if data == nil: return refused[StorageDurability](PagedNativeError.Uninitialized)
-  prepare(data, candidate, producer, data.config.root, count, payload, PagedBuildKind.Replacement, false)
+  prepare(data, candidate, producer, data.config.root, count, payload, PagedBuildKind.Replacement,
+      false, context)
 proc preparePagedAdvance*(writer: var PagedWriter, candidate: var PagedCandidate,
-    destination: StateRoot, producer: nil PagedProducer, count, payload: uint64): PagedNativeResult[
-        StorageDurability] =
+    destination: StateRoot, producer: nil PagedProducer, count, payload: uint64, context: openArray[
+        byte] = []): PagedNativeResult[StorageDurability] =
   ## Destination trust is explicit; all destination evidence is fresh and ordinary sequence is preserved.
   let data = writer.data
   if data == nil: return refused[StorageDurability](PagedNativeError.Uninitialized)
   if array[32, byte](destination) == array[32, byte](data.config.root): return refused[
       StorageDurability](PagedNativeError.InvalidTransition)
-  prepare(data, candidate, producer, destination, count, payload, PagedBuildKind.Advance, false)
+  prepare(data, candidate, producer, destination, count, payload, PagedBuildKind.Advance, false, context)
 proc preparePagedCompaction*(writer: var PagedWriter,
     candidate: var PagedCandidate): PagedNativeResult[StorageDurability] =
   ## Exact knowledge comes from the held checked source pin; callers cannot substitute a same-root evidence producer.
@@ -469,12 +479,17 @@ proc publish*(writer: var PagedWriter, candidate: var PagedCandidate): PagedNati
     completed: PagedPublication(ready: true, selected: data.checked.manifest,
       retirement: retirement, usable: not data.poisoned))
 proc initializePagedWriter*(writer: var PagedWriter, path: string, config: PagedNativeConfig,
-    producer: nil PagedProducer, count, payload: uint64): PagedNativeResult[PagedPublication] =
+    producer: nil PagedProducer, count, payload: uint64, context: openArray[byte] = [
+        ]): PagedNativeResult[PagedPublication] =
   ## Exclusive bootstrap starts at epoch one/sequence zero; acquired failed namespaces require explicit writer close.
   if writer.opened: return fileFailed[PagedPublication](FileError.Busy)
   if producer == nil: return refused[PagedPublication](PagedNativeError.Uninitialized)
+  let contextPolicy = validatePagedContextSize(uint64(context.len), config.limits.contextBytes)
+  if contextPolicy != PagedStreamError.None:
+    return PagedNativeResult[PagedPublication](status: PagedNativeError.StreamFailure,
+        streamCause: contextPolicy)
   let header = initPagedHeader(config.chain, config.root, ManagedEpoch(1), LightDeltaSequence(0),
-      count, payload, config.limits.dataset)
+      count, payload, config.limits.dataset, uint64(context.len))
   if header.error != PagedCodecError.None: return fileFailed[PagedPublication](
       FileError.LimitExceeded)
   var data = WriterData(config: config, poisoned: true)
@@ -492,7 +507,7 @@ proc initializePagedWriter*(writer: var PagedWriter, path: string, config: Paged
       let retired = candidate.close
       if retired != FileError.None: result = fileFailed[PagedPublication](retired)
   let prepared = prepare(data, candidate, producer, config.root, count, payload,
-      PagedBuildKind.Replacement, true)
+      PagedBuildKind.Replacement, true, context)
   if prepared.error != PagedNativeError.None:
     if prepared.error == PagedNativeError.FileFailure: return fileFailed[PagedPublication](
         prepared.fileError)
@@ -513,13 +528,13 @@ proc epochReceipt*(reader: PagedReader): PagedNativeResult[PagedEpochReceipt] =
   PagedNativeResult[PagedEpochReceipt](status: PagedNativeError.None,
     completed: PagedEpochReceipt(ready: true, selected: data.checked.manifest,
       identity: identity.value, config: data.config))
-func policy(limits: PagedStreamLimits): array[14, uint64] =
+func policy(limits: PagedStreamLimits): array[15, uint64] =
   ## Exact immutable policy binding covers all dataset/proof/cache/work ceilings, including zero allowances.
   [uint64(limits.dataset.entries), uint64(limits.dataset.bytes), uint64(limits.proof.nodes),
     uint64(limits.proof.valueBytes), uint64(limits.workingBytes), uint64(limits.cachePages),
     uint64(limits.work.ioCalls), uint64(limits.work.producerCalls), uint64(limits.work.pageHashes),
     uint64(limits.work.proofs), uint64(limits.work.nodes), uint64(limits.work.readBytes),
-    uint64(limits.work.writeBytes), uint64(limits.work.valueBytes)]
+    uint64(limits.work.writeBytes), uint64(limits.work.valueBytes), uint64(limits.contextBytes)]
 proc reclaim*(writer: var PagedWriter, receipt: PagedEpochReceipt,
     expected: PagedManifest): PagedNativeResult[PagedReclamation] =
   ## Remove only one captured older inode after source validation and an independent exclusive nonblocking pin.
@@ -582,7 +597,7 @@ proc reclaim*(writer: var PagedWriter, receipt: PagedEpochReceipt,
 
 proc prepareCleanup(data: WriterData, candidate: var PagedCandidate,
     expectedSource: PagedManifest, expectedTarget: PagedHeader,
-    producer: nil PagedProducer, initial: bool): PagedNativeResult[bool] =
+    producer: nil PagedProducer, initial: bool, context: openArray[byte] = []): PagedNativeResult[bool] =
   ## Reproduce independently expected target bytes in anonymous bounded scratch before capturing any partial cleanup authority.
   if not data.active: return refused[bool](PagedNativeError.Uninitialized)
   if data.poisoned and not initial: return refused[bool](PagedNativeError.RecoveryRequired)
@@ -610,7 +625,14 @@ proc prepareCleanup(data: WriterData, candidate: var PagedCandidate,
   if array[32, byte](expectedTarget.chainId) != array[32, byte](data.config.chain):
     return refused[bool](PagedNativeError.InvalidTransition)
   let shape = expectedTarget.geometry
-  let bounded = pagedGeometry(shape.entries, shape.payloadBytes, data.config.limits.dataset)
+  let contextPolicy = validatePagedContextSize(uint64(context.len), data.config.limits.contextBytes)
+  if contextPolicy != PagedStreamError.None:
+    return PagedNativeResult[bool](status: PagedNativeError.StreamFailure,
+        streamCause: contextPolicy)
+  if uint64(context.len) != shape.contextBytes: return refused[bool](
+      PagedNativeError.InvalidCandidate)
+  let bounded = pagedGeometry(shape.entries, shape.payloadBytes, data.config.limits.dataset,
+      shape.contextBytes)
   if bounded.error != PagedCodecError.None: return fileFailed[bool](FileError.LimitExceeded)
   if shape.byteLength > uint64(data.config.limits.work.writeBytes):
     return PagedNativeResult[bool](status: PagedNativeError.StreamFailure,
@@ -636,7 +658,7 @@ proc prepareCleanup(data: WriterData, candidate: var PagedCandidate,
       if retired != FileError.None: result = fileFailed[bool](retired)
   let acquired = openScratch(scratch, data.directory, data.config.limits.dataset.bytes)
   if acquired != FileError.None: return fileFailed[bool](acquired)
-  let authoring = buildFile(scratch, producer, expectedTarget, data.config.limits)
+  let authoring = buildFile(scratch, producer, expectedTarget, data.config.limits, context)
   if authoring.error != FileError.None: return fileFailed[bool](authoring.error)
   let built = authoring.value
   if built.error != PagedStreamError.None: return streamFailed[bool, CheckedPagedArtifact](built)
@@ -677,11 +699,11 @@ proc prepareCleanup(data: WriterData, candidate: var PagedCandidate,
   PagedNativeResult[bool](status: PagedNativeError.None, completed: true)
 proc preparePagedCleanup*(writer: var PagedWriter, candidate: var PagedCandidate,
     expectedSource: PagedManifest, expectedTarget: PagedHeader,
-    producer: nil PagedProducer): PagedNativeResult[bool] =
+    producer: nil PagedProducer, context: openArray[byte] = []): PagedNativeResult[bool] =
   ## Existing-database replay requires an exact independently expected source and a fresh target proof producer.
   let data = writer.data
   if data == nil: return refused[bool](PagedNativeError.Uninitialized)
-  prepareCleanup(data, candidate, expectedSource, expectedTarget, producer, false)
+  prepareCleanup(data, candidate, expectedSource, expectedTarget, producer, false, context)
 proc discardPagedCandidate*(writer: var PagedWriter, candidate: var PagedCandidate,
     expectedSource: PagedManifest): PagedNativeResult[PagedReclamation] =
   ## Retire one exact sealed or replay-checked partial candidate only after every source/file/staging preflight passes.
@@ -774,12 +796,17 @@ func rejected[T, U](outcome: PagedNativeResult[U]): PagedNativeResult[
       proofCause: (if outcome.streamError == PagedStreamError.ProofFailure: outcome.proofError else: StateProofError.Uninitialized))
   refused[T](outcome.error)
 proc resumePagedInitialization*(writer: var PagedWriter, path: string, config: PagedNativeConfig,
-    producer: nil PagedProducer, count, payload: uint64): PagedNativeResult[PagedPublication] =
+    producer: nil PagedProducer, count, payload: uint64, context: openArray[byte] = [
+        ]): PagedNativeResult[PagedPublication] =
   ## Explicit replay of an interrupted bootstrap requires existing LOCK, CURRENT absence and independently expected initial evidence.
   if writer.opened: return fileFailed[PagedPublication](FileError.Busy)
   if producer == nil: return refused[PagedPublication](PagedNativeError.Uninitialized)
+  let contextPolicy = validatePagedContextSize(uint64(context.len), config.limits.contextBytes)
+  if contextPolicy != PagedStreamError.None:
+    return PagedNativeResult[PagedPublication](status: PagedNativeError.StreamFailure,
+        streamCause: contextPolicy)
   let header = initPagedHeader(config.chain, config.root, ManagedEpoch(1), LightDeltaSequence(0),
-      count, payload, config.limits.dataset)
+      count, payload, config.limits.dataset, uint64(context.len))
   if header.error != PagedCodecError.None: return fileFailed[PagedPublication](
       FileError.LimitExceeded)
   var data = WriterData(config: config, poisoned: true)
@@ -796,7 +823,8 @@ proc resumePagedInitialization*(writer: var PagedWriter, path: string, config: P
     if candidate.opened:
       let retired = candidate.close
       if retired != FileError.None: result = fileFailed[PagedPublication](retired)
-  let replayed = prepareCleanup(data, candidate, default(PagedManifest), header.value, producer, true)
+  let replayed = prepareCleanup(data, candidate, default(PagedManifest), header.value, producer,
+      true, context)
   if replayed.error != PagedNativeError.None: return rejected[PagedPublication, bool](replayed)
   let cleanup = candidate.data
   assert cleanup != nil
@@ -806,7 +834,7 @@ proc resumePagedInitialization*(writer: var PagedWriter, path: string, config: P
   if removed.value.retirementError != FileError.None: return fileFailed[PagedPublication](
       removed.value.retirementError)
   let prepared = prepare(data, candidate, producer, config.root, count, payload,
-      PagedBuildKind.Replacement, true)
+      PagedBuildKind.Replacement, true, context)
   if prepared.error != PagedNativeError.None: return rejected[PagedPublication, StorageDurability](prepared)
   let authored = candidate.data
   assert authored != nil
@@ -833,3 +861,25 @@ func failure*[T](outcome: PagedNativeResult[T]): PagedNativeResult[bool] {.requi
     outcome.status != PagedNativeError.None.} =
   ## Composite consumers retain original selected causes without a successful native payload.
   rejected[bool, T](outcome)
+
+proc readContext*(reader: var PagedReader, budget: PagedWorkLimits): PagedNativeResult[PagedContext] =
+  ## Owned opaque context outlives its immutable reader without changing proof or checkpoint trust.
+  let data = reader.data
+  if data == nil or not data.active: return refused[PagedContext](PagedNativeError.Uninitialized)
+  if data.poisoned: return refused[PagedContext](PagedNativeError.RecoveryRequired)
+  let captured = contextFile(data.file, data.checked, budget)
+  if captured.error != PagedStreamError.None:
+    if data.file.check != FileError.None: data.poisoned = true # Native read uncertainty requires explicit retirement.
+    return streamFailed[PagedContext, PagedContext](captured)
+  PagedNativeResult[PagedContext](status: PagedNativeError.None, completed: captured.value)
+proc readContext*(writer: var PagedWriter, budget: PagedWorkLimits): PagedNativeResult[PagedContext] =
+  ## Startup inspects only the already admitted selected head while retaining its exclusive writer lease.
+  let data = writer.data
+  if data == nil or not data.active or not data.selected: return refused[PagedContext](
+      PagedNativeError.Uninitialized)
+  if data.poisoned: return refused[PagedContext](PagedNativeError.RecoveryRequired)
+  let captured = contextFile(data.head, data.checked, budget)
+  if captured.error != PagedStreamError.None:
+    if data.head.check != FileError.None: data.poisoned = true # Preserve native failure quarantine before subsequent operations.
+    return streamFailed[PagedContext, PagedContext](captured)
+  PagedNativeResult[PagedContext](status: PagedNativeError.None, completed: captured.value)
