@@ -6,9 +6,12 @@ Authority is the current unreleased Gray Paper pin
 `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, T chapters 1–16, existing
 chapter codecs and accepted compact C13 gas policy. PR542 request-domain adoption
 is complete; historical namespace and reader “Next” paragraphs are not backlog.
-The unchanged release-vector corpus is historical compatibility evidence. Full
-current-pin serialization, Thin VRF and whole-block/STF parity remain open.
-Current-round execution/publication integration belongs to the active PVM work.
+Selected release-format raw maps are historical compatibility evidence. Draft 35 Thin
+primitive integration is qualified separately; it is not a missing serialization field.
+Full independent current-pin serialization and whole-block/STF parity remain unqualified.
+See [current serialization status](jam-serialization-status.md).
+Current-round execution/publication contracts are documented in the owning PVM/state
+feature records; they are separate from this serialization adapter.
 Public proof RPC binding and root-authority policy belong to RPC; storage has
 reported no state-side API/format adaptation requirement for this increment.
 

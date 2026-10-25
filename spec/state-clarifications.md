@@ -1,4 +1,17 @@
-# Parked M1 question and accepted encoding policy
+# Namespace adoption and historical encoding review
+
+## Current disposition (2026-10-25)
+
+The unreleased upgrade already adopted #542: production admits request lengths through
+2^32−3 and rejects both reserved prefixes. There is no pending namespace-policy skip or
+compatible-release task. C12 E4/E8 and compact core/service C13 statistics retain the accepted
+representation; proposed validator-counter changes are not part of the pinned target.
+[The current serialization status](jam-serialization-status.md) supersedes the old backlog.
+
+## Historical review of the release target
+
+The review below records the 2026-10-17 snapshots. Its issue states and “next release”
+instructions are historical observations, not current upstream status or production pins.
 
 Pinned Gray Paper: v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`.
 Pinned reference vectors: v0.8.0 `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
