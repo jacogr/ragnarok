@@ -25,7 +25,7 @@ def guarantee(parent,core,slot,sid,name,prerequisites=(),lookups=(),gas=100000):
     return item
 
 
-def inputs(parent,slot,release,reports):
+def inputs(parent,slot,release,reports, *, gas_limits=None):
     """B/C/D/E wait on a held A; later batches exercise three active cores and release-before-shrink."""
     specifications={8:[('A',0,42,(),()),('B',1,99,('A',),())],
         9:[('C',1,99,('A','B'),())],10:[('D',1,99,(),('C',))],
@@ -35,7 +35,8 @@ def inputs(parent,slot,release,reports):
                         for core in range(2 if slot==24 else 3)]
     guaranteed=[]
     for name,core,sid,prerequisites,lookups in specifications:
-        item=guarantee(parent,core,slot,sid,name,prerequisites,lookups)
+        item=guarantee(parent,core,slot,sid,name,prerequisites,lookups,
+                       100000 if gas_limits is None else gas_limits.get(name,100000))
         reports[item['report'][:32]]=item['layout'];guaranteed.append(item)
     count,bits={9:(5,2),10:(5,2),11:(5,2),12:(5 if release else 4,3),13:(7,7),
                 24:(7 if release else 6,7),25:(5,3)}.get(slot,(0,0))
@@ -43,13 +44,13 @@ def inputs(parent,slot,release,reports):
     return guaranteed,assured
 
 
-def projection(parent,mode,slot,assured,reports):
+def projection(parent,mode,slot,assured,reports, *, charge=None):
     """GP E/Q and actual-gas accseq use each distinct prior/current/previous population explicitly."""
     crossed=slot//12>int.from_bytes(parent[chapter_key(11)],'little')//12
     active=guests.population.active_after(parent,slot)
     previous=guests.epoch.roster(parent[chapter_key(8 if crossed else 9)])
     return waves.plan(parent,mode,slot,assured,reports,cores=3,current=len(active),
-        previous=len(previous),prior=len(guests.epoch.roster(parent[chapter_key(8)])))
+        previous=len(previous),prior=len(guests.epoch.roster(parent[chapter_key(8)])),charge=charge)
 
 
 def cases():

@@ -26,10 +26,10 @@ proc populationReportingLimits*(): CurrentCandidateLimits =
   result.completion.composition.validators.projection.comparisons = ElementLimit(81)
   result.completion.composition.activity.available = ElementLimit(3)
   result.completion.composition.activity.assurances = ElementLimit(9)
-  # Reuse the qualified literal-guest fetch/blob policy, explicitly admitting three report operands.
+  # Reuse the qualified literal-guest fetch/blob policy, explicitly admitting four same-service report operands.
   let execution = currentStfGuestLimits()
   result.completion.execution.initial.guests.fetch = execution.completion.execution.initial.guests.fetch
-  result.completion.execution.initial.guests.fetch.items = ElementLimit(3)
+  result.completion.execution.initial.guests.fetch.items = ElementLimit(4)
   result.completion.execution.execution.round.guests.fetch = result.completion.execution.initial.guests.fetch
   result.completion.composition.statistics.operands = ElementLimit(5)
   result.completion.composition.finalization.history.reports = ElementLimit(5)
