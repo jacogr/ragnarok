@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ROTATION_RESTART",
+  "files": {
+    "current-stf-rotation-restart.json": "431cc9d3a3f5e51489d8d79a52ac790daccd6c62e628a30fdbc3fa0fc2de6a19"
+  },
+  "target": "current-stf-rotation-restart.json"
+}

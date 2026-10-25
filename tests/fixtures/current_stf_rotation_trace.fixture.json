@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ROTATION_TRACE",
+  "files": {
+    "current-stf-rotation-trace.json": "0cc1aaf127cd70fa37b36e9a5ccf04793ca57794378b3776611ef08a2f0682d6"
+  },
+  "target": "current-stf-rotation-trace.json"
+}

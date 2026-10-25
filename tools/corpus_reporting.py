@@ -44,6 +44,24 @@ def current_stf_offender_reporting_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_rotation_restart_corpus(compiler, report, checks, libraries):
+    """Qualify complete selected host-history restart transitions and exact typed refusals."""
+    import current_stf_rotation_restart_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_rotation_restart', 'state_report'),
+        defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
+def current_stf_rotation_trace_corpus(compiler, report, checks, libraries):
+    """Qualify complete selected host-history trace transitions and exact typed refusals."""
+    import current_stf_rotation_trace_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_rotation_trace', 'state_report'),
+        defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_rotation_histories_corpus(compiler, report, checks, libraries):
     """Qualify two further offender-filtered promotions with unchanged logical identities and real surviving signers."""
     import current_stf_rotation_histories_oracle as oracle
