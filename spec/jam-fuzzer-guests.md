@@ -105,3 +105,17 @@ execution. After an invalid prior-root attempt, both selected and sibling maps
 remain intact. Original-last imports preserve queryable sibling maps, and later
 direct extension retires the old sibling group. No observed variant calculates
 the expected original continuation.
+
+The fuzz backend derives the report lookup-age predicate from its authoritative
+host Parameters (GP reporting_assurance.tex `limitlookupanchorage`), rather than
+accepting an independently conflicting candidate-policy value. Resource ceilings
+remain explicit policy. Contradictory-policy controls prove that age14400 admits
+recent proved reports despite policy0, while age0 rejects a prior lookup despite
+policy14400 with the genuine LookupTooOld result and unchanged whole map/head.
+
+A new independent aging reference supplies35 complete-map imports with GP lookup
+age14400 and expunge period19200. Reports use recent ancestors with actual child
+header evidence; releases at19201 and19203 test exact equality versus strict
+expiry of a removal recorded at1. Restoration, live requests, panic and checkpoint
+selection compare all namespaces, footprints and statistics. Historical zero-age
+fixtures remain unchanged and are not promoted as GP-valid report-admission cases.
