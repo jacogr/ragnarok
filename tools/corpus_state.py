@@ -622,6 +622,80 @@ def jam_fuzzer_supervised_handoff_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_reserved_creation_corpus(compiler, report, checks, libraries):
+    """Execute reserved creation through fuzz requests against independent complete STF maps."""
+    import current_stf_reserved_creation_oracle as reference
+    from jam_fuzzer_guest_reference import host_parameters
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_reserved_creation', 'current_stf_transfers'),
+                                     profiles=[host_parameters(deposits=(7, 1, 100))] * len(reference.PROFILES))
+
+
+@CORPORA.case
+def jam_fuzzer_child_readiness_corpus(compiler, report, checks, libraries):
+    """Execute child readiness through fuzz requests against independent complete STF maps."""
+    import current_stf_child_readiness_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_child_readiness', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_child_retirement_corpus(compiler, report, checks, libraries):
+    """Execute child retirement through fuzz requests against independent complete STF maps."""
+    import current_stf_child_retirement_oracle as reference
+    from jam_fuzzer_guest_reference import host_parameters
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_child_retirement', 'current_stf_transfers'),
+                                     profiles=[host_parameters(deposits=(7, 1, 100))] * len(reference.PROFILES))
+
+
+@CORPORA.case
+def jam_fuzzer_child_recreation_corpus(compiler, report, checks, libraries):
+    """Execute child recreation through fuzz requests against independent complete STF maps."""
+    import current_stf_child_recreation_oracle as reference
+    from jam_fuzzer_guest_reference import host_parameters
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_child_recreation', 'current_stf_transfers'),
+                                     profiles=[host_parameters(deposits=(7, 1, 100))] * len(reference.PROFILES))
+
+
+@CORPORA.case
+def jam_fuzzer_incarnation_authority_corpus(compiler, report, checks, libraries):
+    """Execute incarnation authority through fuzz requests against independent complete STF maps."""
+    import current_stf_incarnation_authority_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_incarnation_authority', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_foreign_creation_corpus(compiler, report, checks, libraries):
+    """Execute foreign creation through fuzz requests against independent complete STF maps."""
+    import current_stf_foreign_creation_oracle as reference
+    from jam_fuzzer_guest_reference import host_parameters
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_foreign_creation', 'current_stf_transfers'),
+                                     profiles=[host_parameters(deposits=(7, 1, 100))] * len(reference.PROFILES))
+
+
+@CORPORA.case
+def jam_fuzzer_foreign_transfers_corpus(compiler, report, checks, libraries):
+    """Execute foreign transfers through fuzz requests against independent complete STF maps."""
+    import current_stf_foreign_transfers_oracle as reference
+    from jam_fuzzer_guest_reference import host_parameters
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_foreign_transfers', 'current_stf_transfers'),
+                                     profiles=[host_parameters(deposits=(7, 1, 100))] * len(reference.PROFILES))
+
+
+@CORPORA.case
+def jam_fuzzer_queued_incarnation_corpus(compiler, report, checks, libraries):
+    """Execute queued incarnation through fuzz requests against independent complete STF maps."""
+    import current_stf_queued_incarnation_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_queued_incarnation', 'current_stf_transfers'))
+
+
+@CORPORA.case
 def jam_fuzzer_stf_corpus(compiler, report, checks, libraries):
     """Compare actual fuzzer requests and whole-state replies with frozen independent STF maps."""
     from current_stf_oracle import expected_observations, verify_observations
