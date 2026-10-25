@@ -155,3 +155,28 @@ codec and benchmark guest drivers are byte-identical to the measured candidate
 test and refusal harnesses are also unchanged. Thus the prior selected local
 checks and exact experimental Linux measurements cover the same runtime source
 and build configuration; they are not described as runs of the review commit.
+
+
+## Separate frame verdict and pinned DOOM admission
+
+The subsequent frame-only experiment is rejected: planned Pinky improves5.84–6.91%
+against this retained runtime, but memo crossing-memory cases regress4.62–8.03%
+and other memo memory cases regress up to9.99%, beyond their controls. It fails
+its separate regression gate and is not included here. The
+[complete frozen frame record](https://github.com/jacogr/ragnarok/blob/2a9e1e56/spec/pvm-memory-frame.md)
+links exact instruction and paired timing evidence. No further variant was tried.
+
+The maintainer pointed to DOOM already present in the existing PolkaVM pin.
+Its `test-data/doom_64.elf.zst` links and validates as JamV1 without a guest rebuild
+or dependency upgrade:630305 code bytes,391032 read-only bytes and17139712
+writable bytes. The shipped32-bit blob is not used for a64-bit comparison.
+Untimed reference correctness probes establish initialization plus one explicit
+`ext_tick` with video/audio/ROM/stdout imports and no SDL. The original8KiB stack
+traps under4KiB pages; explicitly linking a16KiB minimum stack restores the extent
+implicitly mapped by upstream's16KiB page configuration. Both reference
+configurations complete with equal gas and identical640×400×4-byte frame hashes
+(`aac090dc14536eea1237ddcbba6b037872a49f1420f277abe0a2c153965b4d50`).
+Initialization itself emits a frame; tick count and emitted-frame count must both
+be recorded. This establishes reference admission, not native/reference parity or
+hotspot evidence. Next work is a bounded shared-state native/reference harness,
+validated output hashes and separate initialization/sustained-execution profiles.
