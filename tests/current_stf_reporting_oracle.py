@@ -175,6 +175,12 @@ def advance(parent, slot, guarantees, assured):
     raw, commitment = body(guarantees, assured)
     child = authored_child(parent, raw, commitment)
     result = advance_no_reports(parent, child, raw, commitment)
+    return child, apply_reporting(parent, result, slot, guarantees, assured, old, released)
+
+
+def apply_reporting(parent, result, slot, guarantees, assured, old, released, *,
+                    reporters=None, assurance_previous=False):
+    """Apply reporting equations to an independently calculated base STF; epoch callers select identity/statistics attribution."""
     available = []
     for core, item in enumerate(old):
         if item is not None and released[core]: available.append(item['guarantee']['report'])
@@ -199,9 +205,11 @@ def advance(parent, slot, guarantees, assured):
     result[chapter_key(14)] = ready_wire('R', rows)
     assert parent[chapter_key(15)] == result[chapter_key(15)] == bytes(12)
     (current, previous, cores, _), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
-    for index in {index for item in guarantees for index, _ in item['credentials']}: current[index] = (*current[index][:4], current[index][4]+1, current[index][5])
+    selected = {index for item in guarantees for index, _ in item['credentials']} if reporters is None else reporters
+    for index in selected: current[index] = (*current[index][:4], current[index][4]+1, current[index][5])
     for item in assured:
-        row = list(current[item['index']]); row[5] += 1; current[item['index']] = tuple(row)
+        target = previous if assurance_previous else current
+        row = list(target[item['index']]); row[5] += 1; target[item['index']] = tuple(row)
     core_rows = [[0]*8 for _ in range(2)]
     loads = []
     for item in guarantees:
@@ -219,7 +227,7 @@ def advance(parent, slot, guarantees, assured):
         sums = [sum(row[i] for row in loads) for i in range(5)]
         services = [(42, 0, 0, len(loads), *sums, 0, 0, 0)]
     result[chapter_key(13)] = statistics_wire((current, previous, core_rows, services))
-    return child, result
+    return result
 
 
 def inputs(parent, case, slot):

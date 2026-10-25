@@ -94,3 +94,8 @@ execution of these newly available reports. Existing historical limitations and
 
 Report-driven execution continues in [the guest whole-map cases](current-stf-report-guest-goldens.md),
 with free allowances removed and actual immediate report operands releasing the authored guests.
+
+The [epoch/reporting extension](current-stf-epoch-reporting.md) additionally qualifies
+current/previous rotation credentials, prior-roster assurances and pre-rollover
+statistics across a distinct-roster epoch boundary. Its bounded scope does not
+remove the other limitations above.
