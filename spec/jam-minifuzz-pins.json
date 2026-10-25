@@ -1,0 +1,63 @@
+{
+  "role": "test-only dependencies for unmodified pinned upstream minifuzz; never a protocol authority",
+  "sources": {
+    "jam-codec-py": {
+      "repository": "https://github.com/davxy/jam-codec-py",
+      "commit": "35b795811d0a31da8435ed1db0b213785c4ece5e",
+      "url": "https://codeload.github.com/davxy/jam-codec-py/zip/35b795811d0a31da8435ed1db0b213785c4ece5e",
+      "sha256": "3c5530528b3652188755ff9ca52619d5dc3a64da54b11626beb9b32d7f8f7d70",
+      "directory": "jam-codec-py-35b795811d0a31da8435ed1db0b213785c4ece5e"
+    },
+    "jam-types-py": {
+      "repository": "https://github.com/davxy/jam-types-py",
+      "commit": "f29e24d061e62e28f5b0ceadbfe6f31f7b1c9115",
+      "url": "https://codeload.github.com/davxy/jam-types-py/zip/f29e24d061e62e28f5b0ceadbfe6f31f7b1c9115",
+      "sha256": "8e527fb1b2c9e5a8da8dbb14ae27c05f4392c89e14fa89fe5b6ea646e67e7e9d",
+      "directory": "jam-types-py-f29e24d061e62e28f5b0ceadbfe6f31f7b1c9115"
+    }
+  },
+  "wheels": {
+    "base58": {
+      "version": "2.1.1",
+      "url": "https://files.pythonhosted.org/packages/4a/45/ec96b29162a402fc4c1c5512d114d7b3787b9d1c2ec241d9568b4816ee23/base58-2.1.1-py3-none-any.whl",
+      "sha256": "11a36f4d3ce51dfc1043f3218591ac4eb1ceb172919cebe05b52a5bcc8d245c2",
+      "filename": "base58-2.1.1-py3-none-any.whl"
+    },
+    "certifi": {
+      "version": "2026.10.23",
+      "url": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl",
+      "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1",
+      "filename": "certifi-2026.10.23-py3-none-any.whl"
+    },
+    "charset-normalizer": {
+      "version": "3.5.2",
+      "url": "https://files.pythonhosted.org/packages/fc/ad/d07d7862a62ffa6d79d68074d14823243dd235a77c45262acbf6adeb28bf/charset_normalizer-3.5.2-py3-none-any.whl",
+      "sha256": "b6b751274acb69d77b3323d6b7dbaa3c7fdfc1eb829b7eb61d262f32e1af9685",
+      "filename": "charset_normalizer-3.5.2-py3-none-any.whl"
+    },
+    "idna": {
+      "version": "3.20",
+      "url": "https://files.pythonhosted.org/packages/58/a2/bb081bab032533a855d44de1d56f8e8426114ff1ba5d1f07a438a0a654f8/idna-3.20-py3-none-any.whl",
+      "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+      "filename": "idna-3.20-py3-none-any.whl"
+    },
+    "more-itertools": {
+      "version": "11.2.1",
+      "url": "https://files.pythonhosted.org/packages/5d/57/3c4b1c6f2e0cc29ba023802458ea3d2a996f87085559e4a5f2192d549532/more_itertools-11.2.1-py3-none-any.whl",
+      "sha256": "35a7377edd1dd6608dcb2cdf534ded55ea32d49448875ad042cd3f879fb1ded0",
+      "filename": "more_itertools-11.2.1-py3-none-any.whl"
+    },
+    "requests": {
+      "version": "2.34.2",
+      "url": "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl",
+      "sha256": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",
+      "filename": "requests-2.34.2-py3-none-any.whl"
+    },
+    "urllib3": {
+      "version": "2.8.0",
+      "url": "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl",
+      "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+      "filename": "urllib3-2.8.0-py3-none-any.whl"
+    }
+  }
+}

@@ -53,6 +53,28 @@ def application_fuzzer_interface(context):
         return dict(passed=False, failure=repr(error), traceback=traceback.format_exc())
 
 
+@PLAN.setup()
+def prepare_minifuzz(context):
+    """Resolve pristine hash-pinned upstream codecs without installers or global package changes."""
+    from setup_jam_minifuzz import prepare
+    context.minifuzz = prepare()
+
+
+@PLAN.workload(group='application', requires=('prepare_peer', 'prepare_fuzzer_policy', 'prepare_minifuzz'))
+def application_minifuzz_interface(context):
+    """Require strict full-map interoperability through the unmodified upstream minifuzz process."""
+    compiled, binary = context.peer
+    policy_build, policy = context.fuzzer_policy
+    if compiled['exit_code'] != 0 or policy_build['exit_code'] != 0:
+        return dict(passed=False, failure='minifuzz prerequisite build')
+    from nimony_minifuzz import exercise
+    try:
+        script, environment = context.minifuzz
+        return exercise(binary, policy, script, environment, context.checks.folder)
+    except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
+        return dict(passed=False, failure=repr(error), traceback=traceback.format_exc())
+
+
 # Run one no-socket selftest only after its corresponding peer build succeeds.
 def peer_selftest(context, prepared, flag, log_name):
     """Retain the exact command, build evidence and nonzero-exit refusal for one entry point."""

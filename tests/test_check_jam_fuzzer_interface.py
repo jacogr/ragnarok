@@ -22,7 +22,9 @@ class JamInterfaceCI(unittest.TestCase):
                     socket=dict(passed=True, guests=dict(passed=True, sessions=2, signed_imports=3,
                         guest_siblings=1, expected_state_queries=11, completed_sessions=2,
                         completed_imports=3, retained_siblings=1, complete_state_queries=11,
-                        consensus_rejections=3, isolated_reconnects=1)))
+                        consensus_rejections=3, isolated_reconnects=1)),
+                    minifuzz=dict(passed=True, false_success_control=True, planned_sessions=2,
+                        completed_sessions=2, planned_exchanges=9, completed_exchanges=9, signed_imports=3))
 
     def test_every_declared_child_is_required(self):
         """No missing, extra or failed case can hide behind another successful child."""
@@ -67,6 +69,17 @@ class JamInterfaceCI(unittest.TestCase):
         del report['socket']['guests']
         self.assertFalse(interface.passed(report))
         self.assertIn('guest socket evidence: failed or missing', interface.summary(report))
+
+    def test_upstream_replay_cannot_be_skipped(self):
+        """A zero upstream exit or outer success flag cannot replace all observed exchanges and the mismatch control."""
+        report = self.complete()
+        del report['minifuzz']
+        self.assertFalse(interface.passed(report))
+        for field, value in (('completed_sessions', 1), ('completed_exchanges', 8),
+                             ('false_success_control', False), ('signed_imports', 0)):
+            report = self.complete()
+            report['minifuzz'][field] = value
+            self.assertFalse(interface.passed(report))
 
     def test_failed_setup_replaces_old_success(self):
         """An interrupted prerequisite writes a fresh failed report and explicit pending-engine summary."""

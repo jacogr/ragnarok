@@ -267,8 +267,13 @@ fuzz-pvm-program: toolchain check-inventory
 
 # Fixed current-profile engine-interface checks own their verdict; generated JAM campaigns still need a compatible engine.
 .PHONY: check-jam-fuzzer-interface
-check-jam-fuzzer-interface: setup check-inventory
+check-jam-fuzzer-interface: setup check-inventory minifuzz-tools
 	$(PYTHON) tools/check_jam_fuzzer_interface.py
+
+# Python zipimport runs exact pure-Python codecs without upstream installers or global packages.
+.PHONY: minifuzz-tools
+minifuzz-tools: sources
+	$(PYTHON) tools/setup_jam_minifuzz.py
 
 # Upstream owns its separate pinned fuzz nightly; ordinary runtime builds never depend on it.
 .PHONY: fuzz-pvm-upstream upstream-fuzz-tools
