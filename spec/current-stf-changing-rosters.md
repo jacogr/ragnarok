@@ -29,6 +29,7 @@ erasure shards remain tied to the current population.
 | Forwarded reentry and active-supervisor held duplicate-credit rounds |100|[Transfer waves](current-stf-rotation-transfer-waves.md)|
 | Recreated supervisor bindings and exact queued old-report identity |100|[Supervisor incarnations](current-stf-rotation-incarnations.md)|
 | Further offender-filtered promotions, surviving authors and fixed quorum |34|[Extended histories](current-stf-rotation-histories.md)|
+| Host/lifecycle checkpoint restarts and complete authenticated traces |85 each|[Host-history replay](current-stf-rotation-replay.md)|
 | Actual report-triggered writes, panic and checkpoint effects |30|[Population guests](current-stf-population-guests.md)|
 | Ticket contests, winner/fallback sealing and later growth |32|[Ticket reporting](current-stf-ticket-reporting.md)|
 | Deferred waves, release/resize-clear and actual-gas continuation |72|[Dependency waves](current-stf-population-waves.md)|
