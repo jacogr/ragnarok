@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CORPORA = CorpusGroup(order=25)
 
 
-def scenarios(compiler, checks, libraries, oracle, fixtures, *, defines=()):
+def scenarios(compiler, checks, libraries, oracle, fixtures, *, defines=(), inventory_controls=False):
     """Freeze expected answers before building one shared native driver; retain exact request and output hashes."""
     from native_fixture_contracts import FIXTURE_CONTRACTS
     for identity in fixtures:
@@ -22,12 +22,15 @@ def scenarios(compiler, checks, libraries, oracle, fixtures, *, defines=()):
     source = checks.folder/(oracle.FIXTURE.stem+'-requests.txt')
     source.write_text('\n'.join(requests)+'\n')
     built, binary = checks.build(compiler, ROOT/'tests/native/current_stf_reporting_scenarios_driver.nim',
-        'current-stf-reporting-scenarios'+('-rotation-designation' if 'rotationDesignations' in defines else '-rotation-hosts' if defines else ''), defines=defines, crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+        'current-stf-reporting-scenarios'+('-rotation-lifecycle' if 'rotationLifecycle' in defines else '-rotation-designation' if 'rotationDesignations' in defines else '-rotation-hosts' if defines else ''), defines=defines, crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
     result = dict(build=built, passed=False, **evidence, requests=len(requests),
         requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
         reference='GP mathematical Thin, independent Ed25519 signatures and complete-map equations')
     compare_chains(result, checks.command, binary, FIXTURE_CONTRACTS['state_report'][1], source,
                    requests, expected, evidence['chains'])
+    if inventory_controls and result['passed']:
+        from reporting_inventory_controls import compare_inventory_controls
+        compare_inventory_controls(result,checks.command,binary,FIXTURE_CONTRACTS['state_report'][1],source,oracle.negative_inventory_cases())
     announce(oracle.FIXTURE.stem+' independent signed complete-map scenarios', result['passed'])
     return result
 
@@ -38,6 +41,16 @@ def current_stf_offender_reporting_corpus(compiler, report, checks, libraries):
     import current_stf_offender_reporting_oracle as oracle
     return scenarios(compiler, checks, libraries, oracle,
         ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_offender_reporting', 'state_report'))
+
+
+@CORPORA.case
+def current_stf_rotation_creation_corpus(compiler, report, checks, libraries):
+    """Qualify created/retired dynamic namespaces and exact inventory refusals across population changes."""
+    import current_stf_rotation_creation_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_service_creation',
+         'current_stf_reserved_creation', 'current_stf_service_ejection', 'current_stf_rotation_creation', 'state_report'),
+        defines=oracle.NATIVE_DEFINES, inventory_controls=True)
 
 
 @CORPORA.case

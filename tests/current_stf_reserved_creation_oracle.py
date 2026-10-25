@@ -61,7 +61,7 @@ def original(profile):
     return parent
 
 
-def effects(result,parent,profile,slot,budget):
+def effects(result,parent,profile,slot,budget, *, statistics_config=DEFAULT):
     """Selected child funding consumes one explicit source pool and reaches the chosen child pool exactly once."""
     key=chapter_service(255,99);code,wide,narrow=account_parse(parent[key],105)
     wide,narrow=list(wide),list(narrow);narrow[2]=slot
@@ -76,7 +76,7 @@ def effects(result,parent,profile,slot,budget):
     result[key]=account_wire((code,wide,narrow))
     instructions,_=program(profile);gas=simulate(instructions,gas_definitions(),prefix=[b'\0']*5)[0]+3855+103*int(profile=='checkpoint-panic')
     assert gas<=budget and sum(wide[:2])>=minimum((code,wide,narrow))
-    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],DEFAULT)
+    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],statistics_config)
     activity={row[0]:list(row) for row in services};row=activity.setdefault(99,[99]+[0]*11);row[9]+=1;row[11]+=gas
     result[chapter_key(13)]=statistics_wire((current,previous,cores,[tuple(activity[sid]) for sid in sorted(activity)]))
     return dict(slot=slot,gas=gas,created=born,child_present=child in result,source_liquid=wide[0],source_protected=wide[1])

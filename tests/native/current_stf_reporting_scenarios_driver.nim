@@ -5,7 +5,7 @@
 import std/[assertions, cmdline, strutils, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../support/[current_stf_population_context, current_stf_population_reporting_context,
-  accumulation_current_chain_context, reporting_namespace_context, state_inventory_context]
+  accumulation_current_chain_context, reporting_namespace_context, reporting_declarations_context, state_inventory_context]
 import ../../src/app/[chain, candidate, trace_import]
 import ../../src/chain/[genesis, provider, parameters]
 import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout, state_trie,
@@ -13,14 +13,18 @@ import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout
 import ../../src/state/[store, checkpoint, accumulation_current_update, current_profile,
   current_globals, current_state, global_snapshot, trace_step, trace_state]
 
-when defined(rotationDesignations):
+when defined(rotationLifecycle):
+  import ../support/current_stf_rotation_lifecycle_context
+elif defined(rotationDesignations):
   import ../support/current_stf_rotation_designation_context
 elif defined(rotationHosts):
   import ../support/current_stf_rotation_hosts_context
 
 proc scenarioLimits(): CurrentCandidateLimits =
   ## Explicit corpus build profiles keep original reporting ceilings unchanged.
-  when defined(rotationDesignations):
+  when defined(rotationLifecycle):
+    rotationLifecycleLimits()
+  elif defined(rotationDesignations):
     rotationDesignationLimits()
   elif defined(rotationHosts):
     rotationHostLimits()
@@ -124,11 +128,13 @@ proc main() {.raises.} =
   var ancestors: seq[OwnedHeader] = @[]
   var original = default(StateStoreSnapshot)
   var originalWire = ""
+  var declarations: seq[DeclaredService] = @[]
+  var suppliedDeclarations = false
   for line in readFile(paramStr(2)).splitLines:
     if line.len == 0: continue # The final newline is transport framing only.
     let fields = line.splitWhitespace()
     if fields[0] == "C":
-      assert fields.len in [4, 5]
+      assert fields.len in [4, 5, 6]
       if originalWire.len > 0:
         assert epoch.checkpointHex(original) == originalWire # Previous chain installation cannot mutate its original owner.
       let restored = decodeFullCheckpoint(epoch.unhex(fields[3]), suppliedRoot(fields[2]), stores,
@@ -137,12 +143,17 @@ proc main() {.raises.} =
       original = restored.value.snapshot.value
       originalWire = epoch.checkpointHex(original)
       var configured = populationParameters()
-      if fields.len == 5:
+      if fields.len >= 5:
         let decoded = decodeParameters(epoch.unhex(fields[4]))
         assert decoded.ok
         configured = decoded.value # Explicit complete trusted parameters accompany authored original inputs.
       chain = initApplicationChain(genesisView(captureBlockSnapshot(currentChainBytes(seed.header),
           original, configured))).value
+      suppliedDeclarations = fields.len == 6
+      declarations = @[]
+      if suppliedDeclarations:
+        assert fields[5].len <= 32768
+        declarations = decodeDeclarations(epoch.unhex(fields[5]))
       ancestors = @[]
       echo "P ", originalWire
     else:
@@ -190,8 +201,14 @@ proc main() {.raises.} =
             1024), bytes: ByteLimit(65536))).value
         let globals = qualifyCurrentGlobals(profile, GlobalStateLimits(chapter: StateChapterPolicy(
             items: ElementLimit(10000), maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144))).value
-        assert qualifyCurrentState(globals, reportingServices(update.currentUpdateState),
-            inventoryCaptureLimits).error == CurrentStateError.None
+        let services = if suppliedDeclarations: declaredServices(update.currentUpdateState, declarations)
+          else: reportingServices(update.currentUpdateState)
+        let qualified = qualifyCurrentState(globals, services, inventoryCaptureLimits)
+        if qualified.error != CurrentStateError.None:
+          assert epoch.checkpointHex(chain.stateSnapshot.value) == saved
+          assert array[32, byte](chain.chainView.bestBlock.value.blockHash) == array[32, byte](
+              before.blockHash)
+          assert false, "inventory/IncompleteNamespaces" # Rejection cannot publish an otherwise valid candidate.
         assert chain.canInstallPrepared(update)
         chain.installPrepared(update)
         var next = @[before.header]
