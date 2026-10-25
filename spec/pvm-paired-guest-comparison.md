@@ -183,3 +183,14 @@ are each whole-file byte-identical. That integration executes no benchmark sampl
 or timing comparisons. Its hashes and compiler/control logs remain under
 `build/pvm12/canonical-paired-integration/`. The Linux paired job will also rerun
 PR1554 against its immediate runtime parent under the canonical build path.
+
+
+Linux CI40151164898 passes all54 real/synthetic cells, both process orders,2808
+paired and2808 same-source control invocations plus the pinned interpreted reference
+pack. The same-source guest, legacy and memo binaries are each byte-identical, and
+all native assertion/full-state/gas/page checks pass. The different-source pair is
+PR1554's runtime versus its immediate parent; that job does not reproduce its earlier
+small Pinky timing gain, so the arithmetic change is under separate requalification.
+This harness PR makes no new interpreter speed claim. Compiler/driver/runtime source
+and flags remain identical to qualified08ac0d5b; subsequent edits only add evidence
+and remove unused JSON artifact globs. Real role build logs remain retained.
