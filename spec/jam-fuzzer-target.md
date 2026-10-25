@@ -40,8 +40,9 @@ files. Each frame has a 16 MiB payload cap; complete maps retain the existing
 bounds idle, assembling, executing and blocked-output sessions. Explicit limits
 are local resource policy, never protocol-invalid block judgments.
 
-The target advertises protocol1, GP0.8.0 and feature mask0: linear execution,
-without initial ancestry or fork support. Every connection gets a fresh backend.
+The target advertises protocol1, GP0.8.0 and feature mask2: depth-one sibling
+execution without initial ancestry. A negotiated fork bit enables eight retained
+sibling maps; otherwise the backend remains linear. Every connection gets a fresh backend.
 The seed and rolling retained history support exact-header-hash whole-map queries.
 Header/map clock incompatibility and missing/evicted lookup context still cause
 local closure at actual import; seed acceptance and queries remain exact.

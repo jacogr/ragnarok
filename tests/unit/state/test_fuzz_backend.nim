@@ -7,6 +7,7 @@ import ../../support/[fuzz_backend_context, fuzz_protocol_context]
 import ../../../src/app/fuzz_backend
 import ../../../src/state/[fuzz_protocol, store]
 import ../../../src/chain/parameters
+import ../../../src/codec/bounded
 proc main() =
   ## Empty seed initialization and exact state retrieval require neither application context nor a fabricated chain.
   let config = fuzzBackendTestConfig()
@@ -17,6 +18,9 @@ proc main() =
   assert absent.executeFuzz(default(FuzzMessage)).error == FuzzBackendError.Uninitialized
   var bad = config
   bad.parameters = default(Parameters)
+  assert initFuzzBackend(bad).error == FuzzBackendError.InvalidConfiguration
+  bad = config
+  bad.forkStates = ElementLimit(65)
   assert initFuzzBackend(bad).error == FuzzBackendError.InvalidConfiguration
   var backend = initFuzzBackend(config).value
   assert backend.executeFuzz(default(FuzzMessage)).error == FuzzBackendError.InvalidRequest

@@ -5,7 +5,7 @@
 import std/assertions
 import ./[chain, candidate]
 import ../chain/[genesis, parameters, provider]
-import ../codec/[bounded, header]
+import ../codec/[bounded, header, block_codec]
 import ../crypto/primitives
 import ../state/[fuzz_protocol, store, accumulation_current_update]
 
@@ -14,15 +14,19 @@ type
     parameters*: Parameters
     candidate*: CurrentCandidateLimits
     wire*: FuzzLimits
+    forkStates*: ElementLimit ## Zero selects linear execution; 1..64 bounds the current sibling GetState window.
   FuzzBackendError* {.pure.} = enum ## Local refusals expose no reply and are never implicitly translated to consensus Error.
     Uninitialized, None, InvalidConfiguration, InvalidRequest, AlreadyInitialized,
     MissingSeed, UnsupportedFeature, HashFailure, SeedContextFailure, UnknownState,
-    CandidateFailure, StateChanged, ReplyFailure, LimitExceeded
+    CandidateFailure, StateChanged, ReplyFailure, LimitExceeded, UnknownParent
   FuzzBackendResult*[T] = object ## Success owns one complete value; candidate refusal preserves only its actual failed stage.
     case status: FuzzBackendError
     of None: completed: T
     of CandidateFailure: candidateReason: CurrentCandidateResult
     else: discard # No other refusal grants a prepared prefix, selected chain or response.
+  ForkState = object ## A retained sibling owns its exact header identity and independent complete map.
+    hash: BlockHash
+    state: StateStoreSnapshot
   FuzzBackend* = object ## Copies form independent ephemeral branches sharing only immutable prior snapshots.
     configured, seeded, executing: bool
     config: FuzzBackendConfig
@@ -31,6 +35,10 @@ type
     seedState: StateStoreSnapshot
     chain: ApplicationChain
     older: seq[OwnedHeader]
+    hasForkParent: bool
+    forkParent: ApplicationChain
+    forkOlder: seq[OwnedHeader]
+    siblings: seq[ForkState]
 func error*[T](outcome: FuzzBackendResult[T]): FuzzBackendError =
   ## Inspect the immutable selected stage.
   outcome.status
@@ -49,12 +57,17 @@ proc initFuzzBackend*(config: FuzzBackendConfig): FuzzBackendResult[FuzzBackend]
   ## Select explicit profile agreement before admitting any supplied seed.
   let frame = config.wire.frame
   let admission = config.candidate.reporting.admission.frame
-  if not config.parameters.valid or uint64(frame.cores) != config.parameters.get(coreCount) or
-      uint64(frame.epochSlots) != config.parameters.get(epochPeriod) or
-      uint64(frame.cores) != uint64(admission.cores) or uint64(frame.validators) != uint64(
-          admission.validators) or
-      uint64(frame.epochSlots) != uint64(admission.epochSlots) or
-      uint64(config.candidate.reporting.reports.ancestors.headers) == 0:
+  if uint64(config.forkStates) > 64 or not config.parameters.valid:
+    return refused[FuzzBackend](FuzzBackendError.InvalidConfiguration)
+  let parameterCores = config.parameters.get(coreCount)
+  let parameterEpoch = config.parameters.get(epochPeriod)
+  if uint64(frame.cores) != parameterCores or uint64(frame.epochSlots) != parameterEpoch:
+    return refused[FuzzBackend](FuzzBackendError.InvalidConfiguration)
+  let sameCores = uint64(frame.cores) == uint64(admission.cores)
+  let sameValidators = uint64(frame.validators) == uint64(admission.validators)
+  let sameEpoch = uint64(frame.epochSlots) == uint64(admission.epochSlots)
+  let headers = uint64(config.candidate.reporting.reports.ancestors.headers)
+  if not sameCores or not sameValidators or not sameEpoch or headers == 0:
     return refused[FuzzBackend](FuzzBackendError.InvalidConfiguration)
   FuzzBackendResult[FuzzBackend](status: FuzzBackendError.None,
       completed: FuzzBackend(configured: true, config: config))
@@ -100,12 +113,30 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
       return backend.response(newFuzzState(backend.seedState, config.wire))
     if not backend.executing: return refused[FuzzMessage](FuzzBackendError.UnknownState)
     let selected = backend.chain.chainView.blockAt(hash)
-    if selected.error != GenesisError.None: return refused[FuzzMessage](
-        FuzzBackendError.UnknownState)
-    backend.response(newFuzzState(selected.value.stateSnapshot, config.wire))
+    if selected.error == GenesisError.None:
+      return backend.response(newFuzzState(selected.value.stateSnapshot, config.wire))
+    for sibling in backend.siblings:
+      if array[32, byte](sibling.hash) == array[32, byte](hash):
+        return backend.response(newFuzzState(sibling.state, config.wire))
+    refused[FuzzMessage](FuzzBackendError.UnknownState)
   of FuzzKind.ImportBlock:
     if not backend.seeded: return refused[FuzzMessage](FuzzBackendError.MissingSeed)
     var chain = backend.chain
+    var ancestors = backend.older
+    var sibling = false
+    let body = request.fuzzBlock.value
+    if backend.executing and uint64(config.forkStates) > 0:
+      let fields = readHeader(blockHeader(body).value).value.owner.headerInfo.value.unsigned
+      let head = backend.chain.chainView.bestBlock.value
+      if array[32, byte](fields.parent) == array[32, byte](head.blockHash):
+        discard # A direct extension starts a new sibling group only after actual successful execution.
+      elif backend.hasForkParent and array[32, byte](fields.parent) ==
+          array[32, byte](backend.forkParent.chainView.bestBlock.value.blockHash):
+        chain = backend.forkParent
+        ancestors = backend.forkOlder
+        sibling = true # Restoring the exact immutable parent also restores its full header context.
+      else:
+        return refused[FuzzMessage](FuzzBackendError.UnknownParent)
     if not backend.executing:
       var bytes = newSeq[byte](backend.seedHeader.headerInfo.value.consumed)
       assert backend.seedHeader.encodeOwnedHeader(bytes).error == HeaderError.None
@@ -116,7 +147,7 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
       if initialized.error != ApplicationChainError.None: return refused[FuzzMessage](
           FuzzBackendError.SeedContextFailure)
       chain = initialized.value # Lazy application capture cannot reject or rewrite the accepted protocol seed.
-    let prepared = prepareCurrentCandidate(chain, request.fuzzBlock.value, backend.older,
+    let prepared = prepareCurrentCandidate(chain, body, ancestors,
         config.candidate)
     if prepared.error != CurrentCandidateError.None:
       return FuzzBackendResult[FuzzMessage](status: FuzzBackendError.CandidateFailure,
@@ -134,13 +165,30 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
     var available = uint64(policy.maxBytes)-nextSize
     var older: seq[OwnedHeader] = @[]
     let maximum = min(24'u64, uint64(policy.headers)-1)
-    for index in 0..backend.older.len:
-      let source = if index == 0: before else: backend.older[index-1]
+    for index in 0..ancestors.len:
+      let source = if index == 0: before else: ancestors[index-1]
       let size = uint64(source.headerInfo.value.consumed)
       if uint64(older.len) >= maximum or size > available: break # Keep a contiguous newest-first prefix within both quotas.
       older.add(source)
       available -= size
+    var siblings: seq[ForkState] = @[]
+    let identity = prepared.value.currentUpdateChild.blockHash
+    if uint64(config.forkStates) > 0:
+      if sibling:
+        for saved in backend.siblings:
+          if array[32, byte](saved.hash) != array[32, byte](identity):
+            siblings.add(saved) # A duplicate replay refreshes one identity instead of consuming another slot.
+      if uint64(siblings.len) == uint64(config.forkStates):
+        var retained: seq[ForkState] = @[]
+        for index in 1..<siblings.len: retained.add(siblings[
+            index]) # Evict only the oldest sibling map before adding this one.
+        siblings = retained
+      siblings.add(ForkState(hash: identity, state: state))
+      backend.forkParent = chain
+      backend.forkOlder = ancestors
+      backend.hasForkParent = true # Commit group-parent selection only after every preparation/reply/retention check succeeds.
     chain.installPrepared(prepared.value)
+    backend.siblings = siblings
     backend.chain = chain
     backend.older = older
     backend.executing = true # Publish exact state/history together only after all local reply/retention checks succeed.

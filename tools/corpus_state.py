@@ -304,6 +304,25 @@ def current_stf_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_forks_corpus(compiler, report, checks, libraries):
+    """Compare independently calculated sibling whole maps through actual fuzzer imports and state queries."""
+    from jam_fuzzer_forks_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('jam_fuzzer_forks', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    expected, evidence = expected_observations()
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_forks_driver.nim',
+        'jam-fuzzer-forks', crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
+    corpus = dict(build=compiled, passed=False, **evidence)
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1]], 'jam-fuzzer-forks-corpus', expected)
+    announce('independent depth-one fuzzer sibling STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
 def jam_fuzzer_stf_corpus(compiler, report, checks, libraries):
     """Compare actual fuzzer requests and whole-state replies with frozen independent STF maps."""
     from current_stf_oracle import expected_observations, verify_observations
