@@ -103,11 +103,12 @@ def accumulated(data):
     return rows
 
 
-def advance(parent, initial, mode, slot, gs, ass, *, plan=None):
+def advance(parent, initial, mode, slot, gs, ass, *, plan=None, core_count=2, current_count=6, previous_count=6, prior_count=6,
+            reporter_indices=None, population_changed=False):
     """Compose full admission/availability state with immediate or independently planned recursive guest batches."""
-    old = pending(parent[chapter_key(10)])
-    votes = [sum(bool(item['bits'] & (1 << core)) for item in ass) for core in range(2)]
-    released = [old[core]['guarantee']['report'] for core in range(2) if old[core] is not None and votes[core] >= 5]
+    old = pending(parent[chapter_key(10)], core_count, max(current_count, previous_count, prior_count))
+    votes = [sum(bool(item['bits'] & (1 << core)) for item in ass) for core in range(core_count)]
+    released = [old[core]['guarantee']['report'] for core in range(core_count) if old[core] is not None and votes[core] > 2*prior_count//3]
     # Optional queue mathematics supply processed batches separately from newly available reports.
     processed = released if plan is None else plan['processed']
     if plan is None:
@@ -129,13 +130,13 @@ def advance(parent, initial, mode, slot, gs, ass, *, plan=None):
         child = authored_child(parent, raw, commitment)
         result = advance_no_reports(parent, child, raw, commitment, outputs=outputs,
                                     preimages=() if plan is None else plan.get('preimages', ()))
-    for core in range(2):
-        if old[core] is not None and (votes[core] >= 5 or slot >= old[core]['registered']+5): old[core] = None
+    for core in range(core_count):
+        if old[core] is not None and (votes[core] > 2*prior_count//3 or population_changed or slot >= old[core]['registered']+5): old[core] = None
     pools, rows = Reader(parent[chapter_key(1)]), []
     # GP authorization consumes the posterior queue; callers that change it provide independently selected bytes.
     queues = parent[chapter_key(2)] if plan is None else plan.get('authorization_queues', parent[chapter_key(2)])
-    assert len(queues) == 2*80*32
-    for core in range(2):
+    assert len(queues) == core_count*80*32
+    for core in range(core_count):
         row = [pools.take(32) for _ in range(pools.count())]
         for item in gs:
             if item['layout']['core'] == core:
@@ -155,14 +156,14 @@ def advance(parent, initial, mode, slot, gs, ass, *, plan=None):
         result[chapter_key(14)] = bytes(12)
     else: result[chapter_key(14)] = queue_wire('R', plan['ready'])
     result[chapter_key(15)] = queue_wire('A', accumulated(parent[chapter_key(15)])[1:]+[b''.join(sorted(wire[:32] for wire in processed))])
-    (current, previous, _, _), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
-    for index in {i for item in gs for i, _ in item['credentials']}:
+    (current, previous, _, _), _ = statistics_parse(result[chapter_key(13)], (core_count, current_count, previous_count, *DEFAULT[3:]))
+    for index in ({i for item in gs for i, _ in item['credentials']} if reporter_indices is None else reporter_indices):
         row = list(current[index]); row[4] += 1; current[index] = tuple(row)
     # GP statistics credits assurances to the old active epoch before rotation; this authored profile has12 slots.
     assurance_rows = previous if slot//12 != int.from_bytes(parent[chapter_key(11)], 'little')//12 else current
     for item in ass:
         row = list(assurance_rows[item['index']]); row[5] += 1; assurance_rows[item['index']] = tuple(row)
-    cores, activity = [[0]*8 for _ in range(2)], {}
+    cores, activity = [[0]*8 for _ in range(core_count)], {}
     for item in gs:
         value = item['layout']; sid = value['digests'][0][0]
         load = value['digests'][0][-1]
@@ -170,7 +171,7 @@ def advance(parent, initial, mode, slot, gs, ass, *, plan=None):
         row = activity.setdefault(sid, [sid]+[0]*11)
         row[3] += 1
         for index, amount in enumerate(load, 4): row[index] += amount
-    for core in range(2): cores[core][1] = votes[core]
+    for core in range(core_count): cores[core][1] = votes[core]
     for wire in released:
         core = wire[273] if plan is None else plan['reports'][wire[:32]]['core'] # Deferred reports have variable dependency framing.
         cores[core][0] = int.from_bytes(wire[32:36], 'little')+4104*((65*int.from_bytes(wire[102:104], 'little')+63)//64)

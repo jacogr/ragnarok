@@ -5,7 +5,7 @@
 import std/[assertions, cmdline, strutils, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../support/[current_stf_population_context, current_stf_population_reporting_context,
-  accumulation_current_chain_context, current_namespace_context, state_inventory_context]
+  accumulation_current_chain_context, reporting_namespace_context, state_inventory_context]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout, state_trie,
@@ -73,8 +73,8 @@ proc main() {.raises.} =
             validators: ElementLimit(1024), bytes: ByteLimit(65536))).value
         let globals = qualifyCurrentGlobals(profile, GlobalStateLimits(chapter: StateChapterPolicy(
             items: ElementLimit(10000), maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144))).value
-        assert qualifyCurrentState(globals, currentNamespaceServices(
-            outcome.value.currentUpdateState, namespaceSeeds()), inventoryCaptureLimits).error ==
+        assert qualifyCurrentState(globals, reportingServices(
+            outcome.value.currentUpdateState), inventoryCaptureLimits).error ==
                 CurrentStateError.None
         assert chain.canInstallPrepared(outcome.value)
         chain.installPrepared(outcome.value)
