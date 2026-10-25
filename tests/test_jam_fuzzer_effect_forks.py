@@ -84,6 +84,32 @@ class EffectForkReference(unittest.TestCase):
                 self.assertEqual({key for key in changed if changed[key] != original[key]},
                                  {chapter_key(3), chapter_key(13)})
 
+    def test_deferred_fork_maps(self):
+        """Preserve exact independent deferred namespaces, chapter domains and explicit profile ownership."""
+        from jam_fuzzer_deferred_forks_oracle import expected_observations, FAMILIES
+        from jam_fuzzer_effect_forks_reference import profiles
+        _, lines, evidence = expected_observations()
+        self.assertEqual(evidence['sibling_imports'], 57)
+        self.assertEqual(evidence['transitions'], 521)
+        self.assertEqual(len(profiles(FAMILIES)), evidence['chains'])
+        for index, line in enumerate(lines):
+            if line.startswith('V '):
+                changed = decode_checkpoint(bytes.fromhex(lines[index+1][2:]))
+                original = decode_checkpoint(bytes.fromhex(lines[index+3][2:]))
+                self.assertEqual(set(changed), set(original))
+                self.assertEqual({key for key in changed if changed[key] != original[key]},
+                                 {chapter_key(3), chapter_key(13)})
+
+    def test_frozen_profile_cardinality(self):
+        """Every frozen chain has an explicit host profile without executing its signing equations a second time."""
+        import importlib
+        import json
+        from jam_fuzzer_effect_forks_reference import profiles
+        for name in ('transfer', 'account', 'privileged', 'supervised', 'deferred'):
+            reference = importlib.import_module('jam_fuzzer_'+name+'_forks_oracle')
+            frozen = json.loads(reference.FIXTURE.read_text())
+            self.assertEqual(len(profiles(reference.FAMILIES)), frozen['chains'])
+
     def test_unknown_body_domains_fail_closed(self):
         """Unknown tickets, oversized assurance counts and truncated records cannot become a valid sibling."""
         for raw in (b'\x01', b'\0\0\0\7', b'\0\0\0\5'):
