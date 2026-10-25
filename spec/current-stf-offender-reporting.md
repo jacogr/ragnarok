@@ -42,3 +42,9 @@ corpus passed unchanged after helper extraction. All22 affected independent test
 source inventory and pinned formatting passed. This closes the bounded offender/
 reporting interaction, not arbitrary offender histories, full JAM/STF or external
 client conformance. M1 framing and serialization qualification retain their scope.
+
+Checked Linux amd64 under emulation passed the same22 transitions and17 refusals.
+All7,979 frozen source inputs match both the host and retained image
+`ragnarok:db5-offender-reporting`
+(`sha256:ba0a0c4ecfc0f89be71dde22182779dce5304234d38168b4711aa4a33dbedb9b`).
+This is covered-source local evidence, separate from exact-head CI.
