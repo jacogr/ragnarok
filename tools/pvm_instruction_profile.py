@@ -106,8 +106,10 @@ def execution_entry_count(text):
 
 
 
-def capture_generated_sources(folder, repository):
+def capture_generated_sources(folder, repository, cache_name="guest"):
     """Retain exact generated C at its recorded relative paths for offline source annotation."""
+    if type(cache_name) is not str or re.fullmatch(r'[a-z][a-z0-9-]*', cache_name) is None:
+        raise ValueError('invalid generated-source compiler cache name')
     folder, repository = Path(folder).resolve(), Path(repository).resolve()
     archive = folder/'generated-source'
     if archive.is_symlink():
@@ -117,7 +119,7 @@ def capture_generated_sources(folder, repository):
         shutil.rmtree(archive)
     archive.mkdir(parents=True)
     manifest = {}
-    for source in sorted(folder.glob('compiler-*/guest-cache/c/**/*.c')):
+    for source in sorted(folder.glob('compiler-*/'+cache_name+'-cache/c/**/*.c')):
         # Compiler output must remain inside this group even if a cache contains symlinks.
         if not source.resolve().is_relative_to(folder):
             raise ValueError('generated C escapes the profile build')

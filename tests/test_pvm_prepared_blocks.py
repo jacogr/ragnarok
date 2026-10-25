@@ -78,6 +78,41 @@ class PreparedExecutionToolTests(unittest.TestCase):
         self.assertIn('| sieve | 100000 | 1 | 1.000 ms', text)
         self.assertIn('| sieve | 100000 | 2 | 2.000 ms', text)
 
+    def test_counter_summary_requires_both_phases_and_branch_classes(self):
+        """An indirect miss improvement cannot hide a larger conditional miss increase or absent warm profile."""
+        from pvm_guest_inputs import CASES
+        runs = [dict(guest=guest,limit=limit,order=order,engine=engine,
+                     samples=[dict(cpu_ns=1000000)]*13)
+                for guest,limit in CASES for order in (0,1)
+                for engine in ('ragnarok','ragnarok_planned','ragnarok_prepared','polkavm_interpreter')]
+        profiles = [dict(guest=guest,mode=mode,phase=phase,
+                         events=dict(Ir=100,Bcm=30 if mode == 'prepared' else 10,Bim=10 if mode == 'prepared' else 20))
+                    for guest,limit in CASES if limit == 100000 or guest == 'pinky'
+                    for mode in ('planned','prepared') for phase in ('cold','reused')]
+        report = dict(status='passed',timings=True,counts=True,runs=runs,profiles=profiles)
+        text = summary(report)
+        self.assertIn('Combined misses', text)
+        self.assertIn('+33.33%', text)
+        profiles.pop()
+        with self.assertRaises(ValueError): summary(report)
+
+    def test_paired_archive_selects_its_actual_compiler_cache(self):
+        """An unrelated guest cache cannot mask missing baseline attribution sources on a clean runner."""
+        import tempfile
+        from pathlib import Path
+        from pvm_instruction_profile import capture_generated_sources
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            folder = repository/'build'
+            source = folder/'compiler-pinned'/'guest-paired-cache'/'c'/'module.c'
+            source.parent.mkdir(parents=True)
+            source.write_text('exact paired source')
+            archive, manifest = capture_generated_sources(folder, repository, 'guest-paired')
+            self.assertEqual(len(manifest), 1)
+            self.assertEqual((archive/source.relative_to(repository)).read_text(), 'exact paired source')
+            with self.assertRaises(ValueError): capture_generated_sources(folder, repository)
+            with self.assertRaises(ValueError): capture_generated_sources(folder, repository, '../foreign')
+
     def test_paired_build_retires_stale_generated_cache(self):
         """A repeated candidate image control must rebuild independently rather than reuse old generated bodies."""
         import tempfile

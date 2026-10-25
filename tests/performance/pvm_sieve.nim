@@ -177,8 +177,9 @@ if preparedMode:
       observed.residentBytes
 let engine = if preparedMode: "ragnarok_prepared" elif memoMode: "ragnarok_memo" elif plannedMode: "ragnarok_planned" else: "ragnarok"
 let requestedSamples = getEnv("RAGNAROK_PVM_SIEVE_SAMPLES")
-assert requestedSamples in ["1", "13"]
-let samples = if requestedSamples == "1": 1 else: 13
+assert requestedSamples in ["1", "4", "13"]
+# Four calls support an isolated post-three-warmup counter dump; ordinary timings retain thirteen.
+let samples = if requestedSamples == "1": 1 elif requestedSamples == "4": 4 else: 13
 for sample in 0..<samples:
   # Program/memory/ABI setup is outside execution timing in both interpreters.
   let wallStart = if clocked: getMonoTime().ticks else: 0'i64

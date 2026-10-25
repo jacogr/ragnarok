@@ -137,3 +137,18 @@ reference scenarios, all seven guest cases in both orders, and the candidate ima
 rebuild control. Native source assertions were reshaped to avoid malformed expressions
 from an earlier formatter invocation; the corrected final formatted suite passes.
 Linux counter/timing qualification remains pending; the trial is not an accepted speedup.
+
+Dispatch attribution additionally collects an isolated fourth execution after three
+warmups, using the existing calibrated function-return dump controls. Every preceding
+return part must be complete, the final process dump must be empty, and the selected
+last part must contain exactly one execution entry. Cold preparation counters and
+reused execution counters are labeled separately. This prevents attributing warmed
+CPU behavior to a cold preparation delta. Source archives explicitly select the paired
+compiler cache rather than relying on unrelated caches from earlier local runs.
+
+The original Pinky cold profile also shows conditional misses dropping from 50,506,033
+(planned) to 24,299,409 (prepared). Including indirect misses, combined simulated misses
+drop from 67,065,579 to 52,795,793 (21.3%). The increased indirect category alone does
+not explain the observed CPU regression. Counter reports therefore include both classes
+and combined totals, and reject missing cold/reused profile phases. Hardware predictor,
+call/return, register-pressure and front-end costs remain hypotheses, not established causes.

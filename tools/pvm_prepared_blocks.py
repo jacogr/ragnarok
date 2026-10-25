@@ -124,6 +124,26 @@ def summary(report):
                     before = statistics.median(values)
                     after = statistics.median(x['cpu_ns'] for x in candidate['samples'][3:])
                     lines.append(f'| {guest} | {limit} | {row["order"]+1} | {before/1e6:.3f} ms | {after/1e6:.3f} ms | {(after/before-1)*100:+.2f}% |')
+    if report.get('counts'):
+        profiles = report['profiles']
+        modes = ('planned', 'prepared', 'baseline') if report.get('baseline') else ('planned', 'prepared')
+        guests = [guest for guest, limit in CASES if limit == 100000 or guest == 'pinky']
+        expected = {(guest,mode,phase) for guest in guests for mode in modes for phase in ('cold','reused')}
+        actual = {(row['guest'],row['mode'],row['phase']) for row in profiles}
+        if len(profiles) != len(expected) or actual != expected:
+            raise ValueError('incomplete or duplicate cold/reused profile matrix')
+        before_mode = 'baseline' if report.get('baseline') else 'planned'
+        lines += ['', 'Selected execution counters: '+before_mode+' → prepared; simulated misses include both branch classes.',
+                  '', '| Guest | Phase | Native instructions | Conditional misses | Indirect misses | Combined misses |',
+                  '|---|---|---:|---:|---:|---:|']
+        for guest in guests:
+            for phase in ('cold','reused'):
+                pair = [next(row['events'] for row in profiles if row['guest'] == guest and row['mode'] == mode and row['phase'] == phase)
+                        for mode in (before_mode,'prepared')]
+                old,new = pair
+                total_old,total_new = (x['Bcm']+x['Bim'] for x in pair)
+                combined = f'{(total_new/total_old-1)*100:+.2f}%' if total_old else 'no baseline misses'
+                lines.append(f'| {guest} | {phase} | {(new["Ir"]/old["Ir"]-1)*100:+.2f}% | {old["Bcm"]/1e6:.3f}M → {new["Bcm"]/1e6:.3f}M | {old["Bim"]/1e6:.3f}M → {new["Bim"]/1e6:.3f}M | {combined} |')
     lines += ['', 'Cold execution includes lazy preparation. Constructor cost, every raw sample, cache growth and eviction are retained separately.',
               'Existing and prepared paths use the same checked candidate binary; this does not isolate unrelated code-layout effects.', '']
     return '\n'.join(lines)
@@ -191,7 +211,7 @@ def run(timings=False, counts=False, baseline=None):
             baseline_binary = BUILD/'guest-baseline'
             shutil.copy2(paired, baseline_binary)
             identities[baseline_binary] = digest(baseline_binary)
-            baseline_archive, baseline_generated = capture_generated_sources(BUILD, ROOT)
+            baseline_archive, baseline_generated = capture_generated_sources(BUILD, ROOT, 'guest-paired')
             retained_baseline = BUILD/'generated-source-baseline'
             if retained_baseline.is_symlink(): raise ValueError('baseline archive is a symlink')
             if retained_baseline.exists(): shutil.rmtree(retained_baseline)
@@ -220,7 +240,7 @@ def run(timings=False, counts=False, baseline=None):
                                        cflags=('-g', '-I'+str(ROOT/'tests/performance')))
             output = row.pop('output'); report['checks'].append(row)
             if row['exit_code'] or 'Error:' in output: raise ValueError('native guest build failed')
-        archive, generated_sources = capture_generated_sources(BUILD, ROOT)
+        archive, generated_sources = capture_generated_sources(BUILD, ROOT, 'guest-paired' if baseline is not None else 'guest')
         report['generated_sources'] = generated_sources
         report['generated_source_root'] = str(archive.relative_to(ROOT))
         identities[binary] = digest(binary)
@@ -237,6 +257,12 @@ def run(timings=False, counts=False, baseline=None):
             version = command(['valgrind', '--version'], 'valgrind-version', dict(os.environ))
             if version.strip() != VERSION: raise ValueError('unexpected Valgrind version')
             calibrate_scope(checks, report)
+            execution_symbols = {}
+            for label, executable in [('candidate', binary), *([('baseline', baseline_binary)] if baseline_binary is not None else [])]:
+                symbols = command(['nm', '--defined-only', executable], 'symbols-'+label, dict(os.environ))
+                selected = tuple(sorted(set(re.findall(r'^[0-9a-f]+\s+[Tt]\s+(execute_[0-9]+_\w+)$', symbols, re.M))))
+                if not selected: raise ValueError('missing exact execution symbols for return-dump collection')
+                execution_symbols[executable] = selected
         # Complete all selected instruction-count comparisons before beginning any timing pass.
         for guest, limit, data, expected in ready['inputs']:
             base = dict(os.environ, RAGNAROK_PVM_GUEST=guest, RAGNAROK_PVM_SIEVE_INPUT=str(data),
@@ -245,16 +271,18 @@ def run(timings=False, counts=False, baseline=None):
                 profiles = [('planned', binary, 'planned'), ('prepared', binary, 'prepared')]
                 if baseline_binary is not None: profiles.append(('baseline', baseline_binary, 'prepared'))
                 for mode, executable, pricing in profiles:
-                    # One complete cold execution includes its own preparation; fixture construction and validation are outside scope.
-                    env = dict(base, RAGNAROK_PVM_PRICING=pricing, RAGNAROK_PVM_SIEVE_SAMPLES='1', RAGNAROK_PVM_SIEVE_CLOCK='0')
-                    result, raw = collect(checks, executable, f'profile-{guest}-{mode}', SCOPE, env, 1800)
-                    if result['exit_code']: raise ValueError('prepared profile process failed')
-                    parse_output(result['output'], 'ragnarok_'+pricing, limit, 1, guest, False)
-                    text = raw.read_text()
-                    if execution_entry_count(text) != 1: raise ValueError('profile did not collect exactly one execution')
-                    report['profiles'].append(dict(guest=guest, mode=mode, events=profile_counts(text),
-                        raw=str(raw.relative_to(ROOT)), sha256=digest(raw)))
-                    save()
+                    for phase, samples in (('cold', 1), ('reused', 4)):
+                        # The fourth return dump excludes three warmups and matches the first measured timing invocation.
+                        env = dict(base, RAGNAROK_PVM_PRICING=pricing, RAGNAROK_PVM_SIEVE_SAMPLES=str(samples), RAGNAROK_PVM_SIEVE_CLOCK='0')
+                        result, raw = collect(checks, executable, f'profile-{guest}-{mode}-{phase}', SCOPE, env, 1800,
+                            dump_symbols=execution_symbols[executable] if samples == 4 else (), executions=samples)
+                        if result['exit_code']: raise ValueError('prepared profile process failed')
+                        parse_output(result['output'], 'ragnarok_'+pricing, limit, samples, guest, False)
+                        text = raw.read_text()
+                        if execution_entry_count(text) != 1: raise ValueError('profile did not collect exactly one execution')
+                        report['profiles'].append(dict(guest=guest, mode=mode, phase=phase, warmup_calls=samples-1,
+                            events=profile_counts(text), raw=str(raw.relative_to(ROOT)), sha256=digest(raw)))
+                        save()
         for guest, limit, data, expected in ready['inputs']:
             base = dict(os.environ, RAGNAROK_PVM_GUEST=guest, RAGNAROK_PVM_SIEVE_INPUT=str(data),
                         RAGNAROK_PVM_SIEVE_EXPECTED=str(expected), RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0')
