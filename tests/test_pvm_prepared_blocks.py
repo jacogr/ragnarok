@@ -89,3 +89,8 @@ class PreparedExecutionToolTests(unittest.TestCase):
         self.assertNotIn('continue-on-error', text)
         make = (ROOT/'Makefile').read_text()
         self.assertIn('tools/pvm_prepared_blocks.py --counts --timings', make)
+        for target in ('check-pvm-prepared', 'profile-pvm-prepared'):
+            # A clean runner must fetch the locked reference dependencies before its offline build.
+            recipe = make.split(target+': setup check-inventory\n')[1].split('\n\n')[0]
+            self.assertIn('cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml', recipe)
+            self.assertLess(recipe.index('cargo fetch'), recipe.index('$(PYTHON)'))
