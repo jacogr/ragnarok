@@ -123,3 +123,7 @@ history qualification is inferred.
 The [offender/reporting extension](current-stf-offender-reporting.md) composes
 Phi exclusions, prior-roster assurances, dispute cancellation and delayed full
 null-record activation with genuine report release/replacement.
+
+The [changing-roster coverage record](current-stf-changing-rosters.md) links the
+subsequent execution, gas, historical-anchor, checkpoint, trace and operator
+qualification contracts without conflating their overlapping workloads.

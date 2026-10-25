@@ -104,3 +104,8 @@ separate identities and fixture provenance. `make check-python`, `make check-inv
 and `make format-check` own reference/tooling, registration and formatting verification.
 Local macOS/Linux results and exact-head remote CI are distinct observations; see
 feature contracts for the covered sources and build profiles.
+
+The [changing-roster STF coverage record](current-stf-changing-rosters.md) tracks
+subsequent independently derived reporting/execution and replay/operator evidence.
+Those interaction qualifications preserve this document's serialization boundary;
+they do not establish complete JAM/STF or external-client conformance.
