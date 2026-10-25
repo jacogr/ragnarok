@@ -204,3 +204,18 @@ seven maintained guest cases in both orders, the affected CI/profiler/comparison
 formatting and all 441 production-module smoke compilations. Retained prepared payload
 sizes are unchanged. Earlier timing tables remain historical evidence from their
 recorded revisions; performance against the newly combined baseline must be remeasured.
+
+## Compact handler ABI trial
+
+After rejection of the direct149/151 paths, the next bounded hypothesis changes only
+the private handler boundary. A plain invocation-local frame owns CPU, working memory,
+dynamic-target cache and immutable program handle. Handlers receive that frame plus
+a borrowed prepared operation and return a compact guarded status/exit result. Fault
+and host payloads are written to the frame only for those exits. The prepared owner
+retains no frame or mutable execution state. Instruction semantics, cache layout,
+pricing, scheduling and host-response rules remain fixed.
+
+Acceptance requires complete opcode, gas, memory, fault/host/reentry and ARC parity;
+all maintained guests against the frozen prepared baseline on identical build paths;
+proof that the generated result fits a register return; and same-runner cold/reused
+counts and paired timings. This trial introduces no new public API or unchecked access.
