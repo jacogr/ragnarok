@@ -1336,12 +1336,7 @@ type
     byteLimit*: PreparedByteLimit
     blockLimit*: PreparedBlockLimit
     cycleLimit*: GasCycleLimit
-  PreparedEvaluation = object ## A compact private guarded result returns only status and the selected exit through the handler ABI.
-    case status: StepError
-    of None:
-      exit: StepExit
-    else:
-      discard # Failed/default handlers carry no selectable exit or stale payload.
+  PreparedEvaluation = distinct uint32 ## A private complete status/exit word returns without aggregate ABI repacking; default remains Uninitialized.
   PreparedFrame = object ## One invocation owns mutable CPU/memory/targets and rare exit metadata; no reusable cache retains it.
     source: Program
     info: MachineInfo
@@ -1350,12 +1345,16 @@ type
     exitEffect: InstructionEffect
   PreparedHandler = proc(frame: var PreparedFrame, operation: PreparedOperation): PreparedEvaluation {.nimcall,
         raises: [].}
-  PreparedOperation = object ## A sealed private record retains only handler-ready facts from one genuine source-owned decode.
+  PreparedPrefixHandler = proc(frame: var PreparedFrame, first, second: PreparedOperation): PreparedEvaluation {.nimcall,
+        raises: [].} ## A genuine non-faulting register prefix completes before the original checked second handler.
+  PreparedOperation = object ## Sealed handler and coordinates/flags form a hot header; absolute source PC is consumed only on rare exits.
     handler: nil PreparedHandler
-    address, next, target: CodeAddress
-    x, y: uint64
+    prefix: nil PreparedPrefixHandler # Static code pointer only; no extra operand or cache owner is retained.
     registers: RegisterSlots
     validTarget, fallthrough, endsBlock: bool
+    next: CodeAddress
+    x, y: uint64
+    target, address: CodeAddress
   PreparedChunkData = object ## One immutable operation array has no back-reference to its program or cache owner.
     start: CodeAddress
     operations: seq[PreparedOperation]
@@ -1422,9 +1421,35 @@ proc preparedIncrement(value: var uint64) =
   ## Diagnostics saturate without changing execution or refusing a long-lived cache.
   if value != high(uint64): inc value
 
+const preparedContinueCode = uint32(ord(StepError.None)) or (uint32(ord(StepExit.Continued)) shl 8)
+when ord(high(StepError)) > 255 or ord(high(StepExit)) > 255:
+  # Domain expansion must fail compilation instead of truncating a reason or admitting an unrelated exit.
+  {.error: "Prepared status and exit domains exceed their reserved byte".}
+
+func preparedFailure(reason: StepError): PreparedEvaluation {.inline, requires: reason !=
+    StepError.None.} =
+  ## Failure carries only its exact reason; zero/default remains Uninitialized and never selects an exit.
+  PreparedEvaluation(uint32(ord(reason)))
+
+func status(evaluated: PreparedEvaluation): StepError {.inline.} =
+  ## Validate the complete private encoding before exposing a typed reason or genuine success.
+  let code = uint32(evaluated)
+  if (code and 255'u32) == uint32(ord(StepError.None)) and
+      (code shr 8) <= uint32(ord(high(StepExit))):
+    StepError.None
+  elif code <= uint32(ord(high(StepError))) and code != uint32(ord(StepError.None)):
+    StepError(code)
+  else:
+    StepError.Uninitialized
+
+func exit(evaluated: PreparedEvaluation): StepExit {.inline,
+    requires: status(evaluated) == StepError.None.} =
+  ## Only an admitted success word authorizes selecting its checked guest exit.
+  StepExit(uint32(evaluated) shr 8)
+
 func preparedSignal(exit: StepExit): PreparedEvaluation {.inline.} =
-  ## Only successful instruction evaluation selects a scalar guest exit; payloads remain invocation-local.
-  PreparedEvaluation(status: StepError.None, exit: exit)
+  ## All typed failures and genuine exits travel in the return value; no extra per-handler frame writes are added.
+  PreparedEvaluation(uint32(ord(StepError.None)) or (uint32(ord(exit)) shl 8))
 
 proc preparedRegister[Code: static[int]](frame: var PreparedFrame,
     operation: PreparedOperation): PreparedEvaluation =
@@ -1433,12 +1458,29 @@ proc preparedRegister[Code: static[int]](frame: var PreparedFrame,
   var value = RegisterValue(0)
   if not computeRegisterOperands(operation.registers, operation.x, byte(Code), frame.info.registers,
       index, value, Code):
-    return PreparedEvaluation(status: StepError.UnsupportedInstruction)
+    return preparedFailure(StepError.UnsupportedInstruction)
   frame.info.registers[index] = value
   frame.info.pc = operation.next
   if not operation.fallthrough:
-    return PreparedEvaluation(status: StepError.InvalidMachine)
+    return preparedFailure(StepError.InvalidMachine)
   preparedSignal(StepExit.Continued)
+
+proc preparedRegisterPrefix[Code: static[int]](frame: var PreparedFrame,
+    first, second: PreparedOperation): PreparedEvaluation =
+  ## Only genuine register handlers with valid fallthrough can enter this prefix; both source records stay borrowed and immutable.
+  let evaluated = preparedRegister[Code](frame, first)
+  if uint32(evaluated) != preparedContinueCode: return evaluated
+  let selected = second.handler
+  if selected == nil: return preparedFailure(StepError.UnsupportedInstruction)
+  # Returning the original second outcome permits a bounded tail transfer; the caller retains exact fault/host publication.
+  selected(frame, second)
+
+proc selectPreparedRegister[Code: static[int]](operation: var PreparedOperation) {.inline.} =
+  ## The ordinary handler remains available for one remaining attempt or the final element of a segment.
+  operation.handler = preparedRegister[Code]
+  if operation.fallthrough:
+    # This literal known register opcode cannot fault/exit before the second operation; no prefix is selected for a missing successor.
+    operation.prefix = preparedRegisterPrefix[Code]
 
 proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStore: static[bool]](
     frame: var PreparedFrame, operation: PreparedOperation): PreparedEvaluation =
@@ -1474,7 +1516,7 @@ proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
   of MachineError.None:
     # Successful nonterminators require their validated physical successor.
     if not operation.fallthrough:
-      return PreparedEvaluation(status: StepError.InvalidMachine)
+      return preparedFailure(StepError.InvalidMachine)
     frame.info.pc = operation.next
     preparedSignal(StepExit.Continued)
   of MachineError.Fault:
@@ -1484,9 +1526,9 @@ proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
   of MachineError.Panic:
     preparedSignal(StepExit.Panic)
   of MachineError.AmbiguousAccessOrder:
-    PreparedEvaluation(status: StepError.AmbiguousAccessOrder)
+    preparedFailure(StepError.AmbiguousAccessOrder)
   else:
-    PreparedEvaluation(status: StepError.InvalidMachine)
+    preparedFailure(StepError.InvalidMachine)
 
 proc preparedControl[Code: static[int]](frame: var PreparedFrame,
     operation: PreparedOperation): PreparedEvaluation =
@@ -1494,8 +1536,7 @@ proc preparedControl[Code: static[int]](frame: var PreparedFrame,
   var outcome = StepExit.Continued
   when Code == 10:
     # Host metadata is written only after its valid successor is established; the causing PC remains observable.
-    if not operation.fallthrough: return PreparedEvaluation(
-        status: StepError.InvalidMachine)
+    if not operation.fallthrough: return preparedFailure(StepError.InvalidMachine)
     frame.exitEffect = InstructionEffect(kind: StepExit.Host,
       callNumber: HostCallId(operation.x), callAddress: operation.address)
     return preparedSignal(StepExit.Host)
@@ -1503,8 +1544,7 @@ proc preparedControl[Code: static[int]](frame: var PreparedFrame,
     outcome = StepExit.Panic
   elif Code == 2:
     # Unlikely stays inside its prepaid block.
-    if not operation.fallthrough: return PreparedEvaluation(
-        status: StepError.InvalidMachine)
+    if not operation.fallthrough: return preparedFailure(StepError.InvalidMachine)
     frame.info.pc = operation.next
   elif Code == 50 or Code == 180:
     # Read the original base before load-and-jump publishes an aliased destination.
@@ -1541,10 +1581,307 @@ proc preparedControl[Code: static[int]](frame: var PreparedFrame,
       outcome = StepExit.Panic
   preparedSignal(outcome)
 
+func handlerForOpcode(code: byte): nil PreparedHandler {.inline.} =
+  ## One canonical literal handler table is shared by ordinary preparation and specialized second-instruction selection.
+  case code
+  of 0: preparedControl[0]
+  of 1: preparedControl[1]
+  of 2: preparedControl[2]
+  of 10: preparedControl[10]
+  of 20: preparedRegister[20]
+  of 30: preparedMemory[1, false, false, false, true]
+  of 31: preparedMemory[2, false, false, false, true]
+  of 32: preparedMemory[4, false, false, false, true]
+  of 33: preparedMemory[8, false, false, false, true]
+  of 40: preparedControl[40]
+  of 50: preparedControl[50]
+  of 51: preparedRegister[51]
+  of 52: preparedMemory[1, true, false, false, false]
+  of 53: preparedMemory[1, true, true, false, false]
+  of 54: preparedMemory[2, true, false, false, false]
+  of 55: preparedMemory[2, true, true, false, false]
+  of 56: preparedMemory[4, true, false, false, false]
+  of 57: preparedMemory[4, true, true, false, false]
+  of 58: preparedMemory[8, true, false, false, false]
+  of 59: preparedMemory[1, false, false, false, false]
+  of 60: preparedMemory[2, false, false, false, false]
+  of 61: preparedMemory[4, false, false, false, false]
+  of 62: preparedMemory[8, false, false, false, false]
+  of 70: preparedMemory[1, false, false, true, true]
+  of 71: preparedMemory[2, false, false, true, true]
+  of 72: preparedMemory[4, false, false, true, true]
+  of 73: preparedMemory[8, false, false, true, true]
+  of 80: preparedControl[80]
+  of 81: preparedControl[81]
+  of 82: preparedControl[82]
+  of 83: preparedControl[83]
+  of 84: preparedControl[84]
+  of 85: preparedControl[85]
+  of 86: preparedControl[86]
+  of 87: preparedControl[87]
+  of 88: preparedControl[88]
+  of 89: preparedControl[89]
+  of 90: preparedControl[90]
+  of 100: preparedRegister[100]
+  of 101: preparedRegister[101]
+  of 102: preparedRegister[102]
+  of 103: preparedRegister[103]
+  of 104: preparedRegister[104]
+  of 105: preparedRegister[105]
+  of 106: preparedRegister[106]
+  of 107: preparedRegister[107]
+  of 108: preparedRegister[108]
+  of 109: preparedRegister[109]
+  of 110: preparedRegister[110]
+  of 120: preparedMemory[1, false, false, true, false]
+  of 121: preparedMemory[2, false, false, true, false]
+  of 122: preparedMemory[4, false, false, true, false]
+  of 123: preparedMemory[8, false, false, true, false]
+  of 124: preparedMemory[1, true, false, true, false]
+  of 125: preparedMemory[1, true, true, true, false]
+  of 126: preparedMemory[2, true, false, true, false]
+  of 127: preparedMemory[2, true, true, true, false]
+  of 128: preparedMemory[4, true, false, true, false]
+  of 129: preparedMemory[4, true, true, true, false]
+  of 130: preparedMemory[8, true, false, true, false]
+  of 131: preparedRegister[131]
+  of 132: preparedRegister[132]
+  of 133: preparedRegister[133]
+  of 134: preparedRegister[134]
+  of 135: preparedRegister[135]
+  of 136: preparedRegister[136]
+  of 137: preparedRegister[137]
+  of 138: preparedRegister[138]
+  of 139: preparedRegister[139]
+  of 140: preparedRegister[140]
+  of 141: preparedRegister[141]
+  of 142: preparedRegister[142]
+  of 143: preparedRegister[143]
+  of 144: preparedRegister[144]
+  of 145: preparedRegister[145]
+  of 146: preparedRegister[146]
+  of 147: preparedRegister[147]
+  of 148: preparedRegister[148]
+  of 149: preparedRegister[149]
+  of 150: preparedRegister[150]
+  of 151: preparedRegister[151]
+  of 152: preparedRegister[152]
+  of 153: preparedRegister[153]
+  of 154: preparedRegister[154]
+  of 155: preparedRegister[155]
+  of 156: preparedRegister[156]
+  of 157: preparedRegister[157]
+  of 158: preparedRegister[158]
+  of 159: preparedRegister[159]
+  of 160: preparedRegister[160]
+  of 161: preparedRegister[161]
+  of 170: preparedControl[170]
+  of 171: preparedControl[171]
+  of 172: preparedControl[172]
+  of 173: preparedControl[173]
+  of 174: preparedControl[174]
+  of 175: preparedControl[175]
+  of 180: preparedControl[180]
+  of 190: preparedRegister[190]
+  of 191: preparedRegister[191]
+  of 192: preparedRegister[192]
+  of 193: preparedRegister[193]
+  of 194: preparedRegister[194]
+  of 195: preparedRegister[195]
+  of 196: preparedRegister[196]
+  of 197: preparedRegister[197]
+  of 198: preparedRegister[198]
+  of 199: preparedRegister[199]
+  of 200: preparedRegister[200]
+  of 201: preparedRegister[201]
+  of 202: preparedRegister[202]
+  of 203: preparedRegister[203]
+  of 204: preparedRegister[204]
+  of 205: preparedRegister[205]
+  of 206: preparedRegister[206]
+  of 207: preparedRegister[207]
+  of 208: preparedRegister[208]
+  of 209: preparedRegister[209]
+  of 210: preparedRegister[210]
+  of 211: preparedRegister[211]
+  of 212: preparedRegister[212]
+  of 213: preparedRegister[213]
+  of 214: preparedRegister[214]
+  of 215: preparedRegister[215]
+  of 216: preparedRegister[216]
+  of 217: preparedRegister[217]
+  of 218: preparedRegister[218]
+  of 219: preparedRegister[219]
+  of 220: preparedRegister[220]
+  of 221: preparedRegister[221]
+  of 222: preparedRegister[222]
+  of 223: preparedRegister[223]
+  of 224: preparedRegister[224]
+  of 225: preparedRegister[225]
+  of 226: preparedRegister[226]
+  of 227: preparedRegister[227]
+  of 228: preparedRegister[228]
+  of 229: preparedRegister[229]
+  of 230: preparedRegister[230]
+  else: nil # Unsupported future opcodes never become guest traps or fabricated handlers.
+
+proc preparedAddPrefix[NextCode: static[int]](frame: var PreparedFrame,
+    first, second: PreparedOperation): PreparedEvaluation =
+  ## A genuine add-immediate first instruction completes before the original literal second handler; shared semantics stay unchanged.
+  let evaluated = preparedRegister[149](frame, first)
+  if uint32(evaluated) != preparedContinueCode: return evaluated
+  let selected = handlerForOpcode(byte(NextCode))
+  if selected == nil: return preparedFailure(StepError.UnsupportedInstruction)
+  selected(frame, second)
+
+func addPrefixForOpcode(code: byte): nil PreparedPrefixHandler =
+  ## Compile one bounded prefix specialization per known second opcode; no input-dependent native code is generated.
+  case code
+  of 0: preparedAddPrefix[0]
+  of 1: preparedAddPrefix[1]
+  of 2: preparedAddPrefix[2]
+  of 10: preparedAddPrefix[10]
+  of 20: preparedAddPrefix[20]
+  of 30: preparedAddPrefix[30]
+  of 31: preparedAddPrefix[31]
+  of 32: preparedAddPrefix[32]
+  of 33: preparedAddPrefix[33]
+  of 40: preparedAddPrefix[40]
+  of 50: preparedAddPrefix[50]
+  of 51: preparedAddPrefix[51]
+  of 52: preparedAddPrefix[52]
+  of 53: preparedAddPrefix[53]
+  of 54: preparedAddPrefix[54]
+  of 55: preparedAddPrefix[55]
+  of 56: preparedAddPrefix[56]
+  of 57: preparedAddPrefix[57]
+  of 58: preparedAddPrefix[58]
+  of 59: preparedAddPrefix[59]
+  of 60: preparedAddPrefix[60]
+  of 61: preparedAddPrefix[61]
+  of 62: preparedAddPrefix[62]
+  of 70: preparedAddPrefix[70]
+  of 71: preparedAddPrefix[71]
+  of 72: preparedAddPrefix[72]
+  of 73: preparedAddPrefix[73]
+  of 80: preparedAddPrefix[80]
+  of 81: preparedAddPrefix[81]
+  of 82: preparedAddPrefix[82]
+  of 83: preparedAddPrefix[83]
+  of 84: preparedAddPrefix[84]
+  of 85: preparedAddPrefix[85]
+  of 86: preparedAddPrefix[86]
+  of 87: preparedAddPrefix[87]
+  of 88: preparedAddPrefix[88]
+  of 89: preparedAddPrefix[89]
+  of 90: preparedAddPrefix[90]
+  of 100: preparedAddPrefix[100]
+  of 101: preparedAddPrefix[101]
+  of 102: preparedAddPrefix[102]
+  of 103: preparedAddPrefix[103]
+  of 104: preparedAddPrefix[104]
+  of 105: preparedAddPrefix[105]
+  of 106: preparedAddPrefix[106]
+  of 107: preparedAddPrefix[107]
+  of 108: preparedAddPrefix[108]
+  of 109: preparedAddPrefix[109]
+  of 110: preparedAddPrefix[110]
+  of 120: preparedAddPrefix[120]
+  of 121: preparedAddPrefix[121]
+  of 122: preparedAddPrefix[122]
+  of 123: preparedAddPrefix[123]
+  of 124: preparedAddPrefix[124]
+  of 125: preparedAddPrefix[125]
+  of 126: preparedAddPrefix[126]
+  of 127: preparedAddPrefix[127]
+  of 128: preparedAddPrefix[128]
+  of 129: preparedAddPrefix[129]
+  of 130: preparedAddPrefix[130]
+  of 131: preparedAddPrefix[131]
+  of 132: preparedAddPrefix[132]
+  of 133: preparedAddPrefix[133]
+  of 134: preparedAddPrefix[134]
+  of 135: preparedAddPrefix[135]
+  of 136: preparedAddPrefix[136]
+  of 137: preparedAddPrefix[137]
+  of 138: preparedAddPrefix[138]
+  of 139: preparedAddPrefix[139]
+  of 140: preparedAddPrefix[140]
+  of 141: preparedAddPrefix[141]
+  of 142: preparedAddPrefix[142]
+  of 143: preparedAddPrefix[143]
+  of 144: preparedAddPrefix[144]
+  of 145: preparedAddPrefix[145]
+  of 146: preparedAddPrefix[146]
+  of 147: preparedAddPrefix[147]
+  of 148: preparedAddPrefix[148]
+  of 149: preparedAddPrefix[149]
+  of 150: preparedAddPrefix[150]
+  of 151: preparedAddPrefix[151]
+  of 152: preparedAddPrefix[152]
+  of 153: preparedAddPrefix[153]
+  of 154: preparedAddPrefix[154]
+  of 155: preparedAddPrefix[155]
+  of 156: preparedAddPrefix[156]
+  of 157: preparedAddPrefix[157]
+  of 158: preparedAddPrefix[158]
+  of 159: preparedAddPrefix[159]
+  of 160: preparedAddPrefix[160]
+  of 161: preparedAddPrefix[161]
+  of 170: preparedAddPrefix[170]
+  of 171: preparedAddPrefix[171]
+  of 172: preparedAddPrefix[172]
+  of 173: preparedAddPrefix[173]
+  of 174: preparedAddPrefix[174]
+  of 175: preparedAddPrefix[175]
+  of 180: preparedAddPrefix[180]
+  of 190: preparedAddPrefix[190]
+  of 191: preparedAddPrefix[191]
+  of 192: preparedAddPrefix[192]
+  of 193: preparedAddPrefix[193]
+  of 194: preparedAddPrefix[194]
+  of 195: preparedAddPrefix[195]
+  of 196: preparedAddPrefix[196]
+  of 197: preparedAddPrefix[197]
+  of 198: preparedAddPrefix[198]
+  of 199: preparedAddPrefix[199]
+  of 200: preparedAddPrefix[200]
+  of 201: preparedAddPrefix[201]
+  of 202: preparedAddPrefix[202]
+  of 203: preparedAddPrefix[203]
+  of 204: preparedAddPrefix[204]
+  of 205: preparedAddPrefix[205]
+  of 206: preparedAddPrefix[206]
+  of 207: preparedAddPrefix[207]
+  of 208: preparedAddPrefix[208]
+  of 209: preparedAddPrefix[209]
+  of 210: preparedAddPrefix[210]
+  of 211: preparedAddPrefix[211]
+  of 212: preparedAddPrefix[212]
+  of 213: preparedAddPrefix[213]
+  of 214: preparedAddPrefix[214]
+  of 215: preparedAddPrefix[215]
+  of 216: preparedAddPrefix[216]
+  of 217: preparedAddPrefix[217]
+  of 218: preparedAddPrefix[218]
+  of 219: preparedAddPrefix[219]
+  of 220: preparedAddPrefix[220]
+  of 221: preparedAddPrefix[221]
+  of 222: preparedAddPrefix[222]
+  of 223: preparedAddPrefix[223]
+  of 224: preparedAddPrefix[224]
+  of 225: preparedAddPrefix[225]
+  of 226: preparedAddPrefix[226]
+  of 227: preparedAddPrefix[227]
+  of 228: preparedAddPrefix[228]
+  of 229: preparedAddPrefix[229]
+  of 230: preparedAddPrefix[230]
+  else: nil # The original generic register prefix remains available when no literal specialization is admitted.
+
 proc preparedOperation(decoded: ProgramResult[Instruction]): PreparedOperation =
   ## Select a specialized handler and immutable target facts from a genuine successful decoder result.
   let item = decoded.value
-  result = PreparedOperation(handler: nil, address: item.address,
+  result = PreparedOperation(handler: nil, prefix: nil, address: item.address,
     next: CodeAddress(uint64(item.address)+1+uint64(item.skip)), target: CodeAddress(0),
     x: uint64(item.x), y: uint64(item.y), registers: instructionRegisters(decoded),
     validTarget: instructionTargetStartsBlock(decoded), fallthrough: instructionHasFallthrough(
@@ -1558,177 +1895,94 @@ proc preparedOperation(decoded: ProgramResult[Instruction]): PreparedOperation =
     if uint64(-item.displacement) <= pc: result.target = CodeAddress(pc-uint64(-item.displacement))
   else:
     result.target = CodeAddress(pc+uint64(item.displacement))
+  result.handler = handlerForOpcode(item.opcode)
   case item.opcode
-  of 0: result.handler = preparedControl[0] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 1: result.handler = preparedControl[1] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 2: result.handler = preparedControl[2] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 10: result.handler = preparedControl[10] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 20: result.handler = preparedRegister[20] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 30: result.handler = preparedMemory[1, false, false, false,
-      true] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 31: result.handler = preparedMemory[2, false, false, false,
-      true] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 32: result.handler = preparedMemory[4, false, false, false,
-      true] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 33: result.handler = preparedMemory[8, false, false, false,
-      true] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 40: result.handler = preparedControl[40] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 50: result.handler = preparedControl[50] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 51: result.handler = preparedRegister[51] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 52: result.handler = preparedMemory[1, true, false, false,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 53: result.handler = preparedMemory[1, true, true, false,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 54: result.handler = preparedMemory[2, true, false, false,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 55: result.handler = preparedMemory[2, true, true, false,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 56: result.handler = preparedMemory[4, true, false, false,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 57: result.handler = preparedMemory[4, true, true, false,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 58: result.handler = preparedMemory[8, true, false, false,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 59: result.handler = preparedMemory[1, false, false, false,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 60: result.handler = preparedMemory[2, false, false, false,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 61: result.handler = preparedMemory[4, false, false, false,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 62: result.handler = preparedMemory[8, false, false, false,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 70: result.handler = preparedMemory[1, false, false, true,
-      true] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 71: result.handler = preparedMemory[2, false, false, true,
-      true] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 72: result.handler = preparedMemory[4, false, false, true,
-      true] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 73: result.handler = preparedMemory[8, false, false, true,
-      true] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 80: result.handler = preparedControl[80] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 81: result.handler = preparedControl[81] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 82: result.handler = preparedControl[82] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 83: result.handler = preparedControl[83] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 84: result.handler = preparedControl[84] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 85: result.handler = preparedControl[85] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 86: result.handler = preparedControl[86] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 87: result.handler = preparedControl[87] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 88: result.handler = preparedControl[88] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 89: result.handler = preparedControl[89] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 90: result.handler = preparedControl[90] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 100: result.handler = preparedRegister[100] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 101: result.handler = preparedRegister[101] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 102: result.handler = preparedRegister[102] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 103: result.handler = preparedRegister[103] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 104: result.handler = preparedRegister[104] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 105: result.handler = preparedRegister[105] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 106: result.handler = preparedRegister[106] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 107: result.handler = preparedRegister[107] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 108: result.handler = preparedRegister[108] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 109: result.handler = preparedRegister[109] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 110: result.handler = preparedRegister[110] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 120: result.handler = preparedMemory[1, false, false, true,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 121: result.handler = preparedMemory[2, false, false, true,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 122: result.handler = preparedMemory[4, false, false, true,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 123: result.handler = preparedMemory[8, false, false, true,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 124: result.handler = preparedMemory[1, true, false, true,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 125: result.handler = preparedMemory[1, true, true, true,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 126: result.handler = preparedMemory[2, true, false, true,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 127: result.handler = preparedMemory[2, true, true, true,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 128: result.handler = preparedMemory[4, true, false, true,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 129: result.handler = preparedMemory[4, true, true, true,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 130: result.handler = preparedMemory[8, true, false, true,
-      false] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 131: result.handler = preparedRegister[131] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 132: result.handler = preparedRegister[132] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 133: result.handler = preparedRegister[133] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 134: result.handler = preparedRegister[134] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 135: result.handler = preparedRegister[135] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 136: result.handler = preparedRegister[136] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 137: result.handler = preparedRegister[137] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 138: result.handler = preparedRegister[138] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 139: result.handler = preparedRegister[139] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 140: result.handler = preparedRegister[140] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 141: result.handler = preparedRegister[141] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 142: result.handler = preparedRegister[142] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 143: result.handler = preparedRegister[143] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 144: result.handler = preparedRegister[144] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 145: result.handler = preparedRegister[145] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 146: result.handler = preparedRegister[146] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 147: result.handler = preparedRegister[147] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 148: result.handler = preparedRegister[148] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 149: result.handler = preparedRegister[149] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 150: result.handler = preparedRegister[150] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 151: result.handler = preparedRegister[151] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 152: result.handler = preparedRegister[152] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 153: result.handler = preparedRegister[153] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 154: result.handler = preparedRegister[154] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 155: result.handler = preparedRegister[155] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 156: result.handler = preparedRegister[156] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 157: result.handler = preparedRegister[157] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 158: result.handler = preparedRegister[158] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 159: result.handler = preparedRegister[159] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 160: result.handler = preparedRegister[160] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 161: result.handler = preparedRegister[161] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 170: result.handler = preparedControl[170] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 171: result.handler = preparedControl[171] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 172: result.handler = preparedControl[172] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 173: result.handler = preparedControl[173] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 174: result.handler = preparedControl[174] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 175: result.handler = preparedControl[175] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 180: result.handler = preparedControl[180] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 190: result.handler = preparedRegister[190] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 191: result.handler = preparedRegister[191] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 192: result.handler = preparedRegister[192] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 193: result.handler = preparedRegister[193] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 194: result.handler = preparedRegister[194] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 195: result.handler = preparedRegister[195] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 196: result.handler = preparedRegister[196] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 197: result.handler = preparedRegister[197] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 198: result.handler = preparedRegister[198] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 199: result.handler = preparedRegister[199] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 200: result.handler = preparedRegister[200] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 201: result.handler = preparedRegister[201] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 202: result.handler = preparedRegister[202] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 203: result.handler = preparedRegister[203] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 204: result.handler = preparedRegister[204] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 205: result.handler = preparedRegister[205] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 206: result.handler = preparedRegister[206] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 207: result.handler = preparedRegister[207] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 208: result.handler = preparedRegister[208] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 209: result.handler = preparedRegister[209] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 210: result.handler = preparedRegister[210] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 211: result.handler = preparedRegister[211] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 212: result.handler = preparedRegister[212] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 213: result.handler = preparedRegister[213] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 214: result.handler = preparedRegister[214] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 215: result.handler = preparedRegister[215] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 216: result.handler = preparedRegister[216] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 217: result.handler = preparedRegister[217] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 218: result.handler = preparedRegister[218] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 219: result.handler = preparedRegister[219] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 220: result.handler = preparedRegister[220] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 221: result.handler = preparedRegister[221] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 222: result.handler = preparedRegister[222] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 223: result.handler = preparedRegister[223] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 224: result.handler = preparedRegister[224] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 225: result.handler = preparedRegister[225] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 226: result.handler = preparedRegister[226] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 227: result.handler = preparedRegister[227] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 228: result.handler = preparedRegister[228] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 229: result.handler = preparedRegister[229] # Fixed opcode-to-operation selection occurs only during preparation.
-  of 230: result.handler = preparedRegister[230] # Fixed opcode-to-operation selection occurs only during preparation.
-  else: discard # An unsupported future opcode keeps a nil handler and cannot silently become a trap.
+  of 20: selectPreparedRegister[20](result) # The ordinary handler and generic prefix remain independently available.
+  of 51: selectPreparedRegister[51](result) # The ordinary handler and generic prefix remain independently available.
+  of 100: selectPreparedRegister[100](result) # The ordinary handler and generic prefix remain independently available.
+  of 101: selectPreparedRegister[101](result) # The ordinary handler and generic prefix remain independently available.
+  of 102: selectPreparedRegister[102](result) # The ordinary handler and generic prefix remain independently available.
+  of 103: selectPreparedRegister[103](result) # The ordinary handler and generic prefix remain independently available.
+  of 104: selectPreparedRegister[104](result) # The ordinary handler and generic prefix remain independently available.
+  of 105: selectPreparedRegister[105](result) # The ordinary handler and generic prefix remain independently available.
+  of 106: selectPreparedRegister[106](result) # The ordinary handler and generic prefix remain independently available.
+  of 107: selectPreparedRegister[107](result) # The ordinary handler and generic prefix remain independently available.
+  of 108: selectPreparedRegister[108](result) # The ordinary handler and generic prefix remain independently available.
+  of 109: selectPreparedRegister[109](result) # The ordinary handler and generic prefix remain independently available.
+  of 110: selectPreparedRegister[110](result) # The ordinary handler and generic prefix remain independently available.
+  of 131: selectPreparedRegister[131](result) # The ordinary handler and generic prefix remain independently available.
+  of 132: selectPreparedRegister[132](result) # The ordinary handler and generic prefix remain independently available.
+  of 133: selectPreparedRegister[133](result) # The ordinary handler and generic prefix remain independently available.
+  of 134: selectPreparedRegister[134](result) # The ordinary handler and generic prefix remain independently available.
+  of 135: selectPreparedRegister[135](result) # The ordinary handler and generic prefix remain independently available.
+  of 136: selectPreparedRegister[136](result) # The ordinary handler and generic prefix remain independently available.
+  of 137: selectPreparedRegister[137](result) # The ordinary handler and generic prefix remain independently available.
+  of 138: selectPreparedRegister[138](result) # The ordinary handler and generic prefix remain independently available.
+  of 139: selectPreparedRegister[139](result) # The ordinary handler and generic prefix remain independently available.
+  of 140: selectPreparedRegister[140](result) # The ordinary handler and generic prefix remain independently available.
+  of 141: selectPreparedRegister[141](result) # The ordinary handler and generic prefix remain independently available.
+  of 142: selectPreparedRegister[142](result) # The ordinary handler and generic prefix remain independently available.
+  of 143: selectPreparedRegister[143](result) # The ordinary handler and generic prefix remain independently available.
+  of 144: selectPreparedRegister[144](result) # The ordinary handler and generic prefix remain independently available.
+  of 145: selectPreparedRegister[145](result) # The ordinary handler and generic prefix remain independently available.
+  of 146: selectPreparedRegister[146](result) # The ordinary handler and generic prefix remain independently available.
+  of 147: selectPreparedRegister[147](result) # The ordinary handler and generic prefix remain independently available.
+  of 148: selectPreparedRegister[148](result) # The ordinary handler and generic prefix remain independently available.
+  of 149: selectPreparedRegister[149](result) # The ordinary handler and generic prefix remain independently available.
+  of 150: selectPreparedRegister[150](result) # The ordinary handler and generic prefix remain independently available.
+  of 151: selectPreparedRegister[151](result) # The ordinary handler and generic prefix remain independently available.
+  of 152: selectPreparedRegister[152](result) # The ordinary handler and generic prefix remain independently available.
+  of 153: selectPreparedRegister[153](result) # The ordinary handler and generic prefix remain independently available.
+  of 154: selectPreparedRegister[154](result) # The ordinary handler and generic prefix remain independently available.
+  of 155: selectPreparedRegister[155](result) # The ordinary handler and generic prefix remain independently available.
+  of 156: selectPreparedRegister[156](result) # The ordinary handler and generic prefix remain independently available.
+  of 157: selectPreparedRegister[157](result) # The ordinary handler and generic prefix remain independently available.
+  of 158: selectPreparedRegister[158](result) # The ordinary handler and generic prefix remain independently available.
+  of 159: selectPreparedRegister[159](result) # The ordinary handler and generic prefix remain independently available.
+  of 160: selectPreparedRegister[160](result) # The ordinary handler and generic prefix remain independently available.
+  of 161: selectPreparedRegister[161](result) # The ordinary handler and generic prefix remain independently available.
+  of 190: selectPreparedRegister[190](result) # The ordinary handler and generic prefix remain independently available.
+  of 191: selectPreparedRegister[191](result) # The ordinary handler and generic prefix remain independently available.
+  of 192: selectPreparedRegister[192](result) # The ordinary handler and generic prefix remain independently available.
+  of 193: selectPreparedRegister[193](result) # The ordinary handler and generic prefix remain independently available.
+  of 194: selectPreparedRegister[194](result) # The ordinary handler and generic prefix remain independently available.
+  of 195: selectPreparedRegister[195](result) # The ordinary handler and generic prefix remain independently available.
+  of 196: selectPreparedRegister[196](result) # The ordinary handler and generic prefix remain independently available.
+  of 197: selectPreparedRegister[197](result) # The ordinary handler and generic prefix remain independently available.
+  of 198: selectPreparedRegister[198](result) # The ordinary handler and generic prefix remain independently available.
+  of 199: selectPreparedRegister[199](result) # The ordinary handler and generic prefix remain independently available.
+  of 200: selectPreparedRegister[200](result) # The ordinary handler and generic prefix remain independently available.
+  of 201: selectPreparedRegister[201](result) # The ordinary handler and generic prefix remain independently available.
+  of 202: selectPreparedRegister[202](result) # The ordinary handler and generic prefix remain independently available.
+  of 203: selectPreparedRegister[203](result) # The ordinary handler and generic prefix remain independently available.
+  of 204: selectPreparedRegister[204](result) # The ordinary handler and generic prefix remain independently available.
+  of 205: selectPreparedRegister[205](result) # The ordinary handler and generic prefix remain independently available.
+  of 206: selectPreparedRegister[206](result) # The ordinary handler and generic prefix remain independently available.
+  of 207: selectPreparedRegister[207](result) # The ordinary handler and generic prefix remain independently available.
+  of 208: selectPreparedRegister[208](result) # The ordinary handler and generic prefix remain independently available.
+  of 209: selectPreparedRegister[209](result) # The ordinary handler and generic prefix remain independently available.
+  of 210: selectPreparedRegister[210](result) # The ordinary handler and generic prefix remain independently available.
+  of 211: selectPreparedRegister[211](result) # The ordinary handler and generic prefix remain independently available.
+  of 212: selectPreparedRegister[212](result) # The ordinary handler and generic prefix remain independently available.
+  of 213: selectPreparedRegister[213](result) # The ordinary handler and generic prefix remain independently available.
+  of 214: selectPreparedRegister[214](result) # The ordinary handler and generic prefix remain independently available.
+  of 215: selectPreparedRegister[215](result) # The ordinary handler and generic prefix remain independently available.
+  of 216: selectPreparedRegister[216](result) # The ordinary handler and generic prefix remain independently available.
+  of 217: selectPreparedRegister[217](result) # The ordinary handler and generic prefix remain independently available.
+  of 218: selectPreparedRegister[218](result) # The ordinary handler and generic prefix remain independently available.
+  of 219: selectPreparedRegister[219](result) # The ordinary handler and generic prefix remain independently available.
+  of 220: selectPreparedRegister[220](result) # The ordinary handler and generic prefix remain independently available.
+  of 221: selectPreparedRegister[221](result) # The ordinary handler and generic prefix remain independently available.
+  of 222: selectPreparedRegister[222](result) # The ordinary handler and generic prefix remain independently available.
+  of 223: selectPreparedRegister[223](result) # The ordinary handler and generic prefix remain independently available.
+  of 224: selectPreparedRegister[224](result) # The ordinary handler and generic prefix remain independently available.
+  of 225: selectPreparedRegister[225](result) # The ordinary handler and generic prefix remain independently available.
+  of 226: selectPreparedRegister[226](result) # The ordinary handler and generic prefix remain independently available.
+  of 227: selectPreparedRegister[227](result) # The ordinary handler and generic prefix remain independently available.
+  of 228: selectPreparedRegister[228](result) # The ordinary handler and generic prefix remain independently available.
+  of 229: selectPreparedRegister[229](result) # The ordinary handler and generic prefix remain independently available.
+  of 230: selectPreparedRegister[230](result) # The ordinary handler and generic prefix remain independently available.
+  else: discard # Other opcode families retain only their original checked handler.
 
 proc preparedSlot(owner: PreparedData, pc: CodeAddress): int =
   ## Mix original byte PCs before bounded modulo; wrapping is intentional hash arithmetic only.
@@ -1756,6 +2010,7 @@ proc preparedChunk(owner: PreparedData, pc: CodeAddress): nil PreparedChunk =
   let capacity = min(256'u64, (uint64(owner.limits.bytes)-indexBytes-uint64(sizeof(
       PreparedChunkData))) div uint64(sizeof(PreparedOperation)))
   var scratch = default(array[256, PreparedOperation])
+  var scratchCodes = default(array[256, byte]) # Fixed transient source tags never enter the retained operand representation.
   var count = 0
   var address = pc
   var stopped = false
@@ -1765,15 +2020,22 @@ proc preparedChunk(owner: PreparedData, pc: CodeAddress): nil PreparedChunk =
     if decoded.error != ProgramError.None:
       stopped = true
     else:
+      let item = decoded.value
+      scratchCodes[count] = item.opcode
       scratch[count] = preparedOperation(decoded)
       inc count
-      let item = decoded.value
       address = CodeAddress(uint64(address)+1+uint64(item.skip))
       stopped = terminatesBlock(item.opcode) or not instructionHasFallthrough(decoded)
   if count == 0: return nil
+  for index in 0..<count-1:
+    if scratchCodes[index] == 149 and scratch[index].fallthrough:
+      # Both genuine retained source elements exist; optional literal selection cannot cross a segment or missing successor.
+      let selected = addPrefixForOpcode(scratchCodes[index+1])
+      if selected != nil: scratch[index].prefix = selected
   let bytes = uint64(sizeof(PreparedChunkData))+uint64(count)*uint64(sizeof(PreparedOperation))
   # Fixed scratch is a separate transient preparation bound, not hidden retained cache payload.
-  let transient = owner.info.residentBytes+uint64(sizeof(scratch))+bytes
+  let transient = owner.info.residentBytes+uint64(sizeof(scratch))+uint64(sizeof(
+      scratchCodes))+bytes
   if transient > owner.info.peakBytes: owner.info.peakBytes = transient
   evictPrepared(owner, slot)
   while owner.info.residentBytes > uint64(owner.limits.bytes)-bytes:
@@ -1862,15 +2124,27 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
       frame.info.blockCharged = true
     let operations {.cursor.} = active.operations # Stable immutable metadata stays borrowed from the unchanged invocation-owned segment.
     while at < operations.len and remaining > 0:
-      # Every guest instruction, including an exiting one, consumes one local scheduling attempt.
-      dec remaining
-      # Borrow the stable retained array element directly; no full prepared-record copy crosses the indirect call.
-      let selected = operations[at].handler
-      if selected == nil: return StepResult(status: StepError.UnsupportedInstruction)
-      let evaluated = selected(frame, operations[at])
-      if evaluated.status != StepError.None: return StepResult(status: evaluated.status)
-      inc at
-      if evaluated.exit != StepExit.Continued:
+      var evaluated = preparedFailure(StepError.Uninitialized)
+      let prefix = operations[at].prefix
+      if prefix != nil and remaining >= 2 and at < operations.len-1:
+        # The sealed register prefix cannot fault/exit; reserve exactly the two attempts that will execute.
+        let first = at
+        let second = at+1
+        remaining -= 2
+        at += 2
+        evaluated = prefix(frame, operations[first], operations[second])
+      else:
+        # One-attempt and final-element paths retain the exact original handler, including every genuine exit.
+        let current = at
+        dec remaining
+        let selected = operations[current].handler
+        if selected == nil: return StepResult(status: StepError.UnsupportedInstruction)
+        inc at
+        evaluated = selected(frame, operations[current])
+      if uint32(evaluated) != preparedContinueCode:
+        # The exact genuine continuation word needs no projection; all other words validate their reason before any exit access.
+        let reason = evaluated.status
+        if reason != StepError.None: return StepResult(status: reason)
         # Rare payloads are read only for their selected fault/host exit; ordinary exits construct payload-free metadata.
         let effect = if evaluated.exit in {StepExit.Fault, StepExit.Host}: frame.exitEffect
           else: InstructionEffect(kind: evaluated.exit)
