@@ -130,11 +130,71 @@ fractions: complete single-page hits bypass the generic machinery, while crossin
 accesses still use full span preflight and resolve/promote both private page owners.
 The view therefore adds ownership/metadata work on that path. The aligned results
 show that its successful hit path can be cheaper; they do not demonstrate a broadly
-faster memory representation or explain all remaining Pinky work. No additional
-candidate profile, timing rerun, follow-up variant or runtime PR is pursued after
-these decisive failures.
+faster memory representation or explain all remaining Pinky work. No timing qualification rerun, follow-up variant or runtime PR is pursued after
+these decisive failures. The subsequently requested retrospective instruction
+attribution is recorded below; it leaves the prototype and rejection unchanged.
 
 **Rejected; experiment stopped.** This implementation is not a supported successor
 to the sparse writer. It does not qualify as a way to close the reference gap.
 The independent binary-identity fix and attribution tools in PR1585 remain valid;
 they are unaffected by this runtime experiment.
+
+
+## Retrospective instructions per memory operation
+
+[CI40175798852](https://github.com/jacogr/ragnarok/actions/runs/40175798852)
+passes at tooling head `e14296d5762ba4f5799b202dcd4dc1649bd32119`.
+Captured runtime/driver endpoint manifests are **exactly equal** to the original
+`f0884e12` experiment; only historical stress-source provisioning changed. The
+initial attempt40175260025 stopped before profiling because its deleted stress
+branch no longer supplied commit11f79d97. Make now fetches that immutable object
+by its full SHA when absent. No runtime variant or timing qualification rerun was
+introduced to collect these counters.
+
+The repaired job passes all three canonical stress image pairs, the full54-cell/
+2808-invocation same-image matrix and all six native/reference execution profiles.
+Offline review independently verifies every raw profile hash and parser replay,
+all captured C/Rust hashes and the strict comparison summary. The new reference
+memory-path instruction totals exactly match the prior reference totals for all
+three guests. Native/reference memory-operation counts also exactly match each
+other and the original profile:8,066,877 Pinky,300,101 fill,1,000,015 indirect.
+
+Use the same inclusive boundaries as the original1.89b versus0.27b comparison:
+native `memoryMutation` and descendants, versus the reference's executed raw
+scalar memory handlers and descendants. Call-edge costs are counted once; they
+are not added to exclusive totals. The source profiles use the same checked
+ARC/Clang ThinLTO diagnostic configuration with native `-g` as the original
+attribution. These are machine instruction counts per guest memory operation,
+not per byte or CPU cycles. Instrumented clocks are discarded.
+
+| Guest | Baseline instructions/access | Prototype instructions/access | Reference instructions/access | Prototype/reference |
+| --- | ---: | ---: | ---: | ---: |
+| Pinky | 234.39 | 187.76 | 33.14 | 5.67x |
+| Fill100000 | 205.76 | 133.55 | 33.08 | 4.04x |
+| Indirect100000 | 233.10 | 204.92 | 33.81 | 6.06x |
+
+Pinky's memory path changes from **1,890,787,923 to1,514,617,787 instructions**,
+against the reference's **267,346,564**. That removes376,170,136 instructions,
+19.89% of native memory-path work, and closes23.17% of the original excess over
+the reference. The remaining excess is1,247,271,223 instructions. The view is
+closer in instruction work but remains far from the reference.
+
+The unchanged memory wrapper accounts for555,941,887 instructions, **68.92 per
+operation**, versus555,941,885 before. Its own work alone remains more than twice
+the reference's entire33.14-instruction handler average. Inclusive staged loads
+fall from162.69 to124.52 instructions each, and staged stores from169.85 to109.89.
+Both are additional to wrapper work; public immutable startup operations remain
+inside the complete memory boundary.
+
+Pinky total interpreter instructions fall from5,048,924,258 to4,672,971,129,
+**7.45%**, including materialization, publication and retirement. Snapshot
+publication increases from148 to217,157 inclusive instructions; that is too small
+to explain the memory saving as work moved outside the memory boundary. Executor
+self work remains exactly2,847,194,333 instructions in both images. The whole
+prototype still executes4.74x the reference's986,604,703 instructions.
+
+Fill and indirect total instructions fall11.07% and6.69%, respectively. These
+counter reductions establish less executed work in the measured cases; they do
+not establish equivalent CPU-time gains. The paired CPU observations and severe
+crossing regressions above still fail the acceptance gates. The prototype stays
+rejected, and the active runtime stays at the diagnosed baseline.
