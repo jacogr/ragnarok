@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ROTATION_FUNDING",
+  "files": {
+    "current-stf-rotation-funding.json": "c2053b30ff6c14c1846a134e790416a82965ab59390224d160ec3f440af316da"
+  },
+  "target": "current-stf-rotation-funding.json"
+}

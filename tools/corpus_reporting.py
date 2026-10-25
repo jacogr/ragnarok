@@ -44,6 +44,15 @@ def current_stf_offender_reporting_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_rotation_funding_corpus(compiler, report, checks, libraries):
+    """Qualify common-prior foreign funding and junior-write annulment across growth and shrinkage."""
+    import current_stf_rotation_funding_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_foreign_creation',
+         'current_stf_foreign_transfers', 'current_stf_rotation_funding', 'state_report'), defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_rotation_retirement_corpus(compiler, report, checks, libraries):
     """Qualify request cleanup, same-slot ejection refusal and fresh-ID incarnation replacement across rotation."""
     import current_stf_rotation_retirement_oracle as oracle

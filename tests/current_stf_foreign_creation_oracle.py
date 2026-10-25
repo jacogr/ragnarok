@@ -59,7 +59,7 @@ def original(profile):
     parent[chapter_key(12)]=privileges_wire((0,0,99,[0,0],[]));return parent
 
 
-def effects(result,parent,profile,slot,budget):
+def effects(result,parent,profile,slot,budget,*,statistics_config=DEFAULT):
     """N annuls the junior write only when a selected first foreign debit modifies42; M then publishes that exact funded snapshot."""
     child=chapter_service(255,77);born=profile not in ('stale-supervisor','panic') and child not in parent
     selection=PROFILES.index(profile) if profile in PROFILES[:4] else 0
@@ -79,7 +79,7 @@ def effects(result,parent,profile,slot,budget):
     first,_=junior_program();second,_=program(profile)
     gas42=simulate(first,gas_definitions(),prefix=[b'\0']*5)[0]+2442+(3358+1023)//1024+(216+1023)//1024
     gas99=simulate(second,gas_definitions(),prefix=[b'\0']*5)[0]+3855+103*int(profile=='checkpoint-panic');assert max(gas42,gas99)<=budget
-    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],DEFAULT);activity={row[0]:list(row) for row in services}
+    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],statistics_config);activity={row[0]:list(row) for row in services}
     for sid,gas in ((42,gas42),(99,gas99)):
         row=activity.setdefault(sid,[sid]+[0]*11);row[9]+=1;row[11]+=gas # Annulment does not erase the junior's actual operand or gas.
     result[chapter_key(13)]=statistics_wire((current,previous,cores,[tuple(activity[sid]) for sid in sorted(activity)]))

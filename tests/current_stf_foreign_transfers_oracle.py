@@ -58,7 +58,7 @@ def original(profile):
     parent[chapter_key(12)]=privileges_wire((0,0,0,[0,0],[]));return parent
 
 
-def effects(result,parent,profile,slot,budget):
+def effects(result,parent,profile,slot,budget,*,statistics_config=DEFAULT):
     """Selected foreign debit annuls the active junior's own write; direct credit preserves both pools without creating transfer operands."""
     selected=profile not in ('stale-supervisor','panic');pool=PROFILES.index(profile) if profile in PROFILES[:4] else 0
     for sid in (42,99):
@@ -77,7 +77,7 @@ def effects(result,parent,profile,slot,budget):
     first,_=junior_program();second,_=program(profile)
     gas42=simulate(first,gas_definitions(),prefix=[b'\0']*5)[0]+2442+(3358+1023)//1024+(216+1023)//1024
     gas99=simulate(second,gas_definitions(),prefix=[b'\0']*5)[0]+575+103*int(profile=='checkpoint-panic');assert max(gas42,gas99)<=budget
-    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],DEFAULT);activity={row[0]:list(row) for row in services}
+    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],statistics_config);activity={row[0]:list(row) for row in services}
     for sid,gas in ((42,gas42),(99,gas99)):
         row=activity.setdefault(sid,[sid]+[0]*11);row[9]+=1;row[11]+=gas # Direct credit does not invent a deferred T counter or recipient gas.
     result[chapter_key(13)]=statistics_wire((current,previous,cores,[tuple(activity[sid]) for sid in sorted(activity)]))
