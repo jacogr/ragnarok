@@ -510,15 +510,14 @@ func signedLess(a, b: uint64): bool =
   (a xor 0x8000000000000000'u64) < (b xor 0x8000000000000000'u64)
 
 # Evaluate the condition against the original register file; decoding already saturated register IDs.
-func branchConditionSelected[SelectedOpcode: static[int]](decoded: ProgramResult[Instruction],
-    registers: RegisterFile): bool =
-  let item = decoded.value
-  let indices = instructionRegisters(decoded)
+func branchConditionOperands[SelectedOpcode: static[int]](indices: RegisterSlots,
+    immediate: uint64, runtimeOpcode: byte, registers: RegisterFile): bool =
+  ## Shared comparisons consume original register values and caller-authorized immutable operand bits.
   let a = uint64(registers[indices.aIndex])
-  let b = (if item.opcode <= 90: uint64(item.x)
+  let b = (if runtimeOpcode <= 90: immediate
     else: uint64(registers[indices.bIndex]))
   # Prepared handlers fix the comparison once; ordinary execution keeps its owned runtime opcode.
-  let opcode = when SelectedOpcode >= 0: byte(SelectedOpcode) else: item.opcode
+  let opcode = when SelectedOpcode >= 0: byte(SelectedOpcode) else: runtimeOpcode
   case opcode
   of 81, 170:
     # Equality has identical signed and unsigned interpretations.
@@ -551,10 +550,31 @@ func branchConditionSelected[SelectedOpcode: static[int]](decoded: ProgramResult
     # The only remaining conditional opcode is signed greater-than immediate (90).
     signedLess(b, a)
 
+func branchConditionSelected[SelectedOpcode: static[int]](decoded: ProgramResult[Instruction],
+    registers: RegisterFile): bool =
+  ## Ordinary dispatch extracts its coordinates only from the genuine successful decoder result.
+  let item = decoded.value
+  branchConditionOperands[SelectedOpcode](instructionRegisters(decoded), uint64(item.x),
+    item.opcode, registers)
+
 func branchCondition(decoded: ProgramResult[Instruction],
     registers: RegisterFile): bool {.inline.} =
   ## The ordinary interpreter retains its genuine runtime opcode while sharing comparison semantics with prepared handlers.
   branchConditionSelected[-1](decoded, registers)
+
+proc dynamicControl(program: Program, cache: var ExecutionCache, address: uint64,
+    target: var CodeAddress): StepExit {.inline.} =
+  ## Resolve the wrapped dynamic address before any aliased register write; sentinel and alignment ordering are shared.
+  if address == 0xffff0000'u64:
+    # The halt sentinel precedes jump-table bounds and contents.
+    return StepExit.Halt
+  if address == 0 or (address and 1) != 0:
+    # Zero and odd addresses cannot select a jump-table ordinal.
+    return StepExit.Panic
+  if not cachedDynamicTarget(cache, program, JumpIndex(address div 2-1), target):
+    # Owner-bound cached lookup preserves invalid table targets as guest panic.
+    return StepExit.Panic
+  StepExit.Continued
 
 # Apply control mutations after gas charging; panic/halt still retain explicit load mutations.
 # All operands are read before writes, including aliased load-and-dynamic-jump registers.
@@ -583,15 +603,7 @@ template controlMutation(program: Program, decoded: ProgramResult[Instruction],
         let base = (if item.opcode == 50: indices.aIndex else: indices.bIndex)
         let offset = (if item.opcode == 50: item.x else: item.y)
         let address = (uint64(info.registers[base]) + uint64(offset)) and 0xffffffff'u64
-        if address == 0xffff0000'u64:
-          # The halt sentinel takes precedence over table bounds or table contents.
-          outcome = StepExit.Halt
-        elif address == 0 or (address and 1) != 0:
-          # Zero and unaligned dynamic addresses cannot index the table.
-          outcome = StepExit.Panic
-        else:
-          # Division avoids overflow in a table-length times alignment check.
-          valid = cachedDynamicTarget(cache, program, JumpIndex(address div 2 - 1), target)
+        outcome = dynamicControl(program, cache, address, target)
       else:
         # Static offsets are mathematical integers; never wrap a negative destination into code.
         if item.opcode != 1:
@@ -1334,12 +1346,12 @@ type
     exitEffect: InstructionEffect
   PreparedHandler = proc(frame: var PreparedFrame, operation: PreparedOperation): PreparedEvaluation {.nimcall,
         raises: [].}
-  PreparedOperation = object ## A private operation binds one selected handler to a genuine source-owned decode and static target facts.
-    decoded: ProgramResult[Instruction]
+  PreparedOperation = object ## A sealed private record retains only handler-ready facts from one genuine source-owned decode.
     handler: nil PreparedHandler
-    target: CodeAddress
-    validTarget: bool
-    endsBlock: bool
+    address, next, target: CodeAddress
+    x, y: uint64
+    registers: RegisterSlots
+    validTarget, fallthrough, endsBlock: bool
   PreparedChunkData = object ## One immutable operation array has no back-reference to its program or cache owner.
     start: CodeAddress
     operations: seq[PreparedOperation]
@@ -1413,26 +1425,25 @@ proc preparedRegister[Code: static[int]](frame: var PreparedFrame,
   ## A literal selected opcode specializes the shared arithmetic; the compact return carries no machine or metadata copy.
   var index: range[0..12] = 0
   var value = RegisterValue(0)
-  if not computeRegisterWrite(operation.decoded, frame.info.registers, index, value, Code):
+  if not computeRegisterOperands(operation.registers, operation.x, byte(Code), frame.info.registers,
+      index, value, Code):
     return PreparedEvaluation(status: StepError.UnsupportedInstruction)
   frame.info.registers[index] = value
-  let item = operation.decoded.value
-  frame.info.pc = CodeAddress(uint64(item.address)+1+uint64(item.skip))
-  if not instructionHasFallthrough(operation.decoded):
+  frame.info.pc = operation.next
+  if not operation.fallthrough:
     return PreparedEvaluation(status: StepError.InvalidMachine)
   preparedSignal(StepExit.Continued)
 
 proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStore: static[bool]](
     frame: var PreparedFrame, operation: PreparedOperation): PreparedEvaluation =
   ## Width/sign/address/source modes stay selected once; every scalar permission/fault check uses current invocation memory.
-  let item = operation.decoded.value
-  let slots = instructionRegisters(operation.decoded)
+  let slots = operation.registers
   var base = 0'u64
   when Indirect:
     # Load/register-store bases use B; immediate-store bases use original A.
     when Loading or not ImmediateStore: base = uint64(frame.info.registers[slots.bIndex])
     else: base = uint64(frame.info.registers[slots.aIndex])
-  let address = MemoryAddress((base and 0xffffffff'u64)+(uint64(item.x) and 0xffffffff'u64))
+  let address = MemoryAddress((base and 0xffffffff'u64)+(operation.x and 0xffffffff'u64))
   var failedPage = PageAddress(0)
   var reason = MachineError.None
   when Loading:
@@ -1450,14 +1461,14 @@ proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
       frame.info.registers[slots.aIndex] = RegisterValue(value)
   else:
     # Store source selection is fixed while register contents remain invocation-local.
-    let value = when ImmediateStore: uint64(item.y) else: uint64(frame.info.registers[slots.aIndex])
+    let value = when ImmediateStore: operation.y else: uint64(frame.info.registers[slots.aIndex])
     reason = storeWorking(frame.memory, address, AccessWidth(byte(Width)), RegisterValue(value), failedPage)
   case reason
   of MachineError.None:
     # Successful nonterminators require their validated physical successor.
-    if not instructionHasFallthrough(operation.decoded):
+    if not operation.fallthrough:
       return PreparedEvaluation(status: StepError.InvalidMachine)
-    frame.info.pc = CodeAddress(uint64(item.address)+1+uint64(item.skip))
+    frame.info.pc = operation.next
     preparedSignal(StepExit.Continued)
   of MachineError.Fault:
     # Only the selected fault exit authorizes this invocation-local page payload.
@@ -1473,37 +1484,49 @@ proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
 proc preparedControl[Code: static[int]](frame: var PreparedFrame,
     operation: PreparedOperation): PreparedEvaluation =
   ## Static destinations stay prepared; dynamic ordinals use the same checked source-bound resolver.
-  let decoded = operation.decoded
-  let item = decoded.value
   var outcome = StepExit.Continued
   when Code == 10:
     # Host metadata is written only after its valid successor is established; the causing PC remains observable.
-    if not instructionHasFallthrough(decoded): return PreparedEvaluation(
+    if not operation.fallthrough: return PreparedEvaluation(
         status: StepError.InvalidMachine)
     frame.exitEffect = InstructionEffect(kind: StepExit.Host,
-      callNumber: HostCallId(uint64(item.x)), callAddress: item.address)
+      callNumber: HostCallId(operation.x), callAddress: operation.address)
     return preparedSignal(StepExit.Host)
   elif Code == 0:
     outcome = StepExit.Panic
   elif Code == 2:
     # Unlikely stays inside its prepaid block.
-    if not instructionHasFallthrough(decoded): return PreparedEvaluation(
+    if not operation.fallthrough: return PreparedEvaluation(
         status: StepError.InvalidMachine)
-    frame.info.pc = CodeAddress(uint64(item.address)+1+uint64(item.skip))
+    frame.info.pc = operation.next
   elif Code == 50 or Code == 180:
-    outcome = controlMutation(frame.source, decoded, frame.info, frame.cache)
+    # Read the original base before load-and-jump publishes an aliased destination.
+    let slots = operation.registers
+    let base = when Code == 50: slots.aIndex else: slots.bIndex
+    let offset = when Code == 50: operation.x else: operation.y
+    let address = (uint64(frame.info.registers[base])+offset) and 0xffffffff'u64
+    var target = operation.next
+    outcome = dynamicControl(frame.source, frame.cache, address, target)
+    when Code == 180:
+      # The load mutation survives both panic and halt, exactly as in ordinary control execution.
+      frame.info.registers[slots.aIndex] = RegisterValue(operation.x)
+    if outcome == StepExit.Continued:
+      # Only a successful dynamic transfer enters a fresh uncharged block.
+      frame.info.pc = target
+      frame.info.blockCharged = false
   else:
     # Only conditional selection remains dynamic; preparation owns destination arithmetic and membership.
     var target = operation.target
     var valid = operation.validTarget
     when (Code >= 81 and Code <= 90) or (Code >= 170 and Code <= 175):
-      valid = valid and instructionHasFallthrough(decoded)
-      if not branchConditionSelected[Code](decoded, frame.info.registers):
-        target = CodeAddress(uint64(item.address)+1+uint64(item.skip))
+      valid = valid and operation.fallthrough
+      if not branchConditionOperands[Code](operation.registers, operation.x, byte(Code),
+          frame.info.registers):
+        target = operation.next
     when Code == 80:
       # Load-and-jump writes even if its destination is invalid.
-      let slots = instructionRegisters(decoded)
-      frame.info.registers[slots.aIndex] = RegisterValue(uint64(item.x))
+      let slots = operation.registers
+      frame.info.registers[slots.aIndex] = RegisterValue(operation.x)
     if valid:
       frame.info.pc = target
       frame.info.blockCharged = false
@@ -1514,8 +1537,11 @@ proc preparedControl[Code: static[int]](frame: var PreparedFrame,
 proc preparedOperation(decoded: ProgramResult[Instruction]): PreparedOperation =
   ## Select a specialized handler and immutable target facts from a genuine successful decoder result.
   let item = decoded.value
-  result = PreparedOperation(decoded: decoded, handler: nil,
-    target: CodeAddress(0), validTarget: instructionTargetStartsBlock(decoded),
+  result = PreparedOperation(handler: nil, address: item.address,
+    next: CodeAddress(uint64(item.address)+1+uint64(item.skip)), target: CodeAddress(0),
+    x: uint64(item.x), y: uint64(item.y), registers: instructionRegisters(decoded),
+    validTarget: instructionTargetStartsBlock(decoded), fallthrough: instructionHasFallthrough(
+        decoded),
     endsBlock: terminatesBlock(item.opcode))
   let pc = uint64(item.address)
   if item.opcode == 1:
@@ -1789,7 +1815,7 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
     var chunk = location.chunk
     var at = location.next
     if chunk == nil or at >= chunk.operations.len or uint64(chunk.operations[
-        at].decoded.value.address) != uint64(frame.info.pc):
+        at].address) != uint64(frame.info.pc):
       location.chunk = nil
       chunk = preparedChunk(owner, frame.info.pc)
       at = 0
@@ -1815,7 +1841,7 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
       # Every guest instruction, including an exiting one, consumes one local scheduling attempt.
       dec remaining
       # Borrow the stable retained array element directly; no full prepared-record copy crosses the indirect call.
-      let causingPc = active.operations[at].decoded.value.address
+      let causingPc = active.operations[at].address
       let endsBlock = active.operations[at].endsBlock
       let selected = active.operations[at].handler
       if selected == nil: return StepResult(status: StepError.UnsupportedInstruction)

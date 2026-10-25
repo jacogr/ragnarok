@@ -322,3 +322,155 @@ The compact tier still takes 1.48× PolkaVM interpreted CPU for sieve, 2.90–2.
 minimal, 2.24× memory fill and 2.08–2.10× Pinky. Construction, cold execution and
 cache churn must remain visible when evaluating larger programs. No further runtime
 optimization or default-engine switch is included in this measured increment.
+
+## Compact operand records: next isolated trial
+
+The next stack layer starts from accepted compact-ABI parent
+`62201bce1b89cc8e8361c27e40ed34e0bbfd2e0b`. It changes only the private prepared
+operand representation and the shared semantic input adapters. No specification,
+fixture, compiler, memory-check, scheduling or cache-policy pin changes are included.
+
+The accepted ABI run's fourth-call profiles motivate this scope. The execution owner
+and inlined loop/cache work account for 31.72% of Pinky's native instructions, 53.61%
+sieve, 21.90% minimal and 41.10% memory fill. Checked scalar load/store functions account
+for 36.44%, 17.66%, 50.64% and 31.31%, respectively. These are self instruction shares,
+not sampled CPU-time shares. Repricing is comparatively small: inclusive blockGas work
+is 0.036% of reused Pinky instructions and 1.041% of reused sieve. Direct-mapped hash
+collisions explain the continuing evictions despite unused slots and ample byte budget;
+changing replacement policy is a separate experiment.
+
+Each prepared operation now retains a selected handler, causing/successor/static-target
+PCs, immediate X/Y bit patterns, copied bounded register coordinates and immutable
+fallthrough/target/block-end facts. Only a genuine successful owner decode constructs
+these private records. The reusable owner retains no machine, memory or callback state.
+Handlers consume these records without repeatedly opening a tagged decoder result or
+recomputing the physical successor. Generated-C layout probes confirm 88 → 56 bytes per
+record on x86-64, a 36.36% reduction; the compact handler call/return ABI is unchanged.
+Sparse-index policy and 256-operation segment ceiling remain fixed; smaller records can
+fit more operations under a deliberately tiny byte budget, preserving the same bound.
+
+Arithmetic still uses one shared opcode table, verified identical after whitespace
+normalization. The ordinary public evaluator still requires a successful decoder result;
+the internal operand adapter does not grant program identity or execution authority.
+Conditional comparisons and dynamic address resolution also share their semantic
+helpers. Dynamic load-and-jump reads the original base before writing an aliased
+register, preserving wrapped 32-bit addition, sentinel precedence and unconditional
+load mutations on panic/halt.
+
+The complete prepared opcode/host/cache/ARC suite passes, including 48 independent new
+aliased dynamic-jump cases across ordinary/saturated coordinates, signed offsets,
+wrapping, empty jump tables and halt sentinel selection. Mixed reference, register and
+register-chain suites pass. All seven maintained guest/size cases pass in both process
+orders against the accepted ABI parent, with fresh compiler-cache and repeated-image
+controls. Formatting and 63 affected Python CI/report checks pass. Exact Linux paired
+counts/timings are required before accepting a speed gain; no runtime benefit is yet
+claimed for this smaller representation.
+
+The ordinary conditional-control reference, execution-cache and stepping suites also
+pass after the shared input adapters were extracted; production semantic smoke checks
+pass all 441 modules and the peer entry point. The local timing invocation correctly
+refuses macOS: the existing harness reserves counts and clocks for Linux x86-64. Its
+passing zero-clock guest comparison remains the local behavior evidence; runtime
+qualification proceeds through the existing manual Linux comparison job.
+
+## Qualified compact operand result (2026-10-25)
+
+Retain the compact operand records. The paired prepared comparison improves all seven
+guest/size cases in both process orders. The four main workloads reduce reused CPU
+time by 6.87–17.11% against the accepted compact-ABI parent. Their ten measured sample
+ranges do not overlap the matching parent ranges. Smaller 1000-size cases improve by
+8.47–15.21%; no prepared workload regresses in this run.
+
+[Linux run 40205771161](https://github.com/jacogr/ragnarok/actions/runs/40205771161)
+passed at candidate `7bd1f77cdd63ca2d6a9561f7403780a26e567db1` against accepted ABI
+baseline `62201bce1b89cc8e8361c27e40ed34e0bbfd2e0b`. Machine: AMD EPYC 7763,
+Linux x86-64, pinned Nimony nightly 4724f66, checked ARC/Clang ThinLTO.
+
+Qualification passed all 70 process runs (13 fresh-state calls each), 24 profiles and
+four collection controls, preceded by the native complete opcode/host suite. Every
+execution validated terminal CPU state, all registers, exact gas, mapped page bytes
+and permissions, plus source snapshot immutability. Both native assertion probes
+produced their expected failures. Fresh compiler caches, identical build paths and
+byte-identical independent candidate rebuild controls passed. Tracked source hashes
+match the exact revisions. Downloaded generated sources and selected profiles match
+their recorded hashes; every selected profile contains exactly one execution. All 70
+retained process outputs independently reproduce the report samples/cache metadata.
+
+Reused CPU milliseconds below are medians of ten calls after three warmups. Order 1
+is dynamic, planned, compact prepared, ABI baseline, PolkaVM; order 2 reverses it.
+Each call starts from the same immutable guest state; prepared facts survive calls.
+
+| Guest / size | Order | Dynamic | Planned | ABI baseline | Compact operands | PolkaVM interpreted | CPU change vs ABI |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| pinky / 1 | 1 | 474.867 | 427.123 | 392.420 | 365.476 | 189.323 | -6.87% |
+| pinky / 1 | 2 | 481.630 | 419.925 | 382.624 | 353.281 | 185.076 | -7.67% |
+| sieve / 100000 | 1 | 17.667 | 11.198 | 8.407 | 7.476 | 5.584 | -11.08% |
+| sieve / 100000 | 2 | 17.750 | 11.104 | 8.348 | 7.395 | 5.551 | -11.42% |
+| minimal / 100000 | 1 | 26.940 | 27.269 | 21.707 | 17.993 | 7.566 | -17.11% |
+| minimal / 100000 | 2 | 26.847 | 27.040 | 21.770 | 18.056 | 7.503 | -17.06% |
+| memset / 100000 | 1 | 13.483 | 14.416 | 9.388 | 8.525 | 4.193 | -9.19% |
+| memset / 100000 | 2 | 13.326 | 14.287 | 9.408 | 8.385 | 4.186 | -10.88% |
+
+Cold sample 0 includes lazy preparation and is a single observation per process, not
+a repeated cold median. Constructors are outside these execution clocks. Fresh-state
+restoration and final reference comparisons are also outside execution timing.
+
+| Guest / size | Order | Cold dynamic | Cold planned | Cold ABI | Cold operands | Cold PolkaVM |
+|---|---:|---:|---:|---:|---:|---:|
+| pinky / 1 | 1 | 454.149 | 419.300 | 387.274 | 358.952 | 203.033 |
+| pinky / 1 | 2 | 465.690 | 417.124 | 374.057 | 348.738 | 192.112 |
+| sieve / 100000 | 1 | 18.054 | 11.853 | 16.880 | 13.232 | 6.235 |
+| sieve / 100000 | 2 | 18.013 | 11.858 | 16.777 | 13.183 | 6.177 |
+| minimal / 100000 | 1 | 28.048 | 27.974 | 22.284 | 18.172 | 7.842 |
+| minimal / 100000 | 2 | 28.380 | 27.976 | 22.165 | 18.445 | 7.747 |
+| memset / 100000 | 1 | 13.508 | 14.194 | 9.724 | 8.472 | 4.308 |
+| memset / 100000 | 2 | 13.410 | 14.043 | 9.854 | 8.512 | 4.321 |
+
+Constructor CPU microseconds below are order 1/order 2. Prepared construction still
+reserves a 131,072-byte empty index with no decoded operations; lazy work belongs to
+cold execution. These small constructor observations do not establish a constructor
+speed gain. Complete PolkaVM module/instance construction is not measured.
+
+| Guest | ABI baseline constructor | Operand constructor | Existing complete gas plan |
+|---|---:|---:|---:|
+| pinky | 6.472/4.549 | 5.180/6.512 | 3041.294/3038.480 |
+| sieve | 6.592/8.295 | 5.490/6.492 | 14442.084/14489.163 |
+| minimal | 58.799/59.741 | 59.291/56.055 | 45.024/39.524 |
+| memset | 10.489/11.011 | 10.580/11.211 | 263.792/263.461 |
+
+Fourth-call counters exclude three warmups. Ir is executed native instructions, not
+guest opcodes. Bcm/Bim are simulated conditional/indirect branch misses, not hardware
+measurements. Data/instruction cache simulation remains disabled.
+
+| Guest | Reused native instructions (ABI → operands) | Cold Ir change | Reused Ir change | Conditional misses | Indirect misses | Combined miss change |
+|---|---:|---:|---:|---:|---:|---:|
+| pinky | 3662.509M → 3288.025M | -9.95% | -10.22% | 24.579M → 23.154M | 28.450M → 28.450M | -2.69% |
+| sieve | 96.193M → 85.081M | -0.61% | -11.55% | 0.207M → 0.301M | 1.131M → 1.131M | +6.99% |
+| minimal | 323.310M → 291.510M | -9.80% | -9.84% | 2.800M → 2.100M | 1.900M → 1.900M | -14.89% |
+| memset | 133.370M → 120.766M | -8.89% | -9.45% | 0.301M → 0.101M | 1.100M → 1.100M | -14.26% |
+
+Indirect misses are essentially unchanged. Sieve gets faster despite 6.99% more
+combined simulated misses; the improvement is not evidence that indirect prediction
+has been fixed. Lower native instruction counts and smaller retained records support
+the operand-consumption hypothesis, without proving the hardware-level cause.
+
+Resident block/operation counts, hits, preparation totals and evictions are unchanged
+between endpoints in both orders. Resident bytes and transient peaks shrink:
+
+| Guest | Resident blocks / operations | Resident bytes ABI → operands | Peak bytes ABI → operands | Evictions after 13 calls |
+|---|---:|---:|---:|---:|
+| pinky | 792 / 5,911 | 682,920 → 493,768 | 709,360 → 510,608 | 751 |
+| sieve | 991 / 13,226 | 1,334,600 → 911,368 | 1,361,216 → 928,320 | 615 |
+| minimal | 9 / 59 | 136,624 → 134,736 | 159,152 → 149,072 | 0 |
+| memset | 63 / 365 | 165,712 → 154,032 | 188,240 → 168,368 | 0 |
+
+Pinky still incurs 58 evictions per repeated call and sieve 48; minimal and memory
+fill have none. This experiment reduces storage without changing replacement policy.
+
+The candidate takes 1.33–1.34× PolkaVM interpreted CPU for sieve, 2.38–2.41× minimal,
+2.00–2.03× memory fill and 1.91–1.93× Pinky in this run. Existing dynamic/planned
+paths share the candidate image; the matched baseline executable was timed only in
+prepared mode. Thus this run does not independently isolate ordinary-path code-layout
+effects. The results qualify this optional prepared change on these inputs and this
+runner, not complete JAM parity or performance on every CPU/program. No further
+optimization or default-engine switch is included in this increment.

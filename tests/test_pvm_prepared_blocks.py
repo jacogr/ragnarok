@@ -159,7 +159,7 @@ class PreparedExecutionToolTests(unittest.TestCase):
         self.assertIn('run: make profile-pvm-prepared', text)
         self.assertIn('fetch-depth: 0', text)
         self.assertIn('run: make unit SUITE=pvm_prepared_blocks', text)
-        self.assertIn('PVM_PREPARED_BASELINE: 10af30aabbc901775f556a563b983583a2eb481f', text)
+        self.assertIn('PVM_PREPARED_BASELINE: 62201bce1b89cc8e8361c27e40ed34e0bbfd2e0b', text)
         self.assertIn('generated-source-baseline/', text)
         self.assertIn('valgrind=1:3.22.0-0ubuntu3', text)
         self.assertIn('if: always()', text)

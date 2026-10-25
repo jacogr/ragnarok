@@ -125,6 +125,30 @@ for op in 0..255:
           compare(source, prepared, 16, 100000)
 assert opcodes == 139
 
+# Compact dynamic operands must read an aliased original base before the unconditional load mutation.
+for descriptor in [119'u8, 255'u8]:
+  # Both ordinary and saturated encoded register pairs deliberately select the same source/destination.
+  let index = if descriptor == 119: 7 else: 12
+  for offset in [0'u8, 1'u8, 255'u8]:
+    # A signed one-byte offset exercises low32 wrapping before sentinel/alignment/table selection.
+    let dynamicProgram = owner([@[180'u8, descriptor, 1, 90, offset], @[0'u8]])
+    let dynamicCache = cache(dynamicProgram)
+    for base in [0'u64, 1'u64, 2'u64, 0xffff0000'u64, 0xfffeffff'u64,
+        0xffff0001'u64, 0x1ffff0000'u64, high(uint64)]:
+      # Empty jump tables distinguish the halt sentinel from every other address without relying on another engine.
+      var original = default(RegisterFile)
+      original[index] = RegisterValue(base)
+      let input = captureMachine(dynamicProgram, mapped, MachineInfo(gas: MachineGas(100),
+        registers: original)).value
+      let signedOffset = if offset == 255: high(uint64) else: uint64(offset)
+      let address = (base+signedOffset) and 0xffffffff'u64
+      let expected = if address == 0xffff0000'u64: StepExit.Halt else: StepExit.Panic
+      compare(input, dynamicCache, 1, 100000)
+      let result = execute(input, ExecutionStepLimit(1), dynamicCache)
+      assert result.error == StepError.None and result.value.exit == expected
+      assert uint64(machineInfo(result.value.machine).value.registers[index]) == 90
+      assert uint64(machineInfo(input).value.registers[index]) == base
+
 # Long straight-line blocks cross the fixed preparation-segment capacity while paying one complete block price.
 var longParts: seq[seq[byte]] = @[]
 for index in 0..<700:
