@@ -32,6 +32,17 @@ proc main() =
         not selected.pagedStorage
   assert not parseOptions(@["server", "--with-state", "--chain", "chain.json", "--state-layout",
       "paged"], selected)
+  var resumed = paged
+  resumed.add("--state-paged-resume")
+  assert parseOptions(resumed, selected) and selected.resumePagedStorage
+  assert parseOptions(paged, selected) and not selected.resumePagedStorage
+  for initial in [base, managed, @["server", "--with-state", "--chain", "chain.json"], @["server"]]:
+    # Replay is explicit and paged-disk-only; every refusal clears the parsed owner.
+    var arguments = initial
+    arguments.add("--state-paged-resume")
+    assert not parseOptions(arguments, selected) and not selected.valid
+  resumed.add("--state-paged-resume")
+  assert not parseOptions(resumed, selected) and not selected.valid # Duplicate explicit authority is rejected atomically.
   let invalid = @[@["--state-layout", "unknown"], @["--state-layout", "Managed"],
     @["--state-layout", "managed", "--state-layout", "managed"], @["--state-compact-bytes", "0"],
     @["--state-layout", "managed", "--state-compact-bytes", "134217729"],

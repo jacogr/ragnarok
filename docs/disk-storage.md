@@ -108,3 +108,10 @@ through the existing disk worker before another artifact can be authored. Foreig
 produce bounded retry/backpressure; cleanup uncertainty stops later writes while preserving the
 already confirmed canonical head. Restart retries the same descriptor, including synchronized
 already-absent retirement. Cleanup receipts remain separate from publication receipts.
+
+Use `--state-paged-resume` with explicit disk/paged storage to resume an interrupted paged
+operation. It can complete a matching failed configured-genesis or trusted-checkpoint import
+from the supplied independent inputs. For an existing head it waits for an independently
+prepared matching update before clearing remnants and publishing once. Ordinary startup
+preserves forensic files. The flag cannot replace an existing selected head through bootstrap
+or repair a corrupt selected graph; after successful recovery ordinary startup is sufficient.

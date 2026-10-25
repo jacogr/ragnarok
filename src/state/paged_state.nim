@@ -232,6 +232,19 @@ proc initializePagedStateStore*(writer: var FullPagedWriter, path: string,
   if initialized.error != FullPagedNativeError.None:
     return nativeFailed[FullPagedPublication, FullPagedPublication](initialized)
   PagedStateResult[FullPagedPublication](status: PagedStateError.None, completed: initialized.value)
+proc resumePagedStateInitialization*(writer: var FullPagedWriter, path: string,
+    config: FullPagedNativeConfig, prepared: PreparedPagedState, context: openArray[byte] = [
+        ]): PagedStateResult[FullPagedPublication] =
+  ## Explicit bootstrap replay requires independently prepared complete state; failed acquired owners still require close.
+  let data = prepared.data
+  if data == nil: return refused[FullPagedPublication](PagedStateError.Uninitialized)
+  if array[32, byte](config.root) != array[32, byte](data.root):
+    return refused[FullPagedPublication](PagedStateError.RootMismatch)
+  let initialized = resumeFullPagedInitialization(writer, path, config, data.roots,
+    prepared.producer, uint64(data.records.len), data.payload, context)
+  if initialized.error != FullPagedNativeError.None:
+    return nativeFailed[FullPagedPublication, FullPagedPublication](initialized)
+  PagedStateResult[FullPagedPublication](status: PagedStateError.None, completed: initialized.value)
 proc preparePagedStateReplacement*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
     expected: FullPagedManifest, prepared: PreparedPagedState, context: openArray[byte] = [
         ]): PagedStateResult[StorageDurability] =

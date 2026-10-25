@@ -387,9 +387,49 @@ proc snapshotContext*(store: DiskStateStore): DiskIoResult[seq[byte]] =
   let captured = store.journal.snapshotContext
   if captured.error != FileError.None: return DiskIoResult[seq[byte]](status: captured.error)
   DiskIoResult[seq[byte]](status: FileError.None, completed: captured.value)
-proc commit*(store: var DiskStateStore, expected, target: StateStoreSnapshot,
-    context: openArray[byte] = [], history: openArray[StateStoreSnapshot] = []): DiskStoreResult[
-        StateStoreSnapshot] =
+proc replayPagedTarget(store: var DiskStateStore, source: FullPagedManifest,
+    prepared: PreparedPagedState, context: openArray[byte]): DiskStoreResult[bool] =
+  ## Reproduce exact candidate and staging bytes, retire one old descriptor, then permit one ordinary authoring attempt.
+  let cache = store.pagedCache
+  if cache == nil: return DiskStoreResult[bool](status: DiskStoreError.Uninitialized)
+  if uint64(source.epoch) == high(uint64): return DiskStoreResult[bool](
+    status: DiskStoreError.FileFailure,
+    fileReason: FileError.EpochExhausted)
+  if uint64(source.generation) == high(uint64): return DiskStoreResult[bool](
+      status: DiskStoreError.GenerationOverflow)
+  let header = initFullPagedHeader(store.pagedConfig.chain, prepared.root,
+    ManagedEpoch(uint64(source.epoch)+1), RepositoryGeneration(uint64(source.generation)+1),
+    prepared.recordCount, prepared.payloadBytes, prepared.roots, store.pagedConfig.limits.dataset,
+        uint64(context.len))
+  if header.error != FullPagedError.None: return DiskStoreResult[bool](
+    status: DiskStoreError.FileFailure,
+    fileReason: FileError.InvalidFrame)
+  var cleanup = default(FullPagedCandidate)
+  defer:
+    # A failed comparison may still own captured cleanup pins; every path retires them explicitly without implicit deletion.
+    if cleanup.opened and cleanup.close != FileError.None:
+      result = DiskStoreResult[bool](status: DiskStoreError.FileFailure,
+          fileReason: FileError.IoFailure)
+  let captured = prepareFullPagedCleanup(store.paged, cleanup, source, header.value,
+    prepared.producer, context)
+  if captured.error != FullPagedNativeError.None: return nativeFailed[bool, bool](captured)
+  let removed = discardFullPagedCandidate(store.paged, cleanup, source)
+  if removed.error != FullPagedNativeError.None: return nativeFailed[bool, FullPagedReclamation](removed)
+  if removed.value.retirementError != FileError.None: return DiskStoreResult[bool](
+    status: DiskStoreError.FileFailure,
+    fileReason: removed.value.retirementError)
+  if cache.pending:
+    # Restart can mark an already absent predecessor pending. Remove matching CURRENT.next first so its absence can be qualified.
+    let retired = store.paged.reclaimExpectedEpoch(cache.previous, source)
+    if retired.error != FullPagedNativeError.None: return nativeFailed[bool, FullPagedReclamation](retired)
+    if retired.value.retirementError != FileError.None: return DiskStoreResult[bool](
+      status: DiskStoreError.FileFailure,
+      fileReason: retired.value.retirementError)
+    cache.pending = false
+  DiskStoreResult[bool](status: DiskStoreError.None, completed: true)
+proc commitState(store: var DiskStateStore, expected, target: StateStoreSnapshot,
+    context: openArray[byte], history: openArray[StateStoreSnapshot],
+        replay: bool): DiskStoreResult[StateStoreSnapshot] =
   ## Publish a privately prepared immutable snapshot without repeating application or commitment work.
   let before = store.snapshot
   if before.error != DiskStoreError.None: return before
@@ -403,7 +443,7 @@ proc commit*(store: var DiskStateStore, expected, target: StateStoreSnapshot,
     # Actual native selection, authoring, barriers and uncertainty detection occur only under the caller's excluded IO lease.
     let cache = store.pagedCache
     assert cache != nil # Successful cached snapshot admission above proves the private active-cache invariant.
-    if cache.pending:
+    if cache.pending and not replay:
       return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.RetirementPending) # Bound authored storage before another candidate can be created.
     if not contextFits(uint64(context.len), store.pagedConfig, true):
       return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
@@ -427,6 +467,20 @@ proc commit*(store: var DiskStateStore, expected, target: StateStoreSnapshot,
     let transport = preparePagedState(target, history, store.pagedTransport)
     if transport.error != PagedStateError.None: return pagedFailed[StateStoreSnapshot,
         PreparedPagedState](transport)
+    if replay:
+      # The caller explicitly selected this independently prepared target; normal startup/commit never discard forensic bytes.
+      let recovered = replayPagedTarget(store, selected.value, transport.value, envelope.value)
+      if recovered.error != DiskStoreError.None:
+        store.failPaged()
+        if recovered.error == DiskStoreError.FileFailure:
+          return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
+              fileReason: recovered.fileError)
+        if recovered.error == DiskStoreError.NativeFailure:
+          return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.NativeFailure,
+              nativeReason: recovered.nativeFailure)
+        if recovered.error == DiskStoreError.GenerationOverflow:
+          return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.GenerationOverflow)
+        return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.Uninitialized)
     let retained = forkStateStore(target).value
     var candidate = default(FullPagedCandidate)
     defer:
@@ -498,6 +552,21 @@ proc synchronize*(store: var DiskStateStore): DiskIoResult[StorageDurability] =
   if synced.error != FileError.None: return DiskIoResult[StorageDurability](status: synced.error)
   DiskIoResult[StorageDurability](status: FileError.None, completed: synced.value)
 
+proc commit*(store: var DiskStateStore, expected, target: StateStoreSnapshot,
+    context: openArray[byte] = [], history: openArray[StateStoreSnapshot] = []): DiskStoreResult[
+        StateStoreSnapshot] =
+  ## Ordinary publication preserves forensic files and refuses pending predecessor retirement.
+  commitState(store, expected, target, context, history, false)
+proc retryPagedCommit*(store: var DiskStateStore, expected, target: StateStoreSnapshot,
+    context: openArray[byte], history: openArray[StateStoreSnapshot] = []): DiskStoreResult[
+        StateStoreSnapshot] =
+  ## Explicit independently prepared target authorizes exact prefix replay and one bounded publication retry.
+  if not store.opened: return DiskStoreResult[StateStoreSnapshot](
+      status: DiskStoreError.Uninitialized)
+  if not store.pagedMode: return DiskStoreResult[StateStoreSnapshot](
+    status: DiskStoreError.FileFailure,
+    fileReason: FileError.UnsupportedLayout)
+  commitState(store, expected, target, context, history, true)
 proc restoreDiskSnapshot*(store: DiskStateStore, expected: StateRoot,
     policy: StateStoreLimits): DiskStoreResult[StateStoreSnapshot] =
   ## Reconstruct an explicitly bound historical complete map without changing live selection or generation.
@@ -685,10 +754,10 @@ proc cleanupManagedDiskFiles*(store: var DiskStateStore): FileError =
     return store.journal.cleanupRetiredEpoch(ManagedEpoch(epoch-1))
   FileError.None
 
-proc initializePagedDiskStateStore*(store: var DiskStateStore, path: string,
+proc initializePagedDisk(store: var DiskStateStore, path: string,
     source: StateStoreSnapshot, config: FullPagedNativeConfig, transport: PagedStateLimits,
-    context: openArray[byte], history: openArray[StateStoreSnapshot] = []): DiskStoreResult[
-        StateStoreSnapshot] =
+    context: openArray[byte], history: openArray[StateStoreSnapshot],
+        replay: bool): DiskStoreResult[StateStoreSnapshot] =
   ## Exclusive contextual bootstrap publishes the current complete root, exact retained roots and context in one epoch.
   if store.opened: return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.Busy)
   if context.len == 0 or uint64(config.limits.contextBytes) == 0:
@@ -714,8 +783,11 @@ proc initializePagedDiskStateStore*(store: var DiskStateStore, path: string,
   if envelope.error != DiskStoreError.None:
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.FileFailure,
         fileReason: envelope.fileError)
-  let initialized = initializePagedStateStore(store.paged, path, config, prepared.value,
-      envelope.value)
+  let initialized = if replay:
+    resumePagedStateInitialization(store.paged, path, config, prepared.value, envelope.value)
+  else:
+    initializePagedStateStore(store.paged, path, config, prepared.value,
+        envelope.value) # Fresh bootstrap retains exclusive creation.
   if initialized.error != PagedStateError.None: return pagedFailed[StateStoreSnapshot,
       FullPagedPublication](initialized)
   if initialized.value.retirementError != FileError.None:
@@ -733,6 +805,18 @@ proc initializePagedDiskStateStore*(store: var DiskStateStore, path: string,
   store.schema = StorageSchema.FullStateV1
   adopted = true
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: source)
+proc initializePagedDiskStateStore*(store: var DiskStateStore, path: string,
+    source: StateStoreSnapshot, config: FullPagedNativeConfig, transport: PagedStateLimits,
+    context: openArray[byte], history: openArray[StateStoreSnapshot] = []): DiskStoreResult[
+        StateStoreSnapshot] =
+  ## Exclusive fresh bootstrap never infers permission to remove an existing namespace.
+  initializePagedDisk(store, path, source, config, transport, context, history, false)
+proc resumePagedDiskStateStore*(store: var DiskStateStore, path: string,
+    source: StateStoreSnapshot, config: FullPagedNativeConfig, transport: PagedStateLimits,
+    context: openArray[byte], history: openArray[StateStoreSnapshot] = []): DiskStoreResult[
+        StateStoreSnapshot] =
+  ## Only independently supplied complete genesis/import state authorizes explicit exact bootstrap replay.
+  initializePagedDisk(store, path, source, config, transport, context, history, true)
 proc openLocalPagedDiskStateStore*(store: var DiskStateStore, path: string,
     chain: StorageChainId, policy: StateStoreLimits, config: FullPagedNativeConfig,
     transport: PagedStateLimits): DiskStoreResult[StateStoreSnapshot] =

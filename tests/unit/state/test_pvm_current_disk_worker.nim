@@ -13,7 +13,7 @@ import ../../support/[accumulation_current_chain_context, accumulation_current_d
 proc workerPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Process-private paged namespaces never replace another native test's artifact.
 proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate, mode: int,
-    paged = false) {.raises.} =
+    paged = false, replay = false) {.raises.} =
   ## Collect, joined-Done shutdown and immediate joined shutdown all preserve the exact actual operation outcome.
   var owner = original
   var disk = default(DiskStateStore)
@@ -25,7 +25,7 @@ proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate, mode:
   discard worker.close
   var path = "current-disk-worker.db"
   if paged: path = path & "-paged-" & $workerPid() & "-" &
-      $mode # Separate explicitly owned paged namespaces survive fixture retirement.
+      $mode & "-replay-" & $replay # Separate explicitly owned paged namespaces survive fixture retirement.
   let limits = currentDiskLimits()
   let identity = default(StorageChainId)
   defer:
@@ -35,7 +35,8 @@ proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate, mode:
     else: initializeDiskChain(disk, path, identity, owner, limits).value
   defer:
     if not paged: discard posix.unlink(path.toCString()) # Paged directory artifacts remain in the ignored runner namespace for inspection.
-  publication = prepareDiskPublication(disk, owner, update, identity, limits.contextBytes).value
+  publication = prepareDiskPublication(disk, owner, update, identity, limits.contextBytes,
+      replay = replay).value
   assert worker.start()
   let ticket = worker.submit(disk, publication).value
   assert worker.collect(default(DiskPublicationTicket)).kind == DiskCompletionKind.Uninitialized
@@ -82,6 +83,8 @@ proc main() {.raises.} =
   let update = original.prepareAccumulation(context.source, ByteLimit(100000)).value
   for mode in 0..2: cycle(original, update, mode)
   for mode in 0..2: cycle(original, update, mode, true) # Both update families use the same excluded native worker for paged commits.
+  for mode in 0..2: cycle(original, update, mode, true,
+      true) # Explicit replay uses independently prepared genuine updates on the same worker.
   for iteration in 0..<24: cycle(original, update,
       iteration mod 3) # Repeat real publication/start/join lifetimes across all allowed shutdown outcomes.
 try:

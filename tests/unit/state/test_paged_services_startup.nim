@@ -19,12 +19,17 @@ import ../../support/application_checkpoint_context
 import ../../../src/chain/[genesis, provider]
 proc appPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Process-private application namespaces preserve earlier forensic artifacts without stale test collisions.
-proc configured(path: string, layout: string): Options =
-  ## Harness-owned configured genesis is captured before listeners or storage become observable.
+proc configured(path: string, layout: string, resume = false, readOnly = false): Options =
+  ## Harness-owned configured genesis and explicit replay policy are captured before listeners or storage become observable.
+  var arguments = @["server", "--with-state", "--chain", getEnv("RAGNAROK_APPLICATION_CHECKPOINT"),
+    "--state-storage", "disk", "--state-db", path, "--state-layout", layout]
+  if resume: arguments.add("--state-paged-resume") # Test authority must be explicitly present in the actual CLI request.
+  if readOnly:
+    arguments.add("--state-writes"); arguments.add("0")
+    arguments.add("--state-write-bytes"); arguments.add(
+        "0") # Independent imports retain their exact zero-budget recovery policy.
   result = default(Options)
-  assert parseOptions(@["server", "--with-state", "--chain", getEnv(
-      "RAGNAROK_APPLICATION_CHECKPOINT"),
-    "--state-storage", "disk", "--state-db", path, "--state-layout", layout], result)
+  assert parseOptions(arguments, result)
 proc imported() {.raises.} =
   ## Independently trusted checkpoint import creates exclusively; ordinary local restart preserves its selected header instead of genesis.
   let source = checkpointFixture(CheckpointFixtureVariant.Header)
@@ -152,6 +157,76 @@ proc retirement(mode: int) {.raises.} =
   waitRetirement(owner)
   assert owner.diskRetirementCompletion.retirementValue.error == DiskStoreError.None
   assert sameApplicationCheckpoint(owner.checkpointIdentity.value, trusted)
+proc replayPresentNative(name: cstring, mode: cint): cint {.importc: "access", cdecl,
+    header: "<unistd.h>".}
+  ## Fixture-only metadata distinguishes a missing CURRENT from an existing partial bootstrap child.
+proc replayPresent(path: string): bool =
+  ## Known test paths are checked individually; no directory discovery grants recovery permission.
+  var owned = path
+  replayPresentNative(owned.toCString(), 0) == 0
+proc recoveredFixture(variant: CheckpointFixtureVariant): ApplicationRecoveryResult {.raises.} =
+  ## Independent caller-selected checkpoint identity/header authority remains separate from local forensic bytes.
+  let source = checkpointFixture(variant)
+  let identity = captureApplicationCheckpointIdentity(source).value
+  let envelope = encodeApplicationCheckpoint(source, ByteLimit(4194304)).value
+  let selected = source.chainView.bestBlock.value.header
+  var wire = newSeq[byte](selected.headerInfo.value.consumed)
+  assert encodeOwnedHeader(selected, wire).error == HeaderError.None
+  decodeRecoveryCheckpoint(envelope, wire, identity, genesisStoreLimits(), ByteLimit(4194304))
+proc resumedStartup(importing: bool) {.raises.} =
+  ## Only explicit resume can complete matching interrupted genesis/import; wrong independent context and existing CURRENT remain protected.
+  let path = "paged-services-resume-" & $appPid() & "-" & $importing
+  let plain = configured(path, "paged", readOnly = importing)
+  let resumed = configured(path, "paged", resume = true, readOnly = importing)
+  let variant = if importing: CheckpointFixtureVariant.Header else: CheckpointFixtureVariant.Original
+  let expected = captureApplicationCheckpointIdentity(checkpointFixture(variant)).value
+  let recovered = recoveredFixture(variant)
+  var owner = default(Services)
+  defer:
+    owner.close() # Every partial or complete startup joins workers before source aliases and the writer lease retire.
+    resetIo()
+  resetIo()
+  armIo(renameIo, 0, 1, failedIo)
+  let created = if importing: owner.startRecovered(plain, "interrupted trusted import", recovered)
+    else: owner.start(plain, "interrupted configured genesis")
+  assert not created and pendingIo() == 0
+  owner.close()
+  resetIo()
+  assert not replayPresent(path & "/CURRENT")
+  let candidate = path & "/paged-0000000000000001.bin"
+  let staging = path & "/CURRENT.next"
+  let bytes = readFile(candidate)
+  let next = readFile(staging)
+  let ordinary = if importing: owner.startRecovered(plain, "ordinary import refuses overwrite", recovered)
+    else: owner.start(plain, "ordinary startup preserves bootstrap forensics")
+  assert not ordinary
+  owner.close()
+  assert readFile(candidate) == bytes and readFile(staging) == next
+  if importing:
+    # Same complete map/root and equal-sized headers still require the exact independently chosen application context.
+    let wrong = recoveredFixture(CheckpointFixtureVariant.Original)
+    assert not owner.startRecovered(resumed, "wrong independent imported header", wrong)
+    owner.close()
+    assert not replayPresent(path & "/CURRENT")
+    assert readFile(candidate) == bytes and readFile(staging) == next
+  let completed = if importing: owner.startRecovered(resumed, "explicit trusted import resume", recovered)
+    else: owner.start(resumed, "explicit configured genesis resume")
+  assert completed and sameApplicationCheckpoint(owner.checkpointIdentity.value, expected)
+  owner.close()
+  let current = readFile(path & "/CURRENT")
+  assert owner.start(plain, "ordinary strict startup after explicit resume")
+  assert sameApplicationCheckpoint(owner.checkpointIdentity.value, expected)
+  owner.close()
+  if importing:
+    # Explicit resume remains bootstrap-only and cannot replace an already selected imported head.
+    assert not owner.startRecovered(resumed, "no selected database overwrite", recovered)
+    owner.close()
+    assert readFile(path & "/CURRENT") == current
+  else:
+    # The same explicit flag remains usable for a fresh destination; ordinary exclusive initialization succeeds first.
+    let fresh = configured(path & "-fresh", "paged", resume = true)
+    assert owner.start(fresh, "fresh explicit paged run")
+    owner.close()
 proc main() {.raises.} =
   ## Exclusive locking and wrong-layout/corrupt-CURRENT refusals never replace an existing selected epoch.
   let path = "paged-services-startup-" & $appPid()
@@ -192,6 +267,8 @@ proc main() {.raises.} =
   assert owner.start(selected, "validator")
   owner.close()
   imported()
+  resumedStartup(false)
+  resumedStartup(true)
   for mode in 0..3: retirement(mode) # Genuine startup and the shared excluded worker cover all cleanup outcomes.
   # Exact native directories remain under the ignored runner working path for inspection.
 try:

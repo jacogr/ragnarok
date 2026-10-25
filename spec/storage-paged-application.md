@@ -334,3 +334,64 @@ sha256:567bff7089e2ed900cee527b898f2a4172b7518c32934bf18af5ee7ed42be5ff.
 Frozen source hashes and native evidence: build/storage-db5-app-retirement-linux.json.
 Both genuine publication worker regressions and all 420 production modules plus the peer
 semantic entry point pass locally; separate stable formatting and both privacy guards pass.
+
+## Explicit interrupted-operation replay
+
+Ordinary startup and publication continue to preserve forensic candidates and staging files.
+The full paged facade exposes `retryPagedCommit` only for an independently prepared complete
+target snapshot, retained history and exact context. It reconstructs the expected next header
+and application envelope from the checked current source and guarded next counters, builds
+exact replay bytes within inherited native/replay ceilings, and asks native cleanup to compare
+every present candidate/staging prefix before either is removed. Wrong complete target,
+history, equal-sized context and zero replay allowance refuse without changing forensic bytes
+or CURRENT. There is no directory scan, guessed target, fallback or unbounded retry loop.
+
+Matching candidate/staging cleanup precedes predecessor retirement: after restart, the envelope
+can name an already absent old artifact while CURRENT.next still blocks ordinary reclamation.
+Explicit replay resolves the matching immediate candidate and staging first, qualifies any
+pending old descriptor, then attempts ordinary authoring/publication once. Success adopts the
+exact independently supplied target owner; native uncertainty still requires fresh startup.
+A late publication failure that already selected the complete new pair is resolved by strict
+startup, without automatically committing the same input a second time.
+
+`resumePagedStateInitialization` and `resumePagedDiskStateStore` provide explicit bootstrap
+replay against independently supplied complete genesis/import state and the exact initial
+context. Existing CURRENT always refuses bootstrap replay. The application exposes this
+authority through `--state-paged-resume`, accepted only with enabled state, disk backend and
+explicit paged layout. Fresh exclusive initialization is attempted first; only this explicit
+mode plus AlreadyExists may invoke bootstrap resume. Trusted import retains its independent
+identity/header validation and exact write policy. Wrong imported headers with the same
+complete map/root cannot authorize cleanup of a different application context.
+
+For an existing selected database, explicit resume mode waits for an independently prepared
+application update before cleanup rather than attempting ordinary predecessor retirement first.
+Both legacy and current prepared publication families carry that explicit choice through the
+same excluded, joined disk worker; the dispatcher performs no replay IO. Completed core
+publication receipts and subsequent retirement receipts retain their existing separate meanings.
+An operator can return to ordinary startup after successful recovery. Corrupt selected heads
+are not repaired or replaced by this flag.
+
+Checked native tests cover every observed publication write/sync/rename failure ordinal,
+strict forensic-preserving reopen, complete target/history/context mismatch and inherited
+replay denial, restart with a retired predecessor plus staging, and bootstrap resume/no
+selected-head overwrite. Exact-child supervision additionally measures positive completion
+controls, stops after each selected successful write/barrier/rename/unlink boundary, verifies
+SIGKILL/reap, and requires the corresponding old/new complete state/context pair before
+explicit recovery. It covers ordinary publication, replay and bootstrap resume; unrelated
+sibling bytes survive. These process controls do not qualify device power loss.
+
+Actual Services tests cover interrupted configured-genesis and independently trusted import
+startup, ordinary startup refusal, explicit correct resume, wrong equal-sized imported-header
+context refusal, fresh explicit destinations and existing-CURRENT protection. Both genuine
+publication worker families exercise explicit replay through collect/join/immediate shutdown.
+The historical reconstruction ARC control remains 1,000 cycles at 12,816 -> 12,816 bytes;
+this allocation measurement is not a new claim of 1,000 replay or process-kill cycles.
+
+All five final replay suites also pass checked Linux amd64 under Docker emulation:
+paged_disk_state_store (including witnessed process crashes), paged_services_startup,
+disk_worker, pvm_current_disk_worker and managed_layout_options. The same historical
+reconstruction allocation result is 12,816 -> 12,816 bytes over 1,000 cycles. Qualified image:
+sha256:fee07467694b2f0e3b5a861a78d7d65584ecc4b2ae58b3eeb041a5fcef7c8da6.
+Frozen source hashes and native evidence: build/storage-db5-replay-linux.json. Existing journal
+facade regression, separate formatting and all 420 production modules plus peer semantic Smoke
+also pass locally. The previously documented macOS PVM preparation-worker baseline is unchanged.

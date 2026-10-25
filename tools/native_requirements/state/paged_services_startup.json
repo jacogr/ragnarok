@@ -23,7 +23,8 @@
     "setup_free",
     "commit",
     "ring_verify",
-    "io_read"
+    "io_read",
+    "io_renameat"
   ],
   "prepared": false
 }
