@@ -1291,5 +1291,27 @@ def current_stf_allowance_revocation_corpus(compiler, report, checks, libraries)
 
 
 
+@CORPORA.case
+def current_stf_allowance_eligibility_corpus(compiler, report, checks, libraries):
+    """Compare zero/exact free-gas membership, basic-block charging and genuine unavailable-code eligibility."""
+    from current_stf_allowance_eligibility_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf_allowance_eligibility', 'current_stf_transfers', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-allowance-eligibility-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_report_guests_driver.nim',
+        'current-stf-allowance-eligibility', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  reference='independent free-dictionary keys, exact basic-block gas threshold, unavailable-code rules and complete maps')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-allowance-eligibility-corpus', expected)
+    announce('independent allowance eligibility whole STF maps', corpus['passed'])
+    return corpus
+
+
+
 # Existing callers use the same entry point; the declared tasks own its complete plan.
 run_state = CORPORA.run

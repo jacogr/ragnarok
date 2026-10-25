@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ALLOWANCE_ELIGIBILITY",
+  "files": {
+    "current-stf-allowance-eligibility.json": "59a8a4bf3a1dbcbb5168d6e850bc31ce215978eaae7f6759ca505671b22f8a28"
+  },
+  "target": "current-stf-allowance-eligibility.json"
+}

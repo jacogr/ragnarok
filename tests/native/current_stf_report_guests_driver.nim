@@ -125,6 +125,7 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
   if mode in 161..165: first = allowanceManagerCode(mode,
       true) # The scheduled service is a real independently authored manager program.
   case mode
+  of 166..170: second = allowanceEligibilityCode(mode) # Real zero/exact free budgets retain explicit dictionary membership.
   of 161..165: second = allowanceManagerCode(mode,
       false) # Original manager99 grants the future service its authority and allowance.
   of 155..160: second = blessAllowanceCode(mode) # Nonempty manager-selected dictionaries affect subsequent block inputs.
@@ -190,7 +191,8 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
   for index in 0..<2:
     let codeHash = ServicePreimageHash(array[32, byte](blake2b256(codes[index]).value))
     seeds[index].requests.add(StateRequestItem(hash: codeHash, length: RequestLength(uint32(
-        codes[index].len)), history: (if missingCode and index == 1: requestedHistory(
+        codes[index].len)), history: (if (missingCode and index == 1) or (mode == 170 and index ==
+            0): requestedHistory(
       ) else: availableHistory(RequestSlot(1)))))
     let payload = @[byte(if index == 0: 73 else: 81)]
     seeds[index].requests.add(StateRequestItem(hash: ServicePreimageHash(array[32, byte](
@@ -228,6 +230,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
         1'u8, 2, 3, 4, 5] else: @[1'u8, 2]))) # Original replacement/deletion footprints are genuine parent inputs.
   var options = executionFixtureConfig()
   options.empty = true
+  if mode == 170: options.first = ExecutionEnding.Missing # Genuine missing42 code retains its pending request and exact reservation.
   if missingCode: options.second = ExecutionEnding.Missing # Code is honestly absent until a requested preimage extrinsic fulfills it.
   options.firstProgram = codes[0]
   options.secondProgram = codes[1]
@@ -248,7 +251,7 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
     # Actual protected-only funds make the post-reassignment authority check distinguishable from ordinary funding.
     options.secondBalance = 0
     options.secondSupervisorBalance = 1000000
-  if mode in 155..165:
+  if mode in 155..170:
     options.manager = (if mode == 160: 42'u32 else: 99'u32) # Authority is committed before the first signed input.
   if mode in 77..81:
     # Authority belongs to one actual original manager; other roles and all allowances remain empty.
@@ -468,7 +471,8 @@ proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = fal
       let codeStored = snapshot.lookup(codeKey)
       if codeStored.error == StateStoreError.None:
         services[index].preimages.add(StatePreimageItem(hash: hash, value: codes[index]))
-      else: assert missingCode and index == 1 and codeStored.error == StateStoreError.MissingKey
+      else: assert ((missingCode and index == 1) or (mode == 170 and index == 0)) and
+          codeStored.error == StateStoreError.MissingKey
       let declaredRequests = services[index].requests
       services[index].requests = @[]
       for originalItem in declaredRequests:
@@ -595,7 +599,7 @@ proc main() {.raises.} =
       reload = fields.len == 3 and fields[2] == "reload"
       if fields.len == 3: assert missingCode or reload # Flags name an explicit original or full-store reconstruction contract.
       mode = parseInt(fields[1])
-      assert mode >= 0 and mode < 166
+      assert mode >= 0 and mode < 171
       bodies = @[]
       slots = @[]
     else:
@@ -604,7 +608,7 @@ proc main() {.raises.} =
       bodies.add(unhex(fields[^1]))
   assert bodies.len != 0 # Every selected chain must contain a signed child.
   assert reload or mode in [4, 9, 14, 19, 27, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101,
-      106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160, 165]
+      106, 111, 112, 117, 122, 130, 135, 140, 147, 154, 160, 165, 170]
   run(base, mode, bodies, missingCode, slots, reload)
 
 try:
