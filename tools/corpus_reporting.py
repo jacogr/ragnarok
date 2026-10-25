@@ -62,3 +62,11 @@ def current_stf_population_waves_corpus(compiler, report, checks, libraries):
     import current_stf_population_waves_oracle as oracle
     return scenarios(compiler, checks, libraries, oracle,
         ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_effects', 'current_stf_dependency_waves', 'current_stf_population_waves', 'state_report'))
+
+
+@CORPORA.case
+def current_stf_population_gas_corpus(compiler, report, checks, libraries):
+    """Qualify exact-residual deferred retention and pooled guest exits across changing populations."""
+    import current_stf_population_gas_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_effects', 'current_stf_dependency_waves', 'current_stf_gas_exits', 'current_stf_budget_retention', 'current_stf_population_gas', 'state_report'))

@@ -60,7 +60,7 @@ def edit(items, completed):
     return [(wire, dependencies-completed) for wire, dependencies in items if wire[:32] not in completed]
 
 
-def plan(parent, mode, slot, ass, reports, *, cores=2, current=6, previous=6, prior=6):
+def plan(parent, mode, slot, ass, reports, *, cores=2, current=6, previous=6, prior=6, charge=None):
     """Calculate immediate priority, four dependency waves, affordable batches and posterior ready rows."""
     assigned = pending(parent[chapter_key(10)], cores, max(current, previous, prior))
     votes = [sum(bool(item['bits'] & (1 << core)) for item in ass) for core in range(cores)]
@@ -98,7 +98,12 @@ def plan(parent, mode, slot, ass, reports, *, cores=2, current=6, previous=6, pr
         for wire in batch:
             for item in reports[wire[:32]]['digests']: group[item[0]] = group.get(item[0], 0)+1
         batches.append(group); prefixes.append([wire[:32].hex() for wire in batch]); processed.extend(batch)
-        consumed = sum(22 if sid == 42 else pipeline.guest_gas(mode) for sid in group)
+        budgets = {}
+        for wire in batch:
+            for item in reports[wire[:32]]['digests']:
+                budgets[item[0]] = budgets.get(item[0], 0)+item[3]
+        consumed = (sum(22 if sid == 42 else pipeline.guest_gas(mode) for sid in group)
+                    if charge is None else sum(charge(sid, budget) for sid, budget in budgets.items()))
         assert consumed <= declared <= budget
         budget -= consumed; remaining = remaining[count:]
     selected = {wire[:32] for wire in processed}
