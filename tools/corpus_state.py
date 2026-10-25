@@ -440,6 +440,54 @@ def jam_fuzzer_preimage_effects_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_transfers_corpus(compiler, report, checks, libraries):
+    """Execute transfers through fuzz requests against independent complete STF maps."""
+    import current_stf_transfers_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_transfers', 'current_stf_report_guests'))
+
+
+@CORPORA.case
+def jam_fuzzer_supervised_transfers_corpus(compiler, report, checks, libraries):
+    """Execute supervised transfers through fuzz requests against independent complete STF maps."""
+    import current_stf_supervised_transfers_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_supervised_transfers', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_forwarded_transfers_corpus(compiler, report, checks, libraries):
+    """Execute forwarded transfers through fuzz requests against independent complete STF maps."""
+    import current_stf_forwarded_transfers_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_forwarded_transfers', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_transfer_pools_corpus(compiler, report, checks, libraries):
+    """Execute transfer pools through fuzz requests against independent complete STF maps."""
+    import current_stf_transfer_pools_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_transfer_pools', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_transfer_admission_corpus(compiler, report, checks, libraries):
+    """Execute transfer admission through fuzz requests against independent complete STF maps."""
+    import current_stf_transfer_admission_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_transfer_admission', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_transfer_memos_corpus(compiler, report, checks, libraries):
+    """Execute transfer memos through fuzz requests against independent complete STF maps."""
+    import current_stf_transfer_memos_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_transfer_memos', 'current_stf_transfers'))
+
+
+@CORPORA.case
 def jam_fuzzer_stf_corpus(compiler, report, checks, libraries):
     """Compare actual fuzzer requests and whole-state replies with frozen independent STF maps."""
     from current_stf_oracle import expected_observations, verify_observations
