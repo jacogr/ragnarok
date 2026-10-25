@@ -497,3 +497,15 @@ timing improvement exceeding that control's variation and no reproducible
 regression above2% on fill, indirect calls or host/cross-page controls. Otherwise
 stop and report the result. No implementation or new performance claim accompanies
 this proposal.
+
+### Follow-up opcode descriptor: rejected
+
+The authorized [opcode-descriptor experiment](pvm-memory-descriptors.md) passes its
+counter gate: wrapper68.9166→53.2096 instructions/access on Pinky, with total
+native work down2.51% and every other function's exclusive count unchanged.
+Nevertheless paired CI fails timing qualification: planned Pinky is2.867% and
+0.450% slower, and dynamic crossing controls regress roughly2.9–4.3% in both
+orders beyond their small same-image variation. It is rejected and stopped,
+with no runtime PR or descriptor follow-up variant. The active runtime remains
+the original baseline. The separately requested call-frame experiment must start
+from that baseline, without combining the rejected table to rescue its gates.
