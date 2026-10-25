@@ -27,6 +27,7 @@ erasure shards remain tied to the current population.
 | Immediate supervisor handoff, protected authority and foreign upgrades |150|[Authority transitions](current-stf-rotation-authority.md)|
 | Request/provision ordering, strict expiry equality and restored histories |190|[Preimage lifecycle](current-stf-rotation-preimages.md)|
 | Forwarded reentry and active-supervisor held duplicate-credit rounds |100|[Transfer waves](current-stf-rotation-transfer-waves.md)|
+| Recreated supervisor bindings and exact queued old-report identity |100|[Supervisor incarnations](current-stf-rotation-incarnations.md)|
 | Actual report-triggered writes, panic and checkpoint effects |30|[Population guests](current-stf-population-guests.md)|
 | Ticket contests, winner/fallback sealing and later growth |32|[Ticket reporting](current-stf-ticket-reporting.md)|
 | Deferred waves, release/resize-clear and actual-gas continuation |72|[Dependency waves](current-stf-population-waves.md)|
