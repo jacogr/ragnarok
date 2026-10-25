@@ -5,6 +5,9 @@
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../support/[trace_check_context, current_stf_population_reporting_context]
 import ../../src/app/[options, trace_check_command, current_download_policy]
+when defined(rotationIncarnations):
+  import ../support/current_stf_rotation_incarnations_context
+
 proc path(text: string): string =
   ## Decode only the hexadecimal pathname transport; actual files are read through production bounded EOF helpers.
   assert text.len mod 2 == 0
@@ -25,7 +28,10 @@ proc main() {.raises.} =
   var resource = traceCheckTestPolicy()
   if paramCount() == 3:
     assert paramStr(3) == "population"
-    resource.candidate = populationReportingLimits() # Explicit three-core/nine-ceiling policy; default legacy command coverage stays unchanged.
+    when defined(rotationIncarnations):
+      resource.candidate = rotationIncarnationLimits() # Actual host programs and recreated namespaces use their qualified bounded policy.
+    else:
+      resource.candidate = populationReportingLimits() # Explicit three-core/nine-ceiling policy; default legacy command coverage stays unchanged.
   writeFile(paramStr(2), encodeCurrentDownloadPolicy(resource))
   for line in readFile(paramStr(1)).splitLines:
     if line.len == 0: continue # The request-file terminator contains no command.
