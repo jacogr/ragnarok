@@ -10,8 +10,9 @@ Two independently authored chains use distinct active/pending/staging/previous
 roster orders and distinct historical entropy words. They advance from slot1
 through2,10,11,12,13,14,15,16,17 under the explicit two-core/six-validator profile.
 The empty slot2 child supplies an authenticated lookup ancestor with a child-committed
-posterior root before reporting starts. Both guarantee two reports at10,12,16; one chooses current-rotation credentials,
-the other previous-rotation credentials. At12 the latter must use the old active
+posterior root before reporting starts. Both guarantee two reports at10,12,16.
+At10 both use the current rotation; at12/16 one chooses current-rotation credentials
+and the other previous-rotation credentials. At12 the latter must use the old active
 roster and old eta2, while current credentials use the newly active roster and
 old eta1. At16 both rotations use the new active roster. No RingVRF proof input
 is submitted; the unchanged original qualified ring commitments remain inputs.
@@ -60,3 +61,14 @@ comparison. The existing reporting corpus passed its original20 transitions and3
 refusals with its frozen expected maps unchanged. Ten independent reference tests,
 verification inventory and pinned formatting passed. These local observations do
 not infer a remote Linux CI result.
+
+The same new and regression corpora passed on checked Linux amd64 under emulation.
+All recorded request hashes, full expected/actual output hashes, roots, refusal
+sequences and transition counts match macOS. All7,966 frozen source/test/tool/pin
+inputs match the retained Linux image
+`66ad0fb5e5ad5a5af3f3c77aa3baaa39c5c533492f5c237f903aaccf379a8af2`.
+The first emulated attempt exceeded the ordinary180-second compiler allowance;
+the replay used900 seconds for compilation alone and retained the ordinary180-second
+corpus runtime limit. Compilation took255/218 seconds and both runtime verdicts
+passed. No expectation, protocol resource limit or runtime assertion was weakened.
+This remains local covered-source Linux evidence, distinct from exact-head CI.
