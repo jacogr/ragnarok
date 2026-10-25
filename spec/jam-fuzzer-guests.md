@@ -34,3 +34,11 @@ C16 output and root is part of each whole-map comparison. The replay build is
 shared across independent source-owned corpus declarations, preserving separate
 inputs, logs and verdicts. Observation-only references are selected explicitly;
 unsupported or incomplete streams still fail closed.
+
+Transfer coverage groups direct, supervised and forwarded delivery with funding
+pools, admission/gas boundaries and ordered memo effects. Six independent frozen
+references contribute168 complete-map imports. Incoming/outgoing amounts, queued
+and immediate delivery, recipient thresholds, gas costs, memo-selected storage,
+checkpoint/panic selection, service balances, statistics and outputs are compared
+through the actual fuzz backend. Each invalid prior-root attempt must leave the
+entire selected state untouched before the genuine transfer-bearing block runs.
