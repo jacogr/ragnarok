@@ -696,6 +696,38 @@ def jam_fuzzer_queued_incarnation_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_dependency_waves_corpus(compiler, report, checks, libraries):
+    """Execute dependency waves through fuzz requests against independent complete STF maps."""
+    import current_stf_dependency_waves_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_effects', 'current_stf_report_guests', 'current_stf_dependency_waves'))
+
+
+@CORPORA.case
+def jam_fuzzer_budget_retention_corpus(compiler, report, checks, libraries):
+    """Execute budget retention through fuzz requests against independent complete STF maps."""
+    import current_stf_budget_retention_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_budget_retention', 'current_stf_dependency_waves'))
+
+
+@CORPORA.case
+def jam_fuzzer_gas_exits_corpus(compiler, report, checks, libraries):
+    """Execute gas exits through fuzz requests against independent complete STF maps."""
+    import current_stf_gas_exits_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_gas_exits', 'current_stf_report_guests'))
+
+
+@CORPORA.case
+def jam_fuzzer_late_code_corpus(compiler, report, checks, libraries):
+    """Execute late code through fuzz requests against independent complete STF maps."""
+    import current_stf_late_code_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_late_code', 'current_stf_report_guests'))
+
+
+@CORPORA.case
 def jam_fuzzer_stf_corpus(compiler, report, checks, libraries):
     """Compare actual fuzzer requests and whole-state replies with frozen independent STF maps."""
     from current_stf_oracle import expected_observations, verify_observations

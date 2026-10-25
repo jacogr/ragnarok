@@ -81,3 +81,11 @@ contribute321 complete-map imports. Funded profiles explicitly retain their
 7/1/100 deposit Parameters; zero-deposit profiles retain their original tuple.
 The full maps include selected source pools, reserved IDs, account footprints,
 refunds, replacement code, stale authority and reports queued before recreation.
+
+Deferred and exceptional execution coverage combines dependency waves, exact
+residual-budget admission, deferred retention/drain, prepaid-block and host gas
+exhaustion, pooled operands and late code fulfillment. Four frozen independent
+references contribute464 complete-map imports. Retained ready rows, processed
+prefixes, selected checkpoints, gas/statistics and delayed preimage visibility
+are compared through ordinary ImportBlock/GetState; no execution retry or
+retroactive code availability changes the expected phase ordering.
