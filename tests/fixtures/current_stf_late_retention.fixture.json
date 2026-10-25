@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_LATE_RETENTION",
+  "files": {
+    "current-stf-late-retention.json": "0010759d806caa2a55f2c8145c1e1004633e20546768ca28fa8d6be8af7708da"
+  },
+  "target": "current-stf-late-retention.json"
+}

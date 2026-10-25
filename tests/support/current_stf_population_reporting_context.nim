@@ -5,7 +5,8 @@
 import ../../src/app/[chain, candidate]
 import ../../src/codec/bounded
 import ../../src/state/[accumulation_current_completion, accumulation_current_driver,
-    accumulation_current_round, accumulation_block_guests, accumulation_guest_runner,
+    accumulation_current_sequence, accumulation_current_round, accumulation_block_guests,
+    accumulation_guest_runner,
     block_transition, block_admission, disputes]
 import ./[current_stf_population_context, current_stf_reporting_context, current_stf_guest_limits]
 
@@ -51,6 +52,9 @@ proc populationReason*(outcome: CurrentCandidateResult): string =
     if completed.error == CurrentAccumulationCompletionError.SequenceFailure:
       let sequence = completed.sequenceFailure
       result.add("/" & $sequence.error)
+      if sequence.error == CurrentSequenceDriverError.ExecutionFailure:
+        let continued = sequence.executionFailure
+        result.add("/" & $continued.error) # Preserve the genuine continuation refusal instead of collapsing a local cap into execution failure.
       if sequence.error == CurrentSequenceDriverError.InitialFailure:
         let initial = sequence.initialFailure
         result.add("/" & $initial.error)
