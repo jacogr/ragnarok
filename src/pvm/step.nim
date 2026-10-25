@@ -273,8 +273,8 @@ proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepRe
     return StepResult(status: StepError.InvalidHostResponse) # Failed capture never exposes a partially applied response.
   StepResult(status: StepError.None, completed: StepOutcome(kind: exit, machine: captured.value))
 
-const executionClasses = # Immutable byte metadata: r registers, m memory, h host, c control, - unsupported.
-  "ccc-------h-----" & # Opcodes0..15.
+const executionClasses = # Immutable byte metadata: r registers, m memory, h host, c terminating control, u unlikely, - unsupported.
+  "ccu-------h-----" & # Opcodes0..15.
   "----r---------mm" & # Opcodes16..31.
   "mm------c-------" & # Opcodes32..47.
   "--crmmmmmmmmmmm-" & # Opcodes48..63.
@@ -636,7 +636,7 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
   let item = decoded.value
   let category = executionClasses[int(item.opcode)]
   if category == '-' or
-      (category == 'c' and not control) or
+      (category in {'c', 'u'} and not control) or
       (category == 'm' and not memoryAccess) or
       (category == 'h' and not hostCalls):
     # Capability rejection precedes evaluation and never fabricates a guest trap or gas debit.
@@ -739,7 +739,8 @@ template instructionBody[UsePlan, UseMemo: static[bool]](program: Program, info:
     # This path is reachable only for explicitly supported control/no-op instructions.
     outcome = controlMutation(program, decoded, info, cache)
   if outcome notin {StepExit.Panic, StepExit.Halt}:
-    if not terminatesBlock(item.opcode):
+    if category != 'c':
+      # The existing class byte marks exactly T; unlikely remains a separate nonterminating control class.
       # Every admitted nonterminator advances by the decoded skip, except a failed scalar access retaining its genuine causing PC.
       if outcome != StepExit.Fault and not instructionHasFallthrough(decoded):
         return InstructionEvaluation(status: StepError.InvalidMachine)
