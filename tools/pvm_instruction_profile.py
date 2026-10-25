@@ -212,6 +212,50 @@ def collect(checks, binary, name, scope, environment, timeout, instructions=Fals
     return result, output
 
 
+def calibrate_scope(checks, report):
+    """Share classified selected/absent/repeated/reset controls without rebuilding a guest image."""
+    control = ROOT/'tests/support/pvm_profile_control.c'
+    compiled = checks.command(['clang', '-O2', '-g', '-o', str(checks.folder/'control'), control], 'control-build')
+    report['builds'].append({key: value for key, value in compiled.items() if key != 'output'})
+    if compiled['exit_code']:
+        raise RuntimeError('profile calibration build failed')
+    selected_text = None
+    for selected in (True, False):
+        # The unmatched scope proves whole-process counts cannot silently substitute for selected execution.
+        name = 'control-selected' if selected else 'control-absent'
+        result, output = collect(checks, checks.folder/'control', name,
+            'pvm_profile_selected' if selected else 'pvm_profile_missing', dict(os.environ), 30)
+        text = output.read_text()
+        if selected:
+            # Preserve the single-call reference for independently repeated/reset controls.
+            selected_text = text
+        passed = calibration_passed(result, text, selected)
+        result.pop('output')
+        report['controls'].append(dict(name=name, passed=passed, run=result, profile_sha256=digest(output)))
+        if not passed:
+            raise RuntimeError('profile scope calibration failed: '+name)
+    repeated_text = None
+    for reset in (False, True):
+        # Identical selected work runs twice; entry reset must retain exactly one invocation.
+        name = 'control-last-only' if reset else 'control-repeated'
+        result, output = collect(checks, checks.folder/'control', name, 'pvm_profile_?elected',
+            dict(os.environ), 30, reset_symbols=('pvm_profile_selected',) if reset else (),
+            arguments=('twice',))
+        text = output.read_text()
+        passed = calibration_passed(result, text, True)
+        if reset:
+            # Process success alone cannot certify that warmup costs were actually removed.
+            passed = passed and last_call_calibration_passed(selected_text, repeated_text, text)
+        else:
+            # The unreset control proves the second invocation was present and collected.
+            repeated_text = text
+            passed = passed and profile_counts(text)['Ir'] == 2*profile_counts(selected_text)['Ir']
+        result.pop('output')
+        report['controls'].append(dict(name=name, passed=passed, run=result, profile_sha256=digest(output)))
+        if not passed:
+            raise RuntimeError('profile last-call calibration failed: '+name)
+
+
 def run():
     """Calibrate selection, freeze owned inputs, then publish complete state-checked profiles or explicit failure."""
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -237,45 +281,7 @@ def run():
         sources += [control, ROOT/'tools/pvm_instruction_profile.py', ROOT/'Makefile',
                     ROOT/'spec/toolchain.json', ROOT/'spec/pins.json', ROOT/'spec/polkavm-pins.json']
         identities = {path: digest(path) for path in sources}
-        compiled = checks.command(['clang', '-O2', '-g', '-o', str(BUILD/'control'), control], 'control-build')
-        report['builds'].append({key: value for key, value in compiled.items() if key != 'output'})
-        if compiled['exit_code']:
-            raise RuntimeError('profile calibration build failed')
-        selected_text = None
-        for selected in (True, False):
-            # The unmatched scope proves whole-process counts cannot silently substitute for selected execution.
-            name = 'control-selected' if selected else 'control-absent'
-            result, output = collect(checks, BUILD/'control', name,
-                'pvm_profile_selected' if selected else 'pvm_profile_missing', dict(os.environ), 30)
-            text = output.read_text()
-            if selected:
-                # Preserve the single-call reference for independently repeated/reset controls.
-                selected_text = text
-            passed = calibration_passed(result, text, selected)
-            result.pop('output')
-            report['controls'].append(dict(name=name, passed=passed, run=result, profile_sha256=digest(output)))
-            if not passed:
-                raise RuntimeError('profile scope calibration failed: '+name)
-        repeated_text = None
-        for reset in (False, True):
-            # Identical selected work runs twice; entry reset must retain exactly one invocation.
-            name = 'control-last-only' if reset else 'control-repeated'
-            result, output = collect(checks, BUILD/'control', name, 'pvm_profile_?elected',
-                dict(os.environ), 30, reset_symbols=('pvm_profile_selected',) if reset else (),
-                arguments=('twice',))
-            text = output.read_text()
-            passed = calibration_passed(result, text, True)
-            if reset:
-                # Process success alone cannot certify that warmup costs were actually removed.
-                passed = passed and last_call_calibration_passed(selected_text, repeated_text, text)
-            else:
-                # The unreset control proves the second invocation was present and collected.
-                repeated_text = text
-                passed = passed and profile_counts(text)['Ir'] == 2*profile_counts(selected_text)['Ir']
-            result.pop('output')
-            report['controls'].append(dict(name=name, passed=passed, run=result, profile_sha256=digest(output)))
-            if not passed:
-                raise RuntimeError('profile last-call calibration failed: '+name)
+        calibrate_scope(checks, report)
         prepared = prepare_inputs(checks, BUILD) # The shared preparer admits only its maintained complete matrix.
         identities.update(prepared['identities'])
         report['provenance'] = prepared['provenance']
