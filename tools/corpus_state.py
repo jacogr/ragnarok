@@ -385,26 +385,58 @@ def jam_fuzzer_report_forks_corpus(compiler, report, checks, libraries):
     return corpus
 
 
+def run_fuzzer_guest_reference(compiler, report, checks, libraries, reference, identities,
+                               *, input_requests=True):
+    """Share exact-input replay builds while each source-owned corpus retains its own frozen reference and verdict."""
+    from jam_fuzzer_guest_reference import replay
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in (*identities, 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    requests, expected, evidence = replay(reference, input_requests=input_requests)
+    label = 'jam-fuzzer-'+reference.FIXTURE.stem.removeprefix('current-stf-')
+    source = checks.folder/(label+'.txt')
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_guest_replay.nim',
+        'jam-fuzzer-guest-replay', crypto_library=libraries['crypto'],
+        native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
+    corpus = dict(build=compiled, passed=False, **evidence)
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], label+'-corpus', expected)
+    announce(label+' independent whole STF maps', corpus['passed'])
+    return corpus
+
+
 @CORPORA.case
 def jam_fuzzer_report_guests_corpus(compiler, report, checks, libraries):
     """Compare actual fuzzer report-to-guest execution with independent complete-map STF calculations."""
     import current_stf_report_guests_oracle as reference
-    from jam_fuzzer_guest_reference import replay
-    from native_fixture_contracts import FIXTURE_CONTRACTS
-    for identity in ('current_stf_effects', 'current_stf_report_guests', 'state_report'):
-        for path, digest in FIXTURE_CONTRACTS[identity][2]:
-            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
-    requests, expected, evidence = replay(reference)
-    source = checks.folder/'jam-fuzzer-report-guests.txt'
-    source.write_text('\n'.join(requests)+'\n')
-    compiled, binary = checks.build(compiler, ROOT/'tests/native/jam_fuzzer_guest_replay.nim',
-        'jam-fuzzer-report-guests', crypto_library=libraries['crypto'],
-        native_libraries=(libraries['bandersnatch'],), quic_library=libraries['quic'])
-    corpus = dict(build=compiled, passed=False, **evidence)
-    compare_corpus(corpus, checks.command,
-                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'jam-fuzzer-report-guests-corpus', expected)
-    announce('independent nonempty fuzzer guest STF maps', corpus['passed'])
-    return corpus
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_effects', 'current_stf_report_guests'))
+
+
+@CORPORA.case
+def jam_fuzzer_storage_effects_corpus(compiler, report, checks, libraries):
+    """Compare nonempty preimage extrinsics and guest storage replacement/deletion/exception selection."""
+    import current_stf_effects_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_effects',), input_requests=False)
+
+
+@CORPORA.case
+def jam_fuzzer_request_effects_corpus(compiler, report, checks, libraries):
+    """Compare selected request creation, forgetting and checkpointed namespace versions through the fuzz backend."""
+    import current_stf_request_lifecycle_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_request_lifecycle', 'current_stf_transfers'))
+
+
+@CORPORA.case
+def jam_fuzzer_preimage_effects_corpus(compiler, report, checks, libraries):
+    """Compare queued provision relevance and actual canonical preimage fulfillment across guest selections."""
+    import current_stf_preimage_provision_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+                                     ('current_stf_preimage_provision', 'current_stf_transfers'))
 
 
 @CORPORA.case

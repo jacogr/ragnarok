@@ -5,9 +5,12 @@
 import hashlib
 
 
-def replay(reference):
+def replay(reference, *, input_requests=True):
     """Take only the reference's independently authored seed/child stream; retain every expected complete map."""
-    _, expected, evidence = reference.expected_observations()
+    if input_requests:
+        _, expected, evidence = reference.expected_observations()
+    else:
+        expected, evidence = reference.expected_observations() # This reference explicitly returns only the full observation stream.
     requests, initialized, waiting, blocks = [], False, False, 0
     for line in expected:
         tag, data = line.split(' ', 1)

@@ -24,3 +24,13 @@ The `jam_fuzzer_` source-owned corpus declaration joins the existing Fuzz / JAM
 job automatically. Live generated campaign validation remains pending a compatible
 engine. Subsequent work extends effect families, exceptional/deferred behavior,
 fork isolation and the separate seed header/state-clock compatibility boundary.
+
+Storage/preimage coverage adds the complete frozen effect, request-lifecycle and
+provision-lifecycle references:70 additional imports. Cases cover nonempty
+preimage extrinsics, storage creation/replacement/deletion, panic rollback,
+checkpoint retention, request creation/forgetting and selected queued provision
+relevance/fulfillment. Every namespace byte, account footprint, C13 statistic,
+C16 output and root is part of each whole-map comparison. The replay build is
+shared across independent source-owned corpus declarations, preserving separate
+inputs, logs and verdicts. Observation-only references are selected explicitly;
+unsupported or incomplete streams still fail closed.

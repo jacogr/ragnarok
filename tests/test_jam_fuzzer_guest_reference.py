@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import unittest
 from jam_fuzzer_guest_reference import replay
 import current_stf_report_guests_oracle as guests
+import current_stf_effects_oracle as effects
 
 
 class FuzzerGuestReference(unittest.TestCase):
@@ -21,6 +22,14 @@ class FuzzerGuestReference(unittest.TestCase):
         self.assertEqual(sum(line.startswith('O ') for line in expected), 35)
         self.assertEqual([line[2:] for line in requests if line.startswith('C ')],
                          [line[2:] for line in expected if line.startswith('P ')])
+
+    def test_nonempty_storage_preimage_stream(self):
+        """The explicit observation-only reference retains all20 guest executions and five nonempty extrinsics."""
+        requests, expected, evidence = replay(effects, input_requests=False)
+        self.assertEqual(evidence['reference']['guest_executions'], 20)
+        self.assertEqual(evidence['reference']['nonempty_extrinsics'], 5)
+        self.assertEqual(sum(line.startswith('B ') for line in requests), 10)
+        self.assertEqual(sum(line.startswith('O ') for line in expected), 10)
 
     def test_partial_or_substituted_stream_is_refused(self):
         """An incomplete or disconnected map cannot silently become a successful replay request."""
