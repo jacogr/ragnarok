@@ -139,3 +139,47 @@ witness covers that path. The subsequent synthetic extension passes77 focused
 Python guards and a real checked native integration: four exact assertion controls,
 twelve reversed processes and1,716 validated invocations. Local integration timings
 are discarded; Linux timing qualification remains attached to each exact CI head.
+
+
+## Canonical paired compilation and native image controls
+
+A build-only diagnostic on pinned Nimony found that equal captured sources compiled
+from role-specific snapshot paths produce different native symbol suffixes and code
+bytes. Four checked ARC/Clang ThinLTO builds used the same P5 source tree: separate
+baseline/candidate paths gave different images, while a shared canonical source path,
+fixed output basename and independent compiler caches gave byte-identical binaries.
+No guests or execution clocks were used in that diagnostic; no timing effect is
+assigned to the image difference. Evidence is retained under
+`build/pvm12/build-path-proof/results.json`.
+
+Each role now reactivates its captured source manifest at `snapshots/compiled`.
+Activation must reproduce the exact captured bytes and membership before compilation;
+post-build checks detect source changes before the path is reused. Deletions retire
+stale members. Original baseline/candidate snapshots remain separate provenance
+owners, and the final candidate compilation snapshot is sealed through all measured
+processes. Each role keeps independent compiler caches and output directories while
+using the same native/synthetic output basenames. Compiler, flags, driver, fixtures,
+pricing policies, matrix ordering, cold rows and full-state/assertion checks remain
+unchanged; every build still finishes before timing.
+
+Version1 compilation identities require SHA-256-equal whole native images whenever
+the captured sources are equal: one guest pair and separate legacy/memo synthetic
+pairs. Missing, changed, mismatched or retyped identities refuse before any timed
+process and cannot produce a completed aggregate or summary. Different source
+revisions legitimately produce different images. Historical reports retain their
+source-only evidence without acquiring the new image-equality claim. CI now retains
+the nested role build logs and manifests, while binaries, sources and compiler caches
+remain excluded from artifacts.
+
+Focused Python guards cover canonical role activation, stale/deleted members, source
+changes, every image profile, malformed identities, legacy report rendering and a
+same-source image mismatch stopping real orchestration before timing. Exact-head
+Linux validation remains pending before publication.
+
+Local qualification passes38 focused guest-comparison/input Python tests, workflow
+YAML parsing and inventory checks. Six real checked ARC/Clang ThinLTO builds pass
+all native assertion controls; the guest, synthetic legacy and synthetic memo pairs
+are each whole-file byte-identical. That integration executes no benchmark samples
+or timing comparisons. Its hashes and compiler/control logs remain under
+`build/pvm12/canonical-paired-integration/`. The Linux paired job will also rerun
+PR1554 against its immediate runtime parent under the canonical build path.

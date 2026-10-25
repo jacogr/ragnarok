@@ -5,7 +5,9 @@
 """Compare a resolved PVM revision and working sources using one checked driver and paired guests.
 
 Make owns provisioning. Only library sources vary; fixtures, driver, compiler, flags and pricing
-policies stay fixed. Successful reports require complete state checks and unchanged byte identities.
+policies stay fixed. Canonical compiler paths and independent role caches preserve reproducible
+images; same-source controls require byte-identical executables before any timing. Successful
+reports require complete state checks and unchanged byte identities.
 """
 import json
 import os
@@ -105,6 +107,73 @@ def snapshot(folder, commit, driver):
     return hashes
 
 
+def activate_endpoint(folder, variant, baseline, driver, endpoints):
+    """Compile either captured endpoint through one source path, refusing any change since capture."""
+    if variant not in ('baseline', 'candidate'):
+        # A role chooses one known endpoint; it can never redirect the source root.
+        raise ValueError('unknown paired compilation variant')
+    canonical = folder/'snapshots/compiled'
+    observed = snapshot(canonical, baseline if variant == 'baseline' else None, driver)
+    if observed != endpoints[variant]:
+        # Candidate edits or changed membership must fail before a compiler can consume different bytes.
+        raise ValueError('paired compilation endpoint changed: '+variant)
+    return canonical
+
+
+def identical_image_controls(endpoints, hashes, synthetic):
+    """Equal source endpoints must produce equal native images for every measured build profile."""
+    if type(synthetic) is not bool:
+        raise ValueError('invalid paired synthetic image selection')
+    pairs = [('native', 'baseline', 'candidate')]
+    if synthetic:
+        # Legacy and memo drivers are separate profiles; equality applies within each profile only.
+        pairs += [('synthetic-'+profile, 'synthetic-baseline-'+profile,
+                   'synthetic-candidate-'+profile) for profile in ('legacy', 'memo')]
+    expected = {name for _, first, second in pairs for name in (first, second)}
+    if type(hashes) is not dict or set(hashes) != expected:
+        raise ValueError('incomplete paired native image identities')
+    for value in hashes.values():
+        # Hashes have one canonical spelling; bool/int aliases cannot substitute for captured bytes.
+        if type(value) is not str or len(value) != 64 or any(c not in '0123456789abcdef' for c in value):
+            raise ValueError('invalid paired native image identity')
+    if (type(endpoints) is not dict or set(endpoints) != {'baseline', 'candidate'}
+            or any(type(value) is not dict for value in endpoints.values())):
+        raise ValueError('invalid paired source endpoints')
+    for manifest in endpoints.values():
+        # Captured sources have canonical checksums too; report edits cannot replace them with truthy scalar aliases.
+        if not manifest or any(type(name) is not str or not name or type(value) is not str
+                or len(value) != 64 or any(c not in '0123456789abcdef' for c in value)
+                for name, value in manifest.items()):
+            raise ValueError('invalid paired source endpoint identity')
+    if endpoints['baseline'] != endpoints['candidate']:
+        # Different source revisions legitimately produce different images; no equality claim is made.
+        return []
+    return [dict(profile=profile, baseline_sha256=hashes[first], candidate_sha256=hashes[second],
+                 passed=hashes[first] == hashes[second]) for profile, first, second in pairs]
+
+
+def validate_build_identity(report):
+    """Validate versioned image controls before timing and again before rendering a successful report."""
+    if type(report) is not dict:
+        raise ValueError('invalid paired comparison report')
+    if 'compilation_identity_version' not in report:
+        # Historical reports retain their source-only evidence and cannot claim the new image control.
+        return
+    if type(report['compilation_identity_version']) is not int or report['compilation_identity_version'] != 1:
+        raise ValueError('unsupported paired compilation identity version')
+    endpoints = report.get('endpoints')
+    controls = identical_image_controls(endpoints, report.get('binary_sha256'),
+                                       report.get('synthetic_enabled', False))
+    expected = endpoints['baseline'] == endpoints['candidate']
+    if type(report.get('identical_sources')) is not bool or report['identical_sources'] != expected:
+        raise ValueError('changed paired source equality selection')
+    if json.dumps(report.get('identical_image_controls'), sort_keys=True) != json.dumps(controls, sort_keys=True):
+        raise ValueError('changed paired native image controls')
+    if any(not row['passed'] for row in controls):
+        # A same-source job is a noise control only when its actual measured images are byte-identical.
+        raise ValueError('identical-source native images differ')
+
+
 def unchanged(identities):
     """Invalidate the whole comparison if a source, input, dependency or binary changes during the run."""
     for path, expected in identities.items():
@@ -112,7 +181,7 @@ def unchanged(identities):
             raise ValueError('paired guest input changed during run: '+str(path))
 
 
-def prepare_synthetic(checks, compiler, folder, report, binaries, identities):
+def prepare_synthetic(checks, compiler, folder, report, binaries, identities, baseline, driver):
     """Build both current synthetic drivers against frozen endpoints before any measured matrix."""
     variable, fixture, files = load_fixture_contracts(ROOT/'tests/fixtures')['pvm_benchmark']
     if variable != 'RAGNAROK_PVM_BENCHMARK':
@@ -125,10 +194,17 @@ def prepare_synthetic(checks, compiler, folder, report, binaries, identities):
     descriptor = ROOT/'tests/fixtures/pvm_benchmark.fixture.json'
     identities[descriptor] = digest(descriptor)
     for variant in ('baseline', 'candidate'):
+        endpoint = activate_endpoint(folder, variant, baseline, driver, report['endpoints'])
+        build_folder = folder/'builds'/variant
+        build_folder.mkdir(parents=True, exist_ok=True)
+        variant_checks = NativeChecks(build_folder, reuse_builds=True)
         for profile, defines in (('legacy', ()), ('memo', ('pvmBenchmarkMemo',))):
             name = 'synthetic-'+variant+'-'+profile
-            row, binary = build(checks, compiler, folder/'snapshots'/variant/DRIVER[2],
-                                name, defines=defines)
+            # Both roles use the same source path and output basename, while their writable compiler caches remain independent.
+            row, binary = build(variant_checks, compiler, endpoint/DRIVER[2],
+                                'synthetic-'+profile, defines=defines)
+            unchanged({endpoint/path: value for path, value in report['endpoints'][variant].items()})
+            row.update(variant=variant, profile=profile)
             report['builds'].append(row)
             binaries[name] = binary
             identities[binary] = digest(binary)
@@ -201,6 +277,7 @@ def synthetic_summary(report):
 
 def summarize(report):
     """Validate complete opposite-order coverage and show all CPU cells, including regressions and noise."""
+    validate_build_identity(report)
     if (not isinstance(report, dict) or report.get('status') != 'checks-passed'
             or type(report.get('cases')) is not list or type(report.get('runs')) is not list):
         raise ValueError('paired guest comparison has not completed')
@@ -242,8 +319,15 @@ def summarize(report):
                 medians.append(statistics.median(samples)/1e6)
             change = 100*(medians[1]/medians[0]-1)
             lines.append(f'| {guest} | {limit} | {mode} | {medians[0]:.3f} | {medians[1]:.3f} | {change:+.1f}% |')
-    if report.get('identical_sources', False):
-        lines.append('Identical source endpoints: timing differences are control variation, not a code improvement.')
+    if report.get('compilation_identity_version') == 1:
+        # Versioned reports qualify image equality, not merely equality of source hashes.
+        if report['identical_sources']:
+            lines.append('Identical source endpoints and native images: timing differences are control variation.')
+        else:
+            lines.append('Both endpoints use one canonical compiler source path, fixed output basenames and independent caches.')
+    elif report.get('identical_sources', False):
+        # Historical source-only controls remain readable without acquiring the stronger new claim.
+        lines.append('Identical source endpoints: source-only control variation; this historical report does not establish native image identity.')
     lines.extend(['', 'Three warmups and ten measured samples per process; two reversed orders.',
         'Differences below a few percent are unproven; inspect raw spread and repeat suspicious cells.',
         'Preparation and first-cold samples remain in results.json. No universal or Linux speed claim.'])
@@ -258,7 +342,8 @@ def run(base_ref, scope='all', folder=None, synthetic=False):
     folder.mkdir(parents=True, exist_ok=True)
     for name in ('results.json', 'partial.json', 'summary.md'):
         (folder/name).unlink(missing_ok=True) # A failed rerun never leaves an earlier successful downloadable summary.
-    report = dict(status='running', runs=[], builds=[], controls=[], cases=[], endpoints={})
+    report = dict(status='running', runs=[], builds=[], controls=[], cases=[], endpoints={},
+                  compilation_identity_version=1)
     try:
         if type(synthetic) is not bool:
             raise ValueError('PVM_COMPARE_SYNTHETIC must be 0 or 1')
@@ -296,9 +381,15 @@ def run(base_ref, scope='all', folder=None, synthetic=False):
         report['builds'].extend(prepared['builds'])
         checks = NativeChecks(folder, reuse_builds=True)
         for variant in ('baseline', 'candidate'):
-            endpoint = folder/'snapshots'/variant
-            row, binary = build(checks, compiler, endpoint/DRIVER[0], 'native-'+variant,
+            endpoint = activate_endpoint(folder, variant, baseline, driver, report['endpoints'])
+            build_folder = folder/'builds'/variant
+            build_folder.mkdir(parents=True, exist_ok=True)
+            variant_checks = NativeChecks(build_folder, reuse_builds=True)
+            # Output basenames also affect native image identity; roles differ only in their independent cache/output directories.
+            row, binary = build(variant_checks, compiler, endpoint/DRIVER[0], 'native',
                               cflags=('-I'+str(endpoint/'tests/performance'),))
+            unchanged({endpoint/path: value for path, value in report['endpoints'][variant].items()})
+            row.update(variant=variant)
             report['builds'].append(row)
             binaries[variant] = binary
             identities[binary] = digest(binary)
@@ -309,7 +400,16 @@ def run(base_ref, scope='all', folder=None, synthetic=False):
                     or 'pvm sieve native assertion control' not in output):
                 raise RuntimeError('paired guest assertion control failed: '+variant)
             report['controls'].append(dict(variant=variant, run=control, passed=True))
-        fixture = prepare_synthetic(checks, compiler, folder, report, binaries, identities) if synthetic else None
+        fixture = prepare_synthetic(checks, compiler, folder, report, binaries, identities,
+                                    baseline, driver) if synthetic else None
+        report.update(identical_sources=report['endpoints']['baseline'] == report['endpoints']['candidate'],
+                      binary_sha256={name: digest(path) for name, path in binaries.items()})
+        report['identical_image_controls'] = identical_image_controls(
+            report['endpoints'], report['binary_sha256'], synthetic)
+        validate_build_identity(report)
+        # Compilation is complete. Retain the final candidate snapshot as another immutable input throughout all measured processes.
+        canonical = folder/'snapshots/compiled'
+        identities.update({canonical/path: value for path, value in report['endpoints']['candidate'].items()})
         for repeat, order in enumerate((('baseline', 'candidate'), ('candidate', 'baseline'))):
             for guest, limit, data, expected in prepared['inputs']:
                 for mode, engine in MODES.items():
