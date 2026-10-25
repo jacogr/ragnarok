@@ -58,3 +58,27 @@ sessions, nine imports and 26 exact exchanges, including every exact Error/prior
 map and its real mismatch control. Focused Python checks, fresh driver semantics,
 formatting and inventory passed; a mock Initialize-tag test error was corrected
 and both refusal tests plus their complete changed test module passed on rerun.
+
+## Winner activation and fallback sealing
+
+Four full-profile chains independently distinguish an adjacent epoch after an
+observed saturated tail, a skipped tail, an incomplete 599-entry contest, and a
+multi-epoch skip after a valid winner announcement. The ordinary path first
+admits a real replacement ticket, announces all 600 zigzag winners at slot 500,
+then uses genuine ticket-context credentials after activation at slot 600.
+Later empty contests restore fallback scheduling at the next epoch. Every selected
+winner is tied to its independently known scalar and exact attempt byte.
+
+The reference calculates complete variable-sized epoch/winner markers, the
+appropriate ticket/fallback sealing domain, entropy, complete roster/statistics
+rotation, history/MMR and every unchanged service namespace before execution.
+Missing/altered winners, unexpected winners for an incomplete contest, and a
+missing epoch marker are genuinely sealed inputs that must refuse with the exact
+marker cause while preserving the entire prior map and allowing valid continuation.
+
+Observed sealing validation: all 26 new complete-map steps, including four typed
+marker refusals, and all nine unchanged contest steps passed checked native replay.
+Unchanged upstream minifuzz passed four sessions, 26 imports and 68 exact exchanges
+with its real mismatch control. All 56 focused Python tests and fresh inventory
+passed. Native/Rust source trees retain layer2's formatting/semantic evidence;
+GP checks, primitive cap and all original fixture answers remain unchanged.

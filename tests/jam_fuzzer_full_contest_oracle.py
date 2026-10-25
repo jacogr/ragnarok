@@ -16,16 +16,22 @@ FIXTURE = Path(__file__).parent/'fixtures/jam-fuzzer-full-contest.json'
 
 
 @cache
-def contest():
-    """Every seeded ticket is a mathematical output of a distinct known member of the unchanged1023-member ring."""
-    result = []
-    # These members are disjoint from the frozen incoming proof bank; no accumulator entry is invented from random bytes.
+def ticket_owners():
+    """Bind independently derived identifiers to their known private fixture scalars for later ticket sealing."""
+    owners = {}
+    # These members are disjoint from the frozen incoming proof bank; no identifier is invented from random bytes.
     for secret in range(17,1024):
         _,score = sign(secret,b'jam_ticket_seal'+bytes(33),b'')
-        result.append(score+b'\0')
-    result.sort(key=lambda row:row[:32])
-    assert len({row[:32] for row in result}) == 1007
-    return tuple(result[:600])
+        assert score not in owners
+        owners[score] = secret
+    assert len(owners) == 1007
+    return owners
+
+
+@cache
+def contest():
+    """Every seeded ticket is a mathematical output of a distinct known member of the unchanged1023-member ring."""
+    return tuple(score+b'\0' for score in sorted(ticket_owners())[:600])
 
 
 def original(size):

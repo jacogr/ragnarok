@@ -187,6 +187,14 @@ def jam_fuzzer_full_profile(identity):
 
 
 @reference()
+def jam_fuzzer_full_sealing(identity):
+    """Require full winner activation, each skipped-tail/epoch fallback and signed marker refusal trace."""
+    import jam_fuzzer_full_sealing_oracle as source
+    from jam_fuzzer_full_profile_oracle import parameters
+    return selected(source,identity,[parameters()]*len(source.PLANS),spec='full')
+
+
+@reference()
 def jam_fuzzer_full_tickets(identity):
     """Require both full-population nonempty16-ticket admission chains and every complete map."""
     import jam_fuzzer_full_tickets_oracle as source

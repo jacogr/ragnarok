@@ -908,6 +908,16 @@ def jam_fuzzer_full_profile_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_sealing_corpus(compiler, report, checks, libraries):
+    """Compare full600-entry winner markers, ticket/fallback credentials and exact marker refusals over epoch crossings."""
+    import jam_fuzzer_full_sealing_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_ticket_input', 'jam_full_guest_ring_input', 'jam_fuzzer_full_contest', 'jam_fuzzer_full_sealing'),
+        profiles=[full.parameters()]*len(reference.PLANS))
+
+
+@CORPORA.case
 def jam_fuzzer_full_tickets_corpus(compiler, report, checks, libraries):
     """Execute full16-ticket blocks against independent complete maps and author-specific statistics."""
     import jam_fuzzer_full_tickets_oracle as reference
