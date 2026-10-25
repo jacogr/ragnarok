@@ -35,6 +35,14 @@ func identity*(trust: TrustedApplicationCheckpoint): ApplicationCheckpointIdenti
     requires: trust.initialized.} =
   ## Return only fixed copied context; sealed bytes remain private.
   trust.context
+func sealedHeaderLength*(trust: TrustedApplicationCheckpoint): int =
+  ## Observe bounded transport size without exposing private wire storage or granting a default owner authority.
+  if trust.initialized: trust.sealed.len else: 0
+proc copySealedHeader*(trust: TrustedApplicationCheckpoint, output: var openArray[byte]): bool =
+  ## Copy into independent caller storage only after full capacity admission; defaults/short buffers leave output unchanged.
+  if not trust.initialized or output.len < trust.sealed.len: return false
+  for index, octet in trust.sealed: output[index] = octet # Capture already detached this immutable wire from the original caller.
+  true
 func error*(outcome: CheckpointTrustResult): CheckpointTrustError =
   ## Observe capture refusal without payload extraction.
   outcome.status

@@ -12,6 +12,11 @@ atomic replacement and directory sync. See the
 [checkpoint contract](../../spec/state-checkpoint.md). These are full-state snapshots,
 not light-state databases or authenticated chain-head recovery.
 
+`LightApplicationHead` binds an independently trusted checkpoint identity/header to a partial
+`ProofView` and a bounded linked-header window. It uses configured header geometry and restores
+local metadata against independent current trust. Complete-map execution continues to use
+`StateStore`; light proof queries preserve present, absent and unknown evidence separately.
+
 Snapshots can fork private complete-map working stores with inherited resource ceilings; branches share
 only immutable prior owners and publish independently.
 The [`storage/full_state_trie`](../../src/storage/README.md) provides immutable complete-map

@@ -395,3 +395,51 @@ sha256:fee07467694b2f0e3b5a861a78d7d65584ecc4b2ae58b3eeb041a5fcef7c8da6.
 Frozen source hashes and native evidence: build/storage-db5-replay-linux.json. Existing journal
 facade regression, separate formatting and all 420 production modules plus peer semantic Smoke
 also pass locally. The previously documented macOS PVM preparation-worker baseline is unchanged.
+
+## Trusted light application heads
+
+`LightApplicationHead` owns immutable partial ProofView evidence and at most eight directly
+linked sealed-header snapshots. It exposes no complete-map execution snapshot. Its posterior
+root comes from an independently captured ApplicationCheckpointIdentity/header trust input;
+the sealed header's prior root remains a distinct parent binding. Present, present-empty,
+proven absent and unknown/MissingWitness retain their existing ProofView meanings. Explicit
+metadata-only initialization knows a root and zero facts.
+
+Capture checks exact bounded canonical header consumption, sealed hash, identity slot and
+configured profile. Header core/epoch geometry matches the fixed fetch parameters; the active
+author-validator population is selected independently by the caller's chain profile. It is
+not inferred from fetch parameters, an author index or partial evidence. Enrichment admits
+only genuinely verified matching-root facts under tightened view quotas. Trusted advancement
+requires an unchanged parameter profile, strictly greater slot, exact parent hash and the
+parent posterior root in the child's prior-state field. It starts a fresh explicitly supplied
+proof collection under the successor posterior root and retains a bounded newest-header window.
+Old immutable heads and proofs remain independently readable. These structural bindings do
+not authenticate consensus, execute a state transition or infer finality.
+
+Local header metadata has one exact schema: `RAGNAROK-LIGHT-HEAD-V1\n`, E2 author-validator
+population, E1 nonzero count (at most eight), then repeated 238-byte canonical checkpoint
+identity, E4 exact nonempty sealed-header length, and sealed bytes. Each header remains bounded
+by the existing 256 KiB trust transport ceiling plus caller per-header/aggregate limits. Output
+extents, input fields, aggregate sums and narrowing are checked before copying or allocation.
+No raw opaque-context, complete-map or alternate-version fallback is accepted.
+
+Restoration requires an independently supplied current trusted identity/header and matching
+partial view. It validates every record's identity checksum, header hash/slot/profile, direct
+parent/prior-root links and exact final current identity. Older records are anchored by the
+next sealed header; no stored bytes are converted into an operator trust capability. The
+header transport API copies private sealed bytes into independent caller buffers only after
+full capacity admission. Failed/default results expose no partial head or encoded prefix.
+
+The native suite covers immutable input/output transport, empty evidence, genuine present/
+empty/absent facts versus unknown keys, wrong-root or over-budget evidence, profile/population/
+slot/parent/prior-root failures, exact context framing and independent trust, bounded rolling
+history, strict per-field limits and 1,000 ownership round trips. This is the application head
+contract; the light paged owner and usable mode/runtime integration follow in this stack.
+
+The final light_application_head suite passes checked macOS ARM64 and Linux amd64 under
+Docker emulation, with 1,000 capture/enrichment/advancement/context ownership cycles at
+76,160 -> 76,160 occupied bytes on both. The existing state_checkpoint_trusted suite also
+passes with 1,000 cycles at 3,488 -> 3,488 bytes. Two private owner/result guards, separate
+stable formatting and all 421 production modules plus peer semantic Smoke pass locally.
+Qualified image: sha256:30e6e2f121c6f9a1f3089f2ae608e6b4b7504b746f121dd1c7dbbb4dc903090c.
+Frozen inputs and native evidence: build/storage-db5-light-head-linux.json.
