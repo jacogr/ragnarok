@@ -22,7 +22,7 @@ def scenarios(compiler, checks, libraries, oracle, fixtures, *, defines=()):
     source = checks.folder/(oracle.FIXTURE.stem+'-requests.txt')
     source.write_text('\n'.join(requests)+'\n')
     built, binary = checks.build(compiler, ROOT/'tests/native/current_stf_reporting_scenarios_driver.nim',
-        'current-stf-reporting-scenarios'+('-rotation-hosts' if defines else ''), defines=defines, crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+        'current-stf-reporting-scenarios'+('-rotation-designation' if 'rotationDesignations' in defines else '-rotation-hosts' if defines else ''), defines=defines, crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
     result = dict(build=built, passed=False, **evidence, requests=len(requests),
         requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
         reference='GP mathematical Thin, independent Ed25519 signatures and complete-map equations')
@@ -38,6 +38,15 @@ def current_stf_offender_reporting_corpus(compiler, report, checks, libraries):
     import current_stf_offender_reporting_oracle as oracle
     return scenarios(compiler, checks, libraries, oracle,
         ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_offender_reporting', 'state_report'))
+
+
+@CORPORA.case
+def current_stf_rotation_designation_corpus(compiler, report, checks, libraries):
+    """Qualify real designation, simultaneous delegation handoff and delayed promotion through four epochs."""
+    import current_stf_rotation_designation_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_validator_designation',
+         'current_stf_rotation_designation', 'state_report'), defines=oracle.NATIVE_DEFINES)
 
 
 @CORPORA.case
