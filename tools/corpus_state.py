@@ -968,6 +968,16 @@ def jam_fuzzer_full_tickets_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_verdict_availability_corpus(compiler, report, checks, libraries):
+    """Compare cancellation before assurance bits, exact late rollback and surviving-report guest effects."""
+    import jam_fuzzer_full_verdict_availability_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_guest_ring_input', 'jam_fuzzer_full_verdict_availability', 'jam_fuzzer_full_pending_disputes', 'jam_fuzzer_full_guests'),
+        profiles=[full.parameters()]*len(reference.MODES))
+
+
+@CORPORA.case
 def jam_fuzzer_full_verdict_populations_corpus(compiler, report, checks, libraries):
     """Compare original-parent683/current681/previous683 verdicts, NULL-slot quorums and evidence membership expiry."""
     import jam_fuzzer_full_verdict_populations_oracle as reference

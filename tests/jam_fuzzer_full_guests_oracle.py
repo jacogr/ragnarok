@@ -101,14 +101,15 @@ def guarantee(parent, initial, *, slot=3, anchor=None, core=CORE, label=None):
                 credentials=[(index,signed(index,b'jam_guarantee',digest(raw))[1]) for index in indices[:2]])
 
 
-def assurances(parent,count,*,indices=None):
+def assurances(parent,count,*,indices=None,cores=(CORE,)):
     """Use all43 canonical bit bytes and683 genuinely distinct validator signatures for strict full-population quorum."""
     assert count == 0 or 683 <= count <= 692
     selected = tuple(range(count)) if indices is None else tuple(indices)
     assert len(selected) == count and list(selected) == sorted(set(selected))
     assert all(0 <= index < full.VALIDATORS for index in selected)
     anchor = history(parent[chapter_key(3)])[0][-1][0][:32]
-    bits = (1 << CORE).to_bytes(43,'little')
+    assert cores and list(cores) == sorted(set(cores)) and all(0 <= core < full.CORES for core in cores)
+    bits = sum(1 << core for core in cores).to_bytes(43,'little')
     target = digest(anchor+bits)
     return [dict(anchor=anchor,bits=bits,index=index,signature=signed(index,b'jam_available',target)[1]) for index in selected]
 
@@ -123,15 +124,16 @@ def body(gs,ass,*,disputes=bytes(3)):
     return raw,commitment
 
 
-def advance(parent,initial,mode,slot,gs,ass,stored, *, admission_slot=3):
+def advance(parent,initial,mode,slot,gs,ass,stored, *, admission_slot=3,disputes=bytes(3),offenders=(),posterior_judgments=None):
     """Compose independent admission, availability, full statistics and literal guest effects over the full foundation."""
     released = slot == admission_slot+1
     assert len(ass) >= 683 if released else not ass
     outputs = ((99,COMMITMENT),) if released and mode != 'panic-rollback' else ()
-    raw,commitment = body(gs,ass)
+    raw,commitment = body(gs,ass,disputes=disputes)
     author = int.from_bytes(digest(bytes(32)+slot.to_bytes(4,'little'))[:4],'little') % full.VALIDATORS
-    wire,result = full.child(parent,body=raw,extrinsic_root=commitment,outputs=outputs,author=author,secret=author+1)
+    wire,result = full.child(parent,body=raw,extrinsic_root=commitment,outputs=outputs,author=author,secret=author+1,offenders=offenders)
     assert int.from_bytes(wire[96:100],'little') == slot
+    if posterior_judgments is not None: result[chapter_key(5)] = posterior_judgments # Guest rollback never rewinds already-admitted extrinsic judgments.
     old = [None]*full.CORES
     # Only the guarantee-bearing child leaves a pending assignment; the next quorum releases it.
     if slot == admission_slot: old[CORE] = dict(guarantee={key:gs[0][key] for key in ('report','slot','credentials')},registered=slot)
