@@ -51,10 +51,10 @@ def original(profile):
     return parent
 
 
-def effects(result,parent,profile,slot,budget,child=None):
+def effects(result,parent,profile,slot,budget,child=None, *, creation_slot=4, execution_slots=(6,), statistics_config=DEFAULT):
     """Creation/provision terminal selection determines whether a later real child report can execute current code."""
     target=replacement();provided=profile in ('provide','checkpoint-after-provide')
-    if slot==4:
+    if slot==creation_slot:
         child=creation_ids(result,slot,1)[0]
         instructions,_=program(profile)
         gas=simulate(instructions,gas_definitions(),prefix=[b'\0']*5)[0]+3855+3980+(2264*len(target)+1023)//1024+103*int(profile.startswith('checkpoint-'))
@@ -67,12 +67,12 @@ def effects(result,parent,profile,slot,budget,child=None):
             child=None # Ordinary creation and queued code vanish together on uncheckpointed panic.
         service=99
     else:
-        assert slot==6 and child is not None
+        assert slot in execution_slots and child is not None
         service=child;gas=22 if provided else 0 # N1/G0 remains honest for a created but not yet code-ready account.
     assert gas<=budget
     key=chapter_service(255,service);code,wide,narrow=account_parse(result[key],105)
     narrow=list(narrow);narrow[2]=slot;result[key]=account_wire((code,wide,narrow))
-    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],DEFAULT)
+    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],statistics_config)
     activity={row[0]:list(row) for row in services};row=activity.setdefault(service,[service]+[0]*11);row[9]+=1;row[11]+=gas
     result[chapter_key(13)]=statistics_wire((current,previous,cores,[tuple(activity[sid]) for sid in sorted(activity)]))
     return dict(slot=slot,gas=gas,service=service,child=child,code_ready=provided and child is not None)

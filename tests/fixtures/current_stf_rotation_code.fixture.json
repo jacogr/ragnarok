@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ROTATION_CODE",
+  "files": {
+    "current-stf-rotation-code.json": "077359a952753fb96361719dad1527e7a1d52444a384779730039ee5615cb2fc"
+  },
+  "target": "current-stf-rotation-code.json"
+}
