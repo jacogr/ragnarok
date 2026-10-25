@@ -65,7 +65,7 @@ def reference_sessions(reference, identity, parameters=None, *, spec='tiny', loc
         for job, cases in zip(jobs, local_cases):
             assert all(set(case) == {'initialize', 'block', 'header', 'state'} and all(isinstance(value, bytes) for value in case.values()) for case in cases)
             job['local_missing_evidence'] = tuple(cases)
-    evidence = dict(reference=identity, fixture_sha256=hashlib.sha256(reference.FIXTURE.read_bytes()).hexdigest(),
+    evidence = dict(reference=identity, sessions=len(jobs), signed_imports=sum(len(job['steps']) for job in jobs), fixture_sha256=hashlib.sha256(reference.FIXTURE.read_bytes()).hexdigest(),
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
     return jobs, evidence
 
@@ -94,40 +94,9 @@ def prepare_sessions(parameters):
 
 
 def prepare_effect_sessions():
-    """Add every coherent complex-effect sibling family with its original explicit deposit/code profiles."""
-    import importlib
-    from jam_fuzzer_effect_forks_reference import profiles
-    jobs, initial = prepare_sessions(host_parameters())
-    evidence = list(initial['references'])
-    for name in ('transfer', 'account', 'privileged', 'supervised', 'deferred'):
-        identity = 'jam_fuzzer_'+name+'_forks'
-        reference = importlib.import_module(identity+'_oracle')
-        selected, proof = reference_sessions(reference, identity, profiles(reference.FAMILIES))
-        jobs.extend(selected); evidence.append(proof)
-    import jam_fuzzer_epoch_effect_forks_oracle as epoch
-    selected, proof = reference_sessions(epoch, 'jam_fuzzer_epoch_effect_forks', epoch.host_profiles())
-    jobs.extend(selected); evidence.append(proof)
-    import jam_fuzzer_full_profile_oracle as full
-    selected, proof = reference_sessions(full, 'jam_fuzzer_full_profile', [full.parameters()]*2, spec='full')
-    jobs.extend(selected); evidence.append(proof)
-    import jam_fuzzer_full_guests_oracle as full_guests
-    selected, proof = reference_sessions(full_guests, 'jam_fuzzer_full_guests', [full.parameters()]*len(full_guests.MODES), spec='full')
-    jobs.extend(selected); evidence.append(proof)
-    import jam_fuzzer_full_epochs_oracle as full_epochs
-    selected, proof = reference_sessions(full_epochs, 'jam_fuzzer_full_epochs', [full.parameters()]*len(full_epochs.SLOTS), spec='full')
-    jobs.extend(selected); evidence.append(proof)
-    import jam_fuzzer_full_ancestry_oracle as full_ancestry
-    selected, proof = reference_sessions(full_ancestry, 'jam_fuzzer_full_ancestry', [full.parameters()], spec='full', local_cases=[full_ancestry.local_evidence_cases()])
-    from jam_fuzzer_stream_recovery import bind
-    assert len(selected) == 1
-    bind(selected[0])
-    jobs.extend(selected); evidence.append(proof)
-    import jam_fuzzer_fork_capacity_oracle as capacity
-    selected, proof = reference_sessions(capacity, 'jam_fuzzer_fork_capacity', [full.parameters()]*len(capacity.guests.MODES), spec='full', fork_capacity=capacity.CAPACITY)
-    from jam_fuzzer_fork_retention import bind as bind_forks
-    for job in selected: bind_forks(job)
-    jobs.extend(selected); evidence.append(proof)
-    return jobs, session_evidence(jobs, evidence)
+    """Execute the source-owned reference plan; pinned metadata independently requires every family and local control."""
+    from jam_minifuzz_plan import prepare
+    return prepare()
 
 
 def exercise_sessions(endpoint, jobs, evidence):

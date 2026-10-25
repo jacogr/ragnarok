@@ -82,3 +82,17 @@ def exercise(endpoint, plan):
         assert exchange(peer,b'\x03'+following['block']) == b'\x02'+following['state'][:32]
         assert exchange(peer,b'\x04'+digest(following['header'])) == b'\x05'+following['state'][32:]
     return completed+1
+
+
+def required_controls():
+    """Declare control budgets from their pinned source fixtures, independently of which jobs a builder emits."""
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    payloads = {}
+    for identity in ('jam_fuzzer_full_ancestry','jam_fuzzer_stream_recovery'):
+        _,target,members = FIXTURE_CONTRACTS[identity]
+        for path,expected in members: assert hashlib.sha256(path.read_bytes()).hexdigest() == expected
+        payloads[identity] = json.loads(target.read_text())
+    ancestry = payloads['jam_fuzzer_full_ancestry'];recovery = payloads['jam_fuzzer_stream_recovery']
+    assert ancestry['chains'] == 1 and len(ancestry['missing_evidence_sha256']) == 64
+    assert recovery['control_count'] == len(recovery['cases'])+1
+    return dict(local_missing_evidence=ancestry['chains'],stream_recoveries=recovery['control_count'])
