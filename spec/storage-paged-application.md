@@ -178,3 +178,49 @@ The same checked native suite passes on Linux amd64 under Docker emulation, with
 cycles retaining 45,632 -> 45,632 occupied bytes. Existing StateStore transport, full V2 context
 and old-epoch reader regressions pass. Source inventory, separate stable pinned formatting and
 419 production modules plus the peer entry point pass local semantic Smoke.
+
+## Complete disk-state facade
+
+DiskStateStore now owns exactly one explicitly selected physical backend, including a full paged
+writer and ordinary immutable resident StateStore. Exclusive contextual initialization publishes
+current plus independently supplied retained complete roots in one artifact. Local reopening first
+admits the complete selected V2 graph under its writer lease, then reconstructs the selected full
+map through the independent StateStore commitment check. Application history/profile/header and
+checkpoint trust validation remain the caller's following startup step.
+
+Native ordinary generation zero maps to application generation one; every later replacement
+advances both once. The facade checks overflow before addition or publication. Commits preserve
+exact expected snapshot identity and inherited state policy, stage bounded complete retained maps
+and opaque context, then expose the exact target owner only after confirmed native publication
+and usable retirement. A failed final directory barrier leaves the old memory owner private;
+fresh close/reopen resolves the actual selected old/new state and matching context together.
+
+Context, fresh synchronization and managed-usage queries use DiskIoResult with guarded payloads
+and the existing FileError domain. Other facade failures retain exact native or paged-state causes.
+Native synchronize confirms fresh selected-file and directory barriers; uncertainty poisons the
+writer. Failed construction/initialization retires every acquired descriptor without removing
+forensic bytes. Existing retained state snapshots remain usable after close or uncertainty.
+Managed maintenance, cleanup and migration explicitly refuse a paged owner; paged reclamation
+continues to require its distinct exact receipt/replay contract.
+
+The paged_disk_state_store native suite qualifies exact target-owner adoption, same-snapshot
+preconditions, context-required refusal, generation mapping, native lease exclusion, retained
+complete roots, local restart and the existing disk-history reconstruction over eight rolling
+headers plus an older finalized anchor. It checks byte-identical re-encoded application context,
+exact current snapshot ownership, native rename/fresh-barrier/final-directory-barrier uncertainty
+and closed-owner retirement. Its 1,000 historical-map/context capture cycles retain
+12,480 -> 12,480 occupied bytes with checked macOS ARC/Clang. Source-owned compiler guards reject
+private native owner replacement and forged successful IO result payloads.
+
+The existing disk_services_boundaries suite currently terminates on macOS with SIGBUS in the
+PVM preparation worker's decodeInstructionMiss stack guard, before disk publication. An isolated
+archive of published parent PR #1548 (991a530caf2c534bb2a261314cf93b018be4bd5a), using identical
+generated build/UI inputs, pinned compiler, foreign libraries and static fixture, reproduces
+the same runtime exit 138. This is a baseline limitation outside the paged storage change; it is
+not counted as a passing service regression. Journal disk-state, application history, managed
+disk-chain and local paged reconstruction regressions pass.
+
+The full paged disk facade suite also passes on Linux amd64 under Docker emulation, including
+nine-root history/finality and early/late durability failures. Its 1,000 ARC cycles retain
+12480 -> 12480 occupied bytes. Private compiler guards, source inventory, stable pinned formatting and
+419 production modules plus the peer entry point pass local semantic Smoke.

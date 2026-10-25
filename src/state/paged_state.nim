@@ -321,3 +321,19 @@ proc restorePagedStateStore*(reader: FullPagedWriter, expected: StateRoot,
   if staged.error != PagedStateError.None: return refused[StateStore](staged.error)
   let stage = staged.value
   finishRestore(stage, expected, limits, reader.visitEntries(expected, restoreVisitor(stage)))
+
+func failure*[T](outcome: PagedStateResult[T]): PagedStateResult[bool] {.requires:
+    outcome.status != PagedStateError.None.} =
+  ## Composite owners preserve the selected transport refusal without a successful map or publication payload.
+  case outcome.status
+  of StateFailure: PagedStateResult[bool](status: PagedStateError.StateFailure,
+      stateCause: outcome.stateCause)
+  of ExportFailure: PagedStateResult[bool](status: PagedStateError.ExportFailure,
+      exportCause: outcome.exportCause)
+  of GeometryFailure: PagedStateResult[bool](status: PagedStateError.GeometryFailure,
+      geometryCause: outcome.geometryCause)
+  of CodecFailure: PagedStateResult[bool](status: PagedStateError.CodecFailure,
+      codecCause: outcome.codecCause)
+  of NativeFailure: PagedStateResult[bool](status: PagedStateError.NativeFailure,
+      nativeCause: outcome.nativeCause)
+  else: PagedStateResult[bool](status: outcome.status) # Plain refusals and defaults carry reasons alone.

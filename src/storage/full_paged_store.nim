@@ -1067,3 +1067,21 @@ proc visitEntries*(writer: FullPagedWriter, root: StateRoot,
   if data == nil or not data.active or not data.selected: return refused[FullPagedCounts](
       FullPagedNativeError.Uninitialized)
   writer.visitEntries(root, visitor, data.checked.limits.work)
+
+proc synchronize*(writer: var FullPagedWriter): FullPagedNativeResult[StorageDurability] =
+  ## Confirm fresh selected-file and directory barriers under the held exact CURRENT and writer lease.
+  let data = writer.data
+  if data == nil or not data.active: return refused[StorageDurability](
+      FullPagedNativeError.Uninitialized)
+  let selected = current(data)
+  if selected != FileError.None: return fileFailed[StorageDurability](selected)
+  let file = data.head.synchronize
+  if file != FileError.None:
+    data.poisoned = true # Failed durability cannot revive the remembered selected owner.
+    return fileFailed[StorageDurability](file)
+  let directory = data.directory.synchronize
+  if directory != FileError.None:
+    data.poisoned = true # A successful file barrier alone never grants the complete receipt.
+    return fileFailed[StorageDurability](directory)
+  FullPagedNativeResult[StorageDurability](status: FullPagedNativeError.None,
+    completed: StorageDurability.FileAndDirectorySynced)
