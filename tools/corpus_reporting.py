@@ -63,6 +63,15 @@ def current_stf_late_gas_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_late_incarnations_corpus(compiler, report, checks, libraries):
+    """Qualify delayed recreated supervisor code, exact old report identity and selected incarnation authority."""
+    import current_stf_late_incarnations_oracle as oracle
+    return scenarios(compiler,checks,libraries,oracle,
+        ('current_stf','current_stf_epoch','current_stf_late_incarnations','current_stf_late_rotation',
+         'current_stf_queued_incarnation','state_report'),defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_late_reactivation_corpus(compiler, report, checks, libraries):
     """Qualify strict code expunge, recreated reservations and later actual code reactivation across population histories."""
     import current_stf_late_reactivation_oracle as oracle
