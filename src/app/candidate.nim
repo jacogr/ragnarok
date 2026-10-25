@@ -7,7 +7,8 @@
 import ./[chain, handoff]
 import ../chain/[genesis, provider, parameters]
 import ../codec/[block_codec, header, bounded]
-import ../state/[store, block_transition, report_transition, report_admission, accumulation_queue,
+import ../state/[fuzz_ancestry, store, block_transition, report_transition, report_admission,
+  accumulation_queue,
   accumulation_round, accumulation_runner, accumulation_driver, accumulation_finalization,
   accumulation_outputs, accumulation_completion, report_anchors, accumulation_current_completion,
   accumulation_current_update, accumulation_storage_history, service_identity_history, request_identity_history]
@@ -339,17 +340,16 @@ proc currentCandidateLookupDemand*(prepared: PreparedCurrentCandidateReports,
     ancestors: openArray[OwnedHeader]): ReportAdmissionResult[ReportLookupDemand] =
   ## Original authenticated prefix supports bounded ancestor discovery without running current guests.
   candidateLookupDemand(prepared.prefix, ancestors)
-proc completeCurrentCandidateReports*(chain: ApplicationChain,
+proc completeCurrentReports(chain: ApplicationChain,
     prepared: PreparedCurrentCandidateReports,
 
-ancestors: openArray[OwnedHeader]): CurrentCandidateResult =
+reports: ReportAdmissionResult[AdmittedReports]): CurrentCandidateResult =
   ## Recheck exact original history before current sequence execution, full state composition and one private capture.
   let data = prepared.prefix.data
   if data == nil: return default(CurrentCandidateResult) # A default prefix has no original map/profile authority.
   if not sameChainView(data.original, chain.chainView):
     return CurrentCandidateResult(status: CurrentCandidateError.StateChanged)
   let limits = prepared.limits
-  let reports = completeBlockReports(data.reports, ancestors)
   if reports.error != ReportAdmissionError.None:
     return CurrentCandidateResult(status: CurrentCandidateError.ReportFailure,
         reportReason: reports)
@@ -371,6 +371,25 @@ ancestors: openArray[OwnedHeader]): CurrentCandidateResult =
     return CurrentCandidateResult(status: CurrentCandidateError.PreparationFailure,
         preparationReason: update)
   CurrentCandidateResult(status: CurrentCandidateError.None, completed: update.value)
+proc completeCurrentCandidateReports*(chain: ApplicationChain,
+    prepared: PreparedCurrentCandidateReports, ancestors: openArray[
+        OwnedHeader]): CurrentCandidateResult =
+  ## Keep ordinary full-header completion on its original authenticated preparation.
+  let data = prepared.prefix.data
+  if data == nil: return default(CurrentCandidateResult)
+  if not sameChainView(data.original, chain.chainView):
+    return CurrentCandidateResult(status: CurrentCandidateError.StateChanged) # Preserve stale-prefix failure ordering.
+  completeCurrentReports(chain, prepared, completeBlockReports(data.reports, ancestors))
+proc prepareFuzzCurrentCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
+    context: FuzzAncestry, limits: CurrentCandidateLimits): CurrentCandidateResult =
+  ## A fuzz-only view and retained origin are both mandatory; all GP checks and current execution remain active.
+  if not chain.chainView.fuzzOnly:
+    return CurrentCandidateResult(status: CurrentCandidateError.StateChanged)
+  let prepared = prepareCurrentCandidateReports(chain, candidate, limits)
+  if prepared.error != CurrentCandidateError.None: return prepared.failure
+  let data = prepared.value.prefix.data
+  if data == nil: return default(CurrentCandidateResult) # Only the actual successful prefix can complete.
+  completeCurrentReports(chain, prepared.value, completeFuzzBlockReports(data.reports, context))
 proc prepareCurrentCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
     ancestors: openArray[OwnedHeader], limits: CurrentCandidateLimits): CurrentCandidateResult =
   ## One-shot consumers use the same original prefix and current-only completion without publishing any head.

@@ -75,7 +75,10 @@ proc applyAccumulationChain*(state: var StateStore, view: var ChainView,
     return AccumulationChainResult(status: AccumulationChainError.UninitializedView) # An explicit selected parent is mandatory.
   if not sameStateSnapshot(head.value.stateSnapshot, parent.value):
     return AccumulationChainResult(status: AccumulationChainError.StaleView) # A matching root cannot replace retained parent identity.
-  let admission = source.finalAccumulationAdmission.value.reportBlockStage.value
+  let reports = source.finalAccumulationAdmission.value
+  if reports.requiresFuzzView and not view.fuzzOnly:
+    return AccumulationChainResult(status: AccumulationChainError.ProfileMismatch) # Test-seed facts cannot authorize a production chain.
+  let admission = reports.reportBlockStage.value
   let profile = admission.blockTransitionProfile
   if uint64(profile.cores) != uint64(head.value.cores) or
       uint64(profile.epochSlots) != uint64(head.value.epochSlots) or

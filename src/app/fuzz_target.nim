@@ -86,10 +86,10 @@ proc prepareFuzzTarget*(environment: FuzzEnvironment, parameters: Parameters,
   state.writeValueBytes = writeBytes
   let wire = FuzzLimits(bytes: ByteLimit(16777216), text: ByteLimit(4096), state: state, frame: frame)
   let backend = FuzzBackendConfig(parameters: parameters, candidate: candidate, wire: wire,
-      forkStates: ElementLimit(8))
+      initialAncestry: true, forkStates: ElementLimit(8))
   if initFuzzBackend(backend).error != FuzzBackendError.None:
     return FuzzTargetResult(status: FuzzTargetError.InvalidPolicy)
-  let peer = FuzzPeer(protocol: 1, features: 2, jam: FuzzVersion(major: 0, minor: 8, patch: 0),
+  let peer = FuzzPeer(protocol: 1, features: 3, jam: FuzzVersion(major: 0, minor: 8, patch: 0),
       name: "Ragnarok")
   FuzzTargetResult(status: FuzzTargetError.None, config: FuzzTargetConfig(
     socket: FuzzSocketConfig(path: environment.socketPath, timeoutMs: 30000, peer: peer,
@@ -153,7 +153,7 @@ proc runFuzzTarget*(arguments: openArray[string]): int {.raises.} =
   try:
     var generation = 0'u64
     var backend = initFuzzBackend(config.backend).value
-    stdout.writeLine("FUZZ_READY protocol=1 gp=0.8.0 features=2")
+    stdout.writeLine("FUZZ_READY protocol=1 gp=0.8.0 features=3")
     stdout.flushFile()
     while atomicLoad(stopFlag) == 0:
       server.tick() # IO is bounded and never executes a guest inside its callback.
@@ -165,6 +165,7 @@ proc runFuzzTarget*(arguments: openArray[string]): int {.raises.} =
         let message = ticket.requestMessage.value
         if message.fuzzInfo.value.kind == FuzzKind.Initialize:
           var selected = config.backend
+          if (server.negotiatedFeatures and 1'u32) == 0: selected.initialAncestry = false
           if (server.negotiatedFeatures and 2'u32) == 0: selected.forkStates = ElementLimit(0)
           backend = initFuzzBackend(selected).value # No unnegotiated fork behavior survives initialization.
         let outcome = backend.executeFuzz(message) # Synchronous bounded-by-policy STF belongs outside socket IO.
@@ -176,7 +177,12 @@ proc runFuzzTarget*(arguments: openArray[string]): int {.raises.} =
           if reply.error != FuzzError.None or not server.respond(ticket,
               reply.value): server.disconnect()
         else:
-          stderr.writeLine("FUZZ_SESSION_FAILED " & $outcome.error)
+          var reason = $outcome.error
+          if outcome.error == FuzzBackendError.CandidateFailure:
+            reason &= " " & localFuzzCandidateReason(outcome.candidateFailure)
+          elif outcome.error == FuzzBackendError.AncestryFailure:
+            reason &= " " & $outcome.ancestryFailure
+          stderr.writeLine("FUZZ_SESSION_FAILED " & reason)
           server.disconnect() # Internal/resource/context failures must not impersonate consensus Error responses.
       if not server.connected: backend = initFuzzBackend(
           config.backend).value # Retire any disconnected private seed promptly.

@@ -34,3 +34,12 @@ Completion tests cover exact resource boundaries, unordered initial facts,
 immutable copies, conflicting membership, parent/profile binding, actual child
 root checks, missing child evidence, wrong slots/roots and bounded extension.
 Live campaign validation remains explicitly deferred.
+
+Execution integration uses the ordinary authenticated block prefix, current PVM
+execution and complete-state composition. Fuzz-only report certificates retain
+their ancestry origin, and both chain producers refuse them in ordinary views.
+Exact-view comparisons also include the domain. Each successful fork restores
+its original parent's immutable evidence; unsuccessful attempts publish neither
+state nor ancestry. Target feature mask3 is negotiated before accepting initial
+membership or siblings. Missing lookup evidence closes locally with its precise
+anchor reason; a known wrong root remains a consensus refusal.

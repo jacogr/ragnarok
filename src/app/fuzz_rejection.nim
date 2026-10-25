@@ -81,3 +81,11 @@ proc consensusFuzzRejection*(failure: CurrentCandidateResult): bool =
     else: false # Missing heads, changed profile, state forks and all other prefixes are local failures.
   of CurrentCandidateError.ReportFailure: consensusReportFailure(failure.reportFailure)
   else: false # Execution, storage, resource and unclassified failures close rather than impersonate consensus rejection.
+
+proc localFuzzCandidateReason*(failure: CurrentCandidateResult): string =
+  ## Keep actual missing lookup evidence observable locally without exposing a forged consensus Error.
+  if failure.error == CurrentCandidateError.ReportFailure:
+    let reports = failure.reportFailure
+    if reports.error == ReportAdmissionError.AnchorFailure: return $reports.anchorError
+    return $reports.error
+  $failure.error

@@ -41,7 +41,7 @@ def connect(path, features=0):
     try:
         peer.connect(str(path))
         response = exchange(peer, bytes([0, 1])+features.to_bytes(4, 'little')+bytes([0, 8, 0])+bytes(3)+b'\x04test')
-        assert response[0:2] == bytes([0, 1]) and response[2:6] == (2).to_bytes(4, 'little')
+        assert response[0:2] == bytes([0, 1]) and response[2:6] == (3).to_bytes(4, 'little')
         assert response[6:9] == bytes([0, 8, 0])
         return peer
     except BaseException:
@@ -126,9 +126,10 @@ def exercise(binary, policy_binary, folder):
                     payload = b'\x04'+digest(body[:297])
                     peer.sendall(struct.pack('<I', len(payload))+payload)
                     assert peer.recv(1) == b''
-                with connect(endpoint, features=2) as peer:
-                    # Valid mutants share one immutable parent; the original arrives last and alone is extended.
-                    assert exchange(peer, initialize) == b'\x02'+genesis[297:329]
+                with connect(endpoint, features=3) as peer:
+                    # Negotiated initial membership includes the actual seed; valid mutants restore that exact context.
+                    ancestry = initialize[:-1]+b'\x01'+genesis[96:100]+digest(genesis[:297])
+                    assert exchange(peer, ancestry) == b'\x02'+genesis[297:329]
                     for variant, successor in fork_cases:
                         expected = raw.wire(sorted(successor.items()))
                         assert exchange(peer, b'\x03'+variant) == b'\x02'+expected[:32]
