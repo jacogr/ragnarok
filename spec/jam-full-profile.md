@@ -25,3 +25,26 @@ imports, and actual upstream/full-target replay of2 sessions/18 imports/44 exact
 exchanges passed. The real mismatch control, backend unit suite, focused Python
 checks, formatting, semantic compilation and inventory passed. Nonempty
 full-profile admission and guest effects follow in the next bounded layer.
+
+## Nonempty reports and guest effects
+
+The next independent full-profile corpus uses1023 distinct Bandersnatch points
+and deterministic distinct Ed25519 public keys. The fallback schedule is derived
+from the actual seed entropy; each selected author signs with its own known
+scalar. An attributed pinned-crypto ring commitment is seed input only.
+
+At core340, two assigned guarantors admit a real nonempty work report. Its
+43-byte availability bitfield is signed by683 distinct validators, satisfying
+the strict full-population quorum. A684-vote sibling precedes original-last
+replay; the independently calculated sibling differs only in header history
+and vote statistics. Three chains cover storage creation/yield, panic rollback,
+and checkpoint-then-panic retention, including gas, account footprints, package
+history, MMR and the complete state map. All original fixtures remain unchanged.
+The same source-owned corpus also supplies actual upstream minifuzz sessions
+under the full canonical host profile.
+
+Observed nonempty validation:12 full guest/sibling imports and18 unchanged full
+baseline imports passed with checked ARC/Clang LTO. Actual upstream minifuzz
+passed3 sessions,12 imports and39 exact exchanges, including the real mismatch
+control. Focused Python and inventory checks passed. Runtime/native sources
+remain identical to the preceding verified full-profile layer.

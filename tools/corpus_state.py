@@ -848,6 +848,16 @@ def jam_fuzzer_epoch_effect_forks_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_guests_corpus(compiler, report, checks, libraries):
+    """Execute distinct full-population admission, high-core quorums and nonempty guest sibling maps."""
+    import jam_fuzzer_full_guests_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('current_stf_report_guests', 'jam_full_guest_ring_input', 'jam_fuzzer_full_guests',
+         'jam_fuzzer_full_profile'), forks=True, profiles=[full.parameters()]*len(reference.MODES))
+
+
+@CORPORA.case
 def jam_fuzzer_full_profile_corpus(compiler, report, checks, libraries):
     """Execute full341-core/1023-validator/600-slot complete maps under every pinned GP parameter."""
     import jam_fuzzer_full_profile_oracle as reference

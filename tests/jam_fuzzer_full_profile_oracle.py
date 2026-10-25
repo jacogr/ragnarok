@@ -67,24 +67,26 @@ def original(dense=False):
     return parent
 
 
-def child(parent):
+def child(parent, *, body=bytes(7), extrinsic_root=None, outputs=(), author=0, secret=1):
     """Independently sign the next actual full-profile fallback child and its entropy proof under exact GP domains."""
     slot = int.from_bytes(parent[chapter_key(11)], 'little')+1
-    assert 1 < slot < EPOCH
+    assert 1 < slot < EPOCH and 0 <= author < VALIDATORS
     entropy = parent[chapter_key(6)]
     context = b'jam_fallback_seal'+entropy[96:128]
-    _, selected = sign(1, context, b'')
-    proof, entropy_output = sign(1, b'jam_entropy'+selected, b'')
-    commitment = digest(4*digest(b'\0')+digest(bytes(3)))
+    _, selected = sign(secret, context, b'')
+    proof, entropy_output = sign(secret, b'jam_entropy'+selected, b'')
+    if extrinsic_root is None:
+        assert body == bytes(7)
+        extrinsic_root = digest(4*digest(b'\0')+digest(bytes(3)))
     parent_hash = history(parent[chapter_key(3)])[0][-1][0][:32]
-    unsigned = parent_hash+tree(list(parent.items()))[0]+commitment+slot.to_bytes(4,'little')+bytes(4)+proof+b'\0'
-    seal, _ = sign(1, context, unsigned)
+    unsigned = parent_hash+tree(list(parent.items()))[0]+extrinsic_root+slot.to_bytes(4,'little')+bytes(2)+author.to_bytes(2,'little')+proof+b'\0'
+    seal, _ = sign(secret, context, unsigned)
     header = unsigned+seal
     assert len(header) == 297
-    return header+bytes(7), successor(parent, header, entropy_output)
+    return header+body, successor(parent, header, entropy_output, outputs=outputs, author=author)
 
 
-def successor(parent, header, entropy_output):
+def successor(parent, header, entropy_output, *, outputs=(), author=0):
     """Calculate full authorization, entropy, history/MMR, clock, outputs and statistics without a native observation."""
     result = dict(parent)
     slot = int.from_bytes(header[96:100], 'little')
@@ -106,7 +108,8 @@ def successor(parent, header, entropy_output):
     assert blocks[-1][0][:32] == header[:32]
     fixed, packages = blocks[-1]
     blocks[-1] = (fixed[:64]+tree(list(parent.items()))[0]+fixed[96:], packages)
-    carry = output_root([]); position = 0
+    leaves = [service.to_bytes(4,'little')+commitment for service,commitment in outputs]
+    carry = output_root(leaves); position = 0
     while position < len(peaks) and peaks[position] is not None:
         carry = bytes.fromhex(keccak256(peaks[position]+carry))
         peaks[position] = None; position += 1
@@ -118,9 +121,9 @@ def successor(parent, header, entropy_output):
     result[chapter_key(3)] = history_wire((blocks[-8:],peaks))
     (current, previous, _, _), consumed = statistics_parse(parent[chapter_key(13)],(CORES,VALIDATORS,VALIDATORS,2**64-1,2**64-1))
     assert consumed == len(parent[chapter_key(13)])
-    row = list(current[0]); row[0] += 1; current[0] = tuple(row)
+    row = list(current[author]); row[0] += 1; current[author] = tuple(row)
     result[chapter_key(13)] = statistics_wire((current,previous,[(0,)*8]*CORES,[]))
-    result[chapter_key(16)] = b'\0'
+    result[chapter_key(16)] = natural(len(leaves))+b''.join(leaves)
     assert set(result) == set(parent)
     return result
 
