@@ -64,7 +64,7 @@ def capture(chapter, data, profile=PROFILE, policy=POLICY):
     elif chapter in (7, 8, 9):
         decoded = safrole.decode(data, (cores, items, budget))
     elif chapter == 10:
-        decoded = availability.decode(data, (cores, current, budget, items, budget))
+        decoded = availability.decode(data, (cores, max(current, previous), budget, items, budget))
     elif chapter == 12:
         decoded = privileges.decode(data, (cores, items, budget))
     elif chapter == 13:
@@ -137,6 +137,20 @@ def requests():
         cap(chapter, data, policy=(0, POLICY[1]))
         for cut in range(len(data)):
             cap(chapter, data[:cut])
+    # GP previous-rotation credentials retain their selected-roster indices after shrinkage.
+    # Literal index7/8 and exclusive9 anchors are structural cases, not valid signature claims.
+    guarantee = availability.record(0)
+    guarantee['credentials'] = [(7, bytes(64)), (8, bytes(64))]
+    retained = availability.wire([dict(guarantee=guarantee, registered=24), None, None])
+    for profile, answer in (((3, 6, 9, 12), 'ok'), ((3, 9, 6, 12), 'ok'),
+                            ((3, 6, 6, 12), 'invalidcomponent')):
+        assert capture(10, retained, profile) == answer
+        cap(10, retained, profile)
+    guarantee['credentials'] = [(7, bytes(64)), (9, bytes(64))]
+    beyond = availability.wire([dict(guarantee=guarantee, registered=24), None, None])
+    for profile in ((3, 6, 9, 12), (3, 9, 6, 12)):
+        assert capture(10, beyond, profile) == 'invalidcomponent'
+        cap(10, beyond, profile)
     # The accepted compact gas profile has no E8 fallback at the exact-entry boundary.
     from state_widths_oracle import statistics_wire
     gas_source=([bytes(144),bytes(144)],[[0]*7+[100000],[0]*8],

@@ -1,13 +1,20 @@
-# M1 coverage audit — Gray Paper 0.8.0
+# Codec coverage audit and historical qualification records
 
-This audit follows Appendix C.1/C.2 at the exact source/vector revisions in `spec/pins.json`.
-The **C.1/C.2 framing baseline is implemented within the scope listed below**. Complete published
-fixture-family coverage does not mean every general
-encoding or specialized C.2 tuple has a reusable public API. A separate state-layout foundation
-now covers key construction/node encoding, roots over serialized entries and state chapters
-1–16, with C12/C13 dictionary widths migrated and compact statistics gas accepted. The
-[upstream request-domain fix awaits a compatible pinned upgrade](../spec/state-clarifications.md);
-trie proofs and persistence remain open. PVM execution and state transitions are separate client work.
+Current implementation status and exact pins are recorded in
+[the serialization status](../spec/jam-serialization-status.md) and [M1 checklist](m1.md).
+C.1/C.2 framing and reviewed current state layouts are implemented. Accounts are
+105 bytes, deferred transfers 154 bytes, and request-domain adoption is complete.
+Independent [GP-derived serialization qualification](../spec/serialization-gp-qualification.md)
+is covered within the declared contracts. Original published current-schema whole maps
+remain additional corroboration; full JAM/STF parity is separate.
+
+The family-by-family records below preserve earlier qualification evidence and
+historical revisions. Their old chapter/namespace/proof/storage “next” paragraphs
+are not a current backlog. In particular, old 89-byte account observations must
+not be presented as unmodified current-schema metadata or current-root parity.
+[The source audit](../spec/state-current-source-audit.md) and
+[profile matrix](../spec/state-serialization-profiles.md) separate historical,
+derived and authored current evidence.
 
 ## General encodings (C.1)
 

@@ -15,6 +15,7 @@ const MaxRetainedBlocks* = 8 # Local retention policy; no protocol history or fi
 type
   ChainView* = object ## Private immutable oldest-to-newest snapshots; append allocates a separate sequence container.
     snapshot: seq[BlockSnapshotResult]
+    fuzzOrigin: bool # Test-seed authority never authorizes an ordinary production view.
     finalized: BlockSnapshotResult # Separate bounded owner; absent until a trusted caller reports finality.
   ViewAdvanceError* {.pure.} = enum ## Default/failure outcomes never contain a replacement view.
     Uninitialized, None, InvalidSnapshot, Duplicate, NotChild, SlotNotIncreasing,
@@ -57,9 +58,18 @@ func value*(outcome: ViewAdvanceResult): ChainView {.requires: outcome.status ==
 
 proc genesisView*(source: GenesisResult): ChainView =
   ## Seed a history from a successful immutable genesis owner; absent/invalid inputs produce an empty view.
-  if source.error == GenesisError.None:
+  if source.error == GenesisError.None and not source.value.fuzzSeedOnly:
     return ChainView(snapshot: @[source]) # Private container retains the structurally checked owner.
   default(ChainView) # Failed inputs expose no payload.
+
+proc fuzzSeedView*(source: GenesisResult): ChainView =
+  ## Explicitly seed a test-only domain; matching map/header owners cannot erase its origin.
+  result = default(ChainView)
+  if source.error == GenesisError.None:
+    result = ChainView(snapshot: @[source], fuzzOrigin: true) # Explicit test origin cannot be erased through genesisView.
+func fuzzOnly*(view: ChainView): bool =
+  ## Expose only the immutable domain, never a public retagging operation.
+  view.fuzzOrigin
 
 func retainedCount*(view: ChainView): int =
   ## Return the rolling history count, excluding the separately retained finalized owner.
@@ -109,12 +119,14 @@ func parentOf*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
 
 ## Compare exact retained block state and complete parameters, without hashing or copying map payloads.
 func sameRetainedBlock(left, right: BlockSnapshot): bool =
-  array[32, byte](left.blockHash) == array[32, byte](right.blockHash) and
+  left.fuzzSeedOnly == right.fuzzSeedOnly and
+    array[32, byte](left.blockHash) == array[32, byte](right.blockHash) and
     sameStateSnapshot(left.stateSnapshot, right.stateSnapshot) and left.sameParameters(right)
 
 func sameChainView*(left, right: ChainView): bool =
   ## Require initialized identical ordered history and explicit finality; equal best roots alone do not match.
-  if left.snapshot.len == 0 or left.snapshot.len != right.snapshot.len:
+  if left.fuzzOrigin != right.fuzzOrigin or left.snapshot.len == 0 or left.snapshot.len !=
+      right.snapshot.len:
     return false # Defaults and different retained windows cannot authorize shared publication.
   for index in 0..<left.snapshot.len:
     if not sameRetainedBlock(left.snapshot[index].value, right.snapshot[index].value):
@@ -135,6 +147,8 @@ proc advanceView*(view: ChainView, child: BlockSnapshotResult): ViewAdvanceResul
   if child.error != GenesisError.None:
     return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot) # Never inspect failure payloads.
   let next = child.value
+  if next.fuzzSeedOnly:
+    return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot) # Marked seeds can only initialize an explicit fuzz view.
   if view.blockAt(next.blockHash).error == GenesisError.None:
     return ViewAdvanceResult(status: ViewAdvanceError.Duplicate) # A header identity cannot overwrite retained state.
   if array[32, byte](next.parentHash) != array[32, byte](head.value.blockHash):
@@ -151,7 +165,7 @@ proc advanceView*(view: ChainView, child: BlockSnapshotResult): ViewAdvanceResul
     saved[index - first] = view.snapshot[index] # Copy owner handles into a fresh private container.
   saved[saved.len - 1] = child
   ViewAdvanceResult(status: ViewAdvanceError.None, completed: ChainView(snapshot: saved,
-      finalized: view.finalized))
+      finalized: view.finalized, fuzzOrigin: view.fuzzOrigin))
 
 proc reportAt*(view: ChainView, hash: WorkReportHash, limit: ByteLimit): ReportReadResult =
   ## Search only the selected head's retained reports under the existing byte budget.
@@ -174,7 +188,7 @@ proc finalizeView*(view: ChainView, hash: BlockHash): ViewFinalizeResult =
     if selected.value.slot < view.finalized.value.slot:
       return ViewFinalizeResult(status: ViewFinalizeError.Regression) # The linear history already proves increasing slots.
   ViewFinalizeResult(status: ViewFinalizeError.None,
-    completed: ChainView(snapshot: view.snapshot, finalized: selected))
+    completed: ChainView(snapshot: view.snapshot, finalized: selected, fuzzOrigin: view.fuzzOrigin))
 
 type RetainedBlockIndex* = distinct int ## Oldest-to-newest ordinal belongs only to this immutable retained view.
 func retainedBlockAt*(view: ChainView, index: RetainedBlockIndex): BlockSnapshotResult =

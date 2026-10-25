@@ -9,7 +9,7 @@
 ## policy/history context.
 
 import ../codec/[bounded, state_history, state_safrole, header, report_owned]
-import ./ancestor_context
+import ./[ancestor_context, fuzz_ancestry, fuzz_protocol]
 import ./[report_policy, guarantee_credentials]
 
 type
@@ -36,6 +36,8 @@ type
   AnchorData = ref object
     recent: RecentAnchoredReports
     context: AncestorContext
+    fuzzContext: FuzzAncestry
+    fuzzOrigin: bool
   AnchoredReports* = object ## Complete anchors still require later package/dependency/capacity admission.
     data: nil AnchorData
   LookupDemandData = ref object ## Exact recent certificate and immutable context bind all missing requirements.
@@ -220,3 +222,38 @@ proc planReportLookupDemand*(recent: RecentAnchoredReports,
   ReportAnchorResult[ReportLookupDemand](status: ReportAnchorError.None,
     completed: ReportLookupDemand(data: LookupDemandData(recent: recent, context: context,
       missing: missing, oldest: HeaderSlot(minimum))))
+
+proc requiresFuzzView*(owner: AnchoredReports): bool =
+  ## The immutable certificate retains the supplied-initial-membership domain through publication.
+  let data = owner.data
+  data != nil and data.fuzzOrigin
+proc checkFuzzReportLookupAnchors*(recent: RecentAnchoredReports, parent: OwnedHeader,
+    context: FuzzAncestry, config: AncestorConfig): ReportAnchorResult[AnchoredReports] =
+  ## Preserve every GP lookup predicate using real child headers; missing initial evidence stays local.
+  let data = recent.data
+  if data == nil: return ReportAnchorResult[AnchoredReports](
+      status: ReportAnchorError.InvalidRecent)
+  let admitted = context.validateFuzzParent(parent, FuzzAncestryLimits(header: config.header,
+    records: config.headers, bytes: config.maxBytes))
+  case admitted
+  of FuzzAncestryError.None: discard # Only the exact immutable parent context may complete this batch.
+  of FuzzAncestryError.LimitExceeded:
+    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.LimitExceeded)
+  of FuzzAncestryError.BackendFailure:
+    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.BackendFailure)
+  else:
+    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidHeader)
+  if uint32(parent.headerInfo.value.unsigned.slot) >= uint32(data.slot):
+    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidSlot)
+  let credentials = data.policy.policyCredentials.value
+  for index in 0..<credentials.verifiedGuaranteeCount.value:
+    let report = ownedReportInfo(credentials.verifiedGuaranteeAt(index).value.report).value.header
+    let found = context.findFuzzLookup(FuzzHeaderHash(report.lookupAnchor.bytes),
+      HeaderSlot(uint32(report.lookupSlot)), PriorStateRoot(report.lookupStateRoot.bytes))
+    if found.error == FuzzAncestryError.WrongLookupState:
+      return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.WrongLookupState)
+    if found.error != FuzzAncestryError.None:
+      return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.MissingLookupAnchor)
+  ReportAnchorResult[AnchoredReports](status: ReportAnchorError.None,
+    completed: AnchoredReports(data: AnchorData(recent: recent, fuzzContext: context,
+        fuzzOrigin: true)))

@@ -26,11 +26,11 @@ in the relevant `spec/` contract.
   ordered service/output-commitment sequence. C(255, service) metadata adds fixed version-zero
   account fields as independent values. Storage/preimage mappings add explicit key domains and raw
   values; opaque retained values need no original storage keys. Request histories add E4 length/hash
-  keys and fixed tagged 0..3-slot values; top-length namespace admissibility remains a parity gate.
+  keys and fixed tagged 0..3-slot values; both reserved upper lengths reject under the adopted domain.
   Fourteen unmodified published full-state mappings reproduce their roots independently and natively;
   exact typed chapter captures now compose with typed service records or explicit opaque captures
   into immutable whole mappings; fourteen complete published mappings reproduce their roots.
-  Remaining protocol-adoption gates, trie proofs and production-scale sizing remain open;
+  GP-derived serialization qualification and production-scale sizing have separate contracts;
   complete-map memory/disk persistence is implemented within its bounded contracts.
 - Checked borrowed operations, atomic failure behavior and immutable owner-bound extraction.
 - Blake2b-256, Ed25519, Keccak-256, release-reference contextual VRF/RingVRF and report/assurance transcripts.
@@ -53,31 +53,26 @@ See [M1 codec progress](../m1.md) for baseline coverage and the next scope bound
 ## Outstanding work
 
 Whole-block JAM/STF parity, complete admission/validation policy, consensus/fork choice,
-production availability distribution/retrieval, trie proofs, full/light mode selection and
+production availability distribution/retrieval and
 validator operation remain open. Native PVM execution, supported state transitions, bounded
 signed-child import and durable complete-map publication are implemented foundations; their
-feature contracts retain the precise limitations and independent evidence. Full T(state)
-serialization/state parity remains qualified by the parked specification-adoption gate below.
-Root construction accepts canonical serialized state-key/value entries; state
-chapters 1–16 now have typed serializers; chapter 13 follows the
-[accepted compact gas policy](../../spec/state-statistics.md). Service-account metadata is implemented.
-Storage/preimage and request-history keyed entries are implemented. Request-length namespace
-policy has a merged upstream correction awaiting a compatible pinned upgrade. The [full-map root audit](../../spec/state-roots.md) verifies fourteen
-published maps and records the dictionary migration and accepted compact statistics gas.
-[Typed composition](../../spec/state-composition.md) now enforces exact component extents, common
-profiles, parent budgets and duplicate rejection. The [width investigation](../../spec/state-widths.md)
-supports the implemented C(12) E4 service/E8 gas and C(13) E4-key migration. The maintainer accepts
-compact C13 gas as used by the vectors, with no fallback. The
-[request-namespace fix](../../spec/state-clarifications.md) is merged upstream (#542), awaiting a
-compatible release/vector upgrade; its [local witnesses](../../spec/request-namespace.md) and pending
-test remain against 0.8.0. Further implementation
-scope is selected separately; the pending upgrade still qualifies full M1 state parity.
+feature contracts retain the precise limitations and independent evidence.
+
+The reviewed T(state) serialization layouts are implemented, including current supervised
+metadata and the adopted request bound. [Current serialization status](../../spec/jam-serialization-status.md)
+records exact pins, current byte widths and independent GP-derived whole-map qualification
+within the declared schema/resource contracts. Original published current-schema maps remain
+additional corroboration; full JAM/STF and valid-state qualification are separate.
+Older namespace-upgrade paragraphs and skips are historical, not active backlog.
 The bounded C.1/C.2 framing baseline is implemented within its documented schema scope. The
 [M1 coverage audit](../codec-coverage.md) distinguishes framing from those remaining state and
-validation responsibilities. Current network tests use bounded controlled topologies; production peer discovery,
+validation responsibilities. Full/light startup and separate paged databases are implemented
+within their [bounded application contract](../../spec/storage-paged-application.md).
+Current network tests use bounded controlled topologies; production peer discovery,
 non-loopback download bootstrap and independent JAM-stack interoperability remain open. Full-ring capacity
-sizing and dependency/security audits remain necessary. The exceptional-point Ed25519 acceptance policy requires an explicit normative
-decision and focused independent tests before consensus-sensitive verification is finalized.
+sizing and dependency/security audits remain necessary. ZIP215 verification was adopted
+in the [current crypto upgrade](../../spec/crypto-zip215-upgrade.md); that qualified primitive
+evidence remains separate from full-client consensus correctness.
 
 Work proceeds in maintainer-authorized bounded increments. The language decision and its full
 evaluation are archived in the `language-selection` release; comparison code is outside the active tree.

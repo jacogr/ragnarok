@@ -1,5 +1,9 @@
 # Codec APIs and ownership
 
+Current pins, implemented state layouts and remaining independent parity requirements are in
+[the serialization status](../spec/jam-serialization-status.md). Historical implementation/port
+observations below retain their original scope; old “next” paragraphs are superseded by that index.
+
 Production codec modules live under `src/codec/`. [Pinned normative contracts](../spec/codec.md)
 and the other files under `spec/` define the exact wire rules, resource ceilings and failure precedence.
 
@@ -7,12 +11,12 @@ and the other files under `spec/` define the exact wire rules, resource ceilings
 | --- | --- |
 | `natural.nim`, `fixed_unsigned.nim` | Canonical naturals and fixed unsigned widths 0..8 |
 | `state_layout.nim` | State-key constructors, fixed branch/leaf node encodings and canonical node hashing |
-| `state_composition.nim` | Exact typed chapter capture, profile-bound immutable whole mappings, typed service sources and bounded roots; width/domain gates remain open |
+| `state_composition.nim` | Exact typed chapter capture, profile-bound immutable whole mappings, typed service sources and bounded roots; GP-derived qualification is recorded separately from full JAM/STF parity |
 | `state_trie.nim` | Bounded roots over already serialized 31-byte-key mappings |
 | `state_authorization.nim` | Core-indexed authorization pools/queues, bounded entries and immutable snapshots |
-| `state_requests.nim` | E4-length/hash request keys and fixed tagged 0..3-slot histories; reserved-length cross-map policy remains pending |
+| `state_requests.nim` | E4-length/hash request keys and fixed tagged 0..3-slot histories; both reserved upper E4 lengths reject |
 | `state_service_values.nim` | Storage/preimage key namespaces, unframed raw values, immutable service/key-bound capture and atomic copies |
-| `state_accounts.nim` | C(255, service) fixed version-zero account metadata; value-only copies, nominal fields and explicit version checks |
+| `state_accounts.nim` | C(255, service) fixed 105-byte supervised version-zero account metadata; value-only copies, nominal fields and explicit version checks |
 | `state_outputs.nim` | Chapter-16 count-prefixed ordered E4 service/output-commitment pairs with immutable snapshots |
 | `state_workqueues.nim` | Chapters 14/15 fixed epoch rings, retained ordered reports, canonical dependency/accumulated package sets |
 | `state_statistics.nim` | Chapter-13 E4 validator counters/service keys, natural core/service values and immutable snapshots; compact gas accepted per vectors, no fallback |

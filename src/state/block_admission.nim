@@ -90,13 +90,13 @@ proc admittedParent*(binding: BoundBlock): OwnedHeader {.requires: binding.data 
   assert data != nil # A default binding cannot substitute for genesis context.
   data.parent
 proc admittedState*(binding: BoundBlock): StateStoreSnapshot {.requires: binding.data != nil.} =
-  ## Retain the exact complete-map snapshot whose commitment and timeslot matched the header context.
+  ## Retain the exact complete-map snapshot whose commitment and chronology passed the selected admission boundary.
   let data = binding.data
   assert data != nil # No partial light map is promoted to a full-state root.
   data.state
 
-proc validateBlockCommitments*(candidate: OwnedBlock, parent: OwnedHeader,
-    state: StateStoreSnapshot, config: BlockAdmissionConfig): BlockAdmissionResult =
+proc validateCommitments(candidate: OwnedBlock, parent: OwnedHeader,
+    state: StateStoreSnapshot, config: BlockAdmissionConfig, fuzzSeed: bool): BlockAdmissionResult =
   ## Revalidate the captured block under caller policy, then bind parent hash, complete state root and extrinsic hash.
   ## Parent is trusted chain context supplied by the caller; this function does not establish chain ancestry/consensus.
   let info = blockInfo(candidate)
@@ -117,7 +117,7 @@ proc validateBlockCommitments*(candidate: OwnedBlock, parent: OwnedHeader,
   let previous = decodeStateTime(time.value.bytes)
   if previous.error != StateComponentError.None:
     return BlockAdmissionResult(status: BlockAdmissionError.InvalidState) # No unselected fixed-codec payload.
-  if uint32(previous.value.value) != uint32(parentInfo.value.unsigned.slot):
+  if not fuzzSeed and uint32(previous.value.value) != uint32(parentInfo.value.unsigned.slot):
     return BlockAdmissionResult(status: BlockAdmissionError.InvalidState) # A root alone cannot pair another slot's state with the parent header.
   var wire = newSeq[byte](info.value.consumed)
   let written = encodeOwnedBlock(candidate, wire)
@@ -134,7 +134,8 @@ proc validateBlockCommitments*(candidate: OwnedBlock, parent: OwnedHeader,
   if header.error != HeaderError.None:
     return BlockAdmissionResult(status: BlockAdmissionError.InvalidBlock) # A valid immutable frame must yield its full sealed header.
   let fields = headerInfo(header.value.owner).value.unsigned
-  if uint32(fields.slot) <= uint32(parentInfo.value.unsigned.slot):
+  if uint32(fields.slot) <= uint32(parentInfo.value.unsigned.slot) or
+      uint32(fields.slot) <= uint32(previous.value.value):
     return BlockAdmissionResult(status: BlockAdmissionError.InvalidSlot) # No repeated, backward or wrapped child slots.
   if array[32, byte](fields.priorState) != array[32, byte](state.commitment.root):
     return BlockAdmissionResult(status: BlockAdmissionError.InvalidStateRoot) # Compare the parent posterior state, not the parent's own prior-state field.
@@ -160,6 +161,15 @@ proc validateBlockCommitments*(candidate: OwnedBlock, parent: OwnedHeader,
   BlockAdmissionResult(status: BlockAdmissionError.None,
     completed: BoundBlock(data: BindingData(candidate: exact, header: header.value.owner,
       parent: parent, state: state)))
+
+proc validateBlockCommitments*(candidate: OwnedBlock, parent: OwnedHeader,
+    state: StateStoreSnapshot, config: BlockAdmissionConfig): BlockAdmissionResult =
+  ## Ordinary parent/state capture retains its exact clock pairing and every GP commitment predicate.
+  validateCommitments(candidate, parent, state, config, false)
+proc validateFuzzSeedCommitments*(candidate: OwnedBlock, parent: OwnedHeader,
+    state: StateStoreSnapshot, config: BlockAdmissionConfig): BlockAdmissionResult =
+  ## Explicit test-seed admission preserves both independent chronology checks and all commitments; it grants no chain publication authority.
+  validateCommitments(candidate, parent, state, config, true)
 
 proc advanceBlockSafrole*(state: var StateStore, candidate: OwnedBlock, parent: OwnedHeader,
     offenders: openArray[OffenderKey], config: BlockAdmissionConfig,

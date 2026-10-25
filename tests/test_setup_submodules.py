@@ -273,6 +273,66 @@ class PinnedCheckoutTests(unittest.TestCase):
         self.assertEqual(self.git('-C', self.root/self.relative, 'config', 'core.sparseCheckout'), 'true')
         self.assertEqual((self.root/self.relative/'codec/payload').read_text(), 'second\n')
 
+    def test_conformance_fresh_sparse_clone(self):
+        """A fresh source checkout chooses its sparse paths before materializing an archive."""
+        for name in ('fuzz-proto/message', 'scripts/runner.py', 'fuzz-reports/archive'):
+            path = self.upstream/name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(name)
+        revision = self.commit(self.upstream, 'fresh conformance source')
+        relative = 'vendor/jam-conformance'
+        self.git('-C', self.root, 'config', '--file', '.gitmodules',
+                 'submodule.'+relative+'.path', relative)
+        self.git('-C', self.root, 'config', '--file', '.gitmodules',
+                 'submodule.'+relative+'.url', 'https://github.com/fixture/static-sources.git')
+        self.git('-C', self.root, 'add', '.gitmodules')
+        self.git('-C', self.root, 'update-index', '--add', '--cacheinfo', '160000', revision, relative)
+        self.commit(self.root, 'new conformance gitlink', stage=False)
+        setup_submodules.initialize_conformance(self.root/relative, revision, self.upstream.as_uri())
+        self.checkout([relative])
+        selected = self.root/relative
+        self.assertEqual(self.git('-C', selected, 'rev-parse', 'HEAD'), revision)
+        self.assertTrue((selected/'fuzz-proto/message').is_file())
+        self.assertTrue((selected/'scripts/runner.py').is_file())
+        self.assertFalse((selected/'fuzz-reports').exists())
+
+    def test_conformance_pin_is_sparse_without_nested_vectors(self):
+        """Known tools/protocol material is selected, while archived reports and independent vectors remain absent."""
+        for name in ('fuzz-proto/message', 'scripts/runner.py', 'fuzz-reports/archive'):
+            path = self.upstream/name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(name+'\n')
+        nested = self.base/'historical-vectors'
+        self.git('init', '-q', nested)
+        (nested/'payload').write_text('historical vector data\n')
+        self.commit(nested, 'historical vector')
+        self.git('-C', self.upstream, 'submodule', 'add', '-q', nested.as_uri(), 'test-vectors')
+        revision = self.commit(self.upstream, 'conformance sources')
+        self.git('-C', self.root, 'mv', self.relative, 'vendor/jam-conformance')
+        self.relative = 'vendor/jam-conformance'
+        self.pin(self.relative, revision)
+        self.commit(self.root, 'pin conformance', stage=False)
+        self.checkout()
+        selected = self.root/self.relative
+        self.assertEqual(self.git('-C', selected, 'rev-parse', 'HEAD'), revision)
+        self.assertEqual((selected/'fuzz-proto/message').read_text(), 'fuzz-proto/message\n')
+        self.assertTrue((selected/'scripts/runner.py').is_file())
+        self.assertFalse((selected/'fuzz-reports').exists())
+        self.assertFalse((selected/'test-vectors/.git').exists())
+        self.assertEqual(self.git('-C', selected, 'sparse-checkout', 'list'), 'fuzz-proto\nscripts')
+        self.checkout() # Warm setup retains the same pin and sparse scope without initializing nested vectors.
+        self.assertFalse((selected/'test-vectors/.git').exists())
+        self.git('-C', self.root, 'submodule', 'deinit', '--', self.relative)
+        self.checkout() # A retained sparse Git directory must survive ordinary deinitialization/reinitialization.
+        self.assertTrue((selected/'scripts/runner.py').is_file())
+        self.assertFalse((selected/'fuzz-reports').exists())
+        self.assertFalse((selected/'test-vectors/.git').exists())
+        (selected/'scripts/runner.py').write_text('local edit')
+        with self.assertRaisesRegex(AssertionError, 'Modified source checkout'):
+            self.checkout()
+        self.assertEqual((selected/'scripts/runner.py').read_text(), 'local edit')
+
+
 
 # Standalone execution retains the same local-only checks as unittest discovery.
 if __name__ == '__main__':

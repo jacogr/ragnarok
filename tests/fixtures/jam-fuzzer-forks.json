@@ -1,0 +1,7 @@
+{
+  "base_sha256": "deb937c265a2a31fc2f125128446a38d5722e4e7bbc729194defa82315986365",
+  "groups": 3,
+  "successful_imports": 12,
+  "distinct_siblings": 9,
+  "expected_sha256": "b301d4fdb5364e15726a3c3c51dc633a6e11c086050ba0256224bc012f9beada"
+}

@@ -17,11 +17,16 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, compare-pvm, profile-pvm, bench-storage, bench-storage-growth, full]
+        options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, compare-pvm, profile-pvm, profile-doom, compare-doom, bench-storage, bench-storage-growth, full]
         default: full
         required: true
+      pvm_doom_counts_only:
+        description: Collect DOOM instruction evidence without timing samples
+        type: boolean
+        default: false
+        required: false
       pvm_compare_base:
-        description: Baseline ref for compare-pvm (PR labels use the exact PR base SHA)
+        description: Baseline ref for compare-pvm or compare-doom (PR labels use the exact PR base SHA)
         type: string
         default: HEAD^
         required: false
@@ -762,6 +767,88 @@ jobs:
             build/tests/pvm-guest-compare/*.log
             build/tests/pvm-guest-compare/summary.md
 
+  profile-doom:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'profile-doom' }}
+    name: Perf / DOOM Attribution
+    timeout-minutes: *ci-job-timeout
+    runs-on: ubuntu-24.04
+    steps:
+      - *checkout
+      - *python
+      - name: Validate verification inventory
+        run: *inventory-run
+      - name: Install pinned attribution tool and asset decompressor
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends valgrind=1:3.22.0-0ubuntu3 zstd
+      - name: Validate and profile both DOOM interpreters
+        env:
+          PVM_DOOM_COUNTS_ONLY: ${{ inputs.pvm_doom_counts_only && '1' || '0' }}
+        run: make profile-pvm-doom
+      - name: Show bounded attribution
+        if: always()
+        run: |
+          if test -f build/tests/pvm-doom/summary.md; then
+            cat build/tests/pvm-doom/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain raw profiles and source identities
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-doom-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            build/tests/pvm-doom/*.callgrind*
+            build/tests/pvm-doom/*.log
+            build/tests/pvm-doom/*.json
+            build/tests/pvm-doom/summary.md
+            build/tests/pvm-doom/generated-source/**/*.c
+            build/tests/pvm-doom/reference-source/**/*.rs
+
+  # Timing qualification follows a successful instruction gate; ordinary jobs never run this workload.
+  compare-doom:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'compare-doom' }}
+    name: Perf / DOOM Revisions
+    timeout-minutes: *ci-job-timeout
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact candidate and baseline history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - *python
+      - name: Validate verification inventory
+        run: *inventory-run
+      - name: Install asset decompressor
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends zstd
+      - name: Compare checked DOOM revisions and identical-image controls
+        env:
+          PVM_COMPARE_BASE: ${{ inputs.pvm_compare_base || 'HEAD^' }}
+        run: make compare-pvm-doom
+      - name: Show paired DOOM CPU comparisons
+        if: always()
+        run: |
+          if test -f build/tests/pvm-doom-compare/summary.md; then
+            cat build/tests/pvm-doom-compare/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain paired DOOM evidence
+        if: always()
+        uses: *upload-artifact
+        with:
+          name: pvm-doom-revisions-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: ignore
+          path: |
+            build/tests/pvm-doom-compare/*.log
+            build/tests/pvm-doom-compare/*.json
+            build/tests/pvm-doom-compare/summary.md
+            build/tests/pvm-doom/*.log
+            build/tests/pvm-doom/*.json
+
   compare-pvm:
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.suite == 'compare-pvm') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action == 'labeled' && github.event.label.name == 'ci:pvm-compare') }}
     name: Perf / PVM Revisions
@@ -839,8 +926,9 @@ jobs:
     name: Fuzz / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
+      fail-fast: false
       matrix:
-        family: [{name: PVM}]
+        family: ${{ fromJSON(inputs.suite == 'fuzz-pvm' && '[{"name":"PVM","group":"pvm"}]' || '[{"name":"PVM","group":"pvm"},{"name":"JAM","group":"jam-interface"}]') }}
     runs-on: ubuntu-latest
     env:
       FUZZ_RUNS: "10000"
@@ -850,9 +938,10 @@ jobs:
       - name: Validate verification inventory
         run: *inventory-run
       - name: Run pinned upstream campaigns and JAM bridge
+        if: matrix.family.group == 'pvm'
         run: make fuzz-pvm-upstream
       - name: Show fuzz coverage and bridge accounting
-        if: always()
+        if: always() && matrix.family.group == 'pvm'
         run: |
           if test -f build/pvm-upstream-fuzz/summary.md; then
             cat build/pvm-upstream-fuzz/summary.md >> "$GITHUB_STEP_SUMMARY"
@@ -860,7 +949,7 @@ jobs:
             echo 'PVM fuzz campaign did not complete; inspect results.json and logs.' >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Retain fuzz evidence and failing inputs
-        if: always()
+        if: always() && matrix.family.group == 'pvm'
         uses: *upload-artifact
         with:
           name: pvm-fuzz-${{ github.run_attempt }}
@@ -871,6 +960,30 @@ jobs:
             build/pvm-upstream-fuzz/results.json
             build/pvm-upstream-fuzz/summary.md
             build/pvm-upstream-fuzz/artifacts/
+
+      - name: Verify current JAM engine interface and whole-map STF cases
+        if: matrix.family.group == 'jam-interface'
+        run: make check-jam-fuzzer-interface
+      - name: Show JAM interface verdict and pending engine validation
+        if: always() && matrix.family.group == 'jam-interface'
+        run: |
+          if test -f build/tests/jam-fuzzer-interface/summary.md; then
+            cat build/tests/jam-fuzzer-interface/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'JAM interface verification did not complete; live engine validation remains pending.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain JAM interface evidence
+        if: always() && matrix.family.group == 'jam-interface'
+        uses: *upload-artifact
+        with:
+          name: jam-fuzzer-interface-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            build/ci/*.log
+            build/tests/jam-fuzzer-interface/**/*.log
+            build/tests/jam-fuzzer-interface/results.json
+            build/tests/jam-fuzzer-interface/summary.md
 
   # Future subsystem campaigns join this aggregate so one green child cannot conceal another failure.
   fuzz-status:

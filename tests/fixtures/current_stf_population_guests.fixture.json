@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_POPULATION_GUESTS",
+  "files": {
+    "current-stf-population-guests.json": "87574fc12ccb428976aaabf2d1542e59c49dc16a5401b3d5ed98289d77a65410"
+  },
+  "target": "current-stf-population-guests.json"
+}

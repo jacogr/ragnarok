@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_JAM_FUZZER_ANCESTRY",
+  "files": {
+    "jam-fuzzer-ancestry.json": "4308ebe3976727118922576ac417a6180ffb7a8168956254aa677e9d3df975d3"
+  },
+  "target": "jam-fuzzer-ancestry.json"
+}

@@ -2,10 +2,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Initialize recorded upstream gitlinks, using a focused checkout for the large JAM vector repository.
+"""Initialize recorded upstream gitlinks, using focused checkouts for large JAM vector and conformance repositories.
 
 Exposes initialize_vectors, prefetch_blobs and a setup CLI that checks out recorded submodule pins,
-including a focused vector checkout and batched provisioning of consumed pinned blobs.
+including focused vector/conformance checkouts and batched provisioning of consumed pinned blobs.
 """
 import argparse
 import json
@@ -40,6 +40,36 @@ def initialize_vectors(path,revision,url):
     else:
         # Existing clean checkouts can be narrowed without changing their pinned commit or local data.
         git('sparse-checkout','set','--cone','codec','stf/safrole',cwd=path)
+
+
+# Keep multi-gigabyte historical reports and the independent nested vector repository out of ordinary setup.
+def initialize_conformance(path, revision, url):
+    """Materialize the pinned protocol and CLI tools only, without running upstream code or following its branch."""
+    if not (path/'.git').exists():
+        relative = str(path.relative_to(ROOT))
+        listing = git('config', '--file', str(ROOT/'.gitmodules'), '--get-regexp',
+                      r'^submodule\..*\.path$', output=True)
+        names = [key[len('submodule.'):-len('.path')] for key, value in
+                 (line.split(maxsplit=1) for line in listing.splitlines()) if value == relative]
+        assert len(names) == 1, 'Conformance submodule name must resolve uniquely'
+        retained = Path(git('rev-parse', '--git-path', 'modules/'+names[0], output=True))
+        if not retained.is_absolute():
+            retained = ROOT/retained # Public Git path resolution supports ordinary clones and linked worktrees.
+        if retained.is_dir():
+            assert not path.exists() or not any(path.iterdir()), 'Nonempty uninitialized conformance checkout'
+            # Git retained this submodule after deinit; configure its sparse scope before native reconnection.
+            git('--git-dir='+str(retained), '--work-tree='+str(path),
+                'sparse-checkout', 'set', '--cone', 'fuzz-proto', 'scripts')
+        else:
+            # A fresh CI clone fetches only tree metadata until its selected source paths are known.
+            git('clone', '--depth=1', '--filter=blob:none', '--no-checkout', url, str(path))
+            git('fetch', '--depth=1', 'origin', revision, cwd=path)
+            git('sparse-checkout', 'set', '--cone', 'fuzz-proto', 'scripts', cwd=path)
+            git('checkout', '--detach', revision, cwd=path)
+            git('submodule', 'absorbgitdirs', '--', relative)
+    else:
+        # Source preflight already refused local edits; narrowing retains all selected pinned files.
+        git('sparse-checkout', 'set', '--cone', 'fuzz-proto', 'scripts', cwd=path)
 
 
 # Fetch only consumed pinned blobs together; individual lazy Git reads otherwise incur one network round trip each.
@@ -128,8 +158,12 @@ def main(arguments=None):
         path=ROOT/relative
         if relative=='vendor/jamtestvectors':
             initialize_vectors(path,revision,url) # Preserve focused sparse/partial checkout during initial and later pin updates.
+        elif relative=='vendor/jam-conformance':
+            initialize_conformance(path, revision, url)
+        # Conformance's nested vectors are historical upstream data, not a replacement for our separately pinned vectors.
+        recursive = () if relative=='vendor/jam-conformance' else ('--recursive',)
         # Explicit checkout overrides configured merge/rebase/custom update strategies, including nested sources.
-        git('submodule','update','--init','--recursive','--checkout','--depth=1',
+        git('submodule','update','--init',*recursive,'--checkout','--depth=1',
             '--filter=blob:none','--',relative)
         assert git('rev-parse','HEAD',cwd=path,output=True)==revision, f'Wrong checkout: {relative}'
         if relative=='vendor/jamtestvectors' and arguments.prefetch_blobs:

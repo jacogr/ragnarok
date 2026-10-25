@@ -129,11 +129,11 @@ bounds, range, field and overflow checks. Ignored `build/tests/runtime/` stores 
 corpus SHA-256 and diagnostics. Linux CI runs the suite and retained logs; local validation is
 macOS arm64, with Linux confirmation pending CI after push.
 
-State chapters 1–16 and service metadata now have codecs; **M1 state parity remains incomplete**.
-Request-history framing is implemented; whole-state composition/root evidence and the
-parked request-length question remain; chapter 13 uses the accepted compact gas and numeric
-service-key policy without an alternate-width fallback. Next planned bounded group:
-**whole-state composition/root evidence and parity review**. See the [M1 checklist](../docs/m1.md).
+State chapters 1–16, current metadata, request-domain enforcement, whole-state composition
+and authored complete-map/root qualification are implemented. The old request-namespace and
+composition backlog is closed. Independent GP-derived current-schema qualification is recorded in
+[the current status](jam-serialization-status.md); additional original published current-schema
+maps remain separate corroboration rather than a pending implementation task.
 
 
 ## Compiler-port evidence

@@ -1,0 +1,39 @@
+{
+  "build_name": "pvm-memory-operands-results",
+  "cases": [
+    {
+      "arguments": [
+        "default"
+      ],
+      "description": "PVM memory operands default",
+      "diagnostic": "decoded.status == None",
+      "identity": {
+        "origin": "default"
+      },
+      "name": "pvm-memory-operands-default"
+    },
+    {
+      "arguments": [
+        "invalid"
+      ],
+      "description": "PVM memory operands invalid",
+      "diagnostic": "decoded.status == None",
+      "identity": {
+        "origin": "invalid"
+      },
+      "name": "pvm-memory-operands-invalid"
+    },
+    {
+      "arguments": [
+        "unmarked"
+      ],
+      "description": "PVM memory operands unmarked",
+      "diagnostic": "decoded.status == None",
+      "identity": {
+        "origin": "unmarked"
+      },
+      "name": "pvm-memory-operands-unmarked"
+    }
+  ],
+  "source": "tests/native/pvm_memory_operands_results.nim"
+}

@@ -1,11 +1,13 @@
 # Typed state composition
 
-Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Current target: unreleased Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 `text/merklization.tex` T and trie equations, with the component-specific C.1/C.2 contracts linked
 from [M1](../docs/m1.md). Source/vector identities remain those in [pins.json](pins.json).
 Upstream pins and toolchains are unchanged. Dictionary widths now follow the supported migration;
-statistics gas follows the [accepted compact policy](state-clarifications.md); request namespace
-is the remaining parked state-parity question.
+statistics gas follows the [accepted compact policy](state-clarifications.md). Request-domain
+adoption is complete. [Current serialization status](jam-serialization-status.md) records
+GP-derived whole-state qualification and remaining full-client parity boundaries;
+there is no pending namespace upgrade.
 
 ## Chapter capture and ownership
 
@@ -27,6 +29,13 @@ ceiling for each child's existing item policies and an independent complete-valu
 It is not an additional serialization discriminator. Captures made with different resource
 ceilings can compose; captures with different profiles cannot.
 
+C(10) guarantee credential indices are structurally bounded by the larger of the
+current and previous validator populations. A previous-rotation guarantee can be
+retained just after shrinkage with indices outside the smaller current roster.
+This does not widen either roster or select signature keys: contextual credential
+admission uses the exact current/previous rotation, and report erasure shards
+still use the current population. An index at or beyond both counts rejects.
+
 Existing typed component encoders feed capture through their complete entry value. Captured
 chapters are validated immutable serialization snapshots; the compositor retains their exact
 bytes rather than extracting/re-encoding every logical field. There is no alternate-width decoder
@@ -38,7 +47,8 @@ valid chapter or mixed profile fails before output mapping allocation.
 `StateService` holds a service identity, fixed version-zero metadata and typed arrays of storage,
 preimage and request records. Existing single-entry encoders derive every key and payload. Raw
 storage/preimage values have no extra length framing; request histories preserve the tagged
-0..3-slot union and full E4 length domain. Empty service arrays produce just the sixteen chapter
+0..3-slot union and current length domain below 2^32−2. Metadata uses the current
+105-byte supervised schema. Empty service arrays produce just the sixteen chapter
 entries; an otherwise empty listed service still contributes its 89-byte metadata entry.
 
 The optional `captured` list accepts the existing immutable service/key-bound opaque value handles,
@@ -72,6 +82,15 @@ preimage hash/content validity and request chronology/reachability remain contex
 Opaque captures and successful roots do not turn these assertions into validated chain state.
 
 ## Evidence
+
+Current authored complete-map and profile coverage is recorded in
+[the complete corpus](state-complete-serialization-corpus.md) and
+[the tiny/full/resized profile matrix](state-serialization-profiles.md).
+The following records describe original release-era component/map qualification.
+Old published metadata is not accepted unchanged by current production; the
+[source audit](state-current-source-audit.md) separates original and explicitly
+projected metadata/roots. Historical namespace “pending” conclusions are superseded.
+
 
 Run the complete checks; Make prepares native dependencies:
 

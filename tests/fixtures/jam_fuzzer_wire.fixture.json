@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_JAM_FUZZER_WIRE",
+  "files": {
+    "jam-fuzzer-wire.json": "9f5ba88875f3580a574aa35af7ca5b13084e9e6ad742d7a4f8456a6e50dd4585"
+  },
+  "target": "jam-fuzzer-wire.json"
+}

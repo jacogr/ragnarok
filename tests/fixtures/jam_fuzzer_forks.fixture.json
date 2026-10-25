@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_JAM_FUZZER_FORKS",
+  "files": {
+    "jam-fuzzer-forks.json": "270a20faf52338100bb46e7c07928819470d40738797ce77693489c139ff8d57"
+  },
+  "target": "jam-fuzzer-forks.json"
+}

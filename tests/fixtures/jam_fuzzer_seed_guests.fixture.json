@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_JAM_FUZZER_SEED_GUESTS",
+  "files": {
+    "jam-fuzzer-seed-guests.json": "e207c4b94f4d881cc0556368ddd2ba2f22cf2555e1a2869d08329f2f4f9174a3"
+  },
+  "target": "jam-fuzzer-seed-guests.json"
+}
