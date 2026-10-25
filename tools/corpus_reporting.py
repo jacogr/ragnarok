@@ -63,6 +63,15 @@ def current_stf_late_gas_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_late_relevance_corpus(compiler, report, checks, libraries):
+    """Qualify prior code-preimage admission and posterior relevance after selected foreign request effects."""
+    import current_stf_late_relevance_oracle as oracle
+    return scenarios(compiler,checks,libraries,oracle,
+        ('current_stf','current_stf_epoch','current_stf_late_relevance','current_stf_late_rotation',
+         'current_stf_supervised_requests','state_report'),defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_late_retention_corpus(compiler, report, checks, libraries):
     """Qualify exact residual admission, retained rows and expiry when actual code availability changes gas consumption."""
     import current_stf_late_retention_oracle as oracle

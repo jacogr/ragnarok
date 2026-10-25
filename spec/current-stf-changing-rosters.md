@@ -36,6 +36,7 @@ erasure shards remain tied to the current population.
 | Missing-code skips versus genuine pooled gas exhaustion |240|[Late-code gas exits](current-stf-late-gas.md)|
 | Exact deferred admission, zero-gas draining and ready-row expiry |216|[Late-code retention](current-stf-late-retention.md)|
 | Unresolved cycles/published anchors through code arrival and exact row expiry |224|[Late-code cycles](current-stf-late-cycles.md)|
+| Selected posterior request relevance and actual extrinsic accounting |100|[Selected posterior request relevance and actual extrinsic accounting](current-stf-late-relevance.md)|
 | Actual report-triggered writes, panic and checkpoint effects |30|[Population guests](current-stf-population-guests.md)|
 | Ticket contests, winner/fallback sealing and later growth |32|[Ticket reporting](current-stf-ticket-reporting.md)|
 | Deferred waves, release/resize-clear and actual-gas continuation |72|[Dependency waves](current-stf-population-waves.md)|
