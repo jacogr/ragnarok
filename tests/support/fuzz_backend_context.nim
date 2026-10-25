@@ -12,8 +12,9 @@ proc fuzzBackendTestConfig*(): FuzzBackendConfig =
   ## Keep the independently frozen current STF profile and explicit resource policies.
   FuzzBackendConfig(parameters: currentChainSettings(), candidate: currentConsecutiveLimits(),
       wire: fuzzProtocolTestLimits())
-proc fuzzInitialize*(header: OwnedHeader, state: StateStoreSnapshot): FuzzMessage =
-  ## An Initialize contains exact header bytes, a rootless complete map and zero ancestry.
+proc fuzzInitialize*(header: OwnedHeader, state: StateStoreSnapshot, ancestry: openArray[
+    FuzzAncestor] = []): FuzzMessage =
+  ## An Initialize contains exact header bytes, a rootless complete map and explicit test membership.
   let limits = fuzzProtocolTestLimits()
   var wire = @[1'u8]
   var head = newSeq[byte](header.headerInfo.value.consumed)
@@ -22,7 +23,11 @@ proc fuzzInitialize*(header: OwnedHeader, state: StateStoreSnapshot): FuzzMessag
   let serialized = newFuzzState(state, limits).value.copyFuzzMessage(limits.bytes).value
   for index in 1..<serialized.len: wire.add(serialized[
       index]) # Replace only State's discriminant, retaining the rootless map.
-  wire.add(0)
+  assert ancestry.len <= 24
+  wire.add(byte(ancestry.len))
+  for member in ancestry:
+    for shift in 0..<4: wire.add(byte((uint32(member.slot) shr (shift*8)) and 255))
+    for octet in array[32, byte](member.hash): wire.add(octet) # Only hash/slot facts are supplied on the wire.
   let decoded = decodeFuzzMessage(wire, limits)
   assert decoded.error == FuzzError.None
   decoded.value
