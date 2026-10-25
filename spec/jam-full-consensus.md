@@ -134,3 +134,25 @@ replay. Unchanged upstream minifuzz passed two sessions, 17 imports and 42 exact
 exchanges with its real mismatch control. All 54 focused Python tests and fresh
 inventory passed. Original fixture answers, checked native build configuration,
 GP checks and native-source formatting/semantic coverage remain unchanged.
+
+## Full-population verdict admission
+
+A complete batch independently signs three verdicts with 683 judgments each,
+including ordinal 1022. Exactly 683, zero and 341 positive judgments classify the
+reports as good, bad and wonky. Genuine opposing fault evidence accompanies the
+new good verdict in the same block. All report sets, Phi, marker bytes, body
+commitments and complete posterior maps are calculated before native execution.
+
+Signed invalid quorum, invalid split, invalid epoch, changed judgment signature,
+missing good-verdict fault and previously judged report cases must refuse with
+the exact guarded dispute cause, preserve every prior map/head field and permit
+later valid continuation. Verdict roster/epoch selection uses the original parent,
+not the incoming block's eventual Safrole population. This family starts without
+pending reports; cancellation and resized/previous-roster composition follow.
+
+Observed verdict validation: all eight complete-map steps (two accepted and six
+exact typed refusals) passed checked native replay, including the 2049-signature
+accepted batch. Unchanged upstream minifuzz passed one session, eight imports and
+20 exact exchanges with its real mismatch control. All 54 focused Python tests
+and fresh inventory passed. No policy, native source, dependency or GP check
+needed alteration; existing formatting/semantic evidence and fixture answers remain valid.

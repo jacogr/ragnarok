@@ -219,6 +219,14 @@ def jam_fuzzer_full_tickets(identity):
 
 
 @reference()
+def jam_fuzzer_full_verdicts(identity):
+    """Require full good/bad/wonky verdicts and every exact quorum/split/epoch/signature/fault/refusal exchange."""
+    import jam_fuzzer_full_verdicts_oracle as source
+    from jam_fuzzer_full_profile_oracle import parameters
+    return selected(source,identity,[parameters()],spec='full')
+
+
+@reference()
 def jam_fuzzer_guest_forks(identity):
     """Retain the original nonempty Tiny guest siblings and original-last chains."""
     import jam_fuzzer_guest_forks_oracle as source

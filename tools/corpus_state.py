@@ -948,6 +948,16 @@ def jam_fuzzer_full_tickets_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_full_verdicts_corpus(compiler, report, checks, libraries):
+    """Compare three full683-vote verdicts, opposing faults and exact atomic GP refusal maps."""
+    import jam_fuzzer_full_verdicts_oracle as reference
+    import jam_fuzzer_full_profile_oracle as full
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        ('jam_full_guest_ring_input', 'jam_fuzzer_full_verdicts', 'jam_fuzzer_full_guests'),
+        profiles=[full.parameters()])
+
+
+@CORPORA.case
 def jam_fuzzer_transfer_forks_corpus(compiler, report, checks, libraries):
     """Compare independent actual transfer-bearing siblings with exact original-last state and continuation."""
     import jam_fuzzer_transfer_forks_oracle as reference
