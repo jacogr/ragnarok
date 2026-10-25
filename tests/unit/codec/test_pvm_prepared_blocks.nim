@@ -337,6 +337,94 @@ let repaired = captureMachine(faultProgram, mapped, machineInfo(
     fault.value.machine).value).value
 compare(repaired, faultCache, 5, 100000)
 
+proc positionPrefix(): seq[seq[byte]] =
+  ## Cross a 256-operation segment before observing any byte PC; every load has a known original instruction width.
+  result = @[]
+  for index in 0..<257:
+    # The final loaded value remains visible at all later suspension/gas boundaries.
+    result.add(@[51'u8, 7, 11])
+
+type PositionContext = object ## Callback observations depend on immutable fixture byte positions, not another interpreter.
+  calls: int
+proc positionReply(context: var PositionContext, stopped: StepOutcome): HostResponse {.raises: [].} =
+  ## Assert the causing byte PC after a segment split and again after a resumed ordinary prefix.
+  let state = machineInfo(stopped.machine).value
+  assert context.calls in [0, 1]
+  assert uint64(state.pc) == (if context.calls == 0: 771'u64 else: 777'u64)
+  assert uint64(state.registers[7]) == (if context.calls == 0: 11'u64 else: 22'u64)
+  assert uint64(stopped.hostCall) == uint64(13+context.calls)
+  inc context.calls
+  HostResponse(action: HostAction.Continue, gas: state.gas, registers: state.registers,
+    memory: memoryOf(stopped.machine).value)
+
+var positionParts = positionPrefix()
+positionParts.add(@[10'u8, 13])
+positionParts.add(@[2'u8])
+positionParts.add(@[51'u8, 7, 22])
+positionParts.add(@[10'u8, 14])
+positionParts.add(@[0'u8])
+let positionProgram = owner(positionParts)
+let positionCache = cache(positionProgram, blocks = 2)
+let positionSource = captureMachine(positionProgram, mapped,
+  MachineInfo(gas: MachineGas(100000))).value
+for steps in [0'u64, 1, 255, 256, 257, 258, 259, 260, 261, 262]:
+  for calls in [0'u64, 1, 2]:
+    # Attempt exhaustion immediately before/after each host must consume exactly the executed prefix, even on cache reuse.
+    var ordinary = PositionContext(calls: 0)
+    var prepared = PositionContext(calls: 0)
+    let expected = executeWithHost(positionSource, ordinary, positionReply,
+      ExecutionStepLimit(steps), HostCallLimit(calls), GasCycleLimit(100000))
+    let actual = executeWithHost(positionSource, prepared, positionReply,
+      ExecutionStepLimit(steps), HostCallLimit(calls), positionCache)
+    same(actual, expected)
+    let firstCall = if steps >= 258 and calls >= 1: 1 else: 0
+    let secondCall = if steps >= 261 and calls >= 2: 1 else: 0
+    assert ordinary.calls == firstCall+secondCall and prepared.calls == ordinary.calls
+    let reason = if steps >= 258 and calls == 0 or steps >= 261 and calls == 1:
+        StepError.HostCallLimitExceeded
+      elif steps == 262: StepError.None else: StepError.StepLimitExceeded
+    assert actual.error == reason
+    sameCpu(machineInfo(positionSource).value, MachineInfo(gas: MachineGas(100000)))
+
+var faultPositionParts = positionPrefix()
+faultPositionParts.add(@[58'u8, 8, 0, 16, 1, 0])
+faultPositionParts.add(@[0'u8])
+let faultPositionProgram = owner(faultPositionParts)
+let faultPositionCache = cache(faultPositionProgram, blocks = 2)
+let faultPositionSource = captureMachine(faultPositionProgram, absent,
+  MachineInfo(gas: MachineGas(100000))).value
+for steps in [255'u64, 256, 257, 258, 259]:
+  # A fault after ordinary work reconstructs its own byte PC instead of the segment entry or last materialized successor.
+  compare(faultPositionSource, faultPositionCache, steps, 100000)
+let positionedFault = execute(faultPositionSource, ExecutionStepLimit(258), faultPositionCache)
+assert positionedFault.error == StepError.None and positionedFault.value.exit == StepExit.Fault
+let stoppedPosition = machineInfo(positionedFault.value.machine).value
+assert uint64(stoppedPosition.pc) == 771 and uint64(stoppedPosition.registers[7]) == 11
+assert stoppedPosition.blockCharged and uint32(positionedFault.value.faultPage) == 0x11000
+let positionRepair = captureMachine(faultPositionProgram, mapped, stoppedPosition).value
+compare(positionRepair, faultPositionCache, 2, 100000)
+let finishedRepair = execute(positionRepair, ExecutionStepLimit(2), faultPositionCache)
+assert finishedRepair.error == StepError.None and finishedRepair.value.exit == StepExit.Panic
+assert uint64(machineInfo(finishedRepair.value.machine).value.gas) == uint64(stoppedPosition.gas)
+
+var gasPositionParts = positionPrefix()
+gasPositionParts.add(@[1'u8])
+gasPositionParts.add(@[51'u8, 7, 22])
+gasPositionParts.add(@[0'u8])
+let gasPositionProgram = owner(gasPositionParts)
+let gasPositionCache = cache(gasPositionProgram, blocks = 1)
+let entryPrice = uint64(blockGas(gasPositionProgram, CodeAddress(0), GasCycleLimit(100000)).value)
+let gasPositionSource = captureMachine(gasPositionProgram, mapped,
+  MachineInfo(gas: MachineGas(entryPrice))).value
+for steps in [257'u64, 258, 259]:
+  # Exhaustion at the transfer differs from reaching the next uncharged block with no affordable gas.
+  compare(gasPositionSource, gasPositionCache, steps, 100000)
+let positionedGas = execute(gasPositionSource, ExecutionStepLimit(259), gasPositionCache)
+assert positionedGas.error == StepError.None and positionedGas.value.exit == StepExit.OutOfGas
+let gasPosition = machineInfo(positionedGas.value.machine).value
+assert uint64(gasPosition.pc) == 772 and uint64(gasPosition.gas) == 0
+assert not gasPosition.blockCharged and uint64(gasPosition.registers[7]) == 11
+
 proc lifecycle(input: Machine) =
   ## Prepared owners release their arrays and program references without retaining invocation snapshots or callbacks.
   let prepared = cache(programOf(input).value, blocks = 2)

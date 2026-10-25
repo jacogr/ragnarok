@@ -1340,7 +1340,7 @@ type
       discard # Failed/default handlers carry no selectable exit or stale payload.
   PreparedFrame = object ## One invocation owns mutable CPU/memory/targets and rare exit metadata; no reusable cache retains it.
     source: Program
-    info: MachineInfo
+    info: MachineInfo # Byte PC is materialized at segment/control/publication boundaries; ordinary position uses the segment index.
     memory: WorkingMemory
     cache: ExecutionCache
     exitEffect: InstructionEffect
@@ -1429,7 +1429,6 @@ proc preparedRegister[Code: static[int]](frame: var PreparedFrame,
       index, value, Code):
     return PreparedEvaluation(status: StepError.UnsupportedInstruction)
   frame.info.registers[index] = value
-  frame.info.pc = operation.next
   if not operation.fallthrough:
     return PreparedEvaluation(status: StepError.InvalidMachine)
   preparedSignal(StepExit.Continued)
@@ -1468,7 +1467,6 @@ proc preparedMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
     # Successful nonterminators require their validated physical successor.
     if not operation.fallthrough:
       return PreparedEvaluation(status: StepError.InvalidMachine)
-    frame.info.pc = operation.next
     preparedSignal(StepExit.Continued)
   of MachineError.Fault:
     # Only the selected fault exit authorizes this invocation-local page payload.
@@ -1498,7 +1496,6 @@ proc preparedControl[Code: static[int]](frame: var PreparedFrame,
     # Unlikely stays inside its prepaid block.
     if not operation.fallthrough: return PreparedEvaluation(
         status: StepError.InvalidMachine)
-    frame.info.pc = operation.next
   elif Code == 50 or Code == 180:
     # Read the original base before load-and-jump publishes an aliased destination.
     let slots = operation.registers
@@ -1836,19 +1833,29 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
             kind: StepExit.OutOfGas), false)
       frame.info.gas = MachineGas(uint64(frame.info.gas)-active.price)
       frame.info.blockCharged = true
-    var ended = false
-    while at < active.operations.len and remaining > 0 and not ended:
-      # Every guest instruction, including an exiting one, consumes one local scheduling attempt.
-      dec remaining
-      # Borrow the stable retained array element directly; no full prepared-record copy crosses the indirect call.
-      let causingPc = active.operations[at].address
-      let endsBlock = active.operations[at].endsBlock
+    if at < 0 or at >= active.operations.len:
+      return StepResult(status: StepError.InvalidPreparedProgram)
+    # Sealed segments stop at their first block terminator; the bounded prefix needs only one index comparison per operation.
+    let first = at
+    let attempts = min(uint64(active.operations.len-at), remaining)
+    let stop = at+int(attempts) # The difference bound above proves this sum cannot exceed the retained array length.
+    while at < stop:
+      # Borrow the retained operation; its index is authoritative until a segment boundary or observable guest exit.
       let selected = active.operations[at].handler
-      if selected == nil: return StepResult(status: StepError.UnsupportedInstruction)
+      if selected == nil:
+        # The refused operation still consumes one attempt, preserving private budget accounting before failure.
+        remaining -= uint64(at-first)+1
+        return StepResult(status: StepError.UnsupportedInstruction)
       let evaluated = selected(frame, active.operations[at])
-      if evaluated.status != StepError.None: return StepResult(status: evaluated.status)
+      if evaluated.status != StepError.None:
+        # Local failure publishes no partial CPU/memory state, but its causing attempt remains consumed.
+        remaining -= uint64(at-first)+1
+        return StepResult(status: evaluated.status)
       inc at
       if evaluated.exit != StepExit.Continued:
+        # Charge only the attempted prefix before publishing or entering any external host callback.
+        remaining -= uint64(at-first)
+        let causingPc = active.operations[at-1].address
         # Rare payloads are read only for their selected fault/host exit; ordinary exits construct payload-free metadata.
         let effect = if evaluated.exit in {StepExit.Fault, StepExit.Host}: frame.exitEffect
           else: InstructionEffect(kind: evaluated.exit)
@@ -1862,7 +1869,12 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
           location.chunk = active
           location.next = at
         return published
-      ended = endsBlock
+    # The complete bounded prefix consumed its reserved attempts; budget exhaustion still returns only a typed refusal.
+    remaining -= attempts
+    let last = stop-1
+    if not active.operations[last].endsBlock:
+      # A segment split or budget boundary materializes its physical successor once; control handlers already selected block targets.
+      frame.info.pc = active.operations[last].next
     location.chunk = nil
     location.next = 0
   StepResult(status: StepError.StepLimitExceeded)

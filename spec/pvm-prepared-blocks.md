@@ -474,3 +474,29 @@ prepared mode. Thus this run does not independently isolate ordinary-path code-l
 effects. The results qualify this optional prepared change on these inputs and this
 runner, not complete JAM parity or performance on every CPU/program. No further
 optimization or default-engine switch is included in this increment.
+
+## Segment position bookkeeping trial
+
+This bounded fourth stack layer starts from accepted operand parent
+`7115dfd067c882577230bc3ba3bc6806de8d3a34`. In that parent's fourth-call profiles,
+execution-owner/loop/cache self instruction shares are 31.92% Pinky, 55.00% sieve,
+21.92% minimal and 41.41% memory fill. Checked loads/stores account for 40.58%,
+19.96%, 56.15% and 34.58%, respectively. Generated-C lines writing ordinary next PCs
+account for 2.44%, 2.87%, 1.75% and 1.99%; these attribution counts are not CPU shares.
+
+The existing operation index becomes authoritative within a prepared segment. Each
+immutable segment stops at its first block terminator, so its iteration endpoint can
+be bounded once by the available operation count and remaining attempt budget. The
+inner loop no longer retests a separate ended flag or remaining counter, and ordinary
+handlers do not maintain a parallel byte PC. Segment/budget boundaries materialize
+the physical successor; control transfers retain their selected target. Fault/host
+publication reconstructs the causing byte PC from the selected immutable operation;
+terminal exits retain recursive normalization. No external callback can observe stale
+CPU coordinates. Partial guest exits debit only their attempted prefix before host
+response processing; local failures still carry no published machine state.
+
+Acceptance requires complete opcode/reference/host/fault/ownership parity, independent
+PC witnesses across segment and callback boundaries, exact attempt and host budgets,
+all maintained guests versus the parent, and the same paired Linux cold/reused
+comparison. Pricing, memory checks, sparse cache policy, record layout, public APIs
+and handler ABI remain unchanged. No speed gain is claimed before qualification.
