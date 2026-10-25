@@ -17,7 +17,12 @@ class JamInterfaceCI(unittest.TestCase):
 
     def complete(self):
         """A complete synthetic verdict includes every source-owned interface case and real-entry workload."""
-        return dict(cases={name: dict(passed=True) for name in interface.CASES}, socket=dict(passed=True))
+        return dict(cases={name: dict(passed=True, build=dict(exit_code=0), run=dict(exit_code=0),
+                                     expected_sha256='a'*64, actual_sha256='a'*64) for name in interface.CASES},
+                    socket=dict(passed=True, guests=dict(passed=True, sessions=2, signed_imports=3,
+                        guest_siblings=1, expected_state_queries=11, completed_sessions=2,
+                        completed_imports=3, retained_siblings=1, complete_state_queries=11,
+                        consensus_rejections=3, isolated_reconnects=1)))
 
     def test_every_declared_child_is_required(self):
         """No missing, extra or failed case can hide behind another successful child."""
@@ -37,6 +42,31 @@ class JamInterfaceCI(unittest.TestCase):
         report = self.complete()
         del report['socket']
         self.assertFalse(interface.passed(report))
+
+    def test_transcript_and_native_stages_are_required(self):
+        """A stale success flag cannot cover mismatched expected bytes, failed linking or failed native execution."""
+        name = interface.CASES[0]
+        for field, value in (('actual_sha256', 'b'*64), ('expected_sha256', ''),
+                             ('build', dict(exit_code=1)), ('run', dict(exit_code=2)),
+                             ('run', dict(exit_code=False)), ('run', None)):
+            report = self.complete()
+            report['cases'][name][field] = value
+            self.assertFalse(interface.passed(report))
+        report = self.complete()
+        del report['cases'][name]['actual_sha256']
+        self.assertFalse(interface.passed(report))
+
+    def test_incomplete_guest_socket_work_is_required(self):
+        """Partial loops, absent guest evidence and missing full-map/sibling checks fail the same aggregate gate."""
+        for field in ('completed_sessions', 'completed_imports', 'retained_siblings',
+                      'complete_state_queries', 'consensus_rejections', 'isolated_reconnects'):
+            report = self.complete()
+            report['socket']['guests'][field] -= 1
+            self.assertFalse(interface.passed(report))
+        report = self.complete()
+        del report['socket']['guests']
+        self.assertFalse(interface.passed(report))
+        self.assertIn('guest socket evidence: failed or missing', interface.summary(report))
 
     def test_failed_setup_replaces_old_success(self):
         """An interrupted prerequisite writes a fresh failed report and explicit pending-engine summary."""

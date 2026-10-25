@@ -27,3 +27,13 @@ campaign pass. A compatible GP0.8 polkajam-fuzz engine remains unavailable, and
 both results and summary explicitly retain that pending validation. Engine
 availability and an agreed matching profile can later enable known upstream
 campaign execution without weakening GP checks or changing the wire protocol.
+
+Native corpus success requires successful build and execution records together
+with equal valid SHA-256 values for the observed and independently expected
+transcript. A success flag alone, missing stage record or mismatched transcript
+cannot satisfy the aggregate. Real-entry guest success additionally compares
+observed import/session/sibling/query/rejection counters against the independently
+prepared socket plan and requires fresh-session isolation. Partial loops or
+missing guest evidence fail the same group even if the outer workload flag is
+present. Summaries retain explicit guest import/query evidence and the pending
+live-engine campaign status.

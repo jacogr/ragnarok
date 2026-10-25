@@ -25,11 +25,43 @@ BUILD = ROOT/'build/tests/jam-fuzzer-interface'
 CASES = tuple(sorted(name for name in CORPORA.tasks if name.startswith('jam_fuzzer_')))
 
 
+def corpus_verified(result):
+    """Require successful native construction/execution and the exact independently expected transcript hash."""
+    if not isinstance(result, dict) or result.get('passed') is not True:
+        return False
+    expected = result.get('expected_sha256')
+    if not isinstance(expected, str) or len(expected) != 64 or any(char not in '0123456789abcdef' for char in expected):
+        return False
+    for stage in ('build', 'run'):
+        observed = result.get(stage)
+        if not isinstance(observed, dict) or type(observed.get('exit_code')) is not int or observed['exit_code'] != 0:
+            return False
+    return result.get('actual_sha256') == expected
+
+
+def guest_socket_verified(result):
+    """Compare observed real socket work with its independently prepared full-map plan; incomplete loops cannot pass."""
+    if not isinstance(result, dict) or result.get('passed') is not True:
+        return False
+    counts = ('sessions', 'signed_imports', 'guest_siblings', 'expected_state_queries',
+              'completed_sessions', 'completed_imports', 'retained_siblings',
+              'complete_state_queries', 'consensus_rejections', 'isolated_reconnects')
+    if any(type(result.get(name)) is not int or result[name] <= 0 for name in counts):
+        return False
+    return (result['completed_sessions'] == result['sessions']
+            and result['completed_imports'] == result['signed_imports']
+            and result['retained_siblings'] == result['guest_siblings']
+            and result['complete_state_queries'] == result['expected_state_queries']
+            and result['consensus_rejections'] == result['signed_imports'])
+
+
 def passed(report):
-    """Require the entire declared interface scope; a missing, skipped or failed child cannot pass."""
+    """Require every declared transcript plus complete real-entry guest execution, never a success flag alone."""
     cases = report.get('cases', {})
-    return (bool(CASES) and set(cases) == set(CASES) and all(cases[name].get('passed') is True for name in CASES)
-            and report.get('socket', {}).get('passed') is True)
+    socket = report.get('socket', {})
+    return (bool(CASES) and set(cases) == set(CASES)
+            and all(corpus_verified(cases[name]) for name in CASES)
+            and socket.get('passed') is True and guest_socket_verified(socket.get('guests')))
 
 
 def summary(report):
@@ -40,8 +72,15 @@ def summary(report):
              '| Check | Result |', '| --- | --- |']
     for name in CASES:
         result = report.get('cases', {}).get(name)
-        lines.append('| '+name+' | '+('passed' if result and result.get('passed') else 'failed or missing')+' |')
+        lines.append('| '+name+' | '+('passed' if corpus_verified(result) else 'failed or missing')+' |')
     lines.append('| real-entry socket | '+('passed' if report.get('socket', {}).get('passed') else 'failed or missing')+' |')
+    guests = report.get('socket', {}).get('guests')
+    if guest_socket_verified(guests):
+        lines.extend(['', 'Nonempty guest socket imports: '+str(guests['completed_imports'])+'/'+str(guests['signed_imports'])+'.',
+                      'Complete guest state queries: '+str(guests['complete_state_queries'])+'/'+str(guests['expected_state_queries'])+'.',
+                      'Guest sibling retention and fresh-session isolation: passed.'])
+    else:
+        lines.extend(['', 'Nonempty guest socket evidence: failed or missing.'])
     return '\n'.join(lines)+'\n'
 
 
