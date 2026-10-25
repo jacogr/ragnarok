@@ -35,3 +35,9 @@ complete output comparison. The unchanged32-transition/three-refusal ticket
 corpus also passed through the per-chain runner. All18 scoped independent/harness
 tests and24 existing corpus/discovery/unit-runner contract tests passed. Source
 inventory and pinned formatting passed.
+
+Checked Linux amd64 passed all72 transitions across six bounded processes with
+identical complete aggregate output hashes. Every frozen runtime input matched
+the host and retained image `ragnarok:db5-population-waves`
+(`sha256:94e09013f74449ac3f301c0d550bc49e598fdcb42ebb6096676fc86b82071ef9`).
+This is covered-source local evidence, separate from exact-head CI.
