@@ -225,4 +225,100 @@ The compact-ABI trial is isolated from the merge-ready prepared PR on
 `10af30aabbc901775f556a563b983583a2eb481f`, including the merged memory facts and
 DOOM tools. Checked local opcode/host/ARC, mixed-reference and complete guest comparisons
 pass on that combined tree. The measurement report additionally records the runner CPU
-model. No speed gain is accepted before the paired Linux evidence completes.
+model. The qualified paired Linux result follows below.
+
+## Qualified compact ABI result (2026-10-25)
+
+Retain the compact ABI: all seven guest/size cases improve in both process orders.
+The four main workloads reduce reused CPU time by 23.38–31.35% against the reconciled
+prepared baseline. Smaller 1000-size cases also improve by 20.96–31.16%. This is
+same-runner evidence for this private boundary change, not a claim of PolkaVM parity.
+
+[Linux run 40198779085](https://github.com/jacogr/ragnarok/actions/runs/40198779085)
+passed at candidate `74948c55105ee524370f30dde5e61abbdf9026b3` against
+baseline `10af30aabbc901775f556a563b983583a2eb481f` on AMD EPYC 7763,
+Linux x86-64, pinned Nimony nightly 4724f66, checked ARC/Clang ThinLTO. The source
+change is confined to the prepared handler boundary; existing dynamic/planned paths
+share the candidate image, so unrelated layout effects are not separately isolated.
+
+All 70 process runs (13 fresh-state calls each), 24 profiles and four collection
+controls passed. The native 139-opcode/host suite passed first. Every timed call
+checked terminal PC, all 13 registers, gas, every mapped page byte and permissions,
+and the original source state. Both native assertion probes failed with their expected
+diagnostic. Candidate and baseline used fresh private compiler caches and identical
+build paths; an independent candidate rebuild was byte-identical. Tracked source
+hashes match the exact revisions. Downloaded generated-source and retained profile
+hashes were independently checked; each selected profile contains exactly one execution.
+
+CPU times below are milliseconds. Reused values are medians of ten calls following
+three warmups, with a fresh guest state and a shared prepared cache. Order 1 is dynamic,
+planned, prepared, baseline, PolkaVM; order 2 reverses that process order. The planned
+constructor and the bounded empty prepared-owner constructor are outside execution timing.
+
+| Guest / size | Order | Dynamic | Planned | Baseline prepared | Compact prepared | PolkaVM interpreted | ABI CPU change |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| pinky / 1 | 1 | 461.385 | 415.682 | 509.308 | 382.739 | 184.110 | -24.85% |
+| pinky / 1 | 2 | 459.805 | 414.827 | 505.545 | 387.359 | 184.521 | -23.38% |
+| sieve / 100000 | 1 | 17.528 | 11.007 | 11.882 | 8.247 | 5.563 | -30.59% |
+| sieve / 100000 | 2 | 17.438 | 11.049 | 11.941 | 8.198 | 5.534 | -31.35% |
+| minimal / 100000 | 1 | 26.910 | 26.337 | 29.226 | 21.726 | 7.489 | -25.66% |
+| minimal / 100000 | 2 | 26.942 | 26.288 | 30.137 | 21.719 | 7.458 | -27.93% |
+| memset / 100000 | 1 | 12.616 | 12.777 | 12.652 | 9.390 | 4.184 | -25.78% |
+| memset / 100000 | 2 | 12.608 | 12.866 | 12.499 | 9.354 | 4.179 | -25.16% |
+
+Cold means sample 0, one observation per process, including lazy preparation; these
+single observations are not medians or isolated preparation-cost estimates. Pinky
+shows that ordinary runner variation can make a cold call faster than reused calls.
+
+| Guest / size | Order | Cold dynamic | Cold planned | Cold baseline | Cold compact | Cold PolkaVM |
+|---|---:|---:|---:|---:|---:|---:|
+| pinky / 1 | 1 | 463.585 | 417.549 | 513.529 | 368.606 | 189.022 |
+| pinky / 1 | 2 | 448.920 | 407.753 | 511.771 | 389.874 | 189.528 |
+| sieve / 100000 | 1 | 17.824 | 11.752 | 20.975 | 16.772 | 6.156 |
+| sieve / 100000 | 2 | 17.725 | 12.109 | 20.465 | 16.753 | 6.175 |
+| minimal / 100000 | 1 | 28.061 | 27.234 | 29.408 | 22.019 | 7.584 |
+| minimal / 100000 | 2 | 27.883 | 27.522 | 30.347 | 22.062 | 7.650 |
+| memset / 100000 | 1 | 12.660 | 12.851 | 12.931 | 9.811 | 4.288 |
+| memset / 100000 | 2 | 12.804 | 12.847 | 12.905 | 9.734 | 4.299 |
+
+Constructor CPU in microseconds, order 1/order 2. The prepared owner reserves 131,072
+bytes and zero decoded operations; lazy work is in cold execution. No complete
+PolkaVM module/instance constructor measurement is collected by this harness.
+
+| Guest | Baseline prepared | Compact prepared | Existing complete gas plan |
+|---|---:|---:|---:|
+| pinky | 4.218/6.502 | 4.549/4.208 | 3033.022/3068.038 |
+| sieve | 9.518/4.459 | 4.358/4.097 | 14676.280/14607.952 |
+| minimal | 58.750/58.199 | 56.846/57.037 | 34.535/39.434 |
+| memset | 5.510/5.631 | 5.860/5.851 | 248.685/250.888 |
+
+Selected reused execution counters below compare baseline → compact. The fourth-call
+profile excludes three warmups. Ir counts executed native instructions, not guest
+opcodes. Bcm/Bim are simulated conditional/indirect branch misses; these are not
+hardware counter readings. Data/instruction cache simulation is disabled.
+
+| Guest | Native instructions | Conditional misses | Indirect misses | Combined miss change |
+|---|---:|---:|---:|---:|
+| pinky | 4196.494M → 3662.509M | 29.588M → 24.579M | 28.479M → 28.450M | -8.68% |
+| sieve | 112.846M → 96.193M | 0.263M → 0.207M | 1.131M → 1.131M | -4.04% |
+| minimal | 362.811M → 323.310M | 2.600M → 2.800M | 1.900M → 1.900M | +4.44% |
+| memset | 151.676M → 133.370M | 0.501M → 0.301M | 1.100M → 1.100M | -12.49% |
+
+Cold Ir reductions are 9.09% sieve, 10.88% minimal, 11.97% memory fill and 12.66%
+Pinky; reused reductions are 14.76%, 10.89%, 12.07% and 12.72%, respectively.
+Indirect misses barely change. Minimal gets faster despite 4.44% more combined
+simulated misses. The evidence supports reduced call/result and instruction overhead;
+it does not establish the hardware-level cause of the measured CPU improvement.
+
+Prepared-cache observations are identical between baseline and compact in both orders.
+Minimal retains 9 blocks/59 operations (136,624 bytes), and memory fill retains 63/365
+(165,712 bytes), with no evictions. Sieve retains 991/13,226 (1,334,600 bytes) and
+continues 48 evictions per repeated call; Pinky retains 792/5,911 (682,920 bytes)
+and continues 58 evictions per call. After 13 calls, cumulative evictions are 615 and 751,
+respectively; peaks are 1,361,216 and 709,360 bytes. Those continuing rebuilds are a
+future cache-policy question, outside this isolated ABI experiment.
+
+The compact tier still takes 1.48× PolkaVM interpreted CPU for sieve, 2.90–2.91×
+minimal, 2.24× memory fill and 2.08–2.10× Pinky. Construction, cold execution and
+cache churn must remain visible when evaluating larger programs. No further runtime
+optimization or default-engine switch is included in this measured increment.
