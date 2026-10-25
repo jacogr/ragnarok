@@ -78,6 +78,8 @@ class DoomAttributionTests(unittest.TestCase):
             self.assertEqual(bool(expression(condition,context)),wanted)
         section=job_section(text,'profile-doom')
         self.assertIn('run: make profile-pvm-doom',section)
+        self.assertIn("PVM_DOOM_COUNTS_ONLY: ${{ inputs.pvm_doom_counts_only && '1' || '0' }}",section)
+        self.assertIn('--counts-only', (ROOT/'Makefile').read_text())
         self.assertIn('valgrind=1:3.22.0-0ubuntu3',section)
         self.assertIn('build/tests/pvm-doom/reference-source/**/*.rs',section)
         self.assertNotIn('continue-on-error',section)

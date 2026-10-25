@@ -479,6 +479,7 @@ measure-disk-store: setup
 
 # Bounded pinned DOOM correctness and opt-in Linux instruction attribution; no local guest timings.
 PVM_DOOM_WARMUP ?= 1320
+PVM_DOOM_COUNTS_ONLY ?= 0
 .PHONY: check-pvm-doom profile-pvm-doom
 check-pvm-doom: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
@@ -486,4 +487,4 @@ check-pvm-doom: setup
 profile-pvm-doom: export RAGNAROK_PVM_DOOM_WARMUP = $(value PVM_DOOM_WARMUP)
 profile-pvm-doom: setup
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
-	$(PYTHON) tools/pvm_doom_attribution.py
+	$(PYTHON) tools/pvm_doom_attribution.py $(if $(filter 1,$(PVM_DOOM_COUNTS_ONLY)),--counts-only,)

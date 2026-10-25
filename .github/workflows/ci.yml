@@ -20,6 +20,11 @@ name: CI
         options: [smoke, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, compare-pvm, profile-pvm, profile-doom, bench-storage, bench-storage-growth, full]
         default: full
         required: true
+      pvm_doom_counts_only:
+        description: Collect DOOM instruction evidence without timing samples
+        type: boolean
+        default: false
+        required: false
       pvm_compare_base:
         description: Baseline ref for compare-pvm (PR labels use the exact PR base SHA)
         type: string
@@ -729,6 +734,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends valgrind=1:3.22.0-0ubuntu3 zstd
       - name: Validate and profile both DOOM interpreters
+        env:
+          PVM_DOOM_COUNTS_ONLY: ${{ inputs.pvm_doom_counts_only && '1' || '0' }}
         run: make profile-pvm-doom
       - name: Show bounded attribution
         if: always()
