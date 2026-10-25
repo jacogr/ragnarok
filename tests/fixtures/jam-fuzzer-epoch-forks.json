@@ -1,0 +1,8 @@
+{
+  "base_sha256": "38292ab5b05a457e494d383ab9b6e788b4d2e950c9f01dbc61618934e78ac5ba",
+  "original_last": 22,
+  "ticket_siblings": 16,
+  "successful_imports": 38,
+  "chains": 3,
+  "expected_sha256": "ea6c857192ffd03444f2120682c3c5f5bc5e0aecc5de70ecaad49749116949aa"
+}
