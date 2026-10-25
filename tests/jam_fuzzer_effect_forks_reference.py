@@ -12,6 +12,7 @@ from state_history_oracle import wire as history_wire
 from state_layout_oracle import chapter_key, digest
 from state_statistics_oracle import parse as statistics_parse, wire as statistics_wire, DEFAULT
 from test_codec import reference_encode as natural
+from header_oracle import decode as header_parse, TINY
 from jam_fuzzer_guest_reference import host_parameters
 
 
@@ -115,8 +116,11 @@ def group(families, fixture, *, check_frozen=True):
             else:
                 assert tag == 'O' and wire is not None
                 posterior = decode_checkpoint(bytes.fromhex(data))
-                _, votes, _, _ = body_parts(wire[297:])
-                if not changed and len(votes) == 5 and votes[0]['bits'] != 0:
+                parsed = header_parse('H', wire, TINY)
+                assert parsed.split()[0].isdigit(), 'Invalid independently framed header'
+                extent = int(parsed.split()[0])
+                _, votes, _, _ = body_parts(wire[extent:])
+                if not changed and extent == 297 and len(votes) == 5 and votes[0]['bits'] != 0:
                     variant, state = sibling(parent, wire, posterior)
                     lines.extend(('V '+variant.hex(), 'O '+checkpoint(list(state.items())).hex()))
                     roots.append(tree(list(state.items()))[0].hex())

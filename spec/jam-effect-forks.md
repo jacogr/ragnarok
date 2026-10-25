@@ -35,3 +35,7 @@ transfers and queued incarnation reports: 372 imports including 51 siblings.
 Exact original deposit profiles are supplied explicitly before replay. Complete
 namespace key sets and values must match the original independently calculated
 answer, including deleted/recreated account identities and queued report effects.
+
+The privileged group covers authorization_assign, role_precedence, validator_designation, bless_allowances, allowance_revocation, allowance_eligibility: 234 complete-map imports including 32 siblings.
+Explicit source code/deposit profiles and exact original-last namespaces are
+retained; no observed map or invented consensus evidence supplies an answer.
