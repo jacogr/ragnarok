@@ -1,0 +1,75 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "population_fixture_sha256": "1bac779dd3023b836637192515883810bc93994316f754fa5ffeb8f4d00df9d8",
+  "epoch_fixture_sha256": "38292ab5b05a457e494d383ab9b6e788b4d2e950c9f01dbc61618934e78ac5ba",
+  "evidence": {
+    "transitions": 20,
+    "chains": 2,
+    "roots": [
+      [
+        "a01df083c7e7ecfae5f4637044a45600fa2632e3979678a195ef16e388fcdbf8",
+        "85d8ba19279b3d796c96a724cc2666fcd771a6dfaa9ec0578fbe766db64c2848",
+        "153bfbb2ba74841cdc285420c46f40dd4e8d8fce26c3fe7973513f995d3aee80",
+        "9ed0c54880e2cac6660a21439040bf58e9b7bcf68c26cdef23f968d018318f15",
+        "d863c110900faaf55afd0fe68573eab8487b75206ad5583dd308a1ecb2a39826",
+        "4332d884dfd7d809418fdf97995fcec38898feb74e8476100d67e33df4183157",
+        "d736f8cb751282561b0792bdf6197a8c5fb7ccca534f8ebb94096901f41f4929",
+        "c124ce89bc43567773186e0ddc457a96feba2d55bb15c52742dde4fed91ae10f",
+        "5b2ee8c2f8a48abedb1620d778cda6c39749128d86d65d8736f02b487032c870",
+        "a6b7f2abde55c00b59406fbbaef2e60887fa20114785f9b9eda8eea4a8163077"
+      ],
+      [
+        "a01df083c7e7ecfae5f4637044a45600fa2632e3979678a195ef16e388fcdbf8",
+        "85d8ba19279b3d796c96a724cc2666fcd771a6dfaa9ec0578fbe766db64c2848",
+        "153bfbb2ba74841cdc285420c46f40dd4e8d8fce26c3fe7973513f995d3aee80",
+        "6770bc01d8badba74996246214b57931bb439de32582e393be664c4e7b0e5f0c",
+        "1c936ec1ba25b7f461650df94a84fe5bfaafbd65b3c3e8bb58bee788c7415019",
+        "1323d18159f33e873374646af462ec59ef6473a6fa6ac64aee601041b71261ca",
+        "bfa5aa40ae1f35e9887c1324bc75513bf04c236009f81ab818624bbf6d7e11de",
+        "22ebefbb29eddb4e91d3f1c40ef2e8cde456f072e9f0dac50129c25f9b1a0cc0",
+        "654f55dff97a8b19fafa9440410e139784405af7c07116fd503f168ead01d36d",
+        "150f3b11b17ef4189a0f1b3cfe8a81f25fddd30e7f010ad79567f31717b6566f"
+      ]
+    ],
+    "checkpoint_sha256": [
+      [
+        "40714242379c9469af25e1abd8b61a9a2636c7dc5ef78282db6a11a8b2ccb923",
+        "afded384f97c5de559575046abdaacb4d1a12222c87c0fb8729053d116d93fc8",
+        "08dfc3f757d6b30d5d99389d3bbcde35544c3c936a375df3035b60792d25a516",
+        "515d18af8b5516f7566c7be3aecf1363f8e6b175c76501467dc769d836250a94",
+        "19454a45347dac694b4936140e3c49edf7935881cb6b1b41cdf1a7dbe3de2399",
+        "bea284a52893c6464f41a35dc3d15fc3a3671a8e983461fdea533ce5ec6f181b",
+        "e31460b294a011ad8090e244c0ec41db529d8a2839b9062bdd7c152c8386f141",
+        "f4d3824f73550e0783983bf07b4cb7fc040a67cdc4238025584a29e8745ec2c7",
+        "2e6ba37d687ddc03cd839e132ff057de51c4c4ada07f18f4fff03ad0175e3c67",
+        "a8563363a274cc978a36ecf52cb73ca772341834ecf30e92a1a43017d7a25b90"
+      ],
+      [
+        "40714242379c9469af25e1abd8b61a9a2636c7dc5ef78282db6a11a8b2ccb923",
+        "afded384f97c5de559575046abdaacb4d1a12222c87c0fb8729053d116d93fc8",
+        "08dfc3f757d6b30d5d99389d3bbcde35544c3c936a375df3035b60792d25a516",
+        "620e40214bbbff9df56c914162a69619fea511ec8a5c952e1e4bf974064701de",
+        "1fdf887475feb15d00a7b4aaab33c87f86f69d21051d82f0099947d31bef2359",
+        "b27eef0946dad5434a18348baddabcdd6dbdd4af3eddb7e636d4f81f0696ba05",
+        "5a1fb27188543b280dc3ccfe6efa2508e04cd149a6dd80eea2e7142b9e4faac1",
+        "4fd732c7316a3169f9763b75fe841fc1a9e05d47525ab3597b0d1c74aad24136",
+        "afe9cc648f51bdaf1bfbfce8116e3d2dc41adbbd945afb91fd634db8aa7501d4",
+        "c4f2712c8ad91a03571bf54d831bbc9c7db7e1628be1158ed3987523c4218fd7"
+      ]
+    ],
+    "refusals": [
+      "credential/WrongErasureShards",
+      "assurance/InvalidSignature",
+      "credential/InvalidIndex",
+      "credential/WrongErasureShards",
+      "assurance/InvalidSignature",
+      "credential/InactiveCore",
+      "credential/WrongErasureShards",
+      "assurance/InvalidSignature",
+      "credential/InvalidIndex",
+      "credential/WrongErasureShards",
+      "assurance/InvalidSignature",
+      "credential/InactiveCore"
+    ]
+  }
+}

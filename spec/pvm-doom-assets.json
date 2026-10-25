@@ -1,0 +1,9 @@
+{
+  "files": {
+    "examples/doom/roms/doom1.wad": "1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771",
+    "test-data/doom_00120.tga.zst": "10704d3902eebd517fdd382e62c9a8ec15cdb97811d70e42d10af78d695b3f58",
+    "test-data/doom_01320.tga.zst": "f7e9b52b8ba99a5054fa1cfc848047b42aec459bc0e404b991b21563538812ac",
+    "test-data/doom_64.elf.zst": "087216d20b4396fd5cbdd7bd07cceb4f371eb7bc27f546c1b2e21396fa4c4acb"
+  },
+  "polkavm_commit": "69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa"
+}

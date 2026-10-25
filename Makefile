@@ -486,3 +486,22 @@ measure-state-store: setup
 .PHONY: measure-disk-store
 measure-disk-store: setup
 	. ./build/toolchain/env.sh; $(PYTHON) tools/measure_disk_store.py --compiler "$$NIMONY" $(if $(DISK_STORE_BASELINE),--baseline "$(DISK_STORE_BASELINE)",)
+
+# Bounded pinned DOOM correctness and opt-in Linux instruction attribution; no local guest timings.
+PVM_DOOM_WARMUP ?= 1320
+PVM_DOOM_COUNTS_ONLY ?= 0
+.PHONY: check-pvm-doom profile-pvm-doom
+check-pvm-doom: setup
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/pvm_doom_attribution.py --check
+profile-pvm-doom: export RAGNAROK_PVM_DOOM_WARMUP = $(value PVM_DOOM_WARMUP)
+profile-pvm-doom: setup
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/pvm_doom_attribution.py $(if $(filter 1,$(PVM_DOOM_COUNTS_ONLY)),--counts-only,)
+
+# Paired DOOM revisions use shared complete gameplay admission; local checks keep clocks disabled.
+PVM_DOOM_COMPARE_CHECK ?= 0
+.PHONY: compare-pvm-doom
+compare-pvm-doom: export RAGNAROK_PVM_DOOM_WARMUP = $(value PVM_DOOM_WARMUP)
+compare-pvm-doom: check-pvm-doom
+	$(PYTHON) tools/pvm_doom_compare.py $(if $(filter 1,$(PVM_DOOM_COMPARE_CHECK)),--check,)

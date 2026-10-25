@@ -977,6 +977,52 @@ def current_stf_reporting_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_epoch_reporting_corpus(compiler, report, checks, libraries):
+    """Compare epoch-boundary guarantee/assurance publication with independent complete maps and contextual refusals."""
+    from current_stf_epoch_reporting_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf', 'current_stf_epoch', 'current_stf_epoch_reporting', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # OpenSSL signatures, mathematical Thin, report projections and every map exist before native execution.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-epoch-reporting-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_epoch_reporting_driver.nim',
+        'current-stf-epoch-reporting', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  reference='OpenSSL Ed25519, mathematical Thin and independent report/availability whole-map STF')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-epoch-reporting-corpus', expected)
+    announce('independent epoch/reporting whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
+def current_stf_population_reporting_corpus(compiler, report, checks, libraries):
+    """Compare population-changing guarantee/assurance publication with independent complete maps and contextual refusals."""
+    from current_stf_population_reporting_oracle import expected_observations
+    from native_fixture_contracts import FIXTURE_CONTRACTS
+    for identity in ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_population_reporting', 'state_report'):
+        for path, digest in FIXTURE_CONTRACTS[identity][2]:
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    # OpenSSL signatures, mathematical Thin, report projections and every map exist before native execution.
+    requests, expected, evidence = expected_observations()
+    source = checks.folder/'current-stf-population-reporting-requests.txt'
+    source.write_text('\n'.join(requests)+'\n')
+    compiled, binary = checks.build(compiler, ROOT/'tests/native/current_stf_population_reporting_driver.nim',
+        'current-stf-population-reporting', crypto_library=libraries['crypto'], native_libraries=(libraries['bandersnatch'],))
+    corpus = dict(build=compiled, passed=False, **evidence,
+                  requests_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                  reference='OpenSSL Ed25519, mathematical Thin and independent report/availability whole-map STF')
+    compare_corpus(corpus, checks.command,
+                   [binary, FIXTURE_CONTRACTS['state_report'][1], source], 'current-stf-population-reporting-corpus', expected)
+    announce('independent population/reporting whole STF maps', corpus['passed'])
+    return corpus
+
+
+@CORPORA.case
 def current_stf_report_guests_corpus(compiler, report, checks, libraries):
     """Compare report-driven real guest execution against independently calculated complete maps."""
     from current_stf_report_guests_oracle import expected_observations

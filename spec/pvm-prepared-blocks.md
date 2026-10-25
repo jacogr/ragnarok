@@ -189,3 +189,18 @@ The pinned PolkaVM default interpreter also uses a shared indirect call, with an
 instance/offset ABI returning a32-bit offset; its optional musttail feature is not enabled
 by this benchmark crate. A smaller private handler ABI, register pressure and front-end
 behavior are future hypotheses. No ABI refactor or DOOM qualification is included here.
+
+## Reconciliation with merged PVM work
+
+The ordinary prepared-execution PR was reconciled with master
+`51ecc125133b838ff7efbe973b8e13831b6cd989`, including decoded memory operand facts
+and the headless DOOM attribution/comparison tooling. Runtime changes merged cleanly;
+the CI choice list and matching safeguard test retain `prepared-pvm`, `profile-doom`
+and `compare-doom`. No ABI experiment is included in this reconciliation.
+
+Combined-tree verification passes the prepared opcode/cache/host suite with balanced
+ARC lifetimes, the mixed reference suite, memory-step and scalar-writer suites, all
+seven maintained guest cases in both orders, the affected CI/profiler/comparison tests,
+formatting and all 441 production-module smoke compilations. Retained prepared payload
+sizes are unchanged. Earlier timing tables remain historical evidence from their
+recorded revisions; performance against the newly combined baseline must be remeasured.

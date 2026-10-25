@@ -1,10 +1,14 @@
 # Primitive codec baseline
 
+The primitive equations below remain implemented. Current source/vector identities and broader
+codec/state coverage are summarized in [the serialization status](jam-serialization-status.md).
+The release-vector references below are historical fixture provenance, not current dependency pins.
+
 ## Normative references
 
-- Gray Paper **v0.8.0**, commit
-  `07f041dabd073f9018b418e9ee72e79dd2185401`:
-  [Appendix C source](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/serialization.tex).
+- Current unreleased Gray Paper **0.8.0**, commit
+  `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`:
+  [Appendix C source](https://github.com/gavofyork/graypaper/blob/1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d/text/serialization.tex).
   C.1.1 (Trivial Encodings, general natural-number definition),
   C.1.3 (Discriminator Encoding), C.1.7 (Fixed-length Integer Encoding),
   and C.2 (Block Serialization, ticket/preimage extrinsics).
@@ -13,10 +17,11 @@
 - Machine-readable revisions, compiler versions and fixture SHA-256 digests:
   [pins.json](pins.json).
 
-The normative target and published vector release are both 0.8.0. The vector gitlink now points
-to `davxy/jam-test-vectors` at its v0.8.0 tag rather than the older W3F snapshot. Unchanged
-primitive, digest and assurance bytes retain their previous content hashes; complete reports
-use the published new layout. See [the migration audit](graypaper-0.8.0.md) for scope and gates.
+Production follows the unreleased source commit above and the gp-next vector revision
+in `pins.json`. The release-vector links retain the exact origin of the unchanged
+primitive fixtures, rather than identifying the active gitlink. The
+[coordinated upgrade](graypaper-unreleased-upgrade.md) records current adoption;
+[the release migration audit](graypaper-0.8.0.md) remains historical evidence.
 
 ## Implemented behavior
 

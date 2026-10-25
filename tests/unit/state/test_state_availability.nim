@@ -8,7 +8,8 @@
 ## interface.
 
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[state_availability, guarantees, report_owned, owned, bounded, assurances]
+import ../../../src/codec/[state_availability, guarantees, report_owned, owned, bounded, assurances,
+    state_composition, header]
 
 ## Return a copied child after the temporary parent and all its handles leave scope.
 proc detachedChild(input: openArray[byte], config: AvailabilityConfig): AvailabilityAssignment =
@@ -17,6 +18,37 @@ proc detachedChild(input: openArray[byte], config: AvailabilityConfig): Availabi
   let item = availabilityAt(parsed.value.snapshot, AssignmentCoreIndex(0))
   assert item.error == AvailabilityError.None
   item.value
+
+proc checkRosterProfiles(report: OwnedReport, reportBytes: int) =
+  ## C10 retains previous-rotation credential indices after shrinkage; capture is framing rather than signature selection.
+  let config = AvailabilityConfig(guarantee: GuaranteeConfig(cores: CoreCount(3),
+      validators: ValidatorCount(9), maxBytes: ByteLimit(100000)),
+      maxPresent: ElementLimit(3), maxBytes: ByteLimit(100000))
+  var guarantee = Guarantee(report: report, slot: GuaranteeSlot(23), credentialCount: 2)
+  guarantee.credentials[0].validator = GuarantorIndex(7)
+  guarantee.credentials[1].validator = GuarantorIndex(8)
+  let entry = availabilityStateEntry(@[presentAssignment(guarantee, AssignmentSlot(24)),
+      absentAssignment(), absentAssignment()], config).value
+  let policy = StateChapterPolicy(items: ElementLimit(100), maxBytes: ByteLimit(100000))
+  let shrink = StateProfile(cores: CoreCount(3), current: ValidatorCount(6),
+      previous: ValidatorCount(9), epochSlots: EpochSlots(12))
+  assert captureStateChapter(StateChapterId.Availability, entry.value, shrink, policy).error ==
+      StateCompositionError.None # Previous-nine indices remain structurally encodable under current six.
+  var grow = shrink
+  grow.current = ValidatorCount(9)
+  grow.previous = ValidatorCount(6)
+  assert captureStateChapter(StateChapterId.Availability, entry.value, grow, policy).error ==
+      StateCompositionError.None # Current-nine indices retain the original structural domain.
+  var smaller = shrink
+  smaller.previous = ValidatorCount(6)
+  assert captureStateChapter(StateChapterId.Availability, entry.value, smaller, policy).error ==
+      StateCompositionError.InvalidComponent # No population authorizes indices7/8 under a six/six profile.
+  var invalid = entry.value
+  let secondIndex = 1+reportBytes+4+1+66
+  assert invalid[secondIndex] == 8 and invalid[secondIndex+1] == 0
+  invalid[secondIndex] = 9
+  assert captureStateChapter(StateChapterId.Availability, invalid, shrink, policy).error ==
+      StateCompositionError.InvalidComponent # Exact maximum remains exclusive; capacity is not widened beyond both populations.
 
 ## Capture independent report fixtures and retain a child after all parent/source handles are replaced.
 proc main() {.raises.} =
@@ -29,6 +61,7 @@ proc main() {.raises.} =
   for i in 0..<raw.len: reportWire[i] = byte(raw[i]) # Fixture is independently encoded by the Python reference.
   let report = decodeOwnedReport(reportWire, 2)
   assert report.error == OwnershipError.None
+  checkRosterProfiles(report.value, reportWire.len)
   var guarantee = Guarantee(report: report.value, slot: GuaranteeSlot(255), credentialCount: 2)
   guarantee.credentials[1].validator = GuarantorIndex(1)
   var values = @[presentAssignment(guarantee, AssignmentSlot(0x01020304)),

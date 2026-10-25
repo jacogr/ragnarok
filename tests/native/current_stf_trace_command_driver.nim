@@ -3,7 +3,7 @@
 
 ## Exercise the public offline command with independent configured chains, Genesis and complete signed trace files.
 import std/[assertions, cmdline, strutils, syncio, parseutils]
-import ../support/trace_check_context
+import ../support/[trace_check_context, current_stf_population_reporting_context]
 import ../../src/app/[options, trace_check_command, current_download_policy]
 proc path(text: string): string =
   ## Decode only the hexadecimal pathname transport; actual files are read through production bounded EOF helpers.
@@ -22,7 +22,11 @@ proc hex(bytes: openArray[byte]): string =
     result.add(digits[int(octet and 15)])
 proc main() {.raises.} =
   ## The maintained native fixture supplies resource-policy input only; every expected block/map and file hash was calculated independently first.
-  writeFile(paramStr(2), encodeCurrentDownloadPolicy(traceCheckTestPolicy()))
+  var resource = traceCheckTestPolicy()
+  if paramCount() == 3:
+    assert paramStr(3) == "population"
+    resource.candidate = populationReportingLimits() # Explicit three-core/nine-ceiling policy; default legacy command coverage stays unchanged.
+  writeFile(paramStr(2), encodeCurrentDownloadPolicy(resource))
   for line in readFile(paramStr(1)).splitLines:
     if line.len == 0: continue # The request-file terminator contains no command.
     let fields = line.splitWhitespace()

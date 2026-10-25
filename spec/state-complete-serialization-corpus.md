@@ -1,5 +1,10 @@
 # Independent complete typed serialization corpus
 
+This corpus remains one small fixed-profile family. The subsequent
+[profile matrix](state-serialization-profiles.md) adds full/tiny and resized populations,
+both Safrole schedules and nonempty chapter contents. See
+[current serialization status](jam-serialization-status.md) for evidence boundaries.
+
 Scope: Gray Paper pin `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, existing
 single C13 compact-gas interpretation and unchanged local V1 checkpoint envelope.
 This authored corpus qualifies serialization, not protocol admissibility or STF execution.

@@ -439,37 +439,27 @@ proc memoryMutation(decoded: ProgramResult[Instruction], info: var MachineInfo,
     memory: var WorkingMemory, failedPage: var PageAddress): MachineError =
   let item = decoded.value
   let indices = instructionRegisters(decoded)
-  let op = item.opcode
-  let loading = op in {52'u8..58'u8, 124'u8..130'u8}
-  var width = 1
-  var signedLoad = false
+  let operands = instructionMemoryOperands(decoded)
+  let loading = operands.isLoad
+  let width = int(operands.width)
+  let signedLoad = operands.isSigned
   var base = 0'u64
   let offset = uint64(item.x)
-  var stored = uint64(info.registers[indices.aIndex])
-  if loading:
-    # Load pairs alternate unsigned/signed at 8/16/32 bits, followed by an unsigned 64-bit load.
-    let index = (if op <= 58: int(op) - 52 else: int(op) - 124)
-    width = 1 shl (index div 2)
-    signedLoad = index in [1, 3, 5]
-    if op >= 124:
-      # Indirect loads read the original B even when it aliases destination A.
-      base = uint64(info.registers[indices.bIndex])
-  elif op <= 33:
-    # Absolute immediate stores use X as the address and Y as the stored bit pattern.
-    width = 1 shl (int(op) - 30)
-    stored = uint64(item.y)
-  elif op <= 62:
-    # Absolute register stores write the low bytes of A at X.
-    width = 1 shl (int(op) - 59)
-  elif op <= 73:
-    # Indirect immediate stores use original A plus X and store Y.
-    width = 1 shl (int(op) - 70)
-    base = uint64(info.registers[indices.aIndex])
-    stored = uint64(item.y)
-  else:
-    # Indirect register stores use original B plus X and store original A.
-    width = 1 shl (int(op) - 120)
+  var stored = 0'u64
+  case operands.base
+  of MemoryBase.B:
+    # Read original B before any aliased destination write.
     base = uint64(info.registers[indices.bIndex])
+  of MemoryBase.A:
+    # Only indirect immediate stores use original A as their address base.
+    base = uint64(info.registers[indices.aIndex])
+  of MemoryBase.None:
+    # Absolute accesses use their decoded immediate address directly.
+    discard
+  if not loading:
+    # The decoder already selected immediate Y or original A as this store's data source.
+    stored = (if operands.usesImmediate: uint64(item.y) else: uint64(info.registers[
+        indices.aIndex]))
   # Mask operands before addition: the sum fits 33 bits and preserves every cyclic physical address.
   let address = MemoryAddress((base and 0xffffffff'u64) + (offset and 0xffffffff'u64))
   if loading:

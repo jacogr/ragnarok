@@ -24,6 +24,20 @@ class StateCompositionHarness(unittest.TestCase):
         self.assertEqual([capture(i+1, raw) for i, raw in enumerate(values)], ['ok']*16)
         self.assertEqual([key for key, _ in entries(values, [])], [chapter_key(i) for i in range(1, 17)])
 
+    def test_previous_roster_credential_index_domain(self):
+        """Literal previous-nine indices survive shrinkage, while the largest population remains an exclusive bound."""
+        from state_availability_oracle import record, wire
+        value = record(0)
+        value['credentials'] = [(7, bytes(64)), (8, bytes(64))]
+        raw = wire([dict(guarantee=value, registered=24), None, None])
+        self.assertEqual(capture(10, raw, (3, 6, 9, 12)), 'ok')
+        self.assertEqual(capture(10, raw, (3, 9, 6, 12)), 'ok')
+        self.assertEqual(capture(10, raw, (3, 6, 6, 12)), 'invalidcomponent')
+        value['credentials'] = [(7, bytes(64)), (9, bytes(64))]
+        raw = wire([dict(guarantee=value, registered=24), None, None])
+        self.assertEqual(capture(10, raw, (3, 6, 9, 12)), 'invalidcomponent')
+        self.assertEqual(capture(10, raw, (3, 9, 6, 12)), 'invalidcomponent')
+
     # Prefix APIs are stricter at the state boundary: an additional byte is never silently ignored.
     def test_exact_extent(self):
         self.assertEqual(capture(11, bytes(4)), 'ok')

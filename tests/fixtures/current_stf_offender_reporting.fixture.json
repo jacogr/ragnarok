@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_OFFENDER_REPORTING",
+  "files": {
+    "current-stf-offender-reporting.json": "cec7e5a5ca98f2a4d6e2bed8ef637257466075b2b0259093c0c8c7690a3c0041"
+  },
+  "target": "current-stf-offender-reporting.json"
+}
