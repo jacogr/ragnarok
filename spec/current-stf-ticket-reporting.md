@@ -37,3 +37,9 @@ Observed checked macOS ARM64 ARC/Clang non-LTO: all32 transitions and three
 exact refusals passed complete output comparison. The earlier30-transition
 population guest corpus also passed unchanged. All33 affected independent tests,
 source inventory and pinned formatting passed.
+
+Checked Linux amd64 passed all32 transitions and three refusals with identical
+complete outputs; every frozen runtime input matched the host and retained image
+`ragnarok:db5-ticket-reporting`
+(`sha256:0f6bffe5d2da55bc6fdb5e06267923565e0e3a7758733d497af963d2969ded5f`).
+This is covered-source local evidence, separate from exact-head CI.
