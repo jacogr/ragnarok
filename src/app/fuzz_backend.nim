@@ -7,22 +7,24 @@ import ./[chain, candidate]
 import ../chain/[genesis, parameters, provider]
 import ../codec/[bounded, header, block_codec]
 import ../crypto/primitives
-import ../state/[fuzz_protocol, store, accumulation_current_update]
+import ../state/[fuzz_ancestry, fuzz_protocol, store, accumulation_current_update]
 
 type
   FuzzBackendConfig* = object ## Parameters and every execution/codec ceiling are explicit trusted host configuration.
     parameters*: Parameters
     candidate*: CurrentCandidateLimits
     wire*: FuzzLimits
+    initialAncestry*: bool ## Negotiated feature1 permits explicit initial hash/slot membership.
     forkStates*: ElementLimit ## Zero selects linear execution; 1..64 bounds the current sibling GetState window.
   FuzzBackendError* {.pure.} = enum ## Local refusals expose no reply and are never implicitly translated to consensus Error.
     Uninitialized, None, InvalidConfiguration, InvalidRequest, AlreadyInitialized,
     MissingSeed, UnsupportedFeature, HashFailure, SeedContextFailure, UnknownState,
-    CandidateFailure, StateChanged, ReplyFailure, LimitExceeded, UnknownParent
+    CandidateFailure, StateChanged, ReplyFailure, LimitExceeded, UnknownParent, AncestryFailure
   FuzzBackendResult*[T] = object ## Success owns one complete value; candidate refusal preserves only its actual failed stage.
     case status: FuzzBackendError
     of None: completed: T
     of CandidateFailure: candidateReason: CurrentCandidateResult
+    of AncestryFailure: ancestryReason: FuzzAncestryError
     else: discard # No other refusal grants a prepared prefix, selected chain or response.
   ForkState = object ## A retained sibling owns its exact header identity and independent complete map.
     hash: BlockHash
@@ -34,10 +36,10 @@ type
     seedHash: BlockHash
     seedState: StateStoreSnapshot
     chain: ApplicationChain
-    older: seq[OwnedHeader]
+    ancestry: FuzzAncestry
     hasForkParent: bool
     forkParent: ApplicationChain
-    forkOlder: seq[OwnedHeader]
+    forkAncestry: FuzzAncestry
     siblings: seq[ForkState]
 func error*[T](outcome: FuzzBackendResult[T]): FuzzBackendError =
   ## Inspect the immutable selected stage.
@@ -50,6 +52,14 @@ func candidateFailure*[T](outcome: FuzzBackendResult[T]): CurrentCandidateResult
     requires: outcome.status == FuzzBackendError.CandidateFailure.} =
   ## Preserve the actual failure for conservative consensus-versus-internal classification.
   outcome.candidateReason
+func ancestryFailure*[T](outcome: FuzzBackendResult[T]): FuzzAncestryError {.inline,
+    requires: outcome.status == FuzzBackendError.AncestryFailure.} =
+  ## Report missing/invalid local context without converting it into a consensus rejection.
+  outcome.ancestryReason
+func ancestryLimits(config: FuzzBackendConfig): FuzzAncestryLimits =
+  ## Share the exact configured report-context profile and retention budget.
+  let policy = config.candidate.reporting.reports.ancestors
+  FuzzAncestryLimits(header: policy.header, records: policy.headers, bytes: policy.maxBytes)
 func refused[T](reason: FuzzBackendError): FuzzBackendResult[T] =
   ## Failed/default operations retain no successful reply or chain prefix.
   FuzzBackendResult[T](status: reason)
@@ -91,16 +101,21 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
   case info.value.kind
   of FuzzKind.Initialize:
     if backend.seeded: return refused[FuzzMessage](FuzzBackendError.AlreadyInitialized)
-    if request.fuzzAncestors.value.len != 0: return refused[FuzzMessage](
-        FuzzBackendError.UnsupportedFeature)
+    if request.fuzzAncestors.value.len != 0 and not config.initialAncestry: return refused[
+        FuzzMessage](FuzzBackendError.UnsupportedFeature)
     let owned = request.fuzzHeader.value
     var bytes = newSeq[byte](owned.headerInfo.value.consumed)
     assert owned.encodeOwnedHeader(bytes).error == HeaderError.None
     let identity = blake2b256(bytes)
     if identity.error != CryptoError.None: return refused[FuzzMessage](FuzzBackendError.HashFailure)
+    let ancestry = captureFuzzAncestry(owned, request.fuzzAncestors.value, config.ancestryLimits)
+    if ancestry.error != FuzzAncestryError.None:
+      return FuzzBackendResult[FuzzMessage](status: FuzzBackendError.AncestryFailure,
+          ancestryReason: ancestry.error)
     let state = request.fuzzState.value
     let reply = backend.response(newFuzzRoot(state.commitment.root, config.wire))
     if reply.error != FuzzBackendError.None: return reply
+    backend.ancestry = ancestry.value
     backend.seedHeader = owned
     backend.seedHash = BlockHash(array[32, byte](identity.value))
     backend.seedState = state
@@ -122,7 +137,7 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
   of FuzzKind.ImportBlock:
     if not backend.seeded: return refused[FuzzMessage](FuzzBackendError.MissingSeed)
     var chain = backend.chain
-    var ancestors = backend.older
+    var ancestry = backend.ancestry
     var sibling = false
     let body = request.fuzzBlock.value
     if backend.executing and uint64(config.forkStates) > 0:
@@ -133,7 +148,7 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
       elif backend.hasForkParent and array[32, byte](fields.parent) ==
           array[32, byte](backend.forkParent.chainView.bestBlock.value.blockHash):
         chain = backend.forkParent
-        ancestors = backend.forkOlder
+        ancestry = backend.forkAncestry
         sibling = true # Restoring the exact immutable parent also restores its full header context.
       else:
         return refused[FuzzMessage](FuzzBackendError.UnknownParent)
@@ -143,11 +158,11 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
       let captured = captureBlockSnapshot(bytes, backend.seedState, config.parameters)
       if captured.error != GenesisError.None: return refused[FuzzMessage](
           FuzzBackendError.SeedContextFailure)
-      let initialized = initApplicationChain(genesisView(captured))
+      let initialized = initApplicationChain(fuzzSeedView(captured))
       if initialized.error != ApplicationChainError.None: return refused[FuzzMessage](
           FuzzBackendError.SeedContextFailure)
       chain = initialized.value # Lazy application capture cannot reject or rewrite the accepted protocol seed.
-    let prepared = prepareCurrentCandidate(chain, body, ancestors,
+    let prepared = prepareFuzzCurrentCandidate(chain, body, ancestry,
         config.candidate)
     if prepared.error != CurrentCandidateError.None:
       return FuzzBackendResult[FuzzMessage](status: FuzzBackendError.CandidateFailure,
@@ -157,20 +172,11 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
     if reply.error != FuzzBackendError.None: return reply
     if not chain.canInstallPrepared(prepared.value): return refused[FuzzMessage](
         FuzzBackendError.StateChanged)
-    let before = chain.chainView.bestBlock.value.header
-    let policy = config.candidate.reporting.reports.ancestors
-    let nextSize = uint64(prepared.value.currentUpdateChild.header.headerInfo.value.consumed)
-    if nextSize > uint64(policy.maxBytes): return refused[FuzzMessage](
-        FuzzBackendError.LimitExceeded)
-    var available = uint64(policy.maxBytes)-nextSize
-    var older: seq[OwnedHeader] = @[]
-    let maximum = min(24'u64, uint64(policy.headers)-1)
-    for index in 0..ancestors.len:
-      let source = if index == 0: before else: ancestors[index-1]
-      let size = uint64(source.headerInfo.value.consumed)
-      if uint64(older.len) >= maximum or size > available: break # Keep a contiguous newest-first prefix within both quotas.
-      older.add(source)
-      available -= size
+    let nextAncestry = extendFuzzAncestry(ancestry, prepared.value.currentUpdateChild.header,
+        config.ancestryLimits)
+    if nextAncestry.error != FuzzAncestryError.None:
+      return FuzzBackendResult[FuzzMessage](status: FuzzBackendError.AncestryFailure,
+          ancestryReason: nextAncestry.error)
     var siblings: seq[ForkState] = @[]
     let identity = prepared.value.currentUpdateChild.blockHash
     if uint64(config.forkStates) > 0:
@@ -185,12 +191,12 @@ proc executeFuzz*(backend: var FuzzBackend, request: FuzzMessage): FuzzBackendRe
         siblings = retained
       siblings.add(ForkState(hash: identity, state: state))
       backend.forkParent = chain
-      backend.forkOlder = ancestors
+      backend.forkAncestry = ancestry
       backend.hasForkParent = true # Commit group-parent selection only after every preparation/reply/retention check succeeds.
     chain.installPrepared(prepared.value)
     backend.siblings = siblings
     backend.chain = chain
-    backend.older = older
+    backend.ancestry = nextAncestry.value
     backend.executing = true # Publish exact state/history together only after all local reply/retention checks succeed.
     reply
   else:

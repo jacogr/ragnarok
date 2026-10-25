@@ -5,9 +5,12 @@
 import std/[assertions, envvars, syncio]
 import ../../support/[fuzz_backend_context, accumulation_current_chain_context, current_consecutive_context]
 import ../../support/fuzz_fork_context
-import ../../../src/app/[fuzz_target, fuzz_backend, fuzz_rejection, candidate]
+import ../../../src/app/[chain, fuzz_target, fuzz_backend, fuzz_rejection, candidate]
 import ../../../src/codec/[bounded, header, report_owned, block_codec]
-import ../../../src/state/fuzz_protocol
+import ../../../src/state/[store, fuzz_protocol, fuzz_ancestry, report_admission,
+  accumulation_queue,
+  accumulation_round, accumulation_current_completion, accumulation_current_update, accumulation_current_chain]
+import ../../../src/chain/[provider, genesis]
 proc main() {.raises.} =
   ## Pure startup selection opens no listeners and cannot derive Parameters from seed bytes.
   let supplied = fuzzBackendTestConfig()
@@ -18,7 +21,7 @@ proc main() {.raises.} =
   let prepared = prepareFuzzTarget(environment, supplied.parameters, supplied.candidate,
       ElementLimit(1000), ByteLimit(1000000))
   assert prepared.error == FuzzTargetError.None
-  assert prepared.value.socket.peer.features == 2
+  assert prepared.value.socket.peer.features == 3
   assert prepared.value.socket.peer.jam.minor == 8
   var changed = environment
   changed.enabled = false
@@ -59,6 +62,36 @@ proc main() {.raises.} =
   for index, octet in raw: report[index] = byte(octet) # Unchanged frozen report seeds a genuinely authenticated test parent.
   let context = currentChainFixture(decodeOwnedReport(report, 2).value, ticket = true,
       completeState = true)
+  let ordinary = genesisView(context.parent)
+  let isolated = fuzzSeedView(context.parent)
+  assert not ordinary.fuzzOnly and isolated.fuzzOnly
+  assert not sameChainView(ordinary, isolated)
+  assert isolated.finalizeView(context.parent.value.blockHash).value.fuzzOnly
+  let policy = supplied.candidate.reporting.reports.ancestors
+  let ancestry = captureFuzzAncestry(context.parent.value.header, [], FuzzAncestryLimits(
+    header: policy.header, records: policy.headers, bytes: policy.maxBytes)).value
+  let staged = context.source.currentChainAdmission.reportBlockStage.value
+  let reports = completeFuzzBlockReports(prepareBlockReports(staged,
+    supplied.candidate.reporting.reports).value, ancestry)
+  assert reports.error == ReportAdmissionError.None and reports.value.requiresFuzzView
+  let queue = planBlockAccumulationQueue(reports.value, supplied.candidate.queue).value
+  let round = planBlockInitialAccumulation(queue, supplied.candidate.round).value
+  let composed = runCurrentAccumulationCompletion(round, supplied.parameters,
+      supplied.candidate.completion)
+  assert composed.error == CurrentAccumulationCompletionError.None
+  var state = forkStateStore(context.parent.value.stateSnapshot).value
+  var view = ordinary
+  let refused = applyCurrentAccumulationChain(state, view, composed.value,
+      supplied.candidate.headerBytes)
+  assert refused.error == CurrentAccumulationChainError.ProfileMismatch
+  assert sameChainView(view, ordinary)
+  var fuzzChain = initApplicationChain(isolated).value
+  let fuzzUpdate = fuzzChain.prepareAccumulation(composed.value, supplied.candidate.headerBytes)
+  assert fuzzUpdate.error == CurrentChainPreparationError.None
+  let production = initApplicationChain(ordinary).value
+  assert not production.canInstallPrepared(fuzzUpdate.value)
+  fuzzChain.installPrepared(fuzzUpdate.value)
+  assert fuzzChain.chainView.fuzzOnly
   let initialize = fuzzInitialize(context.parent.value.header, context.parent.value.stateSnapshot)
   let child = currentEmptyChild(context.parent.value)
   var wire = newSeq[byte](child.blockInfo.value.consumed)

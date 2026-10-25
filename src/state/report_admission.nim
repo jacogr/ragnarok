@@ -10,7 +10,8 @@
 
 import ../codec/[block_codec, header, bounded, guarantees, assurances, state_safrole,
   state_disputes, state_history, state_layout, state_availability]
-import ./[ancestor_context, store, block_transition, block_admission, guarantee_credentials,
+import ./[fuzz_ancestry, ancestor_context, store, block_transition, block_admission,
+  guarantee_credentials,
   report_policy,
   report_anchors, report_packages, report_assignments, availability, history]
 
@@ -227,33 +228,50 @@ proc prepareBlockReports*(staged: BlockTransitionResult,
     completed: PreparedReportAdmission(data: PreparedReportData(staged: staged,
       credentials: credentials.value, recent: recent.value, config: config)))
 
-proc completeBlockReports*(prepared: PreparedReportAdmission,
-    older: openArray[OwnedHeader]): ReportAdmissionResult[AdmittedReports] =
-  ## Complete only the original prepared block under its captured policies; no substituted reports or parent state.
+proc completeAnchoredReports(prepared: PreparedReportAdmission,
+    anchored: ReportAnchorResult[AnchoredReports]): ReportAdmissionResult[AdmittedReports] =
+  ## Share package/vacancy completion while preserving the exact anchor owner and its domain.
   let data = prepared.data
-  if data == nil:
-    return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.InvalidTransition)
-  let staged = data.staged
-  let step = staged.value
-  let binding = step.admitted
-  let config = data.config
-  let anchored = checkReportLookupAnchors(data.recent, binding.admittedParent, older,
-      config.ancestors)
+  if data == nil: return ReportAdmissionResult[AdmittedReports](
+      status: ReportAdmissionError.InvalidTransition)
   if anchored.error != ReportAnchorError.None:
     return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.AnchorFailure,
-      anchorReason: anchored.error) # Caller may supply older headers but cannot replace the actual parent endpoint.
-  let packages = checkReportPackages(data.recent, config.packages)
+      anchorReason: anchored.error)
+  let packages = checkReportPackages(data.recent, data.config.packages)
   if packages.error != ReportPackageError.None:
     return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.PackageFailure,
       packageReason: packages.error) # Existing packages deliberately come from parent C(10)/C(14)/C(15).
-  let planned = planReportAssignments(data.credentials, step.availability.assuredAssignments,
-    config.packages.availability)
+  let planned = planReportAssignments(data.credentials,
+    data.staged.value.availability.assuredAssignments,
+    data.config.packages.availability)
   if planned.error != ReportAssignmentError.None:
     return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.AssignmentFailure,
       assignmentReason: planned.error) # Vacancy deliberately uses actual post-assurance C(10).
   ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.None,
-    completed: AdmittedReports(data: AdmissionData(staged: staged, credentials: data.credentials,
+    completed: AdmittedReports(data: AdmissionData(staged: data.staged,
+      credentials: data.credentials,
       anchors: anchored.value, packages: packages.value, assignments: planned.value)))
+
+proc completeBlockReports*(prepared: PreparedReportAdmission,
+    older: openArray[OwnedHeader]): ReportAdmissionResult[AdmittedReports] =
+  ## Ordinary completion still requires the full authenticated contiguous ancestor sequence.
+  let data = prepared.data
+  if data == nil: return ReportAdmissionResult[AdmittedReports](
+      status: ReportAdmissionError.InvalidTransition)
+  completeAnchoredReports(prepared, checkReportLookupAnchors(data.recent,
+    data.staged.value.admitted.admittedParent, older, data.config.ancestors))
+proc completeFuzzBlockReports*(prepared: PreparedReportAdmission,
+    context: FuzzAncestry): ReportAdmissionResult[AdmittedReports] =
+  ## Alternate initial membership is explicitly retained as fuzz-only authority in every completed owner.
+  let data = prepared.data
+  if data == nil: return ReportAdmissionResult[AdmittedReports](
+      status: ReportAdmissionError.InvalidTransition)
+  completeAnchoredReports(prepared, checkFuzzReportLookupAnchors(data.recent,
+    data.staged.value.admitted.admittedParent, context, data.config.ancestors))
+proc requiresFuzzView*(owner: AdmittedReports): bool =
+  ## Downstream chain producers inspect the original immutable anchor domain before publishing.
+  let data = owner.data
+  data != nil and data.anchors.requiresFuzzView
 
 proc reportPreparationFailure*(prepared: ReportAdmissionResult[
     PreparedReportAdmission]): ReportAdmissionResult[AdmittedReports] =

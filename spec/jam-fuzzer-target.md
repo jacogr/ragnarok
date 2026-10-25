@@ -41,7 +41,9 @@ bounds idle, assembling, executing and blocked-output sessions. Explicit limits
 are local resource policy, never protocol-invalid block judgments.
 
 The target advertises protocol1, GP0.8.0 and feature mask2: depth-one sibling
-execution without initial ancestry. A negotiated fork bit enables eight retained
+execution. Feature1 enables initial ancestry membership and feature2 forks.
+Both are enabled only after negotiation; the advertised feature mask is3.
+An initial hash/slot record never replaces GP child-header root evidence. A negotiated fork bit enables eight retained
 sibling maps; otherwise the backend remains linear. Every connection gets a fresh backend.
 The seed and rolling retained history support exact-header-hash whole-map queries.
 Header/map clock incompatibility and missing/evicted lookup context still cause

@@ -85,7 +85,10 @@ proc applyCurrentAccumulationChain*(state: var StateStore, view: var ChainView,
   let finalized = activity.currentActivitySource.value.currentValidatorsSource.value.currentRecentSource.value.currentReadySource.value
   let completed = finalized.currentFinalizationAccounts.value.currentAccountsSource.value.currentStatisticsSource.value
   let sequence = completed.completedSequenceSource.value
-  let admission = sequence.currentSequenceInitial.value.currentRoundGuests.value.guestRound.value.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value
+  let reports = sequence.currentSequenceInitial.value.currentRoundGuests.value.guestRound.value.roundBlockQueue.value.accumulationAdmission.value
+  if reports.requiresFuzzView and not view.fuzzOnly:
+    return CurrentAccumulationChainResult(status: CurrentAccumulationChainError.ProfileMismatch) # Test-seed facts cannot authorize a production chain.
+  let admission = reports.reportBlockStage.value
   let profile = admission.blockTransitionProfile
   # GP valcount permits independent roster sizes; the decoder ceiling covers the head up to three validators per core.
   if uint64(profile.cores) != uint64(head.value.cores) or
