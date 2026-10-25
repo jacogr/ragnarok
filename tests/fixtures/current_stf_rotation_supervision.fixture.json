@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ROTATION_SUPERVISION",
+  "files": {
+    "current-stf-rotation-supervision.json": "e4ecac9bbea2e73b0388cf0fd470d4050e209e066387cc9bc5ffdc993baae4be"
+  },
+  "target": "current-stf-rotation-supervision.json"
+}

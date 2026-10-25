@@ -44,6 +44,16 @@ def current_stf_offender_reporting_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def current_stf_rotation_supervision_corpus(compiler, report, checks, libraries):
+    """Qualify supervised storage/requests, annulled yields and surviving provisions across growth/shrinkage."""
+    import current_stf_rotation_supervision_oracle as oracle
+    return scenarios(compiler, checks, libraries, oracle,
+        ('current_stf', 'current_stf_epoch', 'current_stf_population', 'current_stf_supervised_storage',
+         'current_stf_supervised_requests', 'current_stf_supervised_conflicts', 'current_stf_rotation_supervision', 'state_report'),
+        defines=oracle.NATIVE_DEFINES)
+
+
+@CORPORA.case
 def current_stf_rotation_funding_corpus(compiler, report, checks, libraries):
     """Qualify common-prior foreign funding and junior-write annulment across growth and shrinkage."""
     import current_stf_rotation_funding_oracle as oracle
