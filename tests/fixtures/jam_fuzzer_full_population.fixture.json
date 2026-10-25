@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_JAM_FUZZER_FULL_POPULATION",
+  "files": {
+    "jam-fuzzer-full-population.json": "fec356a1d7281bda6ae1aff2441c0daee77205c482c05dbbe6a9a6b89d4c11bb"
+  },
+  "target": "jam-fuzzer-full-population.json"
+}
