@@ -493,3 +493,63 @@ Smoke for 421 production modules plus the peer entry point pass locally. Linux i
 Frozen inputs and exact native verdicts: `build/storage-db5-light-restart-linux.json`; local record:
 `build/storage-db5-light-restart-local.json`. These are process/IO fault controls, not physical
 power-loss qualification.
+
+## Distinct light application paged owner
+
+`LightPagedStore` owns a separate move-only native light writer and a private passive cache of
+`LightStorageSnapshot` objects. Each immutable snapshot owns its trusted `LightApplicationHead`,
+partial `ProofView`, exact physical manifest and inherited finite policy. It retains no complete
+`StateStore`, complete-map commitment calculation or native reader pin. Snapshot/header/proof
+reads and prepared-job admission perform no native IO; already retained snapshots remain usable
+after publication, quarantine and close. Initialization, strict restart, authoring, publication,
+retirement and synchronization belong on startup or the excluded IO owner.
+
+Bootstrap accepts an independently captured trusted head and an explicitly matching native root.
+Strict restart requires independent **current** identity/header trust and configured header
+geometry before opening the native store. A separately pinned reader must select the writer's
+exact manifest. Complete context capture, stored-key enumeration, state-layer proof verification
+and strict header-window restoration all succeed before cache adoption; both native owners retire
+on every failed startup path. No mode, backend, schema, root or recovery fallback is inferred.
+
+The light envelope is `RAGNAROK-LIGHT-PAGED-CONTEXT-V1\n`, followed by E1 predecessor presence,
+E8 inner length, an optional exact 193-byte V2 light manifest, then the strict light-head codec.
+Only physical epoch 1/ordinary sequence 0 may omit a predecessor. A successor embeds its immediate
+physical predecessor: same-root replacement increments ordinary sequence, while a different-root
+advance preserves it. This facade exposes no context-changing compaction. Native context,
+inner metadata, retained proof, inventory and total file bounds remain separate. Preparation
+preflights complete native geometry, overflow-safe proof/payload sums and a workspace reservation
+for context transports, key transports and the largest detached proof before native mutation.
+
+`prepareLightProofMerge` accepts a genuinely verified same-root batch. `prepareLightHeadAdvance`
+requires independent successor trust, linked-header validation and an explicit fresh-root view.
+Both retain the exact source snapshot incarnation and a private immutable target. Publication
+rejects default, foreign and stale jobs before native dispatch. It selects native replacement or
+root advance according to the trusted roots, publishes one metadata/proof pair, and adopts the
+prepared target only after confirmed usable native success. Native authoring/publication/close
+uncertainty quarantines subsequent facade operations until independent reopen; retained old
+snapshots remain readable. No failed native candidate is automatically retried or removed.
+
+A separate passive retirement job binds the cache incarnation and exact current/previous
+manifests. At most one predecessor may await retirement; the next publication receives explicit
+backpressure. Native expected-content retirement confirms old-content absence, then clears the
+pending cache flag without changing the adopted application head. Foreign old-reader `Busy`
+retains a retryable pending job; other uncertainty quarantines the owner. The durable predecessor
+descriptor survives restart even after successful retirement, so a fresh idempotent absence barrier
+is required again. Fresh synchronize uses both actual native barriers. Worker/runtime integration
+follows this ownership contract; this increment does not itself expose a light CLI mode.
+
+Focused light-owner controls also cover every observed startup read failure, both synchronization
+barriers, same-root trusted header advancement, independently tightened query/proof/context/view/
+workspace quotas before native dispatch, and fully native-authenticated malformed application
+contexts. Raw head bytes, unknown tags, trailing bytes, wrong current trust and a successor without
+its predecessor descriptor never grant a usable facade. Publication fault controls cover every
+observed write, synchronization, rename and close ordinal and re-admit only a coherent old or new
+metadata/proof pair against independent current trust.
+
+Final light-owner qualification: the checked native suite passes on macOS arm64 and Linux amd64
+under Docker emulation. Its 1,000 fresh open/restore/prepare/close cycles are stable at
+35,696 -> 35,696 occupied bytes on macOS and 30,288 -> 30,288 on Linux. Four owner/snapshot/
+prepared-target/result privacy checks, pinned formatting and semantic Smoke for 422 production
+modules plus the peer entry point pass locally. Qualified Linux image:
+`sha256:6b89bc2a069bb4ea4111d40989ad25f15d1c430e2baf8c202281974a6478655f`.
+Frozen inputs and exact native/platform evidence: `build/storage-db5-light-store-verification.json`.

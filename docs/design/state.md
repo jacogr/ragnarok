@@ -143,3 +143,9 @@ history, complete state and authenticated original block provenance. State's
 state owns history/statistics/authorization/consensus composition and exact-parent
 final publication. Neither side accepts a detached map as a replacement execution
 certificate. See [the shared boundary contract](../../spec/pvm-state-successor.md).
+
+The application's distinct `LightPagedStore` retains trusted light headers and partial `ProofView`
+evidence in immutable passive snapshots. Its unique native light writer publishes prepared
+metadata/proof pairs and confirms bounded predecessor retirement on an excluded IO owner. Strict
+restart requires independent current checkpoint/header trust; it never reconstructs complete state
+or treats a partial-map commitment as the JAM state root.
