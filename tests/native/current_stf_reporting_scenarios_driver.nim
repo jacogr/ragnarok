@@ -13,7 +13,9 @@ import ../../src/codec/[bounded, report_owned, block_codec, header, state_layout
 import ../../src/state/[store, checkpoint, accumulation_current_update, current_profile,
   current_globals, current_state, global_snapshot, trace_step, trace_state]
 
-when defined(rotationRequests):
+when defined(rotationIncarnations):
+  import ../support/current_stf_rotation_incarnations_context
+elif defined(rotationRequests):
   import ../support/current_stf_rotation_requests_context
 elif defined(rotationCode):
   import ../support/current_stf_rotation_code_context
@@ -26,7 +28,9 @@ elif defined(rotationHosts):
 
 proc scenarioLimits(): CurrentCandidateLimits =
   ## Explicit corpus build profiles keep original reporting ceilings unchanged.
-  when defined(rotationRequests):
+  when defined(rotationIncarnations):
+    result = rotationIncarnationLimits()
+  elif defined(rotationRequests):
     rotationRequestLimits()
   elif defined(rotationCode):
     rotationCodeLimits()

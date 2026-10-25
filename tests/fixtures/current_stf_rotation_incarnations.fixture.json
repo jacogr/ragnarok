@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_ROTATION_INCARNATIONS",
+  "files": {
+    "current-stf-rotation-incarnations.json": "d4c070b30c314715245d68ad0b585bece39f547bff53d54505e6b0b4e7219254"
+  },
+  "target": "current-stf-rotation-incarnations.json"
+}

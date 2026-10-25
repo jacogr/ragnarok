@@ -55,16 +55,16 @@ def original(profile):
     parent[chapter_key(12)]=privileges_wire((0,0,99,[0,0],[]));return parent
 
 
-def effects(result,parent,profile,slot,*,rebind_slot=6,write_slot=8):
+def effects(result,parent,profile,slot,*,creation_slot=4,rebind_slot=6,write_slot=8,statistics_config=DEFAULT):
     """Common prior authority refuses77 at6; only a retained explicit rebind permits the later foreign write at8."""
     first,second,third=programs(profile);child=envelope(*third);gas={};changed=False
-    if slot==4:
+    if slot==creation_slot:
         instructions,_=second;gas[99]=simulate(instructions,gas_definitions(),prefix=[b'\0']*5)[0]+458+3855+3980+(2264*len(child)+1023)//1024
         if profile!='creator-panic':
             key=chapter_service(255,99);code,wide,narrow=account_parse(parent[key],105);wide=list(wide);wide[0]+=18
             result[key]=account_wire((code,wide,narrow))
-            result[chapter_service(255,77)]=account_wire((digest(child),(0,0,100,19,81+len(child),0),(2,4,0,99,99,0)))
-            result[request_key(77,digest(child),len(child))]=request_wire((4,));result[value_key('P',77,digest(child))]=child
+            result[chapter_service(255,77)]=account_wire((digest(child),(0,0,100,19,81+len(child),0),(2,creation_slot,0,99,99,0)))
+            result[request_key(77,digest(child),len(child))]=request_wire((creation_slot,));result[value_key('P',77,digest(child))]=child
     if slot==rebind_slot:
         instructions,_=first;gas[42]=simulate(instructions,gas_definitions(),prefix=[b'\0']*5)[0]+1000*int(profile!='stale')+103*int(profile=='checkpoint-panic')
         if profile not in ('stale','panic'):
@@ -81,7 +81,7 @@ def effects(result,parent,profile,slot,*,rebind_slot=6,write_slot=8):
             if storage not in parent:
                 wide[4]+=38;narrow[0]+=1 # The actual later authorized write reserves the raw key exactly once.
             result[storage]=bytes([9,8,7]);result[key]=account_wire((code,wide,narrow));changed=True
-    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],DEFAULT);activity={row[0]:list(row) for row in services}
+    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],statistics_config);activity={row[0]:list(row) for row in services}
     for sid,used in sorted(gas.items()):
         key=chapter_service(255,sid);code,wide,narrow=account_parse(result[key],105);narrow=list(narrow);narrow[2]=slot
         result[key]=account_wire((code,wide,narrow));row=activity.setdefault(sid,[sid]+[0]*11);row[9]+=1;row[11]+=used
