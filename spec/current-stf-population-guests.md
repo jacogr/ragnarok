@@ -37,3 +37,9 @@ unchanged22-transition/17-refusal offender corpus passed exact complete output
 comparison. All15 scoped independent tests passed, including unchanged earlier
 guest answers. Pinned formatting and source inventory passed. Finite fetch and
 processed-history policies explicitly cover three operands and ten packages.
+
+Checked Linux amd64 also passed all30 transitions with identical complete outputs.
+All frozen runtime inputs matched the host and retained image
+`ragnarok:db5-population-guests`
+(`sha256:22953c27a9a92a7e99d06f0bc4d5b214d7658b089cefce1936858e69adbbd0a9`).
+This records covered-source local evidence, separate from exact-head CI.
