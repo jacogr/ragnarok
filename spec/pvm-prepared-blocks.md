@@ -500,3 +500,13 @@ PC witnesses across segment and callback boundaries, exact attempt and host budg
 all maintained guests versus the parent, and the same paired Linux cold/reused
 comparison. Pricing, memory checks, sparse cache policy, record layout, public APIs
 and handler ABI remain unchanged. No speed gain is claimed before qualification.
+
+Local validation passes the complete 139-opcode/host/cache/ARC suite, including 30
+host-budget/attempt combinations with independently known callback PCs/registers,
+fault reconstruction and paid repair after a segment split, and exact next-block
+out-of-gas coordinates. Mixed reference and host execution suites pass. All seven
+maintained guest/size cases pass in both process orders against the accepted parent;
+fresh compiler caches and identical candidate rebuild controls pass. Formatting,
+63 affected Python safeguards, and semantic checks for all 441 production modules
+plus the peer entry point pass. Only explanatory comments differ from the tested
+native snapshot; Linux exact-head instruction counts and CPU timings remain pending.

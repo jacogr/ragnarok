@@ -1833,6 +1833,7 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
             kind: StepExit.OutOfGas), false)
       frame.info.gas = MachineGas(uint64(frame.info.gas)-active.price)
       frame.info.blockCharged = true
+    # Validate the private continuation coordinate before subtraction, narrowing or index-based iteration.
     if at < 0 or at >= active.operations.len:
       return StepResult(status: StepError.InvalidPreparedProgram)
     # Sealed segments stop at their first block terminator; the bounded prefix needs only one index comparison per operation.
@@ -1869,7 +1870,7 @@ proc preparedBudget(owner: PreparedData, cursor: var ExecutionCursor,
           location.chunk = active
           location.next = at
         return published
-    # The complete bounded prefix consumed its reserved attempts; budget exhaustion still returns only a typed refusal.
+    # The complete bounded prefix consumed its planned attempts; budget exhaustion still returns only a typed refusal.
     remaining -= attempts
     let last = stop-1
     if not active.operations[last].endsBlock:
