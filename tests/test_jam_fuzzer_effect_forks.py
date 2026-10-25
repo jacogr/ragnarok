@@ -110,7 +110,33 @@ class EffectForkReference(unittest.TestCase):
             frozen = json.loads(reference.FIXTURE.read_text())
             self.assertEqual(len(profiles(reference.FAMILIES)), frozen['chains'])
 
+    def test_epoch_effect_fork_maps(self):
+        """Preserve exact independent epoch namespaces, chapter domains and explicit profile ownership."""
+        from jam_fuzzer_epoch_effect_forks_oracle import expected_observations, host_profiles
+        _, lines, evidence = expected_observations()
+        self.assertEqual(evidence['sibling_imports'], 43)
+        self.assertEqual(evidence['transitions'], 461)
+        self.assertEqual(len(host_profiles()), evidence['chains'])
+        for index, line in enumerate(lines):
+            if line.startswith('V '):
+                changed = decode_checkpoint(bytes.fromhex(lines[index+1][2:]))
+                original = decode_checkpoint(bytes.fromhex(lines[index+3][2:]))
+                self.assertEqual(set(changed), set(original))
+                self.assertEqual({key for key in changed if changed[key] != original[key]},
+                                 {chapter_key(3), chapter_key(13)})
+
     def test_unknown_body_domains_fail_closed(self):
         """Unknown tickets, oversized assurance counts and truncated records cannot become a valid sibling."""
         for raw in (b'\x01', b'\0\0\0\7', b'\0\0\0\5'):
             with self.assertRaises(AssertionError): body_parts(raw)
+
+    def test_epoch_mixed_profiles(self):
+        """Funded lifecycle and oversized-code privilege cases retain distinct explicit GP Parameters across rotations."""
+        from jam_fuzzer_epoch_effect_forks_oracle import host_profiles
+        selected = host_profiles()
+        self.assertEqual(len(selected), 43)
+        mixed = selected[-18:]
+        self.assertTrue(all(value[:24] == bytes(24) for value in mixed[:6]))
+        self.assertEqual([int.from_bytes(value[98:102], 'little') for value in mixed[3:6]], [4096, 4096, 512])
+        funded = b''.join(value.to_bytes(8, 'little') for value in (7, 1, 100))
+        self.assertTrue(all(value[:24] == funded for value in mixed[6:]))

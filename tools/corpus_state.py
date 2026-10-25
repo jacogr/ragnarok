@@ -839,6 +839,15 @@ def jam_fuzzer_deferred_forks_corpus(compiler, report, checks, libraries):
 
 
 @CORPORA.case
+def jam_fuzzer_epoch_effect_forks_corpus(compiler, report, checks, libraries):
+    """Execute independent epoch siblings and require exact original-last namespace effects."""
+    import jam_fuzzer_epoch_effect_forks_oracle as reference
+    return run_fuzzer_guest_reference(compiler, report, checks, libraries, reference,
+        tuple('current_stf_'+family for family in reference.FAMILIES)+('jam_fuzzer_epoch_effect_forks',),
+        forks=True, profiles=reference.host_profiles())
+
+
+@CORPORA.case
 def jam_fuzzer_transfer_forks_corpus(compiler, report, checks, libraries):
     """Compare independent actual transfer-bearing siblings with exact original-last state and continuation."""
     import jam_fuzzer_transfer_forks_oracle as reference

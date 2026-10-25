@@ -44,3 +44,13 @@ code/queue envelopes while preserving GP code-size and deposit checks.
 
 Observed complex replay:242 sessions,1652 signed imports,4494 exact exchanges
 across three host profiles; each profile passed its own false-success control.
+
+Epoch-spanning replay additionally covers retained dependency work, skipped-slot
+expiry, request/provision lifecycle and mixed supervised/privileged/funded account
+composition. Explicit original case bindings supply each deposit/code profile;
+marker-bearing headers retain their entire sealed identity for state queries.
+Both whole-map sibling replay and actual upstream process replay preserve GP
+checks across rotations, skipped epochs and original-last continuation.
+
+Observed epoch-effect replay:43 additional sessions,461 signed imports and1137
+exact exchanges across three host profiles, each with its own mismatch control.

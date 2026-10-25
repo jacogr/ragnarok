@@ -47,3 +47,7 @@ retained; no observed map or invented consensus evidence supplies an answer.
 The deferred group covers dependency_waves, budget_retention, gas_exits, late_code: 521 complete-map imports including 57 siblings.
 Explicit source code/deposit profiles and exact original-last namespaces are
 retained; no observed map or invented consensus evidence supplies an answer.
+
+The epoch group covers epoch_drain, ready_expiry, epoch_lifecycle, epoch_composition: 461 complete-map imports including 43 siblings.
+Explicit source code/deposit profiles and exact original-last namespaces are
+retained; no observed map or invented consensus evidence supplies an answer.

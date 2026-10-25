@@ -69,6 +69,13 @@ def exercise_profile(binary, policy_binary, script, environment, run, planned, p
 def exercise(binary, policy_binary, script, environment, folder):
     """Freeze all complete maps first, then require strict upstream interoperability for every explicit profile."""
     jobs, evidence = prepare_effect_sessions()
+    return exercise_plan(binary, policy_binary, script, environment, folder, jobs, evidence)
+
+
+def exercise_plan(binary, policy_binary, script, environment, folder, jobs, evidence):
+    """Execute a complete independently declared plan; scoped callers retain identical strict process/profile checks."""
+    assert evidence['sessions'] == len(jobs) and jobs
+    assert evidence['signed_imports'] == sum(len(job['steps']) for job in jobs)
     planned = [(job, exchanges(job)) for job in jobs]
     profiles = tuple(dict.fromkeys(job['parameters'] for job in jobs))
     folder = Path(folder)
