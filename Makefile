@@ -247,6 +247,9 @@ diagnose-pvm-interpreters: setup
 # Verify Linux ELF identity before deeper attribution; no benchmark timings are collected.
 .PHONY: diagnose-pvm-build-identity
 diagnose-pvm-build-identity: setup
+	# The rejected stress commit can outlive its remote branch; fetch its exact object only when absent.
+	git cat-file -e 11f79d979ad63a86fe3f3cdecc4559ec6d00da2f^{commit} 2>/dev/null || \
+	  git fetch --no-tags origin 11f79d979ad63a86fe3f3cdecc4559ec6d00da2f
 	$(PYTHON) tools/pvm_build_identity.py
 
 # Own the full prerequisite chain: strict stress identity, complete same-image control, then source attribution.

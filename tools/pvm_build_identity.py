@@ -21,7 +21,7 @@ from setup_nimony import installed
 
 
 BUILD = ROOT/'build/tests/pvm-build-identity'
-SOURCE = '11f79d97'
+SOURCE = '11f79d979ad63a86fe3f3cdecc4559ec6d00da2f'
 
 
 def generated(row):
