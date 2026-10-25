@@ -45,13 +45,13 @@ def original(profile):
     return parent
 
 
-def effects(result, profile, slot):
+def effects(result, profile, slot, *, statistics_config=DEFAULT):
     """Select both transfers independently; third-round host OOG retains incoming credit but emits no further transfer."""
-    transfers.effects(result, 'halt', slot)
+    transfers.effects(result, 'halt', slot, statistics_config=statistics_config)
     instructions, _, amount, offer = program(profile)
     retained = profile != 'panic'
     gas = simulate(instructions, gas_definitions(), prefix=[b'\0']*5)[0]+575+offer+(103 if profile == 'checkpoint-panic' else 0)
-    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
+    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], statistics_config)
     activity = {row[0]: list(row) for row in services}
     activity[42][11] = gas
     if retained:

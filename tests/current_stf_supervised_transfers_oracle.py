@@ -29,6 +29,21 @@ def original(profile):
     return parent
 
 
+def effects(result, profile, slot, *, statistics_config=DEFAULT):
+    """Two affordable actual-gas continuation rounds emit two credits; active supervisor99 alone holds both for one recipient invocation."""
+    assert 200000 <= 300000 < 400000
+    assert 200000+10000 <= 300000-10678+10000
+    transfers.effects(result,'halt',slot,statistics_config=statistics_config)
+    transfers.effects(result,'halt',slot,statistics_config=statistics_config)
+    held=profile=='active-supervisor'
+    if held:
+        (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],statistics_config)
+        services=[tuple(list(row[:11])+[22]) if row[0]==42 else row for row in services]
+        result[chapter_key(13)]=statistics_wire((current,previous,cores,services))
+    return dict(slot=slot,report_rounds=2,recipient_invocations=1 if held else 2,
+                recipient_transfers=2,held_while_active=held)
+
+
 def expected_observations(check_frozen=True):
     """Two200000-gas reports force separate source rounds; accepted inputs either join or wait for that active supervisor."""
     requests, lines, roots, hashes, traces = [], [], [], [], []
@@ -47,19 +62,8 @@ def expected_observations(check_frozen=True):
             plan = dict(available=released, processed=released, batches=[], ready=[[] for _ in range(12)], reports=reports, yielded=False)
             child, result = pipeline.advance(parent, initial, 'create', slot, gs, ass, plan=plan)
             if released:
-                # The first declared prefix fits; actual10678 gas leaves room for the second report after restoring its paid10000 offer.
-                assert len(released) == 2 and 200000 <= 300000 < 400000
-                assert 200000+10000 <= 300000-10678+10000
-                transfers.effects(result, 'halt', slot)
-                transfers.effects(result, 'halt', slot)
-                held = profile == 'active-supervisor'
-                if held:
-                    # Both queued duplicates are delivered together only after supervisor99 has stopped reporting.
-                    (current, previous, cores, services), _ = statistics_parse(result[chapter_key(13)], DEFAULT)
-                    services = [tuple(list(row[:11])+[22]) if row[0] == 42 else row for row in services]
-                    result[chapter_key(13)] = statistics_wire((current, previous, cores, services))
-                traces[-1].append(dict(slot=slot, report_rounds=2, recipient_invocations=1 if held else 2,
-                                       recipient_transfers=2, held_while_active=held))
+                assert len(released)==2
+                traces[-1].append(effects(result,profile,slot))
             parent = result; encoded = checkpoint(list(parent.items()))
             requests.append('B '+body(gs, ass)[0].hex()); lines.extend(('B '+child.hex(), 'O '+encoded.hex()))
             roots[-1].append(tree(list(parent.items()))[0].hex()); hashes[-1].append(hashlib.sha256(encoded).hexdigest())
