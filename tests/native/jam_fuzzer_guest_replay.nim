@@ -26,6 +26,9 @@ proc main() {.raises.} =
   var initialHeader = defaultHeader
   var pendingHeader = default(OwnedHeader)
   var hasHeader = false
+  var pendingAncestors: seq[FuzzAncestor] = @[]
+  var omitted = default(FuzzBackend)
+  var testOmission = false
   var config = fuzzGuestReplayConfig()
   var backend = default(FuzzBackend)
   var seeded = false
@@ -42,12 +45,18 @@ proc main() {.raises.} =
     let fields = line.splitWhitespace()
     assert fields.len in [2, 3]
     if fields[0] == "H":
-      assert fields.len == 2 and not hasHeader
+      assert fields.len in [2, 3] and not hasHeader
       let decoded = decodeHeader(epoch.unhex(fields[1]),
           config.candidate.reporting.reports.ancestors.header)
       assert decoded.error == HeaderError.None
       assert decoded.value.consumed == epoch.unhex(fields[1]).len
       pendingHeader = decoded.value.owner
+      pendingAncestors = @[]
+      if fields.len == 3:
+        let slot = parseInt(fields[2])
+        assert slot >= 0 and uint64(slot) <= uint64(high(uint32))
+        pendingAncestors.add(FuzzAncestor(slot: HeaderSlot(uint32(slot)),
+          hash: FuzzHeaderHash(array[32, byte](pendingHeader.headerInfo.value.unsigned.parent))))
       hasHeader = true
       echo line # Exact independently supplied bytes retain their own immutable header owner.
       continue
@@ -84,7 +93,13 @@ proc main() {.raises.} =
         config.candidate.reporting.reports.anchors.lookupAge = LookupAge(0)
       backend = initFuzzBackend(config).value
       let initialized = backend.executeFuzz(fuzzInitialize(initialHeader,
-          captured.value.snapshot.value))
+          captured.value.snapshot.value, pendingAncestors))
+      testOmission = pendingAncestors.len > 0
+      if testOmission:
+        omitted = initFuzzBackend(config).value
+        assert omitted.executeFuzz(fuzzInitialize(initialHeader,
+            captured.value.snapshot.value)).error == FuzzBackendError.None
+      pendingAncestors = @[]
       assert initialized.error == FuzzBackendError.None
       if anchorChecks:
         var strict = config
@@ -173,6 +188,13 @@ proc main() {.raises.} =
           assert array[32, byte](fuzzGetState(mirror.fuzzBackendHeader.value).fuzzRequestedHeader.value) ==
             array[32, byte](fuzzGetState(mirrorHeader).fuzzRequestedHeader.value)
           mirrorActive = false # A genuine GP lookup-age refusal cannot publish any map or head change.
+      if testOmission:
+        let missing = omitted.executeFuzz(fuzzImport(decoded.value.owner))
+        assert missing.error == FuzzBackendError.CandidateFailure
+        assert not consensusFuzzRejection(missing.candidateFailure)
+        assert localFuzzCandidateReason(missing.candidateFailure) == "MissingLookupAnchor"
+        assert epoch.checkpointHex(omitted.observe(initialHeader)) == original
+        testOmission = false # Initial membership must be supplied honestly; the child header alone cannot invent it.
       let imported = backend.executeFuzz(fuzzImport(decoded.value.owner))
       assert imported.error == FuzzBackendError.None, $imported.error
       let header = readHeader(blockHeader(decoded.value.owner).value).value.owner

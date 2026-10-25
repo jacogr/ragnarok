@@ -137,3 +137,12 @@ as authored; no input is rewritten during Initialize. Native controls reject
 children at either lower bound and a child earlier than an independently supplied
 later header, preserving complete state. Missing/malformed required application
 chapters still report local SeedContextFailure.
+
+Checkpoint continuation adds35 independently calculated complete-map imports with
+15 fresh reseeds across the five guest modes (20 sessions). Each restart receives
+the exact independently calculated checkpoint and actual last full header. Its
+single declared parent hash/slot fact is proved by that real seed child's parent
+and prior-state fields. Subsequent reports use that recent anchor; no full child
+header or root is reconstructed from a membership fact. Removing the membership
+in an otherwise identical native control reports local MissingLookupAnchor,
+preserves the complete seed and never becomes a consensus Error.
