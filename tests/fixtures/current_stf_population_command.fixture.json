@@ -1,0 +1,7 @@
+{
+  "environment": "RAGNAROK_CURRENT_STF_POPULATION_COMMAND",
+  "files": {
+    "current-stf-population-command.json": "711e349fc27066cd955f31f9eaa5cf39b37bc6a99c9c7953f3b71dae213a8ec3"
+  },
+  "target": "current-stf-population-command.json"
+}
