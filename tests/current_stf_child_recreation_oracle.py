@@ -56,7 +56,7 @@ def original(profile):
     return parent
 
 
-def effects(result,parent,profile,slot,budget,*,creation_slot=4,retirement_slot=6):
+def effects(result,parent,profile,slot,budget,*,creation_slot=4,retirement_slot=6,statistics_config=DEFAULT):
     """The old empty incarnation retires at the explicit later slot; fresh metadata/Q and a second funding debit replace it atomically."""
     key=chapter_service(255,99);code,wide,narrow=account_parse(parent[key],105);wide,narrow=list(wide),list(narrow)
     child=chapter_service(255,77);kept=profile!='panic';retired=slot==retirement_slot and kept
@@ -77,7 +77,7 @@ def effects(result,parent,profile,slot,budget,*,creation_slot=4,retirement_slot=
     instructions,_=program(profile)
     gas=simulate(instructions,gas_definitions(),prefix=[b'\0']*5)[0]+2*3855+3250+458+103*int(profile.startswith('checkpoint-'))
     assert gas<=budget
-    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],DEFAULT)
+    (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],statistics_config)
     activity={row[0]:list(row) for row in services};row=activity.setdefault(99,[99]+[0]*11);row[9]+=1;row[11]+=gas
     result[chapter_key(13)]=statistics_wire((current,previous,cores,[tuple(activity[sid]) for sid in sorted(activity)]))
     return dict(slot=slot,gas=gas,retired=retired,recreated=recreated,child_present=child in result)
